@@ -323,7 +323,7 @@ def flash_decoding_attention(
     alibi_slopes: torch.Tensor = None,
     sm_scale: int = None,
     kv_group_num: int = 1,
-    q_len: int = 1,
+    q_len: int = 1,  # NOTE alibi flash decoding does not support q_len > 1 at this moment.
 ):
     """
     Flash decoding implemented with a blocked KV Cache (PagedAttention) during decoding stage.

@@ -133,8 +133,9 @@ def check_spec_dec(num_layers, max_length):
     assert not engine.use_spec_dec
     assert engine.drafter is None and engine.drafter_model is None
 
+    max_new_tokens = max_length - dummy_inputs.size(1)
     assert len(out) == 1
-    assert len(out_token_ids) == 1 and len(out_token_ids[0]) == max_length
+    assert len(out_token_ids) == 1 and len(out_token_ids[0]) == max_new_tokens
 
     # test GLIDE model
     glide_config = GlideLlamaConfig(
@@ -152,7 +153,7 @@ def check_spec_dec(num_layers, max_length):
     engine.clear_spec_dec()
 
     assert len(out) == 1
-    assert len(out_token_ids) == 1 and len(out_token_ids[0]) == max_length
+    assert len(out_token_ids) == 1 and len(out_token_ids[0]) == max_new_tokens
 
 
 def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
@@ -176,17 +177,18 @@ def test_tp_engine(prompt_template, do_sample):
 
     kwargs2 = {"use_engine": False, "prompt_template": prompt_template, "do_sample": do_sample, "policy": None}
 
-    # colossal_tp_1_output = run_engine(1, **kwargs1)
+    colossal_tp_1_output = run_engine(1, **kwargs1)
+    colossal_tp_2_output = run_engine(2, **kwargs1)
     run_engine(2, **kwargs1)
-    # transformer_tp_1_output = run_engine(1, **kwargs2)
+    transformer_tp_1_output = run_engine(1, **kwargs2)
 
-    # for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
-    #     assert s1 == s3, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s3}"
-    #     assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
+    for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
+        assert s1 == s3, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s3}"
+        assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
 
 
 @parameterize("num_layers", [1])
-@parameterize("max_length", [100])
+@parameterize("max_length", [64])
 def test_spec_dec(num_layers, max_length):
     spawn(run_dist, 1, func_to_run=check_spec_dec, num_layers=num_layers, max_length=max_length)
 

@@ -1,5 +1,6 @@
 # This code is adapted from huggingface baichuan model: hhttps://huggingface.co/baichuan-inc/Baichuan2-13B-Base/blob/main/modeling_baichuan.py
 import itertools
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -30,9 +31,35 @@ except ImportError:
     use_flash_attn2 = False
     logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
+logger = get_dist_logger(__name__)
+
+try:
+    from flash_attn import flash_attn_varlen_func
+
+    use_flash_attn2 = True
+except ImportError:
+    use_flash_attn2 = False
+    logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
+
 inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
+
+
+# alibi slopes calculation adapted from https://github.com/huggingface/transformers/blob/v4.36.0/src/transformers/models/bloom/modeling_bloom.py#L57
+def get_alibi_slopes(num_heads: int, device: torch.device) -> torch.Tensor:
+    closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
+    base = torch.tensor(2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), dtype=torch.float32, device=device)
+    powers = torch.arange(1, 1 + closest_power_of_2, dtype=torch.int32, device=device)
+    slopes = torch.pow(base, powers)
+    if closest_power_of_2 != num_heads:
+        extra_base = torch.tensor(
+            2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), dtype=torch.float32, device=device
+        )
+        num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
+        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, dtype=torch.int32, device=device)
+        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
+    return slopes
 
 
 def baichuan_rmsnorm_forward(
@@ -47,9 +74,10 @@ def baichuan_rmsnorm_forward(
         eps = self.variance_epsilon
     elif hasattr(self, "epsilon"):
         eps = self.epsilon
-
-    # TODO "Currently, CUDA RMS Norm does not support the hidden_size of 5120. Remove this code after CUDA RMS Norm is fixed."
-    use_cuda_kernel = False
+    else:
+        TypeError(
+            "Currently, the variable name for the epsilon of baichuan7B/13B should be 'variance_epsilon' or 'epsilon'."
+        )
 
     if use_cuda_kernel:
         if residual is not None:
@@ -97,6 +125,12 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
 
         qkv_weight_list = [attn_qproj_w.transpose(0, 1), attn_kproj_w.transpose(0, 1), attn_vproj_w.transpose(0, 1)]
         self.qkv_weight = nn.Parameter(torch.stack(qkv_weight_list, dim=0))
+
+        self.alibi_slopes = None
+        self.use_alibi_attn = False
+        if self.hidden_size == 5120:
+            self.use_alibi_attn = True
+            self.alibi_slopes = get_alibi_slopes(self.num_heads, device=attn_qproj_w.device)
 
     @staticmethod
     def from_native_module(
@@ -176,11 +210,6 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
             torch.bmm(hidden_states, self.qkv_weight).view(3, token_nums, self.num_heads, self.head_dim).unbind(0)
         )
 
-        use_alibi_attn = False
-
-        if fd_inter_tensor.alibi_slopes is not None:
-            use_alibi_attn = True
-
         block_size = k_cache.size(-2)
 
         if is_prompts:
@@ -189,7 +218,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                 and use_cuda_kernel
                 and query_states.dtype != torch.float32
                 and use_flash_attn2
-                and not use_alibi_attn
+                and not self.use_alibi_attn
             ):
                 # flash attn 2 currently only supports FP16/BF16.
                 inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
@@ -211,7 +240,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                 )
                 attn_output = attn_output.view(token_nums, -1)
             else:
-                if not use_alibi_attn:
+                if not self.use_alibi_attn:
                     rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
                 attn_output = context_attention_unpadded(
                     q=query_states,
@@ -223,7 +252,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                     block_tables=block_tables,
                     block_size=block_size,
                     output=output_tensor,
-                    alibi_slopes=fd_inter_tensor.alibi_slopes,
+                    alibi_slopes=self.alibi_slopes,
                     max_seq_len=kv_seq_len,
                     sm_scale=sm_scale,
                 )
@@ -231,7 +260,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
             q_len = tokens_to_verify + 1 if is_verifier else 1
 
             if use_cuda_kernel:
-                if not use_alibi_attn:
+                if not self.use_alibi_attn:
                     inference_ops.rotary_embedding_and_cache_copy(
                         query_states,
                         key_states,
@@ -249,7 +278,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                         key_states, value_states, k_cache, v_cache, sequence_lengths, block_tables
                     )
             else:
-                if not is_verifier and not use_alibi_attn:
+                if not is_verifier and not self.use_alibi_attn:
                     decoding_fused_rotary_embedding(
                         query_states,
                         key_states,
@@ -262,7 +291,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                         sequence_lengths,
                     )
                 else:
-                    if not use_alibi_attn:
+                    if not self.use_alibi_attn:
                         rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
                     copy_k_to_blocked_cache(
                         key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
@@ -282,7 +311,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
                 output=output_tensor,
                 mid_output=fd_inter_tensor.mid_output,
                 mid_output_lse=fd_inter_tensor.mid_output_lse,
-                alibi_slopes=fd_inter_tensor.alibi_slopes,
+                alibi_slopes=self.alibi_slopes,
                 sm_scale=sm_scale,
                 q_len=q_len,
             )

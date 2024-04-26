@@ -11,11 +11,7 @@ from colossalai.inference.modeling.models.nopadding_baichuan import (
     NopadBaichuanMLP,
     baichuan_rmsnorm_forward,
 )
-from colossalai.inference.modeling.models.nopadding_llama import (
-    llama_causal_lm_forward,
-    llama_decoder_layer_forward,
-    llama_model_forward,
-)
+from colossalai.inference.modeling.models.nopadding_llama import llama_causal_lm_forward, llama_model_forward
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
@@ -145,6 +141,10 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
                 ],
             )
 
+            self.append_or_create_method_replacement(
+                description={"forward": llama_causal_lm_forward}, policy=policy, target_key=DecoderLayer
+            )
+
         policy["BaichuanForCausalLM"] = ModulePolicyDescription(
             sub_module_replacement=[
                 SubModuleReplacementDescription(
@@ -159,16 +159,6 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
         self.append_or_create_method_replacement(
             description={"forward": llama_model_forward}, policy=policy, target_key="BaichuanModel"
         )
-
-        # used for Baichuan 7B
-        self.append_or_create_method_replacement(
-            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="DecoderLayer"
-        )
-        # used for Baichuan 13B
-        self.append_or_create_method_replacement(
-            description={"forward": llama_decoder_layer_forward}, policy=policy, target_key="BaichuanLayer"
-        )
-
         self.append_or_create_method_replacement(
             description={"forward": baichuan_rmsnorm_forward}, policy=policy, target_key="RMSNorm"
         )

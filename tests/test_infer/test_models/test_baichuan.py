@@ -14,10 +14,8 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.modeling.policy import NoPaddingBaichuanModelInferPolicy
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-BAICHUAN_MODEL_NAME_OR_PATH = "//home/data/models/Baichuan2-13B-Base/"
-# BAICHUAN_MODEL_NAME_OR_PATH = "/home/data/models/Baichuan2-7B-Base/"
 # BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
-# BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
+BAICHUAN_MODEL_NAME_OR_PATH = "/home/data/models/Baichuan2-13B-Base"
 
 
 def setup_seed(seed):
@@ -28,14 +26,10 @@ def setup_seed(seed):
     random.seed(seed)
 
 
-def check_inference_engine(use_engine=False, prompt_template=None, do_sample=True, policy=None):
+def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=False, prompt_template=None, policy=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
-    model = (
-        AutoModelForCausalLM.from_pretrained(
-            BAICHUAN_MODEL_NAME_OR_PATH, torch_dtype=torch.bfloat16, trust_remote_code=True
-        )
-    ).cuda()
+    model = AutoModelForCausalLM.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
     model = model.eval()
 
     inputs = [
@@ -43,15 +37,19 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
     ]
 
     output_len = 38
-    do_sample = do_sample
-    top_p = 0.5
-    top_k = 50
+
+    if do_sample:
+        top_p = 0.5
+        top_k = 50
+    else:
+        top_p = None
+        top_k = None
 
     if use_engine:
         inference_config = InferenceConfig(
             max_output_len=output_len,
             prompt_template=prompt_template,
-            use_cuda_kernel=True,
+            use_cuda_kernel=use_cuda_kernel,
             tp_size=dist.get_world_size(),
             dtype="fp32",
         )
@@ -111,12 +109,13 @@ def test_tp_engine(prompt_template, do_sample):
 
     kwargs2 = {"use_engine": False, "prompt_template": prompt_template, "do_sample": do_sample, "policy": None}
 
-    # colossal_tp_1_output = run_engine(1, **kwargs1)
+    colossal_tp_1_output = run_engine(1, **kwargs1)
     colossal_tp_2_output = run_engine(2, **kwargs1)
     transformer_tp_1_output = run_engine(1, **kwargs2)
 
-    for s1, s2 in zip(colossal_tp_2_output, transformer_tp_1_output):
-        assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s2}"
+    for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
+        assert s1 == s3, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s3}"
+        assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
 
 
 @pytest.mark.skipif(

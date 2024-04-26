@@ -117,6 +117,14 @@ class Sequence:
 
         return False
 
+    def revoke_finished_status(self) -> None:
+        """
+        Revoke the finished status of the sequence.
+        This is only used by speculative decoding for now.
+        """
+        if RequestStatus.is_finished(self.status):
+            self.status = RequestStatus.RUNNING
+
     def __hash__(self):
         return hash(self.request_id)
 

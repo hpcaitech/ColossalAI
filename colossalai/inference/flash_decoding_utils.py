@@ -86,9 +86,4 @@ class FDIntermTensors(metaclass=SingletonMeta):
             size=(max_batch_size, num_attn_heads, kv_max_split_num), dtype=dtype, device=device
         )
 
-        if alibi_attn:
-            self._alibi_slopes = get_alibi_slopes(num_attn_heads, device)
-        else:
-            self._alibi_slopes = None
-
         self._tensors_initialized = True
