@@ -18,7 +18,7 @@ GIGABYTE = 1024**3
 def get_model_config_attr(config: PretrainedConfig, attr_name: str, alter_attr: Any = None):
     if hasattr(config, attr_name):
         return getattr(config, attr_name)
-    if alter_attr is not None:  # TODO, rebase caidi changes
+    if alter_attr is not None:
         return alter_attr
     elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
         return getattr(config, config.attribute_map[attr_name])

@@ -6,23 +6,26 @@ from transformers.models.bloom.modeling_bloom import BloomBlock, BloomForCausalL
 
 from colossalai.inference.config import InputMetaData
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.utils import get_alibi_slopes
 from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_inference
 from colossalai.kernel.jit.bias_gelu import GeLUFunction
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
-from colossalai.kernel.triton import context_attention_unpadded, flash_decoding_attention
+from colossalai.kernel.triton import context_attention_unpadded, copy_k_to_blocked_cache, flash_decoding_attention
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
 
-inference_ops = InferenceOpsLoader.load()
-
 try:
-    pass
+    from flash_attn import flash_attn_varlen_func
 
     use_flash_attn2 = True
 except ImportError:
     use_flash_attn2 = False
     logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
+
+inference_ops = InferenceOpsLoader().load()
+
+logger = get_dist_logger(__name__)
 
 
 def bloom_causal_lm_forward(
@@ -107,6 +110,7 @@ def bloom_model_forward(
         hidden_states = layer(
             hidden_states,
             block_tables=block_tables,
+            is_prompts=inputmetadata.is_prompts,
             k_cache=k_caches[layer_id],
             v_cache=v_caches[layer_id],
             sequence_lengths=sequence_lengths,
@@ -144,7 +148,7 @@ def bloom_block_forward(
     use_cuda_kernel: bool = True,
     cu_seqlens: torch.Tensor = None,
     high_precision: bool = False,
-) -> torch.Tensor:
+) -> torch.FloatTensor:
     """
     Replacement of forward function in the BloomBlock module.
 
@@ -234,6 +238,7 @@ class NopadBloomAttention(nn.Module):
 
         self.hidden_size = hidden_size
         self.num_heads = n_heads
+        self.alibi_slopes = get_alibi_slopes(self.num_heads, device=attn_qproj_w.device)
         self.head_dim = self.hidden_size // self.num_heads
         self.o_proj_w = attn_oproj_w
 
@@ -289,7 +294,7 @@ class NopadBloomAttention(nn.Module):
         high_precision: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         """
-        Forward function of the NopadBloomAttention.
+        Forward function of the NopadBloomAttention. Current attention does not support speculative decoding.
 
         Args:
             hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
@@ -318,28 +323,73 @@ class NopadBloomAttention(nn.Module):
 
         block_size = k_cache.size(-2)
 
-        # TODO: flash attention
-        if is_prompts:  # Prefilling phase
-            attn_output = context_attention_unpadded(
-                q=query_states,
-                k=key_states,
-                v=value_states,
-                k_cache=k_cache,
-                v_cache=v_cache,
-                context_lengths=sequence_lengths,
-                block_size=block_size,
-                block_tables=block_tables,
-                output=output_tensor,
-                alibi_slopes=fd_inter_tensor.alibi_slopes,
-                max_seq_len=kv_seq_len,
-                sm_scale=sm_scale,
-            )
-        else:  # Decoding phase
+        if is_prompts:  # Context stage (prefilling phase)
+            if (
+                use_cuda_kernel
+                and query_states.dtype != torch.float32
+                and use_flash_attn2  # flash attn 2 currently only supports FP16/BF16
+            ):
+                # Copy the GPU memory of kvcache during context stage
+                inference_ops.context_kv_cache_memcpy(
+                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
+                )
+
+                attn_output = flash_attn_varlen_func(
+                    query_states,
+                    key_states,
+                    value_states,
+                    cu_seqlens_q=cu_seqlens,
+                    cu_seqlens_k=cu_seqlens,
+                    max_seqlen_q=kv_seq_len,
+                    max_seqlen_k=kv_seq_len,
+                    dropout_p=0.0,
+                    softmax_scale=sm_scale,
+                    causal=True,
+                    alibi_slopes=self.alibi_slopes,
+                )
+                attn_output = attn_output.view(token_nums, -1)
+
+            else:
+                attn_output = context_attention_unpadded(
+                    q=query_states,
+                    k=key_states,
+                    v=value_states,
+                    k_cache=k_cache,
+                    v_cache=v_cache,
+                    context_lengths=sequence_lengths,
+                    block_size=block_size,
+                    block_tables=block_tables,
+                    output=output_tensor,
+                    alibi_slopes=self.alibi_slopes,
+                    max_seq_len=kv_seq_len,
+                    sm_scale=sm_scale,
+                )
+
+        else:  # Decode stage
+            if use_cuda_kernel:
+                # Copy the GPU memory of kvcache during decode stage
+                inference_ops.decode_kv_cache_memcpy(
+                    key_states, value_states, k_cache, v_cache, sequence_lengths, block_size, block_tables
+                )
+            else:
+                copy_k_to_blocked_cache(
+                    key_states,
+                    k_cache,
+                    kv_lengths=sequence_lengths,
+                    block_tables=block_tables,
+                )
+                copy_k_to_blocked_cache(
+                    value_states,
+                    v_cache,
+                    kv_lengths=sequence_lengths,
+                    block_tables=block_tables,
+                )
+
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
                 v_cache=v_cache,
-                alibi_slopes=fd_inter_tensor.alibi_slopes,
+                alibi_slopes=self.alibi_slopes,
                 kv_seq_len=sequence_lengths,
                 block_tables=block_tables,
                 block_size=block_size,

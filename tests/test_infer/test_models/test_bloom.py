@@ -4,7 +4,7 @@ import random
 import numpy as np
 import pytest
 import torch
-from transformers import AutoModelForCausalLM, BloomTokenizerFast, GenerationConfig
+from transformers import BloomForCausalLM, BloomTokenizerFast, GenerationConfig
 
 import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
@@ -23,30 +23,35 @@ def setup_seed(seed):
     random.seed(seed)
 
 
-def check_inference_engine(use_engine=False, prompt_template=None):
+def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=False, prompt_template=None):
     setup_seed(20)
     tokenizer = BloomTokenizerFast.from_pretrained(BLOOM_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        BLOOM_MODEL_NAME_OR_PATH, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
-    ).cuda()
+    model = BloomForCausalLM.from_pretrained(BLOOM_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
     model = model.eval()
 
     inputs = [
         "Please introduce some landmarks in the United Kingdom. ",
     ]
 
-    output_len = 50
-    do_sample = False
+    output_len = 38
+    do_sample = do_sample
+
+    if do_sample:
+        top_p = 0.5
+        top_k = 50
+    else:
+        top_p = None
+        top_k = None
 
     if use_engine:
         inference_config = InferenceConfig(
-            max_output_len=output_len, prompt_template=prompt_template, dtype="fp32", use_cuda_kernel=True
+            max_output_len=output_len, prompt_template=prompt_template, use_cuda_kernel=use_cuda_kernel
         )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=do_sample)
+        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
         if prompt_template:
@@ -58,6 +63,8 @@ def check_inference_engine(use_engine=False, prompt_template=None):
         inputs = inputs.cuda()
         generation_config = GenerationConfig(
             do_sample=do_sample,
+            top_p=top_p,
+            top_k=top_k,
             pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=output_len,
         )
@@ -68,11 +75,17 @@ def check_inference_engine(use_engine=False, prompt_template=None):
 
 
 @parameterize("prompt_template", [None, "bloom"])
-def check_output_consistency(prompt_template):
-    outputs = check_inference_engine(use_engine=True, prompt_template=prompt_template)
-    transformer_outputs = check_inference_engine(use_engine=False, prompt_template=prompt_template)
+@parameterize("do_sample", [True, False])
+@parameterize("use_cuda_kernel", [True, False])
+def check_output_consistency(prompt_template, do_sample, use_cuda_kernel):
+    cai_outputs = check_inference_engine(
+        use_engine=True, do_sample=do_sample, use_cuda_kernel=use_cuda_kernel, prompt_template=prompt_template
+    )
+    transformer_outputs = check_inference_engine(
+        use_engine=False, do_sample=do_sample, use_cuda_kernel=use_cuda_kernel, prompt_template=prompt_template
+    )
 
-    for s1, s2 in zip(outputs, transformer_outputs):
+    for s1, s2 in zip(cai_outputs, transformer_outputs):
         assert s1 == s2, f"\nColossalAI Output: {s1}\nTransformers Output: {s2}"
 
     # clear singleton flash decoding tensors
