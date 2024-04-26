@@ -1,70 +1,70 @@
-from colossalai.inference.config import InputMetaData
-from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import (
-    gather_forward_split_backward,
-    split_forward_gather_backward,
-)
-from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.shardformer.shard import ShardConfig
-from colossalai.kernel.triton import flash_decoding_attention, context_attention_unpadded
-from colossalai.kernel.kernel_loader import InferenceOpsLoader
-from colossalai.kernel.jit.bias_gelu import GeLUFunction
-from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_inference
-
+from typing import List, Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 import torch.nn as nn
-from typing import List, Optional, Tuple
-import math
+from transformers.models.bloom.modeling_bloom import BloomBlock, BloomForCausalLM, BloomModel
 
-from transformers.models.bloom.modeling_bloom import (
-    BloomBlock, 
-    BloomForCausalLM, 
-    BloomModel,
-    BloomAttention,
-    BloomConfig,
-    BloomMLP,
-    BloomGelu,
-)
-
+from colossalai.inference.config import InputMetaData
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.kernel.jit.bias_dropout_add import bias_dropout_add_fused_inference
+from colossalai.kernel.jit.bias_gelu import GeLUFunction
+from colossalai.kernel.kernel_loader import InferenceOpsLoader
+from colossalai.kernel.triton import context_attention_unpadded, flash_decoding_attention
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
 
-inference_ops = InferenceOpsLoader().load()
+inference_ops = InferenceOpsLoader.load()
 
 try:
-    from flash_attn import flash_attn_varlen_func
-    
+    pass
+
     use_flash_attn2 = True
 except ImportError:
     use_flash_attn2 = False
     logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
-# The Alibi implementation is adapted from https://github.com/ofirpress/attention_with_linear_biases/blob/a35aaca144e0eb6b789dfcb46784c4b8e31b7983/fairseq/models/transformer.py#L742
-def _get_alibi_slopes(n_heads: int):
-    def _get_alibi_slopes_pow_of_2(n_heads):
-        start = (2 ** (-2 ** -(math.log2(n_heads) - 3)))
-        ratio = start
-        return [start * ratio ** i for i in range(n_heads)]
-    
-    if math.log2(n_heads).is_integer():
-        return _get_alibi_slopes_pow_of_2(n_heads)
-    else: 
-        closest_power_of_2 = 2 ** math.floor(math.log2(n_heads))
-        return _get_alibi_slopes_pow_of_2(closest_power_of_2) + _get_alibi_slopes(2 * closest_power_of_2)[0::2][:n_heads - closest_power_of_2]
-        
-def _get_alibi_tensor(n_heads: int, mask: torch.Tensor):
-    slopes = _get_alibi_slopes(n_heads).to(mask.device)
-    distance = mask.cumsum(dim=-1)
-    return distance[:, :, None] * slopes[None, None, :]
+def bloom_causal_lm_forward(
+    self: BloomForCausalLM,
+    input_tokens_ids: torch.Tensor,  # no padding
+    output_tensor: torch.Tensor,
+    inputmetadata: InputMetaData,
+    k_caches: List[torch.Tensor] = None,
+    v_caches: List[torch.Tensor] = None,
+) -> torch.Tensor:
+    """
+    Replacement of forward function in BloomForCausalLM.
+
+    Args:
+        input_tokens_ids (torch.Tensor): Input token Ids with no paddings.
+        output_tensor (torch.Tensor): Intermediate tensor to hold attention output.
+        inputmetadata (InputMetaData): Ths input metadata for a single step.
+        k_caches (List[torch.Tensor], optional): List of key caches. Defaults to None.
+        v_caches (List[torch.Tensor], optional): List of value caches. Defaults to None.
+
+    Returns:
+        torch.Tensor: Logits.
+    """
+
+    hidden_states = bloom_model_forward(
+        self.transformer,
+        input_tokens_ids=input_tokens_ids,
+        output_tensor=output_tensor,
+        inputmetadata=inputmetadata,
+        k_caches=k_caches,
+        v_caches=v_caches,
+        use_cuda_kernel=inputmetadata.use_cuda_kernel,
+        high_precision=inputmetadata.high_precision,
+    )
+
+    logits = torch.mm(hidden_states, self.lm_head.weight)
+    return logits
 
 
 def bloom_model_forward(
     self: BloomModel,
-    input_tokens_ids: torch.Tensor, # no padding
+    input_tokens_ids: torch.Tensor,  # no padding
     output_tensor: torch.Tensor,
     inputmetadata: InputMetaData,
     k_caches: List[torch.Tensor] = None,
@@ -72,44 +72,37 @@ def bloom_model_forward(
     use_cuda_kernel: Optional[bool] = True,
     high_precision: bool = False,
 ) -> torch.Tensor:
-    
-    # def get_alibi_mask(x: torch.Tensor, past_seq_length: int, is_prompts: bool = False):
-    #     if is_prompts:
-    #         is_prompts = False
-    #         self.register_buffer("future_mask", _get_alibi_tensor())
-    
-    is_prompts = inputmetadata.is_prompts
+    """
+    Replacement of forward function in BloomModel.
+
+    Args:
+        input_tokens_ids (torch.Tensor): Input token IDs with no padding.
+        output_tensor (torch.Tensor): Intermediate tensor to hold attention output.
+        inputmetadata (InputMetaData): Ths input metadata for a single step.
+        k_caches (List[torch.Tensor], optional): List of k caches. Defaults to None.
+        v_caches (List[torch.Tensor], optional): List of v caches. Defaults to None.
+        use_cuda_kernel (Optional[bool], optional): Whether to use CUDA kernel. Defaults to True.
+        high_precision (bool, optional): Whether to use high precision. Defaults to False.
+
+    Returns:
+        torch.Tensor: Hidden states.
+    """
     block_tables = inputmetadata.block_tables
     sequence_lengths = inputmetadata.sequence_lengths
     batch_size = inputmetadata.batch_size
     kv_seq_len = inputmetadata.kv_seq_len
-    
+
     if batch_size >= 32 and kv_seq_len > 512:
         use_cuda_kernel = False
-    
+
     cu_seqlens = None
-    hidden_states = self.word_embeddings(input_tokens_ids)
-    hidden_states = self.word_embeddings_layernorm(hidden_states)
-    
-    if use_cuda_kernel:
-        if inputmetadata != torch.float32 and use_flash_attn2:
-            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
-    
-    seq_length_with_past = sequence_lengths
-    
-    # if is_prompts:
-    #     is_prompts = False
-    #     self.register_buffer("future_mask", _get_alibi_tensor(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
-    # if seq_length_with_past > self.max_cache_pos:
-    #     self.max_cache_pos = seq_length_with_past
-    #     self.register_buffer("future_mask", _get_alibi_tensor(self.n_head, self.max_cache_pos).to(hidden_states), persistent=False)
-    
-    # alibi = _get_alibi_slopes(self.num_heads)
-    # alibi_mask = self.future_mask[:self.n_head, :seq_length_with_past, :seq_length_with_past]     
-    
+
+    input_embeds = self.word_embeddings(input_tokens_ids)
+    hidden_states = self.word_embeddings_layernorm(input_embeds)
+
     sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
     norm_output = torch.empty_like(hidden_states)
-    
+
     for layer_id, layer in enumerate(self.h):
         hidden_states = layer(
             hidden_states,
@@ -126,32 +119,13 @@ def bloom_model_forward(
             use_cuda_kernel=use_cuda_kernel,
             high_precision=high_precision,
         )
-              
+
+    if inputmetadata.is_prompts:
+        seq_len_cumsum = sequence_lengths.cumsum(dim=0)
+        hidden_states = hidden_states[seq_len_cumsum - 1].contiguous()
+
     hidden_states = self.ln_f(hidden_states)
-    return hidden_states    
-
-
-def bloom_causal_lm_forward(
-    self: BloomForCausalLM,
-    input_tokens_ids: torch.Tensor,
-    output_tensor: torch.Tensor,
-    inputmetadata: InputMetaData,
-    k_caches: List[torch.Tensor] = None,
-    v_caches: List[torch.Tensor] = None,
-) -> torch.Tensor:
-    
-    hidden_states = bloom_model_forward(
-        self.transformer,
-        input_tokens_ids=input_tokens_ids,
-        output_tensor=output_tensor,
-        inputmetadata=inputmetadata,
-        k_caches=k_caches,
-        v_caches=v_caches,
-        use_cuda_kernel=inputmetadata.use_cuda_kernel,
-        high_precision=inputmetadata.high_precision,
-    )
-    logits = torch.mm(hidden_states, self.lm_head.weight)
-    return logits
+    return hidden_states
 
 
 def bloom_block_forward(
@@ -163,8 +137,6 @@ def bloom_block_forward(
     sequence_lengths: torch.Tensor,
     fd_inter_tensor: FDIntermTensors,
     is_prompts: bool = True,
-    is_verifier: bool = False,
-    tokens_to_verify: int = None,
     kv_seq_len: int = 0,
     output_tensor: torch.Tensor = None,
     norm_output: torch.Tensor = None,
@@ -173,24 +145,46 @@ def bloom_block_forward(
     cu_seqlens: torch.Tensor = None,
     high_precision: bool = False,
 ) -> torch.Tensor:
-    
+    """
+    Replacement of forward function in the BloomBlock module.
+
+    Args:
+        hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
+        block_tables (torch.Tensor): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+            storing mapping of token_position_id -> block_id.
+        k_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        v_cache (torch.Tensor): It holds the GPU memory for the key cache.
+        sequence_lengths (torch.Tensor): Holding the sequence length of each sequence.
+        fd_inter_tensor (FDIntermTensors): Holding tensors used for
+            storing intermediate values in flash-decoding.
+        is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+        kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
+        output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+        norm_output (torch.Tensor, optional): The mid tensor holds the output of layernorm. Defaults to None.
+        sm_scale (int, optional): Used for flash attention. Defaults to None.
+        use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
+        cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
+        high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+
+    Returns:
+        torch.Tensor: The output tensor.
+    """
+
     # LayerNorm before attention
-    layernorm_output = self.input_layernorm(hidden_states)
-    
+    norm_output = self.input_layernorm(hidden_states)
+
     if self.apply_residual_connection_post_layernorm:
-        residual = layernorm_output
+        residual = norm_output
     else:
         residual = hidden_states
-    
+
     # Self attention
     attn_output = self.self_attention(
-        hidden_states=layernorm_output,
+        hidden_states=norm_output,
         block_tables=block_tables,
         k_cache=k_cache,
         v_cache=v_cache,
         is_prompts=is_prompts,
-        # is_verifier=is_verifier,
-        # tokens_to_verify=tokens_to_verify,
         sequence_lengths=sequence_lengths,
         fd_inter_tensor=fd_inter_tensor,
         kv_seq_len=kv_seq_len,
@@ -200,28 +194,24 @@ def bloom_block_forward(
         cu_seqlens=cu_seqlens,
         high_precision=high_precision,
     )
-        
+
     # LayerNorm post attention
-    layernorm_output = self.post_attention_layernorm(attn_output)
-    
+    norm_output = self.post_attention_layernorm(attn_output)
+
     if self.apply_residual_connection_post_layernorm:
-        residual = layernorm_output
+        residual = norm_output
     else:
         residual = attn_output
-        
-    print(f"[DEBUG] Show attn_output shape: {attn_output.shape}, \
-        show residual shape: {residual.shape} \
-        ")
-        
+
     # MLP (including residuals)
-    output = self.mlp(layernorm_output, residual)
-        
+    output = self.mlp(norm_output, residual)
+
     return output
-        
-        
+
+
 class NopadBloomAttention(nn.Module):
     def __init__(
-        self, 
+        self,
         hidden_size: int,
         n_heads: int,
         attn_qproj_w: torch.Tensor = None,
@@ -229,18 +219,39 @@ class NopadBloomAttention(nn.Module):
         attn_vproj_w: torch.Tensor = None,
         attn_oproj_w: torch.Tensor = None,
     ):
+        """
+        Customized attention layer for Bloom model.
+
+        Args:
+            hidden_size (int): Imensionality of the embeddings and hidden states.
+            n_heads (int): Number of attention heads for each attention layer in the Transformer encoder.
+            attn_qproj_w (torch.Tensor, optional): The transposed q_proj weight. Defaults to None.
+            attn_kproj_w (torch.Tensor, optional): The transposed k_proj weight. Defaults to None.
+            attn_vproj_w (torch.Tensor, optional): The transposed v_proj weight. Defaults to None.
+            attn_oproj_w (torch.Tensor, optional): The transposed o_proj weight. Defaults to None.
+        """
         super().__init__()
 
         self.hidden_size = hidden_size
         self.num_heads = n_heads
         self.head_dim = self.hidden_size // self.num_heads
         self.o_proj_w = attn_oproj_w
-        
+
         qkv_weight_list = [attn_qproj_w, attn_kproj_w, attn_vproj_w]
         self.qkv_weight = torch.stack(qkv_weight_list, dim=0)
-        
+
     @staticmethod
-    def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBloomAttention": 
+    def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBloomAttention":
+        """
+        Initialize the weight of NopadBloomAttention from the original BloomAttention.
+
+        Args:
+            module (nn.Module): The original BloomAttention layer.
+
+        Returns:
+            NopadBloomAttention: The initialized NopadBloomAttention layer.
+        """
+
         hidden_size = module.hidden_size
         num_heads = module.num_heads
         q_proj_w, k_proj_w, v_proj_w = module.query_key_value.weight.view((3, hidden_size, hidden_size))
@@ -260,7 +271,7 @@ class NopadBloomAttention(nn.Module):
         )
 
         return attn_layer
-    
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -277,7 +288,28 @@ class NopadBloomAttention(nn.Module):
         cu_seqlens: torch.Tensor = None,
         high_precision: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        
+        """
+        Forward function of the NopadBloomAttention.
+
+        Args:
+            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
+            block_tables (torch.Tensor): A 2D tensor of shape [batch_size, max_blocks_per_sequence],
+                storing mapping of token_position_id -> block_id.
+            k_cache (torch.Tensor): It holds the GPU memory for the key cache.
+            v_cache (torch.Tensor): It holds the GPU memory for the key cache.
+            sequence_lengths (torch.Tensor, optional): Holding the sequence length of each sequence.
+            cos_sin (Tuple[torch.Tensor], optional): Holding cos and sin.
+            fd_inter_tensor (FDIntermTensors, optional): Holding tensors used for
+                storing intermediate values in flash-decoding.
+            is_prompts (bool, optional): Whether the current inference process is in the context input phase. Defaults to True.
+            kv_seq_len (int, optional): The max sequence length of input sequences. Defaults to 0.
+            output_tensor (torch.Tensor, optional): The mid tensor holds the output of attention. Defaults to None.
+            sm_scale (int, optional): Used for flash attention. Defaults to None.
+            use_cuda_kernel: (bool, optional): Whether to use cuda kernel. Defaults to True.
+            cu_seqlens(torch.Tensor, optional): Holding the cumulative sum of sequence length.
+            high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+        """
+
         token_nums = hidden_states.size(0)
         hidden_states = hidden_states.expand(3, -1, -1)
         query_states, key_states, value_states = (
@@ -285,9 +317,9 @@ class NopadBloomAttention(nn.Module):
         )
 
         block_size = k_cache.size(-2)
-        
-        if is_prompts:
-            # TODO(char-1ee) Integrate context stage flash attention with alibi encoding
+
+        # TODO: flash attention
+        if is_prompts:  # Prefilling phase
             attn_output = context_attention_unpadded(
                 q=query_states,
                 k=key_states,
@@ -300,9 +332,9 @@ class NopadBloomAttention(nn.Module):
                 output=output_tensor,
                 alibi_slopes=fd_inter_tensor.alibi_slopes,
                 max_seq_len=kv_seq_len,
-                sm_scale=sm_scale,                
+                sm_scale=sm_scale,
             )
-        else:
+        else:  # Decoding phase
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
@@ -321,32 +353,58 @@ class NopadBloomAttention(nn.Module):
         attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = torch.mm(attn_output, self.o_proj_w)
         return attn_output
-    
+
 
 class NopadBloomMLP(nn.Module):
-    def __init__(self, hidden_size: int = 64, hidden_dropout: float = 0.0):
+    def __init__(self, hidden_size: int, hidden_dropout: float = 0.0):
+        """
+        Customized MLP layer for the BloomModel to replace BloomMLP.
+
+        Args:
+            hidden_size (int): The size of the hidden layer.
+            hidden_dropout (float, optional): The dropout rate for the hidden layer. Defaults to 0.0.
+        """
+
         super().__init__()
         self.hidden_size = hidden_size
         self.hidden_dropout = hidden_dropout
         self.dense_h_to_4h = nn.Linear(hidden_size, hidden_size * 4)
         self.gelu_impl = GeLUFunction.apply
         self.dense_4h_to_h = nn.Linear(hidden_size * 4, hidden_size)
-        
+
         self.dense_h_to_4h = self.dense_h_to_4h.half()
         self.dense_4h_to_h = self.dense_4h_to_h.half()
-        
+
     @staticmethod
     def from_native_module(module: nn.Module, *args, **kwargs) -> "NopadBloomMLP":
-        hidden_size = 64 # TODO: hyperparameters
+        """
+        Initialize the weight of NopadBloomMLP from original BloomMLP.
+
+        Args:
+            module (nn.Module): The original BloomMLP layer.
+
+        Returns:
+            NopadBloomMLP: The initialized NopadBloomMLP layer.
+        """
+        hidden_size = module.dense_h_to_4h.weight.size(1)
         mlp_layer = NopadBloomMLP(hidden_size=hidden_size, hidden_dropout=module.hidden_dropout)
         return mlp_layer
-    
+
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
-        print(f"[DEBUG] Print shape of hidden_states: {hidden_states.shape}, and dtype is {hidden_states.dtype}")
+        """
+        Forward function of NopafBloomMLP.
+
+        Args:
+            hidden_states (torch.Tensor): The input tensor with shape [token_num, embed_dim].
+            residual (torch.Tensor): The residual tensor with shape [token_num, embed_dim].
+
+        Returns:
+            torch.Tensor: The output tensor with shape [token_num, embed_dim].
+        """
         hidden_states = self.dense_h_to_4h(hidden_states)
-        bias = torch.zero_like(hidden_states)
+        bias = torch.zeros_like(hidden_states)
         hidden_states = self.gelu_impl(hidden_states, bias)
         intermediate_output = self.dense_4h_to_h(hidden_states)
+        bias = torch.zeros_like(intermediate_output)
         output = bias_dropout_add_fused_inference(intermediate_output, bias, residual, self.hidden_dropout)
         return output
-        
