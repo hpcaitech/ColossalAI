@@ -205,6 +205,14 @@ class BlipPolicy(Policy):
             )
 
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_blip2_mlp_forward(),
+                    },
+                    policy=policy,
+                    target_key=Blip2MLP,
+                )
 
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
@@ -362,14 +370,6 @@ class BlipPolicy(Policy):
                 },
                 policy=policy,
                 target_key=Blip2QFormerOutput,
-            )
-        if self.enable_bias_gelu_fused:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_jit_fused_blip2_mlp_forward(),
-                },
-                policy=policy,
-                target_key=Blip2MLP,
             )
 
         return policy

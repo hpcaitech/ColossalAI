@@ -105,6 +105,14 @@ class ViTPolicy(Policy):
                     ),
                 ],
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_vit_intermediate_forward(),
+                    },
+                    policy=policy,
+                    target_key=ViTIntermediate,
+                )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -126,14 +134,7 @@ class ViTPolicy(Policy):
                 policy=policy,
                 target_key=ViTOutput,
             )
-        if self.enable_bias_gelu_fused:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_jit_fused_vit_intermediate_forward(),
-                },
-                policy=policy,
-                target_key=ViTIntermediate,
-            )
+
         return policy
 
     def new_model_class(self):

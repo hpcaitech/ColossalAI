@@ -157,6 +157,14 @@ class BertPolicy(Policy):
                     ),
                 ]
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_bert_intermediate_forward(),
+                    },
+                    policy=policy,
+                    target_key=BertIntermediate,
+                )
 
         if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
@@ -234,14 +242,6 @@ class BertPolicy(Policy):
                 },
                 policy=policy,
                 target_key=BertOutput,
-            )
-        if self.enable_bias_gelu_fused:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_jit_fused_bert_intermediate_forward(),
-                },
-                policy=policy,
-                target_key=BertIntermediate,
             )
 
         return policy

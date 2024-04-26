@@ -145,6 +145,14 @@ class GPT2Policy(Policy):
                     ),
                 ],
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_gpt2_mlp_forward(),
+                    },
+                    policy=policy,
+                    target_key=GPT2MLP,
+                )
         if embedding_cls is not None:
             # padding vocabulary size when using pp to make it divisible by  shard_config.make_vocab_size_divisible_by
             self.append_or_create_submodule_replacement(
@@ -202,14 +210,6 @@ class GPT2Policy(Policy):
                 policy[GPT2Model].method_replacement = {
                     "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
                 }
-        if self.enable_bias_gelu_fused:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_jit_fused_gpt2_mlp_forward(),
-                },
-                policy=policy,
-                target_key=GPT2MLP,
-            )
 
         if sp_mode is not None:
             policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
