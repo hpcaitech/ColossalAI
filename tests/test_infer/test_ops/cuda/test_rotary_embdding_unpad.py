@@ -7,7 +7,7 @@ from colossalai.kernel.kernel_loader import InferenceOpsLoader
 
 inference_ops = InferenceOpsLoader().load()
 
-from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v2
+from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v3
 from tests.test_infer.test_ops.triton.test_rotary_embdding_unpad import torch_rotary_emb
 
 
@@ -49,12 +49,14 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, K_H, D, dtype):
     cos_shape = (TOTAL_TOKENS, D // 2)
     cos = -1.2 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
     sin = -2.0 + 0.5 * torch.randn(cos_shape, dtype=dtype, device="cuda")
-    cache_shape = (BATCH_SIZE * max_blocks_per_sequence, K_H, block_size, D)
-    k_cache = torch.zeros(size=cache_shape, dtype=dtype, device="cuda")
+    x = 16 // torch.tensor([], dtype=dtype).element_size()
+    k_cache_shape = (BATCH_SIZE * max_blocks_per_sequence, K_H, D // x, block_size, x)
+    v_cache_shape = (BATCH_SIZE * max_blocks_per_sequence, K_H, block_size, D)
+    k_cache = torch.zeros(size=k_cache_shape, dtype=dtype, device="cuda")
     v = torch.randn_like(k)
-    v_cache = torch.zeros_like(k_cache)
+    v_cache = torch.zeros(size=v_cache_shape, dtype=dtype, device="cuda")
     past_kv_seq_lengths = torch.tensor([SEQ_LEN - 1 for _ in range(BATCH_SIZE)], dtype=torch.int32, device="cuda")
-    block_tables = mock_alloc_block_table_and_kvcache_v2(
+    block_tables = mock_alloc_block_table_and_kvcache_v3(
         k, v, k_cache, v_cache, past_kv_seq_lengths, BATCH_SIZE, max_blocks_per_sequence, block_size
     )
     new_k = torch.randn((BATCH_SIZE, K_H, D), dtype=dtype, device="cuda")
@@ -97,9 +99,10 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, K_H, D, dtype):
     past_kv_seq_len = kv_seq_lengths - 1
     target_block_ids = block_tables[range(0, block_tables.size(0)), past_kv_seq_len // block_size]
     offsets_in_block = past_kv_seq_len % block_size
-    k_target = k_cache[target_block_ids, :, offsets_in_block, :].squeeze()
+    k_target = k_cache[target_block_ids, :, :, offsets_in_block, :].squeeze()
     k_source = new_k_copy.squeeze()
     v_target = v_cache[target_block_ids, :, offsets_in_block, :].squeeze()
+    k_target = k_target.reshape(v_target.shape)
     v_source = new_v.squeeze()
 
     numpy_allclose(new_q, q_ref, rtol=rtol, atol=atol)

@@ -4,12 +4,12 @@ import torch.nn.functional as F
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2
+from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v3
 from tests.test_infer.test_ops.triton.test_kvcache_copy import prepare_data
 
 inference_ops = InferenceOpsLoader().load()
 
-HEAD_DIM = 4
+HEAD_DIM = 72
 
 
 def run_decode_copy_kv_to_caches(
@@ -86,7 +86,7 @@ def run_context_copy_kv_to_cache(
     key = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     value = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
 
-    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v2(
+    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v3(
         key, value, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
     )
 

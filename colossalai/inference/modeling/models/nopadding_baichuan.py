@@ -230,6 +230,7 @@ class NopadBaichuanAttention(nn.Module):
                     alibi_slopes=self.alibi_slopes,
                     max_seq_len=kv_seq_len,
                     sm_scale=sm_scale,
+                    use_new_kcache_layout=use_cuda_kernel,
                 )
         else:
             q_len = tokens_to_verify + 1 if is_verifier else 1

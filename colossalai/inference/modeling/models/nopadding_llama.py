@@ -575,6 +575,7 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                     output=output_tensor,
                     max_seq_len=kv_seq_len,
                     sm_scale=sm_scale,
+                    use_new_kcache_layout=use_cuda_kernel,
                 )
         else:
             q_len = tokens_to_verify + 1 if is_verifier else 1
@@ -592,20 +593,20 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                     block_tables,
                     high_precision,
                 )
-                # inference_ops.flash_decoding_attention(
-                #     output_tensor,
-                #     query_states,
-                #     k_cache,
-                #     v_cache,
-                #     sequence_lengths,
-                #     block_tables,
-                #     block_size,
-                #     kv_seq_len,
-                #     fd_inter_tensor.mid_output,
-                #     fd_inter_tensor.mid_output_lse,
-                #     sm_scale,
-                # )
-                # attn_output = output_tensor
+                inference_ops.flash_decoding_attention(
+                    output_tensor,
+                    query_states,
+                    k_cache,
+                    v_cache,
+                    sequence_lengths,
+                    block_tables,
+                    block_size,
+                    kv_seq_len,
+                    fd_inter_tensor.mid_output,
+                    fd_inter_tensor.mid_output_lse,
+                    sm_scale,
+                )
+                attn_output = output_tensor
             else:
                 if is_verifier:
                     rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
@@ -627,21 +628,21 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                         block_tables,
                         sequence_lengths,
                     )
-            attn_output = flash_decoding_attention(
-                q=query_states,
-                k_cache=k_cache,
-                v_cache=v_cache,
-                kv_seq_len=sequence_lengths,
-                block_tables=block_tables,
-                block_size=block_size,
-                max_seq_len_in_batch=kv_seq_len,
-                output=output_tensor,
-                mid_output=fd_inter_tensor.mid_output,
-                mid_output_lse=fd_inter_tensor.mid_output_lse,
-                sm_scale=sm_scale,
-                kv_group_num=self.num_key_value_groups,
-                q_len=q_len,
-            )
+                attn_output = flash_decoding_attention(
+                    q=query_states,
+                    k_cache=k_cache,
+                    v_cache=v_cache,
+                    kv_seq_len=sequence_lengths,
+                    block_tables=block_tables,
+                    block_size=block_size,
+                    max_seq_len_in_batch=kv_seq_len,
+                    output=output_tensor,
+                    mid_output=fd_inter_tensor.mid_output,
+                    mid_output_lse=fd_inter_tensor.mid_output_lse,
+                    sm_scale=sm_scale,
+                    kv_group_num=self.num_key_value_groups,
+                    q_len=q_len,
+                )
 
         attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = self.o_proj(attn_output)

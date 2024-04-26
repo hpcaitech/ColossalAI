@@ -90,9 +90,18 @@ class KVCacheManager:
         self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Physical cache allocation
-        alloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
-        self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
-        self._kv_caches = self._init_device_caches(alloc_shape)
+        if config.use_cuda_kernel:
+            x = 16 // torch.tensor([], dtype=config.dtype).element_size()
+            kalloc_shape = (self.num_blocks, self.kv_head_num, self.head_size // x, self.block_size, x)
+            valloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+            self.logger.info(
+                f"Allocating K cache with shape: {kalloc_shape}, V cache with shape: {valloc_shape} consisting of {self.num_blocks} blocks."
+            )
+            self._kv_caches = self._init_device_caches(kalloc_shape, valloc_shape)
+        else:
+            alloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+            self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
+            self._kv_caches = self._init_device_caches(alloc_shape, alloc_shape)
         self.total_physical_cache_size_in_bytes = (
             self.elem_size_in_bytes
             * self.num_layers
@@ -479,7 +488,9 @@ class KVCacheManager:
             blocks.append(cache_block)
         return blocks
 
-    def _init_device_caches(self, alloc_shape: Tuple[int, ...]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _init_device_caches(
+        self, kalloc_shape: Tuple[int, ...], valloc_shape: Tuple[int, ...]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize the physical cache on the device.
 
         For each layer of the model, we allocate two tensors for key and value respectively,
@@ -488,6 +499,6 @@ class KVCacheManager:
         k_cache: List[torch.Tensor] = []
         v_cache: List[torch.Tensor] = []
         for _ in range(self.num_layers):
-            k_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
-            v_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
+            k_cache.append(torch.zeros(kalloc_shape, dtype=self.dtype, device=self.device))
+            v_cache.append(torch.zeros(valloc_shape, dtype=self.dtype, device=self.device))
         return k_cache, v_cache
