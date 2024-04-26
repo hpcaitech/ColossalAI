@@ -334,31 +334,31 @@ def _fwd_context_paged_attention_kernel_v2(
 
     if cur_head_idx % KV_GROUPS == 0:
         # Copy k to corresponding cache block
-        offsets_kvcachebs = tl.arange(0, BLOCK_SIZE)
+        block_range = tl.arange(0, BLOCK_SIZE)
+        X_range = tl.arange(0, KCACHE_X)
         # unroll the loop aggressively
         for split_x in tl.static_range(HEAD_DIM // KCACHE_X):
             offsets_dmodel_x_partion = tl.arange(split_x * KCACHE_X, (split_x + 1) * KCACHE_X)
             offsets_k = K + offset_kv + offsets_dmodel_x_partion[None, :] * stride_kd + offsets_m[:, None] * stride_kt
             k = tl.load(offsets_k, mask=offsets_m[:, None] < cur_seq_len, other=0.0)
+            # HACK: KCache must be contiguous in order to apply the following offsets calculation
             offsets_kcache = (
                 KCache
                 + offset_kvcache
-                + split_x * BLOCK_SIZE * KCACHE_X  # HACK: KCache must be contiguous
-                + offsets_kvcachebs[:, None] * KCACHE_X
-                + tl.arange(0, KCACHE_X)[None, :]
+                + split_x * BLOCK_SIZE * KCACHE_X
+                + block_range[:, None] * KCACHE_X
+                + X_range[None, :]
             )
-            tl.store(offsets_kcache, k, mask=offsets_kvcachebs[:, None] < cur_seq_len - block_start_m * BLOCK_SIZE)
-
+            tl.store(offsets_kcache, k, mask=block_range[:, None] < cur_seq_len - block_start_m * BLOCK_SIZE)
         # Copy v to corresponding cache block
         offsets_vd = tl.arange(0, HEAD_DIM)  # offsets_dmodel
         offsets_vt = block_start_m * BLOCK_N + offsets_n
         offsets_v = V + offset_kv + offsets_vt[None, :] * stride_vt + offsets_vd[:, None] * stride_vd
         v = tl.load(offsets_v, mask=offsets_vt[None, :] < cur_seq_len, other=0.0)
-        offsets_vcachebs = offsets_kvcachebs  # same block size range, just to notify here
         offsets_vcache = (
-            VCache + offset_kvcache + offsets_vcachebs[None, :] * stride_cachebs + offsets_vd[:, None] * stride_cached
+            VCache + offset_kvcache + block_range[None, :] * stride_cachebs + offsets_vd[:, None] * stride_cached
         )
-        tl.store(offsets_vcache, v, mask=offsets_vcachebs[None, :] < cur_seq_len - block_start_m * BLOCK_SIZE)
+        tl.store(offsets_vcache, v, mask=block_range[None, :] < cur_seq_len - block_start_m * BLOCK_SIZE)
 
     return
 
