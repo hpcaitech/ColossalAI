@@ -63,7 +63,7 @@ def torch_attn_unpad(
         mask = torch.tril(torch.ones(1, 1, seq_len, seq_len), diagonal=0).to(device=q.device)
         mask[mask == 0.0] = float("-inf")
 
-        if slopes != None:
+        if slopes is not None:
             alibi_mask = generate_alibi_mask(slopes, num_heads, seq_len, q.device)
             mask = mask + alibi_mask
 

@@ -195,8 +195,8 @@ def _fwd_context_paged_attention_kernel_v2(
     K,
     V,
     O,
-    KCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
-    VCache,  # [num_blocks, num_kv_heads, head_dim // x, block_size, x]
+    KCache,  # [num_blocks, num_kv_heads, head_dim // x, block_size, x]
+    VCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
     BLOCK_TABLES,  # [num_seqs, max_blocks_per_sequence]
     batch_size,
     stride_qt,
