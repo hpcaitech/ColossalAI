@@ -49,11 +49,6 @@ class FDIntermTensors(metaclass=SingletonMeta):
         assert self.is_initialized, "Intermediate tensors not initialized yet"
         return self._mid_output_lse
 
-    @property
-    def alibi_slopes(self):
-        assert self.is_initialized, "Intermediate tensors not initialized yet"
-        return self._alibi_slopes
-
     def initialize(
         self,
         max_batch_size: int,

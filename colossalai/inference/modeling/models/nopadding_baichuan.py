@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.modeling.models.nopadding_llama import NopadLlamaMLP
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import (
     context_attention_unpadded,
@@ -117,7 +118,6 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
         self.o_proj = attn_oproj
 
         self.config = config
-        self.hidden_size = config.hidden_size
         self.num_heads = num_heads
         self.hidden_size = hidden_size
         self.head_dim = self.hidden_size // self.num_heads
@@ -339,9 +339,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
         sharding_spec = self.helper_layout.sharding_spec
         W_pack = distribute_tensor(W_pack, device_mesh, sharding_spec)
 
-        q_proj_w, k_proj_w, v_proj_w = W_pack.weight.view((3, -1, W_pack.size(-1)))
-
-        qkv_w = torch.stack([q_proj_w.T, k_proj_w.T, v_proj_w.T], dim=0)
+        qkv_w = W_pack.view((3, -1, W_pack.size(-1))).transpose(1, 2)
 
         input_param = nn.Parameter(
             qkv_w
@@ -370,34 +368,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
 
 
 # NOTE This will cause difference as out length increases.
-class NopadBaichuanMLP(ParallelModule, nn.Module):
-    def __init__(
-        self,
-        mlp_gproj_w: torch.Tensor = None,
-        mlp_uproj_w: torch.Tensor = None,
-        mlp_dproj: ParallelModule = None,
-        process_group: ProcessGroup = None,
-    ):
-        """This layer will replace the BaichuanAttention.
-
-        Args:
-            mlp_gproj_w (torch.Tensor, optional): The transposed gate_proj weight. Defaults to None.
-            mlp_uproj_w (torch.Tensor, optional): The transposed up_proj weight. Defaults to None.
-            mlp_dproj (Linear1D_Row, optional): The Linear1D_Row mlp_dproj weight. Defaults to None.
-        """
-        ParallelModule.__init__(self)
-        assert is_distributed_tensor(
-            mlp_gproj_w
-        ), "mlp_gproj_w must be dtensor so we could get the layout of the weight"
-        self.helper_layout = (
-            mlp_gproj_w.dist_layout
-        )  # NOTE this is a hack for the right load/shard of gate_up_weight(used in _load_from_state_dict)
-        self.gate_up_weight = nn.Parameter(
-            torch.stack([mlp_gproj_w.transpose(0, 1), mlp_uproj_w.transpose(0, 1)], dim=0)
-        )
-        self.down_proj = mlp_dproj
-        self.process_group = process_group
-
+class NopadBaichuanMLP(NopadLlamaMLP):
     @staticmethod
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
@@ -415,6 +386,7 @@ class NopadBaichuanMLP(ParallelModule, nn.Module):
         mlp_dproj = module.down_proj
 
         mlp_layer = NopadBaichuanMLP(
+            config=None,
             mlp_gproj_w=mlp_gproj_w,
             mlp_uproj_w=mlp_uproj_w,
             mlp_dproj=mlp_dproj,
@@ -422,63 +394,3 @@ class NopadBaichuanMLP(ParallelModule, nn.Module):
         )
 
         return mlp_layer
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        # NOTE This is a hack to ensure we could load the right weight from LlamaMLP checkpoint due to the use of torch.stack(gate_weight, up_weight)
-
-        for hook in self._load_state_dict_pre_hooks.values():
-            hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
-
-        persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
-        local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
-        local_state = {k: v for k, v in local_name_params if v is not None}
-
-        key = "gate_up_weight"
-        k1 = "gate_proj.weight"
-        k2 = "up_proj.weight"
-
-        gate_w = state_dict[prefix + k1]
-        up_w = state_dict[prefix + k2]
-
-        device_mesh = self.helper_layout.device_mesh
-        sharding_spec = self.helper_layout.sharding_spec
-        gate_w = distribute_tensor(gate_w, device_mesh, sharding_spec)
-        up_w = distribute_tensor(up_w, device_mesh, sharding_spec)
-
-        gate_up_w = torch.stack([gate_w.T, up_w.T], dim=0)
-
-        input_param = nn.Parameter(
-            gate_up_w
-        )  # NOTE gate_up_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
-        param = local_state[key]
-
-        try:
-            with torch.no_grad():
-                param.copy_(input_param)
-        except Exception as ex:
-            error_msgs.append(
-                'While copying the parameter named "{}", '
-                "whose dimensions in the model are {} and "
-                "whose dimensions in the checkpoint are {}, "
-                "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
-            )
-
-        strict = False  # to avoid unexpected_keys
-        super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            hidden_states (torch.Tensor): input to the layer of shape [token_num, embed_dim].
-        """
-        hidden_states = hidden_states.expand(2, -1, -1)
-        gate_up_proj_out = torch.bmm(hidden_states, self.gate_up_weight)
-        act_out = inference_ops.silu_and_mul(gate_up_proj_out)
-        return self.down_proj(act_out)
-
-    def extra_repr(self) -> str:
-        return f"gate_up_proj MergedLinear1D_Col: in_features={self.gate_up_weight.shape[1]}x2, out_features={self.gate_up_weight.shape[2]}, bias=False"

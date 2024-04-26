@@ -118,39 +118,34 @@ def llama_model_forward(
 
     cu_seqlens = None
 
-    if inputmetadata.fd_inter_tensor.alibi_slopes is None:
-        # NOTE (yuanheng-zhao): we do not use cuda kernels for speculative-decoding for now
-        if inputmetadata.use_spec_dec:
-            # For speculative-decoding Prefill and Verifying Stage
-            if inputmetadata.is_prompts:
-                # output tensor shape is the same as normal Prefill Stage
-                rotary_indexes = [torch.arange(0, length) for length in sequence_lengths]
-            else:
-                # the number of tokens to be verified in parallel plus the correct token in the last step
-                n_tokens = inputmetadata.num_tokens_to_verify + 1
-                assert n_tokens == hidden_states.size(0)
-                rotary_indexes = [
-                    (length - n_tokens + i).view(-1) for i in range(n_tokens) for length in sequence_lengths
-                ]
-            rotary_indexes = torch.cat(rotary_indexes, dim=-1)
-            cos_sin = (self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes])
-
-        elif use_cuda_kernel:
-            if inputmetadata != torch.float32 and use_flash_attn2:
-                cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
-
-            hidden_dim = self._cos_cached.size(-1)
-            total_length = hidden_states.size(0)
-            cos = torch.empty((total_length, hidden_dim), dtype=self._cos_cached.dtype, device=self._cos_cached.device)
-            sin = torch.empty((total_length, hidden_dim), dtype=self._sin_cached.dtype, device=self._sin_cached.device)
-            inference_ops.get_cos_and_sin(
-                self._cos_cached, self._sin_cached, cos, sin, sequence_lengths, kv_seq_len, inputmetadata.is_prompts
-            )
-            cos_sin = (cos, sin)
+    # NOTE (yuanheng-zhao): we do not use cuda kernels for speculative-decoding for now
+    if inputmetadata.use_spec_dec:
+        # For speculative-decoding Prefill and Verifying Stage
+        if inputmetadata.is_prompts:
+            # output tensor shape is the same as normal Prefill Stage
+            rotary_indexes = [torch.arange(0, length) for length in sequence_lengths]
         else:
-            cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, inputmetadata.is_prompts)
+            # the number of tokens to be verified in parallel plus the correct token in the last step
+            n_tokens = inputmetadata.num_tokens_to_verify + 1
+            assert n_tokens == hidden_states.size(0)
+            rotary_indexes = [(length - n_tokens + i).view(-1) for i in range(n_tokens) for length in sequence_lengths]
+        rotary_indexes = torch.cat(rotary_indexes, dim=-1)
+        cos_sin = (self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes])
+
+    elif use_cuda_kernel:
+        if inputmetadata.dtype != torch.float32 and use_flash_attn2:
+            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
+
+        hidden_dim = self._cos_cached.size(-1)
+        total_length = hidden_states.size(0)
+        cos = torch.empty((total_length, hidden_dim), dtype=self._cos_cached.dtype, device=self._cos_cached.device)
+        sin = torch.empty((total_length, hidden_dim), dtype=self._sin_cached.dtype, device=self._sin_cached.device)
+        inference_ops.get_cos_and_sin(
+            self._cos_cached, self._sin_cached, cos, sin, sequence_lengths, kv_seq_len, inputmetadata.is_prompts
+        )
+        cos_sin = (cos, sin)
     else:
-        cos_sin = None
+        cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, inputmetadata.is_prompts)
 
     sm_scale = 1.0 / (inputmetadata.head_dim**0.5)
 
