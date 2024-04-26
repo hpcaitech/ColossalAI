@@ -174,13 +174,13 @@ void context_kv_cache_memcpy(
         key.scalar_type(),
         "context_kv_cache_memcpy",
         apply_context_kv_cache_memcpy<scalar_t>(
-            key,
-            value,
-            key_cache,
-            value_cache,
-            sequence_lengths,
-            cu_seqlens,
-            block_tables,
-            max_seq_len_in_batch
-        );)
+    key,
+    value,
+    key_cache,
+    value_cache,
+    sequence_lengths,
+    cu_seqlens,
+    block_tables,
+    max_seq_len_in_batch
+    );)
 }
