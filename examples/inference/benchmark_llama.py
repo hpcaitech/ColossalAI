@@ -147,10 +147,10 @@ def benchmark_inference(args):
         elif args.mode == "vllm":
             engine = LLM(
                 model=args.model_path,
-                tokenizer="/home/litong/workspace/Models/Meta-Llama-3-8B/",
+                tokenizer="hf-internal-testing/llama-tokenizer",
                 max_num_seqs=mbsz,
                 dtype="float16",
-                enforce_eager=False,
+                enforce_eager=True,
             )
 
             sampling_params = SamplingParams(
@@ -206,7 +206,6 @@ def benchmark_inference(args):
                         prompts_token_ids=data, generation_config=generation_config, return_token_ids=True
                     )
             elif args.mode == "vllm":
-                print("args.batch_size: ", args.batch_size)
                 for _ in range(args.batch_size // mbsz):
                     output = engine.generate(prompt_token_ids=data, sampling_params=sampling_params)
             else:

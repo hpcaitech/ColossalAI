@@ -179,7 +179,6 @@ def test_tp_engine(prompt_template, do_sample):
 
     colossal_tp_1_output = run_engine(1, **kwargs1)
     colossal_tp_2_output = run_engine(2, **kwargs1)
-    run_engine(2, **kwargs1)
     transformer_tp_1_output = run_engine(1, **kwargs2)
 
     for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
@@ -197,7 +196,7 @@ def test_spec_dec(num_layers, max_length):
 @rerun_if_address_is_in_use()
 def test_inference_engine():
     test_tp_engine()
-    # test_spec_dec()
+    test_spec_dec()
 
 
 if __name__ == "__main__":
