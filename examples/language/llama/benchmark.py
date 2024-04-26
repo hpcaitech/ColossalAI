@@ -19,9 +19,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
-from examples.language.data_utils import RandomDataset
-from examples.language.model_utils import format_numel_str, get_model_numel
-from examples.language.performance_evaluator import PerformanceEvaluator
 
 # ==============================
 # Constants
