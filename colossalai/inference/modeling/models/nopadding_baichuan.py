@@ -93,7 +93,7 @@ def baichuan_rmsnorm_forward(
         return rms_layernorm(hidden_states, self.weight.data, eps, norm_output, residual)
 
 
-class NopadBaichuanAttention(ParallelModule, nn.Module):
+class NopadBaichuanAttention(ParallelModule):
     def __init__(
         self,
         config,
@@ -127,6 +127,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
 
         self.alibi_slopes = None
         self.use_alibi_attn = False
+        # Used for Baichuan13B
         if config.hidden_size == 5120:
             slopes_start = self.process_group.rank() * num_heads
             self.use_alibi_attn = True
