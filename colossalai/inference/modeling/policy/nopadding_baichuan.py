@@ -1,10 +1,8 @@
-from typing import List, Optional, Union
+from typing import List, Union
 
-import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-from torch.nn.parameter import Parameter
 
 from colossalai.inference.modeling.models.nopadding_baichuan import (
     NopadBaichuanAttention,
@@ -24,30 +22,7 @@ from colossalai.shardformer.policies.base_policy import ModulePolicyDescription,
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 
 
-class BaichuanLinear1D_Col(Linear1D_Col):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        device: torch.device = None,
-        process_group: ProcessGroup = None,
-        weight: Optional[Parameter] = None,
-        *args,
-        **kwargs,
-    ):
-        super().__init__(
-            in_features=in_features,
-            out_features=out_features,
-            bias=bias,
-            device=device,
-            process_group=process_group,
-            weight=weight,
-            *args,
-            **kwargs,
-        )
-        self.weight = nn.Parameter(nn.functional.normalize(self.weight))
-
+class BaichuanLMHeadLinear1D_Col(Linear1D_Col):
     @staticmethod
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
@@ -59,6 +34,55 @@ class BaichuanLinear1D_Col(Linear1D_Col):
         # get the attributes
         in_features = module.weight.size(1)
         out_features = module.weight.size(0)
+        bias = None
+        device = module.weight.device
+
+        module.weight.data = nn.functional.normalize(module.weight)
+
+        # ensure only one process group is passed
+        if isinstance(process_group, (list, tuple)):
+            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
+            process_group = process_group[0]
+
+        tp_size = dist.get_world_size(process_group)
+        if out_features < tp_size:
+            return module
+
+        if out_features % tp_size != 0:
+            raise ValueError(
+                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!"
+            )
+
+        linear_1d = Linear1D_Col(
+            in_features=in_features,
+            out_features=out_features,
+            bias=bias,
+            device=device,
+            process_group=process_group,
+            weight=module.weight,
+            bias_=bias,
+            *args,
+            **kwargs,
+        )
+
+        return linear_1d
+
+
+class BaichuanWpackLinear1D_Col(Linear1D_Col):
+    @staticmethod
+    def from_native_module(
+        module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+    ) -> ParallelModule:
+        r"""
+        Convert a native PyTorch linear layer to a parallelized linear layer.
+        """
+        LazyInitContext.materialize(module)
+        # get the attributes
+        in_features = module.weight.size(1) * 3
+        out_features = module.weight.size(0) // 3
+
+        module.weight.data = module.weight.view(3, out_features, -1).transpose(0, 1).reshape(out_features, in_features)
+
         bias = None
         device = module.weight.device
         # ensure only one process group is passed
@@ -132,7 +156,7 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.W_pack",
-                        target_module=Linear1D_Col,
+                        target_module=BaichuanWpackLinear1D_Col,
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
@@ -152,7 +176,7 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
         policy["BaichuanForCausalLM"] = ModulePolicyDescription(
             sub_module_replacement=[
                 SubModuleReplacementDescription(
-                    suffix="lm_head", target_module=BaichuanLinear1D_Col, kwargs={"gather_output": True}
+                    suffix="lm_head", target_module=BaichuanLMHeadLinear1D_Col, kwargs={"gather_output": True}
                 )
             ],
         )

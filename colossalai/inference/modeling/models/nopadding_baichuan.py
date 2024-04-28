@@ -144,7 +144,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
 
         config = module.config
 
-        q_proj_w, k_proj_w, v_proj_w = module.W_pack.weight.view((3, module.hidden_size, -1))
+        q_proj_w, k_proj_w, v_proj_w = module.W_pack.weight.view((module.hidden_size, 3, -1)).transpose(0, 1)
 
         attn_qproj_w = q_proj_w
         attn_kproj_w = k_proj_w
@@ -339,7 +339,7 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
         sharding_spec = self.helper_layout.sharding_spec
         W_pack = distribute_tensor(W_pack, device_mesh, sharding_spec)
 
-        qkv_w = W_pack.view((3, -1, W_pack.size(-1))).transpose(1, 2)
+        qkv_w = W_pack.view((-1, 3, W_pack.size(-1))).transpose(1, 2, 0)
 
         input_param = nn.Parameter(
             qkv_w

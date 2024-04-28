@@ -76,9 +76,6 @@ def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=Fa
         )
         outputs = model.generate(inputs, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-
-    print("outputs: ", outputs)
-
     return outputs
 
 
@@ -99,8 +96,8 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
         func_to_run(**kwargs)
 
 
-@parameterize("prompt_template", [None])
-@parameterize("do_sample", [False])
+@parameterize("prompt_template", [None, "baichuan"])
+@parameterize("do_sample", [False, True])
 def test_tp_engine(prompt_template, do_sample):
     kwargs1 = {
         "use_engine": True,
@@ -111,13 +108,13 @@ def test_tp_engine(prompt_template, do_sample):
 
     kwargs2 = {"use_engine": False, "prompt_template": prompt_template, "do_sample": do_sample, "policy": None}
 
-    run_engine(1, **kwargs1)
-    run_engine(2, **kwargs1)
-    run_engine(1, **kwargs2)
+    colossal_tp_1_output = run_engine(1, **kwargs1)
+    colossal_tp_2_output = run_engine(2, **kwargs1)
+    transformer_tp_1_output = run_engine(1, **kwargs2)
 
-    # for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
-    #     assert s1 == s3, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s3}"
-    #     assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
+    for s1, s2, s3 in zip(colossal_tp_1_output, colossal_tp_2_output, transformer_tp_1_output):
+        assert s1 == s3, f"\nColossalAI TP=1 Output: {s1}\nTransformers Output: {s3}"
+        assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
 
 
 @pytest.mark.skipif(
