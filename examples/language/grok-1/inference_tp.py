@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
     plugin = HybridParallelPlugin(
         tp_size=coordinator.world_size,

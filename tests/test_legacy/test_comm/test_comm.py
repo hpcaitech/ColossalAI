@@ -48,7 +48,7 @@ def check_all_reduce():
 
 
 def check_layer(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     assert dist.get_rank() == gpc.get_global_rank()
     print("Rank {} / {}".format(dist.get_rank(), dist.get_world_size()))

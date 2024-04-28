@@ -33,7 +33,7 @@ class EmbeddingModule(nn.Module):
 
 def check_embedding_module_handler(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = EmbeddingModule(num_embeddings=NUM_EMBEDDINGS, embedding_dims=EMBEDDING_DIMS).cuda()
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
@@ -150,7 +150,7 @@ class EmbeddingFunction(nn.Module):
 
 def check_embedding_function_handler(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = EmbeddingFunction().cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

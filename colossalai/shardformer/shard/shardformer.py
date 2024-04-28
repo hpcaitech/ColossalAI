@@ -26,7 +26,7 @@ class ShardFormer:
     import colossalai
     import torch
 
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
 
     org_model = BertForMaskedLM.from_pretrained('bert-base-uncased')
     shard_config = ShardConfig()

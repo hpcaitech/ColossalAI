@@ -81,7 +81,7 @@ def rm_and_merge(
 
 
 def main(args):
-    colossalai.launch_from_torch(config={}, seed=42)
+    colossalai.launch_from_torch(seed=42)
     world_size = dist.get_world_size()
 
     rank = dist.get_rank()

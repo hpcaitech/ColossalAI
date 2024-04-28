@@ -3,7 +3,6 @@ import time
 
 import pytest
 import torch
-from model_zoo import GPTLMLoss, get_gpt2_components
 from torch.utils._pytree import tree_map
 
 import colossalai
@@ -14,6 +13,7 @@ from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import spawn
+from model_zoo import GPTLMLoss, get_gpt2_components
 
 
 def parse_args():
@@ -94,8 +94,7 @@ def train_gpt(args):
 
 
 def run(rank, world_size, port, args):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     train_gpt(args)
 
 

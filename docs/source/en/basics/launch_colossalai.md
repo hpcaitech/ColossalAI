@@ -87,8 +87,7 @@ import colossalai
 args = colossalai.get_default_parser().parse_args()
 
 # launch distributed environment
-colossalai.launch(config=args.config,
-                  rank=args.rank,
+colossalai.launch(rank=args.rank,
                   world_size=args.world_size,
                   host=args.host,
                   port=args.port,
@@ -117,9 +116,7 @@ train.py
 ```python
 import colossalai
 
-colossalai.launch_from_torch(
-    config="./config.py",
-)
+colossalai.launch_from_torch()
 ...
 ```
 
@@ -203,7 +200,6 @@ Do this in your training script:
 import colossalai
 
 colossalai.launch_from_slurm(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )
@@ -224,7 +220,6 @@ use them to start the distributed backend.
 Do this in your train.py:
 ```python
 colossalai.launch_from_openmpi(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )

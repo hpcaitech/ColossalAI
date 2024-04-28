@@ -33,7 +33,7 @@ CONFIG = dict(parallel=dict(tensor=dict(mode="1d", size=2)))
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     input_tensor = torch.rand(2, 16).cuda()
     model = MLP(16).cuda()
     symbolic_traced = symbolic_trace(model)

@@ -8,7 +8,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 def check_extract_alpha_beta(rank, world_size, port, physical_devices):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     profiler = AlphaBetaProfiler(physical_devices)
 
     mesh_alpha, mesh_beta = profiler.extract_alpha_beta_for_device_mesh()

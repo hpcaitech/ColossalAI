@@ -29,7 +29,7 @@ class LinearSplitModel(nn.Module):
 
 def check_split_handler(rank, world_size, port, softmax_dim, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = model_cls(softmax_dim=softmax_dim).cuda()
 
     input = torch.rand(8, 16, 64, 32).to("cuda")

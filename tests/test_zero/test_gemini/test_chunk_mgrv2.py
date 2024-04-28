@@ -49,7 +49,7 @@ def exam_chunk_memory(keep_gathered, pin_memory):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_chunk_memory()
 
 

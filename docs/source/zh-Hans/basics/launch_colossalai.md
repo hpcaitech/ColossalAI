@@ -74,8 +74,7 @@ import colossalai
 args = colossalai.get_default_parser().parse_args()
 
 # launch distributed environment
-colossalai.launch(config=args.config,
-                  rank=args.rank,
+colossalai.launch(rank=args.rank,
                   world_size=args.world_size,
                   host=args.host,
                   port=args.port,
@@ -104,9 +103,7 @@ train.py
 ```python
 import colossalai
 
-colossalai.launch_from_torch(
-    config="./config.py",
-)
+colossalai.launch_from_torch()
 ...
 ```
 
@@ -186,7 +183,6 @@ colossalai run --nproc_per_node 4 --hostfile ./hostfile --master_addr host1  --e
 import colossalai
 
 colossalai.launch_from_slurm(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )
@@ -206,7 +202,6 @@ srun python train.py --host <master_node> --port 29500
 您可以在您的训练脚本中尝试以下操作。
 ```python
 colossalai.launch_from_openmpi(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )
