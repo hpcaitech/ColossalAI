@@ -39,7 +39,7 @@ class BertPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
-        self.enable_bias_gelu_fused = self.model.config.hidden_act == "gelu"
+        self.enable_bias_gelu_fused = self.shard_config.enable_jit_fused and self.model.config.hidden_act == "gelu"
         return self.model
 
     def module_policy(self):

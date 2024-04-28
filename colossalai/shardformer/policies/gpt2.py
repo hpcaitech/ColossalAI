@@ -37,7 +37,9 @@ class GPT2Policy(Policy):
         """
         self.tie_weight = self.tie_weight_check()
         self.origin_attn_implement = self.model.config._attn_implementation
-        self.enable_bias_gelu_fused = self.model.config.activation_function == "gelu"
+        self.enable_bias_gelu_fused = (
+            self.shard_config.enable_jit_fused and self.model.config.activation_function == "gelu"
+        )
         return self.model
 
     def module_policy(self):
