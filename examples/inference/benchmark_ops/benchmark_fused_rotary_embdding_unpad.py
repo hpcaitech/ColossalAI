@@ -105,7 +105,7 @@ def benchmark_rotary_emb(
     elif provider == "no_fused_cuda_rotary_emb_func":
         fn = lambda: [
             inference_ops.rotary_embedding(new_q, new_k, cos, sin, True),
-            inference_ops.decode_kv_cache_memcpy(new_k, new_v, k_cache, v_cache, kv_seq_lengths, block_tables),
+            inference_ops.decode_kv_cache_memcpy(new_k, new_v, new_k_cache, v_cache, kv_seq_lengths, block_tables),
         ]
     elif provider == "fused_cuda_rotary_emb_func":
         fn = lambda: inference_ops.rotary_embedding_and_cache_copy(

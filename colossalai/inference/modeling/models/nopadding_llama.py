@@ -98,14 +98,7 @@ def llama_model_forward(
     """
     block_tables = inputmetadata.block_tables
     sequence_lengths = inputmetadata.sequence_lengths
-    batch_size = inputmetadata.batch_size
     kv_seq_len = inputmetadata.kv_seq_len
-
-    # NOTE: After testing, the performance of this configuration is relatively good. With updates
-    # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
-    # selection should be conducted.
-    if batch_size >= 32 and kv_seq_len > 512:
-        use_cuda_kernel = False
 
     # NOTE (yuanheng-zhao): fow now, only triton kernels support verification process
     # during speculative-decoding (`q_len > 1`)

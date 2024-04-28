@@ -4,6 +4,7 @@ from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
+from tests.test_infer.test_ops.cuda.test_kv_cache_memcpy import prepare_data as prepare_data_new_kcache_layout
 from tests.test_infer.test_ops.triton.test_kvcache_copy import prepare_data
 
 try:
@@ -68,6 +69,9 @@ def benchmark_kvcache_copy(
     elif provider == "triton_copy_func":
         fn = lambda: copy_kv_to_blocked_cache(new_k, new_v, k_cache, v_cache, context_lengths, block_tables)
     elif provider == "cuda_copy_func":
+        _, _, k_cache, _, _, _, _, _, _ = prepare_data_new_kcache_layout(
+            bsz, num_kv_heads, block_size, max_seq_len // block_size, context_lengths - 1, device, dtype
+        )
         new_k = new_k.squeeze(1) if new_k.dim() == 4 else new_k
         new_v = new_v.squeeze(1) if new_v.dim() == 4 else new_v
         fn = lambda: inference_ops.decode_kv_cache_memcpy(new_k, new_v, k_cache, v_cache, context_lengths, block_tables)
