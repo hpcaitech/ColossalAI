@@ -24,9 +24,9 @@ configs = [
         x_vals=[2**i for i in range(8, 13)],
         # x_vals=[x for x in range(256, 8192, 256)],
         line_arg="provider",
-        line_vals=["torch", "triton"],
-        line_names=["Torch", "Triton"],
-        styles=[("red", "-"), ("blue", "-")],
+        line_vals=["torch", "triton", "triton_new_klayout"],
+        line_names=["Torch", "Triton", "Triton_new_klayout"],
+        styles=[("red", "-"), ("blue", "-"), ("green", "-")],
         ylabel="ms",
         plot_name=f"context_attn-block_size-{BLOCK_SIZE}-batch{BATCH}",
         args={"bsz": BATCH, "block_size": BLOCK_SIZE, "same_context_len": SAME_LEN, "kv_group_num": 1},
@@ -98,11 +98,31 @@ def bench_kernel(
             HEAD_DIM,
         )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
-    if provider == "triton":
+    elif provider == "triton":
         k_cache_triton = torch.zeros_like(k_cache_ref)
         v_cache_triton = torch.zeros_like(v_cache_ref)
         fn = lambda: context_attention_unpadded(
             q_unpad, k_unpad, v_unpad, k_cache_triton, v_cache_triton, context_lengths, block_tables, block_size
+        )
+        ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
+    elif provider == "triton_new_klayout":
+        # NOTE New kcache layout (num_blocks, num_kv_heads, head_dim // x, block_size, x)
+        # to be applied around the cuda and triton kernels.
+        # Here we want to make sure it does not cause downgrade in performance.
+        x = 16 // torch.tensor([], dtype=dtype).element_size()
+        k_cache_shape = (bsz * max_num_blocks_per_seq, num_kv_heads, HEAD_DIM // x, block_size, x)
+        k_cache_triton = torch.zeros(size=k_cache_shape, dtype=dtype, device=device)
+        v_cache_triton = torch.zeros_like(v_cache_ref)
+        fn = lambda: context_attention_unpadded(
+            q_unpad,
+            k_unpad,
+            v_unpad,
+            k_cache_triton,
+            v_cache_triton,
+            context_lengths,
+            block_tables,
+            block_size,
+            use_new_kcache_layout=True,
         )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
 

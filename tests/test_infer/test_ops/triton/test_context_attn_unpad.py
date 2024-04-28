@@ -5,7 +5,11 @@ from packaging import version
 from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v2, torch_attn_ref
+from tests.test_infer.test_ops.triton.kernel_utils import (
+    generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
+    torch_attn_ref,
+)
 
 try:
     import triton  # noqa
@@ -59,7 +63,7 @@ def torch_attn_unpad(
         mask = torch.tril(torch.ones(1, 1, seq_len, seq_len), diagonal=0).to(device=q.device)
         mask[mask == 0.0] = float("-inf")
 
-        if slopes != None:
+        if slopes is not None:
             alibi_mask = generate_alibi_mask(slopes, num_heads, seq_len, q.device)
             mask = mask + alibi_mask
 
@@ -89,6 +93,7 @@ def torch_attn_unpad(
 @pytest.mark.parametrize("kv_group_num", [1, 2, 16])
 @pytest.mark.parametrize("same_context_len", [True, False])
 @pytest.mark.parametrize("use_alibi_slopes", [True, False])
+@pytest.mark.parametrize("use_new_kcache_layout", [True, False])
 def test_context_attention(
     bsz: int,
     block_size: int,
@@ -97,7 +102,15 @@ def test_context_attention(
     kv_group_num: int,
     same_context_len: bool,
     use_alibi_slopes: bool,
+    use_new_kcache_layout: bool,
 ):
+    if use_new_kcache_layout and use_alibi_slopes:
+        # TODO(yuanheng-zhao): Since the alibi kernel is pretty similar to the original one,
+        # the code (alibi kernel) will be refactored later to avoid code duplication, when
+        # the whole triton flow with new k cache layout has been supported and tested.
+        # And tests for the alibi kernel using new kcache layout will be added then.
+        return
+
     torch.manual_seed(123)
     # It's necessary to clear cache here.
     torch.cuda.empty_cache()
@@ -124,9 +137,16 @@ def test_context_attention(
     qkv_unpad = torch.empty(size=qkv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)
     q_unpad, k_unpad, v_unpad = torch.split(qkv_unpad, [num_attn_heads, num_kv_heads, num_kv_heads], dim=-2)
     q_unpad = q_unpad.contiguous()
-    k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v2(
-        k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
-    )
+
+    if use_new_kcache_layout:
+        k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v3(
+            k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
+        )
+    else:
+        k_cache_ref, v_cache_ref, block_tables = generate_caches_and_block_tables_v2(
+            k_unpad, v_unpad, context_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
+        )
+
     block_tables = block_tables.to(device=device)
     k_cache_triton = torch.zeros_like(k_cache_ref)
     v_cache_triton = torch.zeros_like(v_cache_ref)
@@ -143,6 +163,7 @@ def test_context_attention(
         block_tables,
         block_size,
         alibi_slopes=alibi_slopes,
+        use_new_kcache_layout=use_new_kcache_layout,
     )
 
     out_triton = out_triton.view(-1, num_heads, head_dim)
@@ -155,4 +176,4 @@ def test_context_attention(
 
 
 if __name__ == "__main__":
-    test_context_attention(4, 32, 8, 16, 1, True, True)
+    test_context_attention(4, 32, 8, 16, 1, True, True, True)
