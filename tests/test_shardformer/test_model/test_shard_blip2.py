@@ -99,7 +99,6 @@ def run_blip2_test(
 def check_blip2(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",
