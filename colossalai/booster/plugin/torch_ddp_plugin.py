@@ -10,6 +10,7 @@ from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
+from colossalai.utils import get_current_device
 
 from .dp_plugin_base import DPPluginBase
 
@@ -203,7 +204,7 @@ class TorchDDPPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
 
     def configure(
         self,
@@ -214,7 +215,7 @@ class TorchDDPPlugin(DPPluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # cast model to cuda
-        model = model.cuda()
+        model = model.to(get_current_device())
 
         # convert model to sync bn
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
