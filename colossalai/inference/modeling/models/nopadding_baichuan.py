@@ -122,15 +122,17 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
         self.hidden_size = hidden_size
         self.head_dim = self.hidden_size // self.num_heads
         self.process_group = process_group
-
         qkv_weight_list = [attn_qproj_w.transpose(0, 1), attn_kproj_w.transpose(0, 1), attn_vproj_w.transpose(0, 1)]
         self.qkv_weight = nn.Parameter(torch.stack(qkv_weight_list, dim=0))
 
         self.alibi_slopes = None
         self.use_alibi_attn = False
-        if self.hidden_size == 5120:
+        if config.hidden_size == 5120:
+            slopes_start = self.process_group.rank() * num_heads
             self.use_alibi_attn = True
-            self.alibi_slopes = get_alibi_slopes(self.num_heads, device=attn_qproj_w.device)
+            self.alibi_slopes = get_alibi_slopes(config.num_attention_heads, device=attn_qproj_w.device)[
+                slopes_start : slopes_start + num_heads
+            ].contiguous()
 
     @staticmethod
     def from_native_module(
@@ -324,7 +326,6 @@ class NopadBaichuanAttention(ParallelModule, nn.Module):
     def _load_from_state_dict(
         self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
     ):
-        # NOTE This is a hack to ensure we could load the right weight from LlamaAttention checkpoint due to the use of torch.stack(q_weight, k_weight, v_weight)
         for hook in self._load_state_dict_pre_hooks.values():
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
@@ -373,10 +374,10 @@ class NopadBaichuanMLP(NopadLlamaMLP):
     def from_native_module(
         module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
     ) -> ParallelModule:
-        """Used for initialize the weight of NopadLlamaMLP by origin LlamaMLP.
+        """Used for initialize the weight of NopadBaichuanMLP by origin MLP(Baichuan).
 
         Args:
-            module (LlamaMLP): The origin LlamaMLP layer.
+            module (nn.Module): The origin MLP(Baichuan) layer.
         """
         mlp_gproj_w = module.gate_proj.weight
         assert is_distributed_tensor(

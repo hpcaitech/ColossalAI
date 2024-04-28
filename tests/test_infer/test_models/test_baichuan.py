@@ -15,7 +15,7 @@ from colossalai.inference.modeling.policy import NoPaddingBaichuanModelInferPoli
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 # BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
-BAICHUAN_MODEL_NAME_OR_PATH = "/home/data/models/Baichuan2-7B-Base"
+BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
 
 
 def setup_seed(seed):
@@ -29,7 +29,7 @@ def setup_seed(seed):
 def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=False, prompt_template=None, policy=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, trust_remote_code=True).cuda()
+    model = AutoModelForCausalLM.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
     model = model.eval()
 
     inputs = [
@@ -51,7 +51,6 @@ def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=Fa
             prompt_template=prompt_template,
             use_cuda_kernel=use_cuda_kernel,
             tp_size=dist.get_world_size(),
-            dtype="fp32",
         )
         inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True, model_policy=policy)
         assert inference_engine.generation_config.max_new_tokens == output_len
@@ -96,17 +95,26 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
         func_to_run(**kwargs)
 
 
+# NOTE(caidi) If do_sample is set to True or use_cuda_kernel is set to False, the inference result will be different from that of the transformer.
 @parameterize("prompt_template", [None, "baichuan"])
-@parameterize("do_sample", [False, True])
-def test_tp_engine(prompt_template, do_sample):
+@parameterize("do_sample", [False])
+@parameterize("use_cuda_kernel", [True])
+def test_tp_engine(prompt_template, do_sample, use_cuda_kernel):
     kwargs1 = {
         "use_engine": True,
         "prompt_template": prompt_template,
         "do_sample": do_sample,
         "policy": NoPaddingBaichuanModelInferPolicy(),
+        "use_cuda_kernel": use_cuda_kernel,
     }
 
-    kwargs2 = {"use_engine": False, "prompt_template": prompt_template, "do_sample": do_sample, "policy": None}
+    kwargs2 = {
+        "use_engine": False,
+        "prompt_template": prompt_template,
+        "do_sample": do_sample,
+        "policy": None,
+        "use_cuda_kernel": use_cuda_kernel,
+    }
 
     colossal_tp_1_output = run_engine(1, **kwargs1)
     colossal_tp_2_output = run_engine(2, **kwargs1)

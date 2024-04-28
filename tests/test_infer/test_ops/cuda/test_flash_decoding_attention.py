@@ -193,6 +193,7 @@ def test_vllm_flash_decoding_attention(
     max_seq_len_across_batch = kv_seq_lengths.max().item()
     output = torch.empty((BATCH_SIZE, NUM_ATTN_HEADS, HEAD_SIZE), dtype=dtype, device=device)
     sm_scale = 1.0 / (HEAD_SIZE**0.5)
+    kv_scale = 1.0
 
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
@@ -250,6 +251,7 @@ def test_vllm_flash_decoding_attention(
         max_seq_len_across_batch,
         alibi_slopes,
         "auto",
+        kv_scale,
     )
     numpy_allclose(out_ref, output, rtol=rtol, atol=atol)
 
