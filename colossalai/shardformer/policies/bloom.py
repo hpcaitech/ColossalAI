@@ -63,7 +63,7 @@ class BloomPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.n_head % self.shard_config.tensor_parallel_size == 0
-                ), f"The number of attention heads must be divisible by tensor parallel size."
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[BloomBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.hidden_size": self.model.config.hidden_size

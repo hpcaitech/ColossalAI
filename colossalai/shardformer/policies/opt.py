@@ -78,7 +78,7 @@ class OPTPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
-                ), f"The number of attention heads must be divisible by tensor parallel size."
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[OPTDecoderLayer] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(

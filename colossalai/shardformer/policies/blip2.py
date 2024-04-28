@@ -49,7 +49,7 @@ class BlipPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.vision_config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
-                ), f"The number of attention heads must be divisible by tensor parallel size."
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[Blip2EncoderLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attn.num_heads": self.model.config.vision_config.num_attention_heads
