@@ -92,13 +92,6 @@ PyTorch自带的启动器需要在每个节点上都启动命令才能启动多�
 首先，我们需要在代码里指定我们的启动方式。由于这个启动器是PyTorch启动器的封装，那么我们自然而然应该使用`colossalai.launch_from_torch`。
 分布式环境所需的参数，如 rank, world size, host 和 port 都是由 PyTorch 启动器设置的，可以直接从环境变量中读取。
 
-config.py
-```python
-BATCH_SIZE = 512
-LEARNING_RATE = 3e-3
-WEIGHT_DECAY = 0.3
-NUM_EPOCHS = 2
-```
 train.py
 ```python
 import colossalai
@@ -214,3 +207,5 @@ mpirun --hostfile <my_hostfile> -np <num_process> python train.py --host <node n
 
 - --hostfile: 指定一个要运行的主机列表。
 - --np: 设置总共要启动的进程（GPU）的数量。例如，如果 --np 4，4个 python 进程将被初始化以运行 train.py。
+
+<!-- doc-test-command: echo  -->
