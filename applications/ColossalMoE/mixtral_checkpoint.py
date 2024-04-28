@@ -19,16 +19,15 @@ from colossalai.checkpoint_io.utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
     load_shard_state_dict,
-    load_state_dict,
     load_states_into_optimizer,
     save_config_file,
     save_param_groups,
-    save_state_dict,
     save_state_dict_shards,
     search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
@@ -39,21 +38,23 @@ except ImportError:
 class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
     def __init__(
         self,
-        dp_group: ProcessGroup,
+        global_dp_group: ProcessGroup,
         pp_group: ProcessGroup,
+        tp_group: ProcessGroup,
         ep_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
         zero_stage: int,
         verbose: bool = True,
-        tp_group: ProcessGroup = None,
     ) -> None:
-        super().__init__(dp_group, pp_group, tp_group, zero_stage, verbose)
-        self.dp_group = dp_group
+        super().__init__(global_dp_group, pp_group, tp_group, zero_stage, verbose)
+        self.global_dp_group = global_dp_group
         self.pp_group = pp_group
         self.ep_group = ep_group
         self.tp_group = tp_group
-        
+        self.moe_dp_group = moe_dp_group
+        self.moe_dp_rank = dist.get_rank(moe_dp_group)
         self.ep_size = dist.get_world_size(ep_group)
-        self.dp_rank = dist.get_rank(dp_group)
+        self.global_dp_rank = dist.get_rank(global_dp_group)
         self.ep_rank = dist.get_rank(ep_group)
 
     @staticmethod
@@ -138,7 +139,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
 
-        if self.dp_rank != 0:
+        if self.moe_dp_rank != 0:
             dist.barrier()
             return
 
@@ -153,7 +154,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         )
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.tp_rank == 0
+        control_saving = self.tp_rank == 0 and self.moe_dp_rank == 0
 
         if self.pp_size == 1 and self.ep_size == 1:
             # When pipeline is not used, save the model shards as in general checkpointIO
@@ -240,6 +241,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         original_shape: torch.Size,
         dp_group: ProcessGroup,
         tp_group: ProcessGroup,
+        ep_group: ProcessGroup,
         use_zero: bool,
         inplace: bool,
         is_moe_param: bool,
@@ -265,23 +267,43 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         tp_size = dist.get_world_size(tp_group)
         current_shape = param.shape
         state_ = state if inplace else copy.deepcopy(state)
-
         for k, v in state_.items():
             if isinstance(v, torch.Tensor) and k != "step":
                 # First gather Zero shards.
+                # if use_zero and is_moe_param:
+                #     ep_rank = dist.get_rank(ep_group)
+                #     dst = get_global_rank(ep_group, 0)
                 if use_zero and not is_moe_param:
                     v = v.cuda()
                     gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
-                    dist.gather(v, gather_tensor, group=dp_group)
+                    dist.all_gather(gather_tensor, v, group=dp_group)
                     v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
+
+                    # Use gather for bandwith saving
+                    # dp_rank = dist.get_rank(dp_group)
+                    # dst = get_global_rank(dp_group, 0)
+                    # if dp_rank == 0:
+                    #     gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
+                    #     dist.gather(v, gather_tensor, group=dp_group, dst=dst)
+                    #     v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
+                    # else:
+                    #     dist.gather(v, group=dp_group, dst=dst)
 
                 # Then gather TP shards.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, tp_size)
                 if partition_dim is not None:
                     gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
-                    dist.gather(v, gather_tensor, group=tp_group)
+                    dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
+                    # tp_rank = dist.get_rank(tp_group)
+                    # dst = get_global_rank(tp_group, 0)
+                    # if tp_rank == 0:
+                    #     gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
+                    #     dist.gather(v, gather_tensor, group=tp_group, dst=dst)
+                    #     v = torch.cat(gather_tensor, dim=partition_dim)
+                    # else:
+                    #     dist.gather(v, group=tp_group, dst=dst)
                 state_[k] = v.detach().clone().to(device)
 
         return state_
@@ -292,6 +314,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         use_zero: bool,
         dp_group: ProcessGroup,
         tp_group: ProcessGroup,
+        ep_group: ProcessGroup,
         size_per_shard: int = 1024,
         only_moe_param: bool = False,
     ):
@@ -301,6 +324,8 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         param_info = optimizer.param_info
         master_to_working_map = optimizer.get_master_to_working_map()
 
+        if only_moe_param:
+            print(f"rank {dist.get_rank()} saving moe params!")
         for param, state in optimizer.optim.state.items():
             if param is None:
                 continue
@@ -318,9 +343,10 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
                 original_shape=original_shape,
                 dp_group=dp_group,
                 tp_group=tp_group,
+                ep_group=ep_group,
                 use_zero=use_zero,
                 inplace=False,
-                is_moe_param=is_moe_tensor(working_param),
+                is_moe_param=is_moe_tensor(working_param),  # TODO: Check correctness here
             )
 
             if only_moe_param and not is_moe_tensor(working_param):
@@ -365,7 +391,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
 
         # Devices along the same dp_group share the same copies of states when zero is not used.
         # In this case only let the device with dp_rank == 0 save the model.
-        if not self.use_zero and self.dp_rank != 0:
+        if not self.use_zero and self.moe_dp_rank != 0:
             dist.barrier()
             return
 
@@ -374,14 +400,16 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
         state_dict_shard = MixtralMoEHybridParallelCheckpointIO._optimizer_sharder(
             optimizer,
             use_zero=self.use_zero,
-            dp_group=self.dp_group,
+            dp_group=self.global_dp_group,
             tp_group=self.tp_group,
+            ep_group=self.ep_group,
             size_per_shard=size_per_shard,
             only_moe_param=self.ep_rank != 0,
         )
+        print(f"rank {dist.get_rank()} at line 401! use_zero: {self.use_zero}")
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.dp_rank == 0 and self.tp_rank == 0
+        control_saving = self.moe_dp_rank == 0 and self.tp_rank == 0
 
         if self.pp_size == 1 and self.ep_size == 1:
             # When pipeline is not used, save the optimizer shards as in general checkpointIO
@@ -439,6 +467,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
+                print(f"rank {dist.get_rank()} writing index file")
             else:
                 dist.barrier()
                 return
@@ -617,7 +646,7 @@ class MixtralMoEHybridParallelCheckpointIO(HybridParallelCheckpointIO):
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
                         slice_size = v.numel() // self.dp_size
-                        v = v.split(slice_size, dim=0)[self.dp_rank]
+                        v = v.split(slice_size, dim=0)[self.global_dp_rank]
 
                 state_[k] = v.detach().clone().to(device)
 

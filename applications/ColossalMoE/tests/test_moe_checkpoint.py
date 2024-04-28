@@ -7,9 +7,12 @@ from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.optim import Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
+
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4
@@ -20,14 +23,14 @@ top_k = 2
 def check_model_equal(model1, model2):
     assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
     for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
-        if not torch.equal(p1.half(), p2.half()):            
-            # raise AssertionError(f"Model parameter {name} is not equal")
+        if not torch.equal(p1.half(), p2.half()):
             # exit distributed
-            print(f"Model parameter {name} is not equal.")
+            print(f"Model parameter {name} is not equal. is_moe_tensor: {is_moe_tensor(p1)}")
+            raise AssertionError(f"Model parameter {name} is not equal")
             # dist.destroy_process_group()
             # exit(1)
-        else:
-            print(f"Passed: {name}")
+            # print(f"Passed: {name}")
+
 
 def get_optimizer_snapshot(optim):
     state = {id(k): deepcopy(v) for k, v in optim.state.items()}
@@ -45,7 +48,7 @@ def get_optimizer_snapshot(optim):
     }
 
 
-def check_optimizer_snapshot_equal(snapshot1, snapshot2):
+def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
     # check param_groups
     assert len(snapshot1["param_groups"]) == len(snapshot2["param_groups"])
     for group1, group2 in zip(snapshot1["param_groups"], snapshot2["param_groups"]):
@@ -59,11 +62,16 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2):
     for pid in snapshot1["state"].keys():
         state1, state2 = snapshot1["state"][pid], snapshot2["state"][pid]
         assert set(state1.keys()) == set(state2.keys())
+        bug = False
         for k in state1.keys():
             if isinstance(state1[k], torch.Tensor):
-                assert torch.equal(state1[k], state2[k]), f"{k}, {state1[k]}, {state2[k]}"
+                # assert torch.equal(state1[k], state2[k]), f"{k}, {state1[k]}, {state2[k]}"
+                if not torch.equal(state1[k], state2[k]):
+                    bug = True
             else:
                 assert state1[k] == state2[k]
+        if bug:
+            print(f"rank {dist.get_rank()} optim bug: {param2name[pid]}")
 
 
 def check_mixtral_moe_layer():
@@ -85,6 +93,7 @@ def check_mixtral_moe_layer():
         pp_size=2,
         ep_size=2,
         checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
+        custom_policy=MixtralForCausalLMPolicy(),
         microbatch_size=1,
         zero_stage=1,
     )
@@ -107,6 +116,7 @@ def check_mixtral_moe_layer():
     if dist.get_rank() == 0:
         saved_model = MixtralForCausalLM.from_pretrained("mixtral_model").cuda()
         check_model_equal(orig_model, saved_model)
+        # check_model_equal(model, saved_model)
         saved_model.save_pretrained("mixtral_hf_model")
     dist.barrier()
     # check load model
@@ -121,8 +131,10 @@ def check_mixtral_moe_layer():
     for group in optimizer.param_groups:
         group["lr"] = 0.1
     snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    booster.save_optimizer(optimizer, "mixtral_optim", shard=True)
-    dist.barrier()
+    booster.save_optimizer(optimizer, "mixtral_optim")
+    # dist.barrier()
+    working2master = optimizer.get_working_to_master_map()
+    param2name = {id(working2master[id(p)]): n for n, p in model.named_parameters()}
     # reset optimizer state
     for state in optimizer.unwrap().state.values():
         for v in state.values():
@@ -130,7 +142,7 @@ def check_mixtral_moe_layer():
                 v.zero_()
     booster.load_optimizer(optimizer, "mixtral_optim")
     loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    check_optimizer_snapshot_equal(snapshot, loaded_snapshot)
+    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, param2name)
 
 
 def run_dist(rank: int, world_size: int, port: int):

@@ -185,7 +185,10 @@ class ProcessGroupMesh:
         def add_index(base_coord, axis, indices_at_axis):
             coords_in_group = []
             for idx in indices_at_axis:
-                coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1 :])
+                coord = base_coord[:axis] + (idx,)
+                if axis + 1 < len(base_coord) and axis != -1:
+                    coord += base_coord[axis + 1 :]
+                coords_in_group.append(coord)
             return coords_in_group
 
         coords_in_group = [base_coord]
@@ -239,21 +242,30 @@ class ProcessGroupMesh:
         return target_group
 
     def get_group_along_axis(
-        self, axis: int, indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
+        self, axis: Union[int, List[int]], indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
     ) -> ProcessGroup:
         """Get the process group along the given axis which the current process belongs to. If the process group doesn't exist, it will be created.
 
         Args:
-            axis (int): Axis along which the process groups are created.
+            axis (int or list of int): Axes along which the process groups are created.
             indices_at_axis (Optional[List[int]], optional): Indices at the axis. Defaults to None.
             backend (Optional[str], optional): Backend of the process group. Defaults to None.
 
         Returns:
             ProcessGroup: The process group along the given axis which the current process belongs to.
         """
-        indices_at_axis = indices_at_axis or list(range(self._shape[axis]))
+        indices_at_axis = indices_at_axis
+        if indices_at_axis is None:
+            if isinstance(axis, (list, tuple)):
+                indices_at_axis = list(list(range(self._shape[ax])) for ax in axis)
+            else:
+                indices_at_axis = list(range(self._shape[axis]))
+
         coords_in_group = ProcessGroupMesh.get_coords_along_axis(self._coord, axis, indices_at_axis)
-        ranks_in_group = tuple([ProcessGroupMesh.ravel(coord, self._shape) for coord in coords_in_group])
+        try:
+            ranks_in_group = tuple([ProcessGroupMesh.ravel(coord, self._shape) for coord in coords_in_group])
+        except:
+            pass
         if ranks_in_group not in self._ranks_to_group:
             # no need to cache it explicitly, since it will be cached in `create_group_along_axis`
             return self.create_group_along_axis(axis, indices_at_axis, backend=backend)

@@ -34,8 +34,9 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        if "ep_group" in kwargs:
-            module.setup_ep(kwargs["ep_group"])
+        # if "ep_group" in kwargs:
+        assert "ep_group" in kwargs, "You should pass ep_group in SubModuleReplacementDescription via shard_config!!"
+        module.setup_ep(kwargs["ep_group"])
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
