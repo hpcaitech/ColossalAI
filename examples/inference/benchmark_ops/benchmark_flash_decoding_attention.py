@@ -113,6 +113,7 @@ def benchmark_flash_decoding_attention(
     kv_max_split_num = (max_seq_len_across_batch + BLOCK_SIZE - 1) // BLOCK_SIZE
     output = torch.empty((BATCH_SIZE, NUM_ATTN_HEADS, HEAD_SIZE), dtype=dtype, device=device)
     sm_scale = 1.0 / (HEAD_SIZE**0.5)
+    alibi_slopes = None
     kv_scale = 1.0
 
     mid_output = torch.empty(
@@ -166,6 +167,7 @@ def benchmark_flash_decoding_attention(
             max_seq_len_across_batch,
             mid_output,
             mid_output_lse,
+            alibi_slopes,
             sm_scale,
         )
     else:

@@ -597,6 +597,7 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                     kv_seq_len,
                     fd_inter_tensor.mid_output,
                     fd_inter_tensor.mid_output_lse,
+                    None,
                     sm_scale,
                 )
                 attn_output = output_tensor

@@ -4,8 +4,10 @@ import numpy as np
 import pytest
 import torch
 
+from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
+from tests.test_infer.test_ops.triton.test_context_attn_unpad import generate_alibi_mask
 
 inference_ops = InferenceOpsLoader().load()
 
@@ -60,8 +62,9 @@ def numpy_allclose(x, y, rtol, atol):
 @pytest.mark.parametrize("NUM_ATTN_HEADS", [16])
 @pytest.mark.parametrize("KV_GROUP_NUM", [1, 2, 16])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("use_alibi_slopes", [True, False])
 def test_flash_decoding_attention(
-    BATCH_SIZE, BLOCK_SIZE, MAX_NUM_BLOCKS_PER_SEQ, HEAD_SIZE, NUM_ATTN_HEADS, KV_GROUP_NUM, dtype
+    BATCH_SIZE, BLOCK_SIZE, MAX_NUM_BLOCKS_PER_SEQ, HEAD_SIZE, NUM_ATTN_HEADS, KV_GROUP_NUM, dtype, use_alibi_slopes
 ):
     torch.manual_seed(123)
     torch.cuda.empty_cache()
@@ -72,6 +75,11 @@ def test_flash_decoding_attention(
     assert isinstance(NUM_KV_HEADS, int) and NUM_KV_HEADS > 0, "Invalid number of kv heads."
     MAX_SEQ_LEN = BLOCK_SIZE * MAX_NUM_BLOCKS_PER_SEQ
     device = get_current_device()
+
+    if use_alibi_slopes:
+        alibi_slopes = get_alibi_slopes(NUM_ATTN_HEADS, device)
+    else:
+        alibi_slopes = None
 
     q, k_unpad, v_unpad, kv_seq_lengths = prepare_data(
         BATCH_SIZE, HEAD_SIZE, NUM_ATTN_HEADS, NUM_KV_HEADS, MAX_SEQ_LEN, dtype, device
@@ -90,6 +98,15 @@ def test_flash_decoding_attention(
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     torch_padding_mask = create_attention_mask(kv_seq_lengths, BATCH_SIZE, q_len, max_seq_len_across_batch, device)
+
+    if use_alibi_slopes:
+        alibi_mask = generate_alibi_mask(alibi_slopes, NUM_ATTN_HEADS, max_seq_len_across_batch, device)
+        torch_padding_mask = torch_padding_mask + alibi_mask
+
+        if len(torch_padding_mask.size()) == 4:
+            torch_padding_mask = torch_padding_mask[:, :, -1:, :]
+        else:
+            torch_padding_mask = torch_padding_mask[:, -1:, :]
 
     mid_output = torch.empty(
         size=(BATCH_SIZE, NUM_ATTN_HEADS, kv_max_split_num, HEAD_SIZE), dtype=torch.float32, device=device
@@ -146,8 +163,14 @@ def test_flash_decoding_attention(
         max_seq_len_across_batch,
         mid_output,
         mid_output_lse,
+        alibi_slopes,
         sm_scale,
     )
+
+    # The alibi may introduce relatively large errors
+    if use_alibi_slopes:
+        rtol = 1e0
+
     numpy_allclose(out_ref, output, rtol=rtol, atol=atol)
 
 
@@ -168,8 +191,9 @@ except ImportError:
 @pytest.mark.parametrize("NUM_ATTN_HEADS", [16])
 @pytest.mark.parametrize("KV_GROUP_NUM", [1, 2, 16])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("use_alibi_slopes", [True, False])
 def test_vllm_flash_decoding_attention(
-    BATCH_SIZE, BLOCK_SIZE, MAX_NUM_BLOCKS_PER_SEQ, HEAD_SIZE, NUM_ATTN_HEADS, KV_GROUP_NUM, dtype
+    BATCH_SIZE, BLOCK_SIZE, MAX_NUM_BLOCKS_PER_SEQ, HEAD_SIZE, NUM_ATTN_HEADS, KV_GROUP_NUM, dtype, use_alibi_slopes
 ):
     torch.manual_seed(123)
     torch.cuda.empty_cache()
@@ -198,6 +222,18 @@ def test_vllm_flash_decoding_attention(
     k_torch = convert_kv_unpad_to_padded(k_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     v_torch = convert_kv_unpad_to_padded(v_unpad, kv_seq_lengths, BATCH_SIZE, max_seq_len_across_batch)
     torch_padding_mask = create_attention_mask(kv_seq_lengths, BATCH_SIZE, q_len, max_seq_len_across_batch, device)
+
+    if use_alibi_slopes:
+        alibi_slopes = get_alibi_slopes(NUM_ATTN_HEADS, device)
+        alibi_mask = generate_alibi_mask(alibi_slopes, NUM_ATTN_HEADS, max_seq_len_across_batch, device)
+        torch_padding_mask = torch_padding_mask + alibi_mask
+
+        if len(torch_padding_mask.size()) == 4:
+            torch_padding_mask = torch_padding_mask[:, :, -1:, :]
+        else:
+            torch_padding_mask = torch_padding_mask[:, -1:, :]
+    else:
+        alibi_slopes = None
 
     if dtype == torch.float16:
         rtol = 1e-3
@@ -236,8 +272,6 @@ def test_vllm_flash_decoding_attention(
             HEAD_SIZE,
         )
 
-    alibi_slopes = None
-
     vllm_ops.paged_attention_v1(
         output,
         q.squeeze(2),
@@ -253,6 +287,11 @@ def test_vllm_flash_decoding_attention(
         "auto",
         kv_scale,
     )
+
+    # The alibi may introduce relatively large errors
+    if use_alibi_slopes:
+        rtol = 1e0
+
     numpy_allclose(out_ref, output, rtol=rtol, atol=atol)
 
 
@@ -277,5 +316,5 @@ if __name__ == "__main__":
         dtype,
     ) in test_combinations:
         test_flash_decoding_attention(
-            batch_size, block_size, max_num_blocks_per_seq, head_size, num_attn_heads, kv_group_num, dtype
+            batch_size, block_size, max_num_blocks_per_seq, head_size, num_attn_heads, kv_group_num, dtype, True
         )

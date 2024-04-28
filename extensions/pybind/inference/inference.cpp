@@ -73,7 +73,7 @@ void flash_decoding_attention(
     torch::Tensor&
         tmp_out,  // [num_tokens, num_heads, max_num_partitions, head_size]
     torch::Tensor& tmp_out_lse,  // [num_tokens, num_heads, max_num_partitions]
-    float scale);
+    const c10::optional<torch::Tensor>& alibi_slopes, float scale);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
