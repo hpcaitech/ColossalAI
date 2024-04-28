@@ -108,7 +108,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     Args:
         pp_size (int): The number of pipeline stages in pipeline parallelism. Pipeline parallelism will not be used when pp_size is set to 1.
-        tp_size (int): The size of tensor parallelism for non-MoE params.
+        tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
         precision (str, optional): Specifies the precision of parameters during training.
                                     Auto-mixied precision will be used when this argument is set to 'fp16' or 'bf16', otherwise model is trained with 'fp32'.
                                     Defaults to 'fp16'.

@@ -3,7 +3,6 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
-from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.optim import Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
@@ -11,6 +10,9 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+
+# from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
+from colossalai.moe import MoECheckpointIO
 from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing.utils import spawn
@@ -59,6 +61,9 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
     assert set(snapshot1["state"].keys()) == set(
         snapshot2["state"].keys()
     ), f"{snapshot1['state'].keys()}, {snapshot2['state'].keys()}"
+
+    passed = True
+    count = 0
     for pid in snapshot1["state"].keys():
         state1, state2 = snapshot1["state"][pid], snapshot2["state"][pid]
         assert set(state1.keys()) == set(state2.keys())
@@ -68,10 +73,15 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
                 # assert torch.equal(state1[k], state2[k]), f"{k}, {state1[k]}, {state2[k]}"
                 if not torch.equal(state1[k], state2[k]):
                     bug = True
+                    count += 1
             else:
                 assert state1[k] == state2[k]
         if bug:
+            passed = False
             print(f"rank {dist.get_rank()} optim bug: {param2name[pid]}")
+
+    if not passed:
+        raise AssertionError(f"A total of {count} optim states are not equal")
 
 
 def check_mixtral_moe_layer():
@@ -92,7 +102,7 @@ def check_mixtral_moe_layer():
     plugin = MoeHybridParallelPlugin(
         pp_size=2,
         ep_size=2,
-        checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
+        checkpoint_io=MoECheckpointIO,
         custom_policy=MixtralForCausalLMPolicy(),
         microbatch_size=1,
         zero_stage=1,
@@ -131,8 +141,9 @@ def check_mixtral_moe_layer():
     for group in optimizer.param_groups:
         group["lr"] = 0.1
     snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    booster.save_optimizer(optimizer, "mixtral_optim")
-    # dist.barrier()
+    booster.save_optimizer(optimizer, "mixtral_optim", shard=True)
+    dist.barrier()
+
     working2master = optimizer.get_working_to_master_map()
     param2name = {id(working2master[id(p)]): n for n, p in model.named_parameters()}
     # reset optimizer state
