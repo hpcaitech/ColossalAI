@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from bitsandbytes.optim.optimizer import Optimizer2State
 
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.tensor.d_tensor import is_distributed_tensor
+from colossalai.tensor.d_tensor import get_shard_dim, is_distributed_tensor
 
 from .galore import GaLoreProjector, make_low_rank_buffer
 
@@ -186,7 +186,6 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                         if self.is_zero:
                             # (m, n).flatten().chunk(dp_size) equals to (m / dp_size, n).flatten()
                             working_shape[0] //= self.dp_size
-
                             # Gather grads for projection
                             if state["step"] % group["update_proj_gap"] == 0:
                                 all_grads = [

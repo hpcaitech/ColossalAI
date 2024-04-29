@@ -8,13 +8,13 @@ import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import DistributedLamb, Lamb
-from colossalai.tensor.d_tensor import is_distributed_tensor
+from colossalai.tensor.d_tensor import get_shard_dim, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_optim_states, get_shard_dim, run_bert_test
+from tests.test_optimizer._utils import check_optim_states, run_bert_test
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
