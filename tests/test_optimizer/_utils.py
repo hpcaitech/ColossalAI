@@ -19,7 +19,6 @@ def print_rank_0(msg):
     if dist.get_rank() == 0:
         print(msg)
 
-
 def check_optim_states(org_optim, sharded_optim):
     for group in org_optim.param_groups:
         for p in group["params"]:
@@ -65,7 +64,7 @@ def check_bert_fwd_bwd(
 
 
 @parameterize(
-    "test_config",
+"test_config",
     [
         {
             "tp_size": 1,

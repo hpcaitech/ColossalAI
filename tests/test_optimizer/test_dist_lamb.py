@@ -22,7 +22,6 @@ _ALLOWED_P_G_TYPES = [
     (torch.float, torch.bfloat16),  # bfloat16 amp
 ]
 
-# Identifiers for Tensor Parallel linear layers
 _IN_DIM = 32
 _HID_DIM = 128
 _N_STEP = 3

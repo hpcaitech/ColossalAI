@@ -339,12 +339,9 @@ class LowLevelZeroPlugin(DPPluginBase):
             model.update_master_params = MethodType(optimizer.update_master_params, model)
             # Setup optimizers that require global states
             optim = optimizer.optim
-            states_sharded = self.tp_size > 1 or (self.dp_size > 1 and zero_stage > 0)
+            is_zero = (self.dp_size > 1 and zero_stage > 0)
+            states_sharded = self.tp_size > 1 or is_zero
             if isinstance(optim, DistributedOptim):
-                tp_group = self.tp_group
-                dp_group = self.dp_group
-                shard_to_param = optimizer.get_master_to_working_map()
-                is_zero = True
                 if isinstance(optim, DistGaloreAwamW8bit):
                     padding_map = optimizer.get_param_padding_map()
                     optim.setup_distributed(tp_group, dp_group, shard_to_param, padding_map, is_zero)
