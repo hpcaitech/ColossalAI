@@ -32,7 +32,7 @@ class LinearSumModel(nn.Module):
 
 def check_sum_handler(rank, world_size, port, sum_dims, keepdim):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = LinearSumModel(sum_dims=sum_dims, keepdim=keepdim).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

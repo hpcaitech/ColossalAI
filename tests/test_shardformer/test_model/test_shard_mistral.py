@@ -170,7 +170,7 @@ def run_mistral_test(test_config):
 
 def check_mistral(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_mistral_test()
 
 

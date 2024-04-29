@@ -75,7 +75,7 @@ def check_2d_device_mesh():
 
 
 def check_init_from_process_group(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
 
 @pytest.mark.dist

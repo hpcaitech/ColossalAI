@@ -130,7 +130,7 @@ def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_low_level_zero_plugin(early_stop=early_stop)
     check_low_level_zero_lora(early_stop=early_stop)
 

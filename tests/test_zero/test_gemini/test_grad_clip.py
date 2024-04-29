@@ -117,8 +117,7 @@ def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_grad_clipping()
 
 

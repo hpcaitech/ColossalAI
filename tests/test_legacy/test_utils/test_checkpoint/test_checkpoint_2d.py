@@ -43,7 +43,7 @@ def check_checkpoint_2d(rank, world_size, port):
     )
 
     disable_existing_loggers()
-    launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     m1 = nn.Sequential(nn.Linear(4, 8), nn.Linear(8, 4))
     sd1 = m1.state_dict()

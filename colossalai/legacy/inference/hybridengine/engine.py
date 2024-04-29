@@ -42,7 +42,7 @@ class CaiInferEngine:
     import colossalai
     from transformers import LlamaForCausalLM, LlamaTokenizer
 
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
 
     model = LlamaForCausalLM.from_pretrained("your_path_to_model")
     tokenizer = LlamaTokenizer.from_pretrained("/home/lczyh/share/models/llama-7b-hf")

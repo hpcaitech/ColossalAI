@@ -17,7 +17,7 @@ def _benchmark(rank, world_size, port, args):
     The benchmark will sample in a range of memory budget for each model and output the benchmark summary and
     data visualization of peak memory vs. budget memory and relative step time vs. peak memory.
     """
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     if args.model == "resnet50":
         model = tm.resnet50()
         data_gen = partial(data_gen_resnet, batch_size=128, shape=(3, 224, 224))

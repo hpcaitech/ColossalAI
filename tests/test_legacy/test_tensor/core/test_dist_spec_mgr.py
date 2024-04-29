@@ -48,7 +48,7 @@ def check_mem():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.legacy.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_mem()
     run()
 

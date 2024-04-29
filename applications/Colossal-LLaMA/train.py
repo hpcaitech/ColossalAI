@@ -136,7 +136,7 @@ def main() -> None:
     # ==============================
     # Initialize Distributed Training
     # ==============================
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     accelerator = get_accelerator()
     coordinator = DistCoordinator()
 

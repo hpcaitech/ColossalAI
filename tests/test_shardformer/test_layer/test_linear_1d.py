@@ -185,7 +185,7 @@ def run_dist_linear_test(lazy_init, seq_parallel_mode, overlap):
 
 
 def check_dist_linear(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_dist_linear_test()
 
 

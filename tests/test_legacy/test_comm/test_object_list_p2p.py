@@ -88,7 +88,7 @@ def check_send_recv_forward_backward():
 
 
 def check_layer(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_send_recv_forward()
     check_send_recv_backward()
     check_send_recv_forward_backward()

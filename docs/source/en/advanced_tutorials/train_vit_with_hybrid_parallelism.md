@@ -71,7 +71,7 @@ PP_SIZE = 2
 Create a distributed environment.
 ```python
 # Launch ColossalAI
-colossalai.launch_from_torch(config={}, seed=SEEDå)
+colossalai.launch_from_torch( seed=SEEDå)
 coordinator = DistCoordinator()
 world_size = coordinator.world_size
 ```

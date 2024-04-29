@@ -34,7 +34,7 @@ class MLP(torch.nn.Module):
 
 def check_auto_parallel_with_gemini(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = MLP(4).half().cuda()
     if rank in [0, 1]:
         input = torch.arange(0, 16).reshape(4, 4).half().cuda()

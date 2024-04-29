@@ -40,7 +40,7 @@ class AddBMMTorchFunctionModule(nn.Module):
 
 def check_2d_device_mesh(rank, world_size, port, module, bias_shape, using_kwargs):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = module(using_kwargs).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
@@ -150,7 +150,7 @@ def check_2d_device_mesh(rank, world_size, port, module, bias_shape, using_kwarg
 
 def check_1d_device_mesh(rank, module, bias_shape, using_kwargs, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (1, 4)
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
