@@ -16,6 +16,8 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import DistGaloreAwamW8bit
+from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer._utils import getattr_
@@ -126,8 +128,25 @@ def build_model_from_hybrid_plugin(
         ctx.materialize(org_model)
 
     org_model = org_model.cuda()
-    org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
-    sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
+    if sharded_optim_class == DistGaloreAwamW8bit:
+        # Disable clipping and block-wise quantization
+        org_optimizer = optim_class(
+            get_galore_param_groups(org_model, weight_decay=0, rank=4),
+            lr=1e-3,
+            percentile_clipping=101,
+            block_wise=False,
+            min_8bit_size=1e10,
+        )
+        sharded_optimizer = sharded_optim_class(
+            get_galore_param_groups(sharded_model, weight_decay=0, rank=4),
+            lr=1e-3,
+            percentile_clipping=101,
+            block_wise=False,
+            min_8bit_size=1e10,
+        )
+    else:
+        org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+        sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
     plugin = HybridParallelPlugin(**test_config)
@@ -300,6 +319,9 @@ def check_grad(
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
+        # if verbose and dist.get_rank() == 0:
+        #     print("shard_weight", shard_weight)
+        #     print("org_grad", org_grad)
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_grad_list = [torch.zeros_like(shard_grad).to("cuda") for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)

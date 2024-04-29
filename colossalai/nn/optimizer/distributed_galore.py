@@ -1,5 +1,6 @@
 """ adapted from https://github.com/jiaweizzhao/GaLore/blob/master/galore_torch/adamw8bit.py"""
 
+import warnings
 from collections import defaultdict
 from typing import Dict, Optional
 
@@ -10,20 +11,11 @@ from bitsandbytes.optim.optimizer import Optimizer2State
 
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.tensor.d_tensor import is_distributed_tensor
-from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 
 from .galore import GaLoreProjector, make_low_rank_buffer
 
 __all__ = ["DistributedGalore"]
 # Mark sharded dimension
-_SHARD_DIM = DimSpec([0])
-
-
-def get_shard_dim(p):
-    if not is_distributed_tensor(p):
-        raise ValueError("p is not a distributed tensor")
-    sharding = p.dist_layout.sharding_spec.sharding_sequence
-    return sharding.index(_SHARD_DIM)
 
 
 class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
@@ -71,7 +63,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             betas,
             eps,
             weight_decay,
-            8,
+            nbits,
             None,
             min_8bit_size,
             percentile_clipping,
@@ -83,9 +75,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         self.is_dist = {}
         proj_none = all(["rank" not in group for group in self.param_groups])
         if proj_none:
-            print(
-                "Will not apply GaLore as no rank is specified. Or did you forget to?\
-                Try get_galore_param_groups"
+            warnings.warn(
+                "Will not apply GaLore as rank isn't in any param group. If you forgot to, try get_galore_param_groups"
             )
 
         # Default from the paper
@@ -123,9 +114,11 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
 
         self.shard_to_working_param = shard_to_working_param if shard_to_working_param is not None else {}
         self.is_zero = is_zero and self.dp_size > 1
+        self.padding_map = padding_map if padding_map is not None else defaultdict(int)
         if is_zero:
-            assert padding_map is not defaultdict(int), "We can't do SVD without knowing ZeRO's per-param padding size"
-        self.padding_map = padding_map
+            assert self.padding_map is not defaultdict(
+                int
+            ), "We can't do SVD without knowing ZeRO's per-param padding size"
         self.distributed_on = self.tp_size > 0 or self.dp_size > 0
 
         # Cache working param layout
@@ -164,8 +157,6 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             for pindex, p in enumerate(group["params"]):
                 if p.grad is None:
                     continue
-                if p is self.param_groups[0]["params"][0] and dist.get_rank() == 0:
-                    torch.save(p.grad, "dist_grad.pt")
                 state = self.state[p]
 
                 if "step" not in state:
@@ -228,9 +219,9 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                         if self.is_dist[id(p)]:
                             grad = grad.chunk(self.tp_size, dim=self.shard_dim[id(p)])[dist.get_rank(self.tp_group)]
                         # ZeRO
+                        # TODO: this might not work with padding, e.g. (3, 3) with dp size 2
+                        # Need extra logic in ZeRO to pad nRows/nCols to be divisible by dp_size
                         if self.is_zero:
-                            # TODO: this might not work with padding, e.g. (3, 3) with dp size 2
-                            # Need extra logic in ZeRO to pad nRows to be divisible by dp_size
                             grad = grad.chunk(self.dp_size)[dist.get_rank(self.dp_group)]
                         grad = grad.contiguous()  # avoid bitsandbytes update error
 
@@ -254,20 +245,10 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
                             p.data = p.data[:-padding]
                         p.data = p.data.reshape(working_shape)
 
-                    update = p.data.clone()
                     p.data = state["projector"].project_back(p.data)
-                    un_proj = p.data.clone()
                     # Re-flatten grads for ZeRO
                     p.data = self.to_master_shape(p.data, padding)
                     p.data = p.saved_data.add_(p.data)
-
-                    if dist.get_rank() == 0:
-                        print(f"rank {dist.get_rank()} unprojected update: {un_proj.mean()}, shape: {un_proj.shape}")
-                        if p is self.param_groups[0]["params"][0]:
-                            torch.save(un_proj, f"dist_galore_unproj.pt")
-                            torch.save(p.grad, f"dist_low_rank_grad.pt")
-                            torch.save(update, "dist_low_rank_update.pt")
-                            torch.save(state["projector"].ortho_matrix, f"dist_galore_ortho.pt")
 
                 # apply decoupled weight decay
                 if "weight_decay_saved" in group:

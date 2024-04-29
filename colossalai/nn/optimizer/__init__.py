@@ -1,6 +1,8 @@
 from galore_torch import GaLoreAdafactor, GaLoreAdamW
 
+from .came import CAME
 from .cpu_adam import CPUAdam
+from .distributed_came import DistributedCAME
 from .distributed_galore import DistGaloreAwamW8bit
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
@@ -24,4 +26,6 @@ __all__ = [
     "GaLoreAdamW",
     "GaLoreAdafactor",
     "GaLoreAdamW8bit",
+    "CAME",
+    "DistributedCAME",
 ]

@@ -4,24 +4,8 @@ import warnings
 from typing import List
 
 import torch
-import torch.distributed as dist
 from bitsandbytes.optim.optimizer import Optimizer2State
 from torch._C import _LinAlgError
-
-
-# Debug
-def get_chunk(_grad):
-    if _grad.dim() == 1:
-        return _grad
-    if _grad.shape[1] == 128:
-        _grad = _grad[:, :32]
-    elif _grad.shape[0] == 128:
-        _grad = _grad[:32, :]
-    elif _grad.shape[0] == 32:
-        _grad = _grad[:8,]
-    else:
-        _grad = _grad
-    return _grad
 
 
 def get_galore_param_groups(
@@ -87,7 +71,9 @@ class GaLoreProjector:
     def project(self, full_rank_grad, iter):
         dim = full_rank_grad.dim()
         if dim != 2:
-            warnings.warn(f"Warning: You have a {dim}D param with projection rank specified. Skipping SVD.")
+            warnings.warn(
+                f"Warning: You shouldn't specify projection rank for {dim}D params in param_groups. Skipping SVD."
+            )
             return full_rank_grad
 
         m, n = full_rank_grad.shape  # For ZeRO sharded grads
@@ -121,16 +107,6 @@ class GaLoreProjector:
             return
 
         m, n = low_rank_grad.shape
-        # if self.proj_type == "std":
-        #     if m >= n:
-        #         full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
-        #     else:
-        #         full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
-        # elif self.proj_type == "reverse_std":
-        #     if m <= n:  # note this is different from std
-        #         full_rank_grad = torch.matmul(self.ortho_matrix[:, :n], low_rank_grad)
-        #     else:
-        #         full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:m])
         if self.svd_type == "right":
             full_rank_grad = torch.matmul(low_rank_grad, self.ortho_matrix[:n])
         else:
@@ -163,7 +139,6 @@ class GaLoreProjector:
 
         # make the smaller matrix always to be orthogonal matrix
         if type == "right":
-            # A = U[:, :rank] @ torch.diag(s[:rank])
             B = Vh[:rank, :]
 
             if not float_data:
@@ -171,7 +146,6 @@ class GaLoreProjector:
             return B
         elif type == "left":
             A = U[:, :rank]
-            # B = torch.diag(s[:rank]) @ Vh[:rank, :]
             if not float_data:
                 A = A.to(original_device).type(original_type)
             return A
@@ -244,9 +218,8 @@ class GaLoreAdamW8bit(Optimizer2State):
 
         proj_none = all(["rank" not in group for group in self.param_groups])
         if proj_none:
-            print(
-                "Will not apply GaLore as no rank is specified. Or did you forget to?\
-                Try get_galore_param_groups"
+            warnings.warn(
+                "Will not apply GaLore as no rank is specified. Or did you forget to? Try get_galore_param_groups"
             )
 
         # Defaults from the paper
@@ -321,13 +294,6 @@ class GaLoreAdamW8bit(Optimizer2State):
                     update = state["projector"].project_back(p.data)
                     p.data = p.saved_data.add_(update)
 
-                    if dist.get_rank() == 0:
-                        print(f"unprojected update: {get_chunk(update).mean()}, shape: {update.shape}")
-                        if p is self.param_groups[0]["params"][0]:
-                            torch.save(update, "galore_unproj.pt")
-                            torch.save(p.grad, "low_rank_grad.pt")
-                            torch.save(p.data, "low_rank_update.pt")
-                            torch.save(state["projector"].ortho_matrix, "ortho_matrix.pt")
                 # apply weight decay
                 if "weight_decay_saved" in group:
                     p.data.add_(p.data, alpha=-group["lr"] * group["weight_decay_saved"])

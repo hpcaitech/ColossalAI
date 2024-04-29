@@ -10,12 +10,11 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import DistributedLamb, Lamb
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
-from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_optim_states, run_bert_test
+from tests.test_optimizer._utils import check_optim_states, get_shard_dim, run_bert_test
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
@@ -24,7 +23,6 @@ _ALLOWED_P_G_TYPES = [
 ]
 
 # Identifiers for Tensor Parallel linear layers
-_SHARD_DIM = DimSpec([0])
 _IN_DIM = 32
 _HID_DIM = 128
 _N_STEP = 3
@@ -33,13 +31,6 @@ _COORD = None
 
 Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
 TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
-
-
-def get_split_dim(p):
-    if not is_distributed_tensor(p):
-        raise ValueError("p is not a distributed tensor")
-    sharding = p.dist_layout.sharding_spec.sharding_sequence
-    return sharding.index(_SHARD_DIM)
 
 
 def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
@@ -51,7 +42,7 @@ def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
         assert not torch.isnan(p).any()
         try:
             if is_distributed_tensor(p):
-                split_dim = get_split_dim(p)
+                split_dim = get_shard_dim(p)
                 torch_p = torch_p.chunk(tp_size, dim=split_dim)[rank]
 
             assert_close(p.float(), torch_p, rtol=rtol, atol=atol)
@@ -108,7 +99,7 @@ def set_dist_grad(
             force_assign_grad(p, g_dtype)
 
         if is_distributed_tensor(p):
-            split_dim = get_split_dim(p)
+            split_dim = get_shard_dim(p)
             # Add grads only to the correctly split chunk
             force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
             # assert_close(p.grad, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
@@ -162,11 +153,11 @@ def run_dist_lamb_basic(
     )
     optim.setup_distributed(tp_group)
 
-    rtol, atol = 8e-5, 8e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 4e-4, 4e-4
+        rtol, atol = 2e-6, 2e-6
 
     for i in range(_N_STEP):
         seed_all(_SEED + i)  # NOTE: having only one manual_seed above doesn't work?
@@ -241,23 +232,15 @@ def run_dist_lamb_fwd_bwd(
             verbose=True,
         )
         shard_to_param = optim._param_store.master_to_working_param
-        torch_optim = LowLevelZeroOptimizer(
-            torch_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
         optim.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero=True)
     else:
         optim.setup_distributed(tp_group)
 
-    rtol, atol = 3e-5, 3e-5
+    rtol, atol = 8e-7, 8e-7
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-4, 1e-4
+        rtol, atol = 1e-6, 1e-6
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
-        rtol, atol = 2e-4, 2e-4
+        rtol, atol = 2e-6, 2e-6
 
     seed_all(_SEED)  # NOTE: having only one manual_seed above doesn't work?
     x = data_gen()
@@ -275,13 +258,14 @@ def run_dist_lamb_fwd_bwd(
 
     if zero_size > 1:
         optim.backward(out_tp.sum())
-        torch_optim.backward(out.sum())
+        out.sum().backward()
     else:
         out_tp.sum().backward()
         out.sum().backward()
 
     torch_optim.step()
     optim.step()
+    dist.barrier()
     torch_optim.zero_grad()
     optim.zero_grad()
     try:

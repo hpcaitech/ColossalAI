@@ -4,7 +4,9 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer.utils import Randomizer
+from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
@@ -14,10 +16,19 @@ from tests.test_shardformer.test_model._utils import (
     unwrap_model,
 )
 
+_SHARD_DIM = DimSpec([0])
+
 
 def print_rank_0(msg):
     if dist.get_rank() == 0:
         print(msg)
+
+
+def get_shard_dim(p):
+    if not is_distributed_tensor(p):
+        raise ValueError("p is not a distributed tensor")
+    sharding = p.dist_layout.sharding_spec.sharding_sequence
+    return sharding.index(_SHARD_DIM)
 
 
 def check_optim_states(org_optim, sharded_optim):
@@ -118,7 +129,7 @@ def check_bert_fwd_bwd(
     ],
 )
 def run_bert_test(test_config, optim_class, sharded_optim_class):
-    """Just call this if you've initialized distributed backend and spawned procs"""
+    """Only call this if you've initialized distributed backend and spawned processes"""
     sub_model_zoo = model_zoo.get_sub_registry("transformers_bert")
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel

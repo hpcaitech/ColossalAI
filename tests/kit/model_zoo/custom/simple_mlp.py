@@ -34,14 +34,16 @@ class TPNet(nn.Module):
         fc1=nn.Linear(_IN_DIM, _HID_DIM),
         fc2=nn.Linear(_HID_DIM, _IN_DIM),
         tp_group=None,
-        dtype=torch.float32
+        dtype=torch.float32,
     ):
         super().__init__()
         self.fc0 = deepcopy(fc0)
         self.fc1 = Linear1D_Col.from_native_module(
             deepcopy(fc1), process_group=tp_group, gather_output=False, overlap=True, dtype=dtype
         )
-        self.fc2 = Linear1D_Row.from_native_module(deepcopy(fc2), process_group=tp_group, parallel_input=True, dtype=dtype)
+        self.fc2 = Linear1D_Row.from_native_module(
+            deepcopy(fc2), process_group=tp_group, parallel_input=True, dtype=dtype
+        )
 
     def forward(self, x):
         return self.fc2(self.fc1(self.fc0(x)))

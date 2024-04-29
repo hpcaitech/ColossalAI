@@ -1,5 +1,7 @@
 import logging
 import os
+import warnings
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from types import MethodType
@@ -26,6 +28,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.nn.optimizer import CAME, DistGaloreAwamW8bit, Lamb
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
@@ -320,19 +323,38 @@ class LowLevelZeroPlugin(DPPluginBase):
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)
 
+        # TODO: Support Galore + ZeRO
+        zero_stage = self.zero_stage
+        zero_optim_kwargs = deepcopy(self.zero_optim_kwargs)
+        if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and self.dp_size > 0:
+            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            zero_optim_kwargs["partition_grad"] = False
+            zero_stage = 0
+
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer: LowLevelZeroOptimizer = LowLevelZeroOptimizer(
-                optimizer, **self.zero_optim_kwargs, verbose=self.verbose
+                optimizer, **zero_optim_kwargs, verbose=self.verbose
             )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
             # Setup optimizers that require global states
-            if isinstance(optimizer.optim, DistributedOptim):
+            optim = optimizer.optim
+            states_sharded = self.tp_size > 1 or (self.dp_size > 1 and zero_stage > 0)
+            if isinstance(optim, DistributedOptim):
                 tp_group = self.tp_group
                 dp_group = self.dp_group
                 shard_to_param = optimizer.get_master_to_working_map()
                 is_zero = True
-                optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
+                if isinstance(optim, DistGaloreAwamW8bit):
+                    padding_map = optimizer.get_param_padding_map()
+                    optim.setup_distributed(tp_group, dp_group, shard_to_param, padding_map, is_zero)
+                else:
+                    optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
+            elif states_sharded and isinstance(optim, [Lamb, CAME]):
+                warnings.warn(
+                    "Using Tensor Parallel/ZeRO leads to wrong optimizer updates due to sharded states.\
+                    Please use the distributed version of your optimizer, e.g. DistributedLamb/DistributedCAME"
+                )
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 
