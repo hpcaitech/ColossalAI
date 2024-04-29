@@ -172,7 +172,7 @@ def check_low_level_zero_lora_checkpointIO(
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=(dict()), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_low_level_zero_checkpointIO()
     check_low_level_zero_lora_checkpointIO()
     torch.cuda.empty_cache()

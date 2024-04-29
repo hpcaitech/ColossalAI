@@ -60,7 +60,6 @@ def run_moe_init(expert_parallel):
 
 def _run_test(rank, world_size, port, expert_parallel):
     colossalai.launch(
-        config=dict(),
         rank=rank,
         world_size=world_size,
         host="localhost",

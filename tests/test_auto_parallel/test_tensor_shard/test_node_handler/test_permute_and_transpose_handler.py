@@ -51,7 +51,7 @@ class LinearReshapeModel(nn.Module):
 
 def check_view_handler(rank, world_size, port, call_function, reshape_dims, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     if call_function == torch.permute:
         reshape_dims = reshape_dims[0]
     elif call_function == torch.transpose:

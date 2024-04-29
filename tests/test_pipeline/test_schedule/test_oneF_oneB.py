@@ -148,7 +148,7 @@ def run_dist(
     num_microbatch: int,
     batch_size: int,
 ):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     examine_pp(num_microbatch, batch_size)
 
 

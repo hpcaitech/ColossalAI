@@ -114,7 +114,7 @@ import colossalai
 from transformers import LlamaForCausalLM, LlamaTokenizer
 
 #launch distributed environment
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 # load original model and tokenizer
 model = LlamaForCausalLM.from_pretrained("/path/to/model")

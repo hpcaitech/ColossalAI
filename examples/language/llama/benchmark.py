@@ -78,7 +78,7 @@ def main():
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
     args = parser.parse_args()
 
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     def empty_init():

@@ -45,7 +45,7 @@ We then need to initialize distributed environment. For demo purpose, we uses `l
 parser = colossalai.get_default_parser()
 args = parser.parse_args()
 # launch from torch
-colossalai.launch_from_torch(config=dict())
+colossalai.launch_from_torch()
 ```
 
 ### Step 3. Create training components

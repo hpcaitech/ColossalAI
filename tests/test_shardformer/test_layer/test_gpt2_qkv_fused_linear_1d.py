@@ -143,7 +143,7 @@ def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel_mode: bool, ove
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # test for linear conv
     check_gpt2_qkv_fused_linear_1d()

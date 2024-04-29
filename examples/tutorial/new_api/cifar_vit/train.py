@@ -148,7 +148,7 @@ def main():
     # ==============================
     # Launch Distributed Environment
     # ==============================
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     # update the learning rate with linear scaling

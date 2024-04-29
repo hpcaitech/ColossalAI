@@ -69,7 +69,7 @@ import colossalai
 from colossalai.device.device_mesh import DeviceMesh
 from colossalai.tensor.d_tensor import DTensor, ShardingSpec
 
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 # define your device mesh
 # assume you have 4 GPUs

@@ -102,7 +102,7 @@ args = parse_args()
 if args.distplan not in ["colossalai", "pytorch"]:
     raise TypeError(f"{args.distplan} is error")
 disable_existing_loggers()
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 logger = get_dist_logger()
 
 

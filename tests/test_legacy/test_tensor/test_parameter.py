@@ -9,7 +9,7 @@ from colossalai.testing import free_port
 
 @pytest.mark.skip
 def test_multiinheritance():
-    colossalai.legacy.launch(config={}, rank=0, world_size=1, host="localhost", port=free_port(), backend="nccl")
+    colossalai.legacy.launch(rank=0, world_size=1, host="localhost", port=free_port(), backend="nccl")
     colo_param = ColoParameter(None, requires_grad=True)
     assert colo_param.dist_spec.placement.value == "r"
     assert isinstance(colo_param, ColoTensor)

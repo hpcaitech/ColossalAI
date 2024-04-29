@@ -4,7 +4,7 @@ from typing import Optional, Set
 import torch
 import torch.nn as nn
 
-from colossalai.utils import _cast_float
+from colossalai.utils import _cast_float, get_current_device
 from colossalai.utils.common import free_storage
 
 from .region_manager import RegionManager
@@ -25,7 +25,7 @@ class BaseOffloadModule:
         self.model = model
         self.region_manager = region_manager
         self.grad_hook_list = []
-        self.overflow_counter = torch.cuda.IntTensor([0])
+        self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_current_device())
 
         self.grad_offload_stream = torch.cuda.current_stream() if is_sync else GlobalRuntimeInfo.d2h_stream
 

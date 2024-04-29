@@ -8,7 +8,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 def check_alpha_beta(rank, world_size, port, physical_devices):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     profiler = AlphaBetaProfiler(physical_devices)
     ab_dict = profiler.profile_ab()
     for _, (alpha, beta) in ab_dict.items():

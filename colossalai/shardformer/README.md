@@ -38,7 +38,7 @@ from transformers import BertForMaskedLM
 import colossalai
 
 # launch colossalai
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 # create model
 config = BertConfig.from_pretrained('bert-base-uncased')

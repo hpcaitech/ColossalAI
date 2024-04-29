@@ -109,7 +109,7 @@ def check_torch_ddp_no_sync():
 
 def run_dist(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_torch_ddp_plugin()
     check_torch_ddp_no_sync()
 

@@ -87,8 +87,7 @@ import colossalai
 args = colossalai.get_default_parser().parse_args()
 
 # launch distributed environment
-colossalai.launch(config=args.config,
-                  rank=args.rank,
+colossalai.launch(rank=args.rank,
                   world_size=args.world_size,
                   host=args.host,
                   port=args.port,
@@ -106,20 +105,11 @@ First, we need to set the launch method in our code. As this is a wrapper of the
 use `colossalai.launch_from_torch`. The arguments required for distributed environment such as rank, world size, host and port are all set by the PyTorch
 launcher and can be read from the environment variable directly.
 
-config.py
-```python
-BATCH_SIZE = 512
-LEARNING_RATE = 3e-3
-WEIGHT_DECAY = 0.3
-NUM_EPOCHS = 2
-```
 train.py
 ```python
 import colossalai
 
-colossalai.launch_from_torch(
-    config="./config.py",
-)
+colossalai.launch_from_torch()
 ...
 ```
 
@@ -203,7 +193,6 @@ Do this in your training script:
 import colossalai
 
 colossalai.launch_from_slurm(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )
@@ -224,7 +213,6 @@ use them to start the distributed backend.
 Do this in your train.py:
 ```python
 colossalai.launch_from_openmpi(
-    config=<CONFIG>,
     host=args.host,
     port=args.port
 )
@@ -238,3 +226,5 @@ mpirun --hostfile <my_hostfile> -np <num_process> python train.py --host <node n
 
 - --hostfile: use this option to specify a list of hosts on which to run
 - --np: set the number of processes (GPUs) to launch in total. For example, if --np 4, 4 python processes will be initialized to run train.py.
+
+<!-- doc-test-command: echo  -->

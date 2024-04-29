@@ -71,7 +71,7 @@ def check_shardformer_with_ddp(lazy_init: bool):
 
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_shardformer_with_ddp()
 
 
