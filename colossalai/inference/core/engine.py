@@ -275,8 +275,6 @@ class InferenceEngine:
             raise TypeError(
                 f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
             )
-        if isinstance(self.model, ModelWrapper):
-            self.model.module
 
     def _shardformer(
         self,
