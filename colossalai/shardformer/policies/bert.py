@@ -79,6 +79,9 @@ class BertPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[BertLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "attention.self.all_head_size": self.model.config.hidden_size
