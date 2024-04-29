@@ -47,6 +47,12 @@ class FalconPolicy(Policy):
                 embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
+            assert (
+                self.model.config.num_kv_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of key_value heads must be divisible by tensor parallel size."
             attn_attribute_replacement = {
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,

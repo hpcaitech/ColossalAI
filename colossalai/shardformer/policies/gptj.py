@@ -57,6 +57,9 @@ class GPTJPolicy(Policy):
 
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[GPTJModel] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(

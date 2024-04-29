@@ -78,6 +78,9 @@ class WhisperPolicy(Policy):
             warnings.warn("Whisper doesn't support jit fused operator now, will ignore the jit fused operator flag.")
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.encoder_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[WhisperEncoderLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attn.embed_dim": self.model.config.d_model // self.shard_config.tensor_parallel_size,
