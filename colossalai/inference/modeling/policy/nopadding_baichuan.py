@@ -1,9 +1,7 @@
-from typing import List, Union
-
-import torch.distributed as dist
-import torch.nn as nn
-from torch.distributed import ProcessGroup
-
+from colossalai.inference.modeling.layers.baichuan_tp_linear import (
+    BaichuanLMHeadLinear1D_Col,
+    BaichuanWpackLinear1D_Col,
+)
 from colossalai.inference.modeling.models.nopadding_baichuan import (
     NopadBaichuanAttention,
     NopadBaichuanMLP,
@@ -15,103 +13,9 @@ from colossalai.inference.modeling.models.nopadding_llama import (
     llama_model_forward,
 )
 from colossalai.inference.utils import init_to_get_rotary
-from colossalai.lazy import LazyInitContext
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
-from colossalai.shardformer.layer.parallel_module import ParallelModule
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-
-
-class BaichuanLMHeadLinear1D_Col(Linear1D_Col):
-    @staticmethod
-    def from_native_module(
-        module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
-    ) -> ParallelModule:
-        r"""
-        Convert a native PyTorch linear layer to a parallelized linear layer.
-        """
-        LazyInitContext.materialize(module)
-        # get the attributes
-        in_features = module.weight.size(1)
-        out_features = module.weight.size(0)
-        bias = None
-        device = module.weight.device
-
-        module.weight.data = nn.functional.normalize(module.weight)
-
-        # ensure only one process group is passed
-        if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
-            process_group = process_group[0]
-
-        tp_size = dist.get_world_size(process_group)
-        if out_features < tp_size:
-            return module
-
-        if out_features % tp_size != 0:
-            raise ValueError(
-                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!"
-            )
-
-        linear_1d = Linear1D_Col(
-            in_features=in_features,
-            out_features=out_features,
-            bias=bias,
-            device=device,
-            process_group=process_group,
-            weight=module.weight,
-            bias_=bias,
-            *args,
-            **kwargs,
-        )
-
-        return linear_1d
-
-
-class BaichuanWpackLinear1D_Col(Linear1D_Col):
-    @staticmethod
-    def from_native_module(
-        module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
-    ) -> ParallelModule:
-        r"""
-        Convert a native PyTorch linear layer to a parallelized linear layer.
-        """
-        LazyInitContext.materialize(module)
-        # get the attributes
-        in_features = module.weight.size(1) * 3
-        out_features = module.weight.size(0) // 3
-
-        module.weight.data = module.weight.view(3, out_features, -1).transpose(0, 1).reshape(out_features, in_features)
-
-        bias = None
-        device = module.weight.device
-        # ensure only one process group is passed
-        if isinstance(process_group, (list, tuple)):
-            assert len(process_group) == 1, f"Expected only one process group, got {len(process_group)}."
-            process_group = process_group[0]
-
-        tp_size = dist.get_world_size(process_group)
-        if out_features < tp_size:
-            return module
-
-        if out_features % tp_size != 0:
-            raise ValueError(
-                f"The size of out_features:{out_features} is not integer multiples of tensor parallel size: {tp_size}!"
-            )
-
-        linear_1d = Linear1D_Col(
-            in_features=in_features,
-            out_features=out_features,
-            bias=bias,
-            device=device,
-            process_group=process_group,
-            weight=module.weight,
-            bias_=bias,
-            *args,
-            **kwargs,
-        )
-
-        return linear_1d
 
 
 class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):

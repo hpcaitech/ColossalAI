@@ -36,8 +36,11 @@ __all__ = ["InferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = {
+_transformers_supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
+}
+
+_transformers_unsupported_models = {
     "BaichuanForCausalLM": AutoModelForCausalLM,
 }
 
@@ -112,11 +115,21 @@ class InferenceEngine:
             model_policy (Policy): the policy to replace the model
         """
 
+        transformers_models = True
+
         if isinstance(model_or_path, str):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                model = _supported_models[arch](hf_config)
+                if arch in _transformers_supported_models.keys():
+                    model = _transformers_supported_models[arch](hf_config)
+                elif arch in _transformers_unsupported_models.keys():
+                    # NOTE(caidi) It's necessary to add half() here, otherwise baichuan13B will overflow the memory.
+                    model = AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half().cuda()
+                    transformers_models = False
+                else:
+                    raise ValueError(f"Model {self.model.__class__.__name__} is not supported.")
+
             except Exception as e:
                 self.logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
@@ -164,7 +177,7 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str):
+        if isinstance(model_or_path, str) and transformers_models:
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
@@ -263,10 +276,7 @@ class InferenceEngine:
                 f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
             )
         if isinstance(self.model, ModelWrapper):
-            model = self.model.module
-        assert (
-            model.__class__.__name__ in _supported_models.keys()
-        ), f"Model {self.model.__class__.__name__} is not supported."
+            self.model.module
 
     def _shardformer(
         self,

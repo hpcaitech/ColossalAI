@@ -20,7 +20,7 @@ from colossalai.kernel.triton import (
 )
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.layer.parallel_module import ParallelModule
-from colossalai.tensor.d_tensor import distribute_tensor, is_distributed_tensor
+from colossalai.tensor.d_tensor import Layout, distribute_tensor, is_distributed_tensor
 
 logger = get_dist_logger(__name__)
 
@@ -104,6 +104,7 @@ class NopadBaichuanAttention(ParallelModule):
         num_heads: int = None,
         hidden_size: int = None,
         process_group: ProcessGroup = None,
+        helper_layout: Layout = None,
     ):
         """This layer will replace the BaichuanAttention.
 
@@ -124,6 +125,8 @@ class NopadBaichuanAttention(ParallelModule):
         self.process_group = process_group
         qkv_weight_list = [attn_qproj_w.transpose(0, 1), attn_kproj_w.transpose(0, 1), attn_vproj_w.transpose(0, 1)]
         self.qkv_weight = nn.Parameter(torch.stack(qkv_weight_list, dim=0))
+
+        self.helper_layout = helper_layout
 
         self.alibi_slopes = None
         self.use_alibi_attn = False
@@ -146,13 +149,16 @@ class NopadBaichuanAttention(ParallelModule):
         """
 
         config = module.config
-
         q_proj_w, k_proj_w, v_proj_w = module.W_pack.weight.view((module.hidden_size, 3, -1)).transpose(0, 1)
 
         attn_qproj_w = q_proj_w
         attn_kproj_w = k_proj_w
         attn_vproj_w = v_proj_w
         attn_oproj = module.o_proj
+
+        helper_layout = (
+            module.W_pack.weight.dist_layout
+        )  # NOTE this is a hack for the right load/shard of qkv_weight(used in _load_from_state_dict)
 
         attn_layer = NopadBaichuanAttention(
             config=config,
@@ -163,9 +169,55 @@ class NopadBaichuanAttention(ParallelModule):
             num_heads=module.num_heads,
             hidden_size=module.hidden_size,
             process_group=process_group,
+            helper_layout=helper_layout,
         )
 
         return attn_layer
+
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
+        for hook in self._load_state_dict_pre_hooks.values():
+            hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
+        persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
+        local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
+        local_state = {k: v for k, v in local_name_params if v is not None}
+
+        key = "qkv_weight"
+        qkv_w = state_dict[prefix + "W_pack.weight"]
+
+        in_features = qkv_w.size(1)
+        out_features = qkv_w.size(0) // 3
+
+        qkv_w.data = qkv_w.view((3, out_features, -1)).transpose(0, 1).reshape(out_features, in_features * 3)
+
+        device_mesh = self.helper_layout.device_mesh
+        sharding_spec = self.helper_layout.sharding_spec
+        qkv_w = distribute_tensor(qkv_w, device_mesh, sharding_spec)
+
+        qkv_w = qkv_w.transpose(0, 1).reshape(3, in_features, -1)
+        input_param = nn.Parameter(
+            qkv_w
+        )  # NOTE qkv_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
+
+        param = local_state[key]
+
+        try:
+            with torch.no_grad():
+                param.copy_(input_param)
+        except Exception as ex:
+            error_msgs.append(
+                'While copying the parameter named "{}", '
+                "whose dimensions in the model are {} and "
+                "whose dimensions in the checkpoint are {}, "
+                "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
+            )
+
+        strict = False  # to avoid unexpected_keys
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(
         self,
@@ -323,47 +375,6 @@ class NopadBaichuanAttention(ParallelModule):
         attn_output = self.o_proj(attn_output)
 
         return attn_output
-
-    def _load_from_state_dict(
-        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-    ):
-        for hook in self._load_state_dict_pre_hooks.values():
-            hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
-
-        persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
-        local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
-        local_state = {k: v for k, v in local_name_params if v is not None}
-
-        key = "qkv_weight"
-        W_pack = state_dict[prefix + "W_pack.weight"]
-
-        device_mesh = self.helper_layout.device_mesh
-        sharding_spec = self.helper_layout.sharding_spec
-        W_pack = distribute_tensor(W_pack, device_mesh, sharding_spec)
-
-        qkv_w = W_pack.view((-1, 3, W_pack.size(-1))).transpose(1, 2, 0)
-
-        input_param = nn.Parameter(
-            qkv_w
-        )  # NOTE qkv_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
-
-        param = local_state[key]
-
-        try:
-            with torch.no_grad():
-                param.copy_(input_param)
-        except Exception as ex:
-            error_msgs.append(
-                'While copying the parameter named "{}", '
-                "whose dimensions in the model are {} and "
-                "whose dimensions in the checkpoint are {}, "
-                "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
-            )
-
-        strict = False  # to avoid unexpected_keys
-        super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
-        )
 
     def extra_repr(self) -> str:
         return f"qkv_weight_proj MergedLinear1D_Col: in_features={self.qkv_weight.shape[1]}x3, out_features={self.qkv_weight.shape[2]}, bias=False"

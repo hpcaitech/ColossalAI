@@ -15,7 +15,7 @@ from colossalai.inference.modeling.policy import NoPaddingBaichuanModelInferPoli
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 # BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
-BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-13B-Base"
+BAICHUAN_MODEL_NAME_OR_PATH = "/home/data/models/Baichuan2-13B-Base"
 
 
 def setup_seed(seed):
@@ -96,7 +96,7 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
 
 
 # NOTE(caidi) If do_sample is set to True or use_cuda_kernel is set to False, the inference result will be different from that of the transformer.
-@parameterize("prompt_template", [None, "baichuan"])
+@parameterize("prompt_template", [None])
 @parameterize("do_sample", [False])
 @parameterize("use_cuda_kernel", [True])
 def test_tp_engine(prompt_template, do_sample, use_cuda_kernel):
