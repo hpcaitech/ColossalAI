@@ -11,6 +11,7 @@ from ..modeling.vit import (
     ViTForImageClassification_pipeline_forward,
     ViTForMaskedImageModeling_pipeline_forward,
     ViTModel_pipeline_forward,
+    get_jit_fused_vit_intermediate_forward,
     get_jit_fused_vit_output_forward,
     get_vit_flash_self_attention_forward,
 )
@@ -24,10 +25,17 @@ class ViTPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.enable_bias_gelu_fused = self.shard_config.enable_jit_fused and self.model.config.hidden_act == "gelu"
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTOutput, ViTSelfAttention
+        from transformers.models.vit.modeling_vit import (
+            ViTEmbeddings,
+            ViTIntermediate,
+            ViTLayer,
+            ViTOutput,
+            ViTSelfAttention,
+        )
 
         policy = {}
 
@@ -83,6 +91,9 @@ class ViTPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="intermediate.dense",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "skip_bias_add": self.enable_bias_gelu_fused,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dense",
@@ -94,6 +105,14 @@ class ViTPolicy(Policy):
                     ),
                 ],
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_vit_intermediate_forward(),
+                    },
+                    policy=policy,
+                    target_key=ViTIntermediate,
+                )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -115,6 +134,7 @@ class ViTPolicy(Policy):
                 policy=policy,
                 target_key=ViTOutput,
             )
+
         return policy
 
     def new_model_class(self):

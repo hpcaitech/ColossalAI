@@ -10,6 +10,7 @@ from ..modeling.gpt2 import (
     GPT2PipelineForwards,
     get_gpt2_flash_attention_forward,
     get_gpt_model_forward_for_flash_attn,
+    get_jit_fused_gpt2_mlp_forward,
     get_lm_forward_with_dist_cross_entropy,
     gpt2_sequence_parallel_forward_fn,
 )
@@ -36,10 +37,13 @@ class GPT2Policy(Policy):
         """
         self.tie_weight = self.tie_weight_check()
         self.origin_attn_implement = self.model.config._attn_implementation
+        self.enable_bias_gelu_fused = (
+            self.shard_config.enable_jit_fused and self.model.config.activation_function == "gelu"
+        )
         return self.model
 
     def module_policy(self):
-        from transformers.models.gpt2.modeling_gpt2 import GPT2Attention, GPT2Block, GPT2Model
+        from transformers.models.gpt2.modeling_gpt2 import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
         ATTN_IMPLEMENTATION = {
             "eager": GPT2Attention,
@@ -119,6 +123,7 @@ class GPT2Policy(Policy):
                             "n_fused": 1,
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "skip_bias_add": self.enable_bias_gelu_fused,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -142,6 +147,14 @@ class GPT2Policy(Policy):
                     ),
                 ],
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_gpt2_mlp_forward(),
+                    },
+                    policy=policy,
+                    target_key=GPT2MLP,
+                )
         if embedding_cls is not None:
             # padding vocabulary size when using pp to make it divisible by  shard_config.make_vocab_size_divisible_by
             self.append_or_create_submodule_replacement(
