@@ -94,6 +94,10 @@ COLOSSAL_CAST_FUNCTOR_SPECIALIZATION(float, __nv_bfloat16, DEVICE,
                                      STMTS_WRAPPER({
                                        return __float2bfloat16_rn(val);
                                      }))
+COLOSSAL_CAST_FUNCTOR_SPECIALIZATION(__nv_bfloat16, float, DEVICE,
+                                     STMTS_WRAPPER({
+                                       return __bfloat162float(val);
+                                     }))
 COLOSSAL_CAST_FUNCTOR_SPECIALIZATION(float4, dtype::bfloat164, DEVICE,
                                      STMTS_WRAPPER({
                                        dtype::bfloat164 dst;

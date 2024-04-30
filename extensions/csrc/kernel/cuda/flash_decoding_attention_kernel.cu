@@ -380,12 +380,6 @@ void flash_decoding_attention(
   const c10::optional<torch::Tensor>& alibi_slopes,
   float scale) {
 
-
-  TORCH_CHECK(query.scalar_type() == at::ScalarType::Float || query.scalar_type() == at::ScalarType::Half || query.scalar_type() == at::ScalarType::BFloat16,
-  "Dtype of query should be float, half or bfloat16!");
-  TORCH_CHECK(key_cache.scalar_type() == at::ScalarType::Byte || key_cache.scalar_type() == query.scalar_type(),
-   "Dtype of query and kvcache should be the same unless dtype of kvcache is fp8!");
-
   if(key_cache.scalar_type() == at::ScalarType::Byte)
   {
     switch (query.scalar_type()) {

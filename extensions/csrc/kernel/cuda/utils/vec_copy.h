@@ -11,6 +11,7 @@ namespace colossalAI {
 namespace cuda {
 namespace utils {
 
+// Note(LiuYang): Depreciated
 template <typename T, int vec_size>
 __device__ __inline__ void copy_vector(T *dst, const T *src) {
   using VT = typename common::VecTypeTrait<T, vec_size>::Type;
@@ -26,6 +27,7 @@ __device__ __inline__ void copy_vector<float, 8>(float *dst, const float *src) {
       *(reinterpret_cast<const float4 *>(src + 4));
 }
 
+// Note(LiuYang): Depreciated
 template <typename T, int VecSize>
 __device__ __inline__ void copy_zero_vector(T *dst) {
   using VT = typename common::VecTypeTrait<T, VecSize>::Type;
@@ -36,13 +38,12 @@ template <typename SrcT, typename DstT, int vec_size>
 __device__ __inline__ void copy(const SrcT *src, DstT *dst) {
   using SrcVT = typename common::VecTypeTrait<SrcT, vec_size>::Type;
   using DstVT = typename common::VecTypeTrait<DstT, vec_size>::Type;
-  // Note(LiuYang): Here static_cast can't be used for cast between two pointer
   *(reinterpret_cast<DstVT *>(dst)) = funcs::CastFunctor<SrcVT, DstVT>()(
       *(reinterpret_cast<const SrcVT *>(src)));
 }
 
 template <typename T, int vec_size>
-__device__ __inline__ void copy<T, T, vec_size>(const T *src, T *dst) {
+__device__ __inline__ void copy(const T *src, T *dst) {
   using VT = typename common::VecTypeTrait<T, vec_size>::Type;
   *(reinterpret_cast<VT *>(dst)) = *(reinterpret_cast<const VT *>(src));
 }

@@ -56,6 +56,11 @@ COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(T, T, T, BinaryOpType::kMin, HOSTDEVICE,
                                        typename T)
 
 #if defined(COLOSSAL_WITH_CUDA)
+COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(half, half, half, BinaryOpType::kMinus,
+                                       DEVICE, STMTS_WRAPPER({
+                                         return __hsub(lhs, rhs);
+                                       }))
+
 COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(half, half, half, BinaryOpType::kAdd,
                                        DEVICE, STMTS_WRAPPER({
                                          return __hadd(lhs, rhs);
@@ -71,6 +76,13 @@ COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(__nv_bfloat16, __nv_bfloat16,
                                        DEVICE, STMTS_WRAPPER({
                                          return __hadd(lhs, rhs);
                                        }))
+
+COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(__nv_bfloat16, __nv_bfloat16,
+                                       __nv_bfloat16, BinaryOpType::kMinus,
+                                       DEVICE, STMTS_WRAPPER({
+                                         return __hsub(lhs, rhs);
+                                       }))
+
 COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(__nv_bfloat162, __nv_bfloat162,
                                        __nv_bfloat162, BinaryOpType::kAdd,
                                        DEVICE, STMTS_WRAPPER({
@@ -82,6 +94,13 @@ COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(
     STMTS_WRAPPER({
       return __float2bfloat16(__bfloat162float(lhs) + __bfloat162float(rhs));
     }))
+
+COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(
+    __nv_bfloat16, __nv_bfloat16, __nv_bfloat16, BinaryOpType::kMinus, DEVICE,
+    STMTS_WRAPPER({
+      return __float2bfloat16(__bfloat162float(lhs) - __bfloat162float(rhs));
+    }))
+
 COLOSSAL_BINARY_FUNCTOR_SPECIALIZATION(
     __nv_bfloat162, __nv_bfloat162, __nv_bfloat162, BinaryOpType::kAdd, DEVICE,
     STMTS_WRAPPER({
