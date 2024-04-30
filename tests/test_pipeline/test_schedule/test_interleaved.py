@@ -103,9 +103,7 @@ def run_pp(
     torch_loss = criterion(torch_output)
     torch_loss.backward()
 
-    pp_ret = schedule.forward_backward_step(
-        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
-    )
+    pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
 
     # check loss
     if stage_manager.is_last_stage(ignore_chunk=True):

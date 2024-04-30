@@ -5,6 +5,7 @@ import torch
 try:
     import triton
     import triton.language as tl
+
     HAS_TRITON = True
 except ImportError:
     HAS_TRITON = False
@@ -16,6 +17,7 @@ if HAS_TRITON:
     https://github.com/ModelTC/lightllm/blob/f093edc20683ac3ea1bca3fb5d8320a0dd36cf7b/lightllm/models/llama/triton_kernel/context_flashattention_nopad.py#L10
     """
     if triton.__version__ < "2.1.0":
+
         @triton.jit
         def _context_flash_attention_kernel(
             Q,
@@ -131,29 +133,47 @@ if HAS_TRITON:
                 m_i = m_i_new
 
             off_o = (
-                (cur_batch_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
+                (cur_batch_start_index + offs_m[:, None]) * stride_obs
+                + cur_head * stride_oh
+                + offs_d[None, :] * stride_od
             )
             out_ptrs = Out + off_o
             tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
             return
+
     else:
         # this function is modified from https://github.com/ModelTC/lightllm/blob/main/lightllm/models/llama/triton_kernel/context_flashattention_nopad.py#L11
         @triton.jit
         def _context_flash_attention_kernel_2(
-            Q, K, V, sm_scale, Alibi, B_Start_Loc, B_Seqlen,
-            Out, 
-            kv_group_num, 
-            stride_qbs, stride_qh, stride_qd,
-            stride_kbs, stride_kh, stride_kd,
-            stride_vbs, stride_vh, stride_vd,
-            stride_obs, stride_oh, stride_od,
-            BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr,
+            Q,
+            K,
+            V,
+            sm_scale,
+            Alibi,
+            B_Start_Loc,
+            B_Seqlen,
+            Out,
+            kv_group_num,
+            stride_qbs,
+            stride_qh,
+            stride_qd,
+            stride_kbs,
+            stride_kh,
+            stride_kd,
+            stride_vbs,
+            stride_vh,
+            stride_vd,
+            stride_obs,
+            stride_oh,
+            stride_od,
+            BLOCK_M: tl.constexpr,
+            BLOCK_DMODEL: tl.constexpr,
             BLOCK_N: tl.constexpr,
         ):
             cur_batch = tl.program_id(0)
             cur_head = tl.program_id(1)
             start_m = tl.program_id(2)
-            
+
             if kv_group_num is not None:
                 cur_kv_head = cur_head // kv_group_num
 
@@ -166,7 +186,11 @@ if HAS_TRITON:
             offs_n = tl.arange(0, BLOCK_N)
             offs_d = tl.arange(0, BLOCK_DMODEL)
             offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-            off_q = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs + cur_head * stride_qh + offs_d[None, :] * stride_qd
+            off_q = (
+                (cur_batch_in_all_start_index + offs_m[:, None]) * stride_qbs
+                + cur_head * stride_qh
+                + offs_d[None, :] * stride_qd
+            )
             if kv_group_num is None or kv_group_num == 1:
                 off_k = offs_n[None, :] * stride_kbs + cur_head * stride_kh + offs_d[:, None] * stride_kd
                 off_v = offs_n[:, None] * stride_vbs + cur_head * stride_vh + offs_d[None, :] * stride_vd
@@ -191,8 +215,11 @@ if HAS_TRITON:
             for start_n in range(0, block_mask * (start_m + 1) * BLOCK_M, BLOCK_N):
                 start_n = tl.multiple_of(start_n, BLOCK_N)
                 # -- compute qk ----
-                k = tl.load(k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs,
-                            mask=(start_n + offs_n[None, :]) < cur_batch_seq_len, other=0.0)
+                k = tl.load(
+                    k_ptrs + (cur_batch_in_all_start_index + start_n) * stride_kbs,
+                    mask=(start_n + offs_n[None, :]) < cur_batch_seq_len,
+                    other=0.0,
+                )
 
                 qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
                 qk += tl.dot(q, k)
@@ -220,8 +247,11 @@ if HAS_TRITON:
                 acc_scale = l_i / l_i_new * alpha
                 acc = acc * acc_scale[:, None]
                 # update acc
-                v = tl.load(v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
-                            mask=(start_n + offs_n[:, None]) < cur_batch_seq_len, other=0.0)
+                v = tl.load(
+                    v_ptrs + (cur_batch_in_all_start_index + start_n) * stride_vbs,
+                    mask=(start_n + offs_n[:, None]) < cur_batch_seq_len,
+                    other=0.0,
+                )
 
                 p = p.to(v.dtype)
                 acc += tl.dot(p, v)
@@ -229,7 +259,11 @@ if HAS_TRITON:
                 l_i = l_i_new
                 m_i = m_i_new
             # initialize pointers to output
-            off_o = (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs + cur_head * stride_oh + offs_d[None, :] * stride_od
+            off_o = (
+                (cur_batch_in_all_start_index + offs_m[:, None]) * stride_obs
+                + cur_head * stride_oh
+                + offs_d[None, :] * stride_od
+            )
             out_ptrs = Out + off_o
             tl.store(out_ptrs, acc, mask=offs_m[:, None] < cur_batch_seq_len)
             return
@@ -249,7 +283,7 @@ if HAS_TRITON:
         grid = (batch, head, triton.cdiv(max_input_len, BLOCK))
 
         num_warps = 4 if Lk <= 64 else 8
-        
+
         if triton.__version__ < "2.1.0":
             tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
             _context_flash_attention_kernel[grid](
@@ -286,20 +320,26 @@ if HAS_TRITON:
             )
         else:
             _context_flash_attention_kernel_2[grid](
-                q, k, v, sm_scale, alibi, b_start_loc, b_seq_len,
+                q,
+                k,
+                v,
+                sm_scale,
+                alibi,
+                b_start_loc,
+                b_seq_len,
                 o,
                 None,
-                q.stride(0), 
-                q.stride(1), 
+                q.stride(0),
+                q.stride(1),
                 q.stride(2),
-                k.stride(0), 
-                k.stride(1), 
+                k.stride(0),
+                k.stride(1),
                 k.stride(2),
-                v.stride(0), 
-                v.stride(1), 
+                v.stride(0),
+                v.stride(1),
                 v.stride(2),
-                o.stride(0), 
-                o.stride(1), 
+                o.stride(0),
+                o.stride(1),
                 o.stride(2),
                 BLOCK_M=BLOCK,
                 BLOCK_DMODEL=Lk,
@@ -307,7 +347,7 @@ if HAS_TRITON:
                 num_warps=num_warps,
                 num_stages=1,
             )
-            
+
         return
 
     @torch.no_grad()
@@ -327,7 +367,7 @@ if HAS_TRITON:
         tmp = torch.empty((batch, head, max_input_len + 256), device=q.device, dtype=torch.float32)
         num_warps = 4 if Lk <= 64 else 8
         # num_warps = 4
-        
+
         if triton.__version__ < "2.1.0":
             _context_flash_attention_kernel[grid](
                 q,
@@ -337,7 +377,7 @@ if HAS_TRITON:
                 b_start_loc,
                 b_seq_len,
                 tmp,
-                None, 
+                None,
                 o,
                 q.stride(0),
                 q.stride(1),
@@ -362,32 +402,33 @@ if HAS_TRITON:
             )
         else:
             kv_group_num = q.shape[1] // k.shape[1]
-            _context_flash_attention_kernel_2[grid](                
-                q, 
-                k, 
-                v, 
-                sm_scale, 
+            _context_flash_attention_kernel_2[grid](
+                q,
+                k,
+                v,
+                sm_scale,
                 None,
-                b_start_loc, 
+                b_start_loc,
                 b_seq_len,
                 o,
                 kv_group_num,
-                q.stride(0), 
-                q.stride(1), 
+                q.stride(0),
+                q.stride(1),
                 q.stride(2),
-                k.stride(0), 
-                k.stride(1), 
+                k.stride(0),
+                k.stride(1),
                 k.stride(2),
-                v.stride(0), 
-                v.stride(1), 
+                v.stride(0),
+                v.stride(1),
                 v.stride(2),
-                o.stride(0), 
-                o.stride(1), 
+                o.stride(0),
+                o.stride(1),
                 o.stride(2),
                 BLOCK_M=BLOCK,
                 BLOCK_DMODEL=Lk,
                 BLOCK_N=BLOCK,
                 num_warps=num_warps,
-                num_stages=1,)
-            
+                num_stages=1,
+            )
+
         return

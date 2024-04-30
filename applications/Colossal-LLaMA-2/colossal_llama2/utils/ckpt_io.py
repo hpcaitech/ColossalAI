@@ -10,8 +10,8 @@ import os
 from typing import Any, Dict, Tuple, Union
 
 import torch
-from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
 
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator

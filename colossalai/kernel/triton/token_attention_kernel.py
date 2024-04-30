@@ -13,10 +13,18 @@ except ImportError:
     print("please install triton from https://github.com/openai/triton")
 
 try:
-    from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import token_att_fwd2 as lightllm_llama_token_att_fwd2
-    from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_llama_token_att_fwd
-    from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import token_softmax_fwd as lightllm_llama_token_softmax_fwd
-    from lightllm.models.bloom.triton_kernel.token_attention_nopad_att1 import token_att_fwd as lightllm_bloom_token_att_fwd
+    from lightllm.models.bloom.triton_kernel.token_attention_nopad_att1 import (
+        token_att_fwd as lightllm_bloom_token_att_fwd,
+    )
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_att1 import (
+        token_att_fwd as lightllm_llama_token_att_fwd,
+    )
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_reduceV import (
+        token_att_fwd2 as lightllm_llama_token_att_fwd2,
+    )
+    from lightllm.models.llama.triton_kernel.token_attention_nopad_softmax import (
+        token_softmax_fwd as lightllm_llama_token_softmax_fwd,
+    )
 
     HAS_TRITON_TOKEN_ATTENTION = True
 except ImportError:
@@ -205,9 +213,7 @@ class Llama2TokenAttentionForwards:
 
         if triton.__version__ == "2.0.0":
             prob = torch.empty_like(att_m_tensor)
-            lightllm_llama_token_softmax_fwd(
-                att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch
-            )
+            lightllm_llama_token_softmax_fwd(att_m_tensor, kv_cache_start_loc, kv_cache_seq_len, prob, max_len_in_batch)
             att_m_tensor = None
 
             lightllm_llama_token_att_fwd2(
