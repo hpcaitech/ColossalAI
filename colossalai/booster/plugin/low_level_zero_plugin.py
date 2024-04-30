@@ -8,6 +8,7 @@ from types import MethodType
 from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
+import torch.distributed
 import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
