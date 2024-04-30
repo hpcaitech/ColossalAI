@@ -3,6 +3,7 @@ import logging
 import os
 import random
 from pathlib import Path
+from types import MethodType
 from typing import Callable, Iterator, List, Optional, Tuple
 
 import numpy as np
@@ -440,6 +441,7 @@ class GeminiPlugin(DPPluginBase):
     def __del__(self):
         """Destroy the process groups in ProcessGroupMesh"""
         self.pg_mesh.destroy_mesh_process_groups()
+        self.remove_hooks()
 
     def support_no_sync(self) -> bool:
         return False
@@ -551,6 +553,7 @@ class GeminiPlugin(DPPluginBase):
                 extra_dp_group=self.extra_dp_group,
                 verbose=self.verbose,
             )
+            self.remove_hooks = MethodType(model.remove_hooks, self)
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = GeminiOptimizer(

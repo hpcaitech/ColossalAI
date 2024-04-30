@@ -74,3 +74,6 @@ class DPPluginBase(Plugin):
             num_workers=num_workers,
             **_kwargs,
         )
+
+    def remove_hooks(self):
+        """to remove registered hooks"""

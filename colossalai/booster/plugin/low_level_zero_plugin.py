@@ -293,6 +293,9 @@ class LowLevelZeroPlugin(DPPluginBase):
         # set class name with stage, for better error message
         setattr(self.__class__, "__name__", f"LowLevelZeroPlugin_ZeRO-{stage}")
 
+    def __del__(self):
+        self.remove_hooks()
+
     def support_no_sync(self) -> bool:
         return self.stage == 1
 
@@ -325,6 +328,7 @@ class LowLevelZeroPlugin(DPPluginBase):
             )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+            self.remove_hooks = MethodType(optimizer.remove_hooks, self)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

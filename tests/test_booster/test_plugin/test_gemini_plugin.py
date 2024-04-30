@@ -145,6 +145,7 @@ def check_gemini_plugin(
             tp_size = 1
 
         err = run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, tp_size)
+        print(f"max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
         if err is None:
             passed_models.append(name)
         else:

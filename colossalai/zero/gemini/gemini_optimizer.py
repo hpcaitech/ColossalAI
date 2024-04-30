@@ -196,6 +196,9 @@ class GeminiOptimizer(OptimizerWrapper):
 
         self._register_states = disposable(self._register_states_)
 
+    def __del__(self):
+        print("Gemini Optimizer __del__")
+
     def _set_grad_ptr(self):
         for group in self.param_groups:
             for fake_param in group["params"]:

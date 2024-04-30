@@ -178,7 +178,7 @@ class GeminiDDP(ModelWrapper):
             if is_ddp_ignored(p):
                 continue
             if p.requires_grad:
-                p.register_hook(partial(self.grad_handle, p))
+                p.removable_handle = p.register_hook(partial(self.grad_handle, p))
 
     def parameters(self, recurse: bool = True):
         return self.module.parameters(recurse)
@@ -196,6 +196,23 @@ class GeminiDDP(ModelWrapper):
         self, memo: Optional[Set[torch.nn.Module]] = None, prefix: str = "", remove_duplicate: bool = True
     ):
         return self.module.named_modules(memo, prefix, remove_duplicate)
+
+    def __del__(self):
+        print("Gemini DDP __del__")
+
+    def remove_hooks(self, plugin) -> None:
+        """remove the registered hooks
+
+        Args:
+            plugin (GeminiPlugin): the plugin to bound this method.
+        """
+        print("gemini ddp remove hooks")
+        for p in self.module.parameters():
+            if is_ddp_ignored(p):
+                continue
+            if p.requires_grad:
+                assert hasattr(p, "removable_handle")
+                p.removable_handle.remove()
 
     @staticmethod
     def set_params_to_ignore(params_to_ignore: Iterable[torch.Tensor]) -> None:

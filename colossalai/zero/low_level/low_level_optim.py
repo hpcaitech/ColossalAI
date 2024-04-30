@@ -291,7 +291,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    param.register_post_accumulate_grad_hook(partial(self._grad_handler, group_id))
+                    param.removable_handle = param.register_post_accumulate_grad_hook(
+                        partial(self._grad_handler, group_id)
+                    )
 
     #######################
     # Reduction Functions #
@@ -950,6 +952,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if hasattr(self, "master_moe_params"):
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
                 master_moe_param.copy_(working_moe_param)
+
+    def remove_hooks(self, plugin) -> None:
+        """remove the registered hooks
+
+        Args:
+            plugin (LowLevelZeroPlugin): the plugin to bound this method.
+        """
+        for group_id in range(self.num_param_groups):
+            param_group = self._working_param_groups[group_id]
+            for param in param_group:
+                if param.requires_grad:
+                    assert hasattr(param, "removable_handle")
+                    param.removable_handle.remove()
 
     def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
         return self._param_store.working_to_master_param
