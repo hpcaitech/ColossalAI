@@ -362,7 +362,6 @@ def exam_dist_came_lowlevelzeroplugin(dtype: torch.dtype, tp_zero_size: tuple[in
     dist_optim.zero_grad()
 
     for p, tp_p in zip(base_param_group, tp_param_group):
-        print(f"p {p.shape} {p}\n tp_p {tp_p.shape} {tp_p}\n")
         correctness_verify(p, tp_p, dtype)
     Randomizer.reset_index()
     torch.cuda.empty_cache()
@@ -569,10 +568,10 @@ def run_dist(rank, world_size, port):
     disable_existing_loggers()
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    # exam_bert_test_on_lowlevelzero_plugin() # err in TODO layer
-    # exam_bert_test_on_hybrid_plugin() # pass
+    exam_bert_test_on_lowlevelzero_plugin() # err in TODO layer
+    exam_bert_test_on_hybrid_plugin() # pass
     exam_dist_came_lowlevelzeroplugin() # pass
-    # exam_dist_came_base() # pass
+    exam_dist_came_base() # pass
 
 
 
