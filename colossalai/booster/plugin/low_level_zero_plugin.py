@@ -325,7 +325,7 @@ class LowLevelZeroPlugin(DPPluginBase):
             model = LowLevelZeroModel(model, self.precision)
 
         # TODO: Support Galore + ZeRO
-        zero_stage = self.zero_stage
+        zero_stage = self.stage
         zero_optim_kwargs = deepcopy(self.zero_optim_kwargs)
         if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and self.dp_size > 0:
             warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
@@ -343,12 +343,13 @@ class LowLevelZeroPlugin(DPPluginBase):
             is_zero = self.dp_size > 1 and zero_stage > 0
             states_sharded = self.tp_size > 1 or is_zero
             if isinstance(optim, DistributedOptim):
+                shard_to_param = optimizer.get_master_to_working_map()
                 if isinstance(optim, DistGaloreAwamW8bit):
                     padding_map = optimizer.get_param_padding_map()
-                    optim.setup_distributed(tp_group, dp_group, shard_to_param, padding_map, is_zero)
+                    optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
                 else:
-                    optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
-            elif states_sharded and isinstance(optim, [Lamb, CAME]):
+                    optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, is_zero)
+            elif states_sharded and isinstance(optim, (Lamb, CAME)):
                 warnings.warn(
                     "Using Tensor Parallel/ZeRO leads to wrong optimizer updates due to sharded states.\
                     Please use the distributed version of your optimizer, e.g. DistributedLamb/DistributedCAME"

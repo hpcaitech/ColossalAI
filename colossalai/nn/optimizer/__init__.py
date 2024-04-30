@@ -1,6 +1,5 @@
 from galore_torch import GaLoreAdafactor, GaLoreAdamW
 
-from .adafactor import Adafactor
 from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
@@ -14,6 +13,8 @@ from .galore import GaLoreAdamW8bit
 from .hybrid_adam import HybridAdam
 from .lamb import Lamb
 from .lars import Lars
+
+from .adafactor import Adafactor  # noqa
 
 __all__ = [
     "FusedLAMB",

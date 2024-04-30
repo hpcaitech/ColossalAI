@@ -1191,7 +1191,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
                 else:
                     optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, is_zero)
-            elif states_sharded and isinstance(optim, [Lamb, CAME]):
+            elif states_sharded and isinstance(optim, (Lamb, CAME)):
                 warnings.warn(
                     "Using Tensor Parallel/ZeRO leads wrong optimizer updates due to sharded states.\
                     Please use the distributed version of your optimizer, e.g. DistributedLamb/DistributedCAME"
