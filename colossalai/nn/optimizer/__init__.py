@@ -1,4 +1,6 @@
 from galore_torch import GaLoreAdafactor, GaLoreAdamW
+
+from .adafactor import Adafactor
 from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
