@@ -381,7 +381,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 shard_config=self.shard_config,
                 dp_group=self.global_dp_group,
                 tp_group=self.tp_group,
-                sp_group=self.sp_group,  # TODO: add ep group. Modify shard_config to assign pg in policy
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
