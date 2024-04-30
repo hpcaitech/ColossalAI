@@ -1,6 +1,5 @@
 from typing import Dict
 
-
 import torch
 import torch.distributed as dist
 
@@ -45,7 +44,7 @@ class DistributedCAME(DistributedOptim):
             betas=betas,
             weight_decay=weight_decay,
         )
-        
+
         self.tensor_parallel_size = 1
         self.tensor_parallel_group = None
         self.data_parallel_size = 1
@@ -58,7 +57,7 @@ class DistributedCAME(DistributedOptim):
         self.factored_dict = {}  # {id(p): True/False}
         self.use_first_moment_dict = {}  # {id(p): True/False}
         self.shard_spec_dict = {}  # {id(p): ShardSpec}
-        
+
         super(DistributedCAME, self).__init__(params, defaults)
 
     @property
@@ -104,20 +103,16 @@ class DistributedCAME(DistributedOptim):
                 # Avoid row parallel lead H=1, then factored param is determined as not factored;
                 if self.param_is_dtensor_dict[id(p)]:
                     self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
-                    if self.shard_spec_dict[id(p)].sharding_sequence[0] == 'R':
+                    if self.shard_spec_dict[id(p)].sharding_sequence[0] == "R":
                         self.factored_dict[id(p)] = True
-                    elif self.shard_spec_dict[id(p)].sharding_sequence[-1] == 'R':
+                    elif self.shard_spec_dict[id(p)].sharding_sequence[-1] == "R":
                         self.factored_dict[id(p)] = True
                     else:
-                        self.factored_dict[id(p)] = self._get_options(
-                            self.grad_shape_dict[id(p)]
-                            )
-                    
+                        self.factored_dict[id(p)] = self._get_options(self.grad_shape_dict[id(p)])
+
                 else:
                     self.shard_spec_dict[id(p)] = None
-                    self.factored_dict[id(p)] = self._get_options(
-                        self.grad_shape_dict[id(p)]
-                        )
+                    self.factored_dict[id(p)] = self._get_options(self.grad_shape_dict[id(p)])
 
     @staticmethod
     def _get_options(param_shape):
@@ -128,7 +123,7 @@ class DistributedCAME(DistributedOptim):
     def _rms(tensor, param_is_dtensor, use_zero, tp_size, dp_size, tp_group, dp_group):
         tensor_sum = tensor.pow(2).sum()
         num_of_element = tensor.numel()
-        
+
         if param_is_dtensor:
             # reduce tensor_sum  from tp_group
             dist.all_reduce(tensor_sum, group=tp_group)
@@ -231,7 +226,7 @@ class DistributedCAME(DistributedOptim):
         if self.use_zero:
             # only zero
             #  [30522, 128], [2, 128]
-            if grad_shape[0] % self.data_parallel_size != 0:    
+            if grad_shape[0] % self.data_parallel_size != 0:
                 # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
                 # row mean no change
                 # col mean need reduce and div
@@ -279,8 +274,8 @@ class DistributedCAME(DistributedOptim):
             update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update.mul_(grad)
         return update
-    
-    # factor 
+
+    # factor
     def _base_res_factor(self, res, exp_avg, state_row, state_col, grad_shape, beta2t):
         if self.use_zero:
             # only zero
@@ -333,7 +328,6 @@ class DistributedCAME(DistributedOptim):
             res.mul_(exp_avg)
         return res
 
-
     @torch.no_grad()
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -349,7 +343,7 @@ class DistributedCAME(DistributedOptim):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-                grad = p.grad 
+                grad = p.grad
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
@@ -362,7 +356,7 @@ class DistributedCAME(DistributedOptim):
                     grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
                 factored = self.factored_dict[id(p)]
                 shard_spec = self.shard_spec_dict[id(p)]
-                
+
                 # State Initialization
                 if len(state) == 0:
                     state["step"] = 0
@@ -408,7 +402,6 @@ class DistributedCAME(DistributedOptim):
                                         grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp/tp]
 
-
                                 state["exp_avg_sq_col"] = torch.zeros(
                                     grad_shape[1], device=p.device, dtype=p.dtype
                                 )  # [W]
@@ -453,7 +446,7 @@ class DistributedCAME(DistributedOptim):
                         state["exp_avg_sq"] = state["exp_avg_sq"]
 
                 state["step"] += 1
-                
+
                 update = (grad**2) + group["eps"][0]
                 if factored:
                     if param_is_dtensor:
@@ -462,15 +455,36 @@ class DistributedCAME(DistributedOptim):
                         # Coloum Parallel ---> sq_row need Do (col) Reduce
                         # ==============================
                         if shard_spec.sharding_sequence[0] == "R":
-                            update = self._col_parallel_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
+                            update = self._col_parallel_factor(
+                                update,
+                                grad,
+                                state["exp_avg_sq_row"],
+                                state["exp_avg_sq_col"],
+                                grad_shape,
+                                group["betas"][1],
+                            )
                         # ==============================
                         # Last Dim is R, First Dim is S{} means split dim 0  --->
                         # Row Parallel ---> sq_col need Do (row) Reduce
                         # ==============================
                         elif shard_spec.sharding_sequence[-1] == "R":
-                            update = self._row_parallel_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
+                            update = self._row_parallel_factor(
+                                update,
+                                grad,
+                                state["exp_avg_sq_row"],
+                                state["exp_avg_sq_col"],
+                                grad_shape,
+                                group["betas"][1],
+                            )
                     else:
-                        update = self._base_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
+                        update = self._base_factor(
+                            update,
+                            grad,
+                            state["exp_avg_sq_row"],
+                            state["exp_avg_sq_col"],
+                            grad_shape,
+                            group["betas"][1],
+                        )
                 else:
                     exp_avg_sq = state["exp_avg_sq"]
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=(1.0 - group["betas"][1]))
@@ -484,9 +498,9 @@ class DistributedCAME(DistributedOptim):
                     self.tensor_parallel_group,
                     self.data_parallel_group,
                 )
-                
+
                 update.div_((rms / group["clip_threshold"]).clamp_(min=1.0))
-                
+
                 exp_avg = state["exp_avg"]
                 exp_avg.mul_(group["betas"][0]).add_(update, alpha=1 - group["betas"][0])
                 # Confidence-guided strategy
@@ -499,15 +513,36 @@ class DistributedCAME(DistributedOptim):
                         # Coloum Parallel ---> sq_row need Do (col) Reduce
                         # ==============================
                         if shard_spec.sharding_sequence[0] == "R":
-                            update = self._col_parallel_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
+                            update = self._col_parallel_factor(
+                                res,
+                                exp_avg,
+                                state["exp_avg_res_row"],
+                                state["exp_avg_res_col"],
+                                grad_shape,
+                                group["betas"][2],
+                            )
                         # ==============================
                         # Last Dim is R, First Dim is S{} means split dim 0  --->
                         # Row Parallel ---> sq_col need Do (row) Reduce
                         # ==============================
                         elif shard_spec.sharding_sequence[-1] == "R":
-                            update = self._row_parallel_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
+                            update = self._row_parallel_factor(
+                                res,
+                                exp_avg,
+                                state["exp_avg_res_row"],
+                                state["exp_avg_res_col"],
+                                grad_shape,
+                                group["betas"][2],
+                            )
                     else:
-                        update = self._base_res_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
+                        update = self._base_res_factor(
+                            res,
+                            exp_avg,
+                            state["exp_avg_res_row"],
+                            state["exp_avg_res_col"],
+                            grad_shape,
+                            group["betas"][2],
+                        )
                 else:
                     update = exp_avg
 

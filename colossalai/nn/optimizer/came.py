@@ -1,7 +1,6 @@
 # Copied from https://github.com/yangluo7/CAME/blob/master/came_pytorch/CAME.py
 import torch
 import torch.optim
-import torch.distributed as dist
 
 
 class CAME(torch.optim.Optimizer):
@@ -103,9 +102,9 @@ class CAME(torch.optim.Optimizer):
                         state["exp_avg_sq"] = torch.zeros_like(p)
 
                 state["step"] += 1
-                
+
                 update = (grad**2) + group["eps"][0]
-                
+
                 if factored:
                     exp_avg_sq_row = state["exp_avg_sq_row"]
                     exp_avg_sq_col = state["exp_avg_sq_col"]
@@ -139,7 +138,7 @@ class CAME(torch.optim.Optimizer):
 
                     # Approximation of exponential moving average of instability
                     res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col)
-                    update = res_approx.mul_(exp_avg)             
+                    update = res_approx.mul_(exp_avg)
                 else:
                     update = exp_avg.clone()
 
