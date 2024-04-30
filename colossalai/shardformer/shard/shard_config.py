@@ -36,6 +36,7 @@ class ShardConfig:
     enable_sequence_overlap: bool = False
     parallel_output = True
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    ep_group: Optional[ProcessGroup] = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

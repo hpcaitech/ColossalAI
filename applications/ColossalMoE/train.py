@@ -2,7 +2,6 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -13,8 +12,10 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.moe.checkpoint import MoECheckpointIO
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 from colossalai.utils import get_current_device
 
 
@@ -127,13 +128,13 @@ def parse_args():
     parser.add_argument(
         "--comm_overlap",
         action="store_true",
-        help="Use communication overlap for MoE. Recommended to enable for muiti-node training.",
+        help="Use communication overlap for MoE. Recommended to enable for multi-node training.",
     )
     # hierarchical all-to-all
     parser.add_argument(
         "--hierarchical_alltoall",
         action="store_true",
-        help="Use hierarchical all-to-all for MoE. Recommended to enable for muiti-node training.",
+        help="Use hierarchical all-to-all for MoE. Recommended to enable for multi-node training.",
     )
 
     args = parser.parse_args()
@@ -154,11 +155,12 @@ def main():
             pp_size=args.pp_size,
             ep_size=args.ep_size,
             microbatch_size=args.microbatch_size,
+            custom_policy=MixtralForCausalLMPolicy(),
             enable_fused_normalization=args.use_layernorm_kernel,
             enable_jit_fused=args.use_kernel,
             precision=args.precision,
             zero_stage=args.zero_stage,
-            checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
+            checkpoint_io=MoECheckpointIO,
         )
 
     else:
@@ -236,7 +238,6 @@ def main():
                         lambda x, y: x.loss,
                         optimizer,
                         return_loss=True,
-                        return_outputs=True,
                     )
                     # Backward and optimize
                     if is_pp_last_stage:
@@ -258,7 +259,15 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                # save ckeckpoint
+                # Apply load balance
+                # if (
+                #     args.load_balance
+                #     and args.load_balance_interval > 0
+                #     and (step + 1) % args.load_balance_interval == 0
+                # ):
+                #     coordinator.print_on_master(f"Apply load balance")
+                #     apply_load_balance(model, optimizer)
+                # save checkpoint
                 if (step + 1) % args.save_interval == 0:
                     coordinator.print_on_master(f"Saving model checkpoint to {args.output_path}")
                     save_checkpoint(

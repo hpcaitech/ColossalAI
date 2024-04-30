@@ -2,7 +2,6 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
@@ -10,6 +9,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.moe.checkpoint import MoECheckpointIO
 from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 
 
@@ -71,7 +71,7 @@ def main():
             zero_stage=1,
             precision=args.precision,
             custom_policy=MixtralForCausalLMPolicy(),
-            checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
+            checkpoint_io=MoECheckpointIO,
             enable_fused_normalization=args.use_layernorm_kernel,
             enable_jit_fused=args.use_kernel,
         )

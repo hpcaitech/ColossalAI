@@ -6,8 +6,8 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.moe.layers import apply_load_balance
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.shardformer.layer.moe import apply_load_balance
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.test_moe.moe_utils import MoeGradientHandler, MoeModel

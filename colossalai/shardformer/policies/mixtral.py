@@ -51,6 +51,8 @@ class MixtralPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
+        if getattr(self.shard_config, "ep_group", None) is None:
+            raise ValueError("You must pass in ep_group via shard_config for expert parallel!")
 
         # expert parallel
         self.append_or_create_submodule_replacement(
@@ -58,6 +60,7 @@ class MixtralPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="block_sparse_moe",
                     target_module=EPMixtralSparseMoeBlock,
+                    kwargs={"ep_group": self.shard_config.ep_group},
                 )
             ],
             policy=policy,
@@ -108,8 +111,8 @@ class MixtralPolicy(Policy):
             else:
                 module = self.model.model
 
-            layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls
@@ -128,10 +131,10 @@ class MixtralPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.layers), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
         if stage_manager.is_first_stage():
             held_layers.append(module.embed_tokens)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.layers[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.norm)
@@ -167,7 +170,7 @@ class MixtralModelPolicy(MixtralPolicy):
 class MixtralForCausalLMPolicy(MixtralPolicy):
     def module_policy(self):
         policy = super().module_policy()
-
+        # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {

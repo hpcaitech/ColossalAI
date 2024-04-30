@@ -98,8 +98,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # extra dp
         # This group is used to sync moe param, dp_world_size = moe_duplicates * extra_dp_size.
-        # Non moe param will be sync by global dp pg, moe param will be sync by extra dp pg.
-        # Moe param grad is be split as non moe param by global dp pg, and grad will be merged in step.
+        # Non moe param will sync in global dp pg, moe param will be sync by extra dp pg.
+        # Moe param grad is split as non moe param by global dp pg, and grad will be merged in step.
         # And moe working and master param are split by extra dp pg.
         self.moe_extra_dp_pg = moe_extra_dp_process_group
         if self.moe_extra_dp_pg is not None:
@@ -908,7 +908,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
                 if self.moe_extra_dp_pg is not None and is_moe_tensor(p):
-                    master_param.copy_(working_param.chunk(self.extra_dp_pg_size)[self.extra_dp_pg_rank])
+                    master_param.copy_(working_param.chunk(self.moe_extra_dp_pg_size)[self.moe_extra_dp_pg_rank])
                 else:
                     master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
         if hasattr(self, "master_moe_params"):

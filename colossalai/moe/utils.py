@@ -6,10 +6,11 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributed.distributed_c10d import get_process_group_ranks
 
 from colossalai.accelerator import get_accelerator
 from colossalai.moe.manager import MOE_MANAGER
-from colossalai.tensor.moe_tensor.api import get_dp_group, get_dp_group_ranks, get_ep_size, is_moe_tensor
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 
 class ForceFP32Parameter(torch.nn.Parameter):
@@ -145,7 +146,7 @@ def get_moe_epsize_param_dict(model: nn.Module) -> Dict[int, List[nn.Parameter]]
         if not is_moe_tensor(param):
             ep_size = 1  # set ep_size to 1 for dp parameters
         else:
-            ep_size = get_ep_size(param)
+            ep_size = dist.get_world_size(param.ep_group)
         if ep_size not in epsize_param_dict:
             epsize_param_dict[ep_size] = []
         epsize_param_dict[ep_size].append(param)
@@ -170,8 +171,8 @@ def sync_moe_model_param(model: nn.Module):
         # When ep_size = world_size, communication is not needed
         if ep_size != 1 and ep_size != MOE_MANAGER.world_size:
             for param in param_dict[ep_size]:
-                src_rank = get_dp_group_ranks(param)[0]
-                dist.broadcast(param, src=src_rank, group=get_dp_group(param))
+                src_rank = get_process_group_ranks(param.dp_group)[0]
+                dist.broadcast(param, src=src_rank, group=param.dp_group)
 
 
 def set_moe_args(config: Any, args: dict):
