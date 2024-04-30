@@ -1,11 +1,12 @@
-from functools import reduce
+from typing import Dict
+
 
 import torch
 import torch.distributed as dist
-from torch.distributed import ProcessGroup
 
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.tensor.d_tensor import api
+from colossalai.shardformer.layer._operation import _gather, _split
+from colossalai.tensor.d_tensor import get_sharding_spec, is_distributed_tensor
 
 
 class DistributedCAME(DistributedOptim):
@@ -44,21 +45,21 @@ class DistributedCAME(DistributedOptim):
             betas=betas,
             weight_decay=weight_decay,
         )
-        super(DistributedCAME, self).__init__(params, defaults)
+        
+        self.tensor_parallel_size = 1
+        self.tensor_parallel_group = None
+        self.data_parallel_size = 1
+        self.data_parallel_group = None
+        self.shard_to_param = None  # Dict{id:shape}, sample {id(param): torch.tensor}
+        self.use_zero = True
 
-        self.distributed = False
-        self.zero = False
-        self.clip_method = dict()
-        self.ori_shape = dict()
-        self.working_shape = dict()
-        self.gather_before_compute = dict()
-        # record working parameter original shape (Before TP)
-        for group in self.param_groups:
-            for p in group["params"]:
-                if hasattr(p, "shape"):
-                    self.ori_shape[id(p)] = p.shape
-                else:
-                    self.ori_shape[id(p)] = p.size()
+        self.param_is_dtensor_dict = {}  # {id(p): True/False}
+        self.grad_shape_dict = {}  # {id(p): master param shape}
+        self.factored_dict = {}  # {id(p): True/False}
+        self.use_first_moment_dict = {}  # {id(p): True/False}
+        self.shard_spec_dict = {}  # {id(p): ShardSpec}
+        
+        super(DistributedCAME, self).__init__(params, defaults)
 
     @property
     def supports_memory_efficient_fp16(self):
@@ -69,112 +70,269 @@ class DistributedCAME(DistributedOptim):
         return False
 
     def setup_distributed(
-        self, tp_group: ProcessGroup, zero_group: ProcessGroup, master_to_working_map: dict, zero_flag: bool = False
-    ):
-        self.tensor_parallel_group = tp_group
-        self.zero_parallel_group = zero_group
-        # When running setup_distribute(), the parameters now are master parameters (After TP and zero)
-        # But master param != d_tensor, need to record information of working param (After TP before zero)
+        self,
+        tensor_parallel_group: dist.ProcessGroup = None,
+        data_parallel_group: dist.ProcessGroup = None,
+        shard_to_param: Dict = {},
+        use_zero: bool = True,
+    ) -> None:
+        """
+        Inject features to the Optimizer
+
+        Args:
+            tensor_parallel_group: The devices group for tensor parallel;
+            data_parallel_group: The devices group for data parallel;
+            sharding_spec_dict: ShardingSpecs of Each params;
+            param_shape: Paramater Shape of Each params;
+            use_zero: Whether or not to use zero;
+
+        """
+        self.tensor_parallel_group = tensor_parallel_group  # "Expected row process group"
+        self.data_parallel_group = data_parallel_group
+        if self.tensor_parallel_group is not None:
+            self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_group)
+        if self.data_parallel_group is not None:
+            self.data_parallel_size = dist.get_world_size(self.data_parallel_group)
+        self.use_zero = use_zero
+
+        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
+        # grad is None, cause we dont setup now
         for group in self.param_groups:
             for p in group["params"]:
-                # if no zero, working param == master param
-                working_param = master_to_working_map[id(p)] if master_to_working_map else p
-                self.ori_shape[id(p)] = self.ori_shape[id(working_param)]
-                self.working_shape[id(p)] = working_param.size()
-                self.gather_before_compute[id(p)] = False
-                try:
-                    sharding_spec = api.get_sharding_spec(working_param)
-                    self.clip_method[id(p)] = "col" if 0 in sharding_spec.dim_partition_dict.keys() else "row"
+                self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_param.get(id(p)))
+                self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape
+                # Avoid row parallel lead H=1, then factored param is determined as not factored;
+                if self.param_is_dtensor_dict[id(p)]:
+                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
+                    if self.shard_spec_dict[id(p)].sharding_sequence[0] == 'R':
+                        self.factored_dict[id(p)] = True
+                    elif self.shard_spec_dict[id(p)].sharding_sequence[-1] == 'R':
+                        self.factored_dict[id(p)] = True
+                    else:
+                        self.factored_dict[id(p)] = self._get_options(
+                            self.grad_shape_dict[id(p)]
+                            )
+                    
+                else:
+                    self.shard_spec_dict[id(p)] = None
+                    self.factored_dict[id(p)] = self._get_options(
+                        self.grad_shape_dict[id(p)]
+                        )
 
-                except:
-                    self.clip_method[id(p)] = None
-
-        self.zero = True if zero_flag else False
-        self.distributed = True
-
-    def _get_options(self, param_shape):
+    @staticmethod
+    def _get_options(param_shape):
         factored = len(param_shape) >= 2
         return factored
 
-    def _rms(self, tensor, param):
-        if not self.distributed:
-            return tensor.norm(2) / (tensor.numel() ** 0.5)
-        # return tensor.norm(2) / (tensor.numel() ** 0.5)
-        # Calculate the sum of the squares of the tensors on the current device
-        sum_sq = tensor.pow(2).sum()
-
-        # Summing up the sum of squares across all devices
-        dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-
-        # Summarize the total number of elements across all devices
-        # use working param shape to calculate numel instead of high cost allreduce
-        numel = torch.tensor(reduce(lambda x, y: x * y, self.working_shape[id(param)]), device=tensor.device)
-        if self.tensor_parallel_group and not (len(param.size()) == 1 and self.clip_method[id(param)] == "row"):
-            numel *= dist.get_world_size(group=self.tensor_parallel_group)
-
-        if self.zero and not self.gather_before_compute[id(param)]:
-            dist.all_reduce(sum_sq, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-
-        # RMS
-        rms = (sum_sq / numel).sqrt()
+    @staticmethod
+    def _rms(tensor, param_is_dtensor, use_zero, tp_size, dp_size, tp_group, dp_group):
+        tensor_sum = tensor.pow(2).sum()
+        num_of_element = tensor.numel()
+        
+        if param_is_dtensor:
+            # reduce tensor_sum  from tp_group
+            dist.all_reduce(tensor_sum, group=tp_group)
+            num_of_element = num_of_element * tp_size
+        if use_zero:
+            dist.all_reduce(tensor_sum, group=dp_group)
+            num_of_element = num_of_element * dp_size
+        rms = (tensor_sum / num_of_element).sqrt()
         return rms
 
-    def _approx_sq_grad(self, exp_avg_sq_row, exp_avg_sq_col, param):
-        exp_avg_sq_row_mean = exp_avg_sq_row.mean(dim=-1, keepdim=True)
-        if self.distributed:
-            clip_method = self.clip_method[id(param)]
-            if clip_method == "col":
-                dist.all_reduce(exp_avg_sq_row_mean, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-                exp_avg_sq_row_mean /= dist.get_world_size(group=self.tensor_parallel_group)
-            if self.zero and not self.gather_before_compute[id(param)]:
-                dist.all_reduce(exp_avg_sq_row_mean, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-                exp_avg_sq_row_mean /= dist.get_world_size(group=self.zero_parallel_group)
-        r_factor = (exp_avg_sq_row / exp_avg_sq_row_mean).rsqrt_().unsqueeze(-1)
+    @staticmethod
+    def _approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col):
+        r_factor = (exp_avg_sq_row / exp_avg_sq_row.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
         c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
-
         return torch.mul(r_factor, c_factor)
 
-    def _unflatten_grad_tensor_by_param(self, param):
-        """
-        If the master param is flattened by zero (different shape with its working param)
-        This function will unflatten the grad tensor to the shape of the working param
+    # approx_sq_grad for row parallel weight
+    @staticmethod
+    def _approx_sq_grad_row_parallel(exp_avg_sq_row, exp_avg_sq_col, sq_row_meam):
+        r_factor = (exp_avg_sq_row / sq_row_meam).rsqrt_().unsqueeze(-1)
+        c_factor = exp_avg_sq_col.unsqueeze(-2).rsqrt()
+        return torch.mul(r_factor, c_factor)
 
-        For example, the working param has shape [4, 4] and the master param has shape [8],
-        Then the grad of the master param should be unflattened to [2, 4]
+    def _col_parallel_factor(self, update, grad, state_row, state_col, grad_shape, beta2t):
+        if grad_shape[0] % self.data_parallel_size != 0:
+            # gather update[flatten] along dp group then reshape to [H, W/tp]
+            update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+            update_reshape = update.view(-1, grad_shape[1])
+            # gather grad[flatten] along dp group then reshape to [H, W/tp]
+            grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+            grad_reshape = grad.view(-1, grad_shape[1])
+            exp_avg_sq_row = state_row  # [H]
+            exp_avg_sq_col = state_col  # [W/tp]
+            exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+            exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+            update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            update_reshape.mul_(grad_reshape)
+        else:
+            update_reshape = update.view(-1, grad_shape[1])
+            grad_reshape = grad.view(-1, grad_shape[1])
+            exp_avg_sq_row = state_row  # [H]
+            exp_avg_sq_col = state_col  # [W/tp]
+            exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+            exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+            dist.all_reduce(exp_avg_sq_row, group=self.tensor_parallel_group)
+            exp_avg_sq_row.div_(self.tensor_parallel_size)
+            update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            update_reshape.mul_(grad_reshape)
 
-        If the the working param has shape [3, 4] and the master param has shape [6],
-        The grad of master param can not have shape [1.5, 4], So in this situation the grad is gathered of shape [3, 4] before compute.
-        """
-        ori_shape = self.working_shape[id(param)]
-        # return param.grad.data.reshape(*working_shape)
-        if not (len(ori_shape) >= 2 and len(param.size()) == 1):
-            return param.grad.data
-        remaining_dims = ori_shape[1:]
-        if param.size()[0] % torch.prod(torch.tensor(remaining_dims)) != 0:
-            self.gather_before_compute[id(param)] = True
-            gathered_grad = [
-                torch.zeros_like(param) for _ in range(dist.get_world_size(group=self.zero_parallel_group))
-            ]
-            dist.all_gather(gathered_grad, param.grad.data, group=self.zero_parallel_group)
-            gathered_grad = torch.cat(gathered_grad, dim=-1).reshape(*ori_shape)
-            assert gathered_grad.shape == ori_shape
-            return gathered_grad
-        return param.grad.data.reshape(-1, *remaining_dims)
+        if self.use_zero:
+            update = update_reshape.view(-1)
+        else:
+            update = update_reshape
+        return update
 
-    def _flatten_update_tensor_by_param(self, param, tensor):
-        """
-        If the grad of master param is unflattened, the update has the same shape as the grad, different shape with the master param
-        This function will flatten the update tensor to the shape of the master param
-        """
-        # return tensor.reshape(*working_shape)
-        ori_shape = self.working_shape[id(param)]
-        if not (len(ori_shape) >= 2 and len(param.size()) == 1):
-            return tensor
-        if self.gather_before_compute[id(param)]:
-            rank = dist.get_rank(group=self.zero_parallel_group)
-            length = param.size()[0]
-            return torch.flatten(tensor)[rank * length : (rank + 1) * length]
-        return torch.flatten(tensor)
+    def _row_parallel_factor(self, update, grad, state_row, state_col, grad_shape, beta2t):
+        if grad_shape[0] % self.data_parallel_size != 0:
+            # gather update[flatten] along dp group then reshape to [H/tp, W]
+            update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+            # view update to origin[tp] shape
+            update_reshape = update.view(-1, grad_shape[1])
+            # gather grad[flatten] along dp group then reshape to [H/tp, W]
+            grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+            grad_reshape = grad.view(-1, grad_shape[1])
+            exp_avg_sq_row = state_row  # [H]
+            exp_avg_sq_col = state_col  # [W/tp]
+            exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+            exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+            # reduce col
+            dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+            exp_avg_sq_col.div_(self.tensor_parallel_size)
+            update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            update_reshape.mul_(grad_reshape)
+            if self.use_zero:
+                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+            else:
+                update = update_reshape
+        else:
+            update_reshape = update.view(-1, grad_shape[1])
+            grad_reshape = grad.view(-1, grad_shape[1])
+            exp_avg_sq_row = state_row  # [H]
+            exp_avg_sq_col = state_col  # [W/tp]
+            exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+            exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+            # reduce col
+            dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+            exp_avg_sq_col.div_(self.tensor_parallel_size)
+            # gather row
+            exp_avg_sq_row_gather = _gather(input_=exp_avg_sq_row, dim=-1, process_group=self.tensor_parallel_group)
+            sq_row_meam = exp_avg_sq_row_gather.mean(dim=-1, keepdim=True)
+            update_reshape = self._approx_sq_grad_row_parallel(exp_avg_sq_row, exp_avg_sq_col, sq_row_meam)
+            update_reshape.mul_(grad_reshape)
+            if self.use_zero:
+                update = update_reshape.view(-1)
+            else:
+                update = update_reshape
+        return update
+
+    def _base_factor(self, update, grad, state_row, state_col, grad_shape, beta2t):
+        if self.use_zero:
+            # only zero
+            #  [30522, 128], [2, 128]
+            if grad_shape[0] % self.data_parallel_size != 0:    
+                # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
+                # row mean no change
+                # col mean need reduce and div
+                # gather update[flatten] along dp group then reshape to [H, W]
+                update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+                # view update to origin[tp] shape
+                update_reshape = update.view(-1, grad_shape[1])
+                # gather grad[flatten] along dp group then reshape to [H, W]
+                grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+                grad_reshape = grad.view(-1, grad_shape[1])
+                exp_avg_sq_row = state_row  # [H/dp]
+                exp_avg_sq_col = state_col  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                update_reshape.mul_(grad_reshape)
+                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+            else:
+                # no residual row
+                # view update to origin[tp] shape
+                update_reshape = update.view(-1, grad_shape[1])  # [H/dp, W]
+                grad_reshape = grad.view(-1, grad_shape[1])  # [H/dp, W]
+                exp_avg_sq_row = state_row  # [H/dp]
+                exp_avg_sq_col = state_col  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                update_reshape.mul_(grad_reshape)
+                update = update_reshape.view(-1)
+        else:
+            # # base factor; no tp, no dp
+            exp_avg_sq_row = state_row  # [H/dp]
+            exp_avg_sq_col = state_col  # [W]
+            # Exponential average of row indexes
+            exp_avg_sq_row.mul_(beta2t).add_(update.mean(dim=-1), alpha=(1.0 - beta2t))
+            # Exponential average of columns indexes
+            exp_avg_sq_col.mul_(beta2t).add_(update.mean(dim=-2), alpha=(1.0 - beta2t))
+            # Approximation of exponential moving average of square of gradient
+            update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            update.mul_(grad)
+        return update
+    
+    # factor 
+    def _base_res_factor(self, res, exp_avg, state_row, state_col, grad_shape, beta2t):
+        if self.use_zero:
+            # only zero
+            if grad_shape[0] % self.data_parallel_size != 0:
+                # view res to origin shape res.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
+                # row mean no change
+                # col mean need reduce and div
+                # gather res[flatten] along dp group then reshape to [H, W]
+                res = _gather(input_=res, dim=-1, process_group=self.data_parallel_group)
+                # view res to origin[tp] shape
+                res_reshape = res.view(-1, grad_shape[1])
+                # gather exp_avg[flatten] along dp group then reshape to [H, W]
+                exp_avg = _gather(input_=exp_avg, dim=-1, process_group=self.data_parallel_group)
+                exp_avg_reshape = exp_avg.view(-1, grad_shape[1])
+                exp_avg_sq_row = state_row  # [H/dp]
+                exp_avg_sq_col = state_col  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(res_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(res_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                res_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                res_reshape.mul_(exp_avg_reshape)
+                res = _split(input_=res_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+            else:
+                # no residual row
+                # view res to origin[tp] shape
+                res_reshape = res.view(-1, grad_shape[1])  # [H/dp, W]
+                exp_avg_reshape = exp_avg.view(-1, grad_shape[1])  # [H/dp, W]
+                exp_avg_sq_row = state_row  # [H/dp]
+                exp_avg_sq_col = state_col  # [W]
+                exp_avg_sq_row.mul_(beta2t).add_(res_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
+                exp_avg_sq_col.mul_(beta2t).add_(res_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
+                # reduce col
+                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
+                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                res_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+                res_reshape.mul_(exp_avg_reshape)
+                res = res_reshape.view(-1)
+        else:
+            # # base factor; no tp, no dp
+            exp_avg_sq_row = state_row  # [H/dp]
+            exp_avg_sq_col = state_col  # [W]
+            # Exponential average of row indexes
+            exp_avg_sq_row.mul_(beta2t).add_(res.mean(dim=-1), alpha=(1.0 - beta2t))
+            # Exponential average of columns indexes
+            exp_avg_sq_col.mul_(beta2t).add_(res.mean(dim=-2), alpha=(1.0 - beta2t))
+            # Approximation of exponential moving average of square of gradient
+            res = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
+            res.mul_(exp_avg)
+        return res
+
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -191,107 +349,167 @@ class DistributedCAME(DistributedOptim):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-                grad = self._unflatten_grad_tensor_by_param(p) if self.zero else p.grad.data
+                grad = p.grad 
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
                 state = self.state[p]
                 # Under zero the grad_shape is the original grad that is flattened and then cut (only one dimension)
                 grad_shape = grad.shape
-
-                factored = self._get_options(grad_shape)
+                grad_shape = self.grad_shape_dict[id(p)]
+                param_is_dtensor = self.param_is_dtensor_dict[id(p)]
+                if param_is_dtensor:
+                    grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
+                factored = self.factored_dict[id(p)]
+                shard_spec = self.shard_spec_dict[id(p)]
+                
                 # State Initialization
                 if len(state) == 0:
                     state["step"] = 0
-
-                    state["exp_avg"] = torch.zeros_like(grad)
+                    state["exp_avg"] = torch.zeros_like(p)
                     if factored:
-                        state["exp_avg_sq_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
-                        state["exp_avg_sq_col"] = torch.zeros(
-                            grad_shape[:-2] + grad_shape[-1:], dtype=p.dtype, device=p.device
-                        )
+                        if param_is_dtensor:
+                            if shard_spec.sharding_sequence[0] == "R":  # Col Parallel
+                                if grad_shape[0] % self.data_parallel_size != 0:
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0], device=p.device, dtype=p.dtype
+                                    )  # [H]
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0], device=p.device, dtype=p.dtype
+                                    )  # [H]
+                                else:
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                    )  # [H/dp]
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                    )  # [H/dp]
+                                state["exp_avg_sq_col"] = torch.zeros(
+                                    grad_shape[1], device=p.device, dtype=p.dtype
+                                )  # [W/TP]
+                                state["exp_avg_res_col"] = torch.zeros(
+                                    grad_shape[1], device=p.device, dtype=p.dtype
+                                )  # [W/TP]
 
-                        state["exp_avg_res_row"] = torch.zeros(grad_shape[:-1], dtype=p.dtype, device=p.device)
-                        state["exp_avg_res_col"] = torch.zeros(
-                            grad_shape[:-2] + grad_shape[-1:], dtype=p.dtype, device=p.device
-                        )
+                            if shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
+                                # Row indivisible shape situation
+                                if grad_shape[0] % self.data_parallel_size != 0:
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0], device=p.device, dtype=p.dtype
+                                    )  # [H/tp]
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0], device=p.device, dtype=p.dtype
+                                    )  # [H/tp]
+                                else:
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                    )  # [H/dp/tp]
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                    )  # [H/dp/tp]
+
+
+                                state["exp_avg_sq_col"] = torch.zeros(
+                                    grad_shape[1], device=p.device, dtype=p.dtype
+                                )  # [W]
+                                state["exp_avg_res_col"] = torch.zeros(
+                                    grad_shape[1], device=p.device, dtype=p.dtype
+                                )  # [W]
+                        else:
+                            if self.use_zero:
+                                if grad_shape[0] % self.data_parallel_size != 0:
+                                    # save all exp_avg_sq_row [H]
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0], device=grad.device, dtype=p.dtype
+                                    )
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0], device=grad.device, dtype=p.dtype
+                                    )
+                                else:
+                                    # exp_avg_sq_row [H // dp]
+                                    state["exp_avg_sq_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype
+                                    )
+                                    state["exp_avg_res_row"] = torch.zeros(
+                                        grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype
+                                    )
+                            else:
+                                # exp_avg_sq_row [H]
+                                state["exp_avg_sq_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
+                                state["exp_avg_res_row"] = torch.zeros(grad_shape[0], device=grad.device, dtype=p.dtype)
+                            # exp_avg_sq_col alaways [W]
+                            state["exp_avg_sq_col"] = torch.zeros(grad_shape[1], device=grad.device, dtype=p.dtype)
+                            state["exp_avg_res_col"] = torch.zeros(grad_shape[1], device=grad.device, dtype=p.dtype)
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
+                    state["RMS"] = 0
+                else:
+                    if factored:
+                        state["exp_avg_sq_row"] = state["exp_avg_sq_row"]
+                        state["exp_avg_sq_col"] = state["exp_avg_sq_col"]
+                        state["exp_avg_res_row"] = state["exp_avg_sq_row"]
+                        state["exp_avg_res_col"] = state["exp_avg_sq_col"]
+                    else:
+                        state["exp_avg_sq"] = state["exp_avg_sq"]
 
                 state["step"] += 1
-
+                
                 update = (grad**2) + group["eps"][0]
                 if factored:
-                    exp_avg_sq_row = state["exp_avg_sq_row"]
-                    exp_avg_sq_col = state["exp_avg_sq_col"]
-
-                    # Local mean
-                    sq_mean_row = update.mean(dim=-1)
-                    sq_mean_col = update.mean(dim=-2)
-                    if self.distributed:
-                        if self.clip_method[id(p)] == "row":
-                            dist.all_reduce(sq_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-                            sq_mean_row /= dist.get_world_size(group=self.tensor_parallel_group)
-                        elif self.clip_method[id(p)] == "col":
-                            dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-                            sq_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
-
-                        if self.zero and not self.gather_before_compute[id(p)]:
-                            dist.all_reduce(sq_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-                            sq_mean_col /= dist.get_world_size(group=self.zero_parallel_group)
-
-                    # The resulting exp_avg is a split of the full exp_avg
-                    exp_avg_sq_row.mul_(group["betas"][1]).add_(sq_mean_row, alpha=1.0 - group["betas"][1])
-                    exp_avg_sq_col.mul_(group["betas"][1]).add_(sq_mean_col, alpha=1.0 - group["betas"][1])
-
-                    # Approximation of exponential moving average of square of gradient
-                    update = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col, p)
-                    update.mul_(grad)
+                    if param_is_dtensor:
+                        # ==============================
+                        # First Dim is R, Last Dim is S{} means split dim -1  --->
+                        # Coloum Parallel ---> sq_row need Do (col) Reduce
+                        # ==============================
+                        if shard_spec.sharding_sequence[0] == "R":
+                            update = self._col_parallel_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
+                        # ==============================
+                        # Last Dim is R, First Dim is S{} means split dim 0  --->
+                        # Row Parallel ---> sq_col need Do (row) Reduce
+                        # ==============================
+                        elif shard_spec.sharding_sequence[-1] == "R":
+                            update = self._row_parallel_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
+                    else:
+                        update = self._base_factor(update, grad, state["exp_avg_sq_row"], state["exp_avg_sq_col"], grad_shape, group["betas"][1])
                 else:
-                    # bias part
                     exp_avg_sq = state["exp_avg_sq"]
-                    exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
+                    exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=(1.0 - group["betas"][1]))
                     update = exp_avg_sq.rsqrt().mul_(grad)
-
-                update.div_((self._rms(update, p) / group["clip_threshold"]).clamp_(min=1.0))
+                rms = self._rms(
+                    update,
+                    param_is_dtensor,
+                    self.use_zero,
+                    self.tensor_parallel_size,
+                    self.data_parallel_size,
+                    self.tensor_parallel_group,
+                    self.data_parallel_group,
+                )
                 exp_avg = state["exp_avg"]
                 exp_avg.mul_(group["betas"][0]).add_(update, alpha=1 - group["betas"][0])
-
                 # Confidence-guided strategy
                 # Calculation of instability
-                res = (update - exp_avg) ** 2 + group["eps"][0]
+                res = (update - exp_avg) ** 2 + group["eps"][1]
                 if factored:
-                    exp_avg_res_row = state["exp_avg_res_row"]
-                    exp_avg_res_col = state["exp_avg_res_col"]
-
-                    res_mean_row = res.mean(dim=-1)
-                    res_mean_col = res.mean(dim=-2)
-                    if self.distributed:
-                        if self.clip_method[id(p)] == "row":
-                            dist.all_reduce(res_mean_row, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-                            res_mean_row /= dist.get_world_size(group=self.tensor_parallel_group)
-                        elif self.clip_method[id(p)] == "col":
-                            dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.tensor_parallel_group)
-                            res_mean_col /= dist.get_world_size(group=self.tensor_parallel_group)
-
-                        if self.zero and not self.gather_before_compute[id(p)]:
-                            dist.all_reduce(res_mean_col, op=dist.ReduceOp.SUM, group=self.zero_parallel_group)
-                            res_mean_col /= dist.get_world_size(group=self.zero_parallel_group)
-
-                    exp_avg_res_row.mul_(group["betas"][2]).add_(res_mean_row, alpha=1.0 - group["betas"][2])
-                    exp_avg_res_col.mul_(group["betas"][2]).add_(res_mean_col, alpha=1.0 - group["betas"][2])
-
-                    # Approximation of exponential moving average of instability
-                    res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col, p)
-                    update = res_approx.mul_(exp_avg)
+                    if param_is_dtensor:
+                        # ==============================
+                        # First Dim is R, Last Dim is S{} means split dim -1  --->
+                        # Coloum Parallel ---> sq_row need Do (col) Reduce
+                        # ==============================
+                        if shard_spec.sharding_sequence[0] == "R":
+                            update = self._col_parallel_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
+                        # ==============================
+                        # Last Dim is R, First Dim is S{} means split dim 0  --->
+                        # Row Parallel ---> sq_col need Do (row) Reduce
+                        # ==============================
+                        elif shard_spec.sharding_sequence[-1] == "R":
+                            update = self._row_parallel_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
+                    else:
+                        update = self._base_res_factor(res, exp_avg, state["exp_avg_res_row"], state["exp_avg_res_col"], grad_shape, group["betas"][2])
                 else:
                     update = exp_avg
 
                 if group["weight_decay"] != 0:
-                    p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])
+                    p.add_(p, alpha=-group["weight_decay"] * group["lr"])
                 update.mul_(group["lr"])
-                if self.zero:
-                    update = self._flatten_update_tensor_by_param(p, update)
-                p.data.add_(-update)
-
+                p.add_(-update)
         return loss
