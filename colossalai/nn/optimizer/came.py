@@ -75,7 +75,7 @@ class CAME(torch.optim.Optimizer):
             for p in group["params"]:
                 if p.grad is None:
                     continue
-                grad = p.grad.data
+                grad = p.grad
                 if grad.is_sparse:
                     raise RuntimeError("CAME does not support sparse gradients.")
 
@@ -104,6 +104,7 @@ class CAME(torch.optim.Optimizer):
                 state["step"] += 1
 
                 update = (grad**2) + group["eps"][0]
+
                 if factored:
                     exp_avg_sq_row = state["exp_avg_sq_row"]
                     exp_avg_sq_col = state["exp_avg_sq_col"]
@@ -132,7 +133,6 @@ class CAME(torch.optim.Optimizer):
                 if factored:
                     exp_avg_res_row = state["exp_avg_res_row"]
                     exp_avg_res_col = state["exp_avg_res_col"]
-
                     exp_avg_res_row.mul_(group["betas"][2]).add_(res.mean(dim=-1), alpha=1.0 - group["betas"][2])
                     exp_avg_res_col.mul_(group["betas"][2]).add_(res.mean(dim=-2), alpha=1.0 - group["betas"][2])
 
@@ -140,7 +140,7 @@ class CAME(torch.optim.Optimizer):
                     res_approx = self._approx_sq_grad(exp_avg_res_row, exp_avg_res_col)
                     update = res_approx.mul_(exp_avg)
                 else:
-                    update = exp_avg
+                    update = exp_avg.clone()
 
                 if group["weight_decay"] != 0:
                     p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])

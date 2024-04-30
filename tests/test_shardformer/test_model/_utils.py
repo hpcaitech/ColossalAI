@@ -157,7 +157,7 @@ def build_model_from_low_level_zero_plugin(
     sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
-    plugin = LowLevelZeroPlugin(**test_config, max_norm=1.0, initial_scale=2**5)
+    plugin = LowLevelZeroPlugin(**test_config)
     booster = Booster(plugin=plugin)
 
     sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
