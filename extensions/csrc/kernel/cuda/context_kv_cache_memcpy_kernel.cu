@@ -192,12 +192,6 @@ void context_kv_cache_memcpy(
     int max_seq_len_in_batch)
 {
 
-    TORCH_CHECK(key.scalar_type() == at::ScalarType::Float || key.scalar_type() == at::ScalarType::Half || key.scalar_type() == at::ScalarType::BFloat16,
-    "Dtype of key should be float, half or bfloat16!");
-    TORCH_CHECK(key_cache.scalar_type() == at::ScalarType::Byte || key_cache.scalar_type() == key.scalar_type(),
-    "Dtype of query and kvcache should be the same unless dtype of kvcache is fp8!");
-
-
 #define _(T, CacheT)                            \
     apply_context_kv_cache_memcpy<T, CacheT>(   \
         key,                                    \
