@@ -1,11 +1,8 @@
-from typing import Dict
-
 import torch
 import torch.distributed as dist
 
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.shardformer.layer._operation import _gather, _split
-from colossalai.tensor.d_tensor import get_sharding_spec, is_distributed_tensor
 
 
 class DistributedCAME(DistributedOptim):
