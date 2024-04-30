@@ -291,9 +291,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    param.removable_handle = param.register_post_accumulate_grad_hook(
-                        partial(self._grad_handler, group_id)
-                    )
+                    param.grad_handle = param.register_post_accumulate_grad_hook(partial(self._grad_handler, group_id))
 
     #######################
     # Reduction Functions #
@@ -963,8 +961,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    assert hasattr(param, "removable_handle")
-                    param.removable_handle.remove()
+                    assert hasattr(param, "grad_handle")
+                    param.grad_handle.remove()
 
     def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
         return self._param_store.working_to_master_param
