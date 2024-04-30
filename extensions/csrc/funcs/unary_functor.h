@@ -52,13 +52,7 @@ COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(float2, float, UnaryOpType::kSum, DEVICE,
 COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(float4, float, UnaryOpType::kSum, DEVICE,
                                       { return val.x + val.y + val.z + val.w; })
 
-COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(dtype::float4_, float, UnaryOpType::kSum,
-                                      DEVICE, {
-                                        return val.x.x + val.x.y + val.y.x +
-                                               val.y.y;
-                                      })
-
-COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(dtype::float8_, float, UnaryOpType::kSum,
+COLOSSAL_UNARY_FUNCTOR_SPECIALIZATION(dtype::float8, float, UnaryOpType::kSum,
                                       DEVICE, {
                                         return val.x.x + val.x.y + val.y.x +
                                                val.y.y + val.z.x + val.z.y +
