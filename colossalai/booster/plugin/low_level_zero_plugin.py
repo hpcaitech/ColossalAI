@@ -1,7 +1,6 @@
 import logging
 import os
 import warnings
-from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from types import MethodType
@@ -328,9 +327,9 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         # TODO: Support Galore + ZeRO
         zero_stage = self.stage
-        zero_optim_kwargs = deepcopy(self.zero_optim_kwargs)
-        world_size = dist.get_world_size()
-        if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and world_size > 0:
+        zero_optim_kwargs = {**self.zero_optim_kwargs}
+        dp_size = dist.get_world_size()
+        if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and dp_size > 0:
             warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
             zero_optim_kwargs["partition_grad"] = False
             zero_stage = 0
@@ -344,7 +343,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
             # Setup optimizers that require global states
             optim = optimizer.optim
-            is_zero = world_size > 1 and zero_stage > 0
+            is_zero = dp_size > 1 and zero_stage > 0
             dp_group = _get_default_group()  # Use the whole world
             if isinstance(optim, DistributedOptim):
                 shard_to_param = optimizer.get_master_to_working_map()
