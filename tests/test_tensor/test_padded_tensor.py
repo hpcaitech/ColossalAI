@@ -10,7 +10,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 def check_padded_tensor(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     original_tensor = torch.rand(32, 64).to("cuda")
 
     device_mesh = DeviceMesh(torch.Tensor([0, 1, 2, 3]), (2, 2), init_process_group=True)

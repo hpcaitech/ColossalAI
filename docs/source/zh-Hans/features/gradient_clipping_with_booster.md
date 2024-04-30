@@ -61,7 +61,7 @@ from colossalai.nn.lr_scheduler import CosineAnnealingLR
 我们需要初始化分布式环境. 为了快速演示，我们使用`launch_from_torch`. 您可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
-colossalai.launch_from_torch(config=dict())
+colossalai.launch_from_torch()
 logger = get_dist_logger()
 ```
 

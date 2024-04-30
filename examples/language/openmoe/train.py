@@ -207,7 +207,7 @@ def main():
     args = parse_args()
 
     # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
+    colossalai.launch_from_torch(seed=args.seed)
     coordinator = DistCoordinator()
     test_mode = args.model_name == "test"
 

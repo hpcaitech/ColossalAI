@@ -372,3 +372,15 @@ def get_jit_fused_vit_output_forward():
         return hidden_states
 
     return forward
+
+
+def get_jit_fused_vit_intermediate_forward():
+    from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states, bias = self.dense(hidden_states)
+        hidden_states = JitGeLUFunction.apply(hidden_states, bias)
+
+        return hidden_states
+
+    return forward

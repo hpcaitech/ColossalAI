@@ -12,6 +12,7 @@ from ..modeling.bert import (
     BertPipelineForwards,
     bert_sequence_parallel_forward_fn,
     get_bert_flash_attention_forward,
+    get_jit_fused_bert_intermediate_forward,
     get_jit_fused_bert_output_forward,
     get_jit_fused_bert_self_output_forward,
 )
@@ -38,11 +39,13 @@ class BertPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.enable_bias_gelu_fused = self.shard_config.enable_jit_fused and self.model.config.hidden_act == "gelu"
         return self.model
 
     def module_policy(self):
         from transformers.models.bert.modeling_bert import (
             BertEmbeddings,
+            BertIntermediate,
             BertLayer,
             BertModel,
             BertOutput,
@@ -76,6 +79,9 @@ class BertPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[BertLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "attention.self.all_head_size": self.model.config.hidden_size
@@ -131,6 +137,7 @@ class BertPolicy(Policy):
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "skip_bias_add": self.enable_bias_gelu_fused,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -153,6 +160,14 @@ class BertPolicy(Policy):
                     ),
                 ]
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_bert_intermediate_forward(),
+                    },
+                    policy=policy,
+                    target_key=BertIntermediate,
+                )
 
         if sp_mode == "split_gather":
             self.append_or_create_method_replacement(

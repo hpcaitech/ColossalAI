@@ -42,7 +42,7 @@ class LinearSplitModel(nn.Module):
 
 def check_split_handler(rank, world_size, port, split_size, split_dim, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = model_cls(split_size=split_size, split_dim=split_dim).cuda()
 
     if model_cls.__name__ == "ConvSplitModel":

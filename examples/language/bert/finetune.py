@@ -202,7 +202,7 @@ def main():
     # ==============================
     # Launch Distributed Environment
     # ==============================
-    colossalai.launch_from_torch(config={}, seed=42)
+    colossalai.launch_from_torch(seed=42)
     coordinator = DistCoordinator()
 
     lr = LEARNING_RATE * coordinator.world_size

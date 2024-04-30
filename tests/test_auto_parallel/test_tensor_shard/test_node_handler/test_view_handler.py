@@ -41,7 +41,7 @@ class LinearViewModel(nn.Module):
 
 def check_view_handler(rank, tgt_shape, model_cls, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = model_cls(tgt_shape).cuda()
 
     if model_cls.__name__ == "ConvViewModel":

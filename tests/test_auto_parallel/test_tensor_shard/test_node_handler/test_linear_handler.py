@@ -23,7 +23,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_linear_module_handler(rank, world_size, port, bias, input_shape):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.Linear(16, 32, bias=bias)).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)
@@ -171,7 +171,7 @@ class LinearModel(nn.Module):
 
 def check_linear_function_handler(rank, world_size, port, bias, input_shape):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = LinearModel().cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

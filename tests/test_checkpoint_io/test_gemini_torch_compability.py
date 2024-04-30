@@ -163,8 +163,7 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_torch_load_from_gemini()
     exam_gemini_load_from_torch()
 

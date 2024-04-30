@@ -129,3 +129,17 @@ def get_jit_fused_blip2_QFormer_output_forward():
         return hidden_states
 
     return forward
+
+
+def get_jit_fused_blip2_mlp_forward():
+    from transformers.models.blip_2.modeling_blip_2 import Blip2MLP
+
+    from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
+
+    def forward(self: Blip2MLP, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states, bias = self.fc1(hidden_states)
+        hidden_states = JitGeLUFunction.apply(hidden_states, bias)
+        hidden_states = self.fc2(hidden_states)
+        return hidden_states
+
+    return forward

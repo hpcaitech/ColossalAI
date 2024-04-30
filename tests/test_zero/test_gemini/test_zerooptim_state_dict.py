@@ -68,8 +68,7 @@ def exam_zero_optim_state_dict(placement_config, keep_gathered):
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_zero_optim_state_dict()
 
 

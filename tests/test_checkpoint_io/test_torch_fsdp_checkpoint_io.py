@@ -141,7 +141,7 @@ def check_torch_fsdp_ckpt():
 
 def run_dist(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_torch_fsdp_ckpt()
 
 

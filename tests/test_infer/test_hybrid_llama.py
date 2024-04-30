@@ -94,18 +94,18 @@ def run_single_inference_test(tp_size, pp_size, max_output_len, micro_batch_size
 
 
 def check_tp_pp_inference(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_pipeline_inference_test()
 
 
 def check_tp_or_pp_inference(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_tp_inference_test()
     run_pipeline_inference_test()
 
 
 def check_single_inference(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_single_inference_test
 
 

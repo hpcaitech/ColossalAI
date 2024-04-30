@@ -104,7 +104,7 @@ def check_small_pipeline():
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     disable_existing_loggers()
     # check_send_recv_forward()

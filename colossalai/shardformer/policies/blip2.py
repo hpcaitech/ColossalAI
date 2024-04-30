@@ -3,6 +3,7 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.blip2 import (
     forward_fn,
     get_blip2_flash_attention_forward,
+    get_jit_fused_blip2_mlp_forward,
     get_jit_fused_blip2_QFormer_output_forward,
     get_jit_fused_blip2_QFormer_self_output_forward,
 )
@@ -18,12 +19,16 @@ class BlipPolicy(Policy):
 
     def preprocess(self):
         self.tie_weight = self.tie_weight_check()
+        self.enable_bias_gelu_fused = (
+            self.shard_config.enable_jit_fused and self.model.config.vision_config.hidden_act == "gelu"
+        )
         return self.model
 
     def module_policy(self):
         from transformers.models.blip_2.modeling_blip_2 import (
             Blip2Attention,
             Blip2EncoderLayer,
+            Blip2MLP,
             Blip2QFormerLayer,
             Blip2QFormerModel,
             Blip2QFormerOutput,
@@ -47,6 +52,9 @@ class BlipPolicy(Policy):
             norm_cls = col_nn.LayerNorm
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.vision_config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[Blip2EncoderLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attn.num_heads": self.model.config.vision_config.num_attention_heads
@@ -73,6 +81,7 @@ class BlipPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.fc1",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={"skip_bias_add": self.enable_bias_gelu_fused},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc2",
@@ -201,6 +210,14 @@ class BlipPolicy(Policy):
             )
 
             policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_blip2_mlp_forward(),
+                    },
+                    policy=policy,
+                    target_key=Blip2MLP,
+                )
 
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(

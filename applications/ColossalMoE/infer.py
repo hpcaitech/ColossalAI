@@ -57,7 +57,7 @@ def main():
     args = parse_args()
 
     # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
+    colossalai.launch_from_torch(seed=args.seed)
     coordinator = DistCoordinator()
 
     config = MixtralConfig.from_pretrained(args.model_name)
@@ -96,7 +96,11 @@ def main():
     if coordinator.rank == 0:
         text = ["Hello my name is"]
     else:
-        text = ["What's the largest country in the world?", "How many people live in China?", "帮我续写这首诗：离离原上草"]
+        text = [
+            "What's the largest country in the world?",
+            "How many people live in China?",
+            "帮我续写这首诗：离离原上草",
+        ]
     tokenizer.pad_token = tokenizer.unk_token
     inputs = tokenizer(text, return_tensors="pt", padding=True).to(torch.cuda.current_device())
 

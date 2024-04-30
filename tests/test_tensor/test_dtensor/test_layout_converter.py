@@ -20,7 +20,7 @@ mesh_shape = (2, 2)
 
 def check_one_step_transform(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # [[0, 1],
     #  [2, 3]]
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
@@ -82,7 +82,7 @@ def check_one_step_transform(rank, world_size, port):
 
 def check_layout_converting(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     dim_partition_source = {1: [0, 1]}
     dim_partition_target = {0: [0, 1]}
     device_mesh = DeviceMesh(physical_mesh_id, mesh_shape, init_process_group=True)
@@ -141,7 +141,7 @@ def check_layout_converting(rank, world_size, port):
 
 def check_layout_converting_apply(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     dim_partition_source = {1: [0, 1]}
     dim_partition_target = {0: [0, 1]}

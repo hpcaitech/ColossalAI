@@ -107,8 +107,7 @@ def exam_inference(placement_config: dict, model_name: str, model_init_func: Cal
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_inference()
 
 
