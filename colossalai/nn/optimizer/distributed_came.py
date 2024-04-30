@@ -1,5 +1,6 @@
 import torch
 import torch.distributed as dist
+from torch.distributed.distributed_c10d import ProcessGroup
 
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.shardformer.layer._operation import _gather, _split
