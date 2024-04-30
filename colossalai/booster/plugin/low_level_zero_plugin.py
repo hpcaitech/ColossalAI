@@ -325,7 +325,7 @@ class LowLevelZeroPlugin(DPPluginBase):
             model = LowLevelZeroModel(model, self.precision)
 
         # TODO: Support Galore + ZeRO
-        zero_stage = self.zero_stage
+        zero_stage = self.stage
         zero_optim_kwargs = deepcopy(self.zero_optim_kwargs)
         if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and self.dp_size > 0:
             warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
