@@ -8,10 +8,9 @@ import argparse
 
 import numpy as np
 import torch
-from transformers import LlamaTokenizer, LlamaForCausalLM
+from transformers import LlamaForCausalLM, LlamaTokenizer
 
 from colossalai.logging import get_dist_logger
-
 
 logger = get_dist_logger()
 

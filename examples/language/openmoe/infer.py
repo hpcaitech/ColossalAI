@@ -16,17 +16,15 @@ def inference(args):
     tokenizer = T5Tokenizer.from_pretrained("google/umt5-small")
     if args.model == "test":
         config = LlamaConfig.from_pretrained("hpcai-tech/openmoe-base")
-        set_openmoe_args(config,
-                         num_experts=config.num_experts,
-                         moe_layer_interval=config.moe_layer_interval,
-                         enable_kernel=True)
+        set_openmoe_args(
+            config, num_experts=config.num_experts, moe_layer_interval=config.moe_layer_interval, enable_kernel=True
+        )
         model = OpenMoeForCausalLM(config)
     else:
         config = LlamaConfig.from_pretrained(f"hpcai-tech/openmoe-{args.model}")
-        set_openmoe_args(config,
-                         num_experts=config.num_experts,
-                         moe_layer_interval=config.moe_layer_interval,
-                         enable_kernel=False)
+        set_openmoe_args(
+            config, num_experts=config.num_experts, moe_layer_interval=config.moe_layer_interval, enable_kernel=False
+        )
         model = OpenMoeForCausalLM.from_pretrained(f"hpcai-tech/openmoe-{args.model}", config=config)
     model = model.eval().bfloat16()
     model = model.to(torch.cuda.current_device())

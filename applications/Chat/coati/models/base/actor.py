@@ -30,4 +30,3 @@ class Actor(LoRAModule):
         """Returns model output."""
         output = self.model(input_ids, attention_mask=attention_mask, **model_kwargs)
         return output
-    
