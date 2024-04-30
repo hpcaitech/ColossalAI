@@ -19,7 +19,7 @@ layout_converter = LayoutConverter()
 _SHARD_DIM = DimSpec([0])
 
 
-def get_shard_dim(p: torch.Tensor):
+def get_shard_dim_1d(p: torch.Tensor):
     """
     Get the dimension along which the tensor is sharded, for example in 1D Tensor Parallel.
     Args:

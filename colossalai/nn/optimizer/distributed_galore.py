@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from bitsandbytes.optim.optimizer import Optimizer2State
 
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.tensor.d_tensor import get_shard_dim, is_distributed_tensor
+from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 
 from .galore import GaLoreProjector, make_low_rank_buffer
 
@@ -133,7 +133,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
 
                 self.is_dist[id(p)] = is_distributed_tensor(self.shard_to_working_param[id(p)])
                 if is_distributed_tensor(self.shard_to_working_param[id(p)]):
-                    self.shard_dim[id(p)] = get_shard_dim(self.shard_to_working_param[id(p)])
+                    self.shard_dim[id(p)] = get_shard_dim_1d(self.shard_to_working_param[id(p)])
 
     @torch.no_grad()
     def step(self, closure=None):

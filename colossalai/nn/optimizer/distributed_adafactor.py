@@ -62,6 +62,7 @@ class DistributedAdaFactor(DistributedOptim):
         tensor_parallel_group: dist.ProcessGroup = None,
         data_parallel_group: dist.ProcessGroup = None,
         shard_to_param: Dict = {},
+        padding_map=None,
         use_zero: bool = True,
     ) -> None:
         """
@@ -71,7 +72,7 @@ class DistributedAdaFactor(DistributedOptim):
             tensor_parallel_group: The devices group for tensor parallel;
             data_parallel_group: The devices group for data parallel;
             sharding_spec_dict: ShardingSpecs of Each params;
-            param_shape: Paramater Shape of Each params;
+            padding_map (Dict): Empty arg for interface consistency. Should NOT be passed.
             use_zero: Whether or not to use zero;
 
         """

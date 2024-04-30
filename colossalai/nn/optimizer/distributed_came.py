@@ -69,7 +69,12 @@ class DistributedCAME(DistributedOptim):
         return False
 
     def setup_distributed(
-        self, tp_group: ProcessGroup, zero_group: ProcessGroup, master_to_working_map: dict, zero_flag: bool = False
+        self,
+        tp_group: ProcessGroup,
+        zero_group: ProcessGroup,
+        master_to_working_map: dict,
+        padding_map=None,
+        zero_flag: bool = False,
     ):
         self.tensor_parallel_group = tp_group
         self.zero_parallel_group = zero_group

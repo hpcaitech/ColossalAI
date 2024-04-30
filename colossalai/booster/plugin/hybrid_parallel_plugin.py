@@ -1,6 +1,7 @@
 import ctypes
 import random
 import warnings
+from collections import defaultdict
 from contextlib import contextmanager
 from copy import deepcopy
 from functools import partial
@@ -26,7 +27,7 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.nn.optimizer import CAME, DistGaloreAwamW8bit, Lamb
+from colossalai.nn.optimizer import DistGaloreAwamW8bit
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -1180,24 +1181,15 @@ class HybridParallelPlugin(PipelinePluginBase):
                     **zero_config,
                     **self.amp_config,
                 )
+            # inject update_master_params
+            model.update_master_params = MethodType(optimizer.update_master_params, model)
 
             # Setup optimizers that require global states
             optim = optimizer.optim
-            states_sharded = self.tp_size > 1 or (self.dp_size > 1 and zero_stage > 0)
             if isinstance(optim, DistributedOptim):
-                shard_to_param = optimizer.get_master_to_working_map()
-                if isinstance(optim, DistGaloreAwamW8bit):
-                    padding_map = optimizer.get_param_padding_map() if is_zero else None
-                    optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
-                else:
-                    optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, is_zero)
-            elif states_sharded and isinstance(optim, (Lamb, CAME)):
-                warnings.warn(
-                    "Using Tensor Parallel/ZeRO leads wrong optimizer updates due to sharded states.\
-                    Please use the distributed version of your optimizer, e.g. DistributedLamb/DistributedCAME"
-                )
-            # inject update_master_params
-            model.update_master_params = MethodType(optimizer.update_master_params, model)
+                shard_to_param = optimizer.get_master_to_working_map() if is_zero else {}
+                padding_map = optimizer.get_param_padding_map() if is_zero else defaultdict(int)
+                optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

@@ -8,7 +8,7 @@ import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import DistributedLamb, Lamb
-from colossalai.tensor.d_tensor import get_shard_dim, is_distributed_tensor
+from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
@@ -26,7 +26,7 @@ _IN_DIM = 32
 _HID_DIM = 128
 _N_STEP = 3
 _SEED = 1024
-_COORD = None
+coordinator = None
 
 Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
 TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
@@ -41,7 +41,7 @@ def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
         assert not torch.isnan(p).any()
         try:
             if is_distributed_tensor(p):
-                split_dim = get_shard_dim(p)
+                split_dim = get_shard_dim_1d(p)
                 torch_p = torch_p.chunk(tp_size, dim=split_dim)[rank]
 
             assert_close(p.float(), torch_p, rtol=rtol, atol=atol)
@@ -98,7 +98,7 @@ def set_dist_grad(
             force_assign_grad(p, g_dtype)
 
         if is_distributed_tensor(p):
-            split_dim = get_shard_dim(p)
+            split_dim = get_shard_dim_1d(p)
             # Add grads only to the correctly split chunk
             force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
             # assert_close(p.grad, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
@@ -169,7 +169,7 @@ def run_dist_lamb_basic(
         try:
             assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         except Exception as e:
-            _COORD.print_on_master(
+            coordinator.print_on_master(
                 f"step {i + 1}: bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
             )
             raise e
@@ -250,7 +250,7 @@ def run_dist_lamb_fwd_bwd(
     try:
         assert_close(out, out_tp, rtol=rtol, atol=atol)
     except Exception as e:
-        _COORD.print_on_master(
+        coordinator.print_on_master(
             f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
         )
         raise e
@@ -271,7 +271,7 @@ def run_dist_lamb_fwd_bwd(
         assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group)
         check_optim_states(getattr(torch_optim, "optim", torch_optim), getattr(optim, "optim", optim))
     except Exception as e:
-        _COORD.print_on_master(
+        coordinator.print_on_master(
             f"bias_correction: {bias_correction}, p_g_dtype: {p_g_dtype}, tp_zero_size: {tp_zero_size}"
         )
         raise e
@@ -280,14 +280,14 @@ def run_dist_lamb_fwd_bwd(
 def check_dist_lamb(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    global _COORD
-    _COORD = DistCoordinator()
+    global coordinator
+    coordinator = DistCoordinator()
 
     run_dist_lamb_basic()
-    _COORD.print_on_master("Basic tests passed")
+    coordinator.print_on_master("Basic tests passed")
 
     run_dist_lamb_fwd_bwd()
-    _COORD.print_on_master("Forward-backward tests passed")
+    coordinator.print_on_master("Forward-backward tests passed")
 
     run_bert_test(optim_class=Lamb, sharded_optim_class=DistributedLamb)
     print(f"rank {rank} tests passed :)")

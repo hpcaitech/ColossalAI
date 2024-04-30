@@ -67,6 +67,7 @@ class DistributedLamb(DistributedOptim):
         tp_group: Optional[dist.ProcessGroup] = None,
         dp_group: Optional[dist.ProcessGroup] = None,
         shard_to_working_param: Optional[Dict] = {},
+        padding_map: Optional[Dict] = None,
         is_zero: Optional[bool] = False,
     ):
         """Assign process groups for TP and ZeRO 2.
@@ -75,6 +76,7 @@ class DistributedLamb(DistributedOptim):
             dp_group (dist.ProcessGroup): ZeRO 2 process group
             shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match grad shape.
                 This maps from id(view) to model params used in forward & backward.
+            padding_map: Empty arg for interface consistency. Should NOT be passed.
             is_zero (bool): Whether to use ZeRO 2.
         """
         self.tp_group = tp_group

@@ -11,7 +11,7 @@ from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer import DistGaloreAwamW8bit, GaLoreAdamW8bit
 from colossalai.nn.optimizer.galore import get_galore_param_groups
-from colossalai.tensor.d_tensor import get_shard_dim, is_distributed_tensor
+from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
@@ -65,7 +65,7 @@ def assert_grad_close(tp_model, torch_model, tp_group):
     for p, torch_p in zip(tp_model.parameters(), torch_model.parameters()):
         grads = p.grad
         if is_distributed_tensor(p):
-            split_dim = get_shard_dim(p)
+            split_dim = get_shard_dim_1d(p)
             all_grads = [torch.empty_like(grads) for _ in range(tp_size)]
             dist.all_gather(all_grads, grads.contiguous(), group=tp_group)
             all_grads = torch.cat(all_grads, dim=split_dim)
@@ -88,7 +88,7 @@ def assert_distributed_close(tp_model, torch_model, rtol, atol, tp_group):
         assert not torch.isnan(p).any()
         try:
             if is_distributed_tensor(p):
-                split_dim = get_shard_dim(p)
+                split_dim = get_shard_dim_1d(p)
                 torch_p = torch_p.chunk(tp_size, dim=split_dim)[rank]
 
             assert_close(p, torch_p, rtol=rtol, atol=atol)
@@ -130,7 +130,7 @@ def set_dist_grad(
             force_assign_grad(p, g_dtype)
 
         if is_distributed_tensor(p):
-            split_dim = get_shard_dim(p)
+            split_dim = get_shard_dim_1d(p)
             # Add grads only to the correctly split chunk
             force_assign_grad(p, g_dtype, torch_p.grad.chunk(world_size, dim=split_dim)[rank].contiguous())
             # assert_close(p.grad, torch_p.grad.chunk(world_size, dim=split_dim)[rank])
@@ -304,7 +304,7 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
         raise e
 
 
-def check_dist_lamb(rank, world_size, port):
+def check_dist_galore(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     global coordinator
@@ -327,9 +327,9 @@ def check_dist_lamb(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_dist_lamb():
-    spawn(check_dist_lamb, nprocs=4)
+def test_dist_galore():
+    spawn(check_dist_galore, nprocs=4)
 
 
 if __name__ == "__main__":
-    test_dist_lamb()
+    test_dist_galore()
