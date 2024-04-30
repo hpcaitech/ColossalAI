@@ -121,9 +121,7 @@ class InferenceEngine:
                     casuallm = _supported_models[arch](hf_config)
                     if isinstance(casuallm, AutoModelForCausalLM):
                         # NOTE(caidi) It's necessary to add half() here, otherwise baichuan13B will overflow the memory.
-                        model = (
-                            AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half().cuda()
-                        )
+                        model = AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half()
                     else:
                         model = _supported_models[arch](hf_config)
                 else:
