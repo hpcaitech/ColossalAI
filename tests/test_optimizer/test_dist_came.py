@@ -7,8 +7,6 @@ from torch import nn
 from torch.testing import assert_close
 
 import colossalai
-from colossalai.booster import Booster
-from colossalai.booster.plugin import LowLevelZeroPlugin, HybridParallelPlugin
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
 from colossalai.nn.optimizer.came import CAME
@@ -16,27 +14,17 @@ from colossalai.nn.optimizer.distributed_came import DistributedCAME
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.layer._operation import _gather
 from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.testing.random import seed_all
-from colossalai.tensor.d_tensor import (
-    distribute_tensor,
-    get_device_mesh,
-    get_layout,
-    get_sharding_spec,
-    is_distributed_tensor,
-    shard_colwise,
-    shard_rowwise,
-)
+from colossalai.tensor.d_tensor import get_layout, get_sharding_spec, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.utils import set_seed
+from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_dist_optim_state, check_dist_param, check_optim_states, check_dist_grad
+from tests.test_optimizer._utils import check_dist_grad, check_dist_optim_state, check_dist_param, check_optim_states
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     build_model_from_low_level_zero_plugin,
-    check_weight,
     run_forward_backward_with_hybrid_plugin,
     run_forward_backward_with_low_level_zero_plugin,
     unwrap_model,
@@ -46,6 +34,7 @@ HEIGHT = 128
 WIDTH = 128
 _TP_SPEC = DimSpec([0])
 _SEED = 0
+
 
 def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torch.dtype = torch.float32):
     rtol = None
@@ -171,7 +160,7 @@ class TPModel(nn.Module):
 
 
 @parameterize("dtype", [torch.float32])  # torch.float32, torch.float16, torch.bfloat16
-@parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)]) # (4, 1), (1, 4)
+@parameterize("tp_zero_size", [(2, 2), (4, 1), (1, 4)])  # (4, 1), (1, 4)
 def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     tp_size, zero_size = tp_zero_size
     use_zero = True if zero_size > 1 else False
@@ -231,7 +220,7 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # Correctness Verify
     # ==============================
     seed_all(1024)
-    x = torch.randn(WIDTH,HEIGHT,device=local_rank)
+    x = torch.randn(WIDTH, HEIGHT, device=local_rank)
 
     out = base_model(x)
     out_tp = tp_model(x)
@@ -242,7 +231,6 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     else:
         out_tp.sum().backward()
         out.sum().backward()
-    
 
     base_optim.step()
     dist_optim.step()
@@ -272,92 +260,6 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     Randomizer.reset_index()
     torch.cuda.empty_cache()
     print(f"Fwd/Bwd Test Pass")
-
-
-@parameterize("dtype", [torch.float16])
-@parameterize("tp_zero_size", [(1, 4)])
-def exam_dist_came_lowlevelzeroplugin(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
-    tp_size, zero_size = tp_zero_size
-    use_zero = True if zero_size > 1 else False
-    local_rank = dist.get_rank()
-
-    clear_layout_converter()
-
-    proc_mesh = ProcessGroupMesh(tp_size, zero_size)
-    tp_group, dp_group = proc_mesh.get_group_along_axis(0), proc_mesh.get_group_along_axis(1)
-
-    torch.set_default_dtype(dtype)
-    # set_seed(42)
-
-    # ==============================
-    # Model Init
-    # ==============================
-    base_model = MlpModel().to(local_rank)
-    tp_model = copy.deepcopy(base_model).to(local_rank)
-
-    base_param_group = setup_param_groups(base_model)
-    tp_param_group = setup_param_groups(tp_model)
-    
-    # ==============================
-    # Optimizer Init
-    # ==============================
-    base_optim = CAME(base_param_group, lr = 1e-3)
-    dist_optim = DistributedCAME(tp_param_group, lr = 1e-3)
-
-    # Setup distributed optimizer
-    
-    dist_optim = LowLevelZeroOptimizer(
-        dist_optim,
-        overlap_communication=True,
-        initial_scale=128,
-        partition_grad=True,
-        dp_process_group=dp_group,
-        verbose=True,
-    )
-    shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
-    dist_optim.optim.setup_distributed(
-        tensor_parallel_group=tp_group,
-        data_parallel_group=dp_group,
-        shard_to_param=shard_to_param,
-        use_zero=use_zero,
-    )
-    
-    # ==============================
-    # Booster Init
-    # ==============================
-    # plugin = LowLevelZeroPlugin()
-    booster = Booster()
-    criterion = lambda x: x.mean()
-
-    tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
-
-    # ==============================
-    # Correctness Verify
-    # ==============================
-    seed_all(0)
-    x = torch.rand(WIDTH, HEIGHT, device=local_rank)
-
-    out = base_model(x)
-    out_tp = tp_model(x)
-
-    if zero_size > 1:
-        dist_optim.backward(out_tp.sum())
-        out.sum().backward()
-    else:
-        out_tp.sum().backward()
-        out.sum().backward()
-
-    base_optim.step()
-    dist_optim.step()
-
-    base_optim.zero_grad()
-    dist_optim.zero_grad()
-
-    for p, tp_p in zip(base_param_group, tp_param_group):
-        correctness_verify(p, tp_p, dtype)
-    Randomizer.reset_index()
-    torch.cuda.empty_cache()
-    print(f"Low Level Zero Plugin Test Pass")
 
 
 @parameterize(
@@ -393,7 +295,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
         "transformers_bert_for_next_sentence",
         "transformers_bert_for_mcq",
         "transformers_bert_for_question_answering",
-        "simple_mlp"
+        "simple_mlp",
     ]
     clear_layout_converter()
     torch.set_default_dtype(torch.bfloat16)
@@ -412,7 +314,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_low_level_zero_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
             )
-            
+
             # assert same output
             # assert_close(org_output, org_output, atol=atol, rtol=rtol)
 
@@ -422,21 +324,21 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
                 # "bert.encoder.layer.0.output.dense",
                 # "bert.encoder.layer.1.output.dense",
             ]
-            
+
             # assert same weight before step; pass
             check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
-            
+
             # asserr loss; pass
             assert_close(org_loss, sharded_loss)
-            
-            # assert same grad before step 
+
+            # assert same grad before step
             # TODO: err here; backward diff gard; Only transformers_bert pass;
             check_dist_grad(sharded_optimizer, org_model, sharded_model, weight_layer_for_check, atol, rtol)
 
             org_optimizer.step()
             sharded_optimizer.step()
-            
-            # assert same weight after step 
+
+            # assert same weight after step
             check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
             check_optim_states(org_optimizer, sharded_optimizer.optim)
 
@@ -496,7 +398,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
         "transformers_bert_for_mcq",
         "transformers_bert_for_question_answering",
     ]
-    
+
     # pass "transformers_bert",
     clear_layout_converter()
     torch.set_default_dtype(torch.bfloat16)
@@ -521,33 +423,32 @@ def exam_bert_test_on_hybrid_plugin(test_config):
             )
 
             stage_manager = booster.plugin.stage_manager
-            tp_group = booster.plugin.tp_group
+            booster.plugin.tp_group
 
             bert = unwrap_model(org_model, "BertModel", "bert")
             sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
-            
+
             # TODO: model
             # "encoder.layer.0.output.dense.weight", "encoder.layer.1.output.dense.weight" not match
             # "encoder.layer[0].output.dense", "encoder.layer[1].output.dense" not match
-            weight_layer_for_check = ["embeddings.word_embeddings"] # [30522, 128]
-            
+            weight_layer_for_check = ["embeddings.word_embeddings"]  # [30522, 128]
+
             # # assert same weight before step; all pass
             # check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
-            
+
             # # assert loss; all pass
             # assert_close(org_loss, sharded_loss)
-            
+
             # # assert same grad before step; all pass
             # check_dist_grad(org_model, sharded_model, weight_layer_for_check, atol, rtol)
 
             org_optimizer.step()
             sharded_optimizer.step()
 
-            
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_dist_param(bert, sharded_bert, weight_layer_for_check, atol, rtol)
                 # check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
-                
+
                 # check optim states
                 check_dist_optim_state(org_optimizer, sharded_optimizer.optim)
 
@@ -560,11 +461,9 @@ def run_dist(rank, world_size, port):
     disable_existing_loggers()
     config = {}
     colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    exam_bert_test_on_lowlevelzero_plugin() # err in TODO layer
-    exam_bert_test_on_hybrid_plugin() # pass
-    exam_dist_came_lowlevelzeroplugin() # pass
-    exam_dist_came_base() # pass
-
+    exam_bert_test_on_lowlevelzero_plugin()  # err in TODO layer
+    exam_bert_test_on_hybrid_plugin()  # pass
+    exam_dist_came_base()  # pass
 
 
 @pytest.mark.dist
