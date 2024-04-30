@@ -1,3 +1,4 @@
+import shutil
 from copy import deepcopy
 
 import pytest
@@ -10,8 +11,6 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-
-# from mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from colossalai.moe import MoECheckpointIO
 from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
@@ -154,6 +153,13 @@ def check_mixtral_moe_layer():
     booster.load_optimizer(optimizer, "mixtral_optim")
     loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
     check_optimizer_snapshot_equal(snapshot, loaded_snapshot, param2name)
+
+    # Clean up
+    dist.barrier()
+    if dist.get_rank() == 0:
+        shutil.rmtree("mixtral_model")
+        shutil.rmtree("mixtral_hf_model")
+        shutil.rmtree("mixtral_optim")
 
 
 def run_dist(rank: int, world_size: int, port: int):

@@ -21,7 +21,7 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.cluster import DistCoordinator
 from colossalai.moe.utils import skip_init
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.shardformer.layer.moes import apply_load_balance
+from colossalai.shardformer.layer.moe import apply_load_balance
 
 
 def move_to_cuda(batch, device):
