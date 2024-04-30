@@ -305,36 +305,28 @@ def exam_dist_came_lowlevelzeroplugin(dtype: torch.dtype, tp_zero_size: tuple[in
     dist_optim = DistributedCAME(tp_param_group, lr = 1e-3)
 
     # Setup distributed optimizer
-    if zero_size > 1:
-        dist_optim = LowLevelZeroOptimizer(
-            dist_optim,
-            overlap_communication=True,
-            initial_scale=128,
-            partition_grad=True,
-            dp_process_group=dp_group,
-            verbose=True,
-        )
-        shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
-        dist_optim.optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
-            use_zero=use_zero,
-        )
-    else:
-        shard_to_param = set_master_param_to_shard_param(tp_param_group)
-        dist_optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
-            use_zero=use_zero,
-        )
-
+    
+    dist_optim = LowLevelZeroOptimizer(
+        dist_optim,
+        overlap_communication=True,
+        initial_scale=128,
+        partition_grad=True,
+        dp_process_group=dp_group,
+        verbose=True,
+    )
+    shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
+    dist_optim.optim.setup_distributed(
+        tensor_parallel_group=tp_group,
+        data_parallel_group=dp_group,
+        shard_to_param=shard_to_param,
+        use_zero=use_zero,
+    )
+    
     # ==============================
     # Booster Init
     # ==============================
-    plugin = LowLevelZeroPlugin()
-    booster = Booster(plugin=plugin)
+    # plugin = LowLevelZeroPlugin()
+    booster = Booster()
     criterion = lambda x: x.mean()
 
     tp_model, dist_optim, criterion, _, _ = booster.boost(tp_model, dist_optim, criterion)
@@ -577,9 +569,9 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-def test_dist_adafactor():
+def test_dist_came():
     spawn(run_dist, nprocs=4)
 
 
 if __name__ == "__main__":
-    test_dist_adafactor()
+    test_dist_came()

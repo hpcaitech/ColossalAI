@@ -484,6 +484,9 @@ class DistributedCAME(DistributedOptim):
                     self.tensor_parallel_group,
                     self.data_parallel_group,
                 )
+                
+                update.div_((rms / group["clip_threshold"]).clamp_(min=1.0))
+                
                 exp_avg = state["exp_avg"]
                 exp_avg.mul_(group["betas"][0]).add_(update, alpha=1 - group["betas"][0])
                 # Confidence-guided strategy

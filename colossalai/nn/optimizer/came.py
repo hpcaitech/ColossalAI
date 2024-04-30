@@ -122,7 +122,7 @@ class CAME(torch.optim.Optimizer):
                     exp_avg_sq.mul_(group["betas"][1]).add_(update, alpha=1.0 - group["betas"][1])
                     update = exp_avg_sq.rsqrt().mul_(grad)
 
-                # update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
+                update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
 
                 exp_avg = state["exp_avg"]
                 exp_avg.mul_(group["betas"][0]).add_(update, alpha=1 - group["betas"][0])
