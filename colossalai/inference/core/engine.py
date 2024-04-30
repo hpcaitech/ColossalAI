@@ -36,11 +36,8 @@ __all__ = ["InferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_transformers_supported_models = {
+_supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
-}
-
-_transformers_unsupported_models = {
     "BaichuanForCausalLM": AutoModelForCausalLM,
 }
 
@@ -115,20 +112,23 @@ class InferenceEngine:
             model_policy (Policy): the policy to replace the model
         """
 
-        transformers_models = True
-
+        auto_moldels = False
         if isinstance(model_or_path, str):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                if arch in _transformers_supported_models.keys():
-                    model = _transformers_supported_models[arch](hf_config)
-                elif arch in _transformers_unsupported_models.keys():
-                    # NOTE(caidi) It's necessary to add half() here, otherwise baichuan13B will overflow the memory.
-                    model = AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half().cuda()
-                    transformers_models = False
+                if arch in _supported_models.keys():
+                    casuallm = _supported_models[arch](hf_config)
+                    if isinstance(casuallm, AutoModelForCausalLM):
+                        # NOTE(caidi) It's necessary to add half() here, otherwise baichuan13B will overflow the memory.
+                        model = (
+                            AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half().cuda()
+                        )
+                        auto_moldels = True
+                    else:
+                        model = _supported_models[arch](hf_config)
                 else:
-                    raise ValueError(f"Model {self.model.__class__.__name__} is not supported.")
+                    raise ValueError(f"Model {arch} is not supported.")
 
             except Exception as e:
                 self.logger.error(
@@ -177,7 +177,7 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str) and transformers_models:
+        if isinstance(model_or_path, str) and not auto_moldels:
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
