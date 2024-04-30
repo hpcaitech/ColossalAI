@@ -1,5 +1,7 @@
+from .adafactor import Adafactor
 from .came import CAME
 from .cpu_adam import CPUAdam
+from .distributed_adafactor import DistributedAdaFactor
 from .distributed_came import DistributedCAME
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
@@ -20,4 +22,6 @@ __all__ = [
     "DistributedLamb",
     "CAME",
     "DistributedCAME",
+    "Adafactor",
+    "DistributedAdaFactor",
 ]
