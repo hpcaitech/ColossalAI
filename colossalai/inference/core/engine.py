@@ -112,7 +112,7 @@ class InferenceEngine:
             model_policy (Policy): the policy to replace the model
         """
 
-        auto_moldels = False
+        casuallm = None
         if isinstance(model_or_path, str):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
@@ -124,7 +124,6 @@ class InferenceEngine:
                         model = (
                             AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half().cuda()
                         )
-                        auto_moldels = True
                     else:
                         model = _supported_models[arch](hf_config)
                 else:
@@ -177,7 +176,7 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str) and not auto_moldels:
+        if isinstance(model_or_path, str) and not isinstance(casuallm, AutoModelForCausalLM):
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
@@ -275,6 +274,11 @@ class InferenceEngine:
             raise TypeError(
                 f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
             )
+        if isinstance(self.model, ModelWrapper):
+            model = self.model.module
+        assert (
+            model.__class__.__name__ in _supported_models.keys()
+        ), f"Model {self.model.__class__.__name__} is not supported."
 
     def _shardformer(
         self,
