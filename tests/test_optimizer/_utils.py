@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from torch.testing import assert_close
 
 import colossalai
@@ -250,5 +251,19 @@ def check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rto
         org_model.named_parameters(), sharded_model.named_parameters()
     ):
         if org_name in weight_layer_for_check:
-            # print(f"org_name {org_name} shape {org_param.shape} {org_param}\n sharded_name {sharded_name} shape {sharded_param.shape} {sharded_param}\n")
             assert_close(org_param, sharded_param, atol=atol, rtol=rtol)
+
+
+def check_dist_grad(sharded_optimizer, org_model, sharded_model, weight_layer_for_check, atol, rtol):
+    for (org_name, org_param), (sharded_name, sharded_param) in zip(
+        org_model.named_parameters(), sharded_model.named_parameters()
+    ):
+        if org_name in weight_layer_for_check:
+            org_grad = org_param.grad
+            group_id = dist.get_rank(sharded_optimizer.optim.data_parallel_group)
+            dist_grad = sharded_optimizer._grad_store.get_partitioned_gradients_by_param_id(group_id, id(sharded_param))
+
+            # dist_grad concat then reshape to org_grad shape
+            if dist_grad:
+                dist_grad = torch.cat([t for t in dist_grad], 0).view(org_grad.shape)
+                assert_close(org_grad, dist_grad, atol=atol, rtol=rtol)
