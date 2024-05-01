@@ -338,7 +338,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         dist_optim.optim.setup_distributed(
             tp_group=tp_group,
             dp_group=dp_group,
-            shard_to_param=shard_to_param,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
     else:
@@ -450,7 +450,7 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         dist_optim.optim.setup_distributed(
             tp_group=tp_group,
             dp_group=dp_group,
-            shard_to_param=shard_to_param,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
     else:
