@@ -74,8 +74,8 @@ class DistributedLamb(DistributedOptim):
         Arguments:
             tp_group (dist.ProcessGroup): Tensor Parallel process group
             dp_group (dist.ProcessGroup): ZeRO 2 process group
-            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match grad shape.
-                This maps from id(view) to model params used in forward & backward.
+            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view as grads are sharded.
+                This maps from id(view) to working params used in forward & backward.
             padding_map: An empty interface placeholder
             is_zero (bool): Whether to use ZeRO 2.
         """
@@ -92,6 +92,8 @@ class DistributedLamb(DistributedOptim):
         # Cache parameter layout
         for group in self.param_groups:
             for p in group["params"]:
+                # w/o ZeRO: master param = working param
+                self.shard_to_working_param[id(p)] = self.shard_to_working_param.get(id(p), p)
                 self.is_dist[p] = (
                     is_distributed_tensor(p)
                     if self.dp_size <= 1

@@ -45,11 +45,11 @@ class DistributedCAME(DistributedOptim):
             weight_decay=weight_decay,
         )
 
-        self.tensor_parallel_size = 1
-        self.tensor_parallel_group = None
-        self.data_parallel_size = 1
-        self.data_parallel_group = None
-        self.shard_to_param = None  # Dict{id:shape}, sample {id(param): torch.tensor}
+        self.tp_size = 1
+        self.tp_group = None
+        self.dp_size = 1
+        self.dp_group = None
+        self.shard_to_working_param = None  # Dict{id:shape}, sample {id(param): torch.tensor}
         self.use_zero = True
 
         self.param_is_dtensor_dict = {}  # {id(p): True/False}
@@ -70,9 +70,9 @@ class DistributedCAME(DistributedOptim):
 
     def setup_distributed(
         self,
-        tensor_parallel_group: dist.ProcessGroup = None,
-        data_parallel_group: dist.ProcessGroup = None,
-        shard_to_param: Dict = {},
+        tp_group: dist.ProcessGroup = None,
+        dp_group: dist.ProcessGroup = None,
+        shard_to_working_param: Dict = {},
         padding_map=None,
         use_zero: bool = True,
     ) -> None:
@@ -80,30 +80,33 @@ class DistributedCAME(DistributedOptim):
         Inject features to the Optimizer
 
         Args:
-            tensor_parallel_group: The devices group for tensor parallel;
-            data_parallel_group: The devices group for data parallel;
-            sharding_spec_dict: ShardingSpecs of Each params;
+            tp_group: The devices group for tensor parallel;
+            dp_group: The devices group for data parallel;
+            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view as grads are sharded.
+                This maps from id(view) to working params used in forward & backward.
             padding_map: Interface placeholder
             use_zero: Whether or not to use zero;
 
         """
-        self.tensor_parallel_group = tensor_parallel_group  # "Expected row process group"
-        self.data_parallel_group = data_parallel_group
-        if self.tensor_parallel_group is not None:
-            self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_group)
-        if self.data_parallel_group is not None:
-            self.data_parallel_size = dist.get_world_size(self.data_parallel_group)
+        self.tp_group = tp_group  # "Expected row process group"
+        self.dp_group = dp_group
+        if self.tp_group is not None:
+            self.tp_size = dist.get_world_size(self.tp_group)
+        if self.dp_group is not None:
+            self.dp_size = dist.get_world_size(self.dp_group)
         self.use_zero = use_zero
 
-        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
+        self.shard_to_working_param = shard_to_working_param if shard_to_working_param is not None else {}
         # grad is None, cause we dont setup now
         for group in self.param_groups:
             for p in group["params"]:
-                self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_param.get(id(p)))
-                self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape
+                # w/o ZeRO: master param = working param
+                self.shard_to_working_param[id(p)] = self.shard_to_working_param.get(id(p), p)
+                self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_working_param[id(p)])
+                self.grad_shape_dict[id(p)] = self.shard_to_working_param[id(p)].shape
                 # Avoid row parallel lead H=1, then factored param is determined as not factored;
                 if self.param_is_dtensor_dict[id(p)]:
-                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
+                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_working_param[id(p)])
                     if self.shard_spec_dict[id(p)].sharding_sequence[0] == "R":
                         self.factored_dict[id(p)] = True
                     elif self.shard_spec_dict[id(p)].sharding_sequence[-1] == "R":
@@ -149,12 +152,12 @@ class DistributedCAME(DistributedOptim):
         return torch.mul(r_factor, c_factor)
 
     def _col_parallel_factor(self, update, grad, state_row, state_col, grad_shape, beta2t):
-        if grad_shape[0] % self.data_parallel_size != 0:
+        if grad_shape[0] % self.dp_size != 0:
             # gather update[flatten] along dp group then reshape to [H, W/tp]
-            update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+            update = _gather(input_=update, dim=-1, process_group=self.dp_group)
             update_reshape = update.view(-1, grad_shape[1])
             # gather grad[flatten] along dp group then reshape to [H, W/tp]
-            grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+            grad = _gather(input_=grad, dim=-1, process_group=self.dp_group)
             grad_reshape = grad.view(-1, grad_shape[1])
             exp_avg_sq_row = state_row  # [H]
             exp_avg_sq_col = state_col  # [W/tp]
@@ -169,8 +172,8 @@ class DistributedCAME(DistributedOptim):
             exp_avg_sq_col = state_col  # [W/tp]
             exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
             exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
-            dist.all_reduce(exp_avg_sq_row, group=self.tensor_parallel_group)
-            exp_avg_sq_row.div_(self.tensor_parallel_size)
+            dist.all_reduce(exp_avg_sq_row, group=self.tp_group)
+            exp_avg_sq_row.div_(self.tp_size)
             update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update_reshape.mul_(grad_reshape)
 
@@ -181,25 +184,25 @@ class DistributedCAME(DistributedOptim):
         return update
 
     def _row_parallel_factor(self, update, grad, state_row, state_col, grad_shape, beta2t):
-        if grad_shape[0] % self.data_parallel_size != 0:
+        if grad_shape[0] % self.dp_size != 0:
             # gather update[flatten] along dp group then reshape to [H/tp, W]
-            update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+            update = _gather(input_=update, dim=-1, process_group=self.dp_group)
             # view update to origin[tp] shape
             update_reshape = update.view(-1, grad_shape[1])
             # gather grad[flatten] along dp group then reshape to [H/tp, W]
-            grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+            grad = _gather(input_=grad, dim=-1, process_group=self.dp_group)
             grad_reshape = grad.view(-1, grad_shape[1])
             exp_avg_sq_row = state_row  # [H]
             exp_avg_sq_col = state_col  # [W/tp]
             exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
             exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
             # reduce col
-            dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-            exp_avg_sq_col.div_(self.tensor_parallel_size)
+            dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+            exp_avg_sq_col.div_(self.tp_size)
             update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
             update_reshape.mul_(grad_reshape)
             if self.use_zero:
-                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.dp_group)
             else:
                 update = update_reshape
         else:
@@ -210,10 +213,10 @@ class DistributedCAME(DistributedOptim):
             exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
             exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
             # reduce col
-            dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-            exp_avg_sq_col.div_(self.tensor_parallel_size)
+            dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+            exp_avg_sq_col.div_(self.tp_size)
             # gather row
-            exp_avg_sq_row_gather = _gather(input_=exp_avg_sq_row, dim=-1, process_group=self.tensor_parallel_group)
+            exp_avg_sq_row_gather = _gather(input_=exp_avg_sq_row, dim=-1, process_group=self.tp_group)
             sq_row_meam = exp_avg_sq_row_gather.mean(dim=-1, keepdim=True)
             update_reshape = self._approx_sq_grad_row_parallel(exp_avg_sq_row, exp_avg_sq_col, sq_row_meam)
             update_reshape.mul_(grad_reshape)
@@ -227,27 +230,27 @@ class DistributedCAME(DistributedOptim):
         if self.use_zero:
             # only zero
             #  [30522, 128], [2, 128]
-            if grad_shape[0] % self.data_parallel_size != 0:
+            if grad_shape[0] % self.dp_size != 0:
                 # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
                 # row mean no change
                 # col mean need reduce and div
                 # gather update[flatten] along dp group then reshape to [H, W]
-                update = _gather(input_=update, dim=-1, process_group=self.data_parallel_group)
+                update = _gather(input_=update, dim=-1, process_group=self.dp_group)
                 # view update to origin[tp] shape
                 update_reshape = update.view(-1, grad_shape[1])
                 # gather grad[flatten] along dp group then reshape to [H, W]
-                grad = _gather(input_=grad, dim=-1, process_group=self.data_parallel_group)
+                grad = _gather(input_=grad, dim=-1, process_group=self.dp_group)
                 grad_reshape = grad.view(-1, grad_shape[1])
                 exp_avg_sq_row = state_row  # [H/dp]
                 exp_avg_sq_col = state_col  # [W]
                 exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                 exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
                 # reduce col
-                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+                exp_avg_sq_col.div_(self.tp_size)
                 update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                 update_reshape.mul_(grad_reshape)
-                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+                update = _split(input_=update_reshape.view(-1), dim=-1, process_group=self.dp_group)
             else:
                 # no residual row
                 # view update to origin[tp] shape
@@ -258,8 +261,8 @@ class DistributedCAME(DistributedOptim):
                 exp_avg_sq_row.mul_(beta2t).add_(update_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                 exp_avg_sq_col.mul_(beta2t).add_(update_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
                 # reduce col
-                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+                exp_avg_sq_col.div_(self.tp_size)
                 update_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                 update_reshape.mul_(grad_reshape)
                 update = update_reshape.view(-1)
@@ -280,27 +283,27 @@ class DistributedCAME(DistributedOptim):
     def _base_res_factor(self, res, exp_avg, state_row, state_col, grad_shape, beta2t):
         if self.use_zero:
             # only zero
-            if grad_shape[0] % self.data_parallel_size != 0:
+            if grad_shape[0] % self.dp_size != 0:
                 # view res to origin shape res.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
                 # row mean no change
                 # col mean need reduce and div
                 # gather res[flatten] along dp group then reshape to [H, W]
-                res = _gather(input_=res, dim=-1, process_group=self.data_parallel_group)
+                res = _gather(input_=res, dim=-1, process_group=self.dp_group)
                 # view res to origin[tp] shape
                 res_reshape = res.view(-1, grad_shape[1])
                 # gather exp_avg[flatten] along dp group then reshape to [H, W]
-                exp_avg = _gather(input_=exp_avg, dim=-1, process_group=self.data_parallel_group)
+                exp_avg = _gather(input_=exp_avg, dim=-1, process_group=self.dp_group)
                 exp_avg_reshape = exp_avg.view(-1, grad_shape[1])
                 exp_avg_sq_row = state_row  # [H/dp]
                 exp_avg_sq_col = state_col  # [W]
                 exp_avg_sq_row.mul_(beta2t).add_(res_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                 exp_avg_sq_col.mul_(beta2t).add_(res_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
                 # reduce col
-                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+                exp_avg_sq_col.div_(self.tp_size)
                 res_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                 res_reshape.mul_(exp_avg_reshape)
-                res = _split(input_=res_reshape.view(-1), dim=-1, process_group=self.data_parallel_group)
+                res = _split(input_=res_reshape.view(-1), dim=-1, process_group=self.dp_group)
             else:
                 # no residual row
                 # view res to origin[tp] shape
@@ -311,8 +314,8 @@ class DistributedCAME(DistributedOptim):
                 exp_avg_sq_row.mul_(beta2t).add_(res_reshape.mean(dim=-1), alpha=(1.0 - beta2t))
                 exp_avg_sq_col.mul_(beta2t).add_(res_reshape.mean(dim=-2), alpha=(1.0 - beta2t))
                 # reduce col
-                dist.all_reduce(exp_avg_sq_col, group=self.tensor_parallel_group)
-                exp_avg_sq_col.div_(self.tensor_parallel_size)
+                dist.all_reduce(exp_avg_sq_col, group=self.tp_group)
+                exp_avg_sq_col.div_(self.tp_size)
                 res_reshape = self._approx_sq_grad(exp_avg_sq_row, exp_avg_sq_col)
                 res_reshape.mul_(exp_avg_reshape)
                 res = res_reshape.view(-1)
@@ -354,7 +357,7 @@ class DistributedCAME(DistributedOptim):
                 grad_shape = self.grad_shape_dict[id(p)]
                 param_is_dtensor = self.param_is_dtensor_dict[id(p)]
                 if param_is_dtensor:
-                    grad_shape = self.shard_to_param.get(id(p)).shape  # tp shape (2 dim)
+                    grad_shape = self.shard_to_working_param.get(id(p)).shape  # tp shape (2 dim)
                 factored = self.factored_dict[id(p)]
                 shard_spec = self.shard_spec_dict[id(p)]
 
@@ -365,7 +368,7 @@ class DistributedCAME(DistributedOptim):
                     if factored:
                         if param_is_dtensor:
                             if shard_spec.sharding_sequence[0] == "R":  # Col Parallel
-                                if grad_shape[0] % self.data_parallel_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=p.device, dtype=p.dtype
                                     )  # [H]
@@ -374,10 +377,10 @@ class DistributedCAME(DistributedOptim):
                                     )  # [H]
                                 else:
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp]
                                     state["exp_avg_res_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp]
                                 state["exp_avg_sq_col"] = torch.zeros(
                                     grad_shape[1], device=p.device, dtype=p.dtype
@@ -388,7 +391,7 @@ class DistributedCAME(DistributedOptim):
 
                             if shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
                                 # Row indivisible shape situation
-                                if grad_shape[0] % self.data_parallel_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=p.device, dtype=p.dtype
                                     )  # [H/tp]
@@ -397,10 +400,10 @@ class DistributedCAME(DistributedOptim):
                                     )  # [H/tp]
                                 else:
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp/tp]
                                     state["exp_avg_res_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp/tp]
 
                                 state["exp_avg_sq_col"] = torch.zeros(
@@ -411,7 +414,7 @@ class DistributedCAME(DistributedOptim):
                                 )  # [W]
                         else:
                             if self.use_zero:
-                                if grad_shape[0] % self.data_parallel_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     # save all exp_avg_sq_row [H]
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=grad.device, dtype=p.dtype
@@ -422,10 +425,10 @@ class DistributedCAME(DistributedOptim):
                                 else:
                                     # exp_avg_sq_row [H // dp]
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=grad.device, dtype=p.dtype
                                     )
                                     state["exp_avg_res_row"] = torch.zeros(
-                                        grad_shape[0] // self.data_parallel_size, device=grad.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=grad.device, dtype=p.dtype
                                     )
                             else:
                                 # exp_avg_sq_row [H]
@@ -494,10 +497,10 @@ class DistributedCAME(DistributedOptim):
                     update,
                     param_is_dtensor,
                     self.use_zero,
-                    self.tensor_parallel_size,
-                    self.data_parallel_size,
-                    self.tensor_parallel_group,
-                    self.data_parallel_group,
+                    self.tp_size,
+                    self.dp_size,
+                    self.tp_group,
+                    self.dp_group,
                 )
 
                 update.div_((rms / group["clip_threshold"]).clamp_(min=1.0))

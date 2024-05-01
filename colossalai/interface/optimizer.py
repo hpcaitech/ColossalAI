@@ -155,4 +155,4 @@ class DistributedOptim(Optimizer):
             is_zero (bool): Whether to use ZeRO stage 2.
         """
 
-        raise NotImplementedError("setup_distributed is not implemented in the optimizer")
+        raise NotImplementedError("setup_distributed for TP/DP isn't supported by this optimizer yet!")

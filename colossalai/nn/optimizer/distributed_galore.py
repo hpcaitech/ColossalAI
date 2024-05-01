@@ -98,8 +98,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         Arguments:
             tp_group (dist.ProcessGroup): Tensor Parallel process group
             dp_group (dist.ProcessGroup): ZeRO 2 process group
-            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view to match grad shape.
-                This maps from id(view) to model params used in forward & backward.
+            shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view as grads are sharded.
+                This maps from id(view) to working params used in forward & backward.
             padding_map (Dict): Padding size of each param from ZeRO's param store. Required if ZeRO is used.
             is_zero (bool): Whether to use ZeRO 2.
         """
@@ -125,9 +125,8 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         self.shard_dim = {}
         for group in self.param_groups:
             for p in group["params"]:
-                if id(p) not in self.shard_to_working_param:
-                    # No ZeRO; master param = working param
-                    self.shard_to_working_param[id(p)] = p
+                # w/o ZeRO: master param = working param
+                self.shard_to_working_param[id(p)] = self.shard_to_working_param.get(id(p), p)
                 if id(p) not in self.padding_map:
                     self.padding_map[id(p)] = 0
 
