@@ -277,7 +277,6 @@ class MistralForCausalLMPolicy(MistralPolicy):
                             suffix="lm_head",
                             target_module=VocabParallelLMHead1D,
                             kwargs={
-                                #gather_output=True,
                                 "gather_output": not self.shard_config.parallel_output,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
                             },
