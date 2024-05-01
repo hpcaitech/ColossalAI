@@ -259,7 +259,7 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Fwd/Bwd Test Pass")
+    print(f"Fwd/Bwd Test Passed")
 
 
 @parameterize(
@@ -344,7 +344,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"LowLevelZeroPlugin + Bert Model Zoo Test Pass")
+    print(f"LowLevelZeroPlugin + Bert Model Zoo Test Passed")
 
 
 @parameterize(
@@ -454,7 +454,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"HybridParallelPlugin + Bert Model Zoo Test Pass")
+    print(f"HybridParallelPlugin + Bert Model Zoo Test Passed")
 
 
 def run_dist(rank, world_size, port):

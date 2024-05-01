@@ -72,7 +72,7 @@ class DistributedAdaFactor(DistributedOptim):
             tensor_parallel_group: The devices group for tensor parallel;
             data_parallel_group: The devices group for data parallel;
             sharding_spec_dict: ShardingSpecs of Each params;
-            padding_map (Dict): Empty arg for interface consistency. Should NOT be passed.
+            padding_map: An empty interface placeholder;
             use_zero: Whether or not to use zero;
 
         """

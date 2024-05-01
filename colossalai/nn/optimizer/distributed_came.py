@@ -1,9 +1,11 @@
+from typing import Dict
+
 import torch
 import torch.distributed as dist
-from torch.distributed.distributed_c10d import ProcessGroup
 
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.shardformer.layer._operation import _gather, _split
+from colossalai.tensor.d_tensor import get_sharding_spec, is_distributed_tensor
 
 
 class DistributedCAME(DistributedOptim):
@@ -68,36 +70,50 @@ class DistributedCAME(DistributedOptim):
 
     def setup_distributed(
         self,
-        tp_group: ProcessGroup,
-        zero_group: ProcessGroup,
-        master_to_working_map: dict,
+        tensor_parallel_group: dist.ProcessGroup = None,
+        data_parallel_group: dist.ProcessGroup = None,
+        shard_to_param: Dict = {},
         padding_map=None,
-        zero_flag: bool = False,
-    ):
-        self.tensor_parallel_group = tp_group
-        self.zero_parallel_group = zero_group
-        # When running setup_distribute(), the parameters now are master parameters (After TP and zero)
-        # But master param != d_tensor, need to record information of working param (After TP before zero)
+        use_zero: bool = True,
+    ) -> None:
+        """
+        Inject features to the Optimizer
+
+        Args:
+            tensor_parallel_group: The devices group for tensor parallel;
+            data_parallel_group: The devices group for data parallel;
+            sharding_spec_dict: ShardingSpecs of Each params;
+            padding_map: Interface placeholder
+            use_zero: Whether or not to use zero;
+
+        """
+        self.tensor_parallel_group = tensor_parallel_group  # "Expected row process group"
+        self.data_parallel_group = data_parallel_group
+        if self.tensor_parallel_group is not None:
+            self.tensor_parallel_size = dist.get_world_size(self.tensor_parallel_group)
+        if self.data_parallel_group is not None:
+            self.data_parallel_size = dist.get_world_size(self.data_parallel_group)
+        self.use_zero = use_zero
+
+        self.shard_to_param = shard_to_param if shard_to_param is not None else {}
+        # grad is None, cause we dont setup now
         for group in self.param_groups:
             for p in group["params"]:
-                # if no zero, working param == master param
-                working_param = master_to_working_map[id(p)] if master_to_working_map else p
-                self.ori_shape[id(p)] = self.ori_shape[id(working_param)]
-                self.working_shape[id(p)] = working_param.size()
-                self.gather_before_compute[id(p)] = False
-                try:
-                    sharding_spec = api.get_sharding_spec(working_param)
-                    self.clip_method[id(p)] = "col" if 0 in sharding_spec.dim_partition_dict.keys() else "row"
+                self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_param.get(id(p)))
+                self.grad_shape_dict[id(p)] = self.shard_to_param.get(id(p)).shape
+                # Avoid row parallel lead H=1, then factored param is determined as not factored;
+                if self.param_is_dtensor_dict[id(p)]:
+                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_param.get(id(p)))
+                    if self.shard_spec_dict[id(p)].sharding_sequence[0] == "R":
+                        self.factored_dict[id(p)] = True
+                    elif self.shard_spec_dict[id(p)].sharding_sequence[-1] == "R":
+                        self.factored_dict[id(p)] = True
+                    else:
+                        self.factored_dict[id(p)] = self._get_options(self.grad_shape_dict[id(p)])
 
-                except:
-                    self.clip_method[id(p)] = None
-
-        self.zero = True if zero_flag else False
-        self.distributed = True
-
-    def _get_options(self, param_shape):
-        factored = len(param_shape) >= 2
-        return factored
+                else:
+                    self.shard_spec_dict[id(p)] = None
+                    self.factored_dict[id(p)] = self._get_options(self.grad_shape_dict[id(p)])
 
     @staticmethod
     def _get_options(param_shape):

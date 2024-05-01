@@ -281,7 +281,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         correctness_verify(weight.data, weight_col_gather.data, dtype)
         correctness_verify(weight.data, weight_row_gather.data, dtype)
 
-    print(f"Base Test Pass")
+    print(f"Base Test Passed")
 
 
 @parameterize("dtype", [torch.float16])  # torch.float32, torch.float16, torch.bfloat16
@@ -392,7 +392,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Zero Test Pass")
+    print(f"Zero Test Passed")
 
 
 @parameterize("dtype", [torch.float16])
@@ -512,7 +512,7 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         correctness_verify(p.data, tp_p.data, dtype)
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Booster Test Pass")
+    print(f"Booster Test Passed")
 
 
 @parameterize(
@@ -580,7 +580,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass")
+    print(f"Bert Model Zoo Test Passed")
 
 
 @parameterize(
@@ -673,7 +673,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass")
+    print(f"Bert Model Zoo Test Passed")
 
 
 def run_dist(rank, world_size, port):
