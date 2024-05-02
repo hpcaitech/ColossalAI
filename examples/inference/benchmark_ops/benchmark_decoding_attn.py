@@ -6,6 +6,7 @@ from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
     generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
     torch_attn_ref,
 )
 from tests.test_infer.test_ops.triton.test_decoding_attn import prepare_data
@@ -29,9 +30,9 @@ configs = [
         x_vals=[2**i for i in range(8, 14)],
         # x_vals=[x for x in range(256, 8192, 256)],
         line_arg="provider",
-        line_vals=["torch", "triton"],
-        line_names=["Torch", "Triton"],
-        styles=[("red", "-"), ("blue", "-")],
+        line_vals=["torch", "triton", "triton_new_kcache_layout"],
+        line_names=["Torch", "Triton", "Triton New KCache Layout"],
+        styles=[("red", "-"), ("blue", "-"), ("yellow", "-")],
         ylabel="ms",
         plot_name=f"decoding-block_size-{BLOCK_SIZE}-batch{BATCH}",
         args={"bsz": BATCH, "block_size": BLOCK_SIZE, "same_context_len": SAME_LEN, "kv_group_num": 1},
@@ -62,6 +63,14 @@ def bench_kernel(
         bsz, num_attn_heads, num_kv_heads, HEAD_DIM, same_context_len, Q_LEN, max_seq_len, dtype, device
     )
     max_seq_len_in_b = kv_lengths.max().item()  # for random lengths
+    # the maximum block length splitted on kv should be the kv cache block size
+    kv_max_split_num = (max_seq_len_in_b + block_size - 1) // block_size
+    sm_scale = 1.0 / (HEAD_DIM**0.5)
+    output = torch.empty((bsz, num_attn_heads, HEAD_DIM), dtype=dtype, device=device)
+    mid_output = torch.empty(
+        size=(bsz, num_attn_heads, kv_max_split_num, HEAD_DIM), dtype=torch.float32, device=q.device
+    )
+    mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
 
     quantiles = [0.5, 0.2, 0.8]
     if provider == "torch":
@@ -81,19 +90,11 @@ def bench_kernel(
             HEAD_DIM,
         )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
-    if provider == "triton":
+    elif provider == "triton":
         k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
             k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
         )
         block_tables = block_tables.to(device=device)
-        # the maximum block length splitted on kv should be the kv cache block size
-        kv_max_split_num = (max_seq_len_in_b + block_size - 1) // block_size
-        output = torch.empty((bsz, num_attn_heads, HEAD_DIM), dtype=dtype, device=device)
-        mid_output = torch.empty(
-            size=(bsz, num_attn_heads, kv_max_split_num, HEAD_DIM), dtype=torch.float32, device=q.device
-        )
-        mid_output_lse = torch.empty(size=(bsz, num_attn_heads, kv_max_split_num), dtype=torch.float32, device=q.device)
-        sm_scale = 1.0 / (HEAD_DIM**0.5)
         fn = lambda: flash_decoding_attention(
             # Here we use q.squeeze(2) because we hide the q_len dimension (which is equivalent to 1),
             # refer to attention forward in modeling.
@@ -110,6 +111,29 @@ def bench_kernel(
             sm_scale=sm_scale,
             kv_group_num=kv_group_num,
         )  # [bsz, 1, num_heads, head_dim]
+        ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
+    elif provider == "triton_new_kcache_layout":
+        k_cache, v_cache, block_tables = generate_caches_and_block_tables_v3(
+            k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
+        )
+        block_tables = block_tables.to(device=device)
+        fn = lambda: flash_decoding_attention(
+            # Here we use q.squeeze(2) because we hide the q_len dimension (which is equivalent to 1),
+            # refer to attention forward in modeling.
+            q.squeeze(2),
+            k_cache,
+            v_cache,
+            kv_lengths,
+            block_tables,
+            block_size,
+            max_seq_len_in_b,
+            output,
+            mid_output,
+            mid_output_lse,
+            sm_scale=sm_scale,
+            kv_group_num=kv_group_num,
+            use_new_kcache_layout=True,
+        )
         ms, min_ms, max_ms = triton.testing.do_bench(fn, warmup=WARM_UPS, rep=REPS, quantiles=quantiles)
 
     return ms, min_ms, max_ms
