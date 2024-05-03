@@ -4,55 +4,11 @@ import triton.language as tl
 
 
 # Triton 2.1.0
-@triton.jit
-def _copy_to_kcache_seqlen_n_kernel(
-    KV,  # K or V
-    KVCache,  # KCache or VCache
-    BLOCK_TABLES,
-    context_lengths,
-    stride_kt,
-    stride_kh,
-    stride_kd,
-    stride_cacheb,
-    stride_cacheh,
-    stride_cachebs,
-    stride_cached,
-    stride_bts,
-    stride_btb,
-    block_size,
-    n,
-    HEAD_DIM: tl.constexpr,
-):
-    cur_token_idx = tl.program_id(0)
-    cur_seq_idx = cur_token_idx // n
-    cur_token_shift = cur_token_idx - (n * (cur_seq_idx + 1))
-    # cur_token_shift = cur_token_idx - n * cur_seq_idx
-    cur_kv_head_idx = tl.program_id(1)
-
-    past_kv_seq_len = tl.load(context_lengths + cur_seq_idx) + cur_token_shift
-    last_bt_block_idx = past_kv_seq_len // block_size
-    block_table_ptr = BLOCK_TABLES + cur_seq_idx * stride_bts
-    block_id = tl.load(block_table_ptr + last_bt_block_idx * stride_btb)
-    offset_last_block = past_kv_seq_len % block_size
-    offsets_dmodel = tl.arange(0, HEAD_DIM)
-    offsets_kv = cur_token_idx * stride_kt + cur_kv_head_idx * stride_kh + offsets_dmodel * stride_kd
-    kv = tl.load(KV + offsets_kv)
-    offsets_kvcache = (
-        block_id * stride_cacheb
-        + cur_kv_head_idx * stride_cacheh
-        + offset_last_block * stride_cachebs
-        + offsets_dmodel * stride_cached
-    )
-    tl.store(KVCache + offsets_kvcache, kv)
-    return
-
-
-# Triton 2.1.0
 # supports two types of cache layouts
 # 1. [num_blocks, num_kv_heads, block_size, head_dim]
 # 2. [num_blocks, num_kv_heads, head_dim // x, block_size, x]
 @triton.jit
-def _copy_to_kcache_seqlen_n_kernel_v2(
+def _copy_to_kcache_seqlen_n_kernel(
     K,  # K or V
     KCache,  # [num_blocks, num_kv_heads, head_dim // x, block_size, x]
     BLOCK_TABLES,
@@ -196,16 +152,6 @@ def copy_k_to_blocked_cache(
     if k.dim() == 4:
         k = k.reshape(-1, k.size(-2), k.size(-1))
     k_shape = k.shape
-    k_cache_shape = k_cache.shape
-    if use_new_kcache_layout:
-        assert (
-            len(k_cache_shape) == 5
-            and k_cache_shape[1] == k_shape[1]
-            and k_cache_shape[2] * k_cache_shape[4] == k_shape[2]
-        ), f"Incompatible k_cache shape {k_cache_shape} with k shape {k_shape}"
-    else:
-        assert k_cache_shape[-1] == k_shape[-1], f"Incompatible head dim"
-
     bsz, num_kv_heads, head_dim = k_shape
     # NOTE when n > 1, the shape of k is [bsz * n, num_kv_heads, head_dim]
     if n > 1:
@@ -218,24 +164,25 @@ def copy_k_to_blocked_cache(
         f" block tables bsz {block_tables.shape[0]}, input k batch size {bsz}"
     )
 
+    k_cache_shape = k_cache.shape
     # Modify if the shape of kv cahce is changed.
     block_size = k_cache_shape[-2]
 
-    num_warps = 8 if head_dim > 128 else 4
-
     x = head_dim
-    stride_kcsplit_x = 0
-    stride_kcs = k_cache.stride(2)
-    stride_kcd = k_cache.stride(3)
+    stride_kcsplit_x, stride_kcs, stride_kcd = 0, k_cache.stride(2), k_cache.stride(3)
     if use_new_kcache_layout:
-        # Intuition: x: 16 // dtype_size
         # when using kcache layout [num_blocks, num_kv_heads, head_dim // x, block_size, x]
+        assert (
+            len(k_cache_shape) == 5
+            and k_cache_shape[1] == k_shape[1]
+            and k_cache_shape[2] * k_cache_shape[4] == k_shape[2]
+        ), f"Incompatible k_cache shape {k_cache_shape} with k shape {k_shape}"
         x = k_cache.size(-1)
         stride_kcsplit_x, stride_kcs, stride_kcd = k_cache.stride()[2:]
 
+    num_warps = 8 if head_dim > 128 else 4
     grid = (bsz * n, num_kv_heads, head_dim // x)
-
-    _copy_to_kcache_seqlen_n_kernel_v2[grid](
+    _copy_to_kcache_seqlen_n_kernel[grid](
         k,
         k_cache,
         block_tables,
@@ -309,13 +256,10 @@ def copy_kv_to_blocked_cache(
 
     # Modify if the shape of kv cahce is changed.
     block_size = k_cache.size(-2)
+
     x = head_dim
-    stride_kcsplit_x = 0
-    stride_kcs = k_cache.stride(2)
-    stride_kcd = k_cache.stride(3)
-    if k_cache.dim() == 5:
-        # Intuition: x: 16 // dtype_size
-        # when using kcache layout [num_blocks, num_kv_heads, head_dim // x, block_size, x]
+    stride_kcsplit_x, stride_kcs, stride_kcd = 0, k_cache.stride(2), k_cache.stride(3)
+    if use_new_kcache_layout:
         x = k_cache.size(-1)
         stride_kcsplit_x, stride_kcs, stride_kcd = k_cache.stride()[2:]
 
