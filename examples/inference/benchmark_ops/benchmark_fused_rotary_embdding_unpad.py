@@ -7,11 +7,6 @@ from tests.test_infer.test_ops.triton.kernel_utils import (
     mock_alloc_block_table_and_kvcache_v3,
     mock_alloc_single_token,
 )
-from tests.test_infer.test_ops.triton.kernel_utils import (
-    mock_alloc_block_table_and_kvcache_v2,
-    mock_alloc_block_table_and_kvcache_v3,
-    mock_alloc_single_token,
-)
 
 inference_ops = InferenceOpsLoader().load()
 
