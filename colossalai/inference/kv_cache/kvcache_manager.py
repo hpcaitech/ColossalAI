@@ -74,13 +74,6 @@ class KVCacheManager:
         self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads", alter_attr=self.head_num)
         self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
 
-        # if hasattr(config, "num_key_value_heads"):
-        #     self.kv_head_num = getattr(config, "num_key_value_heads")
-        # elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map["num_key_value_heads"]):
-        #     self.kv_head_num = getattr(config, config.attribute_map["num_key_value_heads"])
-        # else:
-        #     self.kv_head_num = self.head_num
-
         assert (
             self.kv_head_num % self.tp_size == 0
         ), f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
@@ -219,8 +212,7 @@ class KVCacheManager:
             block.add_ref()
             if block_id == block_indexes[-1].item():
                 self._allocate_on_block(
-                    block,
-                    (block.block_size if context_len % block.block_size == 0 else context_len % block.block_size),
+                    block, block.block_size if context_len % block.block_size == 0 else context_len % block.block_size
                 )
             else:
                 self._allocate_on_block(block, block.block_size)
@@ -287,11 +279,9 @@ class KVCacheManager:
             block.add_ref()
             self._allocate_on_block(
                 block,
-                (
-                    block.block_size
-                    if context_lengths[i] % block.block_size == 0
-                    else context_lengths[i].item() % block.block_size
-                ),
+                block.block_size
+                if context_lengths[i] % block.block_size == 0
+                else context_lengths[i].item() % block.block_size,
             )
         for block_id in alloc_block_ids:
             if block_id in alloc_block_ids[last_block_locs]:
@@ -464,10 +454,7 @@ class KVCacheManager:
 
     def get_physical_cache(self, layer_id: int, block_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get the tensor corresponding to the cache block with the prompted id for a specific layer."""
-        return (
-            self._kv_caches[0][layer_id][block_idx],
-            self._kv_caches[1][layer_id][block_idx],
-        )
+        return self._kv_caches[0][layer_id][block_idx], self._kv_caches[1][layer_id][block_idx]
 
     def _allocate_on_block(self, block: CacheBlock, space_asked: int) -> int:
         """Allocate a specific size of space on a provided cache block.
