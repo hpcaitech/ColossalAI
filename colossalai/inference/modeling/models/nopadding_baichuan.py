@@ -1,6 +1,5 @@
 # This code is adapted from huggingface baichuan model: hhttps://huggingface.co/baichuan-inc/Baichuan2-13B-Base/blob/main/modeling_baichuan.py
 import itertools
-import math
 from typing import List, Optional, Tuple, Union
 
 import torch
