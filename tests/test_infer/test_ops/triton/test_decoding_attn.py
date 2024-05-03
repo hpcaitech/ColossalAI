@@ -93,7 +93,7 @@ def test_flash_decoding(
         # the code (alibi kernel) will be refactored later to avoid code duplication, when
         # the whole triton flow with new k cache layout has been supported and tested.
         # And tests for the alibi kernel using new kcache layout will be added then.
-        return
+        pytest.skip("Alibi kernel does not support new kcache layout yet.")
 
     torch.manual_seed(123)
     torch.cuda.empty_cache()

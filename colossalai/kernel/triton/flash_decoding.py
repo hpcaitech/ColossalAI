@@ -11,125 +11,8 @@ import triton.language as tl
 def _flash_decoding_fwd_kernel(
     Q,  # [batch_size * q_len, head_num, head_dim]
     KCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
-    VCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
-    block_tables,  # [batch_size, max_blocks_per_sequence]
-    mid_o,  # [batch_size * q_len, head_num, kv_split_num, head_dim]
-    mid_o_lse,  # [batch_size * q_len, head_num, kv_split_num]
-    kv_seq_len,  # [batch_size]
-    q_len,
-    batch_size,
-    stride_qt,
-    stride_qh,
-    stride_qd,
-    stride_cacheb,
-    stride_cacheh,
-    stride_cachebs,
-    stride_cached,
-    stride_bts,
-    stride_btb,
-    stride_mid_ot,
-    stride_mid_oh,
-    stride_mid_ob,
-    stride_mid_od,
-    stride_mid_o_lset,
-    stride_mid_o_lseh,
-    stride_mid_o_lseb,
-    sm_scale,
-    KV_GROUPS: tl.constexpr,
-    BLOCK_KV: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-    HEAD_DIM: tl.constexpr,
-):
-    cur_token_idx = tl.program_id(0)
-    cur_seq_idx = cur_token_idx // q_len
-    if cur_seq_idx >= batch_size:
-        return
-    cur_token_off = (cur_token_idx % q_len) - q_len + 1
-    cur_head_idx = tl.program_id(1)
-    block_start_kv = tl.program_id(2)  # for splitting k/v
-
-    # NOTE It requires BLOCK_KV and BLOCK_SIZE to be the same
-    # TODO might want to replace with BLOCK_KV % BLOCK_SIZE == 0 (optimize BLOCK_KV as multiple of BLOCK_SIZE)
-    #      and then support calculating multiple kv cache blocks on an instance
-    tl.static_assert(BLOCK_KV == BLOCK_SIZE)
-    # get the current (kv) sequence length
-    # cur_token_off is used as a "mask" here for spec-dec during verification process
-    cur_kv_seq_len = tl.load(kv_seq_len + cur_seq_idx) + cur_token_off
-    if block_start_kv * BLOCK_KV >= cur_kv_seq_len:
-        return
-
-    offsets_dmodel = tl.arange(0, HEAD_DIM)
-    offsets_q = cur_token_idx * stride_qt + cur_head_idx * stride_qh + offsets_dmodel * stride_qd
-    q = tl.load(Q + offsets_q)
-    # block table for the current sequence
-    block_table_ptr = block_tables + cur_seq_idx * stride_bts
-    # cur_bt_start_idx = block_start_kv * (BLOCK_KV // BLOCK_SIZE)
-    # cur_block_id = tl.load(block_table_ptr + cur_bt_start_idx * stride_btb)
-    cur_block_id = tl.load(block_table_ptr + block_start_kv * stride_btb)
-    cur_occupied_size = tl.where(
-        (block_start_kv + 1) * BLOCK_SIZE <= cur_kv_seq_len, BLOCK_SIZE, cur_kv_seq_len - block_start_kv * BLOCK_SIZE
-    )
-    tl.device_assert(cur_occupied_size >= 0)
-
-    cur_kv_head_idx = cur_head_idx // KV_GROUPS
-    offset_kvcache = cur_block_id * stride_cacheb + cur_kv_head_idx * stride_cacheh
-    K_block_ptr = tl.make_block_ptr(
-        base=KCache + offset_kvcache,
-        shape=(cur_occupied_size, HEAD_DIM),
-        strides=(stride_cachebs, stride_cached),
-        offsets=(0, 0),
-        block_shape=(BLOCK_SIZE, HEAD_DIM),
-        order=(0, 1),
-    )
-    V_block_ptr = tl.make_block_ptr(
-        base=VCache + offset_kvcache,
-        shape=(cur_occupied_size, HEAD_DIM),
-        strides=(stride_cachebs, stride_cached),
-        offsets=(0, 0),
-        block_shape=(BLOCK_SIZE, HEAD_DIM),
-        order=(0, 1),
-    )
-    k_cur_block = tl.load(K_block_ptr)
-    v_cur_block = tl.load(V_block_ptr)
-    acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
-    # use block size of the paged/blocked kv cache
-    S_ij = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-
-    # NOTE a trick to come across triton's requirement that values in both first and second input shapes must be >= 16,
-    # Multiplying two tensors with shapes [1, d] * [d, block_size] will fail.
-    # Refer to https://github.com/openai/triton/discussions/895
-    S_ij += tl.sum(q[None, :] * k_cur_block, 1)
-    S_ij *= sm_scale
-    S_ij += tl.where(block_start_kv * BLOCK_KV + tl.arange(0, BLOCK_SIZE) < cur_kv_seq_len, 0, float("-inf"))
-
-    m = tl.max(S_ij, 0)
-    S_ij -= m
-    p_ij_hat = tl.exp(S_ij)
-    l = tl.sum(p_ij_hat, 0)
-    p_ij_hat = p_ij_hat.to(v_cur_block.type.element_ty)
-    acc += tl.sum(v_cur_block * p_ij_hat[:, None], 0)
-    acc = acc / l
-
-    offsets_mid_o = (
-        cur_token_idx * stride_mid_ot
-        + cur_head_idx * stride_mid_oh
-        + block_start_kv * stride_mid_ob
-        + offsets_dmodel * stride_mid_od
-    )
-    tl.store(mid_o + offsets_mid_o, acc)
-    offsets_mid_o_lse = (
-        cur_token_idx * stride_mid_o_lset + cur_head_idx * stride_mid_o_lseh + block_start_kv * stride_mid_o_lseb
-    )
-    # logsumexp L^(j) = m^(j) + log(l^(j))
-    tl.store(mid_o_lse + offsets_mid_o_lse, m + tl.log(l))
-
-
-# Triton 2.1.0
-@triton.jit
-def _flash_decoding_fwd_kernel_v2(
-    Q,  # [batch_size * q_len, head_num, head_dim]
-    KCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
-    VCache,  # [num_blocks, num_kv_heads, head_dim//x, block_size, x]
+    VCache,  # [num_blocks, num_kv_heads, block_size, head_dim],
+    # or [num_blocks, num_kv_heads, head_dim//x, block_size, x], depends on strides provided
     block_tables,  # [batch_size, max_blocks_per_sequence]
     mid_o,  # [batch_size * q_len, head_num, kv_split_num, head_dim]
     mid_o_lse,  # [batch_size * q_len, head_num, kv_split_num]
@@ -138,6 +21,7 @@ def _flash_decoding_fwd_kernel_v2(
     batch_size,
     kv_group_num,
     x,
+    sm_scale,
     stride_qt,
     stride_qh,
     stride_qd,
@@ -159,7 +43,6 @@ def _flash_decoding_fwd_kernel_v2(
     stride_mid_o_lset,
     stride_mid_o_lseh,
     stride_mid_o_lseb,
-    sm_scale,
     BLOCK_KV: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     HEAD_DIM: tl.constexpr,
@@ -183,8 +66,11 @@ def _flash_decoding_fwd_kernel_v2(
         return
     offsets_dmodel = tl.arange(0, HEAD_DIM)
     offsets_block = tl.arange(0, BLOCK_SIZE)
+
     # block table for the current sequence
     block_table_ptr = block_tables + cur_seq_idx * stride_bts
+    # cur_bt_start_idx = block_start_kv * (BLOCK_KV // BLOCK_SIZE)
+    # cur_block_id = tl.load(block_table_ptr + cur_bt_start_idx * stride_btb)
     cur_block_id = tl.load(block_table_ptr + block_start_kv * stride_btb)
     cur_occupied_size = tl.where(
         (block_start_kv + 1) * BLOCK_SIZE <= cur_kv_seq_len, BLOCK_SIZE, cur_kv_seq_len - block_start_kv * BLOCK_SIZE
@@ -211,10 +97,10 @@ def _flash_decoding_fwd_kernel_v2(
         order=(0, 1),
     )
     v_cur_block = tl.load(V_block_ptr)
-
     acc = tl.zeros([HEAD_DIM], dtype=tl.float32)
-    # use block size of the blocked kv cache
+    # use block size of the paged/blocked kv cache
     S_ij = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+
     # NOTE a trick to come across triton's requirement that values in both first and second input shapes must be >= 16,
     # Multiplying two tensors with shapes [1, d] * [d, block_size] will fail.
     # Refer to https://github.com/openai/triton/discussions/895
@@ -227,7 +113,6 @@ def _flash_decoding_fwd_kernel_v2(
     p_ij_hat = tl.exp(S_ij)
     l = tl.sum(p_ij_hat, 0)
     p_ij_hat = p_ij_hat.to(v_cur_block.type.element_ty)
-
     acc += tl.sum(v_cur_block * p_ij_hat[:, None], 0)
     acc = acc / l
 
@@ -529,54 +414,14 @@ def flash_decoding_attention(
         triton.cdiv(triton.next_power_of_2(max_seq_len_in_batch), META["BLOCK_KV"]),
     )
 
-    if use_new_kcache_layout:
+    if alibi_slopes is not None:
         # TODO(yuanheng-zhao): Since the alibi kernel is pretty similar to the original one,
         # the code (alibi kernel) will be refactored later to avoid code duplication, when
         # the whole triton flow with new k cache layout has been supported and tested.
         assert (
-            alibi_slopes is None
+            not use_new_kcache_layout
         ), "Alibi Slopes will be supported with new kcache layout later when the whole triton flow is ready"
 
-        x = k_cache.shape[4]
-        _flash_decoding_fwd_kernel_v2[grid](
-            q,
-            k_cache,
-            v_cache,
-            block_tables,
-            mid_output,
-            mid_output_lse,
-            kv_seq_len,
-            q_len,
-            bsz,
-            kv_group_num,
-            x,
-            q.stride(0),
-            q.stride(1),
-            q.stride(2),
-            k_cache.stride(0),
-            k_cache.stride(1),
-            k_cache.stride(2),
-            k_cache.stride(3),
-            k_cache.stride(4),
-            v_cache.stride(0),
-            v_cache.stride(1),
-            v_cache.stride(2),
-            v_cache.stride(3),
-            block_tables.stride(0),
-            block_tables.stride(1),
-            mid_output.stride(0),
-            mid_output.stride(1),
-            mid_output.stride(2),
-            mid_output.stride(3),
-            mid_output_lse.stride(0),
-            mid_output_lse.stride(1),
-            mid_output_lse.stride(2),
-            sm_scale,
-            BLOCK_KV=block_size,
-            BLOCK_SIZE=block_size,
-            HEAD_DIM=head_dim,
-        )
-    elif alibi_slopes is not None:
         _alibi_flash_decoding_fwd_kernel[grid](
             q,
             k_cache,
@@ -611,6 +456,19 @@ def flash_decoding_attention(
             HEAD_DIM=head_dim,
         )
     else:
+        # For KCache and VCache with the same layout
+        x = head_dim
+        kcsplit_x_stride, kcs_stride, kcd_stride = 0, k_cache.stride(2), k_cache.stride(3)
+        # For KCache layout [num_blocks, num_kv_heads, head_dim//x, block_size, x]
+        if use_new_kcache_layout:
+            assert (
+                k_cache.dim() == 5
+                and k_cache.shape[1] == v_cache.shape[1]
+                and k_cache.shape[2] * k_cache.shape[4] == v_cache.shape[3]
+            ), f"Invalid KCache shape {k_cache.shape} and VCache shape {v_cache.shape}"
+            x = k_cache.size(-1)
+            kcsplit_x_stride, kcs_stride, kcd_stride = k_cache.stride()[-3:]
+
         _flash_decoding_fwd_kernel[grid](
             q,
             k_cache,
@@ -621,13 +479,21 @@ def flash_decoding_attention(
             kv_seq_len,
             q_len,
             bsz,
+            kv_group_num,
+            x,
+            sm_scale,
             q.stride(0),
             q.stride(1),
             q.stride(2),
             k_cache.stride(0),
             k_cache.stride(1),
-            k_cache.stride(2),
-            k_cache.stride(3),
+            kcsplit_x_stride,
+            kcs_stride,
+            kcd_stride,
+            v_cache.stride(0),
+            v_cache.stride(1),
+            v_cache.stride(2),
+            v_cache.stride(3),
             block_tables.stride(0),
             block_tables.stride(1),
             mid_output.stride(0),
@@ -637,8 +503,6 @@ def flash_decoding_attention(
             mid_output_lse.stride(0),
             mid_output_lse.stride(1),
             mid_output_lse.stride(2),
-            sm_scale,
-            KV_GROUPS=kv_group_num,
             BLOCK_KV=block_size,
             BLOCK_SIZE=block_size,
             HEAD_DIM=head_dim,
