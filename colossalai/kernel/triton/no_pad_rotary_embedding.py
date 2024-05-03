@@ -1,3 +1,4 @@
+import warnings
 from typing import Optional
 
 import torch
@@ -85,8 +86,8 @@ def rotary_embedding_kernel(
         mask=((cur_head_idx < Q_HEAD_NUM) & (tokens_range[:, None, None] < q_total_tokens)),
     )
 
-    handle_k = cur_head_idx % KV_GROUP_NUM == 0
-    if handle_k:
+    handle_kv = cur_head_idx % KV_GROUP_NUM == 0
+    if handle_kv:
         k_head_idx = cur_head_idx // KV_GROUP_NUM
         off_k0 = (
             tokens_range[:, None, None] * k_token_stride
@@ -385,6 +386,7 @@ def decoding_fused_rotary_embedding_kernel(
     v_cache,
     BLOCK_TABLES,
     context_lengths,
+    x,
     q_token_stride,
     q_head_stride,
     k_token_stride,
@@ -392,10 +394,15 @@ def decoding_fused_rotary_embedding_kernel(
     head_dim_stride,
     cos_token_stride,
     cos_stride,
-    cache_b_stride,
-    cache_h_stride,
-    cache_bs_stride,
-    cache_d_stride,
+    kcb_stride,
+    kch_stride,
+    kcsplit_x_stride,
+    kcs_stride,
+    kcd_stride,
+    vcb_stride,
+    vch_stride,
+    vcs_stride,
+    vcd_stride,
     bts_stride,
     btb_stride,
     block_size,
@@ -424,8 +431,8 @@ def decoding_fused_rotary_embedding_kernel(
     tl.store(q + off_q0, out_q0)
     tl.store(q + off_q1, out_q1)
 
-    handle_k = cur_head_idx % KV_GROUP_NUM == 0
-    if handle_k:
+    handle_kv = cur_head_idx % KV_GROUP_NUM == 0
+    if handle_kv:
         cur_k_head_idx = cur_head_idx // KV_GROUP_NUM
         off_kv = cur_token_idx * k_token_stride + cur_k_head_idx * k_head_stride
         off_k0 = off_kv + dim_range0 * head_dim_stride
@@ -443,17 +450,18 @@ def decoding_fused_rotary_embedding_kernel(
         last_block_idx = past_kv_seq_len // block_size
         block_ids = tl.load(BLOCK_TABLES + cur_token_idx * bts_stride + last_block_idx * btb_stride)
         offsets_in_last_block = past_kv_seq_len % block_size
+        offsets_cache_base = block_ids * kcb_stride + cur_k_head_idx * kch_stride
         k_range0 = (
-            block_ids * cache_b_stride
-            + cur_k_head_idx * cache_h_stride
-            + offsets_in_last_block * cache_bs_stride
-            + dim_range0 * cache_d_stride
+            offsets_cache_base
+            + offsets_in_last_block * kcs_stride
+            + (dim_range0 // x) * kcsplit_x_stride
+            + (dim_range0 % x) * kcd_stride
         )
         k_range1 = (
-            block_ids * cache_b_stride
-            + cur_k_head_idx * cache_h_stride
-            + offsets_in_last_block * cache_bs_stride
-            + dim_range1 * cache_d_stride
+            offsets_cache_base
+            + offsets_in_last_block * kcs_stride
+            + (dim_range1 // x) * kcsplit_x_stride
+            + (dim_range1 % x) * kcd_stride
         )
         tl.store(k_cache + k_range0, out_k0)
         tl.store(k_cache + k_range1, out_k1)
@@ -461,10 +469,10 @@ def decoding_fused_rotary_embedding_kernel(
         off_v = off_kv + dim_range * head_dim_stride
         loaded_v = tl.load(v + off_v)
         v_range = (
-            block_ids * cache_b_stride
-            + cur_k_head_idx * cache_h_stride
-            + offsets_in_last_block * cache_bs_stride
-            + dim_range * cache_d_stride
+            block_ids * vcb_stride
+            + cur_k_head_idx * vch_stride
+            + offsets_in_last_block * vcs_stride
+            + dim_range * vcd_stride
         )
         tl.store(v_cache + v_range, loaded_v)
 
@@ -532,6 +540,7 @@ def rotary_embedding(
             num_warps=num_warps,
         )
     else:
+        warnings.warn("Fused rotary embedding Triton kernel will be deprecated as the new kcache layout is supported")
         grid = (triton.next_power_of_2(q_head_num), q_total_tokens)
         fused_rotary_embedding_kernel_v2[grid](
             q,
@@ -573,6 +582,7 @@ def decoding_fused_rotary_embedding(
     v_cache: Optional[torch.Tensor] = None,
     block_tables: Optional[torch.Tensor] = None,
     kv_lengths: Optional[torch.Tensor] = None,
+    use_new_kcache_layout: bool = False,
 ):
     """
     Args:
@@ -588,8 +598,6 @@ def decoding_fused_rotary_embedding(
     """
     q_total_tokens, q_head_num, head_dim = q.shape
     assert q.size(0) == k.size(0) == v.size(0)
-    assert k.size(1) == v.size(1)
-    assert k_cache.size(-1) == v_cache.size(-1)
 
     if head_dim >= 512:
         num_warps = 16
@@ -597,18 +605,22 @@ def decoding_fused_rotary_embedding(
         num_warps = 8
     else:
         num_warps = 4
-
-    q_token_stride = q.stride(0)
-    q_head_stride = q.stride(1)
-    head_dim_stride = q.stride(2)
-
-    k_token_stride = k.stride(0)
-    k_head_stride = k.stride(1)
     k_head_num = k.size(1)
     kv_group_num = q_head_num // k_head_num
 
-    cos_token_stride = cos.stride(0)
-    cos_stride = cos.stride(1)
+    # For KCache and VCache with the same layout
+    x = head_dim
+    kcsplit_x_stride, kcs_stride, kcd_stride = 0, k_cache.stride(2), k_cache.stride(3)
+    # For KCache layout [num_blocks, num_kv_heads, head_dim//x, block_size, x]
+    if use_new_kcache_layout:
+        assert (
+            k_cache.dim() == 5
+            and k_cache.shape[1] == v_cache.shape[1]
+            and k_cache.shape[2] * k_cache.shape[4] == v_cache.shape[3]
+        ), f"Invalid KCache shape {k_cache.shape} and VCache shape {v_cache.shape}"
+        x = k_cache.size(-1)
+        kcsplit_x_stride, kcs_stride, kcd_stride = k_cache.stride()[-3:]
+
     grid = (q_head_num, q_total_tokens)
     decoding_fused_rotary_embedding_kernel[grid](
         q,
@@ -620,17 +632,23 @@ def decoding_fused_rotary_embedding(
         v_cache,
         block_tables,
         kv_lengths,
-        q_token_stride,
-        q_head_stride,
-        k_token_stride,
-        k_head_stride,
-        head_dim_stride,
-        cos_token_stride,
-        cos_stride,
+        x,
+        q.stride(0),
+        q.stride(1),
+        k.stride(0),
+        k.stride(1),
+        q.stride(2),
+        cos.stride(0),
+        cos.stride(1),
         k_cache.stride(0),
         k_cache.stride(1),
-        k_cache.stride(2),
-        k_cache.stride(3),
+        kcsplit_x_stride,
+        kcs_stride,
+        kcd_stride,
+        v_cache.stride(0),
+        v_cache.stride(1),
+        v_cache.stride(2),
+        v_cache.stride(3),
         block_tables.stride(0),
         block_tables.stride(1),
         k_cache.size(-2),
