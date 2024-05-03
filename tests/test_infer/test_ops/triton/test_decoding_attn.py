@@ -10,6 +10,7 @@ from tests.test_infer.test_ops.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
     generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
     torch_attn_ref,
 )
 from tests.test_infer.test_ops.triton.test_context_attn_unpad import generate_alibi_mask
@@ -75,6 +76,7 @@ def prepare_data(
 @pytest.mark.parametrize("same_context_len", [True, False])
 @pytest.mark.parametrize("q_len", [1, 5])
 @pytest.mark.parametrize("use_alibi_slopes", [True, False])
+@pytest.mark.parametrize("use_new_kcache_layout", [True, False])
 def test_flash_decoding(
     bsz: int,
     block_size: int,
@@ -84,7 +86,15 @@ def test_flash_decoding(
     same_context_len: bool,
     q_len: int,
     use_alibi_slopes: bool,
+    use_new_kcache_layout: bool,
 ):
+    if use_new_kcache_layout and use_alibi_slopes:
+        # TODO(yuanheng-zhao): Since the alibi kernel is pretty similar to the original one,
+        # the code (alibi kernel) will be refactored later to avoid code duplication, when
+        # the whole triton flow with new k cache layout has been supported and tested.
+        # And tests for the alibi kernel using new kcache layout will be added then.
+        pytest.skip("Alibi kernel does not support new kcache layout yet.")
+
     torch.manual_seed(123)
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
@@ -127,9 +137,14 @@ def test_flash_decoding(
         q, k_torch, v_torch, attention_mask, bsz, q_len, max_kv_len_in_b, num_attn_heads, num_kv_heads, HEAD_DIM
     )
 
-    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
-        k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
-    )
+    if use_new_kcache_layout:
+        k_cache, v_cache, block_tables = generate_caches_and_block_tables_v3(
+            k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
+        )
+    else:
+        k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
+            k_unpad, v_unpad, kv_lengths, bsz, max_num_blocks_per_seq, block_size, dtype, device
+        )
     block_tables = block_tables.to(device=device)
     # The maximum block length splitted on kv should be the kv cache block size
     kv_max_split_num = (max_kv_len_in_b + block_size - 1) // block_size
@@ -165,6 +180,7 @@ def test_flash_decoding(
         sm_scale=sm_scale,
         kv_group_num=kv_group_num,
         q_len=q_len,
+        use_new_kcache_layout=use_new_kcache_layout,
     )  # [bsz * q_len, num_heads, head_dim]
 
     assert out_torch.shape == out_triton.shape
@@ -178,4 +194,4 @@ def test_flash_decoding(
 
 
 if __name__ == "__main__":
-    test_flash_decoding(16, 32, 32, 16, 1, True, 1, True)
+    test_flash_decoding(16, 32, 32, 16, 1, True, 1, use_alibi_slopes=False, use_new_kcache_layout=True)
