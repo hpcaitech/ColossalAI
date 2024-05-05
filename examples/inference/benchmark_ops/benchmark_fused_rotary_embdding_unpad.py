@@ -2,7 +2,7 @@ import torch
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import copy_kv_to_blocked_cache, decoding_fused_rotary_embedding, rotary_embedding
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     mock_alloc_block_table_and_kvcache_v2,
     mock_alloc_block_table_and_kvcache_v3,
     mock_alloc_single_token,

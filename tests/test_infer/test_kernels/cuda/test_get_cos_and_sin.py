@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
-from tests.test_infer.test_ops.triton.test_xine_copy import get_cos_sin
+from tests.test_infer.test_kernels.triton.test_xine_copy import get_cos_sin
 
 inference_ops = InferenceOpsLoader().load()
 

@@ -5,7 +5,7 @@ from packaging import version
 from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.triton import context_attention_unpadded
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_v3,
     torch_attn_ref,

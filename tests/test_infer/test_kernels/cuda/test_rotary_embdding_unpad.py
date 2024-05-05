@@ -7,8 +7,8 @@ from colossalai.kernel.kernel_loader import InferenceOpsLoader
 
 inference_ops = InferenceOpsLoader().load()
 
-from tests.test_infer.test_ops.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v3
-from tests.test_infer.test_ops.triton.test_rotary_embdding_unpad import torch_rotary_emb
+from tests.test_infer.test_kernels.triton.kernel_utils import mock_alloc_block_table_and_kvcache_v3
+from tests.test_infer.test_kernels.triton.test_rotary_embdding_unpad import torch_rotary_emb
 
 
 def numpy_allclose(x, y, rtol, atol):

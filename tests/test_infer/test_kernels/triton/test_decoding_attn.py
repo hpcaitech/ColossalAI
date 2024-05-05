@@ -6,14 +6,14 @@ from packaging import version
 from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_v3,
     torch_attn_ref,
 )
-from tests.test_infer.test_ops.triton.test_context_attn_unpad import generate_alibi_mask
+from tests.test_infer.test_kernels.triton.test_context_attn_unpad import generate_alibi_mask
 
 try:
     import triton  # noqa

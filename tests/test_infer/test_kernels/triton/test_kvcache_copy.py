@@ -4,7 +4,7 @@ from packaging import version
 
 from colossalai.kernel.triton import copy_k_to_blocked_cache, copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_v3,
     mock_alloc_single_token,

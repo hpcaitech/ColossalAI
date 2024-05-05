@@ -4,7 +4,10 @@ import torch.nn.functional as F
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import generate_caches_and_block_tables_v3, mock_alloc_single_token
+from tests.test_infer.test_kernels.triton.kernel_utils import (
+    generate_caches_and_block_tables_v3,
+    mock_alloc_single_token,
+)
 
 inference_ops = InferenceOpsLoader().load()
 

@@ -7,11 +7,11 @@ import torch
 from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.test_context_attn_unpad import generate_alibi_mask
+from tests.test_infer.test_kernels.triton.test_context_attn_unpad import generate_alibi_mask
 
 inference_ops = InferenceOpsLoader().load()
 
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
     generate_caches_and_block_tables_v3,

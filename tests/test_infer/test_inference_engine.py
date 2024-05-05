@@ -157,7 +157,7 @@ def check_spec_dec(num_layers, max_length):
 
 
 def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
     if ret:
         ret[rank] = func_to_run(**kwargs)

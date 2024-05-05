@@ -1,7 +1,7 @@
 import torch
 
 from colossalai.kernel.triton import get_xine_cache
-from tests.test_infer.test_ops.triton.test_xine_copy import get_cos_sin
+from tests.test_infer.test_kernels.triton.test_xine_copy import get_cos_sin
 
 try:
     import triton  # noqa
