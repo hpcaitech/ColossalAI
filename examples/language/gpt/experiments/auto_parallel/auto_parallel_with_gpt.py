@@ -47,7 +47,7 @@ def get_data(batch_size, seq_len, vocab_size):
 
 def main():
     disable_existing_loggers()
-    launch_from_torch(config={})
+    launch_from_torch()
     logger = get_dist_logger()
     config = transformers.GPT2Config(n_position=SEQ_LENGTH, n_layer=NUM_LAYERS, n_head=NUM_HEADS, n_embd=HIDDEN_DIM)
     if FP16:

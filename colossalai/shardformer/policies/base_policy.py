@@ -28,6 +28,7 @@ class SubModuleReplacementDescription:
         kwargs (Dict[str, Any]): the dictionary used to pass extra arguments to the `ParallelModule.from_native_module` method.
         ignore_if_not_exist (bool): if the submodule does not exist, ignore it or raise an exception
     """
+
     suffix: str
     target_module: Union[ParallelModule, BaseLayerNorm]
     kwargs: Dict[str, Any] = None
@@ -54,6 +55,7 @@ class ModulePolicyDescription:
                     object which specifies the module to be replaced and the target module used to replacement.
         method_replace (Dict[str, Callable]): key is the method name, value is the method for replacement
     """
+
     attribute_replacement: Dict[str, Any] = None
     param_replacement: List[Callable] = None
     sub_module_replacement: List[SubModuleReplacementDescription] = None
@@ -195,3 +197,12 @@ class Policy(ABC):
             List[Dict[int, Tensor]]: List of parameters that should be shared across stages. E.g. [{0: module.model.embed_tokens.weight, 3: module.lm_head.weight}]
         """
         return []
+
+    def tie_weight_check(self):
+        input_embedding = self.model.get_input_embeddings()
+        output_embedding = self.model.get_output_embeddings()
+        return (
+            input_embedding is not None
+            and output_embedding is not None
+            and id(input_embedding.weight) == id(output_embedding.weight)
+        )

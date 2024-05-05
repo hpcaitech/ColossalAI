@@ -126,7 +126,7 @@ class AMPOptimizer(OptimizerWrapper):
         return self.grad_scaler.scale.item()
 
     def zero_grad(self, *args, **kwargs):
-        self.module.overflow_counter = torch.cuda.IntTensor([0])
+        self.module.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
         return self.optim.zero_grad(set_to_none=True)
 
     def step(self, *args, **kwargs):

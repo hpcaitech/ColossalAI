@@ -39,7 +39,7 @@ class GPT2MLPWithCkpt(nn.Module):
 
 def check_act_ckpt(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = GPT2MLPWithCkpt(intermediate_size=4 * HIDDEN_SIZE, hidden_size=HIDDEN_SIZE)
     torch.rand(1, 64, HIDDEN_SIZE)
     input_sample = {

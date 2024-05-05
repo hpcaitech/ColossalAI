@@ -303,13 +303,6 @@ if dist.get_world_size() > 1:
 
 2. 当使用Shardformer处理`GPT2ForSequenceClassification`、`ViTForImageClassification`等分类模型时，请确保labels的总数为张量并行度的整数倍，否则Shardformer无法正确地处理classifier层。一个简单的修复方法就是在transformers的config中添加虚拟的标签。这一bug将在 Shardformer的未来版本中修复。
 
-3. 训练ChatGLM-2 6B的情况有点特殊：由于Huggingface Transformers 目前尚未正式支持ChatGLM。在使用Shardformer训练ChatGLM-2时，请通过以下方式导入config/model的类：
-    ```python
-    from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
-    from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration, ChatGLMModel
-    ```
-    并且使用这些导入的类初始化模型。
-
 
 ## Shardformer的工作原理
 

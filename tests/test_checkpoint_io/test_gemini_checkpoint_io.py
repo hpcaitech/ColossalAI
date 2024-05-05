@@ -173,8 +173,7 @@ def exam_lazy_from_pretrained():
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
     exam_lazy_from_pretrained()

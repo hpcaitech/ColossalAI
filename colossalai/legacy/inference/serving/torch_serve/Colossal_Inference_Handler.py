@@ -98,7 +98,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
         self.model.cuda()
         self.model.eval()
 
-        colossalai.launch(config={}, rank=rank, world_size=world_size, host=host, port=port, backend="nccl")
+        colossalai.launch(rank=rank, world_size=world_size, host=host, port=port, backend="nccl")
         logger.info("Initializing TPInferEngine ...")
         shard_config = ShardConfig(
             enable_tensor_parallelism=True if self.tp_size > 1 else False, extra_kwargs={"inference_only": True}

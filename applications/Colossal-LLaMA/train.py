@@ -12,18 +12,18 @@ from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
-from colossal_llama2.dataset.loader import (
+from colossal_llama.dataset.loader import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
 )
-from colossal_llama2.utils.ckpt_io import load_checkpoint, save_checkpoint
-from colossal_llama2.utils.flash_attention_patch import replace_with_flash_attention
-from colossal_llama2.utils.froze import freeze_non_embeds_parameters
-from colossal_llama2.utils.neftune_patch import activate_neftune, deactivate_neftune
+from colossal_llama.utils.ckpt_io import load_checkpoint, save_checkpoint
+from colossal_llama.utils.flash_attention_patch import replace_with_flash_attention
+from colossal_llama.utils.froze import freeze_non_embeds_parameters
+from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoTokenizer, LlamaForCausalLM
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -89,7 +89,7 @@ def main() -> None:
     parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
     parser.add_argument("--micro_batch_size", type=int, default=2, help="Batch size of each process")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
-    parser.add_argument("--max_length", type=int, default=4096, help="Model max length")
+    parser.add_argument("--max_length", type=int, default=8192, help="Model max length")
     parser.add_argument(
         "--mixed_precision",
         type=str,
@@ -136,7 +136,7 @@ def main() -> None:
     # ==============================
     # Initialize Distributed Training
     # ==============================
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     accelerator = get_accelerator()
     coordinator = DistCoordinator()
 
@@ -196,7 +196,7 @@ def main() -> None:
     # ======================================================
     # Initialize Tokenizer, Dataset, Collator and Dataloader
     # ======================================================
-    tokenizer = LlamaTokenizer.from_pretrained(args.pretrained)
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
     if args.pad_token == "eos":
         tokenizer.pad_token = tokenizer.eos_token
     elif args.pad_token == "unk":
@@ -253,9 +253,11 @@ def main() -> None:
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
 
     optimizer = HybridAdam(
-        model_params=filter(lambda p: p.requires_grad, model.parameters())
-        if args.freeze_non_embeds_params
-        else model.parameters(),
+        model_params=(
+            filter(lambda p: p.requires_grad, model.parameters())
+            if args.freeze_non_embeds_params
+            else model.parameters()
+        ),
         lr=args.lr,
         betas=(0.9, 0.95),
         weight_decay=args.weight_decay,

@@ -76,8 +76,7 @@ def exam_state_dict(placement_config, keep_gathered, model_name: str, master_wei
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
 
 

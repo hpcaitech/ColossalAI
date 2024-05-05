@@ -1287,3 +1287,16 @@ def bert_sequence_parallel_forward_fn(shard_config: ShardConfig):
         )
 
     return forward
+
+
+def get_jit_fused_bert_intermediate_forward():
+    from transformers.models.bert.modeling_bert import BertIntermediate
+
+    from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
+
+    def forward(self: BertIntermediate, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states, bias = self.dense(hidden_states)
+        hidden_states = JitGeLUFunction.apply(hidden_states, bias)
+        return hidden_states
+
+    return forward

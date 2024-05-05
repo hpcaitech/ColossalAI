@@ -35,12 +35,12 @@ def main():
 
     if args.vscode_debug:
         colossalai.launch(
-            config={}, rank=args.rank, world_size=args.world_size, host=args.host, port=args.port, backend=args.backend
+            rank=args.rank, world_size=args.world_size, host=args.host, port=args.port, backend=args.backend
         )
         args.local_rank = -1
         args.log_interval = 1
     else:
-        colossalai.launch_from_torch(config={})  # args.colossal_config
+        colossalai.launch_from_torch()  # args.colossal_config
         args.local_rank = int(os.environ["LOCAL_RANK"])
         logger.info(
             f"launch_from_torch, world size: {torch.distributed.get_world_size()} | "

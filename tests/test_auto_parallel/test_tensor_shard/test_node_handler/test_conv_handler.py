@@ -16,7 +16,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_conv_module_handler(rank, world_size, port, bias):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.Conv2d(4, 16, 3, padding=1, bias=bias)).cuda()
     # graph():
     #     %input_1 : torch.Tensor [#users=1] = placeholder[target=input]
@@ -153,7 +153,7 @@ class ConvModel(nn.Module):
 
 def check_conv_function_handler(rank, world_size, port, bias):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = ConvModel().cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

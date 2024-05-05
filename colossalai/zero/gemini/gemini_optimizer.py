@@ -21,11 +21,18 @@ from colossalai.tensor.d_tensor import (
     distribute_tensor,
     distribute_tensor_with_customization,
     get_device_mesh,
+    get_global_shape,
     get_sharding_spec,
     init_as_dtensor,
     init_tensor_as_customization_distributed,
     is_customized_distributed_tensor,
     is_distributed_tensor,
+)
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
 )
 from colossalai.utils import disposable, is_ddp_ignored
 
@@ -106,7 +113,7 @@ class GeminiOptimizer(OptimizerWrapper):
         max_norm: float = 0.0,
         norm_type: float = 2.0,
         tp_group: ProcessGroup = None,
-        optimizer_params_info=None,
+        params_info=None,
         verbose: bool = False,
         **defaults: Any,
     ):
@@ -124,7 +131,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.clipping_flag = max_norm > 0.0
         self.max_norm = max_norm
         self.tp_group = tp_group
-        self.optimizer_params_info = optimizer_params_info
+        self.params_info = params_info
         self.tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
         self.tp_rank = dist.get_rank(tp_group) if tp_group is not None else 0
         self.verbose = verbose
@@ -459,7 +466,7 @@ class GeminiOptimizer(OptimizerWrapper):
         is_customized_distributed = is_customized_distributed_tensor(param)
         shard_spec = get_sharding_spec(param) if is_dtensor else None
         device_mesh = get_device_mesh(param) if is_dtensor else None
-        global_shape = self.optimizer_params_info["id2shape"][param_id]
+        global_shape = self.params_info["id2shape"][param_id]
 
         # If the chunk is kept gathered,
         # the parameters are treated the same as that of those in strict DDP during training.
@@ -477,6 +484,7 @@ class GeminiOptimizer(OptimizerWrapper):
                     else:
                         state_tensor = states[state_name].detach().clone().to(torch.float32).cpu()
                         if is_dtensor:
+                            global_shape = get_global_shape(param)
                             state_tensor = torch.reshape(state_tensor, param.shape).to(param.device)
                             state_tensor = init_as_dtensor(
                                 state_tensor,
@@ -490,8 +498,13 @@ class GeminiOptimizer(OptimizerWrapper):
                                 state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn
                             )
                         state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
-
-                        collected_states[state_name] = state_tensor.reshape(global_shape)
+                        state_tensor = state_tensor.reshape(global_shape)
+                        if is_padded_tensor(param):
+                            state_tensor = init_as_padded_tensor(
+                                state_tensor, param._current_length, param._origin_length, param._padding_dim
+                            )
+                            state_tensor = to_unpadded_tensor(state_tensor)
+                        collected_states[state_name] = state_tensor
             return collected_states
 
         # Check whether the param with given id is managed by current process.
@@ -535,6 +548,7 @@ class GeminiOptimizer(OptimizerWrapper):
                 if state_tensor.numel() == param.numel():
                     collected_states[state_name] = torch.reshape(state_tensor, param.shape)
                 if is_dtensor:
+                    global_shape = get_global_shape(param)
                     state_tensor = state_tensor.to(param.device)
                     state_tensor = init_as_dtensor(
                         state_tensor, sharding_spec=shard_spec, device_mesh=device_mesh, global_shape=global_shape
@@ -545,6 +559,11 @@ class GeminiOptimizer(OptimizerWrapper):
                         state_tensor, shard_fn=param.shard_fn, gather_fn=param.gather_fn
                     )
                 state_tensor = gather_distributed_param(state_tensor, keep_vars=False).cpu()
+                if is_padded_tensor(param):
+                    state_tensor = init_as_padded_tensor(
+                        state_tensor, param._current_length, param._origin_length, param._padding_dim
+                    )
+                    state_tensor = to_unpadded_tensor(state_tensor)
 
         return collected_states
 
@@ -698,7 +717,7 @@ class GeminiOptimizer(OptimizerWrapper):
         Load saved optimizer states into parameter with given id.
         """
 
-        def cast(param, state_range, value, key=None):
+        def cast(param, state_range, value, global_shape, origin_shape, key=None):
             """
             Make a copy of the needed segment of value and cast it to device of param.
             """
@@ -714,7 +733,14 @@ class GeminiOptimizer(OptimizerWrapper):
                 )
 
                 if is_dtensor:
-                    value = torch.reshape(value, global_shape)
+                    global_shape = get_global_shape(real_param)
+
+                if is_padded_tensor(real_param):
+                    value = torch.reshape(value, origin_shape)
+                    padding_dim = real_param._padding_dim
+                    value = to_padded_tensor(value, global_shape[padding_dim], padding_dim)
+
+                if is_dtensor:
                     value = distribute_tensor(value, sharding_spec=shard_spec, device_mesh=device_mesh)
                 elif is_customized_distributed:
                     value = torch.reshape(value, global_shape)
@@ -737,10 +763,11 @@ class GeminiOptimizer(OptimizerWrapper):
         is_customized_distributed = is_customized_distributed_tensor(real_param)
         shard_spec = get_sharding_spec(real_param) if is_dtensor else None
         device_mesh = get_device_mesh(real_param) if is_dtensor else None
-        global_shape = self.optimizer_params_info["id2shape"][param_id]
+        global_shape = self.params_info["id2shape"][param_id]
+        origin_shape = global_shape
 
         for k, v in saved_states.items():
-            updated_states[k] = cast(fake_param, state_range, v, k)
+            updated_states[k] = cast(fake_param, state_range, v, global_shape, origin_shape, k)
             del v  # clean loaded states
         self.optim.state[fake_param].update(updated_states)
 

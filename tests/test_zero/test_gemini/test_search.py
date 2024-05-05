@@ -47,7 +47,7 @@ def exam_chunk_manager():
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_search_chunk_size()
     exam_chunk_manager()
 

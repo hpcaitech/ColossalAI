@@ -3,14 +3,13 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from attn import replace_with_flash_attention
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from tqdm import tqdm
+from transformers import AutoConfig, AutoModelForCausalLM
 from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -19,9 +18,7 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchF
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
-from examples.language.data_utils import RandomDataset
-from examples.language.model_utils import format_numel_str, get_model_numel
-from examples.language.performance_evaluator import PerformanceEvaluator
+from colossalai.shardformer import PipelineGradientCheckpointConfig
 
 # ==============================
 # Constants
@@ -78,13 +75,26 @@ def main():
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
     parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
+    parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
     args = parser.parse_args()
 
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     def empty_init():
         pass
+
+    # ckpt config for LLaMA3-70B on 64 H100 GPUs
+    hybrid_kwargs = (
+        {
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
+                num_ckpt_layers_per_stage=[19, 19, 19, 13],
+            ),
+            "num_layers_per_stage": [19, 20, 20, 21],
+        }
+        if args.custom_ckpt
+        else {}
+    )
 
     # ==============================
     # Initialize Booster
@@ -98,6 +108,8 @@ def main():
             offload_param_frac=args.offload_param_frac,
             tp_size=args.tp,
             extra_dp_size=args.extra_dp,
+            enable_fused_normalization=torch.cuda.is_available(),
+            enable_flash_attention=args.xformers,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -106,26 +118,34 @@ def main():
             warmup_non_model_data_ratio=args.warmup_ratio,
             tp_size=args.tp,
             extra_dp_size=args.extra_dp,
+            enable_fused_normalization=torch.cuda.is_available(),
+            enable_flash_attention=args.xformers,
         )
     elif args.plugin == "fsdp":
         if use_empty_init:
             plugin = TorchFSDPPlugin(
                 mixed_precision=MixedPrecision(
-                    param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
+                    param_dtype=torch.float16,
+                    reduce_dtype=torch.float16,
+                    buffer_dtype=torch.float16,
                 ),
                 param_init_fn=empty_init(),
             )
         else:
             plugin = TorchFSDPPlugin(
                 mixed_precision=MixedPrecision(
-                    param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
+                    param_dtype=torch.float16,
+                    reduce_dtype=torch.float16,
+                    buffer_dtype=torch.float16,
                 )
             )
     elif args.plugin == "fsdp_cpu":
         if use_empty_init:
             plugin = TorchFSDPPlugin(
                 mixed_precision=MixedPrecision(
-                    param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
+                    param_dtype=torch.float16,
+                    reduce_dtype=torch.float16,
+                    buffer_dtype=torch.float16,
                 ),
                 cpu_offload=CPUOffload(offload_params=True),
                 param_init_fn=empty_init(),
@@ -133,7 +153,9 @@ def main():
         else:
             plugin = TorchFSDPPlugin(
                 mixed_precision=MixedPrecision(
-                    param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
+                    param_dtype=torch.float16,
+                    reduce_dtype=torch.float16,
+                    buffer_dtype=torch.float16,
                 ),
                 cpu_offload=CPUOffload(offload_params=True),
             )
@@ -141,12 +163,13 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
-            pp_style="interleaved",
             zero_stage=args.zero,
-            num_model_chunks=2,
             enable_fused_normalization=torch.cuda.is_available(),
+            enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
+            dp_outside=False,
+            **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
         plugin = HybridParallelPlugin(
@@ -155,6 +178,7 @@ def main():
             zero_stage=args.zero,
             cpu_offload=True,
             enable_fused_normalization=torch.cuda.is_available(),
+            enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
@@ -167,9 +191,12 @@ def main():
     # ==============================
     # Initialize Dataset and Dataloader
     # ==============================
-    dp_size = plugin.dp_size if isinstance(plugin, HybridParallelPlugin) else coordinator.world_size
+    dp_size = getattr(plugin, "dp_size", coordinator.world_size)
 
-    config = MODEL_CONFIGS[args.config]
+    if args.config in MODEL_CONFIGS:
+        config = MODEL_CONFIGS[args.config]
+    else:
+        config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
@@ -184,14 +211,17 @@ def main():
         else nullcontext()
     )
 
+    init_kwargs = {}
+    if config.model_type == "chatglm":
+        init_kwargs["empty_init"] = False
+
     with init_ctx:
-        model = LlamaForCausalLM(config)
+        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **init_kwargs)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
-
-    if args.xformers:
-        replace_with_flash_attention(model)
+        if config.model_type == "chatglm":
+            model.transformer.encoder.gradient_checkpointing = True
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")

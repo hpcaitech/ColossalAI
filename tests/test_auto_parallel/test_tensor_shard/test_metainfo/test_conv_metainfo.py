@@ -31,7 +31,7 @@ def _conv_module_mem_test(rank, world_size, port, bias):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.Conv2d(4, 64, 3, padding=1, bias=bias)).cuda()
     input = torch.rand(4, 4, 64, 64).cuda()
     input.requires_grad = True
@@ -72,7 +72,7 @@ def _conv_function_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = ConvFunctionModule().cuda()
     input = torch.rand(4, 4, 64, 64).cuda()
     input.requires_grad = True
