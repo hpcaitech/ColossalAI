@@ -40,14 +40,7 @@ struct half8 {
 #endif
 };
 
-struct float4_ {
-#ifdef COLOSSAL_WITH_CUDA
-  float2 x;
-  float2 y;
-#endif
-};
-
-struct float8_ {
+struct float8 {
 #ifdef COLOSSAL_WITH_CUDA
   float2 x;
   float2 y;
