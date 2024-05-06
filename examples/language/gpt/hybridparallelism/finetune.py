@@ -243,7 +243,12 @@ def main():
     # ====================================
     # gpt2 pretrained model
 
-    cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
+    cfg = AutoConfig.from_pretrained(
+        model_name,
+        num_labels=data_builder.num_labels,
+        pad_token=data_builder.tokenizer.pad_token,
+        pad_token_id=data_builder.tokenizer.pad_token_id,
+    )
 
     if model_name == "gpt2":
         model = GPT2ForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
