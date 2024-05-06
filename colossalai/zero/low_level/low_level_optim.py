@@ -91,8 +91,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._verbose = verbose
 
         self._cpu_offload = cpu_offload
-        # grad accumulation
-        self.require_grad_sync = True
 
         # working and master params for mixed precision training
         self._working_param_groups = dict()
@@ -117,7 +115,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
         self._param_store = ParameterStore(dp_process_group)
-        self._grad_store = GradientStore(dp_process_group, partition_grad=partition_grad)
+        self._grad_store = GradientStore(dp_process_group, partition_grad=partition_grad, require_grad_sync=True)
         self._bucket_store = BucketStore(
             dp_process_group, reduce_bucket_size, overlap_communication, communication_dtype, moe_extra_dp_process_group
         )
@@ -263,13 +261,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def grad_handler(
         param: nn.Parameter,
         group_id: int,
-        require_grad_sync: bool,
         bucket_store: BucketStore,
         param_store: ParameterStore,
         grad_store: GradientStore,
     ):
         # if run with no_sync context, would not sync grad when backward
-        if require_grad_sync:
+        if grad_store.require_grad_sync:
             LowLevelZeroOptimizer.add_to_bucket(param, group_id, bucket_store, param_store, grad_store)
 
     def _attach_reduction_hook(self):
@@ -283,7 +280,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         partial(
                             LowLevelZeroOptimizer.grad_handler,
                             group_id=group_id,
-                            require_grad_sync=self.require_grad_sync,
                             bucket_store=self._bucket_store,
                             param_store=self._param_store,
                             grad_store=self._grad_store,
@@ -529,7 +525,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def backward(self, loss, retain_graph=False):
         assert not (
-            self._grad_store._partition_grads and not self.require_grad_sync
+            self._grad_store._partition_grads and not self._grad_store.require_grad_sync
         ), "ZeRO2(partition_grads) and no_sync are not compatible"
 
         if self.mixed_precision_mixin is not None:
@@ -537,7 +533,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         loss.backward(retain_graph=retain_graph)
 
-        if not self.require_grad_sync:
+        if not self._grad_store.require_grad_sync:
             return
 
         self._reduce_grad(self._grad_store._partition_grads)
@@ -549,14 +545,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def backward_by_grad(self, tensor, grad):
         assert not (
-            self._grad_store._partition_grads and not self.require_grad_sync
+            self._grad_store._partition_grads and not self._grad_store.require_grad_sync
         ), "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
 
         if self.mixed_precision_mixin is not None:
             grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
         torch.autograd.backward(tensor, grad)
 
-        if not self.require_grad_sync:
+        if not self._grad_store.require_grad_sync:
             return
         self._reduce_grad(self._grad_store._partition_grads)
 
@@ -592,7 +588,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def step(self, closure=None):
         assert closure is None, "closure is not supported by step()"
-        if not self.require_grad_sync:
+        if not self._grad_store.require_grad_sync:
             return
 
         if self.mixed_precision_mixin is not None and self.mixed_precision_mixin.should_skip_step():
@@ -807,7 +803,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         self._bucket_store,
                         self._param_store,
                         self._grad_store,
-                        self._bucket_store.moe_extra_dp_pg,
                     )
 
         LowLevelZeroOptimizer.run_reduction(self._bucket_store, self._grad_store)
@@ -823,12 +818,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # this context comes from pytorch DDP
     @contextmanager
     def no_sync(self):
-        old_require_grad_sync = self.require_grad_sync
-        self.require_grad_sync = False
+        old_require_grad_sync = self._grad_store.require_grad_sync
+        self._grad_store.require_grad_sync = False
         try:
             yield
         finally:
-            self.require_grad_sync = old_require_grad_sync
+            self._grad_store.require_grad_sync = old_require_grad_sync
 
     ##############
     # State Dict #
