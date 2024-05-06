@@ -86,7 +86,7 @@ def run_dist(rank, world_size, port):
     check_output_consistency(128)
 
 
-@pytest.mark.dist
+@pytest.mark.largedist
 @rerun_if_address_is_in_use()
 def test_cuda_graph_infer():
     spawn(run_dist, 1)
