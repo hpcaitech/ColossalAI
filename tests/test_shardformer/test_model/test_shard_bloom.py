@@ -209,13 +209,13 @@ def run_bloom_3d_test(test_config):
 
 def check_bloom(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bloom_test()
 
 
 def check_bloom_3d(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bloom_3d_test()
 
 

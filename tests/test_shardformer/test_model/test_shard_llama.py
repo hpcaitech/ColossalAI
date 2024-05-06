@@ -32,7 +32,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         model_fn, loss_fn, test_config
     )
     if enable_gradient_checkpointing:
-        org_model.gradient_checkpointing_enable()
+        # org_model.gradient_checkpointing_enable()
         sharded_model.unwrap().gradient_checkpointing_enable()
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
@@ -217,9 +217,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
             "enable_gradient_checkpointing": True,
-            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
-                num_stages=2, num_model_chunks=1, num_model_layers=8, num_ckpt_layers_per_stage=[4, 0]
-            ),
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(num_ckpt_layers_per_stage=[4, 0]),
         },
         {
             "tp_size": 4,
@@ -303,9 +301,6 @@ def run_llama_test(test_config):
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
             "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
-                num_stages=2,
-                num_model_chunks=2,
-                num_model_layers=8,
                 num_ckpt_layers_per_stage=[0, 1, 2, 2],
             ),
         },
@@ -324,13 +319,13 @@ def run_llama_3d_test(test_config):
 
 def check_llama(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_llama_test()
 
 
 def check_llama_3d(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_llama_3d_test()
 
 

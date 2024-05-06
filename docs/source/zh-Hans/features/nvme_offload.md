@@ -175,7 +175,7 @@ Mem usage: 4968.016 MB
 
 ```python
 def train_gemini_cpu(nvme_offload_fraction: float = 0.0):
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     config = GPT2Config()
     with ColoInitContext(device=torch.cuda.current_device()):
         model = GPT2LMHeadModel(config)

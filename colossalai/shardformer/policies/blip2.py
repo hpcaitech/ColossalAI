@@ -3,6 +3,7 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.blip2 import (
     forward_fn,
     get_blip2_flash_attention_forward,
+    get_jit_fused_blip2_mlp_forward,
     get_jit_fused_blip2_QFormer_output_forward,
     get_jit_fused_blip2_QFormer_self_output_forward,
 )
@@ -17,22 +18,17 @@ class BlipPolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        # TODO:
-        vocab_size = self.model.config.qformer_config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
+        self.enable_bias_gelu_fused = (
+            self.shard_config.enable_jit_fused and self.model.config.vision_config.hidden_act == "gelu"
+        )
         return self.model
 
     def module_policy(self):
         from transformers.models.blip_2.modeling_blip_2 import (
             Blip2Attention,
             Blip2EncoderLayer,
+            Blip2MLP,
             Blip2QFormerLayer,
             Blip2QFormerModel,
             Blip2QFormerOutput,
@@ -43,12 +39,22 @@ class BlipPolicy(Policy):
 
         policy = {}
 
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
+
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.vision_config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[Blip2EncoderLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attn.num_heads": self.model.config.vision_config.num_attention_heads
@@ -75,6 +81,7 @@ class BlipPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.fc1",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={"skip_bias_add": self.enable_bias_gelu_fused},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc2",
@@ -202,22 +209,56 @@ class BlipPolicy(Policy):
                 ],
             )
 
-            policy[OPTForCausalLM] = ModulePolicyDescription(
-                sub_module_replacement=[
+            policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_blip2_mlp_forward(),
+                    },
+                    policy=policy,
+                    target_key=Blip2MLP,
+                )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
                     SubModuleReplacementDescription(
                         suffix="model.decoder.embed_tokens",
-                        target_module=col_nn.VocabParallelEmbedding1D,
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
-                    SubModuleReplacementDescription(
-                        suffix="lm_head",
-                        target_module=col_nn.Linear1D_Col,
-                        kwargs={"gather_output": True},
-                    ),
-                ]
+                ],
+                policy=policy,
+                target_key=OPTForCausalLM,
             )
 
-            policy[Blip2Attention] = ModulePolicyDescription(method_replacement={"forward": forward_fn()})
-
+        if self.shard_config.enable_tensor_parallelism:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head",
+                        target_module=col_nn.VocabParallelLMHead1D,
+                        kwargs={
+                            "gather_output": True,
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        },
+                    ),
+                ],
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="lm_head",
+                        target_module=col_nn.PaddingLMHead,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
+                ],
+                policy=policy,
+                target_key=OPTForCausalLM,
+            )
         # optimization configuration
         # Handle Blip2EncoderLayer layer
         self.append_or_create_submodule_replacement(

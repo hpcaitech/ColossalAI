@@ -24,7 +24,7 @@ jobs:
           version=$(cat version.txt)
           tag=hpcaitech/colossalai:$version
           latest=hpcaitech/colossalai:latest
-          docker build --build-arg http_proxy=http://172.17.0.1:7890 --build-arg https_proxy=http://172.17.0.1:7890 --build-arg VERSION=v${version} -t $tag ./docker
+          docker build --build-arg VERSION=v${version} -t $tag ./docker
           docker tag $tag $latest
           echo "tag=${tag}" >> $GITHUB_OUTPUT
           echo "latest=${latest}" >> $GITHUB_OUTPUT

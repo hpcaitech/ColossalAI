@@ -75,7 +75,7 @@ def check_backward_consistency(
 
 
 def _run_ckpt_solver(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     MODEL_LIST = [tm.densenet121]
 
     torch.backends.cudnn.deterministic = True
@@ -111,7 +111,7 @@ def test_ckpt_solver():
 
 
 def _run_ckpt_solver_torch11(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     MODEL_LIST = [tm.densenet121]
 
     torch.backends.cudnn.deterministic = True

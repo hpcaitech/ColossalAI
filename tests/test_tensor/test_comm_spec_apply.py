@@ -178,7 +178,7 @@ def check_all_reduce_in_flatten_device_mesh(device_mesh, rank):
 
 def check_comm(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     assert rank == dist.get_rank()

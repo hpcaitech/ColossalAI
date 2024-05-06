@@ -42,7 +42,7 @@ class ConvModel(torch.nn.Module):
 
 def check_linear_module(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = LinearModel(4, 8).cuda()
     input = torch.rand(4, 4).cuda()
     output_compare = model(input)
@@ -59,7 +59,7 @@ def check_linear_module(rank, world_size, port):
 
 def check_conv_module(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = ConvModel(3, 6, 2).cuda()
     input = torch.rand(4, 3, 64, 64).cuda()
     output_compare = model(input)

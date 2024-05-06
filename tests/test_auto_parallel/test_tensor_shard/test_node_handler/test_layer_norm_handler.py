@@ -17,7 +17,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_ln_module_handler(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.LayerNorm(16)).cuda()
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

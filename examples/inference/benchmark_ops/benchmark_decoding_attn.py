@@ -2,14 +2,14 @@ import torch
 
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_v3,
     torch_attn_ref,
 )
-from tests.test_infer.test_ops.triton.test_decoding_attn import prepare_data
+from tests.test_infer.test_kernels.triton.test_decoding_attn import prepare_data
 
 try:
     import triton  # noqa

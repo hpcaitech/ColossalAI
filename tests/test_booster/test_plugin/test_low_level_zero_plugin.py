@@ -2,6 +2,7 @@ from typing import Optional
 
 import torch
 import torch.distributed as dist
+from peft import LoraConfig
 from torch.optim import Adam
 
 import colossalai
@@ -22,13 +23,17 @@ _STUCK_MODELS = ["transformers_albert_for_multiple_choice"]
 
 
 @clear_cache_before_run()
-def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
+def run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config=None) -> Optional[str]:
     device = get_accelerator().get_current_device()
     try:
         plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=2**5)
         booster = Booster(plugin=plugin)
         model = model_fn()
         optimizer = Adam(model.parameters(), lr=1e-3)
+
+        if lora_config is not None:
+            model = booster.enable_lora(model, lora_config=lora_config)
+
         criterion = lambda x: x.mean()
         data = data_gen_fn()
 
@@ -48,6 +53,7 @@ def run_fn(stage, model_fn, data_gen_fn, output_transform_fn) -> Optional[str]:
 
     except Exception as e:
         return repr(e)
+        # raise e
 
 
 @parameterize("stage", [2])
@@ -91,10 +97,42 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
     assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
 
 
+@parameterize("stage", [2])
+@parameterize("model_name", ["transformers_llama"])
+def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
+    passed_models = []
+    failed_info = {}  # (model_name, error) pair
+
+    sub_model_zoo = model_zoo.get_sub_registry(model_name)
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        task_type = None
+        if name == "transformers_llama_for_casual_lm":
+            task_type = "CAUSAL_LM"
+        if name == "transformers_llama_for_sequence_classification":
+            task_type = "SEQ_CLS"
+        lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
+        err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config)
+
+        torch.cuda.empty_cache()
+
+        if err is None:
+            passed_models.append(name)
+        else:
+            failed_info[name] = err
+            if early_stop:
+                break
+
+    if dist.get_rank() == 0:
+        print(f"Passed models({len(passed_models)}): {passed_models}\n\n")
+        print(f"Failed models({len(failed_info)}): {list(failed_info.keys())}\n\n")
+    assert len(failed_info) == 0, "\n".join([f"{k}: {v}" for k, v in failed_info.items()])
+
+
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_low_level_zero_plugin(early_stop=early_stop)
+    check_low_level_zero_lora(early_stop=early_stop)
 
 
 @rerun_if_address_is_in_use()

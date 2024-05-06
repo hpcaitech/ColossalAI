@@ -39,7 +39,7 @@ def train(args):
     # ==============================
     # Initialize Distributed Training
     # ==============================
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     # ======================================================

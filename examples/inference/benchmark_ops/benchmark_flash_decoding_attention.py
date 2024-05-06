@@ -3,7 +3,7 @@ import torch
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
     generate_caches_and_block_tables_v3,
     generate_caches_and_block_tables_vllm,

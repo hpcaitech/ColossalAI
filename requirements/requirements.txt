@@ -8,7 +8,7 @@ click
 fabric
 contexttimer
 ninja
-torch>=1.12
+torch>=2.1.0
 safetensors
 einops
 pydantic
@@ -16,4 +16,6 @@ ray
 sentencepiece
 google
 protobuf
-ordered-set
+transformers==4.36.2
+peft>=0.7.1
+bitsandbytes>=0.39.0

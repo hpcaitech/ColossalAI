@@ -4,8 +4,8 @@ from colossalai.inference.modeling.layers.attention import copy_to_cache
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import copy_kv_to_blocked_cache
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.cuda.test_kv_cache_memcpy import prepare_data as prepare_data_new_kcache_layout
-from tests.test_infer.test_ops.triton.test_kvcache_copy import prepare_data
+from tests.test_infer.test_kernels.cuda.test_kv_cache_memcpy import prepare_data as prepare_data_new_kcache_layout
+from tests.test_infer.test_kernels.triton.test_kvcache_copy import prepare_data
 
 try:
     import triton  # noqa

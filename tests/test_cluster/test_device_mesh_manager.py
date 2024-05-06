@@ -6,7 +6,7 @@ from colossalai.testing import spawn
 
 def check_device_mesh_manager(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     device_mesh_manager = DeviceMeshManager()
     # TODO(ver217): this test is strictly relies on hardware, temporary skip it
     # device_mesh_info_auto = DeviceMeshInfo(physical_ids=[0, 1, 2, 3],)

@@ -68,8 +68,7 @@ def exam_from_pretrained(plugin_type: str, model_name: str, shard=True, size_per
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_from_pretrained()
 
 

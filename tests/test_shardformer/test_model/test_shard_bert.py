@@ -231,13 +231,13 @@ def run_bert_3d_test(test_config):
 
 def check_bert(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bert_test()
 
 
 def check_bert_3d(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bert_3d_test()
 
 

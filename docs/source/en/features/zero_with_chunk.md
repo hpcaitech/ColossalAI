@@ -174,7 +174,7 @@ def main():
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
     NUM_STEPS = 10
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
 
     # build criterion
     criterion = GPTLMLoss()

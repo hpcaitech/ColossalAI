@@ -81,8 +81,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         optimizer.backward(loss)
 
     optimizer.step()
-    for group in optimizer.param_groups:
-        group["lr"] = 0.1
+    optimizer.zero_grad()
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
@@ -133,8 +132,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
 
 

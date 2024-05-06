@@ -7,12 +7,7 @@ from torch.nn import Module
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.falcon import (
-    FalconPipelineForwards,
-    build_falcon_alibi_tensor_fn,
-    get_falcon_flash_attention_forward,
-    get_tp_falcon_decoder_layer_forward,
-)
+from ..modeling.falcon import FalconPipelineForwards, build_falcon_alibi_tensor_fn, get_tp_falcon_decoder_layer_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["FalconPolicy"]
@@ -21,31 +16,16 @@ __all__ = ["FalconPolicy"]
 class FalconPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Falcon model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
-        from transformers.models.falcon.modeling_falcon import FalconAttention, FalconDecoderLayer, FalconModel
+        from transformers.models.falcon.modeling_falcon import FalconDecoderLayer, FalconModel
 
         if not self.model.config.new_decoder_architecture and self.model.config.multi_query:
             warnings.warn(
@@ -58,7 +38,21 @@ class FalconPolicy(Policy):
             warnings.warn("Falcon doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         policy = {}
+
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
+
+        if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
+            assert (
+                self.model.config.num_kv_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of key_value heads must be divisible by tensor parallel size."
             attn_attribute_replacement = {
                 "self_attention.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attention.split_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
@@ -98,12 +92,19 @@ class FalconPolicy(Policy):
                 method_replacement={
                     "build_alibi_tensor": build_falcon_alibi_tensor_fn(self.shard_config.tensor_parallel_process_group)
                 },
-                sub_module_replacement=[
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
                     SubModuleReplacementDescription(
                         suffix="word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
                 ],
+                policy=policy,
+                target_key=FalconModel,
             )
 
         # optimization configuration
@@ -141,11 +142,8 @@ class FalconPolicy(Policy):
             )
 
         if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(
-                description={"forward": get_falcon_flash_attention_forward()},
-                policy=policy,
-                target_key=FalconAttention,
-            )
+            warnings.warn("Falcon doesn't support flash attention now, fallback to transformers attention.")
+
         return policy
 
     def postprocess(self):
@@ -232,11 +230,26 @@ class FalconForCausalLMPolicy(FalconPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)
+                    suffix="lm_head",
+                    target_module=col_nn.VocabParallelLMHead1D,
+                    kwargs=dict(
+                        gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by
+                    ),
                 ),
                 policy=policy,
                 target_key=FalconForCausalLM,
             )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=col_nn.PaddingLMHead,
+                    kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
+                ),
+                policy=policy,
+                target_key=FalconForCausalLM,
+            )
+
         if self.pipeline_stage_manager:
             self.set_pipeline_forward(
                 model_cls=FalconForCausalLM,

@@ -11,7 +11,9 @@ from .base_store import BaseStore
 class BucketStore(BaseStore):
     def __init__(self, torch_pg: ProcessGroup):
         super().__init__(torch_pg)
+        self.reset_all()
 
+    def reset_all(self) -> None:
         # init
         self.current_group_id = 0
         self._num_elements_in_bucket = 0
