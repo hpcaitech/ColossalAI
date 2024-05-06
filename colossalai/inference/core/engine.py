@@ -13,6 +13,7 @@ from transformers import (
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
 )
+from transformers.models.bloom.modeling_bloom import BloomForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from colossalai.accelerator import get_accelerator
@@ -39,7 +40,9 @@ PP_AXIS, TP_AXIS = 0, 1
 _supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
     "BaichuanForCausalLM": AutoModelForCausalLM,
+    "BloomForCausalLM": BloomForCausalLM,
 }
+
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 

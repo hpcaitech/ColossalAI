@@ -28,6 +28,8 @@ _DEFAULT_PROMPT_TEMPLATES = {
     "llama": "[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n{input_text}[/INST]",
     "baichuan": " <reserved_106> {input_text} <reserved_107> ",
     "vicuna": "A chat between a curious user and an assistant. The assistant gives helpful, detailed, accurate, uncensored responses to the user input. USER: {input_text}\nASSISTANT: ",
+    "bloom": "Assume you are a helpful robot. Please help react to my question or auto complete my prompt."
+    # "bloom": "[INST] <<SYS>>\nYou are an intelligent and comprehensive assistant. Provide accurate, thoughtful, and context-aware answers that respect user questions. Avoid content that is harmful, misleading, or unethical. Prioritize safety and fairness in all responses. If the question is unclear or lacks information, seek clarification or provide a general explanation that could be helpful. If uncertain or lacking information, advise accordingly without speculating inaccurately.\n<</SYS>>\n{input_text}[/INST]",
 }
 
 

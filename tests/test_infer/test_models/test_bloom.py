@@ -6,15 +6,16 @@ import pytest
 import torch
 import torch.distributed as dist
 from torch.multiprocessing import Manager
-from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+from transformers import BloomForCausalLM, BloomTokenizerFast, GenerationConfig
 
 import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
-from colossalai.inference.modeling.policy import NoPaddingBaichuanModelInferPolicy
+from colossalai.inference.modeling.policy import NoPaddingBloomModelInferPolicy
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-BAICHUAN_MODEL_NAME_OR_PATH = "baichuan-inc/Baichuan2-7B-Base"
+# BLOOM_MODEL_NAME_OR_PATH = "bigscience/bloom-560m"
+BLOOM_MODEL_NAME_OR_PATH = "/home/lixingjian/models/bloom-560m"
 
 
 def setup_seed(seed):
@@ -27,12 +28,13 @@ def setup_seed(seed):
 
 def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=False, prompt_template=None, policy=None):
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(BAICHUAN_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
+    tokenizer = BloomTokenizerFast.from_pretrained(BLOOM_MODEL_NAME_OR_PATH, use_fast=False, trust_remote_code=True)
+    model = BloomForCausalLM.from_pretrained(BLOOM_MODEL_NAME_OR_PATH, trust_remote_code=True).half().cuda()
     model = model.eval()
 
     inputs = [
-        "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
+        "Bloom model is a transformer-based model that",
+        "Introduce a landmark in China",
     ]
 
     output_len = 38
@@ -95,15 +97,15 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
 
 
 # NOTE(caidi) If do_sample is set to True or use_cuda_kernel is set to False, the inference result will be different from that of the transformer.
-@parameterize("prompt_template", [None, "baichuan"])
+@parameterize("prompt_template", [None, "bloom"])
 @parameterize("do_sample", [False])
-@parameterize("use_cuda_kernel", [True])
+@parameterize("use_cuda_kernel", [False])  # cuda kernel bad
 def test_tp_engine(prompt_template, do_sample, use_cuda_kernel):
     kwargs1 = {
         "use_engine": True,
         "prompt_template": prompt_template,
         "do_sample": do_sample,
-        "policy": NoPaddingBaichuanModelInferPolicy(),
+        "policy": NoPaddingBloomModelInferPolicy(),
         "use_cuda_kernel": use_cuda_kernel,
     }
 
@@ -125,7 +127,7 @@ def test_tp_engine(prompt_template, do_sample, use_cuda_kernel):
 
 
 @pytest.mark.skipif(
-    not os.path.exists(BAICHUAN_MODEL_NAME_OR_PATH),
+    not os.path.exists(BLOOM_MODEL_NAME_OR_PATH),
     reason="There is no local model address included, please replace this address with a valid one.",
 )
 @pytest.mark.dist

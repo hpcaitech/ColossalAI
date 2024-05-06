@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import torch
 from transformers.configuration_utils import PretrainedConfig
@@ -15,9 +15,11 @@ __all__ = ["KVCacheManager"]
 GIGABYTE = 1024**3
 
 
-def get_model_config_attr(config: PretrainedConfig, attr_name: str):
+def get_model_config_attr(config: PretrainedConfig, attr_name: str, alter_attr: Any = None):
     if hasattr(config, attr_name):
         return getattr(config, attr_name)
+    if alter_attr is not None:
+        return alter_attr
     elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
         return getattr(config, config.attribute_map[attr_name])
     raise AttributeError(f"{attr_name} is not found in config")
@@ -53,7 +55,12 @@ class KVCacheManager:
         And it's possible to have a batch of sequences with different lengths of block tables.
     """
 
-    def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
+    def __init__(
+        self,
+        config: InferenceConfig,
+        model_config: PretrainedConfig,
+        verbose: bool = False,
+    ) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
 
@@ -64,14 +71,8 @@ class KVCacheManager:
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
         self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
         self.head_num = get_model_config_attr(model_config, "num_attention_heads")
+        self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads", alter_attr=self.head_num)
         self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
-
-        if hasattr(config, "num_key_value_heads"):
-            self.kv_head_num = getattr(config, "num_key_value_heads")
-        elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map["num_key_value_heads"]):
-            self.kv_head_num = getattr(config, config.attribute_map["num_key_value_heads"])
-        else:
-            self.kv_head_num = self.head_num
 
         assert (
             self.kv_head_num % self.tp_size == 0
