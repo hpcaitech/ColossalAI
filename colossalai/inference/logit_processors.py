@@ -17,6 +17,22 @@ def register_logit_processor(process_type):
     return register
 
 
+@register_logit_processor("temperature")
+def temperature_logit_process(logits, temperature: float):
+    """
+    apply temperature scaling.
+    """
+    if isinstance(temperature, float) and temperature > 0 and temperature <= 1.0:
+        if temperature == 1.0:
+            return logits
+        else:
+            return logits / temperature
+    else:
+        raise ValueError(
+            f"'temperature={temperature}' should be a strictly positive float, less than or equal to 1.0 and greater than 0."
+        )
+
+
 @register_logit_processor("top_k")
 def top_k_logit_processor(logits, top_k: int):
     """
@@ -32,6 +48,9 @@ def top_p_logit_processor(logits, top_p: float):
     """
     top_p logit processor
     """
+    if top_p == 1.0:
+        return logits
+
     sorted_logits, sorted_indices = torch.sort(logits, descending=True)
     cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
 
