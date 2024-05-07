@@ -35,7 +35,8 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-from colossalai.kernel import HAS_FLASH_ATTN, HAS_TRITON
+from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN
+from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation, set_moe_args

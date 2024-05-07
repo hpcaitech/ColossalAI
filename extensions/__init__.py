@@ -1,6 +1,5 @@
 from .pybind.cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
 from .pybind.flash_attention import (
-    HAS_FLASH_ATTN,
     FlashAttentionDaoCudaExtension,
     FlashAttentionNpuExtension,
     FlashAttentionSdpaCudaExtension,
