@@ -80,7 +80,6 @@ def check_low_level_zero_plugin(stage: int, early_stop: bool = True):
             skipped_models.append(name)
             continue
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn)
-
         get_accelerator().empty_cache()
 
         if err is None:
