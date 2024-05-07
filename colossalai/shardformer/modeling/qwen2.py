@@ -7,16 +7,6 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-<<<<<<< HEAD
-
-try:
-    from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM, Qwen2ForSequenceClassification, Qwen2Model
-except ImportError:
-    Qwen2Model = "Qwen2Model"
-    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
-    Qwen2ForCausalLM = "Qwen2ForCausalLM"
-
-=======
 from transformers.models.qwen2.modeling_qwen2 import (
     Qwen2ForCausalLM,
     Qwen2ForSequenceClassification,
@@ -24,7 +14,6 @@ from transformers.models.qwen2.modeling_qwen2 import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
->>>>>>> feat: support qwen2 model
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -55,11 +44,7 @@ class Qwen2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-<<<<<<< HEAD
     ) -> Union[Tuple, BaseModelOutputWithPast]:
-=======
-    ):
->>>>>>> feat: support qwen2 model
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -97,28 +82,14 @@ class Qwen2PipelineForwards:
         if output_hidden_states:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
-<<<<<<< HEAD
-=======
         if use_cache:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
->>>>>>> feat: support qwen2 model
 
         assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
 
         past_key_values_length = 0
-<<<<<<< HEAD
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
         if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-=======
-        if position_ids is None:
->>>>>>> feat: support qwen2 model
             position_ids = torch.arange(
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )
@@ -141,11 +112,6 @@ class Qwen2PipelineForwards:
         elif self._attn_implementation == "sdpa" and not output_attentions:
             # output_attentions=True can not be supported when using SDPA, and we fall back on
             # the manual implementation that requires a 4D causal mask in all cases.
-<<<<<<< HEAD
-            from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask_for_sdpa
-
-=======
->>>>>>> feat: support qwen2 model
             attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                 attention_mask,
                 (batch_size, seq_length),
@@ -154,25 +120,14 @@ class Qwen2PipelineForwards:
             )
         else:
             # 4d mask is passed through the layers
-<<<<<<< HEAD
-            from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask
-
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask,
-                (batch_size, seq_length),
-                hidden_states,
-=======
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
                 (batch_size, seq_length),
                 inputs_embeds,
->>>>>>> feat: support qwen2 model
                 past_key_values_length,
                 sliding_window=self.config.sliding_window,
             )
 
-<<<<<<< HEAD
-=======
         if self.gradient_checkpointing and self.training:
             if use_cache:
                 logger.warning_once(
@@ -180,7 +135,6 @@ class Qwen2PipelineForwards:
                 )
                 use_cache = False
 
->>>>>>> feat: support qwen2 model
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -194,7 +148,6 @@ class Qwen2PipelineForwards:
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-<<<<<<< HEAD
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
@@ -203,22 +156,6 @@ class Qwen2PipelineForwards:
                     past_key_values,
                     output_attentions,
                     use_cache,
-=======
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, output_attentions, None)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
-                    None,
->>>>>>> feat: support qwen2 model
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -562,11 +499,7 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
 
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
-<<<<<<< HEAD
-=======
-    from transformers import Qwen2ForCausalLM
 
->>>>>>> feat: support qwen2 model
     def forward(
         self: Qwen2ForCausalLM,
         input_ids: torch.LongTensor = None,

@@ -179,7 +179,12 @@ def run_forward_backward_with_hybrid_plugin(
 
         data_iter = iter([shard_test_data])
         sharded_output = booster.execute_pipeline(
-            data_iter, sharded_model, _criterion, sharded_optimizer, return_loss=True, return_outputs=True
+            data_iter,
+            sharded_model,
+            _criterion,
+            sharded_optimizer,
+            return_loss=True,
+            return_outputs=True,
         )
         sharded_loss = sharded_output["loss"]
 
