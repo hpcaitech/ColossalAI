@@ -17,3 +17,8 @@ try:
     from .mistral import *
 except ImportError:
     print("This version of transformers doesn't support mistral.")
+
+try:
+    from .qwen2 import *
+except ImportError:
+    print("This version of transformers doesn't support qwen2.")
