@@ -225,17 +225,17 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
 
     shard_to_param_cp = set_master_param_to_shard_param([weight_col_shard_flatten, bias_col_flatten])
     cp_dist_optim.setup_distributed(
-        tensor_parallel_group=tp_group,
-        data_parallel_group=dp_group,
-        shard_to_param=shard_to_param_cp,
+        tp_group=tp_group,
+        dp_group=dp_group,
+        shard_to_working_param=shard_to_param_cp,
         use_zero=use_zero,
     )
 
     shard_to_param_rp = set_master_param_to_shard_param([weight_row_shard_flatten, bias_row_flatten])
     rp_dist_optim.setup_distributed(
-        tensor_parallel_group=tp_group,
-        data_parallel_group=dp_group,
-        shard_to_param=shard_to_param_rp,
+        tp_group=tp_group,
+        dp_group=dp_group,
+        shard_to_working_param=shard_to_param_rp,
         use_zero=use_zero,
     )
 
@@ -281,7 +281,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         correctness_verify(weight.data, weight_col_gather.data, dtype)
         correctness_verify(weight.data, weight_row_gather.data, dtype)
 
-    print(f"Base Test Pass")
+    print(f"Base Test Passed")
 
 
 @parameterize("dtype", [torch.float16])  # torch.float32, torch.float16, torch.bfloat16
@@ -336,17 +336,17 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         )
         shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
         dist_optim.optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
     else:
         shard_to_param = set_master_param_to_shard_param(tp_param_group)
         dist_optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
 
@@ -392,7 +392,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Zero Test Pass")
+    print(f"Zero Test Passed")
 
 
 @parameterize("dtype", [torch.float16])
@@ -448,17 +448,17 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         )
         shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
         dist_optim.optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
     else:
         shard_to_param = set_master_param_to_shard_param(tp_param_group)
         dist_optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
 
@@ -512,7 +512,7 @@ def exam_dist_adafactor_booster(dtype: torch.dtype, tp_zero_size: tuple[int, int
         correctness_verify(p.data, tp_p.data, dtype)
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Booster Test Pass")
+    print(f"Booster Test Passed")
 
 
 @parameterize(
@@ -580,7 +580,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass")
+    print(f"Bert Model Zoo Test Passed")
 
 
 @parameterize(
@@ -673,7 +673,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Bert Model Zoo Test Pass")
+    print(f"Bert Model Zoo Test Passed")
 
 
 def run_dist(rank, world_size, port):

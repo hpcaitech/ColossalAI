@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 from functools import partial
 from pathlib import Path
 from types import MethodType
@@ -7,7 +8,9 @@ from typing import Callable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.distributed
+import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed.distributed_c10d import _get_default_group
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
@@ -27,6 +30,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.nn.optimizer import DistGaloreAwamW8bit
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
@@ -321,19 +325,30 @@ class LowLevelZeroPlugin(DPPluginBase):
         if not isinstance(model, ModelWrapper):
             model = LowLevelZeroModel(model, self.precision)
 
+        # TODO: Support Galore + ZeRO
+        zero_stage = self.stage
+        zero_optim_kwargs = {**self.zero_optim_kwargs}
+        dp_size = dist.get_world_size()
+        if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and dp_size > 0:
+            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            zero_optim_kwargs["partition_grad"] = False
+            zero_stage = 0
+
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer: LowLevelZeroOptimizer = LowLevelZeroOptimizer(
-                optimizer, **self.zero_optim_kwargs, verbose=self.verbose
+                optimizer, **zero_optim_kwargs, verbose=self.verbose
             )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+
             # Setup optimizers that require global states
-            if isinstance(optimizer.optim, DistributedOptim):
-                tp_group = None
-                dp_group = torch.distributed.distributed_c10d._get_default_group()
+            optim = optimizer.optim
+            is_zero = dp_size > 1 and zero_stage > 0
+            dp_group = _get_default_group()  # Use the whole world
+            if isinstance(optim, DistributedOptim):
                 shard_to_param = optimizer.get_master_to_working_map()
-                is_zero = True
-                optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
+                padding_map = optimizer.get_param_padding_map()
+                optim.setup_distributed(None, dp_group, shard_to_param, padding_map, is_zero)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 

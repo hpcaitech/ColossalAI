@@ -16,3 +16,5 @@ ray
 sentencepiece
 google
 protobuf
+galore_torch
+bitsandbytes==0.43.0

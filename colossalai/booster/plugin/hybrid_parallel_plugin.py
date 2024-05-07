@@ -1,7 +1,9 @@
 import ctypes
 import random
 import warnings
+from collections import defaultdict
 from contextlib import contextmanager
+from copy import deepcopy
 from functools import partial
 from types import MethodType
 from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
@@ -25,6 +27,7 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.nn.optimizer import DistGaloreAwamW8bit
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -1110,8 +1113,17 @@ class HybridParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         param_info = get_param_info(optimizer)
+
+        # TODO: Support Galore + ZeRO
+        zero_stage = self.zero_stage
+        zero_config = deepcopy(self.zero_config)
+        if isinstance(optimizer, DistGaloreAwamW8bit) and zero_stage > 0 and self.dp_size > 0:
+            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            zero_config["partition_grad"] = False
+            zero_stage = 0
+
         if not isinstance(model, ModelWrapper):
-            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            use_ddp = self.dp_size > 1 and self.pp_size == 1 and zero_stage == 0
             model = HybridParallelModule(
                 model,
                 precision=self.precision,
@@ -1123,7 +1135,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-            if self.zero_stage == 0:
+            if zero_stage == 0:
                 is_zero = False
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
@@ -1148,7 +1160,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                is_zero = True
+                is_zero = self.dp_size > 1
                 if self.dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
@@ -1166,18 +1178,19 @@ class HybridParallelPlugin(PipelinePluginBase):
                     pp_process_group=self.pp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
-                    **self.zero_config,
+                    **zero_config,
                     **self.amp_config,
                 )
-
-            # Setup optimizers that require global states
-            if isinstance(optimizer.optim, DistributedOptim):
-                tp_group = self.tp_group
-                dp_group = self.dp_group
-                shard_to_param = optimizer.get_master_to_working_map()
-                optimizer.optim.setup_distributed(tp_group, dp_group, shard_to_param, is_zero)
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+
+            # Setup optimizers that require global states
+            optim = optimizer.optim
+            if isinstance(optim, DistributedOptim):
+                shard_to_param = optimizer.get_master_to_working_map() if is_zero else {}
+                padding_map = optimizer.get_param_padding_map() if is_zero else defaultdict(int)
+                optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
+
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(

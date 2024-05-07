@@ -202,17 +202,17 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
         )
         shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
         dist_optim.optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
     else:
         shard_to_param = set_master_param_to_shard_param(tp_param_group)
         dist_optim.setup_distributed(
-            tensor_parallel_group=tp_group,
-            data_parallel_group=dp_group,
-            shard_to_param=shard_to_param,
+            tp_group=tp_group,
+            dp_group=dp_group,
+            shard_to_working_param=shard_to_param,
             use_zero=use_zero,
         )
 
@@ -259,7 +259,7 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"Fwd/Bwd Test Pass")
+    print(f"Fwd/Bwd Test Passed")
 
 
 @parameterize(
@@ -344,7 +344,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"LowLevelZeroPlugin + Bert Model Zoo Test Pass")
+    print(f"LowLevelZeroPlugin + Bert Model Zoo Test Passed")
 
 
 @parameterize(
@@ -454,7 +454,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
-    print(f"HybridParallelPlugin + Bert Model Zoo Test Pass")
+    print(f"HybridParallelPlugin + Bert Model Zoo Test Passed")
 
 
 def run_dist(rank, world_size, port):
