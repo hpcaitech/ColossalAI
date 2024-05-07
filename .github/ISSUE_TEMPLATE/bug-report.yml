@@ -14,7 +14,7 @@ body:
     description: Please search [here](https://github.com/hpcaitech/ColossalAI/issues) to see if an open or closed issue already exists for the bug you have encountered.
     options:
     - label: I have searched the existing issues
-      required: true 
+      required: true
 - type: textarea
   attributes:
     label: 🐛 Describe the bug
