@@ -22,15 +22,18 @@ def temperature_logit_process(logits, temperature: float):
     """
     apply temperature scaling.
     """
+
     if isinstance(temperature, float) and temperature > 0 and temperature <= 1.0:
-        if temperature == 1.0:
-            return logits
-        else:
-            return logits / temperature
+        return logits if temperature == 1.0 else logits / temperature
     else:
-        raise ValueError(
-            f"'temperature={temperature}' should be a strictly positive float, less than or equal to 1.0 and greater than 0."
-        )
+        if temperature == 0.0:
+            raise ValueError(
+                f"Got temperature={temperature}, if you want to use greedy decoding strategies, set `do_sample=False`."
+            )
+        else:
+            raise ValueError(
+                f"'temperature={temperature}' should be a strictly positive float, less than or equal to 1.0 and greater than 0."
+            )
 
 
 @register_logit_processor("top_k")
@@ -38,6 +41,10 @@ def top_k_logit_processor(logits, top_k: int):
     """
     top_k logit processor
     """
+
+    if not isinstance(top_k, int) or top_k <= 0:
+        raise ValueError(f"`top_k` should be a strictly positive integer, but got {top_k}.")
+
     indices_to_remove = logits < torch.topk(logits, top_k)[0][..., -1, None]
     logits[indices_to_remove] = -float("inf")
     return logits
@@ -48,8 +55,9 @@ def top_p_logit_processor(logits, top_p: float):
     """
     top_p logit processor
     """
-    if top_p == 1.0:
-        return logits
+
+    if top_p < 0 or top_p > 1.0:
+        raise ValueError(f"`top_p` should be a float > 0 and < 1, but got {top_p}.")
 
     sorted_logits, sorted_indices = torch.sort(logits, descending=True)
     cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
