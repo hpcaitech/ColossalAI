@@ -65,7 +65,7 @@ class DistributedAdaFactor(DistributedOptim):
         padding_map=None,
         use_zero: bool = True,
     ) -> None:
-        """
+        """Setup process groups for TP and ZeRO 2.
         Inject features to the Optimizer
 
         Args:
@@ -82,23 +82,23 @@ class DistributedAdaFactor(DistributedOptim):
         if self.tp_group is not None:
             self.tp_size = dist.get_world_size(self.tp_group)
         if self.dp_group is not None:
-            self.tp_size = dist.get_world_size(self.dp_group)
+            self.dp_size = dist.get_world_size(self.dp_group)
         self.use_zero = use_zero
 
         self.shard_to_working_param = shard_to_working_param if shard_to_working_param is not None else {}
         # grad is None, cause we dont setup now
         for group in self.param_groups:
             for p in group["params"]:
-                # w/o ZeRO: master param = working param
-                self.shard_to_working_param[id(p)] = self.shard_to_working_param.get(id(p), p)
-
+                self.shard_to_working_param[id(p)] = self.shard_to_working_param.get(
+                    id(p), p
+                )  # If not ZeRO, working param is master param
                 self.param_is_dtensor_dict[id(p)] = is_distributed_tensor(self.shard_to_working_param[id(p)])
-                self.grad_shape_dict[id(p)] = self.shard_to_working_param[id(p)].shape
+                self.grad_shape_dict[id(p)] = self.shard_to_working_param.get(id(p)).shape
                 self.factored_dict[id(p)], self.use_first_moment_dict[id(p)] = self._get_options(
                     group, self.grad_shape_dict[id(p)]
                 )
                 if self.param_is_dtensor_dict[id(p)]:
-                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_working_param.get(id(p)))
+                    self.shard_spec_dict[id(p)] = get_sharding_spec(self.shard_to_working_param[id(p)])
                 else:
                     self.shard_spec_dict[id(p)] = None
 
@@ -156,7 +156,7 @@ class DistributedAdaFactor(DistributedOptim):
         return torch.mul(r_factor, c_factor)
 
     def _col_parallel_factor(self, update, grad, state, grad_shape, beta2t):
-        if grad_shape[0] % self.tp_size != 0:
+        if grad_shape[0] % self.dp_size != 0:
             # gather update[flatten] along dp group then reshape to [H, W/tp]
             update = _gather(input_=update, dim=-1, process_group=self.dp_group)
             update_reshape = update.view(-1, grad_shape[1])
@@ -188,7 +188,7 @@ class DistributedAdaFactor(DistributedOptim):
         return update
 
     def _row_parallel_factor(self, update, grad, state, grad_shape, beta2t):
-        if grad_shape[0] % self.tp_size != 0:
+        if grad_shape[0] % self.dp_size != 0:
             # gather update[flatten] along dp group then reshape to [H/tp, W]
             update = _gather(input_=update, dim=-1, process_group=self.dp_group)
             # view update to origin[tp] shape
@@ -233,7 +233,7 @@ class DistributedAdaFactor(DistributedOptim):
     def _base_factor(self, update, grad, state, grad_shape, beta2t):
         if self.use_zero:
             # only zero
-            if grad_shape[0] % self.tp_size != 0:
+            if grad_shape[0] % self.dp_size != 0:
                 # view update to origin shape update.view(grad_shape[0]//self.data_parallel_size , grad_shape[1])
                 # row mean no change
                 # col mean need reduce and div
@@ -333,13 +333,13 @@ class DistributedAdaFactor(DistributedOptim):
                     if factored:
                         if param_is_dtensor:
                             if shard_spec.sharding_sequence[0] == "R":  # Col Parallel
-                                if grad_shape[0] % self.tp_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=p.device, dtype=p.dtype
                                     )  # [H]
                                 else:
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.tp_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp]
                                 state["exp_avg_sq_col"] = torch.zeros(
                                     grad_shape[1], device=p.device, dtype=p.dtype
@@ -347,13 +347,13 @@ class DistributedAdaFactor(DistributedOptim):
 
                             if shard_spec.sharding_sequence[-1] == "R":  # Row Parallel
                                 # Row indivisible shape situation
-                                if grad_shape[0] % self.tp_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=p.device, dtype=p.dtype
                                     )  # [H/tp]
                                 else:
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.tp_size, device=p.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=p.device, dtype=p.dtype
                                     )  # [H/dp/tp]
 
                                 state["exp_avg_sq_col"] = torch.zeros(
@@ -361,7 +361,7 @@ class DistributedAdaFactor(DistributedOptim):
                                 )  # [W]
                         else:
                             if self.use_zero:
-                                if grad_shape[0] % self.tp_size != 0:
+                                if grad_shape[0] % self.dp_size != 0:
                                     # save all exp_avg_sq_row [H]
                                     state["exp_avg_sq_row"] = torch.zeros(
                                         grad_shape[0], device=grad.device, dtype=p.dtype
@@ -369,7 +369,7 @@ class DistributedAdaFactor(DistributedOptim):
                                 else:
                                     # exp_avg_sq_row [H // dp]
                                     state["exp_avg_sq_row"] = torch.zeros(
-                                        grad_shape[0] // self.tp_size, device=grad.device, dtype=p.dtype
+                                        grad_shape[0] // self.dp_size, device=grad.device, dtype=p.dtype
                                     )
                             else:
                                 # exp_avg_sq_row [H]
@@ -420,7 +420,7 @@ class DistributedAdaFactor(DistributedOptim):
                     param_is_dtensor,
                     self.use_zero,
                     self.tp_size,
-                    self.tp_size,
+                    self.dp_size,
                     self.tp_group,
                     self.dp_group,
                 )
