@@ -62,17 +62,20 @@ class DistributedAdaFactor(DistributedOptim):
         tp_group: dist.ProcessGroup = None,
         dp_group: dist.ProcessGroup = None,
         shard_to_working_param: Dict = {},
-        paddding_map=None,
+        padding_map=None,
         use_zero: bool = True,
     ) -> None:
         """Setup process groups for TP and ZeRO 2.
-        Arguments:
-            tp_group (dist.ProcessGroup): Tensor Parallel process group
-            dp_group (dist.ProcessGroup): ZeRO 2 process group
+        Inject features to the Optimizer
+
+        Args:
+            tp_group: The devices group for tensor parallel;
+            dp_group: The devices group for data parallel;
             shard_to_working_param (Dict): ZeRO 2 feeds the optimizer a sharded param view as grads are sharded.
                 This maps from id(view) to working params used in forward & backward.
-            padding_map (Dict): Empty interface placeholder
-            is_zero (bool): Whether to use ZeRO 2.
+            padding_map: An empty interface placeholder;
+            use_zero: Whether or not to use zero;
+
         """
         self.tp_group = tp_group  # "Expected row process group"
         self.dp_group = dp_group
