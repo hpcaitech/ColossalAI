@@ -281,16 +281,11 @@ class FusedRMSNorm(BaseLayerNorm):
             )
 
         LazyInitContext.materialize(module)
-        # to check if it is huggingface LlamaRMSNorm or MistralRMSNorm
-        if module.__class__.__name__ in ["LlamaRMSNorm", "Qwen2RMSNorm","MistralRMSNorm"]:
-            normalized_shape = module.weight.shape[0]
-            eps = module.variance_epsilon
-            elementwise_affine = True
-        else:
-            # get the attributes of the module
-            normalized_shape = module.normalized_shape
-            eps = module.eps
-            elementwise_affine = module.elementwise_affine
+
+        # try to get normalized_shape, eps, elementwise_affine from the module
+        normalized_shape = getattr(module, "normalized_shape", module.weight.shape[0])
+        eps = module.variance_epsilon if hasattr(module, "variance_epsilon") else module.eps
+        elementwise_affine = getattr(module, "elementwise_affine", True)
 
         rmsnorm = FusedRMSNormWithHook(
             normalized_shape=normalized_shape,
