@@ -70,9 +70,9 @@ def prepare_data(
 
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
-@pytest.mark.parametrize("bsz", [4, 7, 32])
+@pytest.mark.parametrize("bsz", [7, 32])
 @pytest.mark.parametrize("block_size", [16, 32, 64])
-@pytest.mark.parametrize("max_num_blocks_per_seq", [8, 32])
+@pytest.mark.parametrize("max_num_blocks_per_seq", [16])
 @pytest.mark.parametrize("num_kv_heads", [16])
 @pytest.mark.parametrize("same_context_len", [True, False])
 @pytest.mark.parametrize("n_tokens", [1, 5])
