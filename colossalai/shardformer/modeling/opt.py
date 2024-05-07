@@ -989,8 +989,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 process_group=shard_config.tensor_parallel_process_group,
                 vocab_size=self.lm_head.out_features,
             )
-            # loss_fct = CrossEntropyLoss()
-            # loss = loss_fct(shift_logits.view(-1, self.config.vocab_size), shift_labels.view(-1))
 
         if not return_dict:
             output = (logits,) + outputs[1:]
