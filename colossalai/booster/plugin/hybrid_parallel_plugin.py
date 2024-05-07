@@ -1164,7 +1164,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 if self.dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
-                        "If you are not intended to use cpu_offload, please consider set zero_stage=0."
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
                     )
 
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."

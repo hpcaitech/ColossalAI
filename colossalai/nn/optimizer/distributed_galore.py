@@ -94,7 +94,7 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
         padding_map: Optional[Dict] = defaultdict(int),
         is_zero: Optional[bool] = False,
     ):
-        """Assign process groups for TP and ZeRO 2.
+        """Setup process groups for TP and ZeRO 2.
         Arguments:
             tp_group (dist.ProcessGroup): Tensor Parallel process group
             dp_group (dist.ProcessGroup): ZeRO 2 process group

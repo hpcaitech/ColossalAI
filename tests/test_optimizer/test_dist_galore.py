@@ -31,6 +31,10 @@ _HID_DIM = 128
 _N_STEP = 3
 _SEED = 0
 coordinator = None
+lr = 1e-2
+beta1, beta2 = 0.9, 0.999
+eps = 1e-8
+decay = 1e-3
 
 Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
 TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
@@ -159,10 +163,6 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
     assert_distributed_close(tp_model, torch_model, rtol=0, atol=0, tp_group=tp_group)
 
     # Set up optimizers
-    lr = 1e-2
-    beta1, beta2 = 0.9, 0.999
-    eps = 1e-8
-    decay = 1e-3
     torch_optim = GaLoreAdamW8bit(
         get_galore_param_groups(torch_model, decay, rank=8),
         lr=lr,
@@ -227,10 +227,6 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
     assert_distributed_close(tp_model, torch_model, rtol=0, atol=0, tp_group=tp_group)
 
     # Set up optimizers
-    lr = 1e-2
-    beta1, beta2 = 0.9, 0.999
-    eps = 1e-8
-    decay = 1e-3
     torch_optim = GaLoreAdamW8bit(
         get_galore_param_groups(torch_model, decay, rank=8),
         lr=lr,
@@ -313,16 +309,17 @@ def check_dist_galore(rank, world_size, port):
     run_dist_galore_basic()
     coordinator.print_on_master("Basic backward tests passed")
 
-    # _COORDINATOR.print_on_master("Forward-backward tests not runnable due to SVD instability")
+    coordinator.print_on_master("Skipping forward-backward tests due to SVD instability")
     # run_dist_galore_fwd_bwd()
     # _COORDINATOR.print_on_master("Forward-backward tests passed")
 
     coordinator.print_on_master(
-        "Running bert tests, which are expected to produce minor errors due to SVD instability...\n\
-        Though if you see more than ONE mismatched element, it's probably a real bug!!"
+        "Running bert tests, which are expected to produce minor errors due to instability in SVD convergence. \
+            For example, a 1e-9 grad diff causes drastic difference in SVD output."
     )
     for config in test_config:
         try:
+            print(config)
             run_bert_test(test_config=config, optim_class=GaLoreAdamW8bit, sharded_optim_class=DistGaloreAwamW8bit)
         except Exception as e:
             print(e)
