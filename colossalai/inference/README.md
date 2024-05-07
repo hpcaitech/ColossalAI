@@ -81,7 +81,7 @@ import colossalai
 from colossalai.inference import InferenceEngine, InferenceConfig
 from pprint import pprint
 
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 # Step 1: create a model in "transformers" way
 model_path = "lmsys/vicuna-7b-v1.3"

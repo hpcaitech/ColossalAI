@@ -17,7 +17,7 @@ def infer(args):
     # ==============================
     # Launch colossalai, setup distributed environment
     # ==============================
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     # ==============================
