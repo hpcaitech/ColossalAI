@@ -60,6 +60,7 @@ class Sequence:
         eos_token_id (int): The eos token id for this inference process.
         pad_token_id (int): The pad token id for this inference process.
         max_output_len (int): Maximum output length.
+        ignore_eos_token_id(bool): Whether to ignore the EOS token id and continue generating tokens when encountering the EOS token id.
     """
 
     request_id: int
@@ -70,6 +71,7 @@ class Sequence:
     eos_token_id: int
     pad_token_id: int
     max_output_len: int = 256
+    ignore_eos_token_id: bool = False
 
     def __post_init__(self):
         self.output_token_id = []
@@ -107,7 +109,9 @@ class Sequence:
             return True
 
         if self.output_token_id:
-            if self.output_token_id[-1] == self.eos_token_id or self.output_len >= self.max_output_len:
+            if (
+                self.output_token_id[-1] == self.eos_token_id and not self.ignore_eos_token_id
+            ) or self.output_len >= self.max_output_len:
                 self.status = RequestStatus.COMPLETED
                 return True
 
