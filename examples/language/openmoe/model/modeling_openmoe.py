@@ -35,15 +35,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-try:
-    # TODO: remove this after updating openmoe example
-    # This is added because of extentions path change
-    # with different installation methods of ColossalAI in CI for tests and examples
-    import flash_attention  # noqa
-
-    HAS_FLASH_ATTN = True
-except:
-    HAS_FLASH_ATTN = False
+from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
