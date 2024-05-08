@@ -28,7 +28,12 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = LlamaForCausalLM(
         LlamaConfig(
-            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
+            vocab_size=50000,
+            hidden_size=512,
+            intermediate_size=1536,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            num_hidden_layers=16,
         )
     ).cuda()
     model = model.eval()

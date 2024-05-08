@@ -329,6 +329,7 @@ class RequestHandler:
         Sample tokens for finished requests.
         """
 
+        # do logit processor
         if generation_config.do_sample:
             # NOTE: need to decide the granularity to process logits (sequence or batch)
             config_dict = generation_config.to_dict()
