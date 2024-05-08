@@ -25,8 +25,6 @@ class ChunkManager:
         chunk_configuration,
         init_device: Optional[torch.device] = None,
         reuse_fp16_chunk: bool = True,
-        accumulating_grads: bool = False,
-        overflow_counter: int = 0,
     ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
@@ -41,9 +39,9 @@ class ChunkManager:
         self.accessed_mem: int = 0
         self.total_mem: Dict[str, int] = {"cpu": 0, "cuda": 0}
         self.reuse_fp16_chunk = reuse_fp16_chunk
-        # Whether model is accumulating gradients
-        self.accumulating_grads = accumulating_grads
-        self.overflow_counter = overflow_counter
+        # Whether model is accumulating gradients,
+        self.accumulating_grads = False
+        self.overflow_counter = 0
 
     def register_tensor(
         self,

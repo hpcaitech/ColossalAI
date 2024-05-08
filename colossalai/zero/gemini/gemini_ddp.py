@@ -105,8 +105,6 @@ class GeminiDDP(ModelWrapper):
                 chunk_config_dict,
                 chunk_init_device,
                 reuse_fp16_chunk=reuse_fp16_chunk,
-                accumulating_grads=False,
-                overflow_counter=0,
             )
         else:
             # some ugly hotfix for the compatibility with Lightning
@@ -121,8 +119,6 @@ class GeminiDDP(ModelWrapper):
                 strict_ddp_flag=strict_ddp_mode,
                 process_group=zero_group,
                 reuse_fp16_chunk=reuse_fp16_chunk,
-                accumulating_grads=False,
-                overflow_counter=0,
                 verbose=verbose,
             )
         self.gemini_manager = GeminiManager(
@@ -372,9 +368,9 @@ class GeminiDDP(ModelWrapper):
         chunk_manager: ChunkManager,
         param2name: Dict,
         grads_device: Dict,
-        master_weights,
-        enable_gradient_accumulation,
-        p,
+        master_weights: bool,
+        enable_gradient_accumulation: bool,
+        p: nn.Parameter,
     ):
         setattr(p, "_gemini_reduced", True)
         empty_grad = torch.empty_like(grad)

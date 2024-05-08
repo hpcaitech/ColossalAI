@@ -20,8 +20,6 @@ def init_chunk_manager(
     init_device: Optional[torch.device] = None,
     hidden_dim: Optional[int] = None,
     reuse_fp16_chunk: bool = True,
-    accumulating_grads: bool = False,
-    overflow_counter: int = 0,
     verbose: bool = False,
     **kwargs,
 ) -> ChunkManager:
@@ -57,7 +55,5 @@ def init_chunk_manager(
         config_dict,
         init_device,
         reuse_fp16_chunk=reuse_fp16_chunk,
-        accumulating_grads=accumulating_grads,
-        overflow_counter=overflow_counter,
     )
     return chunk_manager
