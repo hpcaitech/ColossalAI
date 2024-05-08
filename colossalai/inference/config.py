@@ -111,6 +111,7 @@ class InferenceConfig:
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
         max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+        ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -156,6 +157,7 @@ class InferenceConfig:
     # cuda_graph
     use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
     max_context_len_to_capture: int = 512
+    ignore_eos: bool = False
 
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len

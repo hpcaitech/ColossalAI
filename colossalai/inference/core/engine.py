@@ -662,6 +662,7 @@ class InferenceEngine:
                 self.tokenizer.eos_token_id,
                 self.tokenizer.pad_token_id,
                 max_output_len=max_new_tokens,
+                ignore_eos=self.inference_config.ignore_eos,
             )
             self.request_handler.add_sequence(sequence)
 
