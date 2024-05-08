@@ -23,17 +23,13 @@ def temperature_logit_process(logits, temperature: float):
     apply temperature scaling.
     """
 
-    if isinstance(temperature, float) and temperature > 0 and temperature <= 1.0:
-        return logits if temperature == 1.0 else logits / temperature
-    else:
+    if not isinstance(temperature, float) or not (0.0 < temperature <= 1.0):
+        except_msg = f"'temperature={temperature}' should be a strictly positive float, less than or equal to 1.0 and greater than 0."
         if temperature == 0.0:
-            raise ValueError(
-                f"Got temperature={temperature}, if you want to use greedy decoding strategies, set `do_sample=False`."
-            )
-        else:
-            raise ValueError(
-                f"'temperature={temperature}' should be a strictly positive float, less than or equal to 1.0 and greater than 0."
-            )
+            except_msg += "if you want to use greedy decoding strategies, set `do_sample=False`."
+        raise ValueError(except_msg)
+
+    return logits if temperature == 1.0 else logits / temperature
 
 
 @register_logit_processor("top_k")
