@@ -71,7 +71,7 @@ class Sequence:
     eos_token_id: int
     pad_token_id: int
     max_output_len: int = 256
-    # NOTE(caidi) here to indicate this is a temporary solution. It's better to move the logic to turn on or off the flag in sampling module in future.
+    # NOTE(caidi) This is a temporary solution. It's better to move the logic to turn on or off the flag in sampling module in future.
     ignore_eos: bool = False
 
     def __post_init__(self):
