@@ -598,8 +598,6 @@ def decoding_fused_rotary_embedding(
     """
     q_total_tokens, q_head_num, head_dim = q.shape
     assert q.size(0) == k.size(0) == v.size(0)
-    assert k.size(1) == v.size(1)
-    assert k_cache.size(-1) == v_cache.size(-1)
 
     if head_dim >= 512:
         num_warps = 16

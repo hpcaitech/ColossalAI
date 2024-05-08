@@ -527,16 +527,9 @@ class InferenceEngine:
             List[str]: Inference result returned by one generation.
         """
         with torch.inference_mode():
-<<<<<<< HEAD
-
             if isinstance(prompts, str) and isinstance(request_ids, int):
-                    prompts = [prompts]
-                    request_ids = [request_ids]
-=======
-            if prompts is not None or prompts_token_ids is not None:
-                self.add_request(request_ids=request_ids, prompts=prompts, prompts_token_ids=prompts_token_ids)
->>>>>>> [Inference] Fix bugs and docs for feat/online-server (#5598)
-
+                prompts = [prompts]
+                request_ids = [request_ids]
             if prompts is not None or prompts_token_ids is not None:
                 gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
                 self.add_request(
@@ -545,7 +538,7 @@ class InferenceEngine:
                     prompts_token_ids=prompts_token_ids,
                     **gen_config_dict,
                 )
-        
+
             output_seqs_list = []
             total_tokens_list = []
 
