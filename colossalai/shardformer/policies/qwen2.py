@@ -6,12 +6,22 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, Linear1D_Row, RMSNorm, VocabParallelEmbedding1D
+from colossalai.shardformer.layer import (
+    FusedRMSNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    PaddingEmbedding,
+    PaddingLMHead,
+    RMSNorm,
+    VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
+)
 
 from ..modeling.qwen2 import (
     Qwen2PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
     get_qwen2_flash_attention_forward,
+    get_qwen2_model_forward_for_flash_attn
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -19,45 +29,55 @@ __all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificat
 
 
 class Qwen2Policy(Policy):
-    def __init__() -> None:
+    def __init__(self) -> None:
         super().__init__()
         import transformers
         from packaging.version import Version
         assert Version(transformers.__version__) <= Version(
-             "4.39.3"
-         ), "The Qwen2 model should run on a transformers version of 4.39.3."
+             "4.39.1"
+         ), "The Qwen2 model should run on a transformers version of 4.39.1."
         
     def config_sanity_check(self):
         pass
 
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
+        self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         try:
             from transformers.models.qwen2.modeling_qwen2 import (
                 Qwen2Attention,
+                Qwen2FlashAttention2,
+                Qwen2SdpaAttention,
                 Qwen2DecoderLayer,
                 Qwen2Model,
             )
         except ImportError:
             Qwen2Attention = "Qwen2Attention"
+            Qwen2FlashAttention2 = "Qwen2FlashAttention2"
+            Qwen2SdpaAttention = "Qwen2SdpaAttention"
             Qwen2DecoderLayer = "Qwen2DecoderLayer"    
             Qwen2Model = "Qwen2Model"
 
+        ATTN_IMPLEMENTATION = {
+            "eager": Qwen2Attention,
+            "flash_attention_2": Qwen2FlashAttention2,
+            "sdpa": Qwen2SdpaAttention,
+        }
+
         policy = {}
 
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
         norm_cls = FusedRMSNorm if self.shard_config.enable_fused_normalization else RMSNorm
-
+        
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("Qwen2 doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
@@ -106,10 +126,12 @@ class Qwen2Policy(Policy):
                 ],
             )
 
+        if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
-                    target_module=VocabParallelEmbedding1D,
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
                 target_key=Qwen2Model,
@@ -147,8 +169,17 @@ class Qwen2Policy(Policy):
                     "forward": get_qwen2_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
-                target_key=Qwen2Attention,
+                target_key=attn_cls,
             )
+            if self.pipeline_stage_manager is None:
+                # replace qwen2 model forward method
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_qwen2_model_forward_for_flash_attn(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=Qwen2Model,
+                )
 
         return policy
 
@@ -168,22 +199,15 @@ class Qwen2Policy(Policy):
             module = self.model.model
 
         if stage_manager.is_interleave:
-            layers_per_stage = stage_manager.distribute_layers(
-                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_manager.stage_indices = stage_manager.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(new_forward, stage_manager=stage_manager, shard_config=self.shard_config)
             }
 
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
-            stage_index = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -209,15 +233,8 @@ class Qwen2Policy(Policy):
         held_layers = []
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
-            layers_per_stage = stage_manager.distribute_layers(
-                len(module.layers), stage_manager.num_stages * stage_manager.num_model_chunks
-            )
-            stage_indices = stage_manager.get_stage_index(
-                layers_per_stage,
-                stage_manager.stage,
-                num_model_chunks=stage_manager.num_model_chunks,
-                num_stages=stage_manager.num_stages,
-            )
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.embed_tokens)
             for start_idx, end_idx in stage_indices:
@@ -226,10 +243,10 @@ class Qwen2Policy(Policy):
                 held_layers.append(module.norm)
 
         else:
-            layers_per_stage = stage_manager.distribute_layers(len(module.layers), stage_manager.num_stages)
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             if stage_manager.is_first_stage():
                 held_layers.append(module.embed_tokens)
-            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage, stage_manager.stage)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)

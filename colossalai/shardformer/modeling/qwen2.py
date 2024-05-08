@@ -11,6 +11,8 @@ try:
         Qwen2ForCausalLM,
         Qwen2ForSequenceClassification,
         Qwen2Model,
+        _prepare_4d_causal_attention_mask_for_sdpa,
+        _prepare_4d_causal_attention_mask
     )
 except ImportError:
     Qwen2Model = "Qwen2Model"
@@ -20,7 +22,7 @@ except ImportError:
 from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
-from ..layer import cross_entropy_1d
+from ..layer import ColoAttention, cross_entropy_1d
 
 
 class Qwen2PipelineForwards:
@@ -76,6 +78,9 @@ class Qwen2PipelineForwards:
             batch_size, seq_length = input_shape
             device = hidden_states.device
 
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
@@ -83,16 +88,16 @@ class Qwen2PipelineForwards:
         if output_hidden_states:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
+        if use_cache:
+            logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
+            use_cache = False
 
-        assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
+        #assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
+        
+        if past_key_values is not None:
+            past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        past_key_values_length = 0
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
@@ -110,32 +115,42 @@ class Qwen2PipelineForwards:
                     " this may lead to unexpected behaviour for Flash Attention version of Qwen2. Make sure to "
                     " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
                 )
-
-        if self._attn_implementation == "flash_attention_2":
-            # 2d mask is passed through the layers
-            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-        elif self._attn_implementation == "sdpa" and not output_attentions:
-            # output_attentions=True can not be supported when using SDPA, and we fall back on
-            # the manual implementation that requires a 4D causal mask in all cases.
-            from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask_for_sdpa
-            
-            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-                attention_mask,
-                (batch_size, seq_length),
-                inputs_embeds,
-                past_key_values_length,
+        # embed positions, for the first stage, hidden_states is the input embeddings,
+        # for the other stages, hidden_states is the output of the previous stage
+        if shard_config.enable_flash_attention:
+            # in this case, attention_mask is a dict rather than a tensor
+            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            attention_mask = ColoAttention.prepare_attn_kwargs(
+                mask_shape,
+                hidden_states.dtype,
+                hidden_states.device,
+                q_padding_mask=attention_mask,
+                is_causal=True,
             )
-        else:
-            # 4d mask is passed through the layers
-            from transformers.models.qwen2.modeling_qwen2 import _prepare_4d_causal_attention_mask
-            
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask,
-                (batch_size, seq_length),
-                hidden_states,
-                past_key_values_length,
-                sliding_window=self.config.sliding_window,
-            )
+        else:    
+            if self._attn_implementation == "flash_attention_2":
+                # 2d mask is passed through the layers
+                attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+            elif self._attn_implementation == "sdpa" and not output_attentions:
+                # output_attentions=True can not be supported when using SDPA, and we fall back on
+                # the manual implementation that requires a 4D causal mask in all cases.
+                
+                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+                    attention_mask,
+                    (batch_size, seq_length),
+                    inputs_embeds,
+                    past_key_values_length,
+                )
+            else:
+                # 4d mask is passed through the layers
+                
+                attention_mask = _prepare_4d_causal_attention_mask(
+                    attention_mask,
+                    (batch_size, seq_length),
+                    hidden_states,
+                    past_key_values_length,
+                    sliding_window=self.config.sliding_window,
+                )
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -272,8 +287,10 @@ class Qwen2PipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
+            shard_config=shard_config,
         )
-
+        past_key_values = None
+        
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
@@ -362,6 +379,7 @@ class Qwen2PipelineForwards:
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
+            shard_config=shard_config,
         )
 
         if input_ids is not None:
@@ -430,8 +448,7 @@ class Qwen2PipelineForwards:
 
 def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
     from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, apply_rotary_pos_emb, repeat_kv
-
-    from colossalai.nn.layer.colo_attention import AttnMaskType, ColoAttention
+    from colossalai.shardformer.layer import ColoAttention
 
     def forward(
         self: Qwen2Attention,
@@ -455,47 +472,188 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
-            kv_seq_len += past_key_value[0].shape[-2]
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        # Because the input can be padded, the absolute sequence length depends on the max position id.
+        rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
+        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        assert past_key_value is None, "past_key_value is not supported for Qwen2 models at the moment."
+        if past_key_value is not None:
+            # Activate slicing cache only if the config has a value `sliding_windows` attribute
+            cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
+            if (
+                getattr(self.config, "sliding_window", None) is not None
+                and kv_seq_len > self.config.sliding_window
+                and cache_has_contents
+            ):
+                slicing_tokens = 1 - self.config.sliding_window
 
-        past_key_value = (key_states, value_states) if use_cache else None
+                past_key = past_key_value[self.layer_idx][0]
+                past_value = past_key_value[self.layer_idx][1]
+
+                past_key = past_key[:, :, slicing_tokens:, :].contiguous()
+                past_value = past_value[:, :, slicing_tokens:, :].contiguous()
+
+                if past_key.shape[-2] != self.config.sliding_window - 1:
+                    raise ValueError(
+                        f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
+                        f" {past_key.shape}"
+                    )
+
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, slicing_tokens:]
+                    attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
+
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        me_input_shape = (bsz, q_len, self.num_heads, self.head_dim)
-        query_states = query_states.transpose(1, 2).contiguous().view(*me_input_shape)
-        key_states = key_states.transpose(1, 2).contiguous().view(*me_input_shape)
-        value_states = value_states.transpose(1, 2).contiguous().view(*me_input_shape)
-
-        flash_attention_mask = None
-        attn_mask_type = AttnMaskType.causal
-        if not getattr(shard_config, "causal_lm", False) and attention_mask != None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                )
-            flash_attention_mask = ~(attention_mask[:, :, -1].squeeze(1).to(torch.bool)).contiguous()
-            attn_mask_type = AttnMaskType.paddedcausal
-
-        attention = ColoAttention(embed_dim=self.hidden_size, num_heads=self.num_heads)
-        attn_output = attention(
-            query_states,
-            key_states,
-            value_states,
-            attn_mask=flash_attention_mask,
-            attn_mask_type=attn_mask_type,
-            origin_attn_mask=attention_mask,
-        )
-
+        assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
+        attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
         attn_output = self.o_proj(attn_output)
 
         return attn_output, None, past_key_value
+
+    return forward
+
+
+def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
+    logger = logging.get_logger(__name__)
+    assert shard_config.enable_flash_attention, "Flash Attention is not enabled."
+
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        # retrieve input_ids and inputs_embeds
+        if input_ids is not None and inputs_embeds is not None:
+            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+        elif input_ids is not None:
+            batch_size, seq_length = input_ids.shape
+        elif inputs_embeds is not None:
+            batch_size, seq_length, _ = inputs_embeds.shape
+        else:
+            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+
+        seq_length_with_past = seq_length
+        past_key_values_length = 0
+
+        if position_ids is None:
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(
+                past_key_values_length, 
+                seq_length + past_key_values_length, 
+                dtype=torch.long, 
+                device=device
+            )
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
+
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+
+        # embed positions
+        hidden_states = inputs_embeds
+
+        # in this case, attention_mask is a dict rather than a tensor
+        mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+        attention_mask = ColoAttention.prepare_attn_kwargs(
+            mask_shape,
+            hidden_states.dtype,
+            hidden_states.device,
+            q_padding_mask=attention_mask,
+            is_causal=True,
+        )
+
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
+                use_cache = False
+
+        # decoder layers
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attns = () if output_attentions else None
+        next_decoder_cache = None
+
+        for decoder_layer in self.layers:
+            if output_hidden_states:
+                all_hidden_states += (hidden_states,)
+
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                )
+            else:
+                layer_outputs = decoder_layer(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                )
+
+            hidden_states = layer_outputs[0]
+
+            if use_cache:
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
+
+            if output_attentions:
+                all_self_attns += (layer_outputs[1],)
+
+        hidden_states = self.norm(hidden_states)
+
+        # add hidden states from the last decoder layer
+        if output_hidden_states:
+            all_hidden_states += (hidden_states,)
+
+        next_cache = next_decoder_cache if use_cache else None
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=next_cache,
+            hidden_states=all_hidden_states,
+            attentions=all_self_attns,
+        )
 
     return forward
 
