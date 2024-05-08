@@ -35,7 +35,20 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 
-from colossalai.kernel.extensions.flash_attention import HAS_FLASH_ATTN
+try:
+    # TODO: remove this after updating openmoe example
+    # NOTE(yuanheng-zhao): This is a temporary fix for the issue that
+    # the flash_attention module is not imported correctly for different CI tests.
+    # We replace the import path `colossalai.kernel.extensions.flash_attention`
+    # because in the current example test, colossalai version <= 0.3.6 is installed,
+    # where `colossalai.kernel.extensions.flash_attention` is still valid;
+    # however in unit test `test_moe_checkpoint`, the lastest version of colossalai is installed,
+    # where extension has been refactored and the path is not valid.
+    import flash_attention  # noqa
+
+    HAS_FLASH_ATTN = True
+except:
+    HAS_FLASH_ATTN = False
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.moe.layers import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
