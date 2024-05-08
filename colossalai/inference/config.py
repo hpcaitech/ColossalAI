@@ -1,9 +1,8 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
-import dataclasses
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, Dict, Optional, Union
 
 import torch
@@ -218,7 +217,7 @@ class InferenceConfig:
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "InferenceConfig":
         # Get the list of attributes of this dataclass.
-        attrs = [attr.name for attr in dataclasses.fields(cls)]
+        attrs = [attr.name for attr in fields(cls)]
         inference_config_args = {}
         for attr in attrs:
             if attr in config_dict:

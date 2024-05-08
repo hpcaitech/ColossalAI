@@ -7,7 +7,7 @@ from colossalai.inference.core.async_engine import AsyncInferenceEngine
 
 
 @dataclass
-class SequenceTpye:
+class MockSequence:
     request_id: int
 
 
@@ -20,7 +20,11 @@ class MockEngine:
 
     async def async_step(self):
         self.step_calls += 1
-        return [SequenceTpye(request_id=self.request_id)] if self.request_id else []
+        return ([MockSequence(request_id=self.request_id)], True) if self.request_id else ([], False)
+
+    def add_single_request(self, **kwargs):
+        del kwargs
+        self.add_request_calls += 1
 
     def generate(self, request_id):
         self.request_id = request_id
@@ -37,14 +41,14 @@ class MockEngine:
         self.abort_request_calls += 1
 
 
-class MockAsyncLLMEngine(AsyncInferenceEngine):
+class MockAsyncInferenceEngine(AsyncInferenceEngine):
     def _init_engine(self, *args, **kwargs):
         return MockEngine()
 
 
 @pytest.mark.asyncio
 async def test_new_requests_event():
-    engine = MockAsyncLLMEngine(worker_use_ray=False, engine_use_ray=False)
+    engine = MockAsyncInferenceEngine()
     engine.start_background_loop()
     await asyncio.sleep(0.01)
     assert engine.engine.step_calls == 0
@@ -74,7 +78,3 @@ async def test_new_requests_event():
     await asyncio.sleep(0.01)
     assert engine.engine.add_request_calls == 3
     assert engine.engine.step_calls == 5
-
-
-if __name__ == "__main__":
-    test_new_requests_event()

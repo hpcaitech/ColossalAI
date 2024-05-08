@@ -328,7 +328,7 @@ class RequestHandler:
     def check_unfinished_seqs(self) -> bool:
         return self._has_waiting() or not self.running_list.is_empty()
 
-    def current_requests_in_batch(self) -> int:
+    def total_requests_in_batch_bucket(self) -> int:
         return self.prefill_bb.current_batch_size + self.running_bb.current_batch_size
 
     def search_tokens(self, generation_config: GenerationConfig, logits):

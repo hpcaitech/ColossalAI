@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from functools import partial
-from typing import AsyncIterator, Dict, Iterable, List, Optional, Tuple, Type
+from typing import AsyncIterator, Dict, Iterable, List, Optional, Set, Tuple, Type
 
 from colossalai.inference.core.engine import InferenceEngine
 
@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(leve
 logger = logging.getLogger("colossalai-inference")
 
 
-def _raise_exception_on_finish(task: asyncio.Task, request_tracker: "RequestTracker") -> None:
+def _raise_exception_on_finish(task: asyncio.Task, request_tracker: "Tracer") -> None:
     msg = "Task finished unexpectedly. This should never happen! "
     try:
         try:
@@ -26,8 +26,14 @@ def _raise_exception_on_finish(task: asyncio.Task, request_tracker: "RequestTrac
 
 
 class RequstStream:
-    """A stream of Output for a request that can be
-    iterated over asynchronously."""
+    """
+    A stream of Output for a request that can be iterated over asynchronously.
+        Attributes: 1.request_id: The id of the request.
+                    2._future: A future that will be set when the request is finished.
+        Methods: set_result and get_result, results will be set when finished, for once, and
+        the `self.future` will be set to done.
+
+    """
 
     def __init__(self, request_id: int) -> None:
         self.request_id = request_id
@@ -51,6 +57,10 @@ class RequstStream:
 class Tracer:
     """
     Recording new requests and finished requests.
+        Attributes: 1._request_streams: We create one stream for each request to trace the output.
+                    2._finished_requests: A queue to store the finished requests.
+                    3._new_requests: New requests will be stored in this queue first, before sending them to the engine.
+                    4.new_requests_event: An event to notify the engine that there are new requests.
     """
 
     def __init__(self) -> None:
@@ -93,8 +103,8 @@ class Tracer:
             raise KeyError(f"Request {request_id} already exists.")
 
         stream = RequstStream(request_id)
+        logger.info(f"Added request {request_id}.")
         self._new_requests.put_nowait((stream, {"request_id": request_id, **engine_add_request_kwargs}))
-
         self.new_requests_event.set()
 
         return stream
@@ -108,6 +118,7 @@ class Tracer:
 
         if request_id not in self._request_streams or self._request_streams[request_id].finished:
             # The request has already finished or been aborted.
+            # The requests in new_requests will be aborted when try to get them(if marked aborted)
             return
 
         self._request_streams[request_id].set_result(None)
@@ -117,9 +128,18 @@ class Tracer:
         Get new requests from http server.
         """
         new_requests: List[Dict] = []
+        finished_requests: Set[int] = set()
+
+        while not self._finished_requests.empty():
+            request_id = self._finished_requests.get_nowait()
+            finished_requests.add(request_id)
 
         while not self._new_requests.empty():
             stream, new_request = self._new_requests.get_nowait()
+            if new_request["request_id"] in finished_requests:
+                # The request has been aborted.
+                stream.set_result(None)
+                continue
             self._request_streams[stream.request_id] = stream
             new_requests.append(new_request)
 
@@ -133,7 +153,8 @@ class Tracer:
 
 class _AsyncInferenceEngine(InferenceEngine):
     """
-    Async methods for Inference Engine.
+    Async methods for Inference Engine. This engine is an extension for InferenceEngine, and the additional methods will only be used for
+        Methods: 1. async_step: The async version of Engine.step()
     """
 
     async def async_step(self) -> List[str]:
@@ -161,22 +182,23 @@ class _AsyncInferenceEngine(InferenceEngine):
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
         self.request_handler.search_tokens(self.generation_config, logits)
-        # Return: List[Sequence]
+
         finished_sequences = self.request_handler.update()
         for sequence in finished_sequences:
             sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
-        return finished_sequences, self.request_handler.current_requests_in_batch() > 0
+        return finished_sequences, self.request_handler.total_requests_in_batch_bucket() > 0
 
 
 class AsyncInferenceEngine:
-    """An asynchronous wrapper for LLMEngine.
+    """An asynchronous wrapper for the InferenceEngine class.
 
     This class is used to wrap the InferenceEngine class to make it asynchronous.
     It uses asyncio to create a background loop that keeps processing incoming
-    requests. The LLMEngine is kicked by the generate method when there are
-    requests in the waiting queue. The generate method yields the outputs
-    from the InferenceEngine to the caller.
+    requests. Note that this class does not hold model directly, when incoming a new
+    request, it first called `add_request` and the Tracer will record the request, putting
+    it to the background `InferenceEngine`(done in background loop) to process. You can
+    consider this engine as an interface.
     """
 
     _engine_class: Type[_AsyncInferenceEngine] = _AsyncInferenceEngine
@@ -253,7 +275,7 @@ class AsyncInferenceEngine:
         prompt_token_ids: Optional[List[int]] = None,
     ) -> RequstStream:
         """
-        Add a request to the background tracker(waitting queue), start the background loop if needed.
+        Add a request to the background tracker(waiting queue), start the background loop if needed.
         """
         if not self.background_loop_status:
             if self.start_engine_loop:
@@ -276,14 +298,12 @@ class AsyncInferenceEngine:
         """
         Generate output from a request. It receives the request from http server, adds it into the
         waitting queue of Async Engine and streams the output sequence.
-
         """
         try:
             stream = await self.add_request(request_id, prompt, prompt_token_ids=prompt_token_ids)
             return await stream.get_result()
 
         except (Exception, asyncio.CancelledError) as e:
-            # If there is an exception or coroutine is cancelled, abort the
-            # request.
+            # If there is an exception or coroutine is cancelled, abort the request.
             self._abort(request_id)
             raise e
