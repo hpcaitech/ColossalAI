@@ -1,0 +1,16 @@
+facebook/opt-125m; 0; zero2
+Performance summary:
+Generate 768 samples, throughput: 188.48 samples/s, TFLOPS per GPU: 361.23
+Train 768 samples, throughput: 448.38 samples/s, TFLOPS per GPU: 82.84
+Overall throughput: 118.42 samples/s
+Overall time per sample: 0.01 s
+Make experience time per sample: 0.01 s, 62.83%
+Learn time per sample: 0.00 s, 26.41%
+facebook/opt-125m; 0; zero2
+Performance summary:
+Generate 768 samples, throughput: 26.32 samples/s, TFLOPS per GPU: 50.45
+Train 768 samples, throughput: 71.15 samples/s, TFLOPS per GPU: 13.14
+Overall throughput: 18.86 samples/s
+Overall time per sample: 0.05 s
+Make experience time per sample: 0.04 s, 71.66%
+Learn time per sample: 0.01 s, 26.51%

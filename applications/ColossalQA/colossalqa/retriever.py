@@ -59,7 +59,7 @@ class CustomRetriever(BaseRetriever):
         Add documents to retriever
         Args:
             docs: the documents to add
-            cleanup: choose from "incremental" (update embeddings, skip existing embeddings) and "full" (destory and rebuild retriever)
+            cleanup: choose from "incremental" (update embeddings, skip existing embeddings) and "full" (destroy and rebuild retriever)
             mode: choose from "by source" (documents are grouped by source) and "merge" (documents are merged into one vector store)
         """
         if cleanup == "full":

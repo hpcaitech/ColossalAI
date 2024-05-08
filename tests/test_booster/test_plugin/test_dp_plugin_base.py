@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Tuple, Union
+from typing import Callable, Dict, Iterator, List, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -51,6 +51,12 @@ class DPPluginWrapper(DPPluginBase):
     def no_sync(self, model: nn.Module) -> Iterator[None]:
         pass
 
+    def enable_lora(self, model: nn.Module, pretrained_dir: str, lora_config: Dict) -> nn.Module:
+        pass
+
+    def support_lora(self) -> bool:
+        pass
+
 
 def check_dataloader_sharding():
     plugin = DPPluginWrapper()
@@ -79,7 +85,7 @@ def check_dataloader_sharding():
 
 def run_dist(rank, world_size, port):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_dataloader_sharding()
 
 

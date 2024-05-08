@@ -161,7 +161,7 @@ def check_gemini_plugin(
 
 def run_dist(rank, world_size, port, early_stop: bool = True):
     # init dist env
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_gemini_plugin(early_stop=early_stop)
 
 

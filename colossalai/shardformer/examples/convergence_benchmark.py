@@ -28,7 +28,7 @@ def to_device(x: Any, device: torch.device) -> Any:
 
 
 def train(args):
-    colossalai.launch_from_torch(config={}, seed=42)
+    colossalai.launch_from_torch(seed=42)
     coordinator = DistCoordinator()
 
     # prepare for data and dataset

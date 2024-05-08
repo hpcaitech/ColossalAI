@@ -12,7 +12,7 @@ from colossalai.inference.pipeline.policies import LlamaModelInferPolicy
 GIGABYTE = 1024**3
 MEGABYTE = 1024 * 1024
 
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 
 def data_gen(batch_size: int = 4, seq_len: int = 512):

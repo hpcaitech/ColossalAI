@@ -16,7 +16,7 @@ from tests.test_auto_parallel.test_tensor_shard.test_node_handler.utils import n
 
 def check_binary_elementwise_handler_with_tensor(rank, world_size, port, op, other_dim):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     class BinaryElementwiseOpModel(nn.Module):
         def __init__(self, op):
@@ -145,7 +145,7 @@ class BEOpModelWithIntConst(nn.Module):
 
 def check_binary_elementwise_handler_with_int(rank, world_size, port, op, other_dim, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

@@ -16,7 +16,7 @@ torch.manual_seed(123)
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl", verbose=False)
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl", verbose=False)
     rank = gpc.get_local_rank(ParallelMode.PIPELINE)
 
     if rank == 0:

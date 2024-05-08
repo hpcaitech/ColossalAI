@@ -1,4 +1,4 @@
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
+from colossalai.utils import get_current_device
 
 from .dp_plugin_base import DPPluginBase
 
@@ -116,6 +118,22 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
         super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, prefix)
 
+    def save_lora_as_pretrained(
+        self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False
+    ) -> None:
+        """
+        Save the lora adapters and adapter configuration file to checkpoint directory.
+        """
+        from peft import PeftModel
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        if self.coordinator.is_master():
+            peft_model = model.unwrap()
+            assert isinstance(
+                peft_model, PeftModel
+            ), "The model doesn't have lora adapters, please enable lora before saving."
+            peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
+
 
 class TorchDDPModel(ModelWrapper):
     def __init__(self, module: nn.Module, *args, **kwargs) -> None:
@@ -173,6 +191,9 @@ class TorchDDPPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         return True
 
+    def support_lora(self) -> bool:
+        return True
+
     def control_precision(self) -> bool:
         return False
 
@@ -183,7 +204,7 @@ class TorchDDPPlugin(DPPluginBase):
         return True
 
     def supported_devices(self) -> List[str]:
-        return ["cuda"]
+        return ["cuda", "npu"]
 
     def configure(
         self,
@@ -194,7 +215,7 @@ class TorchDDPPlugin(DPPluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # cast model to cuda
-        model = model.cuda()
+        model = model.to(get_current_device())
 
         # convert model to sync bn
         model = nn.SyncBatchNorm.convert_sync_batchnorm(model, None)
@@ -216,3 +237,21 @@ class TorchDDPPlugin(DPPluginBase):
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         assert isinstance(model, TorchDDPModel), "Model is not boosted by TorchDDPPlugin."
         return model.module.no_sync()
+
+    def enable_lora(
+        self,
+        model: nn.Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+    ) -> nn.Module:
+        from peft import PeftModel, get_peft_model
+
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
+
+        assert not isinstance(model, TorchDDPModel), "Lora should be enabled before boosting the model."
+        if pretrained_dir is None:
+            return get_peft_model(model, lora_config)
+        else:
+            return PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)

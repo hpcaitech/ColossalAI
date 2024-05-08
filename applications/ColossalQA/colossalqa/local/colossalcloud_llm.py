@@ -101,7 +101,7 @@ class ColossalCloudLLM(LLM):
         return resp_text
 
     def text_completion(self, prompt, gen_config, auth_config):
-        # Complusory Parameters
+        # Required Parameters
         endpoint = auth_config.pop("endpoint")
         max_new_tokens = gen_config.pop("max_new_tokens")
         # Optional Parameters

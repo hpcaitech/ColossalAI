@@ -185,7 +185,7 @@ Then we can train GPT model with Gemini. The placement policy of Gemini should b
 
 ```python
 def train_gemini_cpu(nvme_offload_fraction: float = 0.0):
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     config = GPT2Config()
     with ColoInitContext(device=torch.cuda.current_device()):
         model = GPT2LMHeadModel(config)

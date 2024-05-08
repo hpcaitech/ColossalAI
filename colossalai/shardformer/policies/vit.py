@@ -11,6 +11,7 @@ from ..modeling.vit import (
     ViTForImageClassification_pipeline_forward,
     ViTForMaskedImageModeling_pipeline_forward,
     ViTModel_pipeline_forward,
+    get_jit_fused_vit_intermediate_forward,
     get_jit_fused_vit_output_forward,
     get_vit_flash_self_attention_forward,
 )
@@ -24,10 +25,17 @@ class ViTPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.enable_bias_gelu_fused = self.shard_config.enable_jit_fused and self.model.config.hidden_act == "gelu"
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTEmbeddings, ViTLayer, ViTOutput, ViTSelfAttention
+        from transformers.models.vit.modeling_vit import (
+            ViTEmbeddings,
+            ViTIntermediate,
+            ViTLayer,
+            ViTOutput,
+            ViTSelfAttention,
+        )
 
         policy = {}
 
@@ -36,6 +44,9 @@ class ViTPolicy(Policy):
             warnings.warn("Vit doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[ViTEmbeddings] = ModulePolicyDescription(
                 attribute_replacement={},
                 param_replacement=[],
@@ -83,6 +94,9 @@ class ViTPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="intermediate.dense",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "skip_bias_add": self.enable_bias_gelu_fused,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dense",
@@ -94,6 +108,14 @@ class ViTPolicy(Policy):
                     ),
                 ],
             )
+            if self.enable_bias_gelu_fused:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_jit_fused_vit_intermediate_forward(),
+                    },
+                    policy=policy,
+                    target_key=ViTIntermediate,
+                )
 
         # use flash attention
         if self.shard_config.enable_flash_attention:
@@ -115,6 +137,7 @@ class ViTPolicy(Policy):
                 policy=policy,
                 target_key=ViTOutput,
             )
+
         return policy
 
     def new_model_class(self):
@@ -134,10 +157,10 @@ class ViTPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
         if stage_manager.is_first_stage():
             held_layers.append(module.embeddings)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.encoder.layer[start_idx:end_idx])
         return held_layers
 
@@ -149,8 +172,8 @@ class ViTPolicy(Policy):
             else:
                 module = self.model.vit
 
-            layers_per_stage = Policy.distribute_layers(len(module.encoder.layer), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.encoder.layer))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {"forward": pipeline_forward(stage_manager=stage_manager, stage_index=stage_index)}
             self.append_or_create_method_replacement(
                 description=method_replacement, policy=policy, target_key=model_cls

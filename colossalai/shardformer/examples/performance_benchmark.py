@@ -1,6 +1,7 @@
 """
 Shardformer Benchmark
 """
+
 import torch
 import torch.distributed as dist
 import transformers
@@ -84,5 +85,5 @@ def bench_shardformer(BATCH, N_CTX, provider, model_func, dtype=torch.float32, d
 # start benchmark, command:
 # torchrun --standalone --nproc_per_node=2 performance_benchmark.py
 if __name__ == "__main__":
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     bench_shardformer.run(save_path=".", print_data=dist.get_rank() == 0)

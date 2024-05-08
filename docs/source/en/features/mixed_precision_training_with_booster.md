@@ -20,10 +20,10 @@ In Colossal-AI, we have incorporated different implementations of mixed precisio
 3. naive amp
 
 | Colossal-AI    | support tensor parallel | support pipeline parallel | fp16 extent                                                                                          |
-| -------------- | ----------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------- |
-| AMP_TYPE.TORCH | ✅                      | ❌                        | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
-| AMP_TYPE.APEX  | ❌                      | ❌                        | More fine-grained, we can choose opt_level O0, O1, O2, O3                                            |
-| AMP_TYPE.NAIVE | ✅                      | ✅                        | Model parameters, forward and backward operations are all downcast to fp16                           |
+|----------------|-------------------------|---------------------------|------------------------------------------------------------------------------------------------------|
+| AMP_TYPE.TORCH | ✅                       | ❌                         | Model parameters, activation, gradients are downcast to fp16 during forward and backward propagation |
+| AMP_TYPE.APEX  | ❌                       | ❌                         | More fine-grained, we can choose opt_level O0, O1, O2, O3                                            |
+| AMP_TYPE.NAIVE | ✅                       | ✅                         | Model parameters, forward and backward operations are all downcast to fp16                           |
 
 The first two rely on the original implementation of PyTorch (version 1.6 and above) and NVIDIA Apex.
 The last method is similar to Apex O2 level.
@@ -164,7 +164,7 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
 # launch from torch
-colossalai.launch_from_torch(config=dict())
+colossalai.launch_from_torch()
 
 ```
 

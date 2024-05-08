@@ -66,7 +66,7 @@ def _test_fwd_and_bwd(model: torch.nn.Module, gm: ColoGraphModule, data: torch.T
 
 def _run_offload_codegen(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and input
     model = MyNet().cuda()
@@ -124,7 +124,7 @@ def test_act_ckpt_codegen():
 
 def _run_offload_codegen_torch11(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and input
     model = MyNet().cuda()

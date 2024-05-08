@@ -378,7 +378,7 @@ def run_parallel_freq_aware_embed_columnwise(rank, world_size):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.legacy.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.legacy.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     # run_parallel_freq_aware_embed_columnwise(rank, world_size)
     run_parallel_freq_aware_embed_tablewise(rank, world_size)
 

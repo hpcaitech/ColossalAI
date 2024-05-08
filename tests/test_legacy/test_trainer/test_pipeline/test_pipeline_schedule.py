@@ -23,7 +23,7 @@ CONFIG = dict(NUM_MICRO_BATCHES=2, parallel=dict(pipeline=dict(size=2), tensor=d
 
 
 def run_schedule(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model
     model = resnet18(num_classes=10)

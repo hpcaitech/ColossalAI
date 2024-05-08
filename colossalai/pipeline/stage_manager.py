@@ -1,6 +1,7 @@
 import contextlib
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
@@ -26,6 +27,7 @@ class PipelineStageManager:
         pipeline_axis: int,
         enable_interleave: bool = False,
         num_model_chunks: int = 1,
+        num_layers_per_stage: Optional[List[int]] = None,
     ) -> None:
         assert enable_interleave or num_model_chunks == 1, "num_model_chunks must be 1 when enable_interleave is False"
 
@@ -34,6 +36,9 @@ class PipelineStageManager:
         self.prev_rank: Optional[Tuple[int, ...]] = None
         self.next_rank: Optional[Tuple[int, ...]] = None
         self.p2p_groups: Dict[Tuple[int, int], ProcessGroup] = {}
+        if num_layers_per_stage is not None:
+            assert len(num_layers_per_stage) == self.num_stages
+        self.num_layers_per_stage = num_layers_per_stage
 
         # init prev and next coord
         coord = self.pg_mesh.coordinate()
@@ -53,6 +58,8 @@ class PipelineStageManager:
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
         self.is_interleave = enable_interleave
+        # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
+        self.num_model_chunks: int = num_model_chunks
         if enable_interleave:
             # use circle p2p communication
             # add the process group of the first rank and the last rank
@@ -61,13 +68,45 @@ class PipelineStageManager:
                 ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
                 self.p2p_groups[tuple(ranks_in_group)] = group
 
-            # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
-            self.num_model_chunks: int = num_model_chunks
-
             # for shardformer, hold stage indices of model
             self.stage_indices: List[Tuple[int, int]]
             # for shardformer, hold model chunk id
             self.model_chunk_id: Optional[int] = None
+
+    def get_stage_index(
+        self,
+        layers_per_stage: List[int],
+        stage: Optional[int] = None,
+        num_model_chunks: Optional[int] = None,
+        num_stages: Optional[int] = None,
+    ) -> Union[Tuple[int, int], List[Tuple[int, int]]]:
+        """
+        Get the start index and end index of layers for each stage.
+
+        Args:
+            layers_per_stage (List[int]): number of layers for each stage
+            stage (int): the stage index
+            num_stages (int): number of stages
+            num_model_chunks (int): number of model chunks
+
+        Returns:
+            - Tuple[int, int]: the start index and end index of this stage
+            - List[Tuple[int, int]]: the start index and end index of this stage for each model chunk
+
+        """
+        stage = self.stage if stage is None else stage
+        num_model_chunks = self.num_model_chunks if num_model_chunks is None else num_model_chunks
+        num_stages = self.num_stages if num_stages is None else num_stages
+
+        num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
+
+        stage_indices = []
+        for model_chunk in range(num_model_chunks):
+            start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
+            end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
+            stage_indices.append([start_idx, end_idx])
+
+        return stage_indices[0] if num_model_chunks == 1 else stage_indices
 
     def is_first_stage(self, ignore_chunk: bool = False) -> bool:
         """Is the current stage the first stage.
@@ -176,3 +215,25 @@ class PipelineStageManager:
         self.model_chunk_id = model_chunk_id
         yield
         self.model_chunk_id = old_model_chunk_id
+
+    def distribute_layers(
+        self, num_layers: int, num_stages: Optional[int] = None, num_model_chunks: Optional[int] = None
+    ) -> List[int]:
+        if self.num_layers_per_stage is not None:
+            assert sum(self.num_layers_per_stage) == num_layers
+            return self.num_layers_per_stage
+
+        num_stages = self.num_stages if num_stages is None else num_stages
+        num_model_chunks = self.num_model_chunks if num_model_chunks is None else num_model_chunks
+        quotient = num_layers // (num_stages * num_model_chunks)
+        remainder = num_layers % (num_stages * num_model_chunks)
+
+        # calculate the num_layers per stage
+        layers_per_stage = [quotient] * num_stages * num_model_chunks
+
+        # deal with the rest layers
+        if remainder > 0:
+            start_position = (num_stages * num_model_chunks) // 2 - remainder // 2
+            for i in range(start_position, start_position + remainder):
+                layers_per_stage[i] += 1
+        return layers_per_stage

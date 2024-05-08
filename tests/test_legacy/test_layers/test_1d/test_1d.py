@@ -17,7 +17,7 @@ CONFIG = dict(
 
 def check_layer(rank, world_size, port):
     disable_existing_loggers()
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     check_linear_col()
     check_linear_row()

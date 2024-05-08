@@ -1,14 +1,17 @@
 import time
 
 import torch
-from transformers import AutoModelForCausalLM, LlamaTokenizerFast
-from utils import get_defualt_parser, inference, print_output
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from utils import get_default_parser, inference, print_output
 
 if __name__ == "__main__":
-    parser = get_defualt_parser()
+    parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
     torch.set_default_dtype(torch.bfloat16)
+
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
+
     model = AutoModelForCausalLM.from_pretrained(
         args.pretrained,
         trust_remote_code=True,
@@ -17,10 +20,6 @@ if __name__ == "__main__":
     )
     model.eval()
     init_time = time.time() - start
-
-    # A transformers-compatible version of the grok-1 tokenizer by Xenova
-    # https://huggingface.co/Xenova/grok-1-tokenizer
-    tokenizer = LlamaTokenizerFast.from_pretrained("Xenova/grok-1-tokenizer")
 
     for text in args.text:
         output = inference(

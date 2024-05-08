@@ -62,7 +62,7 @@ plugin = HybridParallelPlugin(
 ## 创建分布式环境.
 ```python
 # Launch ColossalAI
-colossalai.launch_from_torch(config={}, seed=42)
+colossalai.launch_from_torch(seed=42)
 coordinator = DistCoordinator()
 ```
 ## 定义GPT-2模型的训练组件
