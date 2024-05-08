@@ -27,7 +27,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
         set_tensors_to_none(self.experts, exclude=set(held_experts))
         for p in self.experts.parameters():
-            # set_moe_tensor_info(p, moe_info)
             p.ep_group = ep_group
 
     @staticmethod

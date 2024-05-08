@@ -49,7 +49,7 @@ def get_optimizer_snapshot(optim):
     }
 
 
-def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
+def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_group=None):
     # check param_groups
     assert len(snapshot1["param_groups"]) == len(snapshot2["param_groups"])
     for group1, group2 in zip(snapshot1["param_groups"], snapshot2["param_groups"]):
@@ -69,7 +69,6 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
         bug = False
         for k in state1.keys():
             if isinstance(state1[k], torch.Tensor):
-                # assert torch.equal(state1[k], state2[k]), f"{k}, {state1[k]}, {state2[k]}"
                 if not torch.equal(state1[k], state2[k]):
                     bug = True
                     count += 1
@@ -77,7 +76,7 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name):
                 assert state1[k] == state2[k]
         if bug:
             passed = False
-            print(f"rank {dist.get_rank()} optim bug: {param2name[pid]}")
+            print(f"rank {dist.get_rank()} optim mismatch: {param2name[pid]}")
 
     if not passed:
         raise AssertionError(f"A total of {count} optim states are not equal")
@@ -101,6 +100,7 @@ def check_mixtral_moe_layer():
     plugin = MoeHybridParallelPlugin(
         pp_size=2,
         ep_size=2,
+        tp_size=1,
         checkpoint_io=MoECheckpointIO,
         custom_policy=MixtralForCausalLMPolicy(),
         microbatch_size=1,
@@ -152,7 +152,7 @@ def check_mixtral_moe_layer():
                 v.zero_()
     booster.load_optimizer(optimizer, "mixtral_optim")
     loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, param2name)
+    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, param2name, model)
 
     # Clean up
     dist.barrier()
@@ -167,10 +167,11 @@ def run_dist(rank: int, world_size: int, port: int):
     check_mixtral_moe_layer()
 
 
-@pytest.mark.parametrize("world_size", [4])
+# Test EP + ZeRO + PP
+@pytest.mark.parametrize("world_size", [8])
 def test_mixtral_moe_layer(world_size: int):
     spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_mixtral_moe_layer(4)
+    test_mixtral_moe_layer(8)

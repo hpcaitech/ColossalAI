@@ -238,6 +238,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.ep_group = self.pg_mesh.get_group_along_axis(EP_AXIS)
             if dist.get_rank() == 0:
                 print(f"MoE Parallel: pp {self.pp_size}, outer_ep {ep_size}, inner_dp {self.moe_dp_size}, tp {tp_size}")
+        if dist.get_rank() == 0:
+            print(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}")
 
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)  # TODO: support custom tp size for mixtral lm head
         self.global_dp_group = self.pg_mesh.get_group_along_axis((DP_AXIS, EP_AXIS))

@@ -1,850 +1,442 @@
-import copy
-import logging
-import os
-from pathlib import Path
-from shutil import rmtree
-from typing import Dict, Iterator, Optional, OrderedDict, Tuple
+from copy import deepcopy
+from typing import List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
+from torch import Tensor, nn
 from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import get_global_rank
 
-from colossalai.checkpoint_io import CheckpointIndexFile
-from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParallelCheckpointIO
-from colossalai.checkpoint_io.index_file import CheckpointIndexFile
-from colossalai.checkpoint_io.utils import (
-    StateDictSharder,
-    gather_distributed_param,
-    get_model_base_filenames,
-    get_optimizer_base_filenames,
-    load_shard_state_dict,
-    load_state_dict,
-    load_states_into_optimizer,
-    save_config_file,
-    save_param_groups,
-    save_state_dict,
-    save_state_dict_shards,
-    search_tp_partition_dim,
-    sharded_optimizer_loading_epilogue,
-)
-from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.tensor.moe_tensor.api import is_moe_tensor
-
-try:
-    from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
-except ImportError:
-    _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
+from colossalai.cluster import ProcessGroupMesh
+from colossalai.moe.experts import MLPExperts
+from colossalai.moe.manager import MOE_MANAGER
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
-class MoECheckpointIO(HybridParallelCheckpointIO):
+class LoadBalancer:
     def __init__(
         self,
-        global_dp_group: ProcessGroup,
-        pp_group: ProcessGroup,
-        tp_group: ProcessGroup,
+        experts: MLPExperts,
+        gate: nn.Parameter,
+        local_expert_num: int,
+        expert_num: int,
         ep_group: ProcessGroup,
-        moe_dp_group: ProcessGroup,
-        zero_stage: int,
-        verbose: bool = True,
+        dp_group: ProcessGroup,
+        tolerance: Optional[float] = 0.1,
+        beam_width: Optional[int] = 8,
+        group_swap_factor: Optional[float] = 0.4,
     ) -> None:
-        super().__init__(global_dp_group, pp_group, tp_group, zero_stage, verbose)
-        self.global_dp_group = global_dp_group
-        self.pp_group = pp_group
-        self.ep_group = ep_group
-        self.tp_group = tp_group
-        self.moe_dp_group = moe_dp_group
-        self.moe_dp_rank = dist.get_rank(moe_dp_group)
-        self.ep_size = dist.get_world_size(ep_group)
-        self.global_dp_rank = dist.get_rank(global_dp_group)
-        self.ep_rank = dist.get_rank(ep_group)
+        self.experts: MLPExperts = experts
+        self.gate: nn.Parameter = gate
+        self.moe_ep_group: ProcessGroup = ep_group
+        self.moe_ep_ranks = MOE_MANAGER.parallel_info_dict[dist.get_world_size(self.moe_ep_group)].ep_group_ranks
+        self.moe_dp_group: ProcessGroup = dp_group
+        self.tolerance = tolerance
+        self.beam_width = beam_width
+        self.group_swap_factor = group_swap_factor
+        self.local_expert_num = local_expert_num
+        self.expert_num = expert_num
+        self.local_load = None
+        # TODO: use a global process group mesh
+        pp_size = 1 if MOE_MANAGER.pp_size is None else MOE_MANAGER.pp_size
+        global_dp_group = ProcessGroupMesh(pp_size, dist.get_world_size() // pp_size)
+        self.global_dp_group = global_dp_group.get_group_along_axis(1)
+        self.global_dp_rank = dist.get_rank(self.global_dp_group)
+        self.global_dp_size = dist.get_world_size(self.global_dp_group)
+
+    def _clear_load(self) -> None:
+        self.local_load = None
+
+    def _sync_load(self) -> Tensor:
+        new_load = self.local_load.clone().detach()
+        # all reduce load between ep group
+        dist.all_reduce(new_load, group=self.moe_ep_group)
+        # all reduce load between dp group
+        dist.all_reduce(new_load, group=self.moe_dp_group)
+        return new_load
 
     @staticmethod
-    def _model_sharder(
-        model: nn.Module,
-        prefix: str = "",
-        keep_vars: bool = False,
-        size_per_shard: int = 1024,
-        param_name_pattern: Optional[str] = None,
-    ) -> Iterator[Tuple[OrderedDict, int]]:
-        # An internel method that breaks state_dict of model into shards within limited size.
+    def _get_diff_from_avg(data: List, group: int, avg: float) -> float:
+        return abs(sum(data[group]) / len(data[group]) - avg)
 
-        state_dict_sharder = StateDictSharder(size_per_shard)
-
-        # Save parameters.
-        for name, param in model.named_parameters():
-            if param is None:
-                continue
-            if param_name_pattern is not None and param_name_pattern not in name:
-                continue
-            # Gather tensor pieces when using tensor parallel.
-            param_ = gather_distributed_param(param, keep_vars=False)
-            block, block_size = state_dict_sharder.append_param(prefix + name, param_)
-            if block is not None:
-                yield block, block_size
-
-        # Save buffers.
-        for name, buf in model.named_buffers():
-            if buf is not None and name not in model._non_persistent_buffers_set:
-                buffer = buf if keep_vars else buf.detach()
-                block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
-                if block is not None:
-                    yield block, block_size
-
-        # Save extra states.
-        extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
-        if (
-            getattr(model.__class__, "get_extra_state", torch.nn.Module.get_extra_state)
-            is not torch.nn.Module.get_extra_state
-        ):
-            extra_state = model.get_extra_state()
-            block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
-            if block is not None:
-                yield block, block_size
-
-        # Return the last block in sharder.
-        yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
-
-    def save_sharded_model(
-        self,
-        model: ModelWrapper,
-        checkpoint: str,
-        gather_dtensor: bool = True,
-        prefix: Optional[str] = None,
-        size_per_shard: int = 1024,
-        use_safetensors: bool = False,
-    ) -> None:
-        """
-        Save sharded model checkpoint under the given checkpointing path.
-        The following files will be created under the path:
-        - An index file (pytorch_model.bin.index.json) containing a map between model params/buffers and file names.
-        - Multiple files that store state tensors of models.
-          If pipeline parallelism is used, the filenames are in the form of "pytorch_model.<prefix>-stage-000XX-shard-000XX.bin".
-          If pipeline parallelism is not used, "pytorch_model.<prefix>-000XX.bin"
-
-
-        Args:
-            model (nn.Module): Model on local device to be saved.
-            checkpoint (str): Checkpointing path which should be a directory path.
-            gather_dtensor (bool, optional): Whether to gather_dtensor, currently not used. Defaults to True.
-            prefix (str, optional): Perfix of file to save. Defaults to None.
-            size_per_shard (int, optional): Size per shard in MB. Defaults to 1024.
-            use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
-        """
-
-        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
-        model = model.unwrap()
-
-        if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
-            return
-
-        Path(checkpoint).mkdir(parents=True, exist_ok=True)
-
-        if self.moe_dp_rank != 0:
-            dist.barrier()
-            return
-
-        # ep_rank 0 saves all the parameters and buffers.
-        # other ep_ranks save only experts
-        ep_param_pattern = "experts." if self.ep_rank != 0 else None
-
-        # Then collect the sharded parameters & buffers along tp_group.
-        # Only devices with tp_rank == 0 are responsible for model saving.
-        state_dict_shard = MoECheckpointIO._model_sharder(
-            model, size_per_shard=size_per_shard, param_name_pattern=ep_param_pattern
+    @staticmethod
+    def _swap_data(data: List, group_i: int, index_i: int, group_j: int, index_j: int) -> None:
+        data[group_i][index_i], data[group_j][index_j] = (
+            data[group_j][index_j],
+            data[group_i][index_i],
         )
-        weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
-        index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.tp_rank == 0
-
-        if self.pp_size == 1 and self.ep_size == 1:
-            # When pipeline is not used, save the model shards as in general checkpointIO
-            total_size = save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=weights_name,
-                is_master=control_saving,
-                use_safetensors=use_safetensors,
-            )
-            if control_saving:
-                index_file.append_meta_data("total_size", total_size)
-                index_file.write_index_file(save_index_file)
-                save_config_file(model, checkpoint)
-                if self.verbose and self.coordinator.is_master():
-                    logging.info(
-                        f"The model is split into checkpoint shards. "
-                        f"You can find where each parameters has been saved in the "
-                        f"index located at {save_index_file}."
-                    )
-
-            dist.barrier()
-        else:
-            # When pipeline is used, each stage produces its own shard files and index files.
-            # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
-            # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
-
-            final_index_file_path = copy.deepcopy(save_index_file)
-            tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
-            Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
-
-            # Manage filenames of sharded weights and index file for each pipeline stage.
-            weights_name = weights_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-{self.ep_rank+1:05d}-shard.bin")
-            weights_name = weights_name.replace(
-                ".safetensors", f"-stage-{self.pp_rank+1:05d}-{self.ep_rank+1:05d}-shard.safetensors"
-            )
-            save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}-{self.ep_rank+1:05d}.json")
-            save_index_file = os.path.join("tmp_index_files", save_index_file)
-
-            total_size = save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=weights_name,
-                is_master=control_saving,
-                use_safetensors=use_safetensors,
-                use_pp_format=True,
-            )
-            if control_saving:
-                index_file.append_meta_data("total_size", total_size)
-                index_file.write_index_file(save_index_file)
-            else:
-                dist.barrier()
-                return
-
-            dist.barrier()
-
-            # The global master rank integrates the index files and clean the folder.
-            if self.coordinator.is_master():
-                final_index_file = CheckpointIndexFile(checkpoint)
-                final_index_file.append_meta_data("total_size", 0)
-
-                for filename in os.listdir(tmp_index_file_folder):
-                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
-                    final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
-                    for weight, weight_filename in stage_index_file.weight_map.items():
-                        final_index_file.append_weight_map(weight, weight_filename)
-
-                final_index_file.write_index_file(final_index_file_path)
-                save_config_file(model, checkpoint)
-                rmtree(tmp_index_file_folder)
-                if self.verbose and self.coordinator.is_master():
-                    logging.info(
-                        f"The model is split into checkpoint shards. "
-                        f"You can find where each parameters has been saved in the "
-                        f"index located at {final_index_file_path}."
-                    )
 
     @staticmethod
-    def gather_from_sharded_optimizer_state(
-        state: OrderedDict,
-        param: torch.Tensor,
-        original_shape: torch.Size,
-        global_dp_group: ProcessGroup,
-        moe_dp_group: ProcessGroup,
-        tp_group: ProcessGroup,
-        use_zero: bool,
-        inplace: bool,
-        is_moe_param: bool,
-        device: torch.device = torch.device("cpu"),
-    ) -> OrderedDict:
+    def _normalize_data(data: List) -> List:
+        max_value = max(max(sublist) for sublist in data)
+        data = [[i / max_value for i in sublist] for sublist in data]
+        return data
+
+    @staticmethod
+    def _get_swap_loss(
+        group_swap_factor: float,
+        swap_list: List,
+        group_i: int,
+        index_i: int,
+        group_j: int,
+        index_j: int,
+    ) -> float:
         """
-        With given parameter and its optimizer states, gather the complete optimizer state for saving.
+        Get swap loss. The swap loss is used to avoid the situation that
+        the same index is swapped twice and the same group is swapped for multiple times.
+        """
+        swap_loss = 0
+        for swap in swap_list:
+            for group_id, index_id in zip([group_i, group_j], [index_i, index_j]):
+                # the group has been swapped
+                if group_id in [swap[0], swap[2]]:
+                    # the index has been swapped
+                    # we want to avoid the situation that the same index is swapped twice
+                    if index_id in [swap[1], swap[3]]:
+                        swap_loss += 1e5
+                    # the index has not been swapped
+                    # this is acceptable but as less as possible
+                    else:
+                        swap_loss += group_swap_factor
+        return swap_loss
+
+    @staticmethod
+    def _check_convergence(data: List, avg: float, tolerance: float):
+        """
+        Check whether the data is converged after swap.
+        """
+        for sublist in data:
+            if abs(sum(sublist) / len(sublist) - avg) > tolerance * avg:
+                return False
+        return True
+
+    def _beam_search(
+        self,
+        inputs: Tuple[List, float, List],
+        beam_width: int,
+        avg: float,
+        group_swap_factor: float,
+    ) -> List:
+        """
+        Beam search for the best swap combination.
+        Specifically, we swap two elements from two groups and calculate the score.
+        The score is the difference between the origin group sum and the new group sum.
+        The larger the score, the better the swap combination.
 
         Args:
-            state (OrderedDict): Optimizer states of given parameter, might be distributed among tp/dp group if using TP/Zero.
-            param (torch.Tensor): The given parameter. It should be working_param when using Zero.
-            original_shape (torch.Size): The size of parameter before sharding.
-            global_dp_group (ProcessGroup): The process group of data parallel.
-            tp_group (ProcessGroup): The process group of tensor parallel.
-            use_zero (bool): Whether Zero is used.
-            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
-            device (torch.device): The destination device of loaded optimizer states. Defaults to torch.device('cpu').
+            inputs (Tuple): (data, origin_score, swap_list)
+            beam_width (int): beam width for beam search
+            avg (float): average value of the data
+            group_swap_factor (float): group loss for group swap loss
 
         Returns:
-            OrderedDict: The complete optimizer state of given parameter.
+            List: results list
         """
-        global_dp_size = dist.get_world_size(global_dp_group)
-        tp_size = dist.get_world_size(tp_group)
-        moe_dp_size = dist.get_world_size(moe_dp_group)
-        current_shape = param.shape
-        state_ = state if inplace else copy.deepcopy(state)
-        for k, v in state_.items():
-            if isinstance(v, torch.Tensor) and k != "step":
-                v = v.cuda()
+        data, origin_score, swap_list = inputs
+        results = []
+        group_num = len(data)
+        group_size = len(data[0])
+        origin_diff_list = [self._get_diff_from_avg(data, i, avg) for i in range(group_num)]
 
-                # First gather Zero shards.
-                # Use gather for bandwith saving
-                if use_zero and is_moe_param and moe_dp_size > 1:
-                    # TODO: Check ZeRO + EP. This doesn't seem to work
-                    moe_dp_rank = dist.get_rank(moe_dp_group)
-                    dst = get_global_rank(moe_dp_group, 0)
-                    if moe_dp_rank == 0:
-                        gather_tensor = [torch.zeros_like(v) for _ in range(moe_dp_size)]
-                        dist.gather(v, gather_tensor, group=moe_dp_group, dst=dst)
-                        v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
-                    else:
-                        dist.gather(v, group=moe_dp_group, dst=dst)
+        for group_num_i in range(group_num):
+            for group_size_i in range(group_size):
+                for group_num_j in range(group_num_i + 1, group_num):
+                    for group_size_j in range(group_size):
+                        new_data = deepcopy(data)
+                        # calculate origin group sum
+                        origin_diff = origin_diff_list[group_num_i] + origin_diff_list[group_num_j]
+                        # swap data
+                        self._swap_data(
+                            new_data,
+                            group_num_i,
+                            group_size_i,
+                            group_num_j,
+                            group_size_j,
+                        )
+                        # calculate new group sum
+                        new_diff = self._get_diff_from_avg(new_data, group_num_i, avg) + self._get_diff_from_avg(
+                            new_data, group_num_j, avg
+                        )
+                        # caculate score
+                        new_score = origin_diff - new_diff
+                        if new_score > 0:
+                            new_score = origin_score + new_score
+                            # get swap loss
+                            swap_loss = self._get_swap_loss(
+                                group_swap_factor,
+                                swap_list,
+                                group_num_i,
+                                group_size_i,
+                                group_num_j,
+                                group_size_j,
+                            )
+                            new_score = new_score - swap_loss
+                            # update swap list
+                            new_swap_list = swap_list + [(group_num_i, group_size_i, group_num_j, group_size_j)]
+                            results.append((new_data, new_score, new_swap_list))
+        # sort results
+        results.sort(key=lambda x: x[1], reverse=True)
+        # select top k results
+        results = results[:beam_width]
+        return results
 
-                if use_zero and not is_moe_param:
-                    dp_rank = dist.get_rank(global_dp_group)
-                    dst = get_global_rank(global_dp_group, 0)
-                    if dp_rank == 0:
-                        gather_tensor = [torch.zeros_like(v) for _ in range(global_dp_size)]
-                        dist.gather(v, gather_tensor, group=global_dp_group, dst=dst)
-                        v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
-                    else:
-                        dist.gather(v, group=global_dp_group, dst=dst)
+    def _load_to_list(self, load: Tensor) -> List:
+        load_len = len(load)
+        assert load_len % self.local_expert_num == 0
+        load_list = []
+        tmp_list = []
+        for i in range(len(load)):
+            tmp_list.append(float(load[i]))
+            if (i + 1) % self.local_expert_num == 0:
+                load_list.append(tmp_list)
+                tmp_list = []
+        return load_list
 
-                # Then gather TP shards.
-                partition_dim = search_tp_partition_dim(current_shape, original_shape, tp_size)
-                if partition_dim is not None:
-                    tp_rank = dist.get_rank(tp_group)
-                    dst = get_global_rank(tp_group, 0)
-                    if tp_rank == 0:
-                        gather_tensor = [torch.zeros_like(v) for _ in range(tp_size)]
-                        dist.gather(v, gather_tensor, group=tp_group, dst=dst)
-                        v = torch.cat(gather_tensor, dim=partition_dim)
-                    else:
-                        dist.gather(v, group=tp_group, dst=dst)
-                state_[k] = v.detach().clone().to(device)
-
-        return state_
-
-    @staticmethod
-    def _optimizer_sharder(
-        optimizer: OptimizerWrapper,
-        use_zero: bool,
-        global_dp_group: ProcessGroup,
-        tp_group: ProcessGroup,
-        moe_dp_group: ProcessGroup,
-        size_per_shard: int = 1024,
-        only_moe_param: bool = False,
-    ):
-        # An internel method that breaks state_dict of optimizer into shards within limited size.
-
-        state_dict_sharder = StateDictSharder(size_per_shard)
-        param_info = optimizer.param_info
-        master_to_working_map = optimizer.get_master_to_working_map()
-
-        for param, state in optimizer.optim.state.items():
-            if param is None:
-                continue
-
-            if master_to_working_map is not None:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-
-            param_id = param_info["param2id"][id(working_param)]
-            original_shape = param_info["param2shape"][id(working_param)]
-            state_ = MoECheckpointIO.gather_from_sharded_optimizer_state(
-                state,
-                working_param,
-                original_shape=original_shape,
-                global_dp_group=global_dp_group,
-                moe_dp_group=moe_dp_group,
-                tp_group=tp_group,
-                use_zero=use_zero,
-                inplace=False,
-                is_moe_param=is_moe_tensor(working_param),  # TODO: Check correctness here
-            )
-
-            if only_moe_param and not is_moe_tensor(working_param):
-                continue
-            block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
-            if block is not None:
-                yield block, block_size
-
-        # Return the last block in sharder.
-        yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
-
-    def save_sharded_optimizer(
+    def _search_balance(
         self,
-        optimizer: OptimizerWrapper,
-        checkpoint: str,
-        gather_dtensor: bool = True,
-        prefix: Optional[str] = None,
-        size_per_shard: int = 1024,
-    ):
+        data: List,
+        tolerance: Optional[float] = 0.1,
+        beam_width: Optional[int] = 8,
+        group_swap_factor: Optional[float] = 0.4,
+        return_swapped_data: Optional[bool] = False,
+    ) -> Tuple[List, List]:
         """
-        Save sharded optimizer checkpoint under the given checkpointing path.
-        The following files will be created under the path:
-        - An index file (pytorch_optim.bin.index.json) containing a map between optimizer states and file names
-        - A group file (pytorch_optim_group.bin) recording information of param_groups
-        - Multiple files that store state tensors of optimizers.
-          If pipeline parallelism is used, the filenames are in the form of "pytorch_optim.<prefix>-stage-000XX-shard-000XX.bin".
-          If pipeline parallelism is not used, "pytorch_optim.<prefix>-000XX.bin"
+        Search for the best swap combination to balance the data within the specified tolerance.
+        And return the balanced data and the swap list. The swap list is used to record the swap.
+        The swap list is a list of tuples. Each tuple is a swap operation.
 
         Args:
-            optimizer (OptimizerWrapper): Optimizer to save sharded state_dict
-            checkpoint (str): Path to save optimizer state_dict
-            gather_dtensor (bool): Whether to gather_dtensor, not used
-            prefix (str): Perfix of file to save
-            size_per_shard (int): Max file size of each file shard that store state tensors
-        """
-        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
-        if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
-            return
-
-        Path(checkpoint).mkdir(parents=True, exist_ok=True)
-
-        # Devices along the same dp_group share the same copies of states when zero is not used.
-        # In this case only let the device with dp_rank == 0 save the model.
-        if not self.use_zero and self.moe_dp_rank != 0:
-            dist.barrier()
-            return
-
-        # Then collect the sharded states along dp_group(if using zero)/tp_group.
-        # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
-        state_dict_shard = MoECheckpointIO._optimizer_sharder(
-            optimizer,
-            use_zero=self.use_zero,
-            global_dp_group=self.global_dp_group,
-            tp_group=self.tp_group,
-            moe_dp_group=self.moe_dp_group,
-            size_per_shard=size_per_shard,
-            only_moe_param=self.ep_rank != 0,
-        )
-        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
-        index_file = CheckpointIndexFile(checkpoint)
-        # e.g. dp_size = 4, moe_dp_size = 2, ep_size = 2 and use gather
-        # rank 0 saves moe & non-moe params; rank 1 saves only moe params
-        # rank 3 & 4 save nothing
-        control_saving = self.tp_rank == 0 and self.moe_dp_rank == 0
-
-        if self.pp_size == 1 and self.ep_size == 1:
-            # When pipeline is not used, save the optimizer shards as in general checkpointIO
-            total_size = save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=states_name,
-                is_master=control_saving,
-            )
-
-            if control_saving:
-                # Store param groups.
-                index_file.append_meta_data("param_groups", param_group_file)
-                group_file_path = os.path.join(checkpoint, param_group_file)
-                param_groups = [
-                    {**group, "params": group_info["params"]}
-                    for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
-                ]
-                save_param_groups({"param_groups": param_groups}, group_file_path)
-                # Store index file.
-                index_file.append_meta_data("total_size", total_size)
-                index_file.write_index_file(save_index_file)
-                if self.verbose and self.coordinator.is_master():
-                    logging.info(
-                        f"The optimizer is going to be split to checkpoint shards. "
-                        f"You can find where each parameters has been saved in the "
-                        f"index located at {save_index_file}."
-                    )
-
-            dist.barrier()
-        else:
-            # When pipeline is used, each stage produces its own shard files and index files.
-            # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
-            # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
-
-            final_index_file_path = copy.deepcopy(save_index_file)
-            tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
-            Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
-
-            # Manage filenames of sharded weights and index file for each pipeline stage.
-            states_name = states_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-{self.ep_rank+1:05d}-shard.bin")
-            save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}-{self.ep_rank+1:05d}.json")
-            save_index_file = os.path.join("tmp_index_files", save_index_file)
-
-            total_size = save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=states_name,
-                is_master=control_saving,
-                use_pp_format=True,
-            )
-
-            if control_saving:
-                index_file.append_meta_data("total_size", total_size)
-                index_file.write_index_file(save_index_file)
-                print(f"rank {dist.get_rank()} writing index file")
-            else:
-                dist.barrier()
-                return
-
-            dist.barrier()
-
-            # The global master rank integrates the index files and clean the folder.
-            if self.coordinator.is_master():
-                final_index_file = CheckpointIndexFile(checkpoint)
-                final_index_file.append_meta_data("total_size", 0)
-
-                for filename in os.listdir(tmp_index_file_folder):
-                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
-                    final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
-                    for param_id, state_filename in stage_index_file.weight_map.items():
-                        final_index_file.append_weight_map(param_id, state_filename)
-
-                # Store param groups.
-                final_index_file.append_meta_data("param_groups", param_group_file)
-                group_file_path = os.path.join(checkpoint, param_group_file)
-                param_groups = [
-                    {**group, "params": group_info["params"]}
-                    for group, group_info in zip(optimizer.param_groups, optimizer.param_info["param_groups"])
-                ]
-                save_param_groups({"param_groups": param_groups}, group_file_path)
-
-                final_index_file.write_index_file(final_index_file_path)
-                rmtree(tmp_index_file_folder)
-
-                if self.verbose and self.coordinator.is_master():
-                    logging.info(
-                        f"The model is split into checkpoint shards. "
-                        f"You can find where each parameters has been saved in the "
-                        f"index located at {final_index_file_path}."
-                    )
-
-    def load_sharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint_index_file: str, prefix: str = ""):
-        """
-        Load sharded optimizer with the given path to index file of checkpoint folder.
-
-        Args:
-            optimizer (OptimizerWrapper): The optimizer to be loaded.
-            checkpoint_index_file (str): Path to the index file of checkpointing folder.
-            prefix (str): Not used.
-        """
-        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-
-        def _get_param_id_from_optimizer_param(
-            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
-        ):
-            if master_to_working_map is not None:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-            return optimizer.param_info["param2id"][id(working_param)]
-
-        # id_map is a mapping from param ids kept by current pipeline, to their corresponding parameter objects.
-        # When Zero is used, the mapped parameter objects should be fp32 master parameters.
-        # IDs should be obtained through saved param2id mapping earlier saved in optimizer.param_info.
-        id_map = {}
-        master_to_working_map = optimizer.get_master_to_working_map()
-        for pg in optimizer.optim.param_groups:
-            for param in pg["params"]:
-                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
-                id_map[param_id] = param
-
-        # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
-        ckpt_root_path = ckpt_index_file.root_path
-        weight_map = ckpt_index_file.weight_map
-        weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
-
-        # Load param_groups
-        param_group_path = ckpt_index_file.get_param_group_filename()
-        if param_group_path is None:
-            raise RuntimeError(
-                f"Invalid index file path {checkpoint_index_file} for an optimizer. \
-                               Lacking param group file under current directory."
-            )
-        saved_groups = torch.load(param_group_path)
-
-        updated_groups = []
-        for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
-            # obtain updated param group
-            new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]  # The parameters in the same group shouln't change.
-            updated_groups.append(new_pg)
-        # ep param groups
-        if len(optimizer.optim.param_groups) == len(saved_groups) + 1:
-            new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = optimizer.optim.param_groups[-1]["params"]
-            updated_groups.append(new_pg)
-        optimizer.optim.__dict__.update({"param_groups": updated_groups})
-
-        # Load saved states to optimizer.
-        # Keep a record of loaded files so that file will not be repeatedly loaded.
-        loaded_file = set()
-        for pg in optimizer.optim.param_groups:
-            for param in pg["params"]:
-                if param is None:
-                    continue
-                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
-                if param_id not in weight_map:
-                    continue
-                filename = weight_map[param_id]
-
-                # If this param's states has been loaded before, directly return.
-                if filename in loaded_file:
-                    continue
-
-                file_path = os.path.join(ckpt_root_path, filename)
-                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
-                load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
-                loaded_file.add(filename)
-
-        # Then shard the loaded optimizer states if using tp/zero.
-        for param, state in optimizer.optim.state.items():
-            device = param.device
-            if master_to_working_map is not None:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-            original_shape = optimizer.param_info["param2shape"][id(working_param)]
-            sharded_state = self.shard_from_complete_optimizer_state(
-                state,
-                current_shape=working_param.shape,
-                original_shape=original_shape,
-                device=device,
-                inplace=True,
-                is_moe_param=is_moe_tensor(working_param),
-            )
-            optimizer.optim.state[param] = sharded_state
-
-        sharded_optimizer_loading_epilogue(optimizer.optim)
-        if self.verbose and self.coordinator.is_master():
-            logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
-
-    def shard_from_complete_optimizer_state(
-        self,
-        state: OrderedDict,
-        current_shape: torch.Size,
-        original_shape: torch.Size,
-        device: torch.device,
-        inplace: bool,
-        is_moe_param: bool,
-    ) -> OrderedDict:
-        """
-        With complete optimizer states of a specific parameter loaded from checkpoint,
-        slice out the sharded optimizer states kept by current device.
-
-        Args:
-            state (OrderedDict): Complete optimizer states of a given parameter, loaded from checkpoint.
-            current_shape (torch.Size): The size of parameter after sharding.
-            original_shape (torch.Size): The size of parameter before sharding.
-            device (torch.device): The destination device of loaded optimizer states.
-            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+            data (List): expert load list.
+                E.g. [[9.2, 8.3], [2.3, 10.0], [6.1, 7.2], [5.3, 3.2]]
+                This means there are 4 devices and each devices has 2 experts.
+                The value is the load of the expert.
+            tolerance (float): tolerance for balance.
+            beam_width (int): beam width for beam search.
+            group_swap_factor (float): group swap factor for group swap loss.
+                The bigger it is, the less times a group will be swapped.
+            return_swapped_data (bool): whether to return the swapped data.
 
         Returns:
-            OrderedDict: The sharded optimizer state of the given parameter.
+            Tuple: (balanced data, swap list).
+                The swap list is a list of tuples. Each tuple is a swap operation.
+                E.g. [(0, 0, 1, 0), (...), (...)]. The first tuple means
+                the first expert of the first device is swapped with the first expert
+                of the second device.
         """
-        state_ = state if inplace else copy.deepcopy(state)
+        norm_data = self._normalize_data(data)
+        avg = sum(sum(sublist) / len(sublist) for sublist in norm_data) / len(norm_data)
+        results = [(norm_data, 0, [])]
+        stop_flag = False
 
-        for k, v in state_.items():
-            if isinstance(v, torch.Tensor) and k != "step":
-                # Shard state along tensor parallel group.
-                partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
-                if partition_dim is not None:
-                    slice_size = current_shape[partition_dim]
-                    v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+        while stop_flag == False:
+            new_results = []
+            best_score = results[0][1]
+            for i in range(len(results)):
+                new_results.extend(self._beam_search(results[i], beam_width, avg, group_swap_factor))
+            if len(new_results) == 0:
+                stop_flag = True
+                break
+            new_results.sort(key=lambda x: x[1], reverse=True)
+            new_best_score = new_results[0][1]
+            if new_best_score == best_score:
+                stop_flag = True
+                break
+            new_results = new_results[:beam_width]
+            results = new_results
+            for i in results:
+                if self._check_convergence(results[0][0], avg, tolerance):
+                    stop_flag = True
+                    break
 
-                # Shard state along data parallel group when using Zero.
-                if self.use_zero and not is_moe_param:
-                    padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
-                    with torch.no_grad():
-                        v = v.flatten()
-                        if padding_size > 0:
-                            v = torch.nn.functional.pad(v, [0, padding_size])
-                        slice_size = v.numel() // self.dp_size
-                        v = v.split(slice_size, dim=0)[self.global_dp_rank]
+        swap_list = results[0][2]
+        if return_swapped_data:
+            out = deepcopy(data)
+            for swap in swap_list:
+                self._swap_data(out, *swap)
+            return out, swap_list
+        else:
+            return swap_list
 
-                state_[k] = v.detach().clone().to(device)
-
-        return state_
-
-    """Migration from MoEHybridParallelCheckpointIO. These functions mostly deals with unsharded saving,
-    and can be savely deleted since large MoE models are often saved in shards.
-    """
-
-    # Copied from colossalai.moe
-    def pre_save_model(self, model: nn.Module) -> dict:
-        state_dict = model.state_dict()
-        for name, param in model.named_parameters():
-            if ".experts." in name and is_moe_tensor(param):
-                ep_group = param.ep_group
-                ep_rank = dist.get_rank(ep_group)
-                ep_size = dist.get_world_size(ep_group)
-                # TODO: check correctness here
-                # dp_rank = get_dp_rank(param)
-                dp_rank = dist.get_rank(self.global_dp_group)
-                if dp_rank == 0:
-                    param = param.data.cuda()
-                    if ep_rank == 0:
-                        all_param = [torch.zeros_like(param) for _ in range(ep_size)]
-                    else:
-                        all_param = None
-                    # gather param from every ep rank
-                    # dist.all_gather(all_param, param, group=ep_group)
-                    dist.gather(param, all_param, group=ep_group)
-                    if ep_rank == 0:
-                        all_param = torch.cat(all_param, dim=0)
-                        state_dict[name] = all_param.cpu()
-
-        if self.pp_size > 1:
-            if self.dp_rank == 0:
-                out = [None for _ in range(self.pp_size)]
-                dist.gather_object(state_dict, out, group=self.pp_group)
-                if self.pp_rank == 0:
-                    new_state_dict = {}
-                    for o in out:
-                        new_state_dict.update(o)
-                    state_dict = new_state_dict
-        dist.barrier()
-        return state_dict
-
-    def save_unsharded_model(
-        self,
-        model: nn.Module,
-        checkpoint: str,
-        gather_dtensor: bool,
-        use_safetensors: bool,
+    @staticmethod
+    def _swap_expert_single_tensor(
+        weight: nn.Parameter,
+        expert_idx: int,
+        comm_group: ProcessGroup,
+        send_first: bool,
+        comm_rank: int,
     ):
-        state_dict = self.pre_save_model(model)
+        # exchange weight
+        local_weight = weight.data[expert_idx]
+        new_weight = torch.empty_like(local_weight)
+        if send_first:
+            dist.send(local_weight, dst=comm_rank, group=comm_group)
+            dist.recv(new_weight, src=comm_rank, group=comm_group)
+        else:
+            dist.recv(new_weight, src=comm_rank, group=comm_group)
+            dist.send(local_weight, dst=comm_rank, group=comm_group)
+        weight.data[expert_idx] = new_weight
+
+    def _swap_expert_param_and_optim(
+        self,
+        weight: nn.Parameter,
+        expert_idx: int,
+        comm_group: ProcessGroup,
+        send_first: bool,
+        comm_rank: int,
+        optim: LowLevelZeroOptimizer,
+    ):
+        # need to update master and working param if master param exists
+        # else just update working param
+        if weight in optim.optim.state:
+            master_weight_ptr = None
+            working_weight_ptr = weight
+            exp_avg_ptr = optim.optim.state[working_weight_ptr]["exp_avg"]
+            exp_avg_sq_ptr = optim.optim.state[working_weight_ptr]["exp_avg_sq"]
+        else:
+            master_weight_ptr = optim._param_store.working_to_master_param[id(weight)]
+            working_weight_ptr = weight
+            exp_avg_ptr = optim.optim.state[master_weight_ptr]["exp_avg"]
+            exp_avg_sq_ptr = optim.optim.state[master_weight_ptr]["exp_avg_sq"]
+
+        # exchange weight
+        self._swap_expert_single_tensor(
+            working_weight_ptr,
+            expert_idx,
+            comm_group,
+            send_first,
+            comm_rank,
+        )
+        if master_weight_ptr is not None:
+            # TODO: exchange master weight, skip for now
+            # master weight is shared by dp group
+            tmp = working_weight_ptr.view(-1).split(
+                working_weight_ptr.numel() // dist.get_world_size(self.moe_dp_group)
+            )[dist.get_rank(self.moe_dp_group)]
+            master_weight_ptr.data.copy_(tmp.clone().detach().to(master_weight_ptr.device).to(master_weight_ptr.dtype))
+        # exchange optim
+        self._swap_expert_single_tensor(exp_avg_ptr, expert_idx, comm_group, send_first, comm_rank)
+        self._swap_expert_single_tensor(exp_avg_sq_ptr, expert_idx, comm_group, send_first, comm_rank)
+
+    def _gather_global_dp_group(self, data: Tensor) -> Tensor:
+        data_list = [torch.zeros_like(data) for _ in range(self.global_dp_size)]
+        dist.all_gather(data_list, data, group=self.global_dp_group)
+        data_list = torch.cat(data_list, dim=0)
+        return data_list
+
+    def _swap_moe_param(self, swap_list: List, optim: LowLevelZeroOptimizer) -> None:
+        """
+        Swap moe param and optim.
+        We use different strategies to swap expert and gate.
+        For expert, we exchange the param and optim of the expert by p2p.
+        For gate, we all gather the gate choose the part we want.
+
+        Args:
+            swap_list (List)
+            optim (LowLevelZeroOptimizer)
+        """
+        # get all experts weights
+        local_rank = dist.get_rank(self.moe_ep_group)
+        if self.experts.gated:
+            weight_list = [self.experts.wi_up, self.experts.wi_gate]
+        else:
+            weight_list = [self.experts.wi]
+        weight_list.append(self.experts.wo)
+
+        # gate optim should be obtained first
+        gate_shape = self.gate.shape
+        # get master weight and optim
+        master_gate_weight = optim._param_store.working_to_master_param[id(self.gate)]
+        gate_exp_avg = optim.optim.state[master_gate_weight]["exp_avg"]
+        gate_exp_avg_sq = optim.optim.state[master_gate_weight]["exp_avg_sq"]
+        # gather
+        global_master_gate_weight = self._gather_global_dp_group(master_gate_weight).view(gate_shape)
+        global_gate_exp_avg = self._gather_global_dp_group(gate_exp_avg).view(gate_shape)
+        global_gate_exp_avg_sq = self._gather_global_dp_group(gate_exp_avg_sq).view(gate_shape)
+        assert (
+            self.gate.shape
+            == global_master_gate_weight.shape
+            == global_gate_exp_avg.shape
+            == global_gate_exp_avg_sq.shape
+        )
+
+        for swap in swap_list:
+            source_group, source_idx, target_group, target_idx = swap
+            source_rank = self.moe_ep_ranks[source_group]
+            target_rank = self.moe_ep_ranks[target_group]
+            # exchange expert
+            if local_rank in [source_group, target_group]:
+                for weight in weight_list:
+                    if local_rank == source_group:
+                        self._swap_expert_param_and_optim(
+                            weight,
+                            source_idx,
+                            self.moe_ep_group,
+                            True,
+                            target_rank,
+                            optim,
+                        )
+                    elif local_rank == target_group:
+                        self._swap_expert_param_and_optim(
+                            weight,
+                            target_idx,
+                            self.moe_ep_group,
+                            False,
+                            source_rank,
+                            optim,
+                        )
+            # exchange gate
+            source_expert_pos = source_group * self.local_expert_num + source_idx
+            target_expert_pos = target_group * self.local_expert_num + target_idx
+            for gate in [
+                self.gate,
+                global_master_gate_weight,
+                global_gate_exp_avg,
+                global_gate_exp_avg_sq,
+            ]:
+                origin_source = gate.data[source_expert_pos].clone().detach()
+                origin_target = gate.data[target_expert_pos].clone().detach()
+                gate.data[source_expert_pos], gate.data[target_expert_pos] = (
+                    origin_target,
+                    origin_source,
+                )
+
+        # update gate
+        global_master_gate_weight = global_master_gate_weight.view(-1).split(
+            global_master_gate_weight.numel() // self.global_dp_size
+        )[self.global_dp_rank]
+        master_gate_weight.data.copy_(global_master_gate_weight)
+        global_gate_exp_avg = global_gate_exp_avg.view(-1).split(global_gate_exp_avg.numel() // self.global_dp_size)[
+            self.global_dp_rank
+        ]
+        gate_exp_avg.data.copy_(global_gate_exp_avg)
+        global_gate_exp_avg_sq = global_gate_exp_avg_sq.view(-1).split(
+            global_gate_exp_avg_sq.numel() // self.global_dp_size
+        )[self.global_dp_rank]
+        gate_exp_avg_sq.data.copy_(global_gate_exp_avg_sq)
+
+    @torch.no_grad()
+    def update_load(self, load: Tensor) -> None:
+        if len(load) != self.expert_num:
+            padding_size = self.expert_num - len(load)
+            padding = torch.zeros(padding_size, dtype=load.dtype, device=load.device)
+            load = torch.cat((load, padding), dim=0)
+        if self.local_load is None:
+            self.local_load = load
+        else:
+            self.local_load += load
+
+    @torch.no_grad()
+    def balance_load(self, optim: LowLevelZeroOptimizer) -> None:
+        # prepare load
+        load = self._sync_load()
+        load = self._load_to_list(load)
+        # search balance
+        swap_list = self._search_balance(load)
         if dist.get_rank() == 0:
-            torch.save(state_dict, checkpoint)
-        dist.barrier()
-
-    # Copied from colossalai.moe
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
-        """
-        Save optimizer state dict to a file with given path.
-
-        Args:
-            optimizer (OptimizerWrapper): Optimizer to save sharded state_dict.
-            checkpoint (str): Path to save optimizer state_dict.
-            gather_dtensor (bool): Whether to gather_dtensor, not used.
-        """
-        if self.coordinator.is_master():
-            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
-
-        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
-
-        # optimizer states of parameters kept by local device('s pipeline stage)
-        local_states = dict()
-
-        for param, state in optimizer.optim.state.items():
-            if param is None:
-                continue
-
-            # working param is needed for obtaining correct param_id
-            master_to_working_map = optimizer.get_master_to_working_map()
-            if master_to_working_map is not None and id(param) in master_to_working_map:
-                working_param = master_to_working_map[id(param)]
+            if len(swap_list) > 0:
+                print(f"[Load Balance] Applying expert swap...")
             else:
-                working_param = param
-
-            # gather complete state from tp shards & dp shards
-            param_id = optimizer.param_info["param2id"][id(working_param)]
-            local_states[param_id] = self.pre_save_optim(
-                state,
-                working_param,
-                inplace=False,
-                device=torch.device("cuda"),
-            )
-
-        if self.pp_size == 1:
-            # When pipeline is not used, let master rank directly save the collected state_dict.
-            state_dict = {"param_groups": optimizer.optim.param_groups, "state": local_states}
-            if self.coordinator.is_master():
-                save_state_dict(state_dict, checkpoint, use_safetensors=False)
-        else:
-            # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
-            states_list = [None for _ in range(self.pp_size)]
-            dist.barrier(self.pp_group)
-            # dist.all_gather_object(states_list, local_states, self.pp_group)
-            dist.gather_object(local_states, states_list, self.pp_group)
-
-            # Only the master rank do the saving.
-            if self.coordinator.is_master():
-                state_dict = {"param_groups": optimizer.optim.param_groups, "state": dict()}
-                for _states in states_list:
-                    state_dict["state"].update(_states)
-                save_state_dict(state_dict, checkpoint, use_safetensors=False)
-        dist.barrier()
-
-    # Copied from colossalai.moe
-    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, strict: bool = False):
-        """
-        Load optimizer from a file with given path.
-
-        Args:
-            optimizer (OptimizerWrapper): The optimizer to be loaded.
-            checkpoint_index_file (str): Path to the checkpoint file.
-        """
-
-        def _get_param_id_from_optimizer_param(
-            param: torch.Tensor, master_to_working_map: Optional[Dict[int, torch.Tensor]] = None
-        ):
-            if master_to_working_map is not None and id(param) in master_to_working_map:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-            if id(working_param) in optimizer.param_info["param2id"]:
-                return optimizer.param_info["param2id"][id(working_param)]
-            else:
-                None
-
-        if self.coordinator.is_master():
-            logging.warning("Please avoid using unsharded checkpointing methods when dealing with large models!")
-
-        assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-
-        # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
-        state_dict = load_state_dict(checkpoint)
-
-        # Load param_groups.
-        updated_groups = []
-        saved_groups = state_dict["param_groups"]
-        for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
-            new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = old_pg["params"]  # Only keep the parameters kept by current pipeline stage.
-            updated_groups.append(new_pg)
-
-        # ep extra group
-        # if MOE_MANAGER.parallel == "EP":
-        if self.ep_size > 1:
-            new_pg = copy.deepcopy(saved_pg)
-            new_pg["params"] = optimizer.optim.param_groups[-1][
-                "params"
-            ]  # Only keep the parameters kept by current pipeline stage.
-            for param in new_pg["params"]:
-                param.data = param.data.to(torch.float32)
-            updated_groups.append(new_pg)
-        optimizer.optim.__dict__.update({"param_groups": updated_groups})
-
-        # Load saved states to optimizer. First discard those states not belonging to current pipeline stage.
-        master_to_working_map = optimizer.get_master_to_working_map()
-        id_map = {}
-        for pg in optimizer.optim.param_groups:
-            for param in pg["params"]:
-                param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
-                if param_id is not None:
-                    id_map[param_id] = param
-        load_states_into_optimizer(optimizer.optim, state_dict["state"], id_map, strict=True)
-
-        # Then shard the loaded optimizer states if using tp/zero.
-        for param, state in optimizer.optim.state.items():
-            if param is None:
-                continue
-            device = param.device
-            if master_to_working_map is not None and id(param) in master_to_working_map:
-                working_param = master_to_working_map[id(param)]
-            else:
-                working_param = param
-            original_shape = optimizer.param_info["param2shape"][id(working_param)]
-            sharded_state = self.pre_load_optim(
-                state,
-                param,
-                current_shape=working_param.shape,
-                original_shape=original_shape,
-                device=device,
-                inplace=True,
-            )
-            optimizer.optim.state[param] = sharded_state
-        sharded_optimizer_loading_epilogue(optimizer.optim)
-        dist.barrier()
+                print(f"[Load Balance] Invalid swap, skip...")
+        # swap expert and gate
+        self._swap_moe_param(swap_list, optim)
+        # clear load
+        self._clear_load()

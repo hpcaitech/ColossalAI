@@ -51,13 +51,16 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
     ) -> None:
         super().__init__(global_dp_group, pp_group, tp_group, zero_stage, verbose)
         self.global_dp_group = global_dp_group
-        self.pp_group = pp_group
-        self.ep_group = ep_group
-        self.tp_group = tp_group
-        self.moe_dp_group = moe_dp_group
-        self.moe_dp_rank = dist.get_rank(moe_dp_group)
-        self.ep_size = dist.get_world_size(ep_group)
         self.global_dp_rank = dist.get_rank(global_dp_group)
+        self.global_dp_size = dist.get_world_size(global_dp_group)
+        self.pp_group = pp_group
+        self.tp_group = tp_group
+
+        self.moe_dp_group = moe_dp_group
+        self.moe_dp_size = dist.get_world_size(moe_dp_group)
+        self.moe_dp_rank = dist.get_rank(moe_dp_group)
+        self.ep_group = ep_group
+        self.ep_size = dist.get_world_size(ep_group)
         self.ep_rank = dist.get_rank(ep_group)
 
     @staticmethod
@@ -243,11 +246,11 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         param: torch.Tensor,
         original_shape: torch.Size,
         global_dp_group: ProcessGroup,
-        moe_dp_group: ProcessGroup,
         tp_group: ProcessGroup,
         use_zero: bool,
         inplace: bool,
         is_moe_param: bool,
+        moe_dp_group: ProcessGroup = None,
         device: torch.device = torch.device("cpu"),
     ) -> OrderedDict:
         """
@@ -268,7 +271,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         """
         global_dp_size = dist.get_world_size(global_dp_group)
         tp_size = dist.get_world_size(tp_group)
-        moe_dp_size = dist.get_world_size(moe_dp_group)
+        moe_dp_size = dist.get_world_size(moe_dp_group) if moe_dp_group is not None else 1
         current_shape = param.shape
         state_ = state if inplace else copy.deepcopy(state)
         for k, v in state_.items():
@@ -276,9 +279,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 v = v.cuda()
 
                 # First gather Zero shards.
-                # Use gather for bandwith saving
                 if use_zero and is_moe_param and moe_dp_size > 1:
-                    # TODO: Check ZeRO + EP. This doesn't seem to work
                     moe_dp_rank = dist.get_rank(moe_dp_group)
                     dst = get_global_rank(moe_dp_group, 0)
                     if moe_dp_rank == 0:
@@ -288,7 +289,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     else:
                         dist.gather(v, group=moe_dp_group, dst=dst)
 
-                if use_zero and not is_moe_param:
+                elif use_zero and not is_moe_param and global_dp_size > 1:
                     dp_rank = dist.get_rank(global_dp_group)
                     dst = get_global_rank(global_dp_group, 0)
                     if dp_rank == 0:
@@ -328,7 +329,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         state_dict_sharder = StateDictSharder(size_per_shard)
         param_info = optimizer.param_info
         master_to_working_map = optimizer.get_master_to_working_map()
-
+        dist.get_world_size(moe_dp_group)
         for param, state in optimizer.optim.state.items():
             if param is None:
                 continue
@@ -337,7 +338,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 working_param = master_to_working_map[id(param)]
             else:
                 working_param = param
-
             param_id = param_info["param2id"][id(working_param)]
             original_shape = param_info["param2shape"][id(working_param)]
             state_ = MoECheckpointIO.gather_from_sharded_optimizer_state(
@@ -354,6 +354,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
 
             if only_moe_param and not is_moe_tensor(working_param):
                 continue
+
             block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
             if block is not None:
                 yield block, block_size
@@ -392,8 +393,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
 
-        # Devices along the same dp_group share the same copies of states when zero is not used.
-        # In this case only let the device with dp_rank == 0 save the model.
+        # If optim states are not sharded, other ranks don't need to participate in gather.
         if not self.use_zero and self.moe_dp_rank != 0:
             dist.barrier()
             return
@@ -412,7 +412,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
         index_file = CheckpointIndexFile(checkpoint)
         # e.g. dp_size = 4, moe_dp_size = 2, ep_size = 2 and use gather
-        # rank 0 saves moe & non-moe params; rank 1 saves only moe params
+        # rank 0 saves moe & non-moe params; rank 1 only saves moe params
         # rank 3 & 4 save nothing
         control_saving = self.tp_rank == 0 and self.moe_dp_rank == 0
 
@@ -634,7 +634,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             OrderedDict: The sharded optimizer state of the given parameter.
         """
         state_ = state if inplace else copy.deepcopy(state)
-
         for k, v in state_.items():
             if isinstance(v, torch.Tensor) and k != "step":
                 # Shard state along tensor parallel group.
@@ -644,14 +643,25 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
 
                 # Shard state along data parallel group when using Zero.
-                if self.use_zero and not is_moe_param:
-                    padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
+                if self.use_zero and not is_moe_param and self.global_dp_size > 1:
+                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
                     with torch.no_grad():
                         v = v.flatten()
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
-                        slice_size = v.numel() // self.dp_size
+                        slice_size = v.numel() // self.global_dp_size
                         v = v.split(slice_size, dim=0)[self.global_dp_rank]
+
+                elif self.use_zero and is_moe_param and self.moe_dp_size > 1:
+                    # LowLevelZeRO pads by global dp size for now.
+                    # TODO: update both to use moe dp size
+                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
+                    with torch.no_grad():
+                        v = v.flatten()
+                        if padding_size > 0:
+                            v = torch.nn.functional.pad(v, [0, padding_size])
+                        slice_size = v.numel() // self.moe_dp_size
+                        v = v.split(slice_size, dim=0)[self.moe_dp_rank]
 
                 state_[k] = v.detach().clone().to(device)
 

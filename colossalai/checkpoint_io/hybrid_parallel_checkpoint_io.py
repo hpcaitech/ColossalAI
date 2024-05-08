@@ -69,7 +69,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.dp_rank = dist.get_rank(self.global_dp_group)
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
-        self.dp_size = dist.get_world_size(dp_group)
+        self.global_dp_size = dist.get_world_size(dp_group)
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
         self.use_zero = zero_stage > 0
@@ -871,48 +871,48 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         return state_
 
-    # def shard_from_complete_optimizer_state(
-    #     self,
-    #     state: OrderedDict,
-    #     current_shape: torch.Size,
-    #     original_shape: torch.Size,
-    #     device: torch.device,
-    #     inplace: bool,
-    # ) -> OrderedDict:
-    #     """
-    #     With complete optimizer states of a specific parameter loaded from checkpoint,
-    #     slice out the sharded optimizer states kept by current device.
+    def shard_from_complete_optimizer_state(
+        self,
+        state: OrderedDict,
+        current_shape: torch.Size,
+        original_shape: torch.Size,
+        device: torch.device,
+        inplace: bool,
+    ) -> OrderedDict:
+        """
+        With complete optimizer states of a specific parameter loaded from checkpoint,
+        slice out the sharded optimizer states kept by current device.
 
-    #     Args:
-    #         state (OrderedDict): Complete optimizer states of a given parameter, loaded from checkpoint.
-    #         current_shape (torch.Size): The size of parameter after sharding.
-    #         original_shape (torch.Size): The size of parameter before sharding.
-    #         device (torch.device): The destination device of loaded optimizer states.
-    #         inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+        Args:
+            state (OrderedDict): Complete optimizer states of a given parameter, loaded from checkpoint.
+            current_shape (torch.Size): The size of parameter after sharding.
+            original_shape (torch.Size): The size of parameter before sharding.
+            device (torch.device): The destination device of loaded optimizer states.
+            inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
 
-    #     Returns:
-    #         OrderedDict: The sharded optimizer state of the given parameter.
-    #     """
-    #     state_ = state if inplace else copy.deepcopy(state)
+        Returns:
+            OrderedDict: The sharded optimizer state of the given parameter.
+        """
+        state_ = state if inplace else copy.deepcopy(state)
 
-    #     for k, v in state_.items():
-    #         if isinstance(v, torch.Tensor) and k != "step":
-    #             # Shard state along tensor parallel group.
-    #             partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
-    #             if partition_dim is not None:
-    #                 slice_size = current_shape[partition_dim]
-    #                 v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
+        for k, v in state_.items():
+            if isinstance(v, torch.Tensor) and k != "step":
+                # Shard state along tensor parallel group.
+                partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                if partition_dim is not None:
+                    slice_size = current_shape[partition_dim]
+                    v = v.split(slice_size, dim=partition_dim)[self.tp_rank]
 
-    #             # Shard state along data parallel group when using Zero.
-    #             if self.use_zero:
-    #                 padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
-    #                 with torch.no_grad():
-    #                     v = v.flatten()
-    #                     if padding_size > 0:
-    #                         v = torch.nn.functional.pad(v, [0, padding_size])
-    #                     slice_size = v.numel() // self.dp_size
-    #                     v = v.split(slice_size, dim=0)[self.dp_rank]
+                # Shard state along data parallel group when using Zero.
+                if self.use_zero:
+                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
+                    with torch.no_grad():
+                        v = v.flatten()
+                        if padding_size > 0:
+                            v = torch.nn.functional.pad(v, [0, padding_size])
+                        slice_size = v.numel() // self.global_dp_size
+                        v = v.split(slice_size, dim=0)[self.dp_rank]
 
-    #             state_[k] = v.detach().clone().to(device)
+                state_[k] = v.detach().clone().to(device)
 
-    #     return state_
+        return state_
