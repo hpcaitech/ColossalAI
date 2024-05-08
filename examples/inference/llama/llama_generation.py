@@ -17,7 +17,7 @@ def infer(args):
     # ==============================
     # Launch colossalai, setup distributed environment
     # ==============================
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     # ==============================
@@ -59,7 +59,7 @@ def infer(args):
     coordinator.print_on_master(out[0])
 
 
-# colossalai run --nproc_per_node 1 llama_gen.py -m MODEL_PATH
+# colossalai run --nproc_per_node 1 llama_generation.py -m MODEL_PATH
 if __name__ == "__main__":
     # ==============================
     # Parse Arguments

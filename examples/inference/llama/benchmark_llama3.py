@@ -182,7 +182,7 @@ def benchmark_inference(args):
 
 
 def inference(rank, world_size, port, args):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     benchmark_inference(args)
 
 

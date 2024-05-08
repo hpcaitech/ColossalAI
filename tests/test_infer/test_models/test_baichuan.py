@@ -128,7 +128,7 @@ def check_tp_engine(prompt_template, do_sample, use_cuda_kernel):
     not os.path.exists(BAICHUAN_MODEL_NAME_OR_PATH),
     reason="There is no local model address included, please replace this address with a valid one.",
 )
-@pytest.mark.dist
+@pytest.mark.largedist
 @rerun_if_address_is_in_use()
 def test_inference_engine():
     check_tp_engine()

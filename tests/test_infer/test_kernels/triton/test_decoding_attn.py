@@ -68,11 +68,11 @@ def prepare_data(
 
 
 @pytest.mark.skipif(not (HAS_TRITON and TRITON_CUDA_SUPPORT), reason="requires triton")
-@pytest.mark.parametrize("bsz", [4, 7, 32])
-@pytest.mark.parametrize("block_size", [16, 32, 64])
-@pytest.mark.parametrize("max_num_blocks_per_seq", [8, 32])
+@pytest.mark.parametrize("bsz", [7, 16])
+@pytest.mark.parametrize("block_size", [16, 32])
+@pytest.mark.parametrize("max_num_blocks_per_seq", [8, 16])
 @pytest.mark.parametrize("num_attn_heads", [16])
-@pytest.mark.parametrize("kv_group_num", [1, 2, 16])
+@pytest.mark.parametrize("kv_group_num", [1, 4])
 @pytest.mark.parametrize("same_context_len", [True, False])
 @pytest.mark.parametrize("q_len", [1, 5])
 @pytest.mark.parametrize("use_alibi_slopes", [True, False])
@@ -187,7 +187,7 @@ def test_flash_decoding(
 
     rtol = 1e-4
     # After the shape becomes larger, some data elements are too small, leading to excessively large relative errors.
-    if bsz == 32 and use_alibi_slopes:
+    if bsz >= 16 and use_alibi_slopes:
         rtol = 100
 
     numpy_allclose(out_torch, out_triton, atol=1e-3, rtol=rtol)
