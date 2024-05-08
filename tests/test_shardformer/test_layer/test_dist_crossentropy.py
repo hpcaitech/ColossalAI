@@ -14,7 +14,7 @@ CONFIG = dict(
 
 def check_dist_crossentropy(rank, world_size, port, ignore_index):
     disable_existing_loggers()
-    colossalai.launch(config=CONFIG, rank=rank, world_size=world_size, port=port, host="localhost", backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost", backend="nccl")
 
     # prepare data
     pred = torch.randn(2, 4, 8, requires_grad=True).cuda()

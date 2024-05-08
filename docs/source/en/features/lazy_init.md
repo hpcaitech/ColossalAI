@@ -29,7 +29,7 @@ from colossalai.booster.plugin import GeminiPlugin
 
 from transformers import LlamaForCausalLM, LlamaConfig, BertForPreTraining
 
-colossalai.launch({})
+colossalai.launch()
 plugin = GeminiPlugin()
 booster = Booster(plugin)
 

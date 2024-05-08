@@ -31,7 +31,7 @@ def _binary_elementwise_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = BinaryElementwiseOpModule(token=torch.add, shape=1024).cuda()
     input = torch.rand(32, 1024).cuda()
     input.requires_grad = True

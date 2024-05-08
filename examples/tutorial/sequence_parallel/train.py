@@ -48,7 +48,7 @@ def pipeline_data_process_func(stage_output, micro_batch_data):
 def main():
     # initialize
     parse_args()
-    colossalai.launch_from_torch(config="./config.py", seed=1234, backend="nccl")
+    colossalai.legacy.launch_from_torch(config="./config.py", seed=1234, backend="nccl")
 
     logger = get_dist_logger()
 
@@ -136,7 +136,7 @@ def main():
     logger.info(f"LR Scheduler is built with {warmup_steps} warmup steps and {gpc.config.DECAY_ITERS} decay steps")
 
     # # init
-    engine, *dummy = colossalai.initialize(model, optimizer, criterion, verbose=True)
+    engine, *dummy = colossalai.legacy.initialize(model, optimizer, criterion, verbose=True)
 
     # build timer
     timer = MultiTimer()

@@ -9,7 +9,7 @@ from colossalai.zero import ColoInitContext
 
 path = "/data/scratch/diffuser/stable-diffusion-v1-4"
 
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 with ColoInitContext(device="cpu"):
     vae = AutoencoderKL.from_pretrained(
         path,

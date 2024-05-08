@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List
 
@@ -23,27 +24,12 @@ from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDe
 class BloomPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Bloom model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
@@ -51,13 +37,33 @@ class BloomPolicy(Policy):
 
         policy = {}
 
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
+
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
         else:
             norm_cls = col_nn.LayerNorm
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
+
+        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for BLOOM"
+        if sp_mode == "ring":
+            warnings.warn(
+                f"For BLOOM, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+            )
+            sp_mode = "split_gather"
+
         overlap = self.shard_config.enable_sequence_overlap
+        sp_partial_derived = sp_mode == "split_gather"
+
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.n_head % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[BloomBlock] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attention.hidden_size": self.model.config.hidden_size
@@ -70,12 +76,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.attention_dropout",
@@ -84,12 +90,12 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_h_to_4h",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel, "overlap": overlap},
+                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_4h_to_h",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
+                        kwargs={"seq_parallel_mode": sp_mode},
                     ),
                 ],
             )
@@ -101,12 +107,19 @@ class BloomPolicy(Policy):
                 method_replacement={
                     "build_alibi_tensor": build_bloom_alibi_tensor_fn(self.shard_config.tensor_parallel_process_group)
                 },
-                sub_module_replacement=[
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
                     SubModuleReplacementDescription(
                         suffix="word_embeddings",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    )
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    ),
                 ],
+                policy=policy,
+                target_key=BloomModel,
             )
 
         # optimization configuration
@@ -132,19 +145,19 @@ class BloomPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
-                    kwargs={"sp_partial_derived": use_sequence_parallel},
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
             target_key=BloomBlock,
         )
 
-        if use_sequence_parallel:
+        if sp_mode == "split_gather":
             self.append_or_create_method_replacement(
                 description={"forward": get_bloom_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
@@ -203,8 +216,8 @@ class BloomPolicy(Policy):
             else:
                 module = self.model.transformer
 
-            layers_per_stage = Policy.distribute_layers(len(module.h), stage_manager.num_stages)
-            stage_index = Policy.get_stage_index(layers_per_stage, stage_manager.stage)
+            layers_per_stage = stage_manager.distribute_layers(len(module.h))
+            stage_index = stage_manager.get_stage_index(layers_per_stage)
             method_replacement = {
                 "forward": partial(
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
@@ -226,11 +239,11 @@ class BloomPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = self.distribute_layers(len(module.h), stage_manager.num_stages)
+        layers_per_stage = stage_manager.distribute_layers(len(module.h))
         if stage_manager.is_first_stage():
             held_layers.append(module.word_embeddings)
             held_layers.append(module.word_embeddings_layernorm)
-        start_idx, end_idx = self.get_stage_index(layers_per_stage, stage_manager.stage)
+        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
         held_layers.extend(module.h[start_idx:end_idx])
         if stage_manager.is_last_stage():
             held_layers.append(module.ln_f)
@@ -271,7 +284,21 @@ class BloomForCausalLMPolicy(BloomPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="lm_head", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)
+                    suffix="lm_head",
+                    target_module=col_nn.VocabParallelLMHead1D,
+                    kwargs=dict(
+                        gather_output=True, make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by
+                    ),
+                ),
+                policy=policy,
+                target_key=BloomForCausalLM,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=col_nn.PaddingLMHead,
+                    kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
                 ),
                 policy=policy,
                 target_key=BloomForCausalLM,

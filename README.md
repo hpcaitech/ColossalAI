@@ -25,6 +25,8 @@
 </div>
 
 ## Latest News
+* [2024/04] [Open-Sora Unveils Major Upgrade: Embracing Open Source with Single-Shot 16-Second Video Generation and 720p Resolution](https://hpc-ai.com/blog/open-soras-comprehensive-upgrade-unveiled-embracing-16-second-video-generation-and-720p-resolution-in-open-source)
+* [2024/04] [Most cost-effective solutions for inference, fine-tuning and pretraining, tailored to LLaMA3 series](https://hpc-ai.com/blog/most-cost-effective-solutions-for-inference-fine-tuning-and-pretraining-tailored-to-llama3-series)
 * [2024/03] [314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, Efficient and Easy-to-Use PyTorch+HuggingFace version is Here](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
 * [2024/03] [Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models](https://hpc-ai.com/blog/open-sora-v1.0)
 * [2024/03] [Open-Sora：Sora Replication Solution with 46% Cost Reduction, Sequence Expansion to Nearly a Million](https://hpc-ai.com/blog/open-sora)
@@ -52,7 +54,7 @@
  <li>
    <a href="#Parallel-Training-Demo">Parallel Training Demo</a>
    <ul>
-     <li><a href="#LLaMA2">LLaMA 1/2</a></li>
+     <li><a href="#LLaMA3">LLaMA 1/2/3 </a></li>
      <li><a href="#MoE">MoE</a></li>
      <li><a href="#GPT-3">GPT-3</a></li>
      <li><a href="#GPT-2">GPT-2</a></li>
@@ -131,7 +133,7 @@ distributed training and inference in a few lines.
 
 [Open-Sora](https://github.com/hpcaitech/Open-Sora)：Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models
 [[code]](https://github.com/hpcaitech/Open-Sora)
-[[blog]](https://hpc-ai.com/blog/open-sora-v1.0)
+[[blog]](https://hpc-ai.com/blog/open-soras-comprehensive-upgrade-unveiled-embracing-16-second-video-generation-and-720p-resolution-in-open-source)
 [[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Open-Sora)
 [[Demo]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
@@ -270,13 +272,21 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ## Parallel Training Demo
+### LLaMA3
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/LLaMA3-70B-H100.png" width=600/>
+</p>
+
+- 70 billion parameter LLaMA3 model training accelerated by 18%
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+
 ### LLaMA2
 <p align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/llama2_pretraining.png" width=600/>
 </p>
 
 - 70 billion parameter LLaMA2 model training accelerated by 195%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama2)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/70b-llama2-training)
 
 ### LLaMA1
@@ -285,7 +295,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 </p>
 
 - 65-billion-parameter large model pretraining accelerated by 38%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/example/llama/examples/language/llama)
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
 [[blog]](https://www.hpc-ai.tech/blog/large-model-pretraining)
 
 ### MoE

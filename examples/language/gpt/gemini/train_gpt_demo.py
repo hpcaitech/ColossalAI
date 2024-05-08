@@ -132,7 +132,7 @@ def main():
     PROF_FLAG = False  # The flag of profiling, False by default
 
     disable_existing_loggers()
-    colossalai.launch_from_torch(config={})
+    colossalai.launch_from_torch()
 
     logger = get_dist_logger()
     logger.info(f"{args.model_type}, {args.distplan}, batch size {BATCH_SIZE}", ranks=[0])

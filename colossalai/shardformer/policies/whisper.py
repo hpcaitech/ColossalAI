@@ -13,6 +13,7 @@ from ..modeling.whisper import (
     WhisperPipelineForwards,
     get_jit_fused_whisper_decoder_layer_forward,
     get_jit_fused_whisper_encoder_layer_forward,
+    get_whisper_decoder_forward_for_flash_attention,
     get_whisper_flash_attention_forward,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -28,12 +29,6 @@ __all__ = [
 class WhisperPolicy(Policy):
     def __init__(self) -> None:
         super().__init__()
-        import transformers
-        from packaging.version import Version
-
-        assert Version(transformers.__version__) <= Version(
-            "4.33.0"
-        ), "The Whisper model should run on a transformers version not greater than 4.33.0."
 
     def config_sanity_check(self):
         pass
@@ -43,11 +38,7 @@ class WhisperPolicy(Policy):
         r"""
         Reshape the Embedding layer to make the embedding dimension divisible by world_size
         """
-        vocab_size = self.model.config.vocab_size
-        world_size = self.shard_config.tensor_parallel_size
-        if vocab_size % world_size != 0:
-            new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
         return self.model
 
     def module_policy(self):
@@ -57,9 +48,18 @@ class WhisperPolicy(Policy):
             WhisperDecoderLayer,
             WhisperEncoder,
             WhisperEncoderLayer,
+            WhisperFlashAttention2,
+            WhisperSdpaAttention,
         )
 
         policy = {}
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -78,6 +78,9 @@ class WhisperPolicy(Policy):
             warnings.warn("Whisper doesn't support jit fused operator now, will ignore the jit fused operator flag.")
 
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.encoder_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[WhisperEncoderLayer] = ModulePolicyDescription(
                 attribute_replacement={
                     "self_attn.embed_dim": self.model.config.d_model // self.shard_config.tensor_parallel_size,
@@ -165,13 +168,17 @@ class WhisperPolicy(Policy):
                 ],
             )
 
-            policy[WhisperDecoder] = ModulePolicyDescription(
-                sub_module_replacement=[
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=[
                     SubModuleReplacementDescription(
                         suffix="embed_tokens",
-                        target_module=col_nn.VocabParallelEmbedding1D,
+                        target_module=embedding_cls,
+                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                     ),
-                ]
+                ],
+                policy=policy,
+                target_key=WhisperDecoder,
             )
 
         # optimization configuration
@@ -240,6 +247,28 @@ class WhisperPolicy(Policy):
                 policy=policy,
                 target_key=WhisperAttention,
             )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperFlashAttention2,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_whisper_flash_attention_forward(),
+                },
+                policy=policy,
+                target_key=WhisperSdpaAttention,
+            )
+            if not self.shard_config.pipeline_stage_manager:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_whisper_decoder_forward_for_flash_attention(self.shard_config),
+                    },
+                    policy=policy,
+                    target_key=WhisperDecoder,
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
@@ -269,7 +298,22 @@ class WhisperPolicy(Policy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="proj_out", target_module=col_nn.Linear1D_Col, kwargs={"gather_output": True}
+                    suffix="proj_out",
+                    target_module=col_nn.VocabParallelLMHead1D,
+                    kwargs={
+                        "gather_output": True,
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                    },
+                ),
+                policy=base_policy,
+                target_key=WhisperForConditionalGeneration,
+            )
+        else:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="proj_out",
+                    target_module=col_nn.PaddingLMHead,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=base_policy,
                 target_key=WhisperForConditionalGeneration,
@@ -280,15 +324,16 @@ class WhisperPolicy(Policy):
     def postprocess(self):
         return self.model
 
-    @staticmethod
     def distribute_whisper_layers(
-        num_encoder_layers: int, num_decoder_layers: int, num_stages: int
+        self, num_encoder_layers: int, num_decoder_layers: int, num_stages: int
     ) -> Tuple[List[int], int]:
         """
         Distribute whisper layers into stages when pipeline parallel is used.
         Return the layer distribution as a list and the starting stage of decoder.
         If decoder doesn't exist, returned decoder starting stage is set to num_encoder_layers.
         """
+        stage_manager = self.pipeline_stage_manager
+        assert stage_manager is not None, "pipeline_stage_manager is None"
 
         # number of encoder layers must be a positive integer
         if num_encoder_layers <= 0:
@@ -300,7 +345,7 @@ class WhisperPolicy(Policy):
 
         # in the case of whisperEncoderModel, set decoder starting stage to num_stages since it doesn't exist
         if num_decoder_layers == 0:
-            return Policy.distribute_layers(num_encoder_layers, num_stages), num_stages
+            return stage_manager.distribute_layers(num_encoder_layers, num_stages), num_stages
 
         # the number of stages distributed between encoder and decoder is optimized in this way:
         # num_encoder_stages = argmin(abs(num_encoder_layers / encoder_stages - num_decoder_layers / decoder_stages))
@@ -311,22 +356,27 @@ class WhisperPolicy(Policy):
         num_encoder_stages = np.argmin([objective(i) for i in range(1, num_stages)]) + 1
         num_decoder_stages = num_stages - num_encoder_stages
 
-        encoder_distribution = Policy.distribute_layers(num_encoder_layers, num_encoder_stages)
-        decoder_distribution = Policy.distribute_layers(num_decoder_layers, num_decoder_stages)
+        encoder_distribution = stage_manager.distribute_layers(num_encoder_layers, num_encoder_stages)
+        decoder_distribution = stage_manager.distribute_layers(num_decoder_layers, num_decoder_stages)
         return encoder_distribution + decoder_distribution, num_encoder_stages
 
-    @staticmethod
     def get_whisper_stage_index(
-        layers_per_stage: List[int], stage: int, decoder_starting_stage: int
-    ) -> Tuple[bool, int, int]:
+        self, layers_per_stage: List[int], stage: int, decoder_starting_stage: int
+    ) -> Tuple[int, int]:
         """
         Input the distribution of layers among stages, the current stage and the first stage of decoder.
         Return the starting/ending idx of layers in encoder/decoder
         """
+        stage_manager = self.pipeline_stage_manager
+        assert stage_manager is not None, "pipeline_stage_manager is None"
+
         if stage < decoder_starting_stage:
-            return Policy.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
+            return stage_manager.get_stage_index(layers_per_stage[:decoder_starting_stage], stage)
         else:
-            return Policy.get_stage_index(layers_per_stage[decoder_starting_stage:], stage - decoder_starting_stage)
+            return stage_manager.get_stage_index(
+                layers_per_stage[decoder_starting_stage:],
+                stage - decoder_starting_stage,
+            )
 
     def get_held_layers(self) -> List[nn.Module]:
         assert self.pipeline_stage_manager is not None, "pipeline_stage_manager is None"
@@ -354,12 +404,10 @@ class WhisperPolicy(Policy):
             num_decoder_layers = 0
 
         held_layers = []
-        layers_per_stage, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+        layers_per_stage, decoder_starting_stage = self.distribute_whisper_layers(
             num_encoder_layers, num_decoder_layers, stage_manager.num_stages
         )
-        start_idx, end_idx = WhisperPolicy.get_whisper_stage_index(
-            layers_per_stage, stage_manager.stage, decoder_starting_stage
-        )
+        start_idx, end_idx = self.get_whisper_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
 
         if stage_manager.stage < decoder_starting_stage:
             # current stage is in whisper's encoder
@@ -409,12 +457,10 @@ class WhisperPolicy(Policy):
         else:
             num_decoder_layers = 0
 
-        layers_per_stage, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+        layers_per_stage, decoder_starting_stage = self.distribute_whisper_layers(
             num_encoder_layers, num_decoder_layers, stage_manager.num_stages
         )
-        stage_index = WhisperPolicy.get_whisper_stage_index(
-            layers_per_stage, stage_manager.stage, decoder_starting_stage
-        )
+        stage_index = self.get_whisper_stage_index(layers_per_stage, stage_manager.stage, decoder_starting_stage)
 
         method_replacement = {
             "forward": partial(
@@ -422,6 +468,7 @@ class WhisperPolicy(Policy):
                 stage_manager=stage_manager,
                 stage_index=stage_index,
                 decoder_starting_stage=decoder_starting_stage,
+                shard_config=self.shard_config,
             )
         }
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
@@ -436,7 +483,9 @@ class WhisperModelPolicy(WhisperPolicy):
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
-                model_cls=WhisperModel, new_forward=WhisperPipelineForwards.whisper_model_forward, policy=policy
+                model_cls=WhisperModel,
+                new_forward=WhisperPipelineForwards.whisper_model_forward,
+                policy=policy,
             )
 
         return policy
@@ -493,7 +542,7 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
 
         stage_manager = self.pipeline_stage_manager
         if stage_manager is not None and stage_manager.num_stages > 1:
-            _, decoder_starting_stage = WhisperPolicy.distribute_whisper_layers(
+            _, decoder_starting_stage = self.distribute_whisper_layers(
                 num_encoder_layers, num_decoder_layers, stage_manager.num_stages
             )
             shared_params = []
@@ -509,9 +558,6 @@ class WhisperForConditionalGenerationPolicy(WhisperPolicy):
 
 # WhisperForAudioClassification
 class WhisperForAudioClassificationPolicy(WhisperPolicy):
-    def preprocess(self):
-        return self.model
-
     def module_policy(self):
         from transformers import WhisperForAudioClassification
 

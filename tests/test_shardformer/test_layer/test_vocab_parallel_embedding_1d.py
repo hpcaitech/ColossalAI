@@ -21,7 +21,7 @@ def check_vocab_embedding_1d(lazy_init: bool):
     dist_embedding_1d = VocabParallelEmbedding1D.from_native_module(embedding_copy, process_group=None)
 
     assert dist_embedding_1d.weight.shape == torch.Size([64, 32])
-    assert dist_embedding_1d.num_embeddings == 64
+    assert dist_embedding_1d.num_embeddings == 128
     assert dist_embedding_1d.embedding_dim == 32
     assert embedding_copy.weight is dist_embedding_1d.weight
 
@@ -45,7 +45,7 @@ def check_vocab_embedding_1d(lazy_init: bool):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     check_vocab_embedding_1d()
 
 

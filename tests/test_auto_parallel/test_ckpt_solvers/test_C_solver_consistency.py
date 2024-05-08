@@ -27,7 +27,7 @@ except:
 
 
 def _run_C_solver_consistency_test(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     for M, mem_budget in [(tm.resnet50, 4000), (tm.densenet121, 8080)]:
         model = M()

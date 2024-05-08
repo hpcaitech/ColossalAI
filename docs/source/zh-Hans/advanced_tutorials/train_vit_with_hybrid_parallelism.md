@@ -70,7 +70,7 @@ PP_SIZE = 2
 首先我们创建一个分布式环境
 ```python
 # Launch ColossalAI
-colossalai.launch_from_torch(config={}, seed=SEEDå)
+colossalai.launch_from_torch(seed=SEEDå)
 coordinator = DistCoordinator()
 world_size = coordinator.world_size
 ```

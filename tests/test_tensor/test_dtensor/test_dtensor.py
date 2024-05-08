@@ -21,7 +21,7 @@ class TestModel(torch.nn.Module):
 
 def check_dtensor(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     test_model = TestModel(8, 8).to("cuda")
     original_tensor = torch.rand(4, 8).to("cuda")
     compare_output = test_model(original_tensor)

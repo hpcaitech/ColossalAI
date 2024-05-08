@@ -94,8 +94,7 @@ def train_gpt(args):
 
 
 def run(rank, world_size, port, args):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     train_gpt(args)
 
 
