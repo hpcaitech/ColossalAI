@@ -18,6 +18,7 @@ from colossalai.shardformer.layer import (
 
 from ..modeling.mistral import (
     MistralForwards,
+    get_lm_forward_with_dist_cross_entropy,
     get_mistral_flash_attention_forward,
     get_mistral_model_forward_for_flash_attn,
 )
@@ -275,14 +276,18 @@ class MistralForCausalLMPolicy(MistralPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=VocabParallelLMHead1D,
-                            kwargs=dict(
-                                gather_output=True,
-                                make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
-                            ),
+                            kwargs={
+                                "gather_output": not self.shard_config.parallel_output,
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            },
                         )
                     ]
                 )
             }
+            if self.shard_config.parallel_output:
+                new_item[MistralForCausalLM].method_replacement = {
+                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                }
         else:
             new_item = {
                 MistralForCausalLM: ModulePolicyDescription(
