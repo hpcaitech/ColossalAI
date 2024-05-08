@@ -6,7 +6,7 @@ Doc:
     Usage: (for local user)
     - First, Lauch an API locally. `python3 -m colossalai.inference.server.api_server  --model path of your llama2 model`
     - Second, you can turn to the page `http://127.0.0.1:8000/docs` to check the api
-    - For completion service, you can invoke it by using `curl -X POST  http://127.0.0.1:8000/v1/completion  \
+    - For completion service, you can invoke it by using `curl -X POST  http://127.0.0.1:8000/completion  \
          -H 'Content-Type: application/json' \
          -d '{"prompt":"hello, who are you? ","stream":"False"}'`
     Version: V1.0
