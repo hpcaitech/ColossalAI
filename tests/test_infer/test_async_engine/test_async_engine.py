@@ -48,7 +48,7 @@ class MockAsyncInferenceEngine(AsyncInferenceEngine):
 
 @pytest.mark.asyncio
 async def test_new_requests_event():
-    engine = MockAsyncInferenceEngine(worker_use_ray=False, engine_use_ray=False)
+    engine = MockAsyncInferenceEngine()
     engine.start_background_loop()
     await asyncio.sleep(0.01)
     assert engine.engine.step_calls == 0
