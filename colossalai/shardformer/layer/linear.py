@@ -201,7 +201,6 @@ class Linear1D_Col(ParallelModule):
 
         if self.seq_parallel_mode is None:
             output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
-
         elif self.seq_parallel_mode == "split_gather":
             input_parallel = gather_forward_reducescatter_backward(
                 input_parallel, self.process_group, self.seq_parallel_dim
