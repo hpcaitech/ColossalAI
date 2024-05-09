@@ -89,7 +89,7 @@ class InferenceConfig:
         max_output_len (int): Maximum output length, defaults to 256.
         max_input_len (int): Maximum input length, defaults to 256.
         dtype (Union[str, torch.dtype]): The data type for weights and activations.
-        kv_cache_dtype (Optional[str]): The data type of kv_cache
+        kv_cache_dtype (Optional[str]): The data type of kv_cache, defaults to None.
         prompt_template (Optional[str]): The prompt template for generation, defaults to None.
         do_sample (bool): Whether to use sampling for generation, defaults to False.
         beam_width (int): The maximum beam width used to initialize KV Cache, defaults to 1.
