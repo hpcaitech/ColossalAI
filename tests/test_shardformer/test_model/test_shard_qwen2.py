@@ -2,6 +2,7 @@ import os
 
 import pytest
 import torch
+import transformers
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -19,7 +20,6 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
-import transformers
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
@@ -216,20 +216,14 @@ def check_qwen2_3d(rank, world_size, port):
     run_qwen2_3d_test()
 
 
-@pytest.mark.skipif(
-    transformers.__version__ < "4.39.1", 
-    reason="Requires transformers version 4.39.1 or later"
-)
+@pytest.mark.skipif(transformers.__version__ < "4.39.1", reason="Requires transformers version 4.39.1 or later")
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_qwen2():
     spawn(check_qwen2, 4)
 
 
-@pytest.mark.skipif(
-    transformers.__version__ < "4.39.1", 
-    reason="Requires transformers version 4.39.1 or later"
-)
+@pytest.mark.skipif(transformers.__version__ < "4.39.1", reason="Requires transformers version 4.39.1 or later")
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_qwen2_3d():
