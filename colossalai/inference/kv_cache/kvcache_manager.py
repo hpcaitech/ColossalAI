@@ -505,7 +505,6 @@ class KVCacheManager:
         k_cache: List[torch.Tensor] = []
         v_cache: List[torch.Tensor] = []
         for _ in range(self.num_layers):
-            print("self.kv_cache_dtype is " + str(self.kv_cache_dtype))
             k_cache.append(torch.zeros(kalloc_shape, dtype=self.kv_cache_dtype, device=self.device))
             v_cache.append(torch.zeros(valloc_shape, dtype=self.kv_cache_dtype, device=self.device))
         return k_cache, v_cache
