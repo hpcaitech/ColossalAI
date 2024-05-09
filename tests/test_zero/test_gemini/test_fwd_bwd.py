@@ -26,7 +26,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
     chunk_manager = model.chunk_manager
     param_list = [p for p in model.parameters()]
     chunk_list = chunk_manager.get_chunks(param_list)
-    if not model.reuse_fp16_chunk:
+    if not model.chunk_manager.reuse_fp16_chunk:
         chunk_list = [chunk.grad_chunk for chunk in chunk_list]
     for chunk in chunk_list:
         chunk_manager.access_chunk(chunk)

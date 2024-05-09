@@ -19,6 +19,7 @@ def init_chunk_manager(
     model: nn.Module,
     init_device: Optional[torch.device] = None,
     hidden_dim: Optional[int] = None,
+    reuse_fp16_chunk: bool = True,
     verbose: bool = False,
     **kwargs,
 ) -> ChunkManager:
@@ -50,5 +51,9 @@ def init_chunk_manager(
         )
     dist.barrier()
 
-    chunk_manager = ChunkManager(config_dict, init_device)
+    chunk_manager = ChunkManager(
+        config_dict,
+        init_device,
+        reuse_fp16_chunk=reuse_fp16_chunk,
+    )
     return chunk_manager
