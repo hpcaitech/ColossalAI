@@ -11,17 +11,15 @@ from colossalai.shardformer.layer import (
     Linear1D_Col,
     Linear1D_Row,
     PaddingEmbedding,
-    PaddingLMHead,
     RMSNorm,
     VocabParallelEmbedding1D,
-    VocabParallelLMHead1D,
 )
 
 from ..modeling.qwen2 import (
     Qwen2PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
     get_qwen2_flash_attention_forward,
-    get_qwen2_model_forward_for_flash_attn
+    get_qwen2_model_forward_for_flash_attn,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -33,10 +31,11 @@ class Qwen2Policy(Policy):
         super().__init__()
         import transformers
         from packaging.version import Version
-        assert Version(transformers.__version__) <= Version(
-             "4.39.1"
-         ), "The Qwen2 model should run on a transformers version of 4.39.1."
-        
+
+        assert Version(transformers.__version__) >= Version(
+            "4.39.1"
+        ), "The Qwen2 model should run on a transformers version of 4.39.1."
+
     def config_sanity_check(self):
         pass
 
@@ -49,16 +48,16 @@ class Qwen2Policy(Policy):
         try:
             from transformers.models.qwen2.modeling_qwen2 import (
                 Qwen2Attention,
-                Qwen2FlashAttention2,
-                Qwen2SdpaAttention,
                 Qwen2DecoderLayer,
+                Qwen2FlashAttention2,
                 Qwen2Model,
+                Qwen2SdpaAttention,
             )
         except ImportError:
             Qwen2Attention = "Qwen2Attention"
             Qwen2FlashAttention2 = "Qwen2FlashAttention2"
             Qwen2SdpaAttention = "Qwen2SdpaAttention"
-            Qwen2DecoderLayer = "Qwen2DecoderLayer"    
+            Qwen2DecoderLayer = "Qwen2DecoderLayer"
             Qwen2Model = "Qwen2Model"
 
         ATTN_IMPLEMENTATION = {
@@ -77,7 +76,7 @@ class Qwen2Policy(Policy):
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
         norm_cls = FusedRMSNorm if self.shard_config.enable_fused_normalization else RMSNorm
-        
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("Qwen2 doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
