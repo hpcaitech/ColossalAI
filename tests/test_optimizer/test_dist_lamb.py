@@ -279,7 +279,7 @@ def run_dist_lamb_fwd_bwd(
 
 def check_dist_lamb(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     global coordinator
     coordinator = DistCoordinator()
 

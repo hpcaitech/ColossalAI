@@ -18,7 +18,7 @@ __all__ = ["DistributedGalore"]
 # Mark sharded dimension
 
 
-class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
+class DistGaloreAwamW(DistributedOptim, Optimizer2State):
     r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit AdamW.
     It largely compresses gradient via low-rank projection and is claimed to be insensitive to hyperparams like lr.
     Supports Tensor Parallel and ZeRO stage 1 and 2 via booster and plugin.
@@ -35,12 +35,14 @@ class DistGaloreAwamW8bit(DistributedOptim, Optimizer2State):
             numerical stability. (default: 1e-6)
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0.01)
         nbits: Number of bits for quantization optim states. Only 32 and 8 are supported.
-    Example:
-        >>> optim = DistributedLamb(model.parameters(), lr=1e-3)
-        >>> proc_mesh = ProcessGroupMesh(tp_size, zero_size)
-        >>> tp_group = proc_mesh.get_group_along_axis(0)
-        >>> dp_group = proc_mesh.get_group_along_axis(1)
-        >>> optim.setup_distributed(tp_group, dp_group)
+        min_8bit_size (`int`, defaults to 4096):
+            The minimum number of elements of the parameter tensors for 8-bit optimization.
+        percentile_clipping (`int`, defaults to 100):
+            Adapts clipping threshold automatically by tracking the last 100 gradient norms and clipping the gradient at a certain percentile to improve stability.
+        block_wise (`bool`, defaults to `True`):
+            Whether to independently quantize each block of tensors to reduce outlier effects and improve stability.
+        is_paged (`bool`, defaults to `False`):
+            Whether the optimizer is a paged optimizer (handle memory spike via CPU-GPU transfer) or not.
     """
 
     def __init__(

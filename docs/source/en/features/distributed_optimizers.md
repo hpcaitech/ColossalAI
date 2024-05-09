@@ -1,43 +1,44 @@
-# Distributed Adafactor
+# Distributed Optimizers
 
-Author:
+Author: Wenxuan Tan, Junwen Duan, Renjie Mao
 
 **Related Paper**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
+- [CAME: Confidence-guided Adaptive Memory Efficient Optimization] (https://arxiv.org/abs/2307.02047)
+- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection] (https://arxiv.org/abs/2403.03507)
+- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes] (https://arxiv.org/pdf/1904.00962)
 
 ## Introduction
-
-Distributed Adafactor is an optimiser that supports hybrid optimisation, including 1D tensor parallelism as well as ZerO. It makes full use of computational resources through reasonable task parallelism, improves training efficiency and speed, and reduces space pressure on single card storage. It has a wide range of applications and currently supports a range of Transformer based models, see [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo) for details.
+Apart from the widely adopted Adam and SGD, many modern optimizers require layer-wise statistics to efficiently update parameters, and are thus not directly applicable to parallel settings where model layers are sharded across multiple devices. We provide optimized distributed implementations with minimal extra communications, and seamless integrations with Tensor Parallel, DDP and ZeRO using plugins.
+## Optimizers
+Adafactor is a first-order Adam variant using Non-negative Matrix Factorization(NMF) to reduce memory footprint. CAME improves by introducting a confidence matrix to correct NMF. GaLore further reduces memory by projecting gradients into a low-rank space and 8-bit block-wise quantization. Lamb allows huge batch sizes without lossing accuracy via layer-wise adaptive update bounded by the inverse of its Lipschiz constant.
 
 ## API Reference
 
 {{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
+{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
+{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
+{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
 
 ## Hands-On Practice
-We now demonstrate how to start Distributed Adafactor with booster API.
+We now demonstrate how to use Distributed Adafactor with booster API combining Tensor Parallel and ZeRO 2 with 4 GPUs.
 ### step 1. Import libraries
 
 ```python
-import torch
-from torch import nn
-import torch.distributed as dist
 from transformers import LlamaModel, LlamaConfig
-
-from colossalai.cluster import ProcessGroupMesh
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
-from colossal_llama2.dataset.loader import load_tokenized_dataset
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
+from colossalai.booster import Booster
+from colossalai.booster.plugin import HybridParallelPlugin
+import colossalai
+from datasets import load_dataset
+import torch
 ```
 
 ### step 2. Initialize Distributed Environment and Parallism Group
-We then need to initialize distributed environment. For demo purpose, we uses `colossalai.launch`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md)
-for other initialization methods. We use `ProcessGroupMesh` to create tensor parallelism group and data parallelism group.
+We need to initialize distributed environment. For demo purpose, we use `colossal run --nproc_per_node 4`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
-# Distributed Enviroment
-config = {}
-colossalai.launch(config=config, rank=rank, world_size=world_size,host="localhost", port=port, backend="nccl")
+colossalai.launch_from_torch()
 ```
 
 ### step 3. Initialize Module and Optimizer
@@ -46,9 +47,8 @@ Build our model. We created an MLP using two Linear Layer.
 ```python
 # Init Llama from huggingface
 configuration = LlamaConfig()
-model = LlamaModel(configuration)
-dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
-dataloader = plugin.prepare_dataloader(dataset, batch_size=8)
+model = LlamaModel(configuration).cuda()
+dataset = load_dataset("yizhongw/self_instruct", split="train")
 criterion = lambda x: x.mean()
 dist_optim = DistributedAdaFactor(model.parameters())
 
@@ -57,24 +57,41 @@ dist_optim = DistributedAdaFactor(model.parameters())
 ### step 4.Init Booster
 
 ```python
-plugin = LowLevelZeroPlugin()
+plugin = HybridParallelPlugin(tp_size=2, zero_stage=2, pp_size=1, enable_all_optimization=True)
+# see examples/language/gpt or applications/Colossal-LLaMA for tokenizer examples
+dataloader = plugin.prepare_dataloader(dataset, batch_size=8, collate_fn=tokenize_func)
 booster = Booster(plugin=plugin)
 model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader)
 ```
 ### step 5.Train Your Model
 ```python
-for epoch in range(max_epochs):
+for epoch in range(epochs):
     for input_ids, attention_mask in dataloader:
         outputs = model(input_ids.cuda(), attention_mask.cuda())
-        loss = criterion(outputs.logits, input_ids)
-        booster.backward(loss, optimizer)
-        optimizer.step()
-        lr_scheduler.step()
-        optimizer.zero_grad()
+        loss = criterion(outputs.logits)
+        booster.backward(loss, dist_optim)
+        dist_optim.step()
+        dist_optim.zero_grad()
+```
+### GaLore special handling
+For GaLore, we need to specify projection rank for each parameter group and quantization & paged optimizer params. Please refer to bitandbytes for quantization details.
+```python
+from colossalai.nn.optimizer.galore import get_galore_param_groups
+from colossalai.nn.optimizer import DistGaloreAwamW
+optim = DistGaloreAwamW(
+    get_galore_param_groups(model, decay=1e-2, rank=8),
+    lr=lr,
+    betas=(beta1, beta2),
+    eps=eps,
+    nbits=8,
+    percentile_clipping=100,
+    block_wise=True,
+    min_8bit_size=4096,
+)
 ```
 
 ## Supporting Information
-Model/Feature Compatibility Matrix:
+Plugin compatibility:
 <table>
   <tr>
     <th nowrap="nowrap">Model/Feature</th>

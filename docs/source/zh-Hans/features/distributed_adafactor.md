@@ -1,79 +1,97 @@
-# 分布式 Adafactor
+# 分布式优化器
 
-作者:
+Author: Wenxuan Tan, Junwen Duan, Renjie Mao
 
 **相关论文**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
+- [CAME: Confidence-guided Adaptive Memory Efficient Optimization] (https://arxiv.org/abs/2307.02047)
+- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection] (https://arxiv.org/abs/2403.03507)
+- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes] (https://arxiv.org/pdf/1904.00962)
 
-## 简介
+## 介绍
+除了广泛采用的Adam和SGD外，许多现代优化器需要逐层统计信息以有效更新参数，因此无法直接应用于模型层在多个设备上分片的并行设置。我们以提供了优化的分布式实现，，并且通过插件与Tensor Parallel、DDP和ZeRO无缝集成。
+## 优化器
+Adafactor 是一种首次采用非负矩阵分解（NMF）的 Adam 变体，用于减少内存占用。CAME 通过引入一个置信度矩阵来改进 NMF 的效果。GaLore 通过将梯度投影到低秩空间，并使用 8 位块状量化进一步减少内存占用。Lamb 允许使用巨大的批量大小而不失准确性，通过按其 Lipschitz 常数的倒数界定的逐层自适应更新实现
 
-分布式 Adafactor 是一种支持混合优化的优化器，包括 1D 张量并行和 ZerO。它通过合理的任务并行化充分利用了计算资源，提高了训练效率和速度，并减少了存储压力。它应用广泛，目前支持一系列基于 Transformer 的模型，详见 [tests.kit.model_zoo](https://github.com/hpcaitech/ColossalAI/tree/main/tests/kit/model_zoo).
-
-## API接口
+## API 参考
 
 {{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
+{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
+{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
+{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
 
-## 实例演示
-现在我们演示如何使用 Booster API 启动分布式 Adafactor。
-### 步骤 1. 导入相关库
+## 使用
+We now demonstrate how to use Distributed Adafactor with booster API combining Tensor Parallel and ZeRO 2 with 4 GPUs.
+### step 1. 导包
 
 ```python
-import torch
-from torch import nn
-import torch.distributed as dist
 from transformers import LlamaModel, LlamaConfig
-
-from colossalai.cluster import ProcessGroupMesh
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
-from colossal_llama2.dataset.loader import load_tokenized_dataset
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
+from colossalai.booster import Booster
+from colossalai.booster.plugin import HybridParallelPlugin
+import colossalai
+from datasets import load_dataset
+import torch
 ```
 
-### 步骤 2. 初始化分布式环境和参数
-然后，我们需要初始化分布式环境。为了演示的目的，我们使用了 `colossalai.launch`。您可以参考 [Launch Colossal-AI](../basics/launch_colossalai.md) 获得其他的初始化方法。这里, 我们使用 "ProcessGroupMesh"来创建张量并行组和数据并行组。
+### step 2. 初始化分布式
+We need to initialize distributed environment. For demo purpose, we use `colossal run --nproc_per_node 4`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
-# Distributed Enviroment
-config = {}
-colossalai.launch(config=config, rank=rank, world_size=world_size,host="localhost", port=port, backend="nccl")
+colossalai.launch_from_torch()
 ```
 
-### 步骤 3.初始化模块和优化器
+### step 3. 初始化模型和优化器
 Build our model. We created an MLP using two Linear Layer.
 
 ```python
 # Init Llama from huggingface
 configuration = LlamaConfig()
-model = LlamaModel(configuration)
-dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
-dataloader = plugin.prepare_dataloader(dataset, batch_size=8)
+model = LlamaModel(configuration).cuda()
+dataset = load_dataset("yizhongw/self_instruct", split="train")
 criterion = lambda x: x.mean()
 dist_optim = DistributedAdaFactor(model.parameters())
 
 ```
 
-### 步骤 4.初始化Booster
+### step 4.初始化booster和plugin
 
 ```python
-plugin = LowLevelZeroPlugin()
+plugin = HybridParallelPlugin(tp_size=2, zero_stage=2, pp_size=1, enable_all_optimization=True)
+# see examples/language/gpt or applications/Colossal-LLaMA for tokenizer examples
+dataloader = plugin.prepare_dataloader(dataset, batch_size=8, collate_fn=tokenize_func)
 booster = Booster(plugin=plugin)
 model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader)
 ```
-### 步骤 5.训练模型
+### step 5.训练
 ```python
-for epoch in range(max_epochs):
+for epoch in range(epochs):
     for input_ids, attention_mask in dataloader:
         outputs = model(input_ids.cuda(), attention_mask.cuda())
-        loss = criterion(outputs.logits, input_ids)
-        booster.backward(loss, optimizer)
-        optimizer.step()
-        lr_scheduler.step()
-        optimizer.zero_grad()
+        loss = criterion(outputs.logits)
+        booster.backward(loss, dist_optim)
+        dist_optim.step()
+        dist_optim.zero_grad()
+```
+### GaLore的特殊初期
+对于 GaLore，我们需要为每个参数组指定投影rank，以及量化和分页优化器参数。有关量化的详细信息，请参考 bitandbytes.
+```python
+from colossalai.nn.optimizer.galore import get_galore_param_groups
+from colossalai.nn.optimizer import DistGaloreAwamW
+optim = DistGaloreAwamW(
+    get_galore_param_groups(model, decay=1e-2, rank=8),
+    lr=lr,
+    betas=(beta1, beta2),
+    eps=eps,
+    nbits=8,
+    percentile_clipping=100,
+    block_wise=True,
+    min_8bit_size=4096,
+)
 ```
 
-## 支持信息
-模型/功能兼容性矩阵:
+## Supporting Information
+Plugin compatibility:
 <table>
   <tr>
     <th nowrap="nowrap">Model/Feature</th>
