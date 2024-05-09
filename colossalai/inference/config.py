@@ -1,10 +1,9 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
-
 import logging
-from dataclasses import dataclass
-from typing import Optional, Union
+from dataclasses import dataclass, fields
+from typing import Any, Dict, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -214,3 +213,18 @@ class InferenceConfig:
                 meta_config[type] = getattr(model_config, type)
 
         return GenerationConfig.from_dict(meta_config)
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "InferenceConfig":
+        # Get the list of attributes of this dataclass.
+        attrs = [attr.name for attr in fields(cls)]
+        inference_config_args = {}
+        for attr in attrs:
+            if attr in config_dict:
+                inference_config_args[attr] = config_dict[attr]
+            else:
+                inference_config_args[attr] = getattr(cls, attr)
+
+        # Set the attributes from the parsed arguments.
+        inference_config = cls(**inference_config_args)
+        return inference_config
