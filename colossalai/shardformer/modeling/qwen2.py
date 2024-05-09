@@ -1,5 +1,4 @@
 from typing import List, Optional, Tuple, Union
-
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
@@ -7,25 +6,22 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-
 try:
     from transformers.models.qwen2.modeling_qwen2 import (
         Qwen2ForCausalLM,
         Qwen2ForSequenceClassification,
         Qwen2Model,
-        _prepare_4d_causal_attention_mask,
         _prepare_4d_causal_attention_mask_for_sdpa,
+        _prepare_4d_causal_attention_mask
     )
 except ImportError:
     Qwen2Model = "Qwen2Model"
-    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
+    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"    
     Qwen2ForCausalLM = "Qwen2ForCausalLM"
-
+    
 from transformers.utils import logging
-
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
-
 from ..layer import ColoAttention, cross_entropy_1d
 
 
@@ -51,7 +47,7 @@ class Qwen2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
+    )-> Union[Tuple, BaseModelOutputWithPast]:
         logger = logging.get_logger(__name__)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -96,8 +92,8 @@ class Qwen2PipelineForwards:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
-        # assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
-
+        #assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
+        
         if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
@@ -131,14 +127,14 @@ class Qwen2PipelineForwards:
                 q_padding_mask=attention_mask,
                 is_causal=True,
             )
-        else:
+        else:    
             if self._attn_implementation == "flash_attention_2":
                 # 2d mask is passed through the layers
                 attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
             elif self._attn_implementation == "sdpa" and not output_attentions:
                 # output_attentions=True can not be supported when using SDPA, and we fall back on
                 # the manual implementation that requires a 4D causal mask in all cases.
-
+                
                 attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
                     attention_mask,
                     (batch_size, seq_length),
@@ -147,7 +143,7 @@ class Qwen2PipelineForwards:
                 )
             else:
                 # 4d mask is passed through the layers
-
+                
                 attention_mask = _prepare_4d_causal_attention_mask(
                     attention_mask,
                     (batch_size, seq_length),
@@ -294,7 +290,7 @@ class Qwen2PipelineForwards:
             shard_config=shard_config,
         )
         past_key_values = None
-
+        
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
@@ -332,7 +328,7 @@ class Qwen2PipelineForwards:
         else:
             hidden_states = outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
-
+    
     @staticmethod
     def qwen2_for_sequence_classification_forward(
         self: Qwen2ForSequenceClassification,
@@ -452,7 +448,6 @@ class Qwen2PipelineForwards:
 
 def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
     from transformers.models.qwen2.modeling_qwen2 import Qwen2Attention, apply_rotary_pos_emb, repeat_kv
-
     from colossalai.shardformer.layer import ColoAttention
 
     def forward(
@@ -574,7 +569,10 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
-                past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+                past_key_values_length, 
+                seq_length + past_key_values_length, 
+                dtype=torch.long, 
+                device=device
             )
             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
         else:
@@ -661,6 +659,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
 
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
+
     def forward(
         self: Qwen2ForCausalLM,
         input_ids: torch.LongTensor = None,

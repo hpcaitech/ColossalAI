@@ -27,7 +27,7 @@ if HAS_QWEN2:
         # tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
         # -----------------------------------
 
-        input_ids = torch.Tensor([[9707, 11, 847, 5562, 374, 18838], [9707, 11, 847, 5562, 374, 18838]]).long()
+        input_ids = torch.Tensor([[9707, 11, 847, 5562, 374, 13, 123, 18838], [9707, 11, 847, 5562, 374, 17, 89, 18838]]).long()
         attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1]]).long()
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
