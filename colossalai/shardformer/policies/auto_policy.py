@@ -182,6 +182,16 @@ _POLICY_LIST = {
     "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
         file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
     ),
+    # Qwen2
+    "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ModelPolicy"
+    ),
+    "transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ForCausalLMPolicy"
+    ),
+    "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
+    ),
 }
 
 
