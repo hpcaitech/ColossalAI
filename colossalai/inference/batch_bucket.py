@@ -54,10 +54,6 @@ class BatchBucket:
         self._block_tables = torch.full((self.max_batch_size, max_blocks_per_seq), -1, dtype=torch.int32)
         self._block_tables_helper = torch.full_like(self._block_tables, -1)
 
-        # 'batch_updated' is used as a flag to indicate whether there are additions or deletions of sequences in the current batch.
-        self.batch_updated = True
-        self._batch_prompt_ids = None
-
     @property
     def is_empty(self):
         return self._current_batch_size == 0
@@ -108,10 +104,7 @@ class BatchBucket:
 
     @property
     def batch_token_ids(self):
-        if self.batch_updated:
-            self._batch_prompt_ids = self.get_batch_token_ids()
-            self.batch_updated = False
-        return self._batch_prompt_ids
+        return self.get_batch_token_ids()
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
         """Set batch bucket to use speculatvie decoding.
@@ -181,7 +174,6 @@ class BatchBucket:
             elif alloc_block_table_fn:
                 alloc_block_table_fn(block_table, self._sequence_lengths[self._current_batch_size - 1].item())
             self._current_batch_size += 1
-            self.batch_updated = True
         return block_table
 
     def add_seqs(
@@ -233,7 +225,6 @@ class BatchBucket:
 
             self._current_batch_size += num_seqs_to_add
             seqs[:] = seqs[num_seqs_to_add:]
-            self.batch_updated = True
 
         return block_tables
 
@@ -287,7 +278,6 @@ class BatchBucket:
                 self._block_tables[0].fill_(-1)
             self._sequences_indexes.pop(request_id)
             self._current_batch_size -= 1
-            self.batch_updated = True
 
         return seq, block_table
 
@@ -342,8 +332,6 @@ class BatchBucket:
             seqs.append(seq)
         if not self.is_compact:
             self._make_compact()
-
-        self.batch_updated = True
 
         return seqs, block_tables
 
@@ -449,7 +437,6 @@ class BatchBucket:
             block_tables = torch.stack(block_tables_li)
             self.add_seqs(seqs, alloc_block_tables=block_tables)
             unmerged_ids = other.seqs_ids
-            self.batch_updated = True
 
         return unmerged_ids
 

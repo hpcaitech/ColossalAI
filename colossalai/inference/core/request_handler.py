@@ -345,7 +345,7 @@ class RequestHandler:
                     batch = self.prefill_bb
                 else:
                     batch = self.running_bb
-                logits = logit_processor(type, logits, config_dict[type], batch.batch_token_ids)
+                logits = logit_processor(type, logits, config_dict[type], batch)
 
         # do logit processor
         if generation_config.do_sample:
