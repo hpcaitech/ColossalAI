@@ -336,10 +336,20 @@ class RequestHandler:
         Sample tokens for finished requests.
         """
 
+        # NOTE: need to decide the granularity to process logits (sequence or batch)
+        config_dict = generation_config.to_dict()
+        # process repetition_penalty
+        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
+            if type in config_dict and config_dict[type] is not None:
+                if not self.prefill_bb.is_empty:
+                    batch = self.prefill_bb
+                else:
+                    batch = self.running_bb
+                logits = logit_processor(type, logits, config_dict[type], batch.batch_token_ids)
+
         # do logit processor
         if generation_config.do_sample:
-            # NOTE: need to decide the granularity to process logits (sequence or batch)
-            config_dict = generation_config.to_dict()
+            # process temperature, top_k, top_p
             for type in ["temperature", "top_k", "top_p"]:
                 if type in config_dict and config_dict[type] is not None:
                     logits = logit_processor(type, logits, config_dict[type])

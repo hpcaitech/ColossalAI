@@ -99,7 +99,9 @@ class InferenceConfig:
         early_stopping (Optional[bool]): Whether to stop the generation when all beam hypotheses have finished or not, defaults to False.
         top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering, defaults to None.
         top_p (Optional[float]): The cumulative probability threshold for retaining tokens with a total probability above it, defaults to None.
-        min_p (Optional[float]): The minimum probability to keep for top-p filtering, defaults to None.
+        temperature (Optional[float]): Randomness used to control randomization, defaults to 1.0.
+        repetition_penalty (Optional[float]): The parameter that influences the model's treatment of new tokens in relation to their appearance in the prompt and the generated text. Values greater than 1 incentivize the model to introduce new tokens, whereas values less than 1 incentivize token repetition., defaults to 1.0.
+        no_repeat_ngram_size (Optional[int]): If no_repeat_ngram_size > 0, the consecutive tokens of ngram size can only appear once in inference sentences.
         n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
         glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
@@ -136,7 +138,9 @@ class InferenceConfig:
     early_stopping: Optional[bool] = False
     top_k: Optional[int] = None
     top_p: Optional[float] = None
-    min_p: Optional[float] = None
+    temperature: Optional[float] = 1.0
+    no_repeat_ngram_size: Optional[int] = 0
+    repetition_penalty: Optional[float] = 1.0
 
     # speculative decoding configs
     max_n_spec_tokens: int = 5
@@ -213,7 +217,7 @@ class InferenceConfig:
             "do_sample": self.do_sample,
             "num_beams": self.beam_width,
         }
-        for type in ["top_k", "top_p", "min_p"]:
+        for type in ["repetition_penalty", "no_repeat_ngram_size", "temperature", "top_k", "top_p"]:
             if hasattr(self, type):
                 meta_config[type] = getattr(self, type)
         for type in ["pad_token_id", "bos_token_id", "eos_token_id"]:

@@ -1,7 +1,13 @@
+# This code is adapted from huggingface transformers: https://github.com/huggingface/transformers/blob/v4.36.2/src/transformers/generation/logits_process.py
+from typing import List
+
 import torch
 import torch.nn.functional as F
 
+from colossalai.logging import get_dist_logger
+
 _LOGIT_PROCESSOR_MAP = {}
+logger = get_dist_logger(__name__)
 
 
 def register_logit_processor(process_type):
@@ -15,6 +21,66 @@ def register_logit_processor(process_type):
         return func
 
     return register
+
+
+@register_logit_processor("no_repeat_ngram_size")
+def no_repeat_ngram_size_logit_process(logits, ngram_size: int, batch_token_ids: List[torch.LongTensor]):
+    """
+    enforces no repetition of n-grams to avoid repetitions of word sequences.
+    """
+
+    if not isinstance(ngram_size, int) or ngram_size < 0:
+        raise ValueError(f"'temperature={ngram_size}' should be a strictly positive integer.")
+
+    if ngram_size != 0:
+        batch_size = len(batch_token_ids)
+
+        for batch_id in range(batch_size):
+            current_len = current_token_ids.size(0)
+            if current_len + 1 < ngram_size:
+                continue
+
+            current_token_ids = batch_token_ids[batch_id]
+            token_ids_list = current_token_ids.tolist()
+
+            ngrams_dict = {}
+
+            for ngram in zip(*[token_ids_list[i:] for i in range(ngram_size)]):
+                prev_ngram_tuple = tuple(ngram[:-1])
+                ngrams_dict[prev_ngram_tuple] = ngrams_dict.get(prev_ngram_tuple, []) + [ngram[-1]]
+
+            prev_ngrams = tuple(token_ids_list[current_len + 1 - ngram_size : current_len])
+            banned_token = ngrams_dict.get(prev_ngrams, [])
+
+            logits[batch_id, banned_token] = -float("inf")
+
+    return logits
+
+
+@register_logit_processor("repetition_penalty")
+def repetition_penalty_logit_process(logits, penalty: float, batch_token_ids: torch.LongTensor):
+    """
+    apply the penalty to the tokens present in the prompt.
+    """
+
+    if not isinstance(penalty, float) or not (penalty > 0):
+        raise ValueError(f"'penalty={penalty}' has to be a strictly positive float and greater than 0.")
+
+    logit_list = []
+
+    # TODO(yuehuayingxueluo) This is only a temporary implementation. Later, we will implement presence_penalties, frequency_penalties, and repetition_penalties using CUDA kernels.
+    if penalty != 1.0:
+        for batch_id in range(len(batch_token_ids)):
+            current_logit = logits[batch_id]
+            current_token = batch_token_ids[batch_id]
+
+            curretn_socre = torch.gather(current_logit, 0, current_token)
+            curretn_socre = torch.where(curretn_socre < 0, curretn_socre * penalty, curretn_socre / penalty)
+            logit_list.append(current_logit.scatter(0, current_token, curretn_socre))
+
+        logits = torch.stack(logit_list)
+
+    return logits
 
 
 @register_logit_processor("temperature")
@@ -68,14 +134,13 @@ def top_p_logit_processor(logits, top_p: float):
     return logits
 
 
-def logit_processor(processor: str, logits, attrs):
+def logit_processor(processor: str, logits, *args, **kwargs):
     """
     do logit process for given logits.
 
     Args:
         processor(str): the type of logit processor
         logits(torch.Tensor): input logits
-        attrs(dict): attrs of the logit processor
 
     Returns:
         logits after process
@@ -84,8 +149,9 @@ def logit_processor(processor: str, logits, attrs):
         return logits
     else:
         func = _LOGIT_PROCESSOR_MAP[processor]
-        try:
-            logits = func(logits, attrs)
-        except Exception:
-            return logits
+        # try:
+        logits = func(logits, *args, **kwargs)
+        # except Exception as e:
+        #     logger.warning(f"An exception ({e}) occurred during the logit processing ({processor}), skip this logit processing step.")
+        #     return logits
         return logits

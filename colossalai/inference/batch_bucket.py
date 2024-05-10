@@ -54,6 +54,10 @@ class BatchBucket:
         self._block_tables = torch.full((self.max_batch_size, max_blocks_per_seq), -1, dtype=torch.int32)
         self._block_tables_helper = torch.full_like(self._block_tables, -1)
 
+        # 'batch_updated' is used as a flag to indicate whether there are additions or deletions of sequences in the current batch.
+        self.batch_updated = True
+        self._batch_prompt_ids = None
+
     @property
     def is_empty(self):
         return self._current_batch_size == 0
@@ -101,6 +105,13 @@ class BatchBucket:
     @property
     def num_tokens_to_verify(self) -> int:
         return self._num_tokens_to_verify
+
+    @property
+    def batch_token_ids(self):
+        if self.batch_updated:
+            self._batch_prompt_ids = self.get_batch_token_ids()
+            self.batch_updated = False
+        return self._batch_prompt_ids
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
         """Set batch bucket to use speculatvie decoding.
@@ -170,6 +181,7 @@ class BatchBucket:
             elif alloc_block_table_fn:
                 alloc_block_table_fn(block_table, self._sequence_lengths[self._current_batch_size - 1].item())
             self._current_batch_size += 1
+            self.batch_updated = True
         return block_table
 
     def add_seqs(
@@ -221,6 +233,7 @@ class BatchBucket:
 
             self._current_batch_size += num_seqs_to_add
             seqs[:] = seqs[num_seqs_to_add:]
+            self.batch_updated = True
 
         return block_tables
 
@@ -274,6 +287,7 @@ class BatchBucket:
                 self._block_tables[0].fill_(-1)
             self._sequences_indexes.pop(request_id)
             self._current_batch_size -= 1
+            self.batch_updated = True
 
         return seq, block_table
 
@@ -328,6 +342,9 @@ class BatchBucket:
             seqs.append(seq)
         if not self.is_compact:
             self._make_compact()
+
+        self.batch_updated = True
+
         return seqs, block_tables
 
     def pop_finished(
@@ -432,6 +449,8 @@ class BatchBucket:
             block_tables = torch.stack(block_tables_li)
             self.add_seqs(seqs, alloc_block_tables=block_tables)
             unmerged_ids = other.seqs_ids
+            self.batch_updated = True
+
         return unmerged_ids
 
     ########## The following methods are expected to be used in modeling ###########
@@ -503,6 +522,14 @@ class BatchBucket:
         assert self.is_compact  # Debug usage
         sequence_lengths = self.seq_lengths[: self.current_batch_size]
         return sequence_lengths.to(device=self.device)
+
+    def get_batch_token_ids(self) -> List[torch.LongTensor]:
+        assert self.is_compact  # Debug usage
+        out = []
+        for seq_id, _ in self._sequences_indexes.items():
+            seq: Sequence = self._sequences_dict[seq_id]
+            out.append(torch.tensor(seq.input_token_id + seq.output_token_id, device=self.device))
+        return out
 
     # For compatibility
     @property
