@@ -14,19 +14,21 @@ try:
         Qwen2Attention,
         Qwen2ForCausalLM,
         Qwen2ForSequenceClassification,
+        repeat_kv,
+        apply_rotary_pos_emb,
+        _prepare_4d_causal_attention_mask,
+        _prepare_4d_causal_attention_mask_for_sdpa
     )
 except ImportError:
     Qwen2Model = "Qwen2Model"
     Qwen2ForCausalLM = "Qwen2ForCausalLM"
     Qwen2Attention = "Qwen2Attention"
     Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
+    repeat_kv = "repeat_kv"
+    apply_rotary_pos_emb = "apply_rotary_pos_emb"
+    _prepare_4d_causal_attention_mask = "_prepare_4d_causal_attention_mask"
+    _prepare_4d_causal_attention_mask_for_sdpa = "_prepare_4d_causal_attention_mask_for_sdpa"
 
-from transformers.models.qwen2.modeling_qwen2 import (
-    repeat_kv,
-    apply_rotary_pos_emb,
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa
-)
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
