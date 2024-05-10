@@ -24,10 +24,6 @@ except ImportError:
     Qwen2ForCausalLM = "Qwen2ForCausalLM"
     Qwen2Attention = "Qwen2Attention"
     Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
-    repeat_kv = "repeat_kv"
-    apply_rotary_pos_emb = "apply_rotary_pos_emb"
-    _prepare_4d_causal_attention_mask = "_prepare_4d_causal_attention_mask"
-    _prepare_4d_causal_attention_mask_for_sdpa = "_prepare_4d_causal_attention_mask_for_sdpa"
 
 from transformers.utils import logging
 
