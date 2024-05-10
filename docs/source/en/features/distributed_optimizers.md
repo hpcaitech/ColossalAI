@@ -1,6 +1,6 @@
 # Distributed Optimizers
 
-Author: Wenxuan Tan, Junwen Duan, Renjie Mao
+Author: [Wenxuan Tan](https://github.com/Edenzzzz), [Junwen Duan](https://github.com/duanjunwen), [Renjie Mao](https://github.com/chongqichuizi875)
 
 **Related Paper**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
@@ -30,7 +30,6 @@ from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 import colossalai
-from datasets import load_dataset
 import torch
 ```
 
@@ -48,7 +47,6 @@ Build our model. We created an MLP using two Linear Layer.
 # Init Llama from huggingface
 configuration = LlamaConfig()
 model = LlamaModel(configuration).cuda()
-dataset = load_dataset("yizhongw/self_instruct", split="train")
 criterion = lambda x: x.mean()
 dist_optim = DistributedAdaFactor(model.parameters())
 
@@ -58,23 +56,24 @@ dist_optim = DistributedAdaFactor(model.parameters())
 
 ```python
 plugin = HybridParallelPlugin(tp_size=2, zero_stage=2, pp_size=1, enable_all_optimization=True)
-# see examples/language/gpt or applications/Colossal-LLaMA for tokenizer examples
-dataloader = plugin.prepare_dataloader(dataset, batch_size=8, collate_fn=tokenize_func)
 booster = Booster(plugin=plugin)
-model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion, dataloader)
+# You should also pass in your own dataset.
+model, dist_optim, criterion, dataloader, _ = booster.boost(model, dist_optim, criterion)
 ```
 ### step 5.Train Your Model
 ```python
-for epoch in range(epochs):
-    for input_ids, attention_mask in dataloader:
-        outputs = model(input_ids.cuda(), attention_mask.cuda())
-        loss = criterion(outputs.logits)
-        booster.backward(loss, dist_optim)
-        dist_optim.step()
-        dist_optim.zero_grad()
+steps = 10
+for step in range(steps):
+    input_ids = torch.ones(1, 100, device="cuda", dtype=torch.int)
+    attention_mask = input_ids.clone()
+    outputs = model(input_ids.cuda(), attention_mask.cuda())
+    loss = criterion(outputs.last_hidden_state)
+    booster.backward(loss, dist_optim)
+    dist_optim.step()
+    dist_optim.zero_grad()
 ```
 ### GaLore special handling
-For GaLore, we need to specify projection rank for each parameter group and quantization & paged optimizer params. Please refer to bitandbytes for quantization details.
+For GaLore, we need to specify projection rank for each parameter group and quantization & paged optimizer params. Please refer to bitandbytes for quantization details. Support for ZeRO is underway.
 ```python
 from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.nn.optimizer import DistGaloreAwamW
@@ -90,28 +89,17 @@ optim = DistGaloreAwamW(
 )
 ```
 
-## Supporting Information
-Plugin compatibility:
+## Plugin compatibility
 <table>
   <tr>
     <th nowrap="nowrap">Model/Feature</th>
-    <th nowrap="nowrap" title="Transformers Bert">Transformers<br />Bert</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Pretraining">Transformers Bert<br />For Pretraining</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert Lm Head Model">Transformers Bert<br />Lm Head Model</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Masked Lm">Transformers Bert<br />For Masked Lm</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Sequence Classification">Transformers Bert<br />For Sequence Classification</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Token Classification">Transformers Bert<br />For Token Classification</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Next Sentence">Transformers Bert<br />For Next Sentence</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Multiple-choice Question">Transformers Bert<br />For Multiple-choice Question</th>
-    <th nowrap="nowrap" align="center" title="Transformers Bert For Question Answering">Transformers Bert<br />For Question Answering</th>
+    <th nowrap="nowrap" align="center" title="Lamb">Lamb</th>
+    <th nowrap="nowrap" align="center" title="GaLore">GaLore</th>
+    <th nowrap="nowrap" align="center" title="Adafactor">Adafactor</th>
+    <th nowrap="nowrap" align="center" title="CAME">CAME</th>
   </tr>
   <tr>
     <td nowrap="nowrap">Hybrid Parallel<br />Plugin</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -120,22 +108,12 @@ Plugin compatibility:
   <tr>
     <td nowrap="nowrap">Low Level Zero<br />Plugin</td>
     <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
   </tr>
   <tr>
     <td nowrap="nowrap">Torch DDP<br />Plugin</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -147,19 +125,9 @@ Plugin compatibility:
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
   </tr>
   <tr>
     <td nowrap="nowrap">Moe Hybrid<br />Plugin</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
@@ -170,4 +138,4 @@ Plugin compatibility:
   </tr>
 </table>
 
-<!-- doc-test-command: python -m pytest -rP ./tests/test_optimizer/test_dist_adafactor.py  -->
+<!-- doc-test-command: python test_dist_optim.py  -->
