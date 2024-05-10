@@ -36,11 +36,11 @@ def no_repeat_ngram_size_logit_process(logits, ngram_size: int, batch_token_ids:
         batch_size = len(batch_token_ids)
 
         for batch_id in range(batch_size):
+            current_token_ids = batch_token_ids[batch_id]
             current_len = current_token_ids.size(0)
             if current_len + 1 < ngram_size:
                 continue
 
-            current_token_ids = batch_token_ids[batch_id]
             token_ids_list = current_token_ids.tolist()
 
             ngrams_dict = {}
