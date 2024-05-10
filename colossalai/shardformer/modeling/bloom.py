@@ -10,6 +10,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
+    CausalLMOutputWithPast,
     QuestionAnsweringModelOutput,
     SequenceClassifierOutputWithPast,
     TokenClassifierOutput,
@@ -373,7 +374,10 @@ class BloomPipelineForwards:
                     shift_logits = shift_logits.view(-1, new_vocab_size)
                     shift_labels = shift_labels.view(-1)
                     loss = cross_entropy_1d(
-                        shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                        vocab_logits=shift_logits,
+                        labels=shift_labels,
+                        process_group=shard_config.tensor_parallel_process_group,
+                        vocab_size=self.lm_head.out_features,
                     )
                 else:
                     loss = loss_fct(
@@ -1093,7 +1097,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ):
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
             labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -1160,7 +1164,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output
 
-        return CausalLMOutputWithCrossAttentions(
+        return CausalLMOutputWithPast(
             loss=loss,
             logits=lm_logits,
             past_key_values=transformer_outputs.past_key_values,
