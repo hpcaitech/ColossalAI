@@ -1,0 +1,461 @@
+import torch
+
+import time
+from itertools import count
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch import distributed as dist
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    GenerationConfig,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+)
+from transformers.models.llama.modeling_llama import LlamaForCausalLM
+
+from colossalai.accelerator import get_accelerator
+from colossalai.cluster import ProcessGroupMesh
+from colossalai.inference.batch_bucket import BatchBucket
+from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
+from colossalai.inference.graph_runner import CUDAGraphRunner
+from colossalai.inference.modeling.policy import model_policy_map
+from colossalai.inference.spec import Drafter, GlideInput
+from colossalai.inference.struct import Sequence
+from colossalai.inference.executor.rpc_worker import rpcWorkerService
+from colossalai.inference.utils import get_model_size, has_index_file, find_available_ports
+from colossalai.interface import ModelWrapper
+from colossalai.logging import get_dist_logger
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.shardformer.policies.base_policy import Policy
+
+import asyncio
+from typing import List
+from time import sleep
+import random
+import socket
+
+import rpyc
+from rpyc.utils.server import ThreadedServer
+
+import torch
+from torch import multiprocessing as mp
+from torch import distributed as dist
+
+from .rpc_request_handler import RequestHandler
+from transformers.configuration_utils import PretrainedConfig
+
+__all__ = ["InferenceEngine"]
+
+PP_AXIS, TP_AXIS = 0, 1
+
+_supported_models = {
+    "LlamaForCausalLM": LlamaForCausalLM,
+    "BaichuanForCausalLM": AutoModelForCausalLM,
+}
+
+_BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
+
+def run_server(host, port, event: mp.Event = None):
+    server = ThreadedServer(rpcWorkerService, port=port, protocol_config={"allow_public_attrs": True, "allow_all_attrs" : True})
+    print(f"Starting RPC Worker on {host}:{port}...")
+    if event:
+        event.set()
+    server.start()
+
+def get_model_config_attr(config: PretrainedConfig, attr_name: str):
+    if hasattr(config, attr_name):
+        return getattr(config, attr_name)
+    elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
+        return getattr(config, config.attribute_map[attr_name])
+    raise AttributeError(f"{attr_name} is not found in config")
+
+class RpycInferenceEngine:
+
+    """
+    InferenceEngine which manages the inference process..
+
+    Args:
+        model_or_path (nn.Module or str): Path or nn.Module of this model.
+        tokenizer Optional[(Union[PreTrainedTokenizer, PreTrainedTokenizerFast])]: Path of the tokenizer to use.
+        inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
+        verbose (bool): Determine whether or not to log the generation process.
+        model_policy ("Policy"): the policy to shardformer model. It will be determined by the model type if not provided.
+    """
+
+    def __init__(
+        self,
+        model_or_path: Union[nn.Module, str],
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
+        inference_config: InferenceConfig,
+        verbose: bool = False,
+        model_policy: Policy = None,
+    ) -> None:
+        """
+        If you input a real model loaded by transformers, the init will take quite a long time
+        """
+
+        self.inference_config = inference_config
+        self.tokenizer = tokenizer
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.verbose = verbose
+        self.logger = get_dist_logger(__name__)
+
+        try:
+            if isinstance(model_or_path, str):
+                    self.model_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+            else:
+                self.model_config = model_or_path.config
+        except Exception as e:
+            self.logger.error(
+                f"An exception occurred during loading model Config: {e}, The path should be transformers-like\n"
+            )
+        self.generation_config = inference_config.to_generation_config(self.model_config)
+
+        self.tp_size = inference_config.tp_size
+        self.events = [mp.Event() for _ in range(self.tp_size)]
+
+        # This operation will init the dist env and models
+        self.workers : List[rpcWorkerService] = []
+        self.init_workers()
+
+        asyncio.run(self.init_model(model_or_path, model_policy))
+
+        # init the scheduler and logic block manager
+        self.request_handler = self.init_scheduler(self.inference_config, self.model_config)
+
+        # init the physical cache
+        self.init_device_cache(self.request_handler.cache_manager.get_physical_cache_shape(), get_model_config_attr(self.model_config, "num_hidden_layers")) # TODO fix the ugly params
+
+        self.logger.info("engine init over ")
+
+        self.use_cuda_graph = self.inference_config.use_cuda_graph
+        self.high_precision = inference_config.high_precision
+        self.dtype = inference_config.dtype
+
+        # Model and relatable attrs of speculative decoding will be set by `enable_spec_dec`
+        self.use_spec_dec = False
+        self.drafter_model = None
+        self.drafter = None
+        self.use_glide = False
+        self.n_spec_tokens = self.inference_config.max_n_spec_tokens
+
+        self.counter = count()
+
+        self._verify_args()
+
+    def init_workers(self):
+        rpc_ports = find_available_ports(self.tp_size)
+        self.worker_processes = []
+        # mp.set_start_method('spawn')
+        for event, rpc_port in zip(self.events, rpc_ports):
+            p = mp.Process(target=run_server, args=("localhost", rpc_port, event))
+            p.start()
+            self.worker_processes.append(p)
+        
+        # Wait for all servers to start
+        for event in self.events:
+            event.wait()
+            event.clear()
+
+        sleep(0.05)
+
+        self.logger.info(f"init rpc server done.")
+
+        for rpc_port in rpc_ports:
+            try:
+                conn = rpyc.connect("localhost", rpc_port, config={"allow_pickle": True, 'allow_public_attrs': True, "allow_all_attrs" : True})
+                self.workers.append(conn.root)
+            except:
+                raise Exception("conn error!")
+        self.logger.info(f"Build RPC Connection Success! Begin to load model...")
+        asyncio.run(self.init_worker_env())
+        self.logger.info(f"init dist env over")
+
+    async def async_parallel_wrapper(self, f, *args, **kwargs):
+        async_res = rpyc.async_(f)(*args, **kwargs)
+        await asyncio.to_thread(async_res.wait)
+        assert async_res.ready
+        return async_res.value
+    
+    async def init_worker_env(self):
+        assert len(self.workers) == self.tp_size, "init workers first"
+        
+        dist_group_port = find_available_ports(1)[0]
+        init_tasks = [self.async_parallel_wrapper(worker.init_dist_env, rank, self.inference_config.tp_size, "127.0.0.1", dist_group_port) for rank, worker in enumerate(self.workers)]
+
+        await asyncio.gather(*init_tasks)
+
+    async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
+        assert len(self.workers) == self.tp_size, "init workers first"
+        
+        init_tasks = [self.async_parallel_wrapper(worker.init_cache, alloc_shape, num_layers) for worker in self.workers]
+
+        ret = await asyncio.gather(*init_tasks)
+        # print(f"compute result for one step: {ret}")   
+
+    def init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
+        asyncio.run(self._init_device_cache(alloc_shape, num_layers))
+    
+    async def init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
+        assert len(self.workers) == self.tp_size, "init workers first"
+        
+        inference_config_param = self.inference_config.to_rpc_param()
+        model_path = model_or_path
+        model_policy_param = model_policy.to_rpc_param() if model_policy else None
+
+        init_tasks = [self.async_parallel_wrapper(worker.init_model, inference_config_param, model_path, model_policy_param) for rank, worker in enumerate(self.workers)]
+
+        await asyncio.gather(*init_tasks)
+    
+    def init_scheduler(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> RequestHandler:
+        # NOTE(@runyu) move the request_handler logic there
+        return RequestHandler(inference_config, model_config)
+    
+    def _verify_args(self) -> None:
+        # NOTE(@runyu) as usual
+        pass
+
+    @property
+    def has_prompt_template(self) -> bool:
+        """
+        """
+        return self.inference_config.prompt_template is not None
+
+    def format_prompt(self, prompts: Union[List[str], str]) -> Union[List[str], str]:
+        """
+        This method will format the input prompt according to the prompt template given to the InferenceConfig.
+        """
+        assert (
+            self.has_prompt_template
+        ), "Found the prompt_template is None. Please provide a valid prompt_template in InferenceConfig."
+
+        if isinstance(prompts, (list, tuple)):
+            return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
+        elif isinstance(prompts, str):
+            return self.inference_config.rompt_template.format(input_text=prompts)
+        else:
+            raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
+
+    def add_request(
+        self,
+        request_ids: List[int] = None,
+        prompts: List[str] = None,
+        prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        **kwargs,
+    ) -> None:
+        # NOTE(@runyu) as usual
+        """
+        Add requests.
+
+        Args:
+            request_ids (List[int], optional): The request ID. Defaults to None.
+            prompts (Union[List[str], optional): Input prompts. Defaults to None.
+            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+        """
+
+        # apply the prompt template to the input prompts
+        if self.has_prompt_template and prompts is not None:
+            prompts = self.format_prompt(prompts)
+
+        block_size = self.inference_config.block_size
+
+        if prompts is not None and not isinstance(prompts, list):
+            prompts = [prompts]
+
+        if prompts_token_ids is None:
+            assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
+            prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=self.inference_config.pad_input)[
+                "input_ids"
+            ]
+
+        if isinstance(prompts_token_ids, list):
+            pass
+        elif isinstance(prompts_token_ids, torch.Tensor) or isinstance(prompts_token_ids, np.ndarray):
+            prompts_token_ids = prompts_token_ids.tolist()
+        else:
+            raise TypeError(
+                f"The dtype of prompts_token_ids must be one of list, torch.Tensor, np.ndarray, but got {type(prompts_token_ids)}."
+            )
+
+        assert (
+            len(prompts_token_ids[0]) <= self.inference_config.max_input_len
+        ), f"The length of input prompts {len(prompts_token_ids[0])} must be less than max_input_len {self.inference_config.max_input_len}."
+
+        prompts_num = len(prompts_token_ids)
+
+        for i in range(prompts_num):
+            if request_ids:
+                if not isinstance(request_ids, list):
+                    request_ids = [request_ids]
+                assert isinstance(
+                    request_ids[0], int
+                ), f"The request_id type must be int, but got {type(request_ids[0])}"
+                assert len(request_ids) == prompts_num
+                request_id = request_ids[i]
+            else:
+                request_id = next(self.counter)
+            if prompts == None:
+                prompt = None
+            else:
+                prompt = prompts[i]
+
+            max_length = kwargs.get("max_length", None)
+            max_new_tokens = kwargs.get("max_new_tokens", None)
+            if max_length is None and max_new_tokens is None:
+                max_new_tokens = self.generation_config.max_new_tokens or self.inference_config.max_output_len
+            elif max_length is not None:
+                max_new_tokens = max_length - len(prompts_token_ids[i])
+
+            sequence = Sequence(
+                request_id,
+                prompt,
+                prompts_token_ids[i],
+                block_size,
+                None,
+                self.tokenizer.eos_token_id,
+                self.tokenizer.pad_token_id,
+                max_output_len=max_new_tokens,
+            )
+            self.request_handler.add_sequence(sequence)
+    
+    def generate(
+        self,
+        prompts: List[str] = None,
+        prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        request_ids: List[int] = None,
+        return_token_ids: bool = False,
+        generation_config: Optional[GenerationConfig] = None,
+    ) -> List[str]:
+        # NOTE(@runyu) as usual
+        """
+        Executing the inference step.
+
+        Args:
+            prompts (Union[List[str], optional): Input prompts. Defaults to None.
+            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+            request_ids (List[int], optional): The request ID. Defaults to None.
+            return_token_ids (bool): Whether to return output token ids. Defaults to False.
+            generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
+
+        Returns:
+            List[str]: Inference result returned by one generation.
+        """
+        with torch.inference_mode():
+            if prompts is not None or prompts_token_ids is not None:
+                gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
+                self.add_request(
+                    request_ids=request_ids,
+                    prompts=prompts,
+                    prompts_token_ids=prompts_token_ids,
+                    **gen_config_dict,
+                )
+
+            output_seqs_list = []
+            total_tokens_list = []
+
+            # intuition: If user provide a generation config, we should replace the existing one.
+            if generation_config is not None:
+                self.generation_config = generation_config
+
+            if self.use_spec_dec:
+                assert self.drafter is not None, "Drafter Model is not initialized."
+                while self.request_handler.check_unfinished_seqs():
+                    output_seqs_list += self.steps_spec_dec()
+            else:
+                while self.request_handler.check_unfinished_seqs():
+                    output_seqs_list += self.step()
+
+            output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
+
+            for seq in output_seqs_list:
+                total_tokens_list.append(seq.input_token_id + seq.output_token_id)
+
+            output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
+
+            if return_token_ids:
+                output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
+                return output_str, output_tokens_list
+            else:
+                return output_str
+
+    def prepare_input(self, batch: BatchBucket) -> Tuple[List[int], InputMetaData]:
+        input_ids = batch.get_1D_inputs()
+        sequence_lengths = batch.get_sequence_lengths()
+
+        if batch.is_prompts:
+            n_tokens = sequence_lengths.sum().item()
+        else:
+            n_tokens = batch.current_batch_size
+            if batch.use_spec_dec:
+                n_tokens = batch.num_tokens_to_verify + 1
+                assert n_tokens == input_ids.size(0)
+                n_tokens = n_tokens * batch.current_batch_size
+        # output_tensor = torch.zeros(
+        #     (n_tokens, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
+        # ).tolist()
+
+        # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+        use_cuda_graph = False
+        if self.use_cuda_graph and not batch.is_prompts and batch.current_batch_size in self.graph_runners.keys():
+            use_cuda_graph = True
+
+        input_meta_data = InputMetaData(
+            block_tables=batch.get_block_table_tensor(),
+            sequence_lengths=sequence_lengths,
+            fd_inter_tensor=None,
+            batch_size=batch.current_batch_size,
+            is_prompts=batch.is_prompts,
+            use_cuda_kernel=self.inference_config.use_cuda_kernel,
+            use_cuda_graph=use_cuda_graph,
+            high_precision=self.high_precision,
+            kv_seq_len=sequence_lengths.max().item(),
+            head_dim=batch.head_dim,
+            dtype=batch.dtype,
+            use_spec_dec=batch.use_spec_dec,
+            num_tokens_to_verify=batch.num_tokens_to_verify,
+        )
+
+        return input_ids.tolist(), input_meta_data
+
+    async def step_(self, input_token_ids, input_meta_data: InputMetaData):
+        assert len(self.workers) == self.tp_size, "init workers first"
+        
+        init_tasks = [self.async_parallel_wrapper(worker.execute_model_forward, input_token_ids, input_meta_data.to_rpc_param()) for worker in self.workers]
+        ret = await asyncio.gather(*init_tasks)
+
+        return ret[0]
+ 
+    def step(self) -> List[str]:
+        batch = self.request_handler.schedule()
+
+        input_token_ids, input_meta_data = self.prepare_input(batch)
+        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
+        logits = asyncio.run(self.step_(input_token_ids, input_meta_data))
+        logits = torch.tensor(logits)
+
+        if self.inference_config.pad_input:
+            logits = logits[:, -1, :]
+        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+
+        self.request_handler.append_next_tokens(next_tokens)
+        finished_sequences = self.request_handler.update()
+        return finished_sequences
+
+    def kill_workers(self):
+        '''
+        I don't find a good way to implicit invoke self.kill_workers
+        '''
+        assert len(self.workers) != 0
+        for proc in self.worker_processes:
+            proc.kill()
+            proc.join()
+        self.logger.info(f"worker killed, serving end")
+    
+    def __del__(self):
+        self.kill_workers()
