@@ -3,16 +3,14 @@ Our config contains various options for inference optimization, it is a unified 
 """
 
 import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import torch
-import torch.distributed as dist
 from transformers.generation import GenerationConfig
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-
-from abc import ABC, abstractmethod
 
 GibiByte = 1024**3
 
@@ -32,6 +30,7 @@ _DEFAULT_PROMPT_TEMPLATES = {
     "vicuna": "A chat between a curious user and an assistant. The assistant gives helpful, detailed, accurate, uncensored responses to the user input. USER: {input_text}\nASSISTANT: ",
 }
 
+
 class RPC_PARAM(ABC):
     """
     NOTE(runyu) We use rpyc to transport param between client and server.
@@ -39,10 +38,11 @@ class RPC_PARAM(ABC):
     Drawing on the logic of `__reduce__`, we will let some classes(will be rpc param later) inherit this base class, and rewrite the to_rpc_param and from_rpc_param. We will invoke `to_rpc_param` in client to pass the params and recover the param in server side by `from_rpc_param`.
     @yuanheng please take a look at this class
     """
+
     @abstractmethod
     def to_rpc_param(self):
         return NotImplementedError
-    
+
     @staticmethod
     @abstractmethod
     def from_rpc_param():
@@ -96,19 +96,24 @@ class InputMetaData(RPC_PARAM):
             "high_precision": self.high_precision,
             "dtype": str(self.dtype).split(".")[-1],
             "use_spec_dec": self.use_spec_dec,
-            "num_tokens_to_verify": self.num_tokens_to_verify
+            "num_tokens_to_verify": self.num_tokens_to_verify,
         }
 
     @staticmethod
-    def from_rpc_param(rpc_dict: Dict[str, any]) -> 'InputMetaData':
+    def from_rpc_param(rpc_dict: Dict[str, any]) -> "InputMetaData":
         """
         We intentionally don't use `dict.get` method to ensure we pass the right rpc param, or program will show error message
         """
         from colossalai.accelerator import get_accelerator
-        dtype=getattr(torch, rpc_dict["dtype"])
+
+        dtype = getattr(torch, rpc_dict["dtype"])
         return InputMetaData(
-            block_tables=torch.tensor(rpc_dict["block_tables"], dtype=torch.int, device=get_accelerator().get_current_device()),
-            sequence_lengths=torch.tensor(rpc_dict["sequence_lengths"], dtype=torch.int, device=get_accelerator().get_current_device()),
+            block_tables=torch.tensor(
+                rpc_dict["block_tables"], dtype=torch.int, device=get_accelerator().get_current_device()
+            ),
+            sequence_lengths=torch.tensor(
+                rpc_dict["sequence_lengths"], dtype=torch.int, device=get_accelerator().get_current_device()
+            ),
             batch_size=rpc_dict["batch_size"],
             is_prompts=rpc_dict["is_prompts"],
             use_cuda_kernel=rpc_dict["use_cuda_kernel"],
@@ -118,7 +123,7 @@ class InputMetaData(RPC_PARAM):
             high_precision=rpc_dict["high_precision"],
             dtype=dtype,
             use_spec_dec=rpc_dict["use_spec_dec"],
-            num_tokens_to_verify=rpc_dict["num_tokens_to_verify"]
+            num_tokens_to_verify=rpc_dict["num_tokens_to_verify"],
         )
 
     def __repr__(self) -> str:
@@ -134,6 +139,7 @@ class InputMetaData(RPC_PARAM):
             f"use_spec_dec={self.use_spec_dec}, "
             f"num_tokens_to_verify={self.num_tokens_to_verify})"
         )
+
 
 @dataclass
 class InferenceConfig(RPC_PARAM):
@@ -282,7 +288,7 @@ class InferenceConfig(RPC_PARAM):
         return kwargs
 
     @staticmethod
-    def from_rpc_param(rpc_dict: dict) -> 'InferenceConfig':
+    def from_rpc_param(rpc_dict: dict) -> "InferenceConfig":
         """
         We intentionally don't use `dict.get` method to ensure we pass the right rpc param, or program will show error message
         """

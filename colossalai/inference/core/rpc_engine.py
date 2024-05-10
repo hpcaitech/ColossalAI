@@ -1,13 +1,14 @@
-import torch
-
-import time
+import asyncio
 from itertools import count
-from typing import Dict, List, Optional, Tuple, Union
+from time import sleep
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
+import rpyc
 import torch
 import torch.nn as nn
-from torch import distributed as dist
+from rpyc.utils.server import ThreadedServer
+from torch import multiprocessing as mp
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -15,39 +16,18 @@ from transformers import (
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
 )
+from transformers.configuration_utils import PretrainedConfig
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
-from colossalai.accelerator import get_accelerator
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.batch_bucket import BatchBucket
-from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
-from colossalai.inference.graph_runner import CUDAGraphRunner
-from colossalai.inference.modeling.policy import model_policy_map
-from colossalai.inference.spec import Drafter, GlideInput
-from colossalai.inference.struct import Sequence
 from colossalai.inference.executor.rpc_worker import rpcWorkerService
-from colossalai.inference.utils import get_model_size, has_index_file, find_available_ports
-from colossalai.interface import ModelWrapper
+from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
+from colossalai.inference.struct import Sequence
+from colossalai.inference.utils import find_available_ports
 from colossalai.logging import get_dist_logger
-from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-import asyncio
-from typing import List
-from time import sleep
-import random
-import socket
-
-import rpyc
-from rpyc.utils.server import ThreadedServer
-
-import torch
-from torch import multiprocessing as mp
-from torch import distributed as dist
-
 from .rpc_request_handler import RequestHandler
-from transformers.configuration_utils import PretrainedConfig
 
 __all__ = ["InferenceEngine"]
 
@@ -60,12 +40,16 @@ _supported_models = {
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
+
 def run_server(host, port, event: mp.Event = None):
-    server = ThreadedServer(rpcWorkerService, port=port, protocol_config={"allow_public_attrs": True, "allow_all_attrs" : True})
+    server = ThreadedServer(
+        rpcWorkerService, port=port, protocol_config={"allow_public_attrs": True, "allow_all_attrs": True}
+    )
     print(f"Starting RPC Worker on {host}:{port}...")
     if event:
         event.set()
     server.start()
+
 
 def get_model_config_attr(config: PretrainedConfig, attr_name: str):
     if hasattr(config, attr_name):
@@ -73,6 +57,7 @@ def get_model_config_attr(config: PretrainedConfig, attr_name: str):
     elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
         return getattr(config, config.attribute_map[attr_name])
     raise AttributeError(f"{attr_name} is not found in config")
+
 
 class RpycInferenceEngine:
 
@@ -108,7 +93,7 @@ class RpycInferenceEngine:
 
         try:
             if isinstance(model_or_path, str):
-                    self.model_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+                self.model_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
             else:
                 self.model_config = model_or_path.config
         except Exception as e:
@@ -121,7 +106,7 @@ class RpycInferenceEngine:
         self.events = [mp.Event() for _ in range(self.tp_size)]
 
         # This operation will init the dist env and models
-        self.workers : List[rpcWorkerService] = []
+        self.workers: List[rpcWorkerService] = []
         self.init_workers()
 
         asyncio.run(self.init_model(model_or_path, model_policy))
@@ -130,7 +115,10 @@ class RpycInferenceEngine:
         self.request_handler = self.init_scheduler(self.inference_config, self.model_config)
 
         # init the physical cache
-        self.init_device_cache(self.request_handler.cache_manager.get_physical_cache_shape(), get_model_config_attr(self.model_config, "num_hidden_layers")) # TODO fix the ugly params
+        self.init_device_cache(
+            self.request_handler.cache_manager.get_physical_cache_shape(),
+            get_model_config_attr(self.model_config, "num_hidden_layers"),
+        )  # TODO fix the ugly params
 
         self.logger.info("engine init over ")
 
@@ -157,7 +145,7 @@ class RpycInferenceEngine:
             p = mp.Process(target=run_server, args=("localhost", rpc_port, event))
             p.start()
             self.worker_processes.append(p)
-        
+
         # Wait for all servers to start
         for event in self.events:
             event.wait()
@@ -169,7 +157,11 @@ class RpycInferenceEngine:
 
         for rpc_port in rpc_ports:
             try:
-                conn = rpyc.connect("localhost", rpc_port, config={"allow_pickle": True, 'allow_public_attrs': True, "allow_all_attrs" : True})
+                conn = rpyc.connect(
+                    "localhost",
+                    rpc_port,
+                    config={"allow_pickle": True, "allow_public_attrs": True, "allow_all_attrs": True},
+                )
                 self.workers.append(conn.root)
             except:
                 raise Exception("conn error!")
@@ -182,49 +174,58 @@ class RpycInferenceEngine:
         await asyncio.to_thread(async_res.wait)
         assert async_res.ready
         return async_res.value
-    
+
     async def init_worker_env(self):
         assert len(self.workers) == self.tp_size, "init workers first"
-        
+
         dist_group_port = find_available_ports(1)[0]
-        init_tasks = [self.async_parallel_wrapper(worker.init_dist_env, rank, self.inference_config.tp_size, "127.0.0.1", dist_group_port) for rank, worker in enumerate(self.workers)]
+        init_tasks = [
+            self.async_parallel_wrapper(
+                worker.init_dist_env, rank, self.inference_config.tp_size, "127.0.0.1", dist_group_port
+            )
+            for rank, worker in enumerate(self.workers)
+        ]
 
         await asyncio.gather(*init_tasks)
 
     async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
         assert len(self.workers) == self.tp_size, "init workers first"
-        
-        init_tasks = [self.async_parallel_wrapper(worker.init_cache, alloc_shape, num_layers) for worker in self.workers]
 
-        ret = await asyncio.gather(*init_tasks)
-        # print(f"compute result for one step: {ret}")   
+        init_tasks = [
+            self.async_parallel_wrapper(worker.init_cache, alloc_shape, num_layers) for worker in self.workers
+        ]
+
+        await asyncio.gather(*init_tasks)
+        # print(f"compute result for one step: {ret}")
 
     def init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
         asyncio.run(self._init_device_cache(alloc_shape, num_layers))
-    
+
     async def init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
         assert len(self.workers) == self.tp_size, "init workers first"
-        
+
         inference_config_param = self.inference_config.to_rpc_param()
         model_path = model_or_path
         model_policy_param = model_policy.to_rpc_param() if model_policy else None
 
-        init_tasks = [self.async_parallel_wrapper(worker.init_model, inference_config_param, model_path, model_policy_param) for rank, worker in enumerate(self.workers)]
+        init_tasks = [
+            self.async_parallel_wrapper(worker.init_model, inference_config_param, model_path, model_policy_param)
+            for rank, worker in enumerate(self.workers)
+        ]
 
         await asyncio.gather(*init_tasks)
-    
+
     def init_scheduler(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> RequestHandler:
         # NOTE(@runyu) move the request_handler logic there
         return RequestHandler(inference_config, model_config)
-    
+
     def _verify_args(self) -> None:
         # NOTE(@runyu) as usual
         pass
 
     @property
     def has_prompt_template(self) -> bool:
-        """
-        """
+        """ """
         return self.inference_config.prompt_template is not None
 
     def format_prompt(self, prompts: Union[List[str], str]) -> Union[List[str], str]:
@@ -323,7 +324,7 @@ class RpycInferenceEngine:
                 max_output_len=max_new_tokens,
             )
             self.request_handler.add_sequence(sequence)
-    
+
     def generate(
         self,
         prompts: List[str] = None,
@@ -425,12 +426,15 @@ class RpycInferenceEngine:
 
     async def step_(self, input_token_ids, input_meta_data: InputMetaData):
         assert len(self.workers) == self.tp_size, "init workers first"
-        
-        init_tasks = [self.async_parallel_wrapper(worker.execute_model_forward, input_token_ids, input_meta_data.to_rpc_param()) for worker in self.workers]
+
+        init_tasks = [
+            self.async_parallel_wrapper(worker.execute_model_forward, input_token_ids, input_meta_data.to_rpc_param())
+            for worker in self.workers
+        ]
         ret = await asyncio.gather(*init_tasks)
 
         return ret[0]
- 
+
     def step(self) -> List[str]:
         batch = self.request_handler.schedule()
 
@@ -448,14 +452,14 @@ class RpycInferenceEngine:
         return finished_sequences
 
     def kill_workers(self):
-        '''
+        """
         I don't find a good way to implicit invoke self.kill_workers
-        '''
+        """
         assert len(self.workers) != 0
         for proc in self.worker_processes:
             proc.kill()
             proc.join()
         self.logger.info(f"worker killed, serving end")
-    
+
     def __del__(self):
         self.kill_workers()

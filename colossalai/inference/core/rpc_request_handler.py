@@ -6,7 +6,6 @@ from transformers.generation import GenerationConfig
 
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig
-from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache.rpc_kvcache_manager import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
@@ -123,7 +122,7 @@ class RequestHandler:
         self._init_cache(model_config)
 
         # initialize batch
-        device = torch.cuda.current_device()
+        torch.cuda.current_device()
         kv_max_split_num = (
             inference_config.max_input_len + inference_config.max_output_len + inference_config.block_size - 1
         ) // inference_config.block_size
@@ -376,4 +375,3 @@ class RequestHandler:
         self.done_list.extend(finished_seqs)
 
         return finished_seqs
-

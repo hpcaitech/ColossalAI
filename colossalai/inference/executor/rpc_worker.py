@@ -1,33 +1,28 @@
+from typing import List, Tuple, Union
+
+import rpyc
 import torch
 import torch.distributed as dist
 from torch import nn
-
-import rpyc
-
-from colossalai.shardformer.policies.base_policy import Policy
-
+from transformers import AutoConfig, AutoModelForCausalLM
 from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
-from typing import List, Union, Tuple
+import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.inference.modeling.policy import model_policy_map
-from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.utils import get_model_size, has_index_file, find_available_ports
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.interface import ModelWrapper
+from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.modeling.policy import (
+    NoPaddingBaichuanModelInferPolicy,
+    NoPaddingLlamaModelInferPolicy,
+    model_policy_map,
+)
 from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
+from colossalai.inference.utils import get_model_size
+from colossalai.interface import ModelWrapper
+from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.inference.modeling.policy import NoPaddingLlamaModelInferPolicy, NoPaddingBaichuanModelInferPolicy
-from colossalai.logging import get_dist_logger
-import colossalai
-
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-)
-
 
 PP_AXIS, TP_AXIS = 0, 1
 
@@ -43,6 +38,7 @@ _supported_model_policies = {
 
 logger = get_dist_logger(__name__)
 
+
 class rpcWorkerService(rpyc.Service):
 
     """
@@ -56,8 +52,9 @@ class rpcWorkerService(rpyc.Service):
         colossalai.launch(config={}, rank=rank, world_size=world_size, port=master_port, host=master_address)
         logger.info(f"init process group done for rank {rank}")
 
-    def exposed_init_model(self, inference_config_param: dict, model_or_path: Union[nn.Module, str], model_policy_param: str = None):
-
+    def exposed_init_model(
+        self, inference_config_param: dict, model_or_path: Union[nn.Module, str], model_policy_param: str = None
+    ):
         assert dist.is_initialized(), "invoke init_dist_env first please!"
 
         self.inference_config = InferenceConfig.from_rpc_param(inference_config_param)
@@ -81,20 +78,30 @@ class rpcWorkerService(rpyc.Service):
         self.k_cache: List[torch.Tensor] = []
         self.v_cache: List[torch.Tensor] = []
         for _ in range(num_layers):
-            self.k_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device()))
-            self.v_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device()))
+            self.k_cache.append(
+                torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device())
+            )
+            self.v_cache.append(
+                torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device())
+            )
         logger.info("physical cache init over")
-    
+
     def exposed_execute_model_forward(self, input_token_ids: List[int], input_meta_data_param: dict):
         input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
         input_meta_data.fd_inter_tensor = self.fd_inter_tensor
         # cumsum = input_meta_data.sequence_lengths.cumsum(dim=0)
         logger.info(f"input_meta_data: {input_meta_data}")
         input_token_ids = torch.tensor(input_token_ids, dtype=torch.int, device=self.device)
-        logits = self.model(input_token_ids, self.output_tensor[:input_meta_data.batch_size], input_meta_data, self.k_cache, self.v_cache)
+        logits = self.model(
+            input_token_ids,
+            self.output_tensor[: input_meta_data.batch_size],
+            input_meta_data,
+            self.k_cache,
+            self.v_cache,
+        )
         logits = logits.tolist()
         return logits
-    
+
     def _init_output_tensor(self):
         alloc_shape = (self.inference_config.max_batch_size, self.model_config.hidden_size)
         self.output_tensor = torch.zeros(alloc_shape, dtype=self.dtype, device=self.device)
@@ -125,7 +132,7 @@ class rpcWorkerService(rpyc.Service):
         )
 
         self.fd_inter_tensor = fd_inter_tensor
-   
+
     def _init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
         """
         Shard model or/and Load weight

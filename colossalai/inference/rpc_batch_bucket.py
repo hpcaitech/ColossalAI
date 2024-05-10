@@ -509,4 +509,3 @@ class BatchBucket:
 
     def __repr__(self) -> str:
         return f"(sequences_dict={self._sequences_dict}, is_prompts={self.is_prompts})"
-

@@ -1,16 +1,12 @@
-import torch
-import argparse
-
-from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-
-from colossalai.inference.rpc_config import InferenceConfig
-from colossalai.inference.core.rpc_engine import RpycInferenceEngine
-from colossalai.inference.modeling.policy.nopadding_llama import NoPaddingLlamaModelInferPolicy
-from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
-
-import torch
-import numpy as np
 import random
+
+import numpy as np
+import torch
+from transformers import AutoTokenizer, GenerationConfig
+
+from colossalai.inference.core.rpc_engine import RpycInferenceEngine
+from colossalai.inference.rpc_config import InferenceConfig
+
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -18,6 +14,7 @@ def setup_seed(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
 
 def infer():
     setup_seed(20)
@@ -58,6 +55,7 @@ def infer():
 
     print(outputs)
     inference_engine.kill_workers()
+
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method("spawn")  # this code will not be ok for settings to fork to subprocess

@@ -8,11 +8,11 @@ from colossalai.inference.modeling.models.nopadding_llama import (
     llama_model_forward,
     llama_rmsnorm_forward,
 )
+from colossalai.inference.rpc_config import RPC_PARAM
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-from colossalai.inference.rpc_config import RPC_PARAM
 
 
 class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
@@ -103,11 +103,10 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
     def postprocess(self):
         init_to_get_rotary(self.model.model, self.model.config.rope_theta)
         return self.model
-    
+
     def to_rpc_param() -> str:
         return "NoPaddingLlamaModelInferPolicy"
 
     @staticmethod
     def from_rpc_param() -> RPC_PARAM:
         return NoPaddingLlamaModelInferPolicy()
-
