@@ -10,14 +10,14 @@ from transformers.modeling_outputs import (
 
 try:
     from transformers.models.qwen2.modeling_qwen2 import (
-        Qwen2Model,
         Qwen2Attention,
         Qwen2ForCausalLM,
         Qwen2ForSequenceClassification,
-        repeat_kv,
-        apply_rotary_pos_emb,
+        Qwen2Model,
         _prepare_4d_causal_attention_mask,
-        _prepare_4d_causal_attention_mask_for_sdpa
+        _prepare_4d_causal_attention_mask_for_sdpa,
+        apply_rotary_pos_emb,
+        repeat_kv,
     )
 except ImportError:
     Qwen2Model = "Qwen2Model"
@@ -454,8 +454,7 @@ class Qwen2PipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_qwen2_flash_attention_forward(shard_config: ShardConfig):\
-
+def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
     def forward(
         self: Qwen2Attention,
         hidden_states: torch.Tensor,

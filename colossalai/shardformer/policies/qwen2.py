@@ -21,13 +21,14 @@ from ..modeling.qwen2 import (
     get_qwen2_flash_attention_forward,
     get_qwen2_model_forward_for_flash_attn,
 )
+
 try:
     from transformers.models.qwen2.modeling_qwen2 import (
-        Qwen2ForCausalLM,
-        Qwen2ForSequenceClassification,
         Qwen2Attention,
         Qwen2DecoderLayer,
         Qwen2FlashAttention2,
+        Qwen2ForCausalLM,
+        Qwen2ForSequenceClassification,
         Qwen2Model,
         Qwen2SdpaAttention,
     )
@@ -43,6 +44,7 @@ except ImportError:
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificationPolicy"]
+
 
 class Qwen2Policy(Policy):
     def __init__(self) -> None:
@@ -63,7 +65,6 @@ class Qwen2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-
         ATTN_IMPLEMENTATION = {
             "eager": Qwen2Attention,
             "flash_attention_2": Qwen2FlashAttention2,
@@ -91,8 +92,8 @@ class Qwen2Policy(Policy):
             ), f"The number of attention heads must be divisible by tensor parallel size."
             if hasattr(self.model.config, "num_key_value_heads"):
                 assert (
-                self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
-            ), f"The number of key_value heads must be divisible by tensor parallel size."
+                    self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+                ), f"The number of key_value heads must be divisible by tensor parallel size."
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
