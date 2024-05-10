@@ -75,6 +75,8 @@ void flash_decoding_attention(
     torch::Tensor& tmp_out_lse,  // [num_tokens, num_heads, max_num_partitions]
     const c10::optional<torch::Tensor>& alibi_slopes, float scale);
 
+void convert_fp8(torch::Tensor& input, torch::Tensor& output);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("decode_kv_cache_memcpy", &decode_kv_cache_memcpy,
         "Copy the GPU memory of kvcache during the decode stage.");
@@ -102,4 +104,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("flash_decoding_attention", &flash_decoding_attention,
         "Compute the attention between an input query and the cached "
         "keys/values using PagedAttention.");
+
+  m.def("convert_fp8", &convert_fp8,
+        "Convert input to fp8 output or convert fp8 input to output.");
 }
