@@ -812,7 +812,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        transformer_outputs = self.model(
+        transformer_outputs = self.transformer(
             input_ids,
             past_key_values=past_key_values,
             attention_mask=attention_mask,
