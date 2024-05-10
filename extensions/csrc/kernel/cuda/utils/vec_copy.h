@@ -1,9 +1,6 @@
 
 #pragma once
 
-#include <cuda_fp16.h>
-#include <stdint.h>
-
 #include "common/vec_type_traits.h"
 #include "funcs/cast_functor.h"
 
@@ -12,9 +9,9 @@ namespace cuda {
 namespace utils {
 
 // Note(LiuYang): Depreciated
-template <typename T, int vec_size>
+template <typename T, int VecSize>
 __device__ __inline__ void copy_vector(T *dst, const T *src) {
-  using VT = typename common::VecTypeTrait<T, vec_size>::Type;
+  using VT = typename common::VecTypeTrait<T, VecSize>::Type;
   *(reinterpret_cast<VT *>(dst)) = *(reinterpret_cast<const VT *>(src));
 }
 
@@ -34,17 +31,17 @@ __device__ __inline__ void copy_zero_vector(T *dst) {
   *(reinterpret_cast<VT *>(dst)) = funcs::CastFunctor<float, VT>()(0.0f);
 }
 
-template <typename SrcT, typename DstT, int vec_size>
+template <typename SrcT, typename DstT, int VecSize>
 __device__ __inline__ void copy(const SrcT *src, DstT *dst) {
-  using SrcVT = typename common::VecTypeTrait<SrcT, vec_size>::Type;
-  using DstVT = typename common::VecTypeTrait<DstT, vec_size>::Type;
+  using SrcVT = typename common::VecTypeTrait<SrcT, VecSize>::Type;
+  using DstVT = typename common::VecTypeTrait<DstT, VecSize>::Type;
   *(reinterpret_cast<DstVT *>(dst)) = funcs::CastFunctor<SrcVT, DstVT>()(
       *(reinterpret_cast<const SrcVT *>(src)));
 }
 
-template <typename T, int vec_size>
+template <typename T, int VecSize>
 __device__ __inline__ void copy(const T *src, T *dst) {
-  using VT = typename common::VecTypeTrait<T, vec_size>::Type;
+  using VT = typename common::VecTypeTrait<T, VecSize>::Type;
   *(reinterpret_cast<VT *>(dst)) = *(reinterpret_cast<const VT *>(src));
 }
 

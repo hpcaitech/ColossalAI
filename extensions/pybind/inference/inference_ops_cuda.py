@@ -17,6 +17,7 @@ class InferenceOpsCudaExtension(_CudaExtension):
                 "kernel/cuda/rms_layernorm_kernel.cu",
                 "kernel/cuda/get_cos_and_sin_kernel.cu",
                 "kernel/cuda/flash_decoding_attention_kernel.cu",
+                "kernel/cuda/convert_fp8_kernel.cu",
             ]
         ] + [self.pybind_abs_path("inference/inference.cpp")]
         return ret
