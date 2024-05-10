@@ -338,7 +338,7 @@ class RequestHandler:
 
         # NOTE: need to decide the granularity to process logits (sequence or batch)
         config_dict = generation_config.to_dict()
-        # process repetition_penalty
+        # process repetition_penalty, no_repeat_ngram_size
         for type in ["repetition_penalty", "no_repeat_ngram_size"]:
             if type in config_dict and config_dict[type] is not None:
                 if not self.prefill_bb.is_empty:
