@@ -338,7 +338,8 @@ class NopadBaichuanAttention(ParallelModule):
                     block_size,
                     kv_seq_len,
                     fd_inter_tensor.mid_output,
-                    fd_inter_tensor.mid_output_lse,
+                    fd_inter_tensor.exp_sums,
+                    fd_inter_tensor.max_logits,
                     self.alibi_slopes,
                     sm_scale,
                 )
