@@ -104,7 +104,10 @@ class BatchBucket:
 
     @property
     def batch_token_ids(self) -> List[List[int]]:
-        return self.get_batch_token_ids()
+        out = []
+        for seq in self.seqs_li:
+            out.append(seq.input_token_id + seq.output_token_id)
+        return out
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
         """Set batch bucket to use speculatvie decoding.
@@ -509,15 +512,6 @@ class BatchBucket:
         assert self.is_compact  # Debug usage
         sequence_lengths = self.seq_lengths[: self.current_batch_size]
         return sequence_lengths.to(device=self.device)
-
-    # For compatibility
-    def get_batch_token_ids(self) -> List[List[int]]:
-        assert self.is_compact  # Debug usage
-        out = [None] * self._current_batch_size
-        for seq_id, index_in_b in self._sequences_indexes.items():
-            seq: Sequence = self._sequences_dict[seq_id]
-            out[index_in_b] = seq.input_token_id + seq.output_token_id
-        return out
 
     # For compatibility
     @property
