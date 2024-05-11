@@ -487,4 +487,3 @@ class KVCacheManager:
             k_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
             v_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
         return k_cache, v_cache
-
