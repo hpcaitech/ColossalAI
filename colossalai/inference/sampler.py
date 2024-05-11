@@ -1,7 +1,9 @@
 from typing import List, Tuple
-from transformers.generation import GenerationConfig
-from colossalai.inference.logit_processors import logit_processor
+
 import torch
+from transformers.generation import GenerationConfig
+
+from colossalai.inference.logit_processors import logit_processor
 
 
 def greedy_sample(
@@ -61,6 +63,7 @@ def beam_search_sample(
     results.append((next_token_ids, parent_ids))
     return results
 
+
 def _sample(probs: torch.Tensor, logprobs: torch.Tensor, generation_config: GenerationConfig, is_prompt: bool = False):
     if generation_config.num_beams == 1:
         if generation_config.do_sample:
@@ -71,6 +74,7 @@ def _sample(probs: torch.Tensor, logprobs: torch.Tensor, generation_config: Gene
         sample_tokens = beam_search_sample(generation_config, logprobs, is_prompt=is_prompt)
 
     return sample_tokens
+
 
 def search_tokens(generation_config: GenerationConfig, logits, is_prompt: bool = False):
     """

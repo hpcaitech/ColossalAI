@@ -1,6 +1,6 @@
+import os
 from typing import List, Tuple, Union
 
-import os
 import rpyc
 import torch
 import torch.distributed as dist
@@ -11,21 +11,21 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
+from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.kv_cache.kvcache_manager import get_model_config_attr
 from colossalai.inference.modeling.policy import (
     NoPaddingBaichuanModelInferPolicy,
     NoPaddingLlamaModelInferPolicy,
     model_policy_map,
 )
-from colossalai.inference.config import InferenceConfig, InputMetaData
+from colossalai.inference.sampler import search_tokens
 from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.inference.kv_cache.kvcache_manager import get_model_config_attr
-from colossalai.inference.sampler import search_tokens
 
 PP_AXIS, TP_AXIS = 0, 1
 
@@ -91,7 +91,6 @@ class rpcWorkerService(rpyc.Service):
         logger.info("physical cache init over")
 
     def exposed_execute_model_forward(self, input_token_ids_param: List[int], input_meta_data_param: dict):
-
         # prepare the data for model forward
         input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
         input_meta_data.fd_inter_tensor = self.fd_inter_tensor
@@ -104,7 +103,7 @@ class rpcWorkerService(rpyc.Service):
         # execute the model
         logits = self.model(
             input_token_ids,
-            self.output_tensor[: n_tokens],
+            self.output_tensor[:n_tokens],
             input_meta_data,
             self.k_cache,
             self.v_cache,
@@ -113,13 +112,19 @@ class rpcWorkerService(rpyc.Service):
         # sampler
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = search_tokens(self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts)
+        next_tokens = search_tokens(
+            self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts
+        )
 
         # return the tokens generated to scheduler
         return next_tokens.tolist()
 
     def _init_output_tensor(self):
-        alloc_shape = (self.inference_config.max_batch_size * (self.inference_config.max_input_len + self.inference_config.max_output_len), self.model_config.hidden_size // self.inference_config.tp_size)
+        alloc_shape = (
+            self.inference_config.max_batch_size
+            * (self.inference_config.max_input_len + self.inference_config.max_output_len),
+            self.model_config.hidden_size // self.inference_config.tp_size,
+        )
         self.output_tensor = torch.zeros(alloc_shape, dtype=self.dtype, device=self.device)
 
     def _init_fd_tensor(self):

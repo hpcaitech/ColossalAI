@@ -387,6 +387,7 @@ class RequestHandler:
 
         return finished_seqs
 
+
 class RPCRequestHandler(RequestHandler):
     """
     RPC Version of request handler

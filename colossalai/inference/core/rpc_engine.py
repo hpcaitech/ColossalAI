@@ -1,36 +1,30 @@
 import asyncio
 from itertools import count
 from time import sleep
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
-import numpy as np
 import rpyc
 import torch
 import torch.nn as nn
 from rpyc.utils.server import ThreadedServer
 from torch import multiprocessing as mp
-from transformers import (
-    AutoConfig,
-    GenerationConfig,
-    PreTrainedTokenizer,
-    PreTrainedTokenizerFast,
-)
+from transformers import AutoConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
 from transformers.configuration_utils import PretrainedConfig
 
 from colossalai.inference.batch_bucket import BatchBucket
-from colossalai.inference.executor.rpc_worker import rpcWorkerService
 from colossalai.inference.config import InferenceConfig, InputMetaData
-from colossalai.inference.struct import Sequence
+from colossalai.inference.executor.rpc_worker import rpcWorkerService
 from colossalai.inference.utils import find_available_ports
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .request_handler import RPCRequestHandler
 from .engine import InferenceEngine
+from .request_handler import RPCRequestHandler
 
 __all__ = ["RPCInferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
+
 
 def run_server(host, port, event: mp.Event = None):
     server = ThreadedServer(
@@ -40,6 +34,7 @@ def run_server(host, port, event: mp.Event = None):
     if event:
         event.set()
     server.start()
+
 
 class RPCInferenceEngine(InferenceEngine):
 
@@ -119,7 +114,7 @@ class RPCInferenceEngine(InferenceEngine):
         self._verify_args()
 
         self.logger.info("engine init over ")
-    
+
     def _verify_args(self) -> None:
         """Verify the input args"""
         if not isinstance(self.inference_config, InferenceConfig):
@@ -200,9 +195,7 @@ class RPCInferenceEngine(InferenceEngine):
     async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
         assert len(self.workers) == self.tp_size, "init workers first"
 
-        init_tasks = [
-            self.async_parallel_wrapper(worker.init_cache, alloc_shape) for worker in self.workers
-        ]
+        init_tasks = [self.async_parallel_wrapper(worker.init_cache, alloc_shape) for worker in self.workers]
 
         await asyncio.gather(*init_tasks)
 

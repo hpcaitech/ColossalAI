@@ -1,5 +1,6 @@
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaForCausalLM, LlamaModel, LlamaRMSNorm
 
+from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.modeling.models.nopadding_llama import (
     NopadLlamaAttention,
     NopadLlamaMLP,
@@ -8,7 +9,6 @@ from colossalai.inference.modeling.models.nopadding_llama import (
     llama_model_forward,
     llama_rmsnorm_forward,
 )
-from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
@@ -108,5 +108,5 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
         return "NoPaddingLlamaModelInferPolicy"
 
     @staticmethod
-    def from_rpc_param() -> 'NoPaddingLlamaModelInferPolicy':
+    def from_rpc_param() -> "NoPaddingLlamaModelInferPolicy":
         return NoPaddingLlamaModelInferPolicy()

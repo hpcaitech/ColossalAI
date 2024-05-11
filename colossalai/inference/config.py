@@ -3,8 +3,6 @@ Our config contains various options for inference optimization, it is a unified 
 """
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Dict, Optional, Union
 from dataclasses import dataclass, fields
 from typing import Any, Dict, Optional, Union
 
@@ -47,6 +45,7 @@ class RPC_PARAM(ABC):
     @abstractmethod
     def from_rpc_param():
         return NotImplementedError
+
 
 @dataclass
 class InputMetaData(RPC_PARAM):
@@ -295,7 +294,7 @@ class InferenceConfig(RPC_PARAM):
             "pad_input": self.pad_input,
             "early_stopping": self.early_stopping,
             "do_sample": self.do_sample,
-            "beam_width": self.beam_width
+            "beam_width": self.beam_width,
         }
         return kwargs
 
@@ -315,7 +314,7 @@ class InferenceConfig(RPC_PARAM):
             pad_input=rpc_dict["pad_input"],
             early_stopping=rpc_dict["early_stopping"],
             do_sample=rpc_dict["do_sample"],
-            beam_width=rpc_dict["beam_width"]
+            beam_width=rpc_dict["beam_width"],
         )
 
     @classmethod

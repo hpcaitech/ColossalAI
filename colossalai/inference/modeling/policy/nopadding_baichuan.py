@@ -1,3 +1,4 @@
+from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.modeling.layers.baichuan_tp_linear import (
     BaichuanLMHeadLinear1D_Col,
     BaichuanWpackLinear1D_Col,
@@ -16,7 +17,6 @@ from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
-from colossalai.inference.config import RPC_PARAM
 
 
 class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
@@ -106,6 +106,5 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
         return "NoPaddingBaichuanModelInferPolicy"
 
     @staticmethod
-    def from_rpc_param() -> 'NoPaddingBaichuanModelInferPolicy':
+    def from_rpc_param() -> "NoPaddingBaichuanModelInferPolicy":
         return NoPaddingBaichuanModelInferPolicy()
-

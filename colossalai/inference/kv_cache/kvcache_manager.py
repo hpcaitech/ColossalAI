@@ -543,10 +543,9 @@ class RPCKVCacheManager(KVCacheManager):
     def get_kv_cache(self):
         """Get k_cache and v_cache"""
         return NotImplementedError
-    
+
     def _init_logical_caches(self):
-        """Initialize the logical cache blocks.
-        """
+        """Initialize the logical cache blocks."""
         blocks = []
         for i in range(self.num_blocks):
             cache_block = CacheBlock(i, self.block_size, self.elem_size_in_bytes, k_ptrs=None, v_ptrs=None)
