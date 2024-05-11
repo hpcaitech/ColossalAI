@@ -484,3 +484,58 @@ class KVCacheManager:
             k_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
             v_cache.append(torch.zeros(alloc_shape, dtype=self.dtype, device=self.device))
         return k_cache, v_cache
+
+
+class RPCKVCacheManager(KVCacheManager):
+    def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
+        self.logger = get_dist_logger(__name__)
+        self.device = get_current_device()
+
+        # Parallel settings
+        self.tp_size = config.tp_size
+        # Model settings
+        self.dtype = config.dtype
+        self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
+        self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
+        self.head_num = get_model_config_attr(model_config, "num_attention_heads")
+        self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads")
+        self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
+        assert (
+            self.kv_head_num % self.tp_size == 0
+        ), f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
+        self.kv_head_num //= self.tp_size
+        self.beam_width = config.beam_width
+        self.max_batch_size = config.max_batch_size
+        self.max_input_length = config.max_input_len
+        self.max_output_length = config.max_output_len
+        # Cache block settings
+        self.block_size = config.block_size
+        # NOTE: `num_blocks` is not prompted, but evaluated from the maximum input/output length, and the maximum batch size
+        self.max_blocks_per_sequence = (
+            self.max_input_length + self.max_output_length + self.block_size - 1
+        ) // self.block_size
+        self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
+
+        # Logical cache blocks allocation
+        self._available_blocks = self.num_blocks
+        self._cache_blocks = tuple(self._init_logical_caches())
+        # block availablity state 0->allocated, 1->free
+        self._block_states = torch.ones((self.num_blocks,), dtype=torch.bool)
+        self._block_states_cum = torch.zeros(size=(self.num_blocks + 1,), dtype=torch.int64)
+        self._block_finder = torch.zeros((self.num_blocks,), dtype=torch.int64)
+
+    def get_physical_cache_shape(self) -> Tuple[int, int, int, int]:
+        return (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+
+    def get_kv_cache(self):
+        """Get k_cache and v_cache"""
+        return NotImplementedError
+    
+    def _init_logical_caches(self):
+        """Initialize the logical cache blocks.
+        """
+        blocks = []
+        for i in range(self.num_blocks):
+            cache_block = CacheBlock(i, self.block_size, self.elem_size_in_bytes, k_ptrs=None, v_ptrs=None)
+            blocks.append(cache_block)
+        return blocks

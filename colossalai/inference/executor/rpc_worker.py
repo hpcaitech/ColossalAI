@@ -1,5 +1,6 @@
 from typing import List, Tuple, Union
 
+import os
 import rpyc
 import torch
 import torch.distributed as dist
@@ -16,13 +17,15 @@ from colossalai.inference.modeling.policy import (
     NoPaddingLlamaModelInferPolicy,
     model_policy_map,
 )
-from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
-from colossalai.inference.utils import get_model_size
+from colossalai.inference.config import InferenceConfig, InputMetaData
+from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.inference.kv_cache.kvcache_manager import get_model_config_attr
+from colossalai.inference.sampler import search_tokens
 
 PP_AXIS, TP_AXIS = 0, 1
 
@@ -68,13 +71,15 @@ class rpcWorkerService(rpyc.Service):
         self._init_output_tensor()
         logger.info(f"init model done for rank {dist.get_rank()}")
 
-    def exposed_init_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
+    def exposed_init_cache(self, alloc_shape: Tuple[int, int, int, int]):
         # NOTE(@runyu) move the request_handler logic there
         """Initialize the physical cache on the device.
 
         For each layer of the model, we allocate two tensors for key and value respectively,
         with shape of [num_blocks, num_kv_heads, block_size, head_size]
         """
+        num_layers = get_model_config_attr(self.model_config, "num_hidden_layers")
+
         self.k_cache: List[torch.Tensor] = []
         self.v_cache: List[torch.Tensor] = []
         for _ in range(num_layers):
@@ -86,24 +91,36 @@ class rpcWorkerService(rpyc.Service):
             )
         logger.info("physical cache init over")
 
-    def exposed_execute_model_forward(self, input_token_ids: List[int], input_meta_data_param: dict):
+    def exposed_execute_model_forward(self, input_token_ids_param: List[int], input_meta_data_param: dict):
+
+        # prepare the data for model forward
         input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
         input_meta_data.fd_inter_tensor = self.fd_inter_tensor
-        # cumsum = input_meta_data.sequence_lengths.cumsum(dim=0)
-        logger.info(f"input_meta_data: {input_meta_data}")
-        input_token_ids = torch.tensor(input_token_ids, dtype=torch.int, device=self.device)
+        if input_meta_data.is_prompts:
+            n_tokens = input_meta_data.sequence_lengths.sum().item()
+        else:
+            n_tokens = input_meta_data.batch_size
+        input_token_ids = torch.tensor(input_token_ids_param, dtype=torch.int, device=self.device)
+
+        # execute the model
         logits = self.model(
             input_token_ids,
-            self.output_tensor[: input_meta_data.batch_size],
+            self.output_tensor[: n_tokens],
             input_meta_data,
             self.k_cache,
             self.v_cache,
         )
-        logits = logits.tolist()
-        return logits
+
+        # sampler
+        if self.inference_config.pad_input:
+            logits = logits[:, -1, :]
+        next_tokens = search_tokens(self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts)
+
+        # return the tokens generated to scheduler
+        return next_tokens.tolist()
 
     def _init_output_tensor(self):
-        alloc_shape = (self.inference_config.max_batch_size, self.model_config.hidden_size)
+        alloc_shape = (self.inference_config.max_batch_size * (self.inference_config.max_input_len + self.inference_config.max_output_len), self.model_config.hidden_size // self.inference_config.tp_size)
         self.output_tensor = torch.zeros(alloc_shape, dtype=self.dtype, device=self.device)
 
     def _init_fd_tensor(self):
@@ -143,10 +160,15 @@ class rpcWorkerService(rpyc.Service):
         """
 
         if isinstance(model_or_path, str):
+            is_local = os.path.isdir(model_or_path)
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                model = _supported_models[arch](hf_config)
+                if is_local:
+                    model = _supported_models[arch](hf_config)
+                else:
+                    # load the real checkpoint
+                    model = _supported_models[arch].from_pretrained(model_or_path, trust_remote_code=True)
             except Exception as e:
                 logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
@@ -178,12 +200,9 @@ class rpcWorkerService(rpyc.Service):
                 model_type = "nopadding_" + self.model_config.model_type
             model_policy = model_policy_map[model_type]()
 
-        logger.info(self.inference_config.tp_size)
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
         tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
 
-        model.__setattr__ = setattr
-        # model._rpyc_setattr = setattr
         self.model = self._shardformer(
             model,
             model_policy,
@@ -198,14 +217,13 @@ class rpcWorkerService(rpyc.Service):
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        # NOTE @runyu add if transformer-remote-url
-        # if isinstance(model_or_path, str):
-        #     from colossalai.inference.core.plugin import InferCheckpoint_io
+        if isinstance(model_or_path, str) and is_local:
+            from colossalai.inference.core.plugin import InferCheckpoint_io
 
-        #     cpt_io = InferCheckpoint_io()
-        #     if_has_index_file, model_index_file = has_index_file(model_or_path)
-        #     assert if_has_index_file, "the model path is invalid"
-        #     cpt_io.load_model(self.model, model_index_file)
+            cpt_io = InferCheckpoint_io()
+            if_has_index_file, model_index_file = has_index_file(model_or_path)
+            assert if_has_index_file, "the model path is invalid"
+            cpt_io.load_model(self.model, model_index_file)
 
         free_gpu_memory, total_gpu_memory = torch.cuda.mem_get_info()
         peak_memory = init_gpu_memory - free_gpu_memory

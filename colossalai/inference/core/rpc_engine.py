@@ -11,35 +11,25 @@ from rpyc.utils.server import ThreadedServer
 from torch import multiprocessing as mp
 from transformers import (
     AutoConfig,
-    AutoModelForCausalLM,
     GenerationConfig,
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
 )
 from transformers.configuration_utils import PretrainedConfig
-from transformers.models.llama.modeling_llama import LlamaForCausalLM
 
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.executor.rpc_worker import rpcWorkerService
-from colossalai.inference.rpc_config import InferenceConfig, InputMetaData
+from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.struct import Sequence
 from colossalai.inference.utils import find_available_ports
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .rpc_request_handler import RequestHandler
+from .request_handler import RPCRequestHandler
 
 __all__ = ["InferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
-
-_supported_models = {
-    "LlamaForCausalLM": LlamaForCausalLM,
-    "BaichuanForCausalLM": AutoModelForCausalLM,
-}
-
-_BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
-
 
 def run_server(host, port, event: mp.Event = None):
     server = ThreadedServer(
@@ -50,19 +40,11 @@ def run_server(host, port, event: mp.Event = None):
         event.set()
     server.start()
 
-
-def get_model_config_attr(config: PretrainedConfig, attr_name: str):
-    if hasattr(config, attr_name):
-        return getattr(config, attr_name)
-    elif hasattr(config, "attribute_map") and hasattr(config, config.attribute_map[attr_name]):
-        return getattr(config, config.attribute_map[attr_name])
-    raise AttributeError(f"{attr_name} is not found in config")
-
-
-class RpycInferenceEngine:
+class RPCInferenceEngine:
 
     """
     InferenceEngine which manages the inference process..
+    NOTE This RpyCInferenceEngine is designed for multiple-card/online serving. Original InferenceEngine is designed for single card and offline service, through it supports multi-card inference.
 
     Args:
         model_or_path (nn.Module or str): Path or nn.Module of this model.
@@ -82,6 +64,7 @@ class RpycInferenceEngine:
     ) -> None:
         """
         If you input a real model loaded by transformers, the init will take quite a long time
+        Currently we don't support model(nn.Module) format as the param.
         """
 
         self.inference_config = inference_config
@@ -115,12 +98,10 @@ class RpycInferenceEngine:
         self.request_handler = self.init_scheduler(self.inference_config, self.model_config)
 
         # init the physical cache
+        alloc_shape = self.request_handler.cache_manager.get_physical_cache_shape()
         self.init_device_cache(
-            self.request_handler.cache_manager.get_physical_cache_shape(),
-            get_model_config_attr(self.model_config, "num_hidden_layers"),
-        )  # TODO fix the ugly params
-
-        self.logger.info("engine init over ")
+            alloc_shape,
+        )
 
         self.use_cuda_graph = self.inference_config.use_cuda_graph
         self.high_precision = inference_config.high_precision
@@ -134,8 +115,18 @@ class RpycInferenceEngine:
         self.n_spec_tokens = self.inference_config.max_n_spec_tokens
 
         self.counter = count()
-
         self._verify_args()
+
+        self.logger.info("engine init over ")
+    
+    def _verify_args(self) -> None:
+        """Verify the input args"""
+        if not isinstance(self.inference_config, InferenceConfig):
+            raise TypeError("Invalid type of inference config provided.")
+        if not isinstance(self.tokenizer, (PreTrainedTokenizerFast, PreTrainedTokenizer)):
+            raise TypeError(
+                f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
+            )
 
     def init_workers(self):
         rpc_ports = find_available_ports(self.tp_size)
@@ -188,19 +179,6 @@ class RpycInferenceEngine:
 
         await asyncio.gather(*init_tasks)
 
-    async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
-        assert len(self.workers) == self.tp_size, "init workers first"
-
-        init_tasks = [
-            self.async_parallel_wrapper(worker.init_cache, alloc_shape, num_layers) for worker in self.workers
-        ]
-
-        await asyncio.gather(*init_tasks)
-        # print(f"compute result for one step: {ret}")
-
-    def init_device_cache(self, alloc_shape: Tuple[int, int, int, int], num_layers: int):
-        asyncio.run(self._init_device_cache(alloc_shape, num_layers))
-
     async def init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
         assert len(self.workers) == self.tp_size, "init workers first"
 
@@ -215,13 +193,21 @@ class RpycInferenceEngine:
 
         await asyncio.gather(*init_tasks)
 
-    def init_scheduler(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> RequestHandler:
+    def init_scheduler(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> RPCRequestHandler:
         # NOTE(@runyu) move the request_handler logic there
-        return RequestHandler(inference_config, model_config)
+        return RPCRequestHandler(inference_config, model_config)
 
-    def _verify_args(self) -> None:
-        # NOTE(@runyu) as usual
-        pass
+    async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
+        assert len(self.workers) == self.tp_size, "init workers first"
+
+        init_tasks = [
+            self.async_parallel_wrapper(worker.init_cache, alloc_shape) for worker in self.workers
+        ]
+
+        await asyncio.gather(*init_tasks)
+
+    def init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
+        asyncio.run(self._init_device_cache(alloc_shape))
 
     @property
     def has_prompt_template(self) -> bool:
@@ -440,13 +426,10 @@ class RpycInferenceEngine:
 
         input_token_ids, input_meta_data = self.prepare_input(batch)
         # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
-        logits = asyncio.run(self.step_(input_token_ids, input_meta_data))
-        logits = torch.tensor(logits)
+        next_tokens = asyncio.run(self.step_(input_token_ids, input_meta_data))
 
-        if self.inference_config.pad_input:
-            logits = logits[:, -1, :]
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
-
+        # update the request_handler
+        next_tokens = torch.tensor(next_tokens, dtype=torch.int)
         self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
         return finished_sequences

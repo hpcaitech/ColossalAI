@@ -62,6 +62,8 @@ def llama_causal_lm_forward(
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
+    # logger.info(f"llama casual lm forward: {inputmetadata}")
+
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     hidden_states = llama_model_forward(
         self.model,
@@ -100,6 +102,10 @@ def llama_model_forward(
     sequence_lengths = inputmetadata.sequence_lengths
     batch_size = inputmetadata.batch_size
     kv_seq_len = inputmetadata.kv_seq_len
+
+    # logger.info(f"llama model forward: {inputmetadata}")
+    # logger.info(f"llama model forward block table: {block_tables}")
+    # logger.info(f"llama model forward sequence_lengths: {sequence_lengths}")
 
     # NOTE: After testing, the performance of this configuration is relatively good. With updates
     # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
@@ -154,6 +160,8 @@ def llama_model_forward(
     residual = None
 
     for layer_id, decoder_layer in enumerate(self.layers):
+        # logger.info(f"{layer_id}th decoder layer forward out: {block_tables}")
+        # logger.info(f"{layer_id}th decoder layer forward hidden_states: {hidden_states.shape}")
         hidden_states, residual = decoder_layer(
             hidden_states,
             residual=residual,
@@ -229,7 +237,10 @@ def llama_decoder_layer_forward(
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
+    # logger.info(f"llama decoder layer forward block table: {block_tables}")
+    # logger.info(f"llama decoder layer forward sequence_lengths: {sequence_lengths}")
     hidden_states, residual = self.input_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
+    # logger.info(f"llama decoder layer forward after layernorm token len: {hidden_states.shape}")
     # Self Attention
     hidden_states = self.self_attn(
         hidden_states=hidden_states,
@@ -249,10 +260,13 @@ def llama_decoder_layer_forward(
         cu_seqlens=cu_seqlens,
         high_precision=high_precision,
     )
+    # logger.info(f"llama decoder layer forward after self attn token len: {hidden_states.shape}")
 
     # Fully Connected
     hidden_states, residual = self.post_attention_layernorm(hidden_states, norm_output, residual, use_cuda_kernel)
+    # logger.info(f"llama decoder layer forward after post_attn layernorm token len: {hidden_states.shape}")
     hidden_states = self.mlp(hidden_states)
+    # logger.info(f"llama decoder layer forward after mlp token len: {hidden_states.shape}")
 
     return hidden_states, residual
 
@@ -525,6 +539,8 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
             high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
         """
 
+        # logger.info(f"llama NopadLlamaAttn block table: {block_tables}")
+        # logger.info(f"llama NopadLlamaAttn sequence_lengths: {sequence_lengths}")
         token_nums = hidden_states.size(0)
 
         if self.num_heads != self.num_key_value_heads:
@@ -563,6 +579,22 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                 attn_output = attn_output.view(token_nums, -1)
             else:
                 rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+
+                # to_print = {
+                #         "q": query_states.shape,
+                #         "k": key_states.shape,
+                #         "v": value_states.shape,
+                #         "k_cache": k_cache.shape,
+                #         "v_cache": v_cache.shape,
+                #         "context_lengths": sequence_lengths,
+                #         "block_tables": block_tables,
+                #         "block_size": block_size,
+                #         "output": output_tensor.shape,
+                #         "max_seq_len": kv_seq_len,
+                #         "sm_scale": sm_scale,
+                #     }
+                # logger.info(f"{to_print}")
+
                 attn_output = context_attention_unpadded(
                     q=query_states,
                     k=key_states,
@@ -626,6 +658,7 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                         block_tables,
                         sequence_lengths,
                     )
+            # logger.info(f"before the flash decoding, q states: {query_states.shape}")
             attn_output = flash_decoding_attention(
                 q=query_states,
                 k_cache=k_cache,
@@ -643,7 +676,9 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
             )
 
         attn_output = attn_output.view(-1, self.hidden_size)
+        # logger.info(f"before the attn.o_proj: {attn_output.shape}")
         attn_output = self.o_proj(attn_output)
+        # logger.info(f"after the attn.o_proj: {attn_output.shape}")
         return attn_output
 
     def _load_from_state_dict(

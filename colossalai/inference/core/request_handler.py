@@ -7,7 +7,7 @@ from transformers.generation import GenerationConfig
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.kv_cache import KVCacheManager
+from colossalai.inference.kv_cache import KVCacheManager, RPCKVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
 from colossalai.inference.struct import RequestStatus, Sequence
@@ -374,3 +374,52 @@ class RequestHandler:
         self.done_list.extend(finished_seqs)
 
         return finished_seqs
+
+class RPCRequestHandler(RequestHandler):
+    """
+    RPC Version of request handler
+    """
+
+    def __init__(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> None:
+        self.inference_config = inference_config
+        self.running_list: RunningList = RunningList(inference_config.prefill_ratio)
+        self.waiting_list: List[List] = [[], [], []]
+        self.done_list: List[Sequence] = []
+        self.dtype = inference_config.dtype
+        self.max_batch_size = inference_config.max_batch_size
+
+        # initialize cache
+        self._init_cache(model_config)
+
+        # initialize batch
+        torch.cuda.current_device()
+        kv_max_split_num = (
+            inference_config.max_input_len + inference_config.max_output_len + inference_config.block_size - 1
+        ) // inference_config.block_size
+        head_dim = model_config.hidden_size // model_config.num_attention_heads
+
+        # TODO In the continuous batching scenario, the batch size may be greater than max_batch_size,
+        # which may cause bugs and this issue should be fixed later.
+        self.running_bb = BatchBucket(
+            num_heads=model_config.num_attention_heads // inference_config.tp_size,
+            head_dim=head_dim,
+            max_batch_size=self.max_batch_size,
+            max_length=inference_config.max_input_len + inference_config.max_output_len,
+            block_size=inference_config.block_size,
+            kv_max_split_num=kv_max_split_num,
+            fd_interm_tensor=None,
+            dtype=self.dtype,
+        )
+        self.prefill_bb = BatchBucket(
+            num_heads=model_config.num_attention_heads // inference_config.tp_size,
+            head_dim=head_dim,
+            max_batch_size=self.max_batch_size,
+            max_length=inference_config.max_input_len + inference_config.max_output_len,
+            block_size=inference_config.block_size,
+            kv_max_split_num=kv_max_split_num,
+            fd_interm_tensor=None,
+            dtype=self.dtype,
+        )
+
+    def _init_cache(self, model_config):
+        self.cache_manager = RPCKVCacheManager(self.inference_config, model_config)

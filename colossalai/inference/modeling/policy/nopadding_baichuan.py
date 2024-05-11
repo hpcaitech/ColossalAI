@@ -11,6 +11,7 @@ from colossalai.inference.modeling.models.nopadding_llama import (
 from colossalai.inference.utils import init_to_get_rotary
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, SubModuleReplacementDescription
 from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
+from colossalai.inference.config import RPC_PARAM
 
 
 class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
@@ -60,3 +61,11 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
     def postprocess(self):
         init_to_get_rotary(self.model.model)
         return self.model
+
+    def to_rpc_param() -> str:
+        return "NoPaddingBaichuanModelInferPolicy"
+
+    @staticmethod
+    def from_rpc_param() -> 'NoPaddingBaichuanModelInferPolicy':
+        return NoPaddingBaichuanModelInferPolicy()
+
