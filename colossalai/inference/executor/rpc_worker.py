@@ -72,7 +72,6 @@ class rpcWorkerService(rpyc.Service):
         logger.info(f"init model done for rank {dist.get_rank()}")
 
     def exposed_init_cache(self, alloc_shape: Tuple[int, int, int, int]):
-        # NOTE(@runyu) move the request_handler logic there
         """Initialize the physical cache on the device.
 
         For each layer of the model, we allocate two tensors for key and value respectively,

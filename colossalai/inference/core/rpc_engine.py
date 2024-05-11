@@ -194,7 +194,6 @@ class RPCInferenceEngine:
         await asyncio.gather(*init_tasks)
 
     def init_scheduler(self, inference_config: InferenceConfig, model_config: PretrainedConfig) -> RPCRequestHandler:
-        # NOTE(@runyu) move the request_handler logic there
         return RPCRequestHandler(inference_config, model_config)
 
     async def _init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
@@ -236,7 +235,6 @@ class RPCInferenceEngine:
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
         **kwargs,
     ) -> None:
-        # NOTE(@runyu) as usual
         """
         Add requests.
 
@@ -319,7 +317,6 @@ class RPCInferenceEngine:
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
-        # NOTE(@runyu) as usual
         """
         Executing the inference step.
 
