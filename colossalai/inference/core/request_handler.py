@@ -11,11 +11,8 @@ from colossalai.inference.kv_cache import KVCacheManager
 from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
 from colossalai.inference.struct import RequestStatus, Sequence
-from colossalai.logging import get_dist_logger
 
 __all__ = ["RunningList", "RequestHandler"]
-
-logger = get_dist_logger(__name__)
 
 
 class RunningList:
@@ -331,15 +328,21 @@ class RequestHandler:
     def total_requests_in_batch_bucket(self) -> int:
         return self.prefill_bb.current_batch_size + self.running_bb.current_batch_size
 
-    def search_tokens(self, generation_config: GenerationConfig, logits):
+    def search_tokens(self, generation_config: GenerationConfig, logits, cur_batch: BatchBucket):
         """
         Sample tokens for finished requests.
         """
 
+        # NOTE: need to decide the granularity to process logits (sequence or batch)
+        config_dict = generation_config.to_dict()
+        # process repetition_penalty, no_repeat_ngram_size
+        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
+            if type in config_dict and config_dict[type] is not None:
+                logits = logit_processor(type, logits, config_dict[type], cur_batch)
+
         # do logit processor
         if generation_config.do_sample:
-            # NOTE: need to decide the granularity to process logits (sequence or batch)
-            config_dict = generation_config.to_dict()
+            # process temperature, top_k, top_p
             for type in ["temperature", "top_k", "top_p"]:
                 if type in config_dict and config_dict[type] is not None:
                     logits = logit_processor(type, logits, config_dict[type])
