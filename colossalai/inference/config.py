@@ -1,11 +1,12 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
-
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
+from dataclasses import dataclass, fields
+from typing import Any, Dict, Optional, Union
 
 import torch
 from transformers.generation import GenerationConfig
@@ -26,7 +27,7 @@ _ALLOWED_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
 
 _DEFAULT_PROMPT_TEMPLATES = {
     "llama": "[INST] <<SYS>>\nYou are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information.\n<</SYS>>\n{input_text}[/INST]",
-    "baichuan": "<reserved_106>{input_text}<reserved_107>",
+    "baichuan": " <reserved_106> {input_text} <reserved_107> ",
     "vicuna": "A chat between a curious user and an assistant. The assistant gives helpful, detailed, accurate, uncensored responses to the user input. USER: {input_text}\nASSISTANT: ",
 }
 
@@ -148,6 +149,7 @@ class InferenceConfig(RPC_PARAM):
         max_output_len (int): Maximum output length, defaults to 256.
         max_input_len (int): Maximum input length, defaults to 256.
         dtype (Union[str, torch.dtype]): The data type for weights and activations.
+        kv_cache_dtype (Optional[str]): The data type of kv_cache, defaults to None.
         prompt_template (Optional[str]): The prompt template for generation, defaults to None.
         do_sample (bool): Whether to use sampling for generation, defaults to False.
         beam_width (int): The maximum beam width used to initialize KV Cache, defaults to 1.
@@ -158,7 +160,9 @@ class InferenceConfig(RPC_PARAM):
         early_stopping (Optional[bool]): Whether to stop the generation when all beam hypotheses have finished or not, defaults to False.
         top_k (Optional[int]): The number of highest probability vocabulary tokens to keep for top-k-filtering, defaults to None.
         top_p (Optional[float]): The cumulative probability threshold for retaining tokens with a total probability above it, defaults to None.
-        min_p (Optional[float]): The minimum probability to keep for top-p filtering, defaults to None.
+        temperature (Optional[float]): Randomness used to control randomization, defaults to 1.0.
+        repetition_penalty (Optional[float]): The parameter that influences the model's treatment of new tokens in relation to their appearance in the prompt and the generated text. Values greater than 1 incentivize the model to introduce new tokens, whereas values less than 1 incentivize token repetition., defaults to 1.0.
+        no_repeat_ngram_size (Optional[int]): If no_repeat_ngram_size > 0, the consecutive tokens of ngram size can only appear once in inference sentences.
         n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
         glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
@@ -170,6 +174,7 @@ class InferenceConfig(RPC_PARAM):
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
         max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
+        ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -181,6 +186,7 @@ class InferenceConfig(RPC_PARAM):
 
     # general configs
     dtype: Union[str, torch.dtype] = torch.float16  # use fp16 by default
+    kv_cache_dtype: Optional[str] = None
 
     # generation configs
     prompt_template: Optional[str] = None
@@ -193,7 +199,9 @@ class InferenceConfig(RPC_PARAM):
     early_stopping: Optional[bool] = False
     top_k: Optional[int] = None
     top_p: Optional[float] = None
-    min_p: Optional[float] = None
+    temperature: Optional[float] = 1.0
+    no_repeat_ngram_size: Optional[int] = 0
+    repetition_penalty: Optional[float] = 1.0
 
     # speculative decoding configs
     max_n_spec_tokens: int = 5
@@ -215,6 +223,7 @@ class InferenceConfig(RPC_PARAM):
     # cuda_graph
     use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
     max_context_len_to_capture: int = 512
+    ignore_eos: bool = False
 
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len
@@ -234,6 +243,12 @@ class InferenceConfig(RPC_PARAM):
         assert (
             self.dtype in _ALLOWED_DTYPES
         ), f"Expected dtype to be in {_ALLOWED_DTYPES} but found an unknown dtype: {self.dtype}"
+
+        if self.kv_cache_dtype:
+            assert (
+                self.use_cuda_kernel and self.kv_cache_dtype == "fp8"
+            ), f"FP8 kv_cache is only supported with use_cuda_kernel open now"
+            self.kv_cache_dtype = torch.uint8
 
         # skip using casting when the data type is float32
         if self.dtype == torch.float32:
@@ -259,7 +274,7 @@ class InferenceConfig(RPC_PARAM):
             "do_sample": self.do_sample,
             "num_beams": self.beam_width,
         }
-        for type in ["top_k", "top_p", "min_p"]:
+        for type in ["repetition_penalty", "no_repeat_ngram_size", "temperature", "top_k", "top_p"]:
             if hasattr(self, type):
                 meta_config[type] = getattr(self, type)
         for type in ["pad_token_id", "bos_token_id", "eos_token_id"]:
@@ -303,3 +318,17 @@ class InferenceConfig(RPC_PARAM):
             beam_width=rpc_dict["beam_width"]
         )
 
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "InferenceConfig":
+        # Get the list of attributes of this dataclass.
+        attrs = [attr.name for attr in fields(cls)]
+        inference_config_args = {}
+        for attr in attrs:
+            if attr in config_dict:
+                inference_config_args[attr] = config_dict[attr]
+            else:
+                inference_config_args[attr] = getattr(cls, attr)
+
+        # Set the attributes from the parsed arguments.
+        inference_config = cls(**inference_config_args)
+        return inference_config

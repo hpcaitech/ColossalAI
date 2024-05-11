@@ -46,7 +46,7 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
 # launch from torch
-colossalai.launch_from_torch(config=dict())
+colossalai.launch_from_torch()
 
 ```
 

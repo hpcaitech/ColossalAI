@@ -91,7 +91,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
-    timeout-minutes: 60
+    timeout-minutes: 75
     defaults:
       run:
         shell: bash

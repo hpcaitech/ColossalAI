@@ -275,7 +275,6 @@ def run_gpt2_3d_test(test_config):
 def check_gpt2(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",
@@ -288,7 +287,6 @@ def check_gpt2(rank, world_size, port):
 def check_gpt2_3d(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",

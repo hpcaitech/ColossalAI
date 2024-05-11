@@ -40,7 +40,7 @@ class AddmmModel_with_param(nn.Module):
 
 def check_addmm_function_handler(rank, world_size, port, input_shape, model_cls):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     if model_cls == AddmmModel:
         model = AddmmModel().cuda()
     else:

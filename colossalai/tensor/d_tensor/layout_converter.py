@@ -10,6 +10,7 @@ from colossalai.context.singleton_meta import SingletonMeta
 from colossalai.tensor.d_tensor.comm_spec import *
 from colossalai.tensor.d_tensor.layout import Layout
 from colossalai.tensor.d_tensor.misc import LayoutException
+from colossalai.tensor.padded_tensor.api import init_as_padded_tensor, is_padded_tensor
 from colossalai.tensor.utils import all_gather_simulator, all_to_all_simulator, shard_simulator
 
 from .sharding_spec import ShardingSpec
@@ -607,8 +608,18 @@ class LayoutConverter(metaclass=SingletonMeta):
                     [3.],
                     [3.]])
         """
+
         _, comm_action_sequence = self.layout_converting(source_layout, target_layout)
+
+        target_tensor = tensor
         for comm_spec in comm_action_sequence:
-            tensor = comm_spec.covert_spec_to_action(tensor)
-        tensor.dist_layout = target_layout
-        return tensor
+            target_tensor = comm_spec.covert_spec_to_action(target_tensor)
+        target_tensor.dist_layout = target_layout
+
+        # restore the padding information
+        if is_padded_tensor(tensor) and not is_padded_tensor(target_tensor):
+            target_tensor = init_as_padded_tensor(
+                target_tensor, tensor._current_length, tensor._origin_length, tensor._padding_dim
+            )
+
+        return target_tensor

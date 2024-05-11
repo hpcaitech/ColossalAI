@@ -113,11 +113,21 @@ class InferenceEngine:
             model_policy (Policy): the policy to replace the model
         """
 
+        casuallm = None
         if isinstance(model_or_path, str):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                model = _supported_models[arch](hf_config)
+                if arch in _supported_models.keys():
+                    casuallm = _supported_models[arch](hf_config)
+                    if isinstance(casuallm, AutoModelForCausalLM):
+                        # NOTE(caidi) It's necessary to add half() here, otherwise baichuan13B will overflow the memory.
+                        model = AutoModelForCausalLM.from_pretrained(model_or_path, trust_remote_code=True).half()
+                    else:
+                        model = _supported_models[arch](hf_config)
+                else:
+                    raise ValueError(f"Model {arch} is not supported.")
+
             except Exception as e:
                 self.logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
@@ -165,7 +175,7 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str):
+        if isinstance(model_or_path, str) and not isinstance(casuallm, AutoModelForCausalLM):
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
@@ -415,7 +425,7 @@ class InferenceEngine:
 
         # 2. Prefill main model (Verifier) - fill past kv cache for main model
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+        next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
         # append new inputs to the batch, temporarily
         batch.append_batch_tokens(next_tokens)
         self.request_handler.allocate_batch_spec_dec(batch, 1)
@@ -463,7 +473,7 @@ class InferenceEngine:
             input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
             logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
 
-            next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+            next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
 
             # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
@@ -498,9 +508,9 @@ class InferenceEngine:
 
     def generate(
         self,
-        prompts: List[str] = None,
+        request_ids: Union[List[int], int] = None,
+        prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
-        request_ids: List[int] = None,
         return_token_ids: bool = False,
         generation_config: Optional[GenerationConfig] = None,
     ) -> List[str]:
@@ -518,6 +528,9 @@ class InferenceEngine:
             List[str]: Inference result returned by one generation.
         """
         with torch.inference_mode():
+            if isinstance(prompts, str) and isinstance(request_ids, int):
+                prompts = [prompts]
+                request_ids = [request_ids]
             if prompts is not None or prompts_token_ids is not None:
                 gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
                 self.add_request(
@@ -571,13 +584,13 @@ class InferenceEngine:
         if isinstance(prompts, (list, tuple)):
             return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
         elif isinstance(prompts, str):
-            return self.inference_config.rompt_template.format(input_text=prompts)
+            return self.inference_config.prompt_template.format(input_text=prompts)
         else:
             raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
 
     def add_request(
         self,
-        request_ids: List[int] = None,
+        request_ids: Union[List[int], int] = None,
         prompts: List[str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
         **kwargs,
@@ -592,10 +605,14 @@ class InferenceEngine:
         """
 
         # apply the prompt template to the input prompts
+
         if self.has_prompt_template and prompts is not None:
             prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
+
+        if request_ids is not None and not isinstance(request_ids, list):
+            request_ids = [request_ids]
 
         if prompts is not None and not isinstance(prompts, list):
             prompts = [prompts]
@@ -606,8 +623,10 @@ class InferenceEngine:
                 "input_ids"
             ]
 
+        # list of torch Tensor
         if isinstance(prompts_token_ids, list):
-            pass
+            if isinstance(prompts_token_ids[0], torch.Tensor):
+                prompts_token_ids = [prompt_token_id.tolist() for prompt_token_id in prompts_token_ids]
         elif isinstance(prompts_token_ids, torch.Tensor) or isinstance(prompts_token_ids, np.ndarray):
             prompts_token_ids = prompts_token_ids.tolist()
         else:
@@ -623,8 +642,6 @@ class InferenceEngine:
 
         for i in range(prompts_num):
             if request_ids:
-                if not isinstance(request_ids, list):
-                    request_ids = [request_ids]
                 assert isinstance(
                     request_ids[0], int
                 ), f"The request_id type must be int, but got {type(request_ids[0])}"
@@ -653,6 +670,7 @@ class InferenceEngine:
                 self.tokenizer.eos_token_id,
                 self.tokenizer.pad_token_id,
                 max_output_len=max_new_tokens,
+                ignore_eos=self.inference_config.ignore_eos,
             )
             self.request_handler.add_sequence(sequence)
 
@@ -723,7 +741,6 @@ class InferenceEngine:
             logits = logits[:, -1, :]
         next_tokens = search_tokens(self.generation_config, logits, input_meta_data.is_prompts)
         self.request_handler.append_next_tokens(next_tokens)
-
         finished_sequences = self.request_handler.update()
 
         return finished_sequences

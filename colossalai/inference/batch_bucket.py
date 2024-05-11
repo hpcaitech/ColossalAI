@@ -62,6 +62,9 @@ class BatchBucket:
     def current_batch_size(self):
         return self._current_batch_size
 
+    def __len__(self):
+        return self._current_batch_size
+
     @property
     def available_batch_size(self):
         return self.max_batch_size - self._current_batch_size
@@ -98,6 +101,13 @@ class BatchBucket:
     @property
     def num_tokens_to_verify(self) -> int:
         return self._num_tokens_to_verify
+
+    @property
+    def batch_token_ids(self) -> List[List[int]]:
+        out = []
+        for seq in self.seqs_li:
+            out.append(seq.input_token_id + seq.output_token_id)
+        return out
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
         """Set batch bucket to use speculatvie decoding.
@@ -325,6 +335,7 @@ class BatchBucket:
             seqs.append(seq)
         if not self.is_compact:
             self._make_compact()
+
         return seqs, block_tables
 
     def pop_finished(
@@ -429,6 +440,7 @@ class BatchBucket:
             block_tables = torch.stack(block_tables_li)
             self.add_seqs(seqs, alloc_block_tables=block_tables)
             unmerged_ids = other.seqs_ids
+
         return unmerged_ids
 
     ########## The following methods are expected to be used in modeling ###########

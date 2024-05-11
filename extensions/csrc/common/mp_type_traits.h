@@ -4,6 +4,11 @@
 
 #include "micros.h"
 
+#if defined(COLOSSAL_WITH_CUDA)
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#endif
+
 namespace colossalAI {
 namespace common {
 
@@ -26,6 +31,18 @@ template <>
 struct MPTypeTrait<at::BFloat16> {
   using Type = float;
 };
+
+#if defined(COLOSSAL_WITH_CUDA)
+template <>
+struct MPTypeTrait<half> {
+  using Type = float;
+};
+
+template <>
+struct MPTypeTrait<__nv_bfloat16> {
+  using Type = float;
+};
+#endif
 
 template <bool high_precision, typename T>
 struct ScalarTypeTrait {

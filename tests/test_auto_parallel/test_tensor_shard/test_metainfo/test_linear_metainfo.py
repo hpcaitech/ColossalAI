@@ -30,7 +30,7 @@ def _linear_module_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = nn.Sequential(nn.Linear(64, 128, bias=False)).cuda()
     input = torch.rand(8, 8, 16, 64).cuda()
     input.requires_grad = True
@@ -68,7 +68,7 @@ def _linear_function_mem_test(rank, world_size, port):
         port: port for initializing process group
     """
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = MyModule().cuda()
     input = torch.rand(8, 8, 16, 64).cuda()
     input.requires_grad = True

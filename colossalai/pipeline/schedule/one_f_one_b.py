@@ -7,7 +7,7 @@ from torch.nn import Module
 from torch.utils._pytree import tree_map
 
 from colossalai.accelerator import get_accelerator
-from colossalai.interface import OptimizerWrapper
+from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils import get_current_device
@@ -327,7 +327,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             self.send_forward(output_obj)
 
         if outputs is not None:
-            outputs = merge_batch(outputs)
+            if isinstance(model, ModelWrapper):
+                model = model.unwrap()
+            batch_size_dim = getattr(model, "batch_size_dim", 0)
+            outputs = merge_batch(outputs, batch_size_dim)
         return {"loss": accum_loss, "outputs": outputs}
 
     def run_forward_backward(
@@ -410,7 +413,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         assert all(len(v) == 0 for v in input_objs) and all(len(v) == 0 for v in output_objs)
 
         if outputs is not None:
-            outputs = merge_batch(outputs)
+            if isinstance(model, ModelWrapper):
+                model = model.unwrap()
+            batch_size_dim = getattr(model, "batch_size_dim", 0)
+            outputs = merge_batch(outputs, batch_size_dim)
         return {"loss": accum_loss, "outputs": outputs}
 
     def forward_backward_step(

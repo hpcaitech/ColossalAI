@@ -20,7 +20,7 @@ def _benchmark(rank, world_size, port):
     only result in minor performance drop. So at last we might be able to find better training batch size for our
     model (combine with large batch training optimizer such as LAMB).
     """
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = tm.resnet152()
     gm = symbolic_trace(model)
     raw_graph = deepcopy(gm.graph)

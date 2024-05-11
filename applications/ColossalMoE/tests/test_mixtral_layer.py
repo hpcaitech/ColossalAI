@@ -50,7 +50,7 @@ def check_mixtral_moe_layer():
 
 
 def run_dist(rank: int, world_size: int, port: int):
-    colossalai.launch({}, rank, world_size, "localhost", port)
+    colossalai.launch(rank, world_size, "localhost", port)
     check_mixtral_moe_layer()
 
 

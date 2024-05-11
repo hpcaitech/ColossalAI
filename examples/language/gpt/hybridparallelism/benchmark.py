@@ -67,7 +67,7 @@ def main():
     parser.add_argument("--cpu_offload", action="store_true", help="Use gradient checkpointing")
     args = parser.parse_args()
 
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
 
     def empty_init():

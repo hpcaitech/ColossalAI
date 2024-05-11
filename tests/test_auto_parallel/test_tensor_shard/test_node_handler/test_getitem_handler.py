@@ -31,7 +31,7 @@ class GetItemFromTensorModel(nn.Module):
 
 def check_getitem_from_tensor_handler(rank, getitem_index, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     model = GetItemFromTensorModel(getitem_index=getitem_index)
 

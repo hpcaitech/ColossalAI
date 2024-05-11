@@ -69,7 +69,7 @@ class FusedAdamKernel(AdamKernel):
 
         fused_optim = FusedOptimizerLoader().load()
         self.fused_adam = fused_optim.multi_tensor_adam
-        self.dummy_overflow_buf = torch.cuda.IntTensor([0])
+        self.dummy_overflow_buf = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
 
     def update(self, step: int, param: Tensor, grad: Tensor, exp_avg: Tensor, exp_avg_sq: Tensor):
         multi_tensor_applier(

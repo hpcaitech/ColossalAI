@@ -23,7 +23,7 @@ from colossalai.inference.core.engine import InferenceEngine, GenerationConfig
 from colossalai.inference.modeling.models.glide_llama import GlideLlamaForCausalLM, GlideLlamaConfig
 
 # launch colossalai, setup distributed environment
-colossalai.launch_from_torch(config={})
+colossalai.launch_from_torch()
 
 # main model
 model_path_or_name = "REPLACE_TO_VICUNA_7B_PATH_OR_MODEL_CARD"

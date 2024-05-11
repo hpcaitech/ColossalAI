@@ -26,7 +26,6 @@ from colossalai.shardformer.layer._operation import gather_forward_split_backwar
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import cross_entropy_1d
-from ..layer._operation import gather_forward_split_backward
 
 logger = logging.get_logger(__name__)
 
@@ -178,11 +177,9 @@ class GPT2PipelineForwards:
         head_mask = self.get_head_mask(head_mask, self.config.n_layer)
 
         if stage_manager.is_first_stage():
-            if position_ids is not None:
-                position_ids = position_ids.view(-1, input_shape[-1])
-            else:
+            if position_ids is None:
                 position_ids = torch.arange(0, input_shape[-1], dtype=torch.long, device=device)
-                position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
+                position_ids = position_ids.unsqueeze(0)
 
             if inputs_embeds is None:
                 inputs_embeds = self.wte(input_ids)
@@ -240,22 +237,16 @@ class GPT2PipelineForwards:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, use_cache, output_attentions)
-
-                    return custom_forward
-
-                outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
+                outputs = self._gradient_checkpointing_func(
+                    block.__call__,
                     hidden_states,
                     None,
                     attention_mask,
                     head_mask[i],
                     encoder_hidden_states,
                     encoder_attention_mask,
+                    use_cache,
+                    output_attentions,
                 )
             else:
                 outputs = block(
@@ -397,12 +388,10 @@ class GPT2PipelineForwards:
                     shift_logits,
                     shift_labels,
                     process_group=shard_config.tensor_parallel_process_group,
+                    vocab_size=self.lm_head.out_features,
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)
-
-            if not shard_config.parallel_output:
-                lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + outputs[1:]
@@ -1301,11 +1290,11 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             shift_logits = shift_logits.view(-1, shift_logits.size(-1))
             shift_labels = shift_labels.view(-1)
             loss = cross_entropy_1d(
-                shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                shift_logits,
+                shift_labels,
+                process_group=shard_config.tensor_parallel_process_group,
+                vocab_size=self.lm_head.out_features,
             )
-
-        if not shard_config.parallel_output:
-            lm_logits = gather_forward_split_backward(lm_logits, -1, shard_config.tensor_parallel_process_group)
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
@@ -1319,5 +1308,20 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             attentions=transformer_outputs.attentions,
             cross_attentions=transformer_outputs.cross_attentions,
         )
+
+    return forward
+
+
+def get_jit_fused_gpt2_mlp_forward():
+    from transformers.models.gpt2.modeling_gpt2 import GPT2MLP
+
+    from colossalai.kernel.jit.bias_gelu import GeLUFunction as JitGeLUFunction
+
+    def forward(self: GPT2MLP, hidden_states: Optional[Tuple[torch.FloatTensor]]) -> torch.FloatTensor:
+        hidden_states, bias = self.c_fc(hidden_states)
+        hidden_states = JitGeLUFunction.apply(hidden_states, bias)
+        hidden_states = self.c_proj(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        return hidden_states
 
     return forward

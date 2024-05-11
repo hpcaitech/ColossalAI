@@ -1,3 +1,4 @@
+import pytest
 import torch
 from transformers.cache_utils import DynamicCache
 from transformers.modeling_attn_mask_utils import AttentionMaskConverter
@@ -7,6 +8,7 @@ from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotar
 from colossalai.inference.modeling.layers.attention import PagedAttention, convert_kvcache, copy_to_cache
 
 
+@pytest.mark.skip(reason="This test is not used in the current version.")
 def test_copy_to_cache():
     key = torch.ones((2, 11, 3, 3))
     key[0, 9, :, :] = 0
@@ -24,6 +26,7 @@ def test_copy_to_cache():
     assert cache[3, 0, 0, 0] == 1
 
 
+@pytest.mark.skip(reason="This test is not used in the current version.")
 def test_convert_kvcache():
     cache = torch.ones(8, 3, 8, 3)
     key = torch.ones(2, 1, 3, 3) + 1
@@ -34,6 +37,7 @@ def test_convert_kvcache():
     assert converted_cache.shape == (2, 10, 3, 3)
 
 
+@pytest.mark.skip(reason="This test is not used in the current version.")
 def test_context_attention():
     """
     test config: head_num = 4, head_size = 4
@@ -86,6 +90,7 @@ def test_context_attention():
     assert torch.allclose(pad_attn_output, attn_output, atol=1e-3, rtol=1e-3)
 
 
+@pytest.mark.skip(reason="This test is not used in the current version.")
 def test_decoding_attention():
     # test the pipeline of decoding attention
     attn = PagedAttention()

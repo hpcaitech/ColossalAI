@@ -58,7 +58,7 @@ def run_pp(
     This test is to examine the correctness of interleaved 1F1B, compared with torch.
     Be aware it contains some hardcodes.
     """
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
     # create model
     seed_all(1453)

@@ -4,7 +4,7 @@ import warnings
 from contextlib import contextmanager
 from functools import partial
 from types import MethodType
-from typing import Any, Callable, Iterator, List, Optional, OrderedDict, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, OrderedDict, Tuple, Union
 
 import numpy as np
 import torch
@@ -34,7 +34,6 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 from .pp_plugin_base import PipelinePluginBase
 
-DP_AXIS, PP_AXIS, TP_AXIS, SP_AXIS = 0, 1, 2, 3
 SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
 
 PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
@@ -213,12 +212,7 @@ def get_param_info(optim: Optimizer):
 
     if optim is None:
         return {}
-    param_info = {
-        "param_groups": [],
-        "param2id": {},
-        "id2param": {},
-        "param2shape": {},
-    }
+    param_info = {"param_groups": [], "param2id": {}, "id2param": {}, "param2shape": {}}
     start_index = 0
     for group in optim.param_groups:
         packed_group = {k: v for k, v in group.items() if k != "params"}
@@ -947,6 +941,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
+        make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
+
     """
 
     def __init__(
@@ -987,8 +983,11 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
+        num_layers_per_stage: Optional[List[int]] = None,
         gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
         enable_metadata_cache: bool = True,
+        make_vocab_size_divisible_by: int = 64,
+        dp_outside: bool = True,
     ) -> None:
         super().__init__()
         assert (
@@ -1036,7 +1035,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
-        self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
+        if dp_outside:
+            self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
+            self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
+        else:
+            self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
+            self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
@@ -1050,9 +1054,10 @@ class HybridParallelPlugin(PipelinePluginBase):
             assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
-                pipeline_axis=PP_AXIS,
+                pipeline_axis=self.pp_axis,
                 enable_interleave=pp_style == "interleaved",
                 num_model_chunks=num_model_chunks,
+                num_layers_per_stage=num_layers_per_stage,
             )
 
             if pp_style == "interleaved":
@@ -1074,13 +1079,13 @@ class HybridParallelPlugin(PipelinePluginBase):
             else:
                 raise NotImplementedError()
 
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
-        self.dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
+        self.dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
+        self.pp_group = self.pg_mesh.get_group_along_axis(self.pp_axis)
         if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["split_gather", "ring"]:
-            self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
-            self.sp_group = self.pg_mesh.get_group_along_axis(SP_AXIS)
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -1095,6 +1100,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
         )
         self.amp_config = dict(
@@ -1150,6 +1156,9 @@ class HybridParallelPlugin(PipelinePluginBase):
     def support_no_sync(self) -> bool:
         return True
 
+    def support_lora(self) -> bool:
+        return False
+
     def control_checkpoint_io(self) -> bool:
         return True
 
@@ -1170,7 +1179,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 and self.sequence_parallelism_mode == "all_to_all"
             )
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                dp_group = self.pg_mesh.create_group_along_axis([DP_AXIS, SP_AXIS])
+                dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:
                 dp_group = self.dp_group
             model = HybridParallelModule(
@@ -1318,7 +1327,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         _kwargs = kwargs.copy()
         distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
         sampler = distributed_sampler_cls(
-            dataset, num_replicas=self.pg_mesh.size(DP_AXIS), rank=self.pg_mesh.coordinate(DP_AXIS), shuffle=shuffle
+            dataset,
+            num_replicas=self.pg_mesh.size(self.dp_axis),
+            rank=self.pg_mesh.coordinate(self.dp_axis),
+            shuffle=shuffle,
         )
 
         # Deterministic dataloader
@@ -1347,3 +1359,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.zero_stage != 2
         ), "ZERO2 is not compatible with no_sync function, please run gradient accumulation with gradient synchronization allowed."
         return optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
+
+    def enable_lora(
+        self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> Module:
+        raise NotImplementedError

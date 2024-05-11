@@ -289,7 +289,7 @@ class DummyDataloader:
 def main():
     args = parse_args()
     disable_existing_loggers()
-    colossalai.legacy.launch_from_torch(config=dict())
+    colossalai.legacy.launch_from_torch()
     logger = get_dist_logger()
     is_main_process = dist.get_rank() == 0
 

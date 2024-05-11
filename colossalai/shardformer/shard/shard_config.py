@@ -30,6 +30,7 @@ class ShardConfig:
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
     """
+
     tensor_parallel_process_group: Optional[ProcessGroup] = None
     sequence_parallel_process_group: Optional[ProcessGroup] = None
     pipeline_stage_manager: Optional[PipelineStageManager] = None
@@ -42,10 +43,9 @@ class ShardConfig:
     sequence_parallelism_mode: str = None
     enable_sequence_overlap: bool = False
     parallel_output: bool = True
+    make_vocab_size_divisible_by: int = 64
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
-    # TODO padding vocab
-    # make_vocab_size_divisible_by: int = 128
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
@@ -110,7 +110,15 @@ class ShardConfig:
         Turn on all optimization.
         """
         # you can add all the optimization flag here
-        self.enable_fused_normalization = True
+        try:
+            from apex.normalization import FusedLayerNorm as ApexFusedLayerNorm  # noqa
+
+            apex_avail = True
+        except ImportError:
+            apex_avail = False
+            warnings.warn("You set enable_all_optimization=True, but apex is not installed.")
+
+        self.enable_fused_normalization = apex_avail
         self.enable_flash_attention = True
         self.enable_jit_fused = True
         # This can cause non-in-place param sharding when used without ZeRO.

@@ -119,10 +119,6 @@ class FlashAttentionLoader(KernelLoader):
     ]
 
 
-class FlashAttentionWithPaddingMaskLoader(KernelLoader):
-    REGISTRY = [FlashAttentionNpuExtension, FlashAttentionDaoCudaExtension]
-
-
 class FlashAttentionWithCustomMaskLoader(KernelLoader):
     REGISTRY = [FlashAttentionNpuExtension, FlashAttentionSdpaCudaExtension]
 

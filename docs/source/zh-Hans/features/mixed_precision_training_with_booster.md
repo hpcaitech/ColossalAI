@@ -19,11 +19,11 @@ AMP 代表自动混合精度训练。
 2. apex.amp
 3. naive amp
 
-| Colossal-AI    | 支持张量并行 | 支持流水并行 | fp16 范围                                                 |
-| -------------- | ------------ | ------------ | --------------------------------------------------------- |
-| AMP_TYPE.TORCH | ✅           | ❌           | 在前向和反向传播期间，模型参数、激活和梯度向下转换至 fp16 |
-| AMP_TYPE.APEX  | ❌           | ❌           | 更细粒度，我们可以选择 opt_level O0, O1, O2, O3           |
-| AMP_TYPE.NAIVE | ✅           | ✅           | 模型参数、前向和反向操作，全都向下转换至 fp16             |
+| Colossal-AI    | 支持张量并行 | 支持流水并行 | fp16 范围                                               |
+|----------------|--------------|--------------|-------------------------------------------------------|
+| AMP_TYPE.TORCH | ✅            | ❌            | 在前向和反向传播期间，模型参数、激活和梯度向下转换至 fp16 |
+| AMP_TYPE.APEX  | ❌            | ❌            | 更细粒度，我们可以选择 opt_level O0, O1, O2, O3          |
+| AMP_TYPE.NAIVE | ✅            | ✅            | 模型参数、前向和反向操作，全都向下转换至 fp16             |
 
 前两个依赖于 PyTorch (1.6 及以上) 和 NVIDIA Apex 的原始实现。最后一种方法类似 Apex O2。在这些方法中，Apex-AMP 与张量并行不兼容。这是因为张量是以张量并行的方式在设备之间拆分的，因此，需要在不同的进程之间进行通信，以检查整个模型权重中是否出现 inf 或 nan。我们修改了 torch amp 实现，使其现在与张量并行兼容。
 
@@ -153,7 +153,7 @@ parser = colossalai.get_default_parser()
 args = parser.parse_args()
 
 # launch from torch
-colossalai.launch_from_torch(config=dict())
+colossalai.launch_from_torch()
 
 ```
 

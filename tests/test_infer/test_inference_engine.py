@@ -28,11 +28,15 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     model = LlamaForCausalLM(
         LlamaConfig(
-            vocab_size=50000, hidden_size=512, intermediate_size=1536, num_attention_heads=4, num_hidden_layers=16
+            vocab_size=50000,
+            hidden_size=512,
+            intermediate_size=1536,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            num_hidden_layers=16,
         )
     ).cuda()
     model = model.eval()
-
     inputs = [
         "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
         "介绍一下武汉,",
@@ -55,7 +59,9 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
+        generation_config = GenerationConfig(
+            max_new_tokens=output_len, do_sample=do_sample, dtype="fp32", top_p=top_p, top_k=top_k
+        )
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
         if prompt_template:
@@ -67,6 +73,7 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
         inputs = inputs.cuda()
         generation_config = GenerationConfig(
             do_sample=do_sample,
+            dtype="fp32",
             top_p=top_p,
             top_k=top_k,
             pad_token_id=tokenizer.pad_token_id,
@@ -157,7 +164,7 @@ def check_spec_dec(num_layers, max_length):
 
 
 def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
     if ret:
         ret[rank] = func_to_run(**kwargs)
@@ -165,8 +172,10 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
         func_to_run(**kwargs)
 
 
+@pytest.mark.largedist
 @parameterize("prompt_template", [None, "llama"])
 @parameterize("do_sample", [False])
+@rerun_if_address_is_in_use()
 def test_tp_engine(prompt_template, do_sample):
     kwargs1 = {
         "use_engine": True,
@@ -186,18 +195,14 @@ def test_tp_engine(prompt_template, do_sample):
         assert s1 == s2, f"\nColossalAI TP=1 Output: {s1}\nColossalAI TP=2 Output: {s2}"
 
 
+@pytest.mark.largedist
 @parameterize("num_layers", [1])
 @parameterize("max_length", [64])
+@rerun_if_address_is_in_use()
 def test_spec_dec(num_layers, max_length):
     spawn(run_dist, 1, func_to_run=check_spec_dec, num_layers=num_layers, max_length=max_length)
 
 
-@pytest.mark.dist
-@rerun_if_address_is_in_use()
-def test_inference_engine():
+if __name__ == "__main__":
     test_tp_engine()
     test_spec_dec()
-
-
-if __name__ == "__main__":
-    test_inference_engine()

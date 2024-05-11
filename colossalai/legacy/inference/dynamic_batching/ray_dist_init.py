@@ -56,7 +56,7 @@ class Worker:
         # initialize a ray collective group, otherwise colossalai distributed env won't be built successfully
         collective.init_collective_group(world_size, rank, "nccl", "default")
         # initialize and set distributed environment
-        colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+        colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
         ray_serve_logger.info(f"Worker with rank {rank} (world size {world_size}) setting up..")
         log_cuda_info("Worker.setup")
 

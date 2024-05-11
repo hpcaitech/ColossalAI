@@ -3,7 +3,8 @@ from typing import Dict, List, Tuple
 import torch
 from torch.fx import Node
 
-from colossalai.zero.legacy.gemini.tensor_utils import alloc_storage, free_storage
+from colossalai.utils.common import free_storage
+from colossalai.zero.gemini.chunk.chunk import alloc_storage
 
 
 class Region:

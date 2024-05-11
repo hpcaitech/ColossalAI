@@ -29,35 +29,39 @@ class GPTJPolicy(Policy):
         pass
 
     def preprocess(self):
-        # reshape the embedding layer
-        r"""
-        Reshape the Embedding layer to make the embedding dimension divisible by world_size
-        """
-        if self.shard_config.enable_tensor_parallelism:
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self):
         from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJBlock, GPTJModel
 
+        ATTN_IMPLEMENTATION = {
+            "eager": GPTJAttention,
+        }
+
         policy = {}
+
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = col_nn.VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = col_nn.PaddingEmbedding
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
-        use_sequence_parallel = self.shard_config.enable_sequence_parallelism
 
         overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
             policy[GPTJModel] = ModulePolicyDescription(
                 sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="wte",
-                        target_module=col_nn.VocabParallelEmbedding1D,
-                    ),
                     SubModuleReplacementDescription(
                         suffix="drop",
                         target_module=col_nn.DropoutForParallelInput,
@@ -76,7 +80,6 @@ class GPTJPolicy(Policy):
                         suffix="attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
                             "overlap": overlap,
                         },
                     ),
@@ -84,7 +87,6 @@ class GPTJPolicy(Policy):
                         suffix="attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
                             "overlap": overlap,
                         },
                     ),
@@ -92,24 +94,20 @@ class GPTJPolicy(Policy):
                         suffix="attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "seq_parallel": use_sequence_parallel,
                             "overlap": overlap,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_in",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_out",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel": use_sequence_parallel},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
@@ -124,6 +122,17 @@ class GPTJPolicy(Policy):
                         target_module=col_nn.DropoutForParallelInput,
                     ),
                 ],
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="wte",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=GPTJModel,
             )
 
         # optimization configuration
@@ -154,7 +163,7 @@ class GPTJPolicy(Policy):
                     "forward": get_gptj_flash_attention_forward(),
                 },
                 policy=policy,
-                target_key=GPTJAttention,
+                target_key=attn_cls,
             )
             if not self.shard_config.pipeline_stage_manager:
                 self.append_or_create_method_replacement(
@@ -255,13 +264,28 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
-                            target_module=col_nn.Linear1D_Col,
-                            kwargs={"gather_output": True},
+                            target_module=col_nn.VocabParallelLMHead1D,
+                            kwargs={
+                                "gather_output": True,
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            },
                         )
                     ]
                 )
             }
-            policy.update(addon_module)
+        else:
+            addon_module = {
+                GPTJForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=col_nn.PaddingLMHead,
+                            kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                        )
+                    ]
+                )
+            }
+        policy.update(addon_module)
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(

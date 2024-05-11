@@ -3,8 +3,9 @@ import torch
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
-from tests.test_infer.test_ops.triton.kernel_utils import (
+from tests.test_infer.test_kernels.triton.kernel_utils import (
     generate_caches_and_block_tables_v2,
+    generate_caches_and_block_tables_v3,
     generate_caches_and_block_tables_vllm,
 )
 
@@ -19,7 +20,7 @@ inference_ops = InferenceOpsLoader().load()
 configs = [
     triton.testing.Benchmark(
         x_names=["MAX_NUM_BLOCKS_PER_SEQ"],
-        x_vals=[2**i for i in range(3, 8)],
+        x_vals=[2**i for i in range(2, 8)],
         line_arg="provider",
         line_vals=[
             "vllm_paged_decoding_attention",
@@ -95,7 +96,11 @@ def benchmark_flash_decoding_attention(
         BATCH_SIZE, HEAD_SIZE, NUM_ATTN_HEADS, NUM_KV_HEADS, MAX_SEQ_LEN, dtype, device
     )
 
-    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v2(
+    triton_k_cache, triton_v_cache, _ = generate_caches_and_block_tables_v2(
+        k_unpad, v_unpad, kv_seq_lengths, BATCH_SIZE, MAX_NUM_BLOCKS_PER_SEQ, BLOCK_SIZE, dtype, device
+    )
+
+    k_cache, v_cache, block_tables = generate_caches_and_block_tables_v3(
         k_unpad, v_unpad, kv_seq_lengths, BATCH_SIZE, MAX_NUM_BLOCKS_PER_SEQ, BLOCK_SIZE, dtype, device
     )
 
@@ -108,6 +113,8 @@ def benchmark_flash_decoding_attention(
     kv_max_split_num = (max_seq_len_across_batch + BLOCK_SIZE - 1) // BLOCK_SIZE
     output = torch.empty((BATCH_SIZE, NUM_ATTN_HEADS, HEAD_SIZE), dtype=dtype, device=device)
     sm_scale = 1.0 / (HEAD_SIZE**0.5)
+    alibi_slopes = None
+    kv_scale = 1.0
 
     mid_output = torch.empty(
         size=(BATCH_SIZE, NUM_ATTN_HEADS, kv_max_split_num, HEAD_SIZE), dtype=torch.float32, device=device
@@ -131,12 +138,13 @@ def benchmark_flash_decoding_attention(
             max_seq_len_across_batch,
             alibi_slopes,
             "auto",
+            kv_scale,
         )
     elif provider == "triton_flash_decoding_attention":
         fn = lambda: flash_decoding_attention(
             q.squeeze(2),
-            k_cache,
-            v_cache,
+            triton_k_cache,
+            triton_v_cache,
             kv_seq_lengths,
             block_tables,
             BLOCK_SIZE,
@@ -159,6 +167,7 @@ def benchmark_flash_decoding_attention(
             max_seq_len_across_batch,
             mid_output,
             mid_output_lse,
+            alibi_slopes,
             sm_scale,
         )
     else:

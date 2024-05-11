@@ -114,7 +114,7 @@ def run_worker(rank, args, master_func):
     port = args.master_port
     backend = "nccl" if device == "cuda" else "gloo"
 
-    launch(dict(), rank, world_size, host, int(port), backend, verbose=False)
+    launch(rank, world_size, host, int(port), backend, verbose=False)
     ppg.set_global_info(
         rank=rank,
         world_size=world_size,

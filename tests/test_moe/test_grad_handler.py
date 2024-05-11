@@ -16,7 +16,6 @@ DIM = 16
 
 def run_test(rank, world_size, port):
     colossalai.launch(
-        config=dict(),
         rank=rank,
         world_size=world_size,
         host="localhost",
