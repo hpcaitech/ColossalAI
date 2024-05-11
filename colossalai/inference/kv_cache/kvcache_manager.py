@@ -503,16 +503,26 @@ class RPCKVCacheManager(KVCacheManager):
     def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
         self.logger = get_dist_logger(__name__)
         self.device = get_current_device()
+        self.config = config
 
         # Parallel settings
         self.tp_size = config.tp_size
         # Model settings
         self.dtype = config.dtype
         self.elem_size_in_bytes = torch.tensor([], dtype=self.dtype).element_size()
-        self.num_layers = get_model_config_attr(model_config, "num_hidden_layers")
-        self.head_num = get_model_config_attr(model_config, "num_attention_heads")
-        self.kv_head_num = get_model_config_attr(model_config, "num_key_value_heads")
-        self.head_size = get_model_config_attr(model_config, "hidden_size") // self.head_num
+        self.num_layers = model_config.num_hidden_layers
+        self.head_num = model_config.num_attention_heads
+        self.head_size = model_config.hidden_size // self.head_num
+        if hasattr(model_config, "num_key_value_heads"):
+            self.kv_head_num = model_config.num_key_value_heads
+        else:
+            self.kv_head_num = self.head_num
+        
+        if config.kv_cache_dtype is None:
+            self.kv_cache_dtype = config.dtype
+        else:
+            self.kv_cache_dtype = config.kv_cache_dtype
+
         assert (
             self.kv_head_num % self.tp_size == 0
         ), f"Cannot shard {self.kv_head_num} heads with tp size {self.tp_size}"
@@ -537,8 +547,22 @@ class RPCKVCacheManager(KVCacheManager):
         self._block_states_cum = torch.zeros(size=(self.num_blocks + 1,), dtype=torch.int64)
         self._block_finder = torch.zeros((self.num_blocks,), dtype=torch.int64)
 
-    def get_physical_cache_shape(self) -> Tuple[int, int, int, int]:
-        return (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+    def get_physical_cache_shape(self) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
+
+        # Physical cache allocation
+        if self.config.use_cuda_kernel:
+            x = 16 // torch.tensor([], dtype=self.config.dtype).element_size()
+            kalloc_shape = (self.num_blocks, self.kv_head_num, self.head_size // x, self.block_size, x)
+            valloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+            self.logger.info(
+                f"Allocating K cache with shape: {kalloc_shape}, V cache with shape: {valloc_shape} consisting of {self.num_blocks} blocks."
+            )
+        else:
+            alloc_shape = (self.num_blocks, self.kv_head_num, self.block_size, self.head_size)
+            kalloc_shape = alloc_shape
+            valloc_shape = alloc_shape
+            self.logger.info(f"Allocating KV cache with shape: {alloc_shape} consisting of {self.num_blocks} blocks.")
+        return kalloc_shape, valloc_shape
 
     def get_kv_cache(self):
         """Get k_cache and v_cache"""

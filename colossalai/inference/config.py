@@ -295,6 +295,7 @@ class InferenceConfig(RPC_PARAM):
             "early_stopping": self.early_stopping,
             "do_sample": self.do_sample,
             "beam_width": self.beam_width,
+            "kv_cache_dtype": self.kv_cache_dtype,
         }
         return kwargs
 
@@ -315,6 +316,7 @@ class InferenceConfig(RPC_PARAM):
             early_stopping=rpc_dict["early_stopping"],
             do_sample=rpc_dict["do_sample"],
             beam_width=rpc_dict["beam_width"],
+            kv_cache_dtype=rpc_dict["kv_cache_dtype"],
         )
 
     @classmethod

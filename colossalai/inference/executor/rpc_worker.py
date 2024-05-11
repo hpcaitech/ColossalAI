@@ -13,7 +13,6 @@ from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
-from colossalai.inference.kv_cache.kvcache_manager import get_model_config_attr
 from colossalai.inference.modeling.policy import (
     NoPaddingBaichuanModelInferPolicy,
     NoPaddingLlamaModelInferPolicy,
@@ -52,7 +51,7 @@ class rpcWorkerService(rpyc.Service):
 
     def exposed_init_dist_env(self, rank, world_size, master_address, master_port):
         logger.info(f"init process group for rank {rank}")
-        colossalai.launch(config={}, rank=rank, world_size=world_size, port=master_port, host=master_address)
+        colossalai.launch(rank=rank, world_size=world_size, port=master_port, host=master_address)
         logger.info(f"init process group done for rank {rank}")
 
     def exposed_init_model(
@@ -71,22 +70,23 @@ class rpcWorkerService(rpyc.Service):
         self._init_output_tensor()
         logger.info(f"init model done for rank {dist.get_rank()}")
 
-    def exposed_init_cache(self, alloc_shape: Tuple[int, int, int, int]):
+    def exposed_init_cache(self, alloc_shape: Tuple[Tuple[int, ...], Tuple[int, ...]]):
         """Initialize the physical cache on the device.
 
         For each layer of the model, we allocate two tensors for key and value respectively,
         with shape of [num_blocks, num_kv_heads, block_size, head_size]
         """
-        num_layers = get_model_config_attr(self.model_config, "num_hidden_layers")
+        kalloc_shape, valloc_shape =  alloc_shape
+        num_layers = self.model_config.num_hidden_layers
 
         self.k_cache: List[torch.Tensor] = []
         self.v_cache: List[torch.Tensor] = []
         for _ in range(num_layers):
             self.k_cache.append(
-                torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device())
+                torch.zeros(kalloc_shape, dtype=self.inference_config.kv_cache_dtype, device=get_accelerator().get_current_device())
             )
             self.v_cache.append(
-                torch.zeros(alloc_shape, dtype=self.dtype, device=get_accelerator().get_current_device())
+                torch.zeros(valloc_shape, dtype=self.inference_config.kv_cache_dtype, device=get_accelerator().get_current_device())
             )
         logger.info("physical cache init over")
 

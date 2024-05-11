@@ -35,7 +35,6 @@ def run_server(host, port, event: mp.Event = None):
         event.set()
     server.start()
 
-
 class RPCInferenceEngine(InferenceEngine):
 
     """
@@ -95,9 +94,7 @@ class RPCInferenceEngine(InferenceEngine):
 
         # init the physical cache
         alloc_shape = self.request_handler.cache_manager.get_physical_cache_shape()
-        self.init_device_cache(
-            alloc_shape,
-        )
+        self.init_device_cache(alloc_shape)
 
         self.use_cuda_graph = self.inference_config.use_cuda_graph
         self.high_precision = inference_config.high_precision
@@ -199,7 +196,7 @@ class RPCInferenceEngine(InferenceEngine):
 
         await asyncio.gather(*init_tasks)
 
-    def init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
+    def init_device_cache(self, alloc_shape: Tuple[Tuple[int, ...], Tuple[int, ...]]):
         asyncio.run(self._init_device_cache(alloc_shape))
 
     def prepare_input(self, batch: BatchBucket) -> Tuple[List[int], InputMetaData]:
