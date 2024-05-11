@@ -26,8 +26,9 @@ from colossalai.logging import get_dist_logger
 from colossalai.shardformer.policies.base_policy import Policy
 
 from .request_handler import RPCRequestHandler
+from .engine import InferenceEngine
 
-__all__ = ["InferenceEngine"]
+__all__ = ["RPCInferenceEngine"]
 
 PP_AXIS, TP_AXIS = 0, 1
 
@@ -40,7 +41,7 @@ def run_server(host, port, event: mp.Event = None):
         event.set()
     server.start()
 
-class RPCInferenceEngine:
+class RPCInferenceEngine(InferenceEngine):
 
     """
     InferenceEngine which manages the inference process..
@@ -208,166 +209,6 @@ class RPCInferenceEngine:
     def init_device_cache(self, alloc_shape: Tuple[int, int, int, int]):
         asyncio.run(self._init_device_cache(alloc_shape))
 
-    @property
-    def has_prompt_template(self) -> bool:
-        """ """
-        return self.inference_config.prompt_template is not None
-
-    def format_prompt(self, prompts: Union[List[str], str]) -> Union[List[str], str]:
-        """
-        This method will format the input prompt according to the prompt template given to the InferenceConfig.
-        """
-        assert (
-            self.has_prompt_template
-        ), "Found the prompt_template is None. Please provide a valid prompt_template in InferenceConfig."
-
-        if isinstance(prompts, (list, tuple)):
-            return [self.inference_config.prompt_template.format(input_text=prompt) for prompt in prompts]
-        elif isinstance(prompts, str):
-            return self.inference_config.rompt_template.format(input_text=prompts)
-        else:
-            raise TypeError(f"Expected the input prompt to be one of list, tuple, or str, but got {type(prompts)}.")
-
-    def add_request(
-        self,
-        request_ids: List[int] = None,
-        prompts: List[str] = None,
-        prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
-        **kwargs,
-    ) -> None:
-        """
-        Add requests.
-
-        Args:
-            request_ids (List[int], optional): The request ID. Defaults to None.
-            prompts (Union[List[str], optional): Input prompts. Defaults to None.
-            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
-        """
-
-        # apply the prompt template to the input prompts
-        if self.has_prompt_template and prompts is not None:
-            prompts = self.format_prompt(prompts)
-
-        block_size = self.inference_config.block_size
-
-        if prompts is not None and not isinstance(prompts, list):
-            prompts = [prompts]
-
-        if prompts_token_ids is None:
-            assert prompts, "When the prompts_token_ids is none, the input prompt list must be provided."
-            prompts_token_ids = self.tokenizer.batch_encode_plus(prompts, padding=self.inference_config.pad_input)[
-                "input_ids"
-            ]
-
-        if isinstance(prompts_token_ids, list):
-            pass
-        elif isinstance(prompts_token_ids, torch.Tensor) or isinstance(prompts_token_ids, np.ndarray):
-            prompts_token_ids = prompts_token_ids.tolist()
-        else:
-            raise TypeError(
-                f"The dtype of prompts_token_ids must be one of list, torch.Tensor, np.ndarray, but got {type(prompts_token_ids)}."
-            )
-
-        assert (
-            len(prompts_token_ids[0]) <= self.inference_config.max_input_len
-        ), f"The length of input prompts {len(prompts_token_ids[0])} must be less than max_input_len {self.inference_config.max_input_len}."
-
-        prompts_num = len(prompts_token_ids)
-
-        for i in range(prompts_num):
-            if request_ids:
-                if not isinstance(request_ids, list):
-                    request_ids = [request_ids]
-                assert isinstance(
-                    request_ids[0], int
-                ), f"The request_id type must be int, but got {type(request_ids[0])}"
-                assert len(request_ids) == prompts_num
-                request_id = request_ids[i]
-            else:
-                request_id = next(self.counter)
-            if prompts == None:
-                prompt = None
-            else:
-                prompt = prompts[i]
-
-            max_length = kwargs.get("max_length", None)
-            max_new_tokens = kwargs.get("max_new_tokens", None)
-            if max_length is None and max_new_tokens is None:
-                max_new_tokens = self.generation_config.max_new_tokens or self.inference_config.max_output_len
-            elif max_length is not None:
-                max_new_tokens = max_length - len(prompts_token_ids[i])
-
-            sequence = Sequence(
-                request_id,
-                prompt,
-                prompts_token_ids[i],
-                block_size,
-                None,
-                self.tokenizer.eos_token_id,
-                self.tokenizer.pad_token_id,
-                max_output_len=max_new_tokens,
-            )
-            self.request_handler.add_sequence(sequence)
-
-    def generate(
-        self,
-        prompts: List[str] = None,
-        prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
-        request_ids: List[int] = None,
-        return_token_ids: bool = False,
-        generation_config: Optional[GenerationConfig] = None,
-    ) -> List[str]:
-        """
-        Executing the inference step.
-
-        Args:
-            prompts (Union[List[str], optional): Input prompts. Defaults to None.
-            prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
-            request_ids (List[int], optional): The request ID. Defaults to None.
-            return_token_ids (bool): Whether to return output token ids. Defaults to False.
-            generation_config (GenerationConfig, optional): Huggingface GenerationConfig used for inference. Defaults to None.
-
-        Returns:
-            List[str]: Inference result returned by one generation.
-        """
-        with torch.inference_mode():
-            if prompts is not None or prompts_token_ids is not None:
-                gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
-                self.add_request(
-                    request_ids=request_ids,
-                    prompts=prompts,
-                    prompts_token_ids=prompts_token_ids,
-                    **gen_config_dict,
-                )
-
-            output_seqs_list = []
-            total_tokens_list = []
-
-            # intuition: If user provide a generation config, we should replace the existing one.
-            if generation_config is not None:
-                self.generation_config = generation_config
-
-            if self.use_spec_dec:
-                assert self.drafter is not None, "Drafter Model is not initialized."
-                while self.request_handler.check_unfinished_seqs():
-                    output_seqs_list += self.steps_spec_dec()
-            else:
-                while self.request_handler.check_unfinished_seqs():
-                    output_seqs_list += self.step()
-
-            output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
-
-            for seq in output_seqs_list:
-                total_tokens_list.append(seq.input_token_id + seq.output_token_id)
-
-            output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
-
-            if return_token_ids:
-                output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
-                return output_str, output_tokens_list
-            else:
-                return output_str
-
     def prepare_input(self, batch: BatchBucket) -> Tuple[List[int], InputMetaData]:
         input_ids = batch.get_1D_inputs()
         sequence_lengths = batch.get_sequence_lengths()
@@ -380,9 +221,6 @@ class RPCInferenceEngine:
                 n_tokens = batch.num_tokens_to_verify + 1
                 assert n_tokens == input_ids.size(0)
                 n_tokens = n_tokens * batch.current_batch_size
-        # output_tensor = torch.zeros(
-        #     (n_tokens, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
-        # ).tolist()
 
         # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
         use_cuda_graph = False
