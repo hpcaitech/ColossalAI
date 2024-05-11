@@ -29,6 +29,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.inference.sampler import search_tokens
 
 from .request_handler import RequestHandler
 
@@ -720,7 +721,7 @@ class InferenceEngine:
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+        next_tokens = search_tokens(self.generation_config, logits, input_meta_data.is_prompts)
         self.request_handler.append_next_tokens(next_tokens)
 
         finished_sequences = self.request_handler.update()
