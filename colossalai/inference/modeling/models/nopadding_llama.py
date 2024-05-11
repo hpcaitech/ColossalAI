@@ -62,7 +62,6 @@ def llama_causal_lm_forward(
         high_precision(Optional[bool]): Whether to use float32 for underlying calculations of float16 data to achieve higher precision, defaults to False.
     """
 
-
     # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
     hidden_states = llama_model_forward(
         self.model,
@@ -101,7 +100,6 @@ def llama_model_forward(
     sequence_lengths = inputmetadata.sequence_lengths
     batch_size = inputmetadata.batch_size
     kv_seq_len = inputmetadata.kv_seq_len
-
 
     # NOTE: After testing, the performance of this configuration is relatively good. With updates
     # and optimizations to the CUDA kernel implementation, a more detailed analysis of this configuration's
@@ -565,7 +563,6 @@ class NopadLlamaAttention(ParallelModule, LlamaAttention):
                 attn_output = attn_output.view(token_nums, -1)
             else:
                 rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-
                 attn_output = context_attention_unpadded(
                     q=query_states,
                     k=key_states,
