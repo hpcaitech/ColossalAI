@@ -14,7 +14,7 @@ from colossalai.shardformer.policies.llama import LlamaForCausalLMPolicy
 from colossalai.inference.config import RPC_PARAM
 
 
-class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy):
+class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
     def __init__(self) -> None:
         super().__init__()
 
