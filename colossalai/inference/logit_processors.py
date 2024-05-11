@@ -4,10 +4,8 @@ import torch
 import torch.nn.functional as F
 
 from colossalai.inference.batch_bucket import BatchBucket
-from colossalai.logging import get_dist_logger
 
 _LOGIT_PROCESSOR_MAP = {}
-logger = get_dist_logger(__name__)
 
 
 def register_logit_processor(process_type):
@@ -38,19 +36,17 @@ def no_repeat_ngram_size_logit_process(logits, ngram_size: int, batch: BatchBuck
 
         for batch_id in range(batch_size):
             current_token_ids = batch_token_ids[batch_id]
-            current_len = current_token_ids.size(0)
+            current_len = len(current_token_ids)
             if current_len + 1 < ngram_size:
                 continue
 
-            token_ids_list = current_token_ids.tolist()
-
             ngrams_dict = {}
 
-            for ngram in zip(*[token_ids_list[i:] for i in range(ngram_size)]):
+            for ngram in zip(*[current_token_ids[i:] for i in range(ngram_size)]):
                 prev_ngram_tuple = tuple(ngram[:-1])
                 ngrams_dict[prev_ngram_tuple] = ngrams_dict.get(prev_ngram_tuple, []) + [ngram[-1]]
 
-            prev_ngrams = tuple(token_ids_list[current_len + 1 - ngram_size : current_len])
+            prev_ngrams = tuple(current_token_ids[current_len + 1 - ngram_size : current_len])
             banned_token = ngrams_dict.get(prev_ngrams, [])
 
             logits[batch_id, banned_token] = -float("inf")
@@ -74,7 +70,7 @@ def repetition_penalty_logit_process(logits, penalty: float, batch: BatchBucket)
         batch_token_ids = batch.batch_token_ids
         for batch_id in range(len(batch_token_ids)):
             current_logit = logits[batch_id]
-            current_token = batch_token_ids[batch_id]
+            current_token = torch.tensor(batch_token_ids[batch_id], dtype=torch.long, device=logits.device)
 
             curretn_socre = torch.gather(current_logit, 0, current_token)
             curretn_socre = torch.where(curretn_socre < 0, curretn_socre * penalty, curretn_socre / penalty)
@@ -151,9 +147,5 @@ def logit_processor(processor: str, logits, *args, **kwargs):
         return logits
     else:
         func = _LOGIT_PROCESSOR_MAP[processor]
-        # try:
         logits = func(logits, *args, **kwargs)
-        # except Exception as e:
-        #     logger.warning(f"An exception ({e}) occurred during the logit processing ({processor}), skip this logit processing step.")
-        #     return logits
         return logits

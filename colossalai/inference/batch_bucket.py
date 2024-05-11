@@ -103,7 +103,7 @@ class BatchBucket:
         return self._num_tokens_to_verify
 
     @property
-    def batch_token_ids(self):
+    def batch_token_ids(self) -> List[List[int]]:
         return self.get_batch_token_ids()
 
     def set_use_spec_dec(self, num_tokens_to_verify: int = 5) -> None:
@@ -510,12 +510,13 @@ class BatchBucket:
         sequence_lengths = self.seq_lengths[: self.current_batch_size]
         return sequence_lengths.to(device=self.device)
 
-    def get_batch_token_ids(self) -> List[torch.LongTensor]:
+    # For compatibility
+    def get_batch_token_ids(self) -> List[List[int]]:
         assert self.is_compact  # Debug usage
-        out = []
-        for seq_id, _ in self._sequences_indexes.items():
+        out = [None] * self._current_batch_size
+        for seq_id, index_in_b in self._sequences_indexes.items():
             seq: Sequence = self._sequences_dict[seq_id]
-            out.append(torch.tensor(seq.input_token_id + seq.output_token_id, device=self.device))
+            out[index_in_b] = seq.input_token_id + seq.output_token_id
         return out
 
     # For compatibility

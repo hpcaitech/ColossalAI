@@ -424,7 +424,7 @@ class InferenceEngine:
 
         # 2. Prefill main model (Verifier) - fill past kv cache for main model
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+        next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
         # append new inputs to the batch, temporarily
         batch.append_batch_tokens(next_tokens)
         self.request_handler.allocate_batch_spec_dec(batch, 1)
@@ -472,7 +472,7 @@ class InferenceEngine:
             input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
             logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
 
-            next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+            next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
 
             # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
@@ -738,7 +738,7 @@ class InferenceEngine:
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+        next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
         self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
 
