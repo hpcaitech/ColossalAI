@@ -33,7 +33,7 @@ _DEFAULT_PROMPT_TEMPLATES = {
 
 class RPC_PARAM(ABC):
     """
-    NOTE(runyu) We use rpyc to transport param between client and server.
+    NOTE(lry89757) We use rpyc to transport param between client and server.
     Rpyc only support the type of `POD` in python as the param, so we should take some smart ways to transport the data like tensor or some sophisticated classes.
     Drawing on the logic of `__reduce__`, we will let some classes(will be rpc param later) inherit this base class, and rewrite the to_rpc_param and from_rpc_param. We will invoke `to_rpc_param` in client to pass the params and recover the param in server side by `from_rpc_param`.
     @yuanheng please take a look at this class
