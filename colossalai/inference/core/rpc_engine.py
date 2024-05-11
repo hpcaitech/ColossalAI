@@ -35,6 +35,7 @@ def run_server(host, port, event: mp.Event = None):
         event.set()
     server.start()
 
+
 class RPCInferenceEngine(InferenceEngine):
 
     """

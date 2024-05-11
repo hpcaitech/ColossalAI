@@ -76,17 +76,25 @@ class rpcWorkerService(rpyc.Service):
         For each layer of the model, we allocate two tensors for key and value respectively,
         with shape of [num_blocks, num_kv_heads, block_size, head_size]
         """
-        kalloc_shape, valloc_shape =  alloc_shape
+        kalloc_shape, valloc_shape = alloc_shape
         num_layers = self.model_config.num_hidden_layers
 
         self.k_cache: List[torch.Tensor] = []
         self.v_cache: List[torch.Tensor] = []
         for _ in range(num_layers):
             self.k_cache.append(
-                torch.zeros(kalloc_shape, dtype=self.inference_config.kv_cache_dtype, device=get_accelerator().get_current_device())
+                torch.zeros(
+                    kalloc_shape,
+                    dtype=self.inference_config.kv_cache_dtype,
+                    device=get_accelerator().get_current_device(),
+                )
             )
             self.v_cache.append(
-                torch.zeros(valloc_shape, dtype=self.inference_config.kv_cache_dtype, device=get_accelerator().get_current_device())
+                torch.zeros(
+                    valloc_shape,
+                    dtype=self.inference_config.kv_cache_dtype,
+                    device=get_accelerator().get_current_device(),
+                )
             )
         logger.info("physical cache init over")
 

@@ -517,7 +517,7 @@ class RPCKVCacheManager(KVCacheManager):
             self.kv_head_num = model_config.num_key_value_heads
         else:
             self.kv_head_num = self.head_num
-        
+
         if config.kv_cache_dtype is None:
             self.kv_cache_dtype = config.dtype
         else:
@@ -548,7 +548,6 @@ class RPCKVCacheManager(KVCacheManager):
         self._block_finder = torch.zeros((self.num_blocks,), dtype=torch.int64)
 
     def get_physical_cache_shape(self) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
-
         # Physical cache allocation
         if self.config.use_cuda_kernel:
             x = 16 // torch.tensor([], dtype=self.config.dtype).element_size()
