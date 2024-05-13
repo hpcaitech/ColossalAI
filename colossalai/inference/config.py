@@ -207,6 +207,8 @@ class InferenceConfig(RPC_PARAM):
     temperature: Optional[float] = 1.0
     no_repeat_ngram_size: Optional[int] = 0
     repetition_penalty: Optional[float] = 1.0
+    forced_bos_token_id: int = None
+    forced_eos_token_id: int = None
 
     # speculative decoding configs
     max_n_spec_tokens: int = 5
