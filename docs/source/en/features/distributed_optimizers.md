@@ -138,4 +138,4 @@ optim = DistGaloreAwamW(
   </tr>
 </table>
 
-<!-- doc-test-command: python test_dist_optim.py  -->
+<!-- doc-test-command: colossalai run --nproc_per_node 4 distributed_optimizers.py  -->
