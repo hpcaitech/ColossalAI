@@ -58,7 +58,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
