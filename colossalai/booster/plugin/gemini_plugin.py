@@ -387,7 +387,7 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
             master_weights=master_weights,
-            async_reduce=async_reduce
+            async_reduce=async_reduce,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
