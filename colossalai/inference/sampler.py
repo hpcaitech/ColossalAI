@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 import torch
 from transformers.generation import GenerationConfig
@@ -76,7 +76,12 @@ def _sample(probs: torch.Tensor, logprobs: torch.Tensor, generation_config: Gene
     return sample_tokens
 
 
-def search_tokens(generation_config: GenerationConfig, logits, is_prompt: bool = False, batch_token_ids: Optional[List[List[int]]] = None):
+def search_tokens(
+    generation_config: GenerationConfig,
+    logits,
+    is_prompt: bool = False,
+    batch_token_ids: Optional[List[List[int]]] = None,
+):
     """
     Sample tokens for finished requests.
     """

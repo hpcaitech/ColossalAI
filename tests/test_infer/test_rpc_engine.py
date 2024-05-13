@@ -3,15 +3,12 @@ import random
 import numpy as np
 import pytest
 import torch
-import torch.distributed as dist
-from torch.multiprocessing import Manager
-from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM, AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
 
-import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
 from colossalai.inference.core.rpc_engine import RPCInferenceEngine
 from colossalai.inference.modeling.policy import NoPaddingLlamaModelInferPolicy
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use
 
 
 def setup_seed(seed):
@@ -26,7 +23,7 @@ def check_inference_engine(tp_size, use_engine=False, prompt_template=None, do_s
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
     # model = "/home/data/models/Llama-2-7b-hf" # local path
-    model = "meta-llama/Llama-2-7b-hf" # remote mode path
+    model = "meta-llama/Llama-2-7b-hf"  # remote mode path
     inputs = [
         "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
         "介绍一下武汉,",
@@ -75,8 +72,10 @@ def check_inference_engine(tp_size, use_engine=False, prompt_template=None, do_s
 
     return outputs
 
+
 def run_engine(tp_size, **kwargs):
     return check_inference_engine(tp_size=tp_size, **kwargs)
+
 
 @pytest.mark.largedist
 @parameterize("prompt_template", [None, "llama"])

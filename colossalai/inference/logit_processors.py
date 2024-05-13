@@ -4,8 +4,6 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from colossalai.inference.batch_bucket import BatchBucket
-
 _LOGIT_PROCESSOR_MAP = {}
 
 

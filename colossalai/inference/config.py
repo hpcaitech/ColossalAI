@@ -4,7 +4,7 @@ Our config contains various options for inference optimization, it is a unified 
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from transformers.generation import GenerationConfig
@@ -81,7 +81,9 @@ class InputMetaData(RPC_PARAM):
     dtype: torch.dtype = torch.float32
     use_spec_dec: bool = False
     num_tokens_to_verify: int = 0
-    batch_token_ids: Optional[List[List[int]]] = None # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
+    batch_token_ids: Optional[
+        List[List[int]]
+    ] = None  # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
 
     def to_rpc_param(self) -> Dict[str, any]:
         return {

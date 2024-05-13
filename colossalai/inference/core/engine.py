@@ -747,7 +747,9 @@ class InferenceEngine:
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = search_tokens(self.generation_config, logits, input_meta_data.is_prompts, batch_token_ids=input_meta_data.batch_token_ids)
+        next_tokens = search_tokens(
+            self.generation_config, logits, input_meta_data.is_prompts, batch_token_ids=input_meta_data.batch_token_ids
+        )
         self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
 

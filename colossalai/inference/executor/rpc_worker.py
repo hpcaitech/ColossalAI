@@ -121,7 +121,10 @@ class rpcWorkerService(rpyc.Service):
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
         next_tokens = search_tokens(
-            self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts, input_meta_data.batch_token_ids
+            self.inference_config.to_generation_config(self.model_config),
+            logits,
+            input_meta_data.is_prompts,
+            input_meta_data.batch_token_ids,
         )
 
         # return the tokens generated to scheduler

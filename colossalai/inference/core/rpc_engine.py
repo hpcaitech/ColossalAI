@@ -38,7 +38,7 @@ class RPCInferenceEngine(InferenceEngine):
     """
     InferenceEngine which manages the inference process..
 
-    NOTE This `RPCInferenceEngine` is designed for multiple-card/online serving. 
+    NOTE This `RPCInferenceEngine` is designed for multiple-card/online serving.
     Original `InferenceEngine` is designed for single card and offline service, though it supports multi-card offline inference.
 
     Args:

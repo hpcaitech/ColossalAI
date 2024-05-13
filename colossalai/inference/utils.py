@@ -111,5 +111,5 @@ def find_available_ports(num: int):
         free_ports = [free_port() for i in range(num)]
     except OSError as e:
         print(f"An OS error occurred: {e}")
-        raise RuntimeError("Error finding available ports") 
+        raise RuntimeError("Error finding available ports")
     return free_ports
