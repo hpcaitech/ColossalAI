@@ -168,26 +168,40 @@ class _AsyncInferenceEngine(InferenceEngine):
         generated results.
         """
         batch = self.request_handler.schedule()
+        input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
+
         loop = asyncio.get_running_loop()
+
+        if input_meta_data.use_cuda_graph:
+            model_executable = self.graph_runners[input_meta_data.batch_size]
+        else:
+            model_executable = self.model
 
         # Use run_in_executor to asyncally run the sync method model.forward().
         logits = await loop.run_in_executor(
             None,
-            self.model,
-            batch,
+            model_executable,
+            input_token_ids,
+            output_tensor,
+            input_meta_data,
             self.k_cache,
             self.v_cache,
         )
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        self.request_handler.search_tokens(self.generation_config, logits)
+        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
+        self.request_handler.append_next_tokens(next_tokens)
 
         finished_sequences = self.request_handler.update()
         for sequence in finished_sequences:
             sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
         return finished_sequences, self.request_handler.total_requests_in_batch_bucket() > 0
+
+    def add_single_request(self, request_id: int, prompt: str, prompt_token_ids, **kwargs):
+        prompts = [prompt]
+        self.add_request(request_ids=request_id, prompts=prompts, prompts_token_ids=prompt_token_ids, **kwargs)
 
 
 class AsyncInferenceEngine:

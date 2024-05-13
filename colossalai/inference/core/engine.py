@@ -157,7 +157,6 @@ class InferenceEngine:
             else:
                 model_type = "nopadding_" + self.model_config.model_type
             model_policy = model_policy_map[model_type]()
-
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
         tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
 

@@ -6,6 +6,7 @@
 model_path=${1:-"lmsys/vicuna-7b-v1.3"}
 chat_template="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}"
 echo "Model Path: $model_path"
+echo "Chat Tempelate" $chat_template
 echo "Starting server..."
 python -m colossalai.inference.server.api_server --model $model_path --chat-template $chat_template &
 SERVER_PID=$!

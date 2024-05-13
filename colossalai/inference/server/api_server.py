@@ -20,6 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.server.chat_service import ChatServing
 from colossalai.inference.server.completion_service import CompletionServing
@@ -120,21 +121,24 @@ def get_generation_config(request):
 
 
 def add_engine_config(parser):
-    parser.add_argument("--model", type=str, default="llama2-7b", help="name or path of the huggingface model to use")
-
     parser.add_argument(
-        "--max-model-len",
-        type=int,
-        default=None,
-        help="model context length. If unspecified, " "will be automatically derived from the model.",
+        "-m", "--model", type=str, default="llama2-7b", help="name or path of the huggingface model to use"
     )
-    # Parallel arguments
-    parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1, help="number of tensor parallel replicas")
+    # Parallel arguments not supported now
+    # parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1, help="number of tensor parallel replicas")
 
     # KV cache arguments
     parser.add_argument("--block-size", type=int, default=16, choices=[8, 16, 32], help="token block size")
 
     parser.add_argument("--max_batch_size", type=int, default=8, help="maximum number of batch size")
+
+    parser.add_argument("-i", "--max_input_len", type=int, default=128, help="max input length")
+
+    parser.add_argument("-o", "--max_output_len", type=int, default=128, help="max output length")
+
+    parser.add_argument("-d", "--dtype", type=str, default="fp16", help="Data type", choices=["fp16", "fp32", "bf16"])
+
+    parser.add_argument("--use_cuda_kernel", action="store_true", help="Use CUDA kernel, use Triton by default")
 
     # generation arguments
     parser.add_argument(
@@ -150,7 +154,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Colossal-Inference API server.")
 
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8008)
     parser.add_argument("--ssl-keyfile", type=str, default=None)
     parser.add_argument("--ssl-certfile", type=str, default=None)
     parser.add_argument(
@@ -164,6 +168,7 @@ def parse_args():
         "specified, the model name will be the same as "
         "the huggingface name.",
     )
+
     parser.add_argument(
         "--chat-template",
         type=str,
@@ -183,14 +188,24 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    print(args)
     inference_config = InferenceConfig.from_dict(vars(args))
-    model = AutoModelForCausalLM.from_pretrained(args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
+
+    colossalai.launch(
+        rank=0,
+        world_size=1,
+        host=args.host,
+        port=args.port,
+        backend="nccl",
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(args.model)
     async_engine = AsyncInferenceEngine(
-        start_engine_loop=True, model=model, tokenizer=tokenizer, inference_config=inference_config
+        start_engine_loop=True, model_or_path=model, tokenizer=tokenizer, inference_config=inference_config
     )
     engine = async_engine.engine
-    completion_serving = CompletionServing(async_engine, served_model=model.__class__.__name__)
+    completion_serving = CompletionServing(async_engine, model.__class__.__name__)
     chat_serving = ChatServing(
         async_engine,
         served_model=model.__class__.__name__,
@@ -202,7 +217,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app=app,
         host=args.host,
-        port=args.port,
+        port=args.port + 1,
         log_level="debug",
         timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
         ssl_keyfile=args.ssl_keyfile,
