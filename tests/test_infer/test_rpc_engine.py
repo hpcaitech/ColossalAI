@@ -22,7 +22,6 @@ def setup_seed(seed):
 def check_inference_engine(tp_size, use_engine=False, prompt_template=None, do_sample=True, policy=None):
     setup_seed(20)
     tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
-    # model = "/home/data/models/Llama-2-7b-hf" # local path
     model = "meta-llama/Llama-2-7b-hf"  # remote mode path
     inputs = [
         "介绍一下今天的北京,比如故宫，天安门，长城或者其他的一些景点,",
@@ -30,7 +29,6 @@ def check_inference_engine(tp_size, use_engine=False, prompt_template=None, do_s
     ]
 
     output_len = 38
-    do_sample = do_sample
     top_p = 0.5
     top_k = 50
 
@@ -84,7 +82,6 @@ def run_engine(tp_size, **kwargs):
 def test_tp_engine(prompt_template, do_sample):
     if torch.multiprocessing.get_start_method(allow_none=True) is None:
         torch.multiprocessing.set_start_method("spawn")
-    # torch.multiprocessing.set_start_method("spawn")  # this code will not be ok for settings to fork to subprocess
     kwargs1 = {
         "use_engine": True,
         "prompt_template": prompt_template,
