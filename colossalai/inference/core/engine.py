@@ -425,7 +425,7 @@ class InferenceEngine:
 
         # 2. Prefill main model (Verifier) - fill past kv cache for main model
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
+        next_tokens = search_tokens(self.generation_config, logits, batch_token_ids=batch.batch_token_ids)
         # append new inputs to the batch, temporarily
         batch.append_batch_tokens(next_tokens)
         self.request_handler.allocate_batch_spec_dec(batch, 1)
@@ -473,7 +473,7 @@ class InferenceEngine:
             input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
             logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
 
-            next_tokens = self.request_handler.search_tokens(self.generation_config, logits, batch)
+            next_tokens = search_tokens(self.generation_config, logits, batch_token_ids=batch.batch_token_ids)
 
             # 5. Compare and process the results
             diff_indexes = torch.nonzero(~(next_tokens[:-1] == next_token_ids_spec))
@@ -690,6 +690,13 @@ class InferenceEngine:
             (n_tokens, batch.num_heads * batch.head_dim), dtype=batch.dtype, device=batch.device
         )
 
+        batch_token_ids = None
+        config_dict = self.generation_config.to_dict()
+        # process repetition_penalty, no_repeat_ngram_size
+        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
+            if type in config_dict and config_dict[type] is not None:
+                batch_token_ids = batch.batch_token_ids
+
         # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
         use_cuda_graph = False
         if self.use_cuda_graph and not batch.is_prompts and batch.current_batch_size in self.graph_runners.keys():
@@ -709,6 +716,7 @@ class InferenceEngine:
             dtype=batch.dtype,
             use_spec_dec=batch.use_spec_dec,
             num_tokens_to_verify=batch.num_tokens_to_verify,
+            batch_token_ids=batch_token_ids,
         )
 
         return input_ids, output_tensor, input_meta_data
@@ -739,7 +747,7 @@ class InferenceEngine:
         logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = search_tokens(self.generation_config, logits, input_meta_data.is_prompts)
+        next_tokens = search_tokens(self.generation_config, logits, input_meta_data.is_prompts, batch_token_ids=input_meta_data.batch_token_ids)
         self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
 

@@ -4,7 +4,7 @@ Our config contains various options for inference optimization, it is a unified 
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 
 import torch
 from transformers.generation import GenerationConfig
@@ -65,6 +65,7 @@ class InputMetaData(RPC_PARAM):
     dtype (torch.dtype, optional): The computation type of tensor, Defaults to torch.float32.
     use_spec_dec (bool): Indicate whether to use speculative decoding.
     num_tokens_to_verify (int): The number of tokens to verify in speculative decoding. Only valid when `use_spec_dec` is set to True.
+    batch_token_ids (List[List[int]], optional): input_token_ids + output_token_ids of current batch. Only used for `repetition_penalty`, `no_repeat_ngram_size` in sampler process.
     """
 
     block_tables: torch.Tensor = None
@@ -80,6 +81,7 @@ class InputMetaData(RPC_PARAM):
     dtype: torch.dtype = torch.float32
     use_spec_dec: bool = False
     num_tokens_to_verify: int = 0
+    batch_token_ids: Optional[List[List[int]]] = None # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
 
     def to_rpc_param(self) -> Dict[str, any]:
         return {
@@ -95,6 +97,7 @@ class InputMetaData(RPC_PARAM):
             "dtype": str(self.dtype).split(".")[-1],
             "use_spec_dec": self.use_spec_dec,
             "num_tokens_to_verify": self.num_tokens_to_verify,
+            "batch_token_ids": self.batch_token_ids,
         }
 
     @staticmethod
@@ -122,6 +125,7 @@ class InputMetaData(RPC_PARAM):
             dtype=dtype,
             use_spec_dec=rpc_dict["use_spec_dec"],
             num_tokens_to_verify=rpc_dict["num_tokens_to_verify"],
+            batch_token_ids=rpc_dict["batch_token_ids"],
         )
 
     def __repr__(self) -> str:
@@ -295,7 +299,7 @@ class InferenceConfig(RPC_PARAM):
             "early_stopping": self.early_stopping,
             "do_sample": self.do_sample,
             "beam_width": self.beam_width,
-            "kv_cache_dtype": self.kv_cache_dtype,
+            "kv_cache_dtype": str(self.kv_cache_dtype).split(".")[-1],
         }
         return kwargs
 
@@ -316,7 +320,7 @@ class InferenceConfig(RPC_PARAM):
             early_stopping=rpc_dict["early_stopping"],
             do_sample=rpc_dict["do_sample"],
             beam_width=rpc_dict["beam_width"],
-            kv_cache_dtype=rpc_dict["kv_cache_dtype"],
+            kv_cache_dtype=getattr(torch, rpc_dict["kv_cache_dtype"], None),
         )
 
     @classmethod

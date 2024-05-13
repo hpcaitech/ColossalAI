@@ -102,8 +102,8 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
         init_to_get_rotary(self.model.model)
         return self.model
 
-    def to_rpc_param() -> str:
-        return "NoPaddingBaichuanModelInferPolicy"
+    def to_rpc_param(self) -> str:
+        return __class__.__name__
 
     @staticmethod
     def from_rpc_param() -> "NoPaddingBaichuanModelInferPolicy":

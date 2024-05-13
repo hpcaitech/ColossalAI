@@ -109,6 +109,7 @@ def get_model_size(model: nn.Module):
 def find_available_ports(num: int):
     try:
         free_ports = [free_port() for i in range(num)]
-    except OSError:
-        return
+    except OSError as e:
+        print(f"An OS error occurred: {e}")
+        raise RuntimeError("Error finding available ports") 
     return free_ports

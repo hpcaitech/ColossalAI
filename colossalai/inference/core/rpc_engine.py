@@ -23,14 +23,11 @@ from .request_handler import RPCRequestHandler
 
 __all__ = ["RPCInferenceEngine"]
 
-PP_AXIS, TP_AXIS = 0, 1
-
 
 def run_server(host, port, event: mp.Event = None):
     server = ThreadedServer(
         rpcWorkerService, port=port, protocol_config={"allow_public_attrs": True, "allow_all_attrs": True}
     )
-    print(f"Starting RPC Worker on {host}:{port}...")
     if event:
         event.set()
     server.start()
@@ -40,10 +37,12 @@ class RPCInferenceEngine(InferenceEngine):
 
     """
     InferenceEngine which manages the inference process..
-    NOTE This RpyCInferenceEngine is designed for multiple-card/online serving. Original InferenceEngine is designed for single card and offline service, through it supports multi-card inference.
+
+    NOTE This `RPCInferenceEngine` is designed for multiple-card/online serving. 
+    Original `InferenceEngine` is designed for single card and offline service, though it supports multi-card offline inference.
 
     Args:
-        model_or_path (nn.Module or str): Path or nn.Module of this model.
+        model_or_path (nn.Module or str): Path or nn.Module of this model, Currently we don't support `nn.Module` Format
         tokenizer Optional[(Union[PreTrainedTokenizer, PreTrainedTokenizerFast])]: Path of the tokenizer to use.
         inference_config (Optional[InferenceConfig], optional): Store the configuration information related to inference.
         verbose (bool): Determine whether or not to log the generation process.
@@ -63,6 +62,8 @@ class RPCInferenceEngine(InferenceEngine):
         Currently we don't support model(nn.Module) format as the param.
         """
 
+        torch.multiprocessing.set_start_method("spawn", force=True)
+
         self.inference_config = inference_config
         self.tokenizer = tokenizer
         self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -73,8 +74,15 @@ class RPCInferenceEngine(InferenceEngine):
         try:
             if isinstance(model_or_path, str):
                 self.model_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+            elif isinstance(model_or_path, nn.Module):
+                self.logger.error(
+                    f"An exception occurred during loading model Config: For {__class__.__name__}, we don't support param like nn.Module currently\n"
+                )
+                # self.model_config = model_or_path.config
             else:
-                self.model_config = model_or_path.config
+                self.logger.error(
+                    f"An exception occurred during loading model Config: Please pass right param for {__class__.__name__}\n"
+                )
         except Exception as e:
             self.logger.error(
                 f"An exception occurred during loading model Config: {e}, The path should be transformers-like\n"
@@ -130,6 +138,7 @@ class RPCInferenceEngine(InferenceEngine):
             p = mp.Process(target=run_server, args=("localhost", rpc_port, event))
             p.start()
             self.worker_processes.append(p)
+            self.logger.info(f"Starting RPC Worker on localhost:{rpc_port}...")
 
         # Wait for all servers to start
         for event in self.events:
@@ -213,6 +222,13 @@ class RPCInferenceEngine(InferenceEngine):
                 assert n_tokens == input_ids.size(0)
                 n_tokens = n_tokens * batch.current_batch_size
 
+        batch_token_ids = None
+        config_dict = self.generation_config.to_dict()
+        # process repetition_penalty, no_repeat_ngram_size
+        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
+            if type in config_dict and config_dict[type] is not None:
+                batch_token_ids = batch.batch_token_ids
+
         # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
         use_cuda_graph = False
         if self.use_cuda_graph and not batch.is_prompts and batch.current_batch_size in self.graph_runners.keys():
@@ -232,6 +248,7 @@ class RPCInferenceEngine(InferenceEngine):
             dtype=batch.dtype,
             use_spec_dec=batch.use_spec_dec,
             num_tokens_to_verify=batch.num_tokens_to_verify,
+            batch_token_ids=batch_token_ids,
         )
 
         return input_ids.tolist(), input_meta_data

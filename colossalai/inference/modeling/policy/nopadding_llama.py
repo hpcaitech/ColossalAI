@@ -104,8 +104,8 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
         init_to_get_rotary(self.model.model, self.model.config.rope_theta)
         return self.model
 
-    def to_rpc_param() -> str:
-        return "NoPaddingLlamaModelInferPolicy"
+    def to_rpc_param(self) -> str:
+        return __class__.__name__
 
     @staticmethod
     def from_rpc_param() -> "NoPaddingLlamaModelInferPolicy":

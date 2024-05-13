@@ -19,4 +19,5 @@ datasets
 pydantic
 ray
 peft>=0.7.1
+rpyc==6.0.0
 #auto-gptq now not support torch1.12

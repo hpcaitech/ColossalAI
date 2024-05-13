@@ -12,6 +12,9 @@ from colossalai.inference.logit_processors import logit_processor
 from colossalai.inference.sampler import *
 from colossalai.inference.struct import RequestStatus, Sequence
 
+from colossalai.logging import get_dist_logger
+logger = get_dist_logger(__name__)
+
 __all__ = ["RunningList", "RequestHandler"]
 
 
@@ -295,17 +298,6 @@ class RequestHandler:
 
         return None
 
-    def _sample(self, probs: torch.Tensor, logprobs: torch.Tensor, generation_config: GenerationConfig):
-        if generation_config.num_beams == 1:
-            if generation_config.do_sample:
-                sample_tokens = multinomial_sample(generation_config, probs)
-            else:
-                sample_tokens = greedy_sample(generation_config, logprobs)
-        else:
-            sample_tokens = beam_search_sample(generation_config, logprobs, is_prompt=not self.prefill_bb.is_empty)
-
-        return sample_tokens
-
     def update_seq_finished(self, sequence: Sequence, generation_config: GenerationConfig):
         if (
             sequence.output_token_id[-1] == generation_config.eos_token_id
@@ -327,33 +319,6 @@ class RequestHandler:
 
     def total_requests_in_batch_bucket(self) -> int:
         return self.prefill_bb.current_batch_size + self.running_bb.current_batch_size
-
-    def search_tokens(self, generation_config: GenerationConfig, logits, cur_batch: BatchBucket):
-        """
-        Sample tokens for finished requests.
-        """
-
-        # NOTE: need to decide the granularity to process logits (sequence or batch)
-        config_dict = generation_config.to_dict()
-        # process repetition_penalty, no_repeat_ngram_size
-        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
-            if type in config_dict and config_dict[type] is not None:
-                logits = logit_processor(type, logits, config_dict[type], cur_batch)
-
-        # do logit processor
-        if generation_config.do_sample:
-            # process temperature, top_k, top_p
-            for type in ["temperature", "top_k", "top_p"]:
-                if type in config_dict and config_dict[type] is not None:
-                    logits = logit_processor(type, logits, config_dict[type])
-
-        # calculate probs
-        probs = torch.softmax(logits, dim=-1, dtype=torch.float)
-        logprobs = torch.log_softmax(logits, dim=-1, dtype=torch.float)
-
-        # sample the next tokens
-        sample_tokens = self._sample(probs, logprobs, generation_config)
-        return sample_tokens
 
     def append_next_tokens(self, sample_tokens: torch.Tensor):
         assert sample_tokens.dim() == 1

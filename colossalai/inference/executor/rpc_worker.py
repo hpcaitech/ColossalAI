@@ -28,12 +28,12 @@ from colossalai.shardformer.policies.base_policy import Policy
 
 PP_AXIS, TP_AXIS = 0, 1
 
-_supported_models = {
+_SUPPORTED_MODELS = {
     "LlamaForCausalLM": LlamaForCausalLM,
     "BaichuanForCausalLM": AutoModelForCausalLM,
 }
 
-_supported_model_policies = {
+_SUPPORTED_MODEL_POLICIES = {
     "NoPaddingLlamaModelInferPolicy": NoPaddingLlamaModelInferPolicy,
     "NoPaddingBaichuanModelInferPolicy": NoPaddingBaichuanModelInferPolicy,
 }
@@ -60,7 +60,7 @@ class rpcWorkerService(rpyc.Service):
         assert dist.is_initialized(), "invoke init_dist_env first please!"
 
         self.inference_config = InferenceConfig.from_rpc_param(inference_config_param)
-        model_policy = _supported_model_policies[model_policy_param]() if model_policy_param else None
+        model_policy = _SUPPORTED_MODEL_POLICIES[model_policy_param]() if model_policy_param else None
 
         self.dtype = self.inference_config.dtype
         self.verbose = True
@@ -121,7 +121,7 @@ class rpcWorkerService(rpyc.Service):
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
         next_tokens = search_tokens(
-            self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts
+            self.inference_config.to_generation_config(self.model_config), logits, input_meta_data.is_prompts, input_meta_data.batch_token_ids
         )
 
         # return the tokens generated to scheduler
@@ -166,6 +166,9 @@ class rpcWorkerService(rpyc.Service):
         """
         Shard model or/and Load weight
 
+        Shard model: When we set tp_size > 1, we will shard the model by given model_policy.
+        Load Weight: If we pass a local model path, we will load the model weight by checkpoint_io. If it is a remote-transformer url, we will use `AutoModel.from_pretrained` api of transformers lib
+
         Args:
             model_or_path Union[nn.Module, str]: path to the checkpoint or model of transformer format.
             model_policy (Policy): the policy to replace the model
@@ -177,10 +180,10 @@ class rpcWorkerService(rpyc.Service):
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
                 if is_local:
-                    model = _supported_models[arch](hf_config)
+                    model = _SUPPORTED_MODELS[arch](hf_config)
                 else:
                     # load the real checkpoint
-                    model = _supported_models[arch].from_pretrained(model_or_path, trust_remote_code=True)
+                    model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
             except Exception as e:
                 logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
