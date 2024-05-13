@@ -101,7 +101,7 @@ jobs:
       - name: Restore Colossal-AI Cache
         if: needs.detect.outputs.anyExtensionFileChanged != 'true'
         run: |
-          if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)"]; then
+          if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
             cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
           fi
 
