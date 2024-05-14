@@ -24,7 +24,7 @@ from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
-from colossalai.inference.utils import get_model_size, has_index_file
+from colossalai.inference.utils import get_model_size
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -113,7 +113,6 @@ class InferenceEngine:
             model_policy (Policy): the policy to replace the model
         """
 
-        casuallm = None
         if isinstance(model_or_path, str):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)

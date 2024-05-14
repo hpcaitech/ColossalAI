@@ -645,7 +645,6 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
     def _load_from_state_dict(
         self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
     ):
-        
         if self.num_heads == self.num_key_value_heads:
             # NOTE This is a hack to ensure we could load the right weight from LlamaAttention checkpoint due to the use of torch.stack(q_weight, k_weight, v_weight)
             for hook in self._load_state_dict_pre_hooks.values():
