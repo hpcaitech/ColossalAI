@@ -19,7 +19,7 @@ from colossalai.inference.modeling.policy import (
     model_policy_map,
 )
 from colossalai.inference.sampler import search_tokens
-from colossalai.inference.utils import get_model_size
+from colossalai.inference.utils import get_model_size # , has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -178,7 +178,7 @@ class rpcWorkerService(rpyc.Service):
         """
 
         if isinstance(model_or_path, str):
-            os.path.isdir(model_or_path)
+            # is_local = os.path.isdir(model_or_path)
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
