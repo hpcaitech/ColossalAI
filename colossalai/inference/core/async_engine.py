@@ -4,6 +4,7 @@ from functools import partial
 from typing import AsyncIterator, Dict, Iterable, List, Optional, Set, Tuple, Type
 
 from colossalai.inference.core.engine import InferenceEngine
+from colossalai.inference.sampler import search_tokens
 
 # CLI logger
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -190,10 +191,13 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
-        next_tokens = self.request_handler.search_tokens(self.generation_config, logits)
-        self.request_handler.append_next_tokens(next_tokens)
+        next_tokens = search_tokens(
+            self.generation_config, logits, input_meta_data.is_prompts, batch_token_ids=input_meta_data.batch_token_ids
+        )
 
+        self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
+
         for sequence in finished_sequences:
             sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
