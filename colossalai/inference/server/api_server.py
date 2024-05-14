@@ -130,7 +130,6 @@ def add_engine_config(parser):
         "-m", "--model", type=str, default="llama2-7b", help="name or path of the huggingface model to use"
     )
     # Parallel arguments not supported now
-    # parser.add_argument("--tensor-parallel-size", "-tp", type=int, default=1, help="number of tensor parallel replicas")
 
     # KV cache arguments
     parser.add_argument("--block-size", type=int, default=16, choices=[8, 16, 32], help="token block size")
@@ -159,7 +158,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Colossal-Inference API server.")
 
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8008)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--ssl-keyfile", type=str, default=None)
     parser.add_argument("--ssl-certfile", type=str, default=None)
     parser.add_argument(
