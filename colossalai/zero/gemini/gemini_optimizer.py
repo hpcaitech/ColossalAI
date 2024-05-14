@@ -265,7 +265,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.mix_precision_mixin.pre_zero_grad()
         return self.optim.zero_grad(set_to_none=True)
 
-    def wait_for_async_reduce(self) -> None:
+    def wait_for_chunks_reduce(self) -> None:
         for group in self.param_groups:
             for fake_param in group["params"]:
                 chunk16 = self.param_to_chunk16[fake_param]
@@ -274,7 +274,7 @@ class GeminiOptimizer(OptimizerWrapper):
                 chunk32.wait_async_reduce()
 
     def step(self, *args, **kwargs):
-        self.wait_for_async_reduce()  # make sure reduce are finished before optimizer step
+        self.wait_for_chunks_reduce()  # make sure reduce are finished before optimizer step
 
         if self.module.master_weights:
             self._maybe_move_fp32_params()
