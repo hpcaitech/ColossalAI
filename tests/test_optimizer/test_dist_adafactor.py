@@ -680,8 +680,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
 
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_bert_test_on_lowlevelzero_plugin()
     exam_bert_test_on_hybrid_plugin()
     exam_dist_adafactor_base()

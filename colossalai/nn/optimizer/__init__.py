@@ -4,7 +4,7 @@ from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
 from .distributed_came import DistributedCAME
-from .distributed_galore import DistGaloreAwamW8bit
+from .distributed_galore import DistGaloreAwamW
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB
@@ -25,7 +25,7 @@ __all__ = [
     "CPUAdam",
     "HybridAdam",
     "DistributedLamb",
-    "DistGaloreAwamW8bit",
+    "DistGaloreAwamW",
     "GaLoreAdamW",
     "GaLoreAdafactor",
     "GaLoreAdamW8bit",

@@ -131,7 +131,7 @@ def run_bert_test(test_config, optim_class, sharded_optim_class):
 
 
 def _run_bert_test(rank, world_size, port, optim_class, sharded_optim_class):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_bert_test(optim_class, sharded_optim_class)
 
 

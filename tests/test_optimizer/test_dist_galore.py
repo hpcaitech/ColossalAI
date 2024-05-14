@@ -9,7 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
-from colossalai.nn.optimizer import DistGaloreAwamW8bit, GaLoreAdamW8bit
+from colossalai.nn.optimizer import DistGaloreAwamW, GaLoreAdamW8bit
 from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
@@ -172,7 +172,7 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
         block_wise=False,
         min_8bit_size=1e10,  # Disable quantization
     )
-    optim = DistGaloreAwamW8bit(
+    optim = DistGaloreAwamW(
         get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
@@ -236,7 +236,7 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
         block_wise=False,
         min_8bit_size=1e10,
     )
-    optim = DistGaloreAwamW8bit(
+    optim = DistGaloreAwamW(
         get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
@@ -302,7 +302,7 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
 
 def check_dist_galore(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     global coordinator
     coordinator = DistCoordinator()
 
@@ -319,9 +319,10 @@ def check_dist_galore(rank, world_size, port):
     )
     for config in test_config:
         try:
-            run_bert_test(test_config=config, optim_class=GaLoreAdamW8bit, sharded_optim_class=DistGaloreAwamW8bit)
+            run_bert_test(test_config=config, optim_class=GaLoreAdamW8bit, sharded_optim_class=DistGaloreAwamW)
         except Exception as e:
             print(e)
+    dist.barrier()
     print(f"rank {rank} tests passed :)")
 
 
