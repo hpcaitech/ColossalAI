@@ -377,6 +377,7 @@ class BloomPipelineForwards:
                         shift_labels,
                         process_group=shard_config.tensor_parallel_process_group,
                         vocab_size=self.lm_head.out_features,
+                        dtype=self.transformer.dtype,
                     )
                 else:
                     loss_fct = CrossEntropyLoss()
@@ -1135,7 +1136,11 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             shift_logits = shift_logits.view(-1, new_vocab_size)
             shift_labels = shift_labels.view(-1)
             loss = cross_entropy_1d(
-                shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
+                shift_logits,
+                shift_labels,
+                process_group=shard_config.tensor_parallel_process_group,
+                vocab_size=self.lm_head.out_features,
+                dtype=self.transformer.dtype,
             )
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]

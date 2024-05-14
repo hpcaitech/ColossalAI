@@ -22,6 +22,7 @@ class DistCrossEntropy(Function):
         ignore_index: int,
         process_group: ProcessGroup,
         vocab_size: int,
+        dtype=torch.float32,
     ):
         r"""
         Calculate the cross entropy loss before gather, the origin loss function is as follows:
@@ -34,7 +35,7 @@ class DistCrossEntropy(Function):
         Args:
             vocab_logits (:class:`torch.Tensor`): The logits of the vocabulary, shape is
               [batch_size, seq_len, vocab_size]
-            labels (:class:`torch.Tensor`): The labels of the vocabulary, shape is
+            target (:class:`torch.Tensor`): The labels of the vocabulary, shape is
               [batch_size, seq_len]
 
         Returns:
@@ -86,7 +87,7 @@ class DistCrossEntropy(Function):
         dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM, group=process_group)
         exp_logits = vocab_logits
         torch.exp(vocab_logits, out=exp_logits)
-        if exp_logits.dtype == torch.float16:
+        if dtype == torch.float16:
             sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)
         else:
             sum_exp_logits = torch.sum(exp_logits, dim=-1)
@@ -100,7 +101,7 @@ class DistCrossEntropy(Function):
         loss = torch.sum(loss).div_(num_non_zero)
 
         # calculate the softmax
-        if exp_logits.dtype == torch.float16:
+        if dtype == torch.float16:
             exp_logits = exp_logits.div(sum_exp_logits.unsqueeze(dim=-1)).to(torch.float16)
         else:
             exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))
@@ -124,7 +125,7 @@ class DistCrossEntropy(Function):
         grad_logits_2d[torch.arange(0, grad_logits_2d.shape[0]), masked_target_1d] -= update
 
         grad_logits.mul_(grad_output.unsqueeze(dim=-1))
-        return grad_logits, None, None, None, None
+        return grad_logits, None, None, None, None, None
 
 
 def cross_entropy_1d(
@@ -133,5 +134,6 @@ def cross_entropy_1d(
     ignore_index: int = -100,
     process_group: ProcessGroup = None,
     vocab_size: int = None,
+    dtype: torch.dtype = None,
 ) -> torch.Tensor:
-    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size)
+    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size, dtype)
