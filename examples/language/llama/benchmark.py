@@ -112,7 +112,7 @@ def main():
             extra_dp_size=args.extra_dp,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
-            async_reduce=args.async_reduce
+            async_reduce=args.async_reduce,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
