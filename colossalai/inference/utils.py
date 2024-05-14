@@ -9,6 +9,8 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
+from colossalai.testing import free_port
+
 
 def init_to_get_rotary(self, base=10000, use_elem=False):
     """
@@ -102,3 +104,12 @@ def get_model_size(model: nn.Module):
     for key, param in model.named_parameters():
         total_size += param.element_size() * param.numel()
     return total_size / (1024**3)
+
+
+def find_available_ports(num: int):
+    try:
+        free_ports = [free_port() for i in range(num)]
+    except OSError as e:
+        print(f"An OS error occurred: {e}")
+        raise RuntimeError("Error finding available ports")
+    return free_ports
