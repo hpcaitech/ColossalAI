@@ -1,4 +1,3 @@
-import os
 from typing import List, Tuple, Union
 
 import rpyc
@@ -19,7 +18,7 @@ from colossalai.inference.modeling.policy import (
     model_policy_map,
 )
 from colossalai.inference.sampler import search_tokens
-from colossalai.inference.utils import get_model_size # , has_index_file
+from colossalai.inference.utils import get_model_size  # , has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
