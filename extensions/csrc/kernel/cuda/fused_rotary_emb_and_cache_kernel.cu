@@ -24,6 +24,8 @@ __device__ void apply_emb_rotary_compute(
   BinaryOpFunctor<MT, MT, MT, BinaryOpType::kMul> mul;
   BinaryOpFunctor<MT, MT, MT, BinaryOpType::kMinus> sub;
   BinaryOpFunctor<MT, MT, MT, BinaryOpType::kAdd> add;
+  CastFunctor<T, MT> t2mt;
+  CastFunctor<MT, T> mt2t;
 
   T x[VecSize];
   T y[VecSize];
@@ -44,10 +46,10 @@ __device__ void apply_emb_rotary_compute(
 
 #pragma unroll
     for (int j = 0; j < VecSize; j++) {
-      out_x[j] = CastFunctor<MT, T>()(sub(mul(CastFunctor<T, MT>()(x[j]), cos_ptr[j * 32 + shard_offset]),
-                 mul(CastFunctor<T, MT>()(y[j]), sin_ptr[j * 32 + shard_offset])));
-      out_y[j] = CastFunctor<MT, T>()(add(mul(CastFunctor<T, MT>()(y[j]), cos_ptr[j * 32 + shard_offset]),
-                 mul(CastFunctor<T, MT>()(x[j]), sin_ptr[j * 32 + shard_offset])));
+      out_x[j] = mt2t(sub(mul(t2mt(x[j]), cos_ptr[j * 32 + shard_offset]),
+                 mul(t2mt(y[j]), sin_ptr[j * 32 + shard_offset])));
+      out_y[j] = mt2t(add(mul(t2mt(y[j]), cos_ptr[j * 32 + shard_offset]),
+                 mul(t2mt(x[j]), sin_ptr[j * 32 + shard_offset])));
     }
 
     copy<T, VecSize>(out_x, src + addr_offset);

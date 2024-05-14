@@ -16,6 +16,8 @@ class FDIntermTensors(metaclass=SingletonMeta):
         self._tensors_initialized = False
         del self._mid_output
         del self._mid_output_lse
+        del self._exp_sums
+        del self._max_logits
 
     @property
     def is_initialized(self):
@@ -30,6 +32,16 @@ class FDIntermTensors(metaclass=SingletonMeta):
     def mid_output_lse(self):
         assert self.is_initialized, "Intermediate tensors not initialized yet"
         return self._mid_output_lse
+
+    @property
+    def exp_sums(self):
+        assert self.is_initialized, "Intermediate tensors not initialized yet"
+        return self._exp_sums
+
+    @property
+    def max_logits(self):
+        assert self.is_initialized, "Intermediate tensors not initialized yet"
+        return self._max_logits
 
     def initialize(
         self,
@@ -58,6 +70,12 @@ class FDIntermTensors(metaclass=SingletonMeta):
             size=(max_batch_size, num_attn_heads, kv_max_split_num, head_dim), dtype=dtype, device=device
         )
         self._mid_output_lse = torch.empty(
+            size=(max_batch_size, num_attn_heads, kv_max_split_num), dtype=dtype, device=device
+        )
+        self._exp_sums = torch.empty(
+            size=(max_batch_size, num_attn_heads, kv_max_split_num), dtype=dtype, device=device
+        )
+        self._max_logits = torch.empty(
             size=(max_batch_size, num_attn_heads, kv_max_split_num), dtype=dtype, device=device
         )
 
