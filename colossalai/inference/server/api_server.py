@@ -55,8 +55,9 @@ async def generate(request: Request) -> Response:
     """
     request_dict = await request.json()
     prompt = request_dict.pop("prompt")
-    stream = request_dict.pop("stream", "false").lower()
-
+    stream = request_dict.pop("stream", "false")
+    if isinstance(stream, str):
+        stream = stream.lower()
     request_id = id_generator()
     generation_config = get_generation_config(request_dict)
     results = engine.generate(request_id, prompt, generation_config=generation_config)
@@ -67,7 +68,7 @@ async def generate(request: Request) -> Response:
             ret = {"text": request_output[len(prompt) :]}
             yield (json.dumps(ret) + "\0").encode("utf-8")
 
-    if stream == "true":
+    if stream == "true" or stream == True:
         return StreamingResponse(stream_results())
 
     # Non-streaming case
@@ -87,12 +88,14 @@ async def generate(request: Request) -> Response:
 @app.post("/completion")
 async def create_completion(request: Request):
     request_dict = await request.json()
-    stream = request_dict.pop("stream", "false").lower()
+    stream = request_dict.pop("stream", "false")
+    if isinstance(stream, str):
+        stream = stream.lower()
     generation_config = get_generation_config(request_dict)
     result = await completion_serving.create_completion(request, generation_config)
 
     ret = {"request_id": result.request_id, "text": result.output}
-    if stream == "true":
+    if stream == "true" or stream == True:
         return StreamingResponse(content=json.dumps(ret) + "\0", media_type="text/event-stream")
     else:
         return JSONResponse(content=ret)
@@ -102,10 +105,12 @@ async def create_completion(request: Request):
 async def create_chat(request: Request):
     request_dict = await request.json()
 
-    stream = request_dict.get("stream", "false").lower()
+    stream = request_dict.get("stream", "false")
+    if isinstance(stream, str):
+        stream = stream.lower()
     generation_config = get_generation_config(request_dict)
     message = await chat_serving.create_chat(request, generation_config)
-    if stream == "true":
+    if stream == "true" or stream == True:
         return StreamingResponse(content=message, media_type="text/event-stream")
     else:
         ret = {"role": message.role, "text": message.content}
@@ -116,7 +121,7 @@ def get_generation_config(request):
     generation_config = async_engine.engine.generation_config
     for arg in request:
         if hasattr(generation_config, arg):
-            generation_config[arg] = request[arg]
+            setattr(generation_config, arg, request[arg])
     return generation_config
 
 
@@ -188,7 +193,6 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    print(args)
     inference_config = InferenceConfig.from_dict(vars(args))
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
@@ -199,7 +203,6 @@ if __name__ == "__main__":
         port=args.port,
         backend="nccl",
     )
-
     model = AutoModelForCausalLM.from_pretrained(args.model)
     async_engine = AsyncInferenceEngine(
         start_engine_loop=True, model_or_path=model, tokenizer=tokenizer, inference_config=inference_config

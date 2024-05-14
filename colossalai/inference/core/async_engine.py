@@ -199,9 +199,10 @@ class _AsyncInferenceEngine(InferenceEngine):
 
         return finished_sequences, self.request_handler.total_requests_in_batch_bucket() > 0
 
-    def add_single_request(self, request_id: int, prompt: str, prompt_token_ids, **kwargs):
+    def add_single_request(self, request_id: int, prompt: str, prompt_token_ids, generation_config=None):
         prompts = [prompt]
-        self.add_request(request_ids=request_id, prompts=prompts, prompts_token_ids=prompt_token_ids, **kwargs)
+        gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
+        self.add_request(request_ids=request_id, prompts=prompts, prompts_token_ids=prompt_token_ids, **gen_config_dict)
 
 
 class AsyncInferenceEngine:
@@ -287,6 +288,7 @@ class AsyncInferenceEngine:
         request_id: int,
         prompt: Optional[str],
         prompt_token_ids: Optional[List[int]] = None,
+        generation_config=None,
     ) -> RequstStream:
         """
         Add a request to the background tracker(waiting queue), start the background loop if needed.
@@ -300,6 +302,7 @@ class AsyncInferenceEngine:
             request_id,
             prompt=prompt,
             prompt_token_ids=prompt_token_ids,
+            generation_config=generation_config,
         )
         return stream
 
@@ -308,13 +311,16 @@ class AsyncInferenceEngine:
         request_id: int,
         prompt: Optional[str],
         prompt_token_ids: Optional[List[int]] = None,
+        generation_config=None,
     ) -> AsyncIterator[str]:
         """
         Generate output from a request. It receives the request from http server, adds it into the
         waitting queue of Async Engine and streams the output sequence.
         """
         try:
-            stream = await self.add_request(request_id, prompt, prompt_token_ids=prompt_token_ids)
+            stream = await self.add_request(
+                request_id, prompt, prompt_token_ids=prompt_token_ids, generation_config=generation_config
+            )
             return await stream.get_result()
 
         except (Exception, asyncio.CancelledError) as e:
