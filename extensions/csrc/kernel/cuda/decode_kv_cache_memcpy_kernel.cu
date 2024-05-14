@@ -5,7 +5,6 @@
 #include "funcs/cast_functor.h"
 #include "common/micros.h"
 
-using colossalAI::cuda::utils::copy_vector;
 using colossalAI::cuda::utils::get_vec_size;
 using colossalAI::cuda::utils::copy;
 using colossalAI::funcs::CastFunctor;

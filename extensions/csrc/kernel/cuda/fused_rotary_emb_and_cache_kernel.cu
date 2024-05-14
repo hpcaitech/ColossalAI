@@ -8,7 +8,6 @@
 #include "funcs/cast_functor.h"
 #include "funcs/binary_functor.h"
 
-using colossalAI::cuda::utils::copy_vector;
 using colossalAI::cuda::utils::get_vec_size;
 using colossalAI::cuda::utils::copy;
 using colossalAI::funcs::CastFunctor;

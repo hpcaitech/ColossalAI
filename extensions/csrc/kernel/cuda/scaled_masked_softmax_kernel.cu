@@ -23,7 +23,7 @@ using colossalAI::funcs::UnaryOpFunctor;
 using colossalAI::funcs::UnaryOpType;
 using colossalAI::funcs::warp_reduce;
 using colossalAI::funcs::ReduceType;
-using colossalAI::cuda::utils::copy_vector;
+using colossalAI::cuda::utils::copy;
 
 
 /*
@@ -87,8 +87,8 @@ __global__ void scaled_masked_softmax_warp_forward(
 
       if (element_index < batch_element_count) {
         int itr_idx = i * element_count + it * WARP_SIZE;
-        copy_vector<input_t, ELEMENTS_PER_LDG_STG>(temp_data, src + itr_idx);
-        copy_vector<uint8_t, ELEMENTS_PER_LDG_STG>(temp_mask, mask + itr_idx);
+        copy<input_t, ELEMENTS_PER_LDG_STG>(src + itr_idx, temp_data);
+        copy<uint8_t, ELEMENTS_PER_LDG_STG>(mask + itr_idx, temp_mask);
 
 #pragma unroll
         for (int element = 0; element < ELEMENTS_PER_LDG_STG; ++element) {
@@ -144,8 +144,8 @@ __global__ void scaled_masked_softmax_warp_forward(
         for (int element = 0; element < ELEMENTS_PER_LDG_STG; ++element) {
           out[element] = elements[i][it + element] / sum[i];
         }
-        copy_vector<output_t, ELEMENTS_PER_LDG_STG>(
-            dst + i * element_count + it * WARP_SIZE, out);
+        copy<output_t, ELEMENTS_PER_LDG_STG>(
+          out,  dst + i * element_count + it * WARP_SIZE);
       } else {
         break;
       }
@@ -200,10 +200,10 @@ __global__ void scaled_masked_softmax_warp_backward(
     for (int it = 0; it < WARP_ITERATIONS; it += ELEMENTS_PER_LDG_STG) {
       int element_index = ELEMENTS_PER_LDG_STG * local_idx + it * WARP_SIZE;
       if (element_index < batch_element_count) {
-        copy_vector<input_t, ELEMENTS_PER_LDG_STG>(
-            temp_grad, grad + i * element_count + it * WARP_SIZE);
-        copy_vector<input_t, ELEMENTS_PER_LDG_STG>(
-            temp_output, output + i * element_count + it * WARP_SIZE);
+        copy<input_t, ELEMENTS_PER_LDG_STG>(
+            grad + i * element_count + it * WARP_SIZE, temp_grad);
+        copy<input_t, ELEMENTS_PER_LDG_STG>(
+            output + i * element_count + it * WARP_SIZE, temp_output);
 
 #pragma unroll
         for (int element = 0; element < ELEMENTS_PER_LDG_STG; ++element) {
@@ -245,8 +245,8 @@ __global__ void scaled_masked_softmax_warp_backward(
               (output_t)(scale * (grad_reg[i][it + element] -
                                   output_reg[i][it + element] * sum[i]));
         }
-        copy_vector<output_t, ELEMENTS_PER_LDG_STG>(
-            gradInput + i * element_count + it * WARP_SIZE, out);
+        copy<output_t, ELEMENTS_PER_LDG_STG>(
+          out, gradInput + i * element_count + it * WARP_SIZE);
       }
     }
   }
