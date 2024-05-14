@@ -4,7 +4,7 @@
 #include "utils/vec_copy.h"
 #include "common/micros.h"
 
-using colossalAI::cuda::utils::copy_vector;
+using colossalAI::cuda::utils::copy;
 using colossalAI::cuda::utils::get_vec_size;
 
 
@@ -23,8 +23,8 @@ __device__ void apply_cos_and_sin_memcopy(
     int begin_id = threadIdx.x * VecSize;
 
     for (; begin_id <= head_dim - VecSize; begin_id += blockDim.x){
-        copy_vector<scalar_t, VecSize>(cos + dest_offset_id + begin_id, cos_cache_ptr + src_offset_id + begin_id);
-        copy_vector<scalar_t, VecSize>(sin + dest_offset_id + begin_id, sin_cache_ptr + src_offset_id + begin_id);
+        copy<scalar_t, VecSize>(cos_cache_ptr + src_offset_id + begin_id, cos + dest_offset_id + begin_id);
+        copy<scalar_t, VecSize>(sin_cache_ptr + src_offset_id + begin_id, sin + dest_offset_id + begin_id);
     }
 
     if (!Aligned) {

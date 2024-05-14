@@ -8,25 +8,8 @@ namespace colossalAI {
 namespace cuda {
 namespace utils {
 
-// Note(LiuYang): Depreciated
 template <typename T, int VecSize>
-__device__ __inline__ void copy_vector(T *dst, const T *src) {
-  using VT = typename common::VecTypeTrait<T, VecSize>::Type;
-  *(reinterpret_cast<VT *>(dst)) = *(reinterpret_cast<const VT *>(src));
-}
-
-template <>
-__device__ __inline__ void copy_vector<float, 8>(float *dst, const float *src) {
-  // Since the maximum memory alignment length is 128 bits, we choose float4
-  // here.
-  *(reinterpret_cast<float4 *>(dst)) = *(reinterpret_cast<const float4 *>(src));
-  *(reinterpret_cast<float4 *>(dst + 4)) =
-      *(reinterpret_cast<const float4 *>(src + 4));
-}
-
-// Note(LiuYang): Depreciated
-template <typename T, int VecSize>
-__device__ __inline__ void copy_zero_vector(T *dst) {
+__device__ __inline__ void copy_zero(T *dst) {
   using VT = typename common::VecTypeTrait<T, VecSize>::Type;
   *(reinterpret_cast<VT *>(dst)) = funcs::CastFunctor<float, VT>()(0.0f);
 }
