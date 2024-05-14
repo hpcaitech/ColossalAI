@@ -24,7 +24,7 @@ from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
-from colossalai.inference.utils import get_model_size  # , has_index_file
+from colossalai.inference.utils import get_model_size
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -118,7 +118,9 @@ class InferenceEngine:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
-                    # NOTE(lry89757) Currently we load the model using transformers-api, but we will use lazy tensor and checkpoint io to accelerate the model load process in the future.
+                    # NOTE(lry89757) Currently we load the model using transformers-api, 
+                    # but we will use lazy tensor and checkpoint io to accelerate 
+                    # the model load process in the future.
                     model = _supported_models[arch].from_pretrained(model_or_path, trust_remote_code=True)
                 else:
                     raise ValueError(f"Model {arch} is not supported.")

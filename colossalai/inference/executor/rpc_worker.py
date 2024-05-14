@@ -18,7 +18,7 @@ from colossalai.inference.modeling.policy import (
     model_policy_map,
 )
 from colossalai.inference.sampler import search_tokens
-from colossalai.inference.utils import get_model_size  # , has_index_file
+from colossalai.inference.utils import get_model_size
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -181,7 +181,9 @@ class rpcWorkerService(rpyc.Service):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                # NOTE(lry89757) Currently we load the model using transformers-api, but we will use lazy tensor and checkpoint io to accelerate the model load process in the future.
+                # NOTE(lry89757) Currently we load the model using transformers-api, 
+                # but we will use lazy tensor and checkpoint io to accelerate 
+                # the model load process in the future.
                 model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
                 # if is_local:
                 #     model = _SUPPORTED_MODELS[arch](hf_config)
