@@ -181,8 +181,8 @@ class rpcWorkerService(rpyc.Service):
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
-                # NOTE(lry89757) Currently we load the model using transformers-api, 
-                # but we will use lazy tensor and checkpoint io to accelerate 
+                # NOTE(lry89757) Currently we load the model using transformers-api,
+                # but we will use lazy tensor and checkpoint io to accelerate
                 # the model load process in the future.
                 model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
                 # if is_local:

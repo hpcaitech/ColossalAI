@@ -118,8 +118,8 @@ class InferenceEngine:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
-                    # NOTE(lry89757) Currently we load the model using transformers-api, 
-                    # but we will use lazy tensor and checkpoint io to accelerate 
+                    # NOTE(lry89757) Currently we load the model using transformers-api,
+                    # but we will use lazy tensor and checkpoint io to accelerate
                     # the model load process in the future.
                     model = _supported_models[arch].from_pretrained(model_or_path, trust_remote_code=True)
                 else:
