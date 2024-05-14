@@ -389,6 +389,7 @@ class GPT2PipelineForwards:
                     shift_labels,
                     process_group=shard_config.tensor_parallel_process_group,
                     vocab_size=self.lm_head.out_features,
+                    dtype=self.transformer.dtype,
                 )
             else:
                 loss = loss_fct(shift_logits, shift_labels)

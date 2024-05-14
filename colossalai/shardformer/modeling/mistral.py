@@ -281,6 +281,7 @@ class MistralForwards:
                         shift_labels,
                         process_group=shard_config.tensor_parallel_process_group,
                         vocab_size=self.lm_head.out_features,
+                        dtype=self.model.dtype,
                     )
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)

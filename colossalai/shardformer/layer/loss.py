@@ -87,10 +87,7 @@ class DistCrossEntropy(Function):
         dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM, group=process_group)
         exp_logits = vocab_logits
         torch.exp(vocab_logits, out=exp_logits)
-        if dtype == torch.float16:
-            sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)
-        else:
-            sum_exp_logits = torch.sum(exp_logits, dim=-1)
+        sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)
         dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
 
         # calculate the loss
@@ -101,10 +98,7 @@ class DistCrossEntropy(Function):
         loss = torch.sum(loss).div_(num_non_zero)
 
         # calculate the softmax
-        if dtype == torch.float16:
-            exp_logits = exp_logits.div(sum_exp_logits.unsqueeze(dim=-1)).to(torch.float16)
-        else:
-            exp_logits.div_(sum_exp_logits.unsqueeze(dim=-1))
+        exp_logits = exp_logits.div(sum_exp_logits.unsqueeze(dim=-1)).to(dtype)
         exp_logits[target == ignore_index] = 0.0
         ctx.save_for_backward(exp_logits, mask, masked_target_1d)
 
