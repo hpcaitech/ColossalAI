@@ -131,6 +131,7 @@ def new_from_pretrained(
         kwarg_attn_imp = kwargs.pop("attn_implementation", None)
         if kwarg_attn_imp is not None and config._attn_implementation != kwarg_attn_imp:
             config._attn_implementation = kwarg_attn_imp
+        model_kwargs = kwargs
     if commit_hash is None:
         commit_hash = getattr(config, "_commit_hash", None)
 
@@ -290,7 +291,7 @@ def new_from_pretrained(
     init_contexts = [no_init_weights(_enable=_fast_init)]
 
     with ContextManagers(init_contexts):
-        model = cls(config)
+        model = cls(config, *model_args, **model_kwargs)
 
     if from_pt:
         # restore default dtype
