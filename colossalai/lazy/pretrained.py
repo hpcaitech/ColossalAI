@@ -108,7 +108,7 @@ def new_from_pretrained(
             **kwargs,
         )
     else:
-        model_kwargs = kwargs
+        pass
 
     if commit_hash is None:
         commit_hash = getattr(config, "_commit_hash", None)
@@ -269,7 +269,7 @@ def new_from_pretrained(
     init_contexts = [no_init_weights(_enable=_fast_init)]
 
     with ContextManagers(init_contexts):
-        model = cls(config, *model_args, **model_kwargs)
+        model = cls(config)
 
     if from_pt:
         # restore default dtype
