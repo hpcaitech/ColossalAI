@@ -41,7 +41,7 @@ class ChunkManager:
         self.reuse_fp16_chunk = reuse_fp16_chunk
         # Whether model is accumulating gradients,
         self.accumulating_grads = False
-        self.overflow_counter = 0
+        self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
 
     def register_tensor(
         self,

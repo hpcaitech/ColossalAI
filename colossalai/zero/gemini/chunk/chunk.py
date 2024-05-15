@@ -248,7 +248,7 @@ class Chunk:
             assert self.cuda_shard is not None  # only check on CUDA
             valid_tensor = self.cuda_shard[: self.valid_end]
 
-        return torch.isinf(valid_tensor).any().item() | torch.isnan(valid_tensor).any().item()
+        return torch.isinf(valid_tensor).any() | torch.isnan(valid_tensor).any()
 
     def set_l2_norm(self) -> None:
         """Record l2 norm of this chunks on CUDA."""

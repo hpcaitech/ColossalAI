@@ -62,10 +62,10 @@ class GeminiFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
         self.module = module
 
     def check_local_overflow(self) -> bool:
-        return self.module.chunk_manager.overflow_counter > 0
+        return self.module.chunk_manager.overflow_counter.item() > 0
 
     def pre_zero_grad(self) -> None:
-        self.module.chunk_manager.overflow_counter = 0
+        self.module.chunk_manager.overflow_counter.zero_()
 
 
 class GeminiOptimizer(OptimizerWrapper):
