@@ -96,7 +96,7 @@ class GeminiDDP(ModelWrapper):
         master_weights: bool = True,
         extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
-        enable_async_reduce: bool = False,
+        enable_async_reduce: bool = True,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         reuse_fp16_chunk = master_weights if not enable_gradient_accumulation else False
