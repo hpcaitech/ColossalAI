@@ -590,7 +590,7 @@ class InferenceEngine:
     def add_request(
         self,
         request_ids: Union[List[int], int] = None,
-        prompts: List[str] = None,
+        prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
         **kwargs,
     ) -> None:

@@ -201,7 +201,7 @@ class _AsyncInferenceEngine(InferenceEngine):
         for sequence in finished_sequences:
             sequence.output = self.tokenizer.decode(sequence.output_token_id)
 
-        return finished_sequences, self.request_handler.total_requests_in_batch_bucket() > 0
+        return finished_sequences, not self.request_handler.running_list.is_empty()
 
     def add_single_request(self, request_id: int, prompt: str, prompt_token_ids, generation_config=None):
         prompts = [prompt]
@@ -259,7 +259,7 @@ class AsyncInferenceEngine:
         for new_request in new_requests:
             self.engine.add_single_request(**new_request)
         newly_finished_seqs, has_running_requests = await self.engine.async_step()
-
+        print("do we has running requests", has_running_requests)
         for seq in newly_finished_seqs:
             self._request_tracer.process_finished_request(seq)
 
@@ -285,6 +285,7 @@ class AsyncInferenceEngine:
             if not processing_requests:
                 await self._request_tracer.wait_for_new_requests()
             processing_requests = await self.step()
+            print("process_request?", processing_requests)
             await asyncio.sleep(0)
 
     async def add_request(
