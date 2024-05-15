@@ -25,6 +25,7 @@ from colossalai.inference.config import InferenceConfig
 from colossalai.inference.server.chat_service import ChatServing
 from colossalai.inference.server.completion_service import CompletionServing
 from colossalai.inference.server.utils import id_generator
+from colossalai.inference.utils import find_available_ports
 
 from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
 
@@ -158,7 +159,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Colossal-Inference API server.")
 
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8000, help="port of FastAPI server.")
     parser.add_argument("--ssl-keyfile", type=str, default=None)
     parser.add_argument("--ssl-certfile", type=str, default=None)
     parser.add_argument(
@@ -194,12 +195,12 @@ if __name__ == "__main__":
     args = parse_args()
     inference_config = InferenceConfig.from_dict(vars(args))
     tokenizer = AutoTokenizer.from_pretrained(args.model)
-
+    colossalai_backend_port = find_available_ports(1)[0]
     colossalai.launch(
         rank=0,
         world_size=1,
         host=args.host,
-        port=args.port,
+        port=colossalai_backend_port,
         backend="nccl",
     )
     model = AutoModelForCausalLM.from_pretrained(args.model)
@@ -219,7 +220,7 @@ if __name__ == "__main__":
     uvicorn.run(
         app=app,
         host=args.host,
-        port=args.port + 1,
+        port=args.port,
         log_level="debug",
         timeout_keep_alive=TIMEOUT_KEEP_ALIVE,
         ssl_keyfile=args.ssl_keyfile,
