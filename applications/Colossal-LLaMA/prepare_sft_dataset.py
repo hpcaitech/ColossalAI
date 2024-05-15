@@ -10,7 +10,7 @@ import math
 import os
 from multiprocessing import cpu_count
 
-from colossal_llama.dataset.conversation import default_conversation, LLaMA2_Conv
+from colossal_llama.dataset.conversation import LLaMA2_Conv
 from colossal_llama.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
 from transformers import AddedToken, AutoTokenizer
