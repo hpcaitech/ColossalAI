@@ -23,7 +23,7 @@ class CompletionServing:
 
         # it is not a intuitive way
         self.engine.engine.generation_config = generation_config
-        result_generator = self.engine.generate(request_id, prompt=prompt)
+        result_generator = self.engine.generate(request_id, prompt=prompt, generation_config=generation_config)
 
         if await request.is_disconnected():
             # Abort the request if the client disconnects.
