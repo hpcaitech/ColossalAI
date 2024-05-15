@@ -165,7 +165,7 @@ class Chunk:
 
         self.grad_chunk = None
 
-        # the async all-reduce/reduce-scatter work of this chunk (None means aync)
+        # the async all-reduce/reduce-scatter work of this chunk (None means sync)
         # every self.reduce resets this field
         self.reduce_work = None
 
