@@ -107,8 +107,6 @@ def new_from_pretrained(
             _from_pipeline=from_pipeline,
             **kwargs,
         )
-    else:
-        pass
 
     if commit_hash is None:
         commit_hash = getattr(config, "_commit_hash", None)
