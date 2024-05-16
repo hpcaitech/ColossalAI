@@ -52,7 +52,7 @@ def infer(args):
         pad_token_id=tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
         max_length=args.max_length,
-        do_sample=False,
+        do_sample=args.do_sample,
     )
     coordinator.print_on_master(f"Generating...")
     out = engine.generate(prompts=[args.prompt], generation_config=generation_config)
@@ -82,8 +82,8 @@ def infer(args):
         engine.disable_spec_dec()
 
 
-# colossalai run --nproc_per_node 1 --master_port 26799 llama_generation.py -m /home/data/models/meta-llama/Meta-Llama-3-8B/ --max_length 128  --use_cuda_kernel
-# colossalai run --nproc_per_node 1 llama_generation.py -m /home/data/models/vicuna-7b-v1.5/ --drafter_model /home/data/models/llama-68m/ --max_length 128
+# colossalai run --nproc_per_node 1 llama_generation.py -m MODEL_PATH
+# colossalai run --nproc_per_node 2 llama_generation.py -m MODEL_PATH --tp_size 2
 if __name__ == "__main__":
     # ==============================
     # Parse Arguments
