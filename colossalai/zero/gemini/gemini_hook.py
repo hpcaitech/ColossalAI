@@ -19,10 +19,6 @@ class TrainingPhase(Enum):
 
 logger = DistributedLogger("gemini_hook")
 
-import os
-
-rank = int(os.environ["RANK"])
-
 
 class GeminiZeROHook(ColoParamOpHook):
     def __init__(self, gemini_manager: GeminiManager) -> None:
@@ -56,23 +52,13 @@ class GeminiZeROHook(ColoParamOpHook):
 
         # get possible chunks to prefetch
         chunks_fetch_async = self._gemini_manager.placement_policy.get_prefetch_chunks()
-        if rank == 0 and not self._gemini_manager.is_warmup():
-            print(
-                f"compute_id: {self._gemini_manager.compute_idx} self._gemini_manager.compute_list: {self._gemini_manager.compute_list}"
-            )
-            print(f"{all_chunks=}")
-            print(f"accessed_chunks={self._chunk_manager.accessed_chunks}")
-            print(f"{chunks_fetch_sync=}")
-            print(f"{chunks_fetch_async=}")
-            print(f"works={list(self._gemini_manager._async_works.keys())}")
 
         # prefetch
         for chunk in chunks_fetch_async:
             maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
             if maybe_work is not None:
                 self._gemini_manager.add_work(chunk, maybe_work)
-        if rank == 0 and not self._gemini_manager.is_warmup():
-            print(f"post accessed_chunks={self._chunk_manager.accessed_chunks}")
+
         # record cuda model data of the current OP, including memory for prefetched chunks
         self._gemini_manager.record_model_data_volume()
 
