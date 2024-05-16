@@ -118,14 +118,15 @@ class StaticPlacementPolicy(PlacementPolicy):
     def get_prefetch_chunks(self) -> List[Chunk]:
         if self.gemini_manager.is_warmup():  # no prefetch during warmup since we need compute_list
             return []
+        can_prefetch = self.max_prefetch - len(self.gemini_manager._async_works)
         prefetch = []
         for i in range(self.gemini_manager.compute_idx + 1, len(self.gemini_manager.compute_list)):
             for chunk in self.gemini_manager.compute_list[i]:
-                if len(prefetch) >= self.max_prefetch:
+                if len(prefetch) >= can_prefetch:
                     break
                 if chunk not in prefetch and chunk not in self.chunk_manager.accessed_chunks:
                     prefetch.append(chunk)
-            if len(prefetch) >= self.max_prefetch:
+            if len(prefetch) >= can_prefetch:
                 break
         return prefetch
 
