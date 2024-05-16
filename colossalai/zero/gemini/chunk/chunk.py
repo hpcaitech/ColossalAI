@@ -567,6 +567,7 @@ class Chunk:
         return self is __o
 
     def __repr__(self, detailed: bool = True):
+        return f"Chunk({self.count_id})"
         output = [
             "Chunk Information:\n",
             "\tchunk size: {}, chunk dtype: {}, process group size: {}\n".format(

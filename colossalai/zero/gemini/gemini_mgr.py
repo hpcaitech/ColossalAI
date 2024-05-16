@@ -1,8 +1,9 @@
 import functools
 from time import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
+import torch.distributed as dist
 
 from .chunk import Chunk, ChunkManager
 from .memory_tracer import ChunkMemStatsCollector, MemStats
@@ -41,9 +42,10 @@ class GeminiManager:
         self._mem_stats_collector = (
             ChunkMemStatsCollector(chunk_manager, self._memstats) if policy_cls.need_mem_stats else None
         )
-        self._placement_policy = policy_cls(chunk_manager, self._mem_stats_collector, **placement_kwargs)
+        self._placement_policy = policy_cls(self, chunk_manager, self._mem_stats_collector, **placement_kwargs)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
+        self._async_works: Dict[Chunk, dist.work] = {}
 
         self._h2d_volume = 0
         self._d2h_volume = 0
@@ -98,11 +100,13 @@ class GeminiManager:
         # find stateful tensor in state COMPUTE
         start = time()
         self._record_warmup_chunks_order(chunks, record_anyway=record_anyway)
-        cuda_demand, hold_cuda_tensor_list = self._get_layout_info(self._compute_idx, self._warmup, chunks)
+        cuda_demand, can_evict_chunks = self._get_layout_info(self._compute_idx, self._warmup, chunks)
+        # don't evict chunks that are asynchronously fetched
+        can_evict_chunks = [chunk for chunk in can_evict_chunks if chunk not in self._async_works]
         self._layout_time += time() - start
 
         vol, evict_time = self._placement_policy.evict_tensors(
-            can_evict_chunks=hold_cuda_tensor_list,
+            can_evict_chunks=can_evict_chunks,
             cuda_demand=cuda_demand,
             warmup=self._warmup,
             compute_list=self._compute_list,
@@ -113,6 +117,21 @@ class GeminiManager:
         self._evict_time += evict_time
         # move COMPUTE tensors to CUDA
         self._h2d_volume += cuda_demand
+
+    def wait_chunks(self, chunks: Iterable[Chunk]) -> Tuple[Chunk]:
+        non_prefetched_chunks = []
+        for chunk in chunks:
+            if chunk in self._async_works:
+                self._async_works[chunk].wait()
+                del self._async_works[chunk]
+            else:
+                non_prefetched_chunks.append(chunk)
+        return tuple(non_prefetched_chunks)
+
+    def add_work(self, chunk: Chunk, work: dist.Work):
+        assert work is not None
+        assert chunk not in self._async_works
+        self._async_works[chunk] = work
 
     @functools.lru_cache(maxsize=None)
     def _get_layout_info(self, compute_idx: int, warmup: bool, chunks: Tuple[Chunk, ...]):
