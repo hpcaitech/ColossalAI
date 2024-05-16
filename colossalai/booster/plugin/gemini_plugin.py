@@ -329,7 +329,7 @@ class GeminiPlugin(DPPluginBase):
         chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "static",
         enable_gradient_accumulation: bool = False,
-        max_prefetch:int = 0,
+        max_prefetch: int = 0,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
