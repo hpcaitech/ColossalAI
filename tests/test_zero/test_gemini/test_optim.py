@@ -40,9 +40,7 @@ EXAMPLE_MODELS = [
 ]
 
 # bfloat16 cannot represent them exactly
-BF16_IGNORED_KEYS = [
-    "masked_bias",
-]
+BF16_IGNORED_KEYS = ["masked_bias"]
 
 
 def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dtype):
