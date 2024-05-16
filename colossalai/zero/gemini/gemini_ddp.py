@@ -133,6 +133,7 @@ class GeminiDDP(ModelWrapper):
             steady_cuda_cap_ratio=steady_cuda_cap_ratio,
         )
         self.force_outputs_fp32 = force_outputs_fp32
+        self.param_op_hook = GeminiZeROHook(self.gemini_manager, max_prefetch=max_prefetch)
         self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
@@ -156,8 +157,6 @@ class GeminiDDP(ModelWrapper):
             param_order = OrderedParamGenerator()
             for p in module.parameters():
                 param_order.append(p)
-
-        self.param_op_hook = GeminiZeROHook(self.gemini_manager, param_order=param_order, max_prefetch=max_prefetch)
 
         for name, param in module.named_parameters():
             self.param2name[param] = name

@@ -114,7 +114,7 @@ class ChunkManager:
     def access_chunk(self, chunk: Chunk, async_access: bool = False) -> Optional[dist.Work]:
         """Make the chunk can be used for calculation."""
         if chunk in self.accessed_chunks:
-            return
+            return None
         self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == "cpu":
             chunk.shard_move(get_accelerator().get_current_device())
