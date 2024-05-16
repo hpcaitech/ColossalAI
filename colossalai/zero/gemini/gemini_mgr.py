@@ -1,6 +1,6 @@
 import functools
 from time import time
-from typing import Dict, List, Optional, Tuple, Iterable
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -101,7 +101,7 @@ class GeminiManager:
         start = time()
         self._record_warmup_chunks_order(chunks, record_anyway=record_anyway)
         cuda_demand, can_evict_chunks = self._get_layout_info(self._compute_idx, self._warmup, chunks)
-        # don't evict chunks that are asynchronously fetched 
+        # don't evict chunks that are asynchronously fetched
         can_evict_chunks = [chunk for chunk in can_evict_chunks if chunk not in self._async_works]
         self._layout_time += time() - start
 

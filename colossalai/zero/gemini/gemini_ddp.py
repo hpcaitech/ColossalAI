@@ -131,7 +131,7 @@ class GeminiDDP(ModelWrapper):
             offload_param_frac=offload_param_frac,
             warmup_non_model_data_ratio=warmup_non_model_data_ratio,
             steady_cuda_cap_ratio=steady_cuda_cap_ratio,
-            max_prefetch=max_prefetch
+            max_prefetch=max_prefetch,
         )
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(self.gemini_manager)
