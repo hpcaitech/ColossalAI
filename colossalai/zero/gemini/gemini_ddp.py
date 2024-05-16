@@ -78,6 +78,7 @@ class GeminiDDP(ModelWrapper):
         chunk_init_device: torch.device = torch.device("cpu"),
         placement_policy: str = "static",
         enable_gradient_accumulation: bool = False,
+        max_prefetch: int = 0,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
@@ -132,7 +133,7 @@ class GeminiDDP(ModelWrapper):
             steady_cuda_cap_ratio=steady_cuda_cap_ratio,
         )
         self.force_outputs_fp32 = force_outputs_fp32
-        self.param_op_hook = GeminiZeROHook(self.gemini_manager)
+        self.param_op_hook = GeminiZeROHook(self.gemini_manager, max_prefetch=max_prefetch)
         self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
