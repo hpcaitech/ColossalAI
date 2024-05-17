@@ -45,11 +45,6 @@ class PlacementPolicy(ABC):
         raise NotImplementedError
 
 
-import os
-
-rank = int(os.environ["RANK"])
-
-
 class StaticPlacementPolicy(PlacementPolicy):
     def __init__(
         self,
