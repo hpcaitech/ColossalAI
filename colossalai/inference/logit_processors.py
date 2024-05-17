@@ -134,20 +134,20 @@ def apply_top_p(logits, top_p: float):
 def apply_forced_bos_token_id(
     logits: torch.Tensor,
     sequence_lengths: Union[torch.Tensor, List[int]],
-    max_out_lengths: Union[torch.Tensor, List[int]],
+    max_lengths: Union[torch.Tensor, List[int]],
     bos_token_id: int,
 ):
     # NOTE For now, optimizations for encoder-decoder models have not been supported yet
     # And this function will never be called in the current implementation.
     if isinstance(sequence_lengths, torch.Tensor):
         sequence_lengths = sequence_lengths.tolist()
-    if isinstance(max_out_lengths, torch.Tensor):
-        max_out_lengths = max_out_lengths.tolist()
+    if isinstance(max_lengths, torch.Tensor):
+        max_lengths = max_lengths.tolist()
 
     select_indexes = []
     num_sequences = logits.shape[0]
     sequence_lengths = sequence_lengths[:num_sequences]
-    max_out_lengths = max_out_lengths[:num_sequences]
+    max_lengths = max_lengths[:num_sequences]
     for i, sequence_length in enumerate(sequence_lengths):
         if sequence_length == 1:
             select_indexes.append(i)
@@ -162,7 +162,7 @@ def apply_forced_bos_token_id(
 def apply_forced_eos_token_id(
     logits: torch.Tensor,
     sequence_lengths: Union[torch.Tensor, List[int]],
-    max_out_lengths: Union[torch.Tensor, List[int]],
+    max_lengths: Union[torch.Tensor, List[int]],
     eos_token_id: Union[int, List[int]],
 ):
     """
@@ -172,22 +172,22 @@ def apply_forced_eos_token_id(
 
     Args:
         logits(torch.Tensor): logits
-        sequence_lengths(torch.Tensor): sequence lengths
-        max_out_lengths(torch.Tensor): maximum output lengths for each sequence
+        sequence_lengths(torch.Tensor): sequence lengths including prompt and output tokens
+        max_lengths(torch.Tensor): the maximum length for each sequence
         eos_token_id(Union[int, List[int]]): forced eos token id
     """
     if isinstance(eos_token_id, int):
         eos_token_id = [eos_token_id]
     if isinstance(sequence_lengths, torch.Tensor):
         sequence_lengths = sequence_lengths.tolist()
-    if isinstance(max_out_lengths, torch.Tensor):
-        max_out_lengths = max_out_lengths.tolist()
+    if isinstance(max_lengths, torch.Tensor):
+        max_lengths = max_lengths.tolist()
 
     select_indexes = []
     num_sequences = logits.shape[0]
     sequence_lengths = sequence_lengths[:num_sequences]
-    max_out_lengths = max_out_lengths[:num_sequences]
-    for i, (sequence_length, max_out_length) in enumerate(zip(sequence_lengths, max_out_lengths)):
+    max_lengths = max_lengths[:num_sequences]
+    for i, (sequence_length, max_out_length) in enumerate(zip(sequence_lengths, max_lengths)):
         if sequence_length == max_out_length - 1:
             select_indexes.append(i)
     if select_indexes:

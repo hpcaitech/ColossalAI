@@ -688,11 +688,12 @@ class InferenceEngine:
         )
 
         batch_token_ids = None
-        config_dict = self.generation_config.to_dict()
-        # process repetition_penalty, no_repeat_ngram_size
-        for type in ["repetition_penalty", "no_repeat_ngram_size"]:
-            if type in config_dict and config_dict[type] is not None:
-                batch_token_ids = batch.batch_token_ids
+        if (
+            self.generation_config.repetition_penalty != 1.0
+            or self.generation_config.no_repeat_ngram_size > 0
+            or self.generation_config.forced_eos_token_id is not None
+        ):
+            batch_token_ids = batch.batch_token_ids
 
         # only when we have the graph for specific decoding batch size can we use the cuda graph for inference
         use_cuda_graph = False

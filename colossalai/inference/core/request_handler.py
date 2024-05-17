@@ -8,8 +8,6 @@ from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache import KVCacheManager, RPCKVCacheManager
-from colossalai.inference.logit_processors import logits_processor
-from colossalai.inference.sampler import *
 from colossalai.inference.struct import RequestStatus, Sequence
 from colossalai.logging import get_dist_logger
 

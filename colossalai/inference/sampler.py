@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 import torch
 from transformers.generation import GenerationConfig
 
-from colossalai.inference.logit_processors import logit_processor
+from colossalai.inference.logit_processors import get_logits_processor
 
 
 def greedy_sample(
@@ -86,18 +86,28 @@ def search_tokens(
     Sample tokens for finished requests.
     """
     # NOTE: need to decide the granularity to process logits (sequence or batch)
+    print(
+        f"CHECK search_tokens max_length {generation_config.max_length}; max_new_tokens {generation_config.max_new_tokens}"
+    )
     config_dict = generation_config.to_dict()
-    # process repetition_penalty, no_repeat_ngram_size
-    for type in ["repetition_penalty", "no_repeat_ngram_size"]:
-        if type in config_dict and config_dict[type] is not None:
-            logits = logit_processor(type, logits, config_dict[type], batch_token_ids)
+    if (repetition_penalty := config_dict.get("repetition_penalty", 1.0)) != 1.0:
+        logits = get_logits_processor("repetition_penalty", logits, repetition_penalty, batch_token_ids)
+    if (no_repeat_ngram_size := config_dict.get("no_repeat_ngram_size", 0)) > 0:
+        logits = get_logits_processor("no_repeat_ngram_size", logits, no_repeat_ngram_size, batch_token_ids)
+    if (forced_eos_token_id := config_dict.get("forced_eos_token_id", None)) is not None:
+        sequence_lengths = [len(batch_token_ids[i]) for i in range(len(batch_token_ids))]
+        max_out_lengths = [generation_config.max_length for _ in range(len(batch_token_ids))]
+        logits = get_logits_processor(
+            "forced_eos_token_id", logits, sequence_lengths, max_out_lengths, forced_eos_token_id
+        )
 
-    # do logit processor
     if generation_config.do_sample:
-        # process temperature, top_k, top_p
-        for type in ["temperature", "top_k", "top_p"]:
-            if type in config_dict and config_dict[type] is not None:
-                logits = logit_processor(type, logits, config_dict[type])
+        if (temperature := config_dict.get("temperature", 1.0)) != 1.0:
+            logits = get_logits_processor("temperature", logits, temperature)
+        if (top_k := config_dict.get("top_k", 0)) != 0:
+            logits = get_logits_processor("top_k", logits, top_k)
+        if (top_p := config_dict.get("top_p", 1.0)) < 1.0:
+            logits = get_logits_processor("top_p", logits, top_p)
 
     # calculate probs
     probs = torch.softmax(logits, dim=-1, dtype=torch.float)
