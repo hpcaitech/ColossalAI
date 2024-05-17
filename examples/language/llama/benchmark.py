@@ -6,6 +6,7 @@ import torch
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
+from torch import profiler
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM
@@ -76,6 +77,8 @@ def main():
     parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
+    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
+    parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -91,6 +94,7 @@ def main():
                 num_ckpt_layers_per_stage=[19, 19, 19, 13],
             ),
             "num_layers_per_stage": [19, 20, 20, 21],
+            "pp_style": "interleaved",
         }
         if args.custom_ckpt
         else {}
@@ -163,6 +167,8 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
+            pp_style="interleaved",
+            num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
@@ -175,6 +181,8 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
+            pp_style="interleaved",
+            num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             cpu_offload=True,
             enable_fused_normalization=torch.cuda.is_available(),
@@ -245,26 +253,37 @@ def main():
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
+    with profiler.profile(
+        schedule=torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
+        on_trace_ready=profiler.tensorboard_trace_handler("./log"),
+        record_shapes=True,
+        profile_memory=True,
+        with_stack=True,
+    ) as prof:
+        if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
+            data_iter = iter(dataloader)
+            for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
+                performance_evaluator.on_step_start(step)
+                prof.step()
+                loss = booster.execute_pipeline(
+                    data_iter,
+                    model,
+                    criterion=lambda outputs, inputs: outputs[0],
+                    optimizer=optimizer,
+                    return_loss=True,
+                )
+                import torch.distributed as dist
 
-    if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
-        data_iter = iter(dataloader)
-        for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
-            performance_evaluator.on_step_start(step)
-            booster.execute_pipeline(
-                data_iter, model, criterion=lambda outputs, inputs: outputs[0], optimizer=optimizer, return_loss=False
-            )
-            optimizer.step()
-            optimizer.zero_grad()
-            performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
-    else:
-        for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
-            performance_evaluator.on_step_start(step)
-            outputs = model(**batch)
-            loss = outputs[0]
-            booster.backward(loss, optimizer)
-            optimizer.step()
-            optimizer.zero_grad()
-            performance_evaluator.on_step_end(**batch)
+                if dist.get_rank() == dist.get_world_size() - 1:
+                    print(f"Step: {step}, loss: {loss} ")
+                performance_evaluator.on_step_start(step)
+                prof.step()
+                outputs = model(**batch)
+                loss = outputs[0]
+                booster.backward(loss, optimizer)
+                optimizer.step()
+                optimizer.zero_grad()
+                performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")

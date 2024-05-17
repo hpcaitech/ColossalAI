@@ -32,6 +32,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
+        overlap_p2p: bool = True,
     ) -> None:
         """1F1B pipeline schedule.
 
@@ -46,6 +47,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         ), "Either num_microbatches or microbatch_size should be provided"
 
         self.comm = PipelineP2PCommunication(stage_manager)
+        self.overlap_p2p = overlap_p2p
+
         self.num_microbatches = num_microbatches
         self.microbatch_size = microbatch_size
         self.batch: Optional[Any] = None
@@ -184,7 +187,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.stage_manager.is_last_stage():
             if not self.send_tensor_metadata and self.grad_metadata_recv is not None:
                 send_prior_fallback = None  # must not fallback
-            output_tensor_grad = self.comm.send_forward_recv_backward(
+            output_tensor_grad, _ = self.comm.send_forward_recv_backward(
                 output_tensor,
                 next_rank,
                 send_metadata=self.send_tensor_metadata,
@@ -210,7 +213,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.stage_manager.is_first_stage():
             if not self.send_grad_metadata and self.tensor_metadata_recv is not None:
                 send_prior_fallback = None  # must not fallback
-            input_tensor = self.comm.send_backward_recv_forward(
+            input_tensor, _ = self.comm.send_backward_recv_forward(
                 input_tensor_grad,
                 prev_rank,
                 send_metadata=self.send_grad_metadata,

@@ -942,7 +942,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
-
+        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
     """
 
     def __init__(
@@ -988,6 +988,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_metadata_cache: bool = True,
         make_vocab_size_divisible_by: int = 64,
         dp_outside: bool = True,
+        overlap_p2p: bool = True,
     ) -> None:
         super().__init__()
         assert (
@@ -1068,6 +1069,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatch=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
+                    overlap_p2p=overlap_p2p,
                 )
             elif pp_style == "1f1b":
                 self.schedule = OneForwardOneBackwardSchedule(
@@ -1075,6 +1077,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatches=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
+                    overlap_p2p=overlap_p2p,
                 )
             else:
                 raise NotImplementedError()
