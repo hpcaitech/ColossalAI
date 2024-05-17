@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 
+from colossalai.logging import DistributedLogger
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.utils import is_ddp_ignored
 from colossalai.zero.gemini import TensorState
@@ -16,6 +17,9 @@ class TrainingPhase(Enum):
     BACKWARD = 1
 
 
+logger = DistributedLogger("gemini_hook")
+
+
 class GeminiZeROHook(ColoParamOpHook):
     def __init__(self, gemini_manager: GeminiManager) -> None:
         super().__init__()
@@ -24,16 +28,37 @@ class GeminiZeROHook(ColoParamOpHook):
         self._training_phase = TrainingPhase.FORWARD
 
     def pre_op(self, params):
+        # map params to chunks
         params = [p for p in params if not is_ddp_ignored(p)]
-        chunks = self._chunk_manager.get_chunks(params)
+        all_chunks = self._chunk_manager.get_chunks(params)
+
+        # wait for prefetched chunks, filter those are not prefetched
+        chunks_fetch_sync = self._gemini_manager.wait_chunks(all_chunks)
+
+        # transfer state
         for p in params:
             self._chunk_manager.trans_tensor_state(p, TensorState.COMPUTE)
         self._gemini_manager.sample_overall_data()
-        self._gemini_manager.adjust_layout(chunks)
-        for chunk in chunks:
+
+        # evit chunks, aware of async fetched
+        self._gemini_manager.adjust_layout(
+            all_chunks, record_anyway=self._gemini_manager.placement_policy.max_prefetch > 0
+        )
+
+        # fetch the rest synchronously
+        for chunk in chunks_fetch_sync:
             self._chunk_manager.access_chunk(chunk)
 
-        # record cuda model data of the current OP
+        # get possible chunks to prefetch
+        chunks_fetch_async = self._gemini_manager.placement_policy.get_prefetch_chunks()
+
+        # prefetch
+        for chunk in chunks_fetch_async:
+            maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
+            if maybe_work is not None:
+                self._gemini_manager.add_work(chunk, maybe_work)
+
+        # record cuda model data of the current OP, including memory for prefetched chunks
         self._gemini_manager.record_model_data_volume()
 
     def post_op(self, params):
