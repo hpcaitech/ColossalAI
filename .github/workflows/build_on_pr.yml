@@ -140,6 +140,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
+          pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Store Colossal-AI Cache
