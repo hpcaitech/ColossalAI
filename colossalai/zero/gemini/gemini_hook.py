@@ -33,19 +33,22 @@ class GeminiZeROHook(ColoParamOpHook):
         all_chunks = self._chunk_manager.get_chunks(params)
 
         # wait for prefetched chunks, filter those are not prefetched
-        chunks_fetch_sync = self._gemini_manager.wait_chunks(all_chunks)
+        chunks_fetch_sync = self._gemini_manager.wait_chunks(all_chunks)  # 当前要fetch的chunk
 
         # transfer state
         for p in params:
+            # TODO(haze188): check状态转换
             self._chunk_manager.trans_tensor_state(p, TensorState.COMPUTE)
         self._gemini_manager.sample_overall_data()
 
         # evit chunks, aware of async fetched
+        # TODO(haze188): 可能我们prefetch的又被淘汰掉, check一下
         self._gemini_manager.adjust_layout(
             all_chunks, record_anyway=self._gemini_manager.placement_policy.max_prefetch > 0
         )
 
         # fetch the rest synchronously
+        # TODO(haze188): 1. 先prefetch还是先fetch（prefetch是异步，fetch是同步）
         for chunk in chunks_fetch_sync:
             self._chunk_manager.access_chunk(chunk)
 

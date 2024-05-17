@@ -45,9 +45,9 @@ class PlacementPolicy(ABC):
         raise NotImplementedError
 
 
-import os
-
-rank = int(os.environ["RANK"])
+# import torch.distributed as dist
+# # rank = int(os.environ["RANK"])
+# rank = dist.get_rank()
 
 
 class StaticPlacementPolicy(PlacementPolicy):
@@ -118,8 +118,10 @@ class StaticPlacementPolicy(PlacementPolicy):
     def get_prefetch_chunks(self) -> List[Chunk]:
         if self.gemini_manager.is_warmup():  # no prefetch during warmup since we need compute_list
             return []
+        # 最多有多少个异步的work
         can_prefetch = self.max_prefetch - len(self.gemini_manager._async_works)
         prefetch = []
+        # static炸就炸了，dynamic可能需要我们要先分析当前运行时的内存情况，分配空间或者淘汰块
         for i in range(self.gemini_manager.compute_idx + 1, len(self.gemini_manager.compute_list)):
             for chunk in self.gemini_manager.compute_list[i]:
                 if len(prefetch) >= can_prefetch:
@@ -238,7 +240,9 @@ class AutoPlacementPolicy(PlacementPolicy):
                 grads_device_map[p] = torch.device("cpu")
 
     def get_prefetch_chunks(self, max_prefetch: int) -> List[Chunk]:
-        return []  # TODO @botbw: implement prefetching for auto
+        # TODO @haze188 @botbw: implement prefetching for auto
+
+        return []
 
 
 class PlacementPolicyFactory:
