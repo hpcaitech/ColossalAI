@@ -45,11 +45,6 @@ class PlacementPolicy(ABC):
         raise NotImplementedError
 
 
-# import torch.distributed as dist
-# # rank = int(os.environ["RANK"])
-# rank = dist.get_rank()
-
-
 class StaticPlacementPolicy(PlacementPolicy):
     def __init__(
         self,
