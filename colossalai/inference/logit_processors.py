@@ -22,7 +22,7 @@ def register_logits_processor(process_type):
 
 
 @register_logits_processor("no_repeat_ngram_size")
-def no_repeat_ngram_size_logit_process(logits, ngram_size: int, batch_token_ids: List[List[int]]):
+def apply_no_repeat_ngram_size(logits, ngram_size: int, batch_token_ids: List[List[int]]):
     """
     enforces no repetition of n-grams to avoid repetitions of word sequences.
     """
@@ -54,7 +54,7 @@ def no_repeat_ngram_size_logit_process(logits, ngram_size: int, batch_token_ids:
 
 
 @register_logits_processor("repetition_penalty")
-def repetition_penalty_logit_process(logits, penalty: float, batch_token_ids: List[List[int]]):
+def apply_repetition_penalty(logits, penalty: float, batch_token_ids: List[List[int]]):
     """
     apply the penalty to the tokens present in the prompt.
     """
@@ -62,7 +62,7 @@ def repetition_penalty_logit_process(logits, penalty: float, batch_token_ids: Li
     if not isinstance(penalty, float) or not (penalty > 0):
         raise ValueError(f"'penalty={penalty}' has to be a strictly positive float and greater than 0.")
 
-    logit_list = []
+    logits_list = []
 
     # TODO(yuehuayingxueluo) This is only a temporary implementation. Later, we will implement presence_penalties, frequency_penalties, and repetition_penalties using CUDA kernels.
     if penalty != 1.0:
@@ -72,15 +72,15 @@ def repetition_penalty_logit_process(logits, penalty: float, batch_token_ids: Li
 
             curretn_socre = torch.gather(current_logit, 0, current_token)
             curretn_socre = torch.where(curretn_socre < 0, curretn_socre * penalty, curretn_socre / penalty)
-            logit_list.append(current_logit.scatter(0, current_token, curretn_socre))
+            logits_list.append(current_logit.scatter(0, current_token, curretn_socre))
 
-        logits = torch.stack(logit_list)
+        logits = torch.stack(logits_list)
 
     return logits
 
 
 @register_logits_processor("temperature")
-def temperature_logits_process(logits, temperature: float):
+def apply_temperature(logits, temperature: float):
     """
     apply temperature scaling.
     """
@@ -95,7 +95,7 @@ def temperature_logits_process(logits, temperature: float):
 
 
 @register_logits_processor("top_k")
-def top_k_logits_processor(logits, top_k: int):
+def apply_top_k(logits, top_k: int):
     """
     top_k logit processor
     """
@@ -109,7 +109,7 @@ def top_k_logits_processor(logits, top_k: int):
 
 
 @register_logits_processor("top_p")
-def top_p_logits_processor(logits, top_p: float):
+def apply_top_p(logits, top_p: float):
     """
     top_p logit processor
     """
@@ -131,7 +131,7 @@ def top_p_logits_processor(logits, top_p: float):
 
 
 @register_logits_processor("forced_bos_token_id")
-def forced_bos_token_processor(
+def apply_forced_bos_token_id(
     logits: torch.Tensor,
     sequence_lengths: Union[torch.Tensor, List[int]],
     max_out_lengths: Union[torch.Tensor, List[int]],
@@ -159,7 +159,7 @@ def forced_bos_token_processor(
 
 
 @register_logits_processor("forced_eos_token_id")
-def forced_eos_token_processor(
+def apply_forced_eos_token_id(
     logits: torch.Tensor,
     sequence_lengths: Union[torch.Tensor, List[int]],
     max_out_lengths: Union[torch.Tensor, List[int]],
@@ -197,7 +197,7 @@ def forced_eos_token_processor(
     return logits
 
 
-def logits_processor(processor: str, logits, *args, **kwargs):
+def get_logits_processor(processor: str, logits, *args, **kwargs):
     """
     do logit process for given logits.
 
