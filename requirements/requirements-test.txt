@@ -20,4 +20,3 @@ pydantic
 ray
 peft>=0.7.1
 #auto-gptq now not support torch1.12
-galore_torch
