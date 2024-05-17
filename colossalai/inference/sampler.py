@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 from transformers.generation import GenerationConfig
@@ -7,7 +7,6 @@ from colossalai.inference.logit_processors import get_logits_processor
 
 
 def greedy_sample(
-    generation_config,
     logprobs: torch.Tensor,
 ) -> torch.Tensor:
     """
@@ -18,7 +17,6 @@ def greedy_sample(
 
 
 def multinomial_sample(
-    generation_config,
     probs: torch.Tensor,
 ) -> torch.Tensor:
     """
@@ -29,7 +27,7 @@ def multinomial_sample(
 
 
 def beam_search_sample(
-    generation_config,
+    beam_width: int,
     logprobs: torch.Tensor,
     is_prompt: bool = False,
 ) -> List[Tuple[List[int], List[int]]]:
@@ -46,7 +44,6 @@ def beam_search_sample(
     # NOTE: this beam search sample function is wrong now.
     """
 
-    beam_width = generation_config.num_beams
     results = []
     if is_prompt:
         # Prompt phase.
@@ -64,20 +61,8 @@ def beam_search_sample(
     return results
 
 
-def _sample(probs: torch.Tensor, logprobs: torch.Tensor, generation_config: GenerationConfig, is_prompt: bool = False):
-    if generation_config.num_beams == 1:
-        if generation_config.do_sample:
-            sample_tokens = multinomial_sample(generation_config, probs)
-        else:
-            sample_tokens = greedy_sample(generation_config, logprobs)
-    else:
-        sample_tokens = beam_search_sample(generation_config, logprobs, is_prompt=is_prompt)
-
-    return sample_tokens
-
-
 def search_tokens(
-    generation_config: GenerationConfig,
+    generation_config: Union[GenerationConfig, dict],
     logits,
     is_prompt: bool = False,
     batch_token_ids: Optional[List[List[int]]] = None,
@@ -86,27 +71,29 @@ def search_tokens(
     Sample tokens for finished requests.
     """
     # NOTE: need to decide the granularity to process logits (sequence or batch)
-    print(
-        f"CHECK search_tokens max_length {generation_config.max_length}; max_new_tokens {generation_config.max_new_tokens}"
-    )
-    config_dict = generation_config.to_dict()
-    if (repetition_penalty := config_dict.get("repetition_penalty", 1.0)) != 1.0:
+
+    # convert GenerationConfig to dict
+    # temporary fix for compatibility with the usage of RPCInferenceEngine
+    if isinstance(generation_config, GenerationConfig):
+        generation_config = generation_config.to_dict()
+
+    if (repetition_penalty := generation_config.get("repetition_penalty", 1.0)) != 1.0:
         logits = get_logits_processor("repetition_penalty", logits, repetition_penalty, batch_token_ids)
-    if (no_repeat_ngram_size := config_dict.get("no_repeat_ngram_size", 0)) > 0:
+    if (no_repeat_ngram_size := generation_config.get("no_repeat_ngram_size", 0)) > 0:
         logits = get_logits_processor("no_repeat_ngram_size", logits, no_repeat_ngram_size, batch_token_ids)
-    if (forced_eos_token_id := config_dict.get("forced_eos_token_id", None)) is not None:
+    if (forced_eos_token_id := generation_config.get("forced_eos_token_id", None)) is not None:
         sequence_lengths = [len(batch_token_ids[i]) for i in range(len(batch_token_ids))]
         max_out_lengths = [generation_config.max_length for _ in range(len(batch_token_ids))]
         logits = get_logits_processor(
             "forced_eos_token_id", logits, sequence_lengths, max_out_lengths, forced_eos_token_id
         )
 
-    if generation_config.do_sample:
-        if (temperature := config_dict.get("temperature", 1.0)) != 1.0:
+    if generation_config.get("do_sample"):
+        if (temperature := generation_config.get("temperature", 1.0)) != 1.0:
             logits = get_logits_processor("temperature", logits, temperature)
-        if (top_k := config_dict.get("top_k", 0)) != 0:
+        if (top_k := generation_config.get("top_k", 0)) != 0:
             logits = get_logits_processor("top_k", logits, top_k)
-        if (top_p := config_dict.get("top_p", 1.0)) < 1.0:
+        if (top_p := generation_config.get("top_p", 1.0)) < 1.0:
             logits = get_logits_processor("top_p", logits, top_p)
 
     # calculate probs
@@ -114,5 +101,11 @@ def search_tokens(
     logprobs = torch.log_softmax(logits, dim=-1, dtype=torch.float)
 
     # sample the next tokens
-    sample_tokens = _sample(probs, logprobs, generation_config, is_prompt)
+    if generation_config.get("num_beams", 1) != 1:
+        raise NotImplementedError("Beam search is not supported yet.")
+    if generation_config.get("do_sample", False):
+        sample_tokens = multinomial_sample(probs)
+    else:
+        sample_tokens = greedy_sample(logprobs)
+
     return sample_tokens
