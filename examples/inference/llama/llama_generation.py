@@ -53,6 +53,9 @@ def infer(args):
         eos_token_id=tokenizer.eos_token_id,
         max_length=args.max_length,
         do_sample=args.do_sample,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
     )
     coordinator.print_on_master(f"Generating...")
     out = engine.generate(prompts=[args.prompt], generation_config=generation_config)
@@ -66,15 +69,6 @@ def infer(args):
         drafter_model = AutoModelForCausalLM.from_pretrained(drafter_model_path_or_name)
         # turn on speculative decoding with the drafter model
         engine.enable_spec_dec(drafter_model)
-        generation_config = GenerationConfig(
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-            max_length=args.max_length,
-            do_sample=args.do_sample,
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
-        )
         coordinator.print_on_master(f"Generating...")
         out = engine.generate(prompts=[args.prompt], generation_config=generation_config)
         coordinator.print_on_master(out)
