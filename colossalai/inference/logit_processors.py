@@ -130,34 +130,6 @@ def apply_top_p(logits, top_p: float):
     return logits
 
 
-@register_logits_processor("forced_bos_token_id")
-def apply_forced_bos_token_id(
-    logits: torch.Tensor,
-    sequence_lengths: Union[torch.Tensor, List[int]],
-    max_lengths: Union[torch.Tensor, List[int]],
-    bos_token_id: int,
-):
-    # NOTE For now, optimizations for encoder-decoder models have not been supported yet
-    # And this function will never be called in the current implementation.
-    if isinstance(sequence_lengths, torch.Tensor):
-        sequence_lengths = sequence_lengths.tolist()
-    if isinstance(max_lengths, torch.Tensor):
-        max_lengths = max_lengths.tolist()
-
-    select_indexes = []
-    num_sequences = logits.shape[0]
-    sequence_lengths = sequence_lengths[:num_sequences]
-    max_lengths = max_lengths[:num_sequences]
-    for i, sequence_length in enumerate(sequence_lengths):
-        if sequence_length == 1:
-            select_indexes.append(i)
-    if select_indexes:
-        logits[select_indexes, :] = -float("inf")
-        logits[select_indexes, bos_token_id] = 0
-
-    return logits
-
-
 @register_logits_processor("forced_eos_token_id")
 def apply_forced_eos_token_id(
     logits: torch.Tensor,
