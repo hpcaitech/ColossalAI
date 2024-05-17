@@ -25,7 +25,7 @@ class InterleavedSchedule(PipelineSchedule):
         num_microbatch: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
-        overlap_p2p: bool = False,
+        overlap_p2p: bool = True,
     ) -> None:
         super().__init__(stage_manager)
         assert (
@@ -116,10 +116,13 @@ class InterleavedSchedule(PipelineSchedule):
         Returns:
             int: The model chunk idx of the input microbatch_id
         """
-        assert microbatch_id < self.num_microbatch * self.num_model_chunks
+        assert (
+            microbatch_id < self.num_microbatch * self.num_model_chunks
+        ), f"microbatch_id {microbatch_id} is out of range ({self.num_microbatch * self.num_model_chunks})"
         microbatch_id_in_group = microbatch_id % (self.stage_manager.num_stages * self.num_model_chunks)
         model_chunk_id = microbatch_id_in_group // self.stage_manager.num_stages
         if not is_forward:
+            # Reverse order
             model_chunk_id = self.num_model_chunks - model_chunk_id - 1
         return model_chunk_id
 
@@ -333,13 +336,7 @@ class InterleavedSchedule(PipelineSchedule):
                 # NOTE: in shardformer, each device still has the entire model, so we need to use relevant stage layers
                 internal_inputs = {} if input_obj is None else input_obj
                 internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
-                try:
-                    output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
-                except Exception as e:
-                    print(
-                        f"rank {torch.distributed.get_rank()} model_chunk_id {model_chunk_id} internal_inputs {internal_inputs}. micro_batch: {micro_batch}"
-                    )
-                    raise e
+                output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
 
             if self.stage_manager.is_last_stage():
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
@@ -459,7 +456,9 @@ class InterleavedSchedule(PipelineSchedule):
         self.load_batch(data_iter)
 
         num_microbatch = self.num_microbatch * self.num_model_chunks
+        # Forward + until 1st backward
         num_warmup_microbatch = (self.stage_manager.num_stages - self.stage_manager.stage - 1) * 2
+        # Steps needed to reach the last chuck
         num_warmup_microbatch += (self.num_model_chunks - 1) * self.stage_manager.num_stages
         num_warmup_microbatch = min(num_warmup_microbatch, num_microbatch)
 
@@ -510,17 +509,19 @@ class InterleavedSchedule(PipelineSchedule):
 
         # Run 1F1B in steady state.
         for i in range(num_microbatch_remaining):
+            fwd_batch_id = i + num_warmup_microbatch
             # Wait for input
-            if torch.distributed.get_rank() == 3:
-                print(f"batch {i} handles: {fwd_wait_handles}, num_microbatch_remaining :{num_microbatch_remaining}")
+            import torch.distributed as dist
+
+            # print(f"rank {dist.get_rank()} bsatch {fw_batch_id} handles: {fwd_wait_handles}, num_microbatch_remaining :{num_microbatch_remaining - i}")
             if fwd_wait_handles is not None:
                 for req in fwd_wait_handles:
                     req.wait()
-            if torch.distributed.get_rank() == 3:
-                print(f"batch {i} input_obj: {input_obj}")
             last_batch = i == num_microbatch_remaining - 1
+            if input_obj is None:
+                print(f"rank {dist.get_rank()} batch {fwd_batch_id} input_obj: {input_obj}, last_batch: {last_batch}")
 
-            model_chunk_id = self.get_model_chunk_id(i + num_warmup_microbatch, is_forward=True)
+            model_chunk_id = self.get_model_chunk_id(fwd_batch_id, is_forward=True)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
             # Add input_obj and output_obj to end of list.
             input_objs[model_chunk_id].append(input_obj)
@@ -538,41 +539,49 @@ class InterleavedSchedule(PipelineSchedule):
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
 
             def send_forward_recv_forward():
-                if last_batch and num_microbatch == num_microbatch_remaining:
-                    model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
-                    _ = self.send_forward(model_chunk_id, output_obj)
-                    return None, None
+                if last_batch:
+                    model_chunk_id = self.get_model_chunk_id(fwd_batch_id, is_forward=True)
+                    wait_handles = self.send_forward(model_chunk_id, output_obj)
+                    return None, wait_handles
                 else:
-                    # TODO: get backward handle
-                    output_obj_grad, wait_handles = self.send_forward_recv_forward(
-                        model_chunk_id_send=self.get_model_chunk_id(i, is_forward=True),
-                        model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=True),
+                    # if torch.distributed.get_rank() == 3 and i == 3:
+                    #     print(f"send chunk: {self.get_model_chunk_id(fw_batch_id, is_forward=True)}, recv chunk: {self.get_model_chunk_id(i + 1, is_forward=True)}")
+                    input_obj, wait_handles = self.send_forward_recv_forward(
+                        model_chunk_id_send=self.get_model_chunk_id(fwd_batch_id, is_forward=True),
+                        model_chunk_id_recv=self.get_model_chunk_id(fwd_batch_id + 1, is_forward=True),
                         output_tensor=output_obj,
                         send_first=self.stage_manager.stage % 2 == 0,
                     )
-                    return output_obj_grad, wait_handles
+                    model_chunk_id = self.get_model_chunk_id(fwd_batch_id, is_forward=True)
+                    with self.stage_manager.switch_model_chunk_id(model_chunk_id):
+                        if input_obj is None:
+                            print(
+                                f"rank {dist.get_rank()} batch {fwd_batch_id} received input_obj is None. model_chunk_id_send: {model_chunk_id}, is_first_stage: {self.stage_manager.is_first_stage()}, num_microbatch:{num_microbatch}, last_batch: {last_batch}"
+                            )
+                    return input_obj, wait_handles
 
             def send_backward_recv_backward():
-                if last_batch:
+                no_cooldown = num_microbatch == num_microbatch_remaining
+                if last_batch and no_cooldown:
                     model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
                     wait_handles = self.send_backward(model_chunk_id, input_obj_grad)
                     return None, wait_handles
                 else:
                     # TODO: fix the model chunk id here
-                    input_obj, wait_handles = self.send_backward_recv_backward(
+                    output_obj_grad, wait_handles = self.send_backward_recv_backward(
                         model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
                         model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
                         input_tensor_grad=input_obj_grad,
                         send_first=self.stage_manager.stage % 2 == 0 and i > 0,
                     )
-                    return input_obj, wait_handles
+                    return output_obj_grad, wait_handles
 
             if self.stage_manager.stage % 2 == 0:
-                output_obj_grad, fwd_wait_handles = send_forward_recv_forward()
-                input_obj, bwd_wait_handles = send_backward_recv_backward()
+                input_obj, fwd_wait_handles = send_forward_recv_forward()
+                output_obj_grad, bwd_wait_handles = send_backward_recv_backward()
             else:
-                input_obj, bwd_wait_handles = send_backward_recv_backward()
-                output_obj_grad, fwd_wait_handles = send_forward_recv_forward()
+                output_obj_grad, bwd_wait_handles = send_backward_recv_backward()
+                input_obj, fwd_wait_handles = send_forward_recv_forward()
 
         if num_microbatch_remaining == 0:
             model_chunk_id = self.get_model_chunk_id(0, is_forward=False)

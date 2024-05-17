@@ -3,6 +3,7 @@ import resource
 from contextlib import nullcontext
 
 import torch
+import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
@@ -58,6 +59,7 @@ def main():
         default="gemini",
         help="Choose which plugin to use",
     )
+    parser.add_argument("--overlap", default=True, type=eval)
     parser.add_argument("-b", "--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("-s", "--num_steps", type=int, default=5, help="Number of steps to run")
     parser.add_argument("-i", "--ignore_steps", type=int, default=2, help="Number of steps to ignore")
@@ -175,6 +177,7 @@ def main():
             microbatch_size=args.mbs,
             precision="bf16",
             dp_outside=False,
+            overlap_p2p=args.overlap,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
@@ -190,6 +193,7 @@ def main():
             microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
+            overlap_p2p=args.overlap,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -272,8 +276,11 @@ def main():
                     optimizer=optimizer,
                     return_loss=True,
                 )
-                import torch.distributed as dist
-
+                if dist.get_rank() == dist.get_world_size() - 1:
+                    print(f"Step: {step}, loss: {loss} ")
+                performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
+        else:
+            for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step: {step}, loss: {loss} ")
                 performance_evaluator.on_step_start(step)
