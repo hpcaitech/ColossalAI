@@ -132,6 +132,7 @@ def new_from_pretrained(
         if kwarg_attn_imp is not None and config._attn_implementation != kwarg_attn_imp:
             config._attn_implementation = kwarg_attn_imp
         model_kwargs = kwargs
+
     if commit_hash is None:
         commit_hash = getattr(config, "_commit_hash", None)
 
