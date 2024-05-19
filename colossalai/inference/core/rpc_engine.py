@@ -257,7 +257,12 @@ class RPCInferenceEngine(InferenceEngine):
         assert len(self.workers) == self.tp_size, "init workers first"
 
         init_tasks = [
-            self.async_parallel_wrapper(worker.execute_model_forward, input_token_ids, input_meta_data.to_rpc_param())
+            self.async_parallel_wrapper(
+                worker.execute_model_forward,
+                input_token_ids,
+                input_meta_data.to_rpc_param(),
+                self.generation_config_dict,
+            )
             for worker in self.workers
         ]
         ret = await asyncio.gather(*init_tasks)

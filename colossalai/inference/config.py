@@ -202,11 +202,12 @@ class InferenceConfig(RPC_PARAM):
     ] = 1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
     pad_input: bool = False
     early_stopping: Optional[bool] = False
-    top_k: Optional[int] = None
-    top_p: Optional[float] = None
+    top_k: Optional[int] = 50
+    top_p: Optional[float] = 1.0
     temperature: Optional[float] = 1.0
     no_repeat_ngram_size: Optional[int] = 0
     repetition_penalty: Optional[float] = 1.0
+    forced_eos_token_id: int = None
 
     # speculative decoding configs
     max_n_spec_tokens: int = 5
