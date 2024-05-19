@@ -157,7 +157,7 @@ class InferenceEngine:
             try:
                 model_policy = model_policy()
             except Exception as e:
-                raise ValueError(f"Fail to instantiate model policy: {e}")
+                raise ValueError(f"Unable to instantiate model policy: {e}")
 
         assert isinstance(model_policy, Policy), f"Invalid type of model policy: {type(model_policy)}"
         pg_mesh = ProcessGroupMesh(self.inference_config.pp_size, self.inference_config.tp_size)
