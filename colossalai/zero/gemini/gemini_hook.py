@@ -51,7 +51,12 @@ class GeminiZeROHook(ColoParamOpHook):
             self._chunk_manager.access_chunk(chunk)
 
         # get possible chunks to prefetch
-        chunks_fetch_async = self._gemini_manager.placement_policy.get_prefetch_chunks()
+        chunks_fetch_async = self._gemini_manager.placement_policy.get_prefetch_chunks(
+            is_warmup=self._gemini_manager.is_warmup(),
+            compute_list=self._gemini_manager.compute_list,
+            compute_idx=self._gemini_manager.compute_idx,
+            async_works=self._gemini_manager.async_works,
+        )
 
         # prefetch
         for chunk in chunks_fetch_async:
