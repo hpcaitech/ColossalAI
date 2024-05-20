@@ -164,10 +164,8 @@ class Chunk:
         self.l2_norm = None
 
         self.grad_chunk = None
-
-        # the async all-reduce/reduce-scatter work of this chunk (None means sync)
-        # every self.reduce resets this field
-        self.reduce_work = None
+        # the async all-reduce/reduce-scatter work of this grad chunk (None means sync)
+        self.grad_reduce_work = None
 
     @property
     def memory_usage(self) -> Dict[str, int]:
@@ -382,40 +380,40 @@ class Chunk:
         """Reduce scatter all the gradients. It's an operation done in CUDA."""
         # sanity check
         assert self.is_gathered
-
+        assert self.grad_reduce_work is None
         if self.pg_size == 1:
             # tricky code here
             # just move cuda_global_chunk to cuda_shard
             # the communication is not necessary
             self.__scatter()
             if self.extra_dp_group is not None:
-                self.reduce_work = dist.all_reduce(self.cuda_shard, group=self.extra_dp_group, async_op=async_op)
+                self.grad_reduce_work = dist.all_reduce(self.cuda_shard, group=self.extra_dp_group, async_op=async_op)
         elif self.keep_gathered:
             # we use all-reduce here
-            self.reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg, async_op=async_op)
+            self.grad_reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg, async_op=async_op)
             if self.extra_dp_group is not None:  # cannot guranatee the order of multiple all-reduce
                 self.wait_async_reduce()
-                self.reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group, async_op=async_op)
+                self.grad_reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group, async_op=async_op)
         else:
             self.cuda_shard = torch.empty(
                 self.shard_size, dtype=self.dtype, device=get_accelerator().get_current_device()
             )
 
             input_list = list(torch.chunk(self.cuda_global_chunk, chunks=self.pg_size, dim=0))
-            self.reduce_work = dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg, async_op=async_op)
+            self.grad_reduce_work = dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg, async_op=async_op)
 
             if self.extra_dp_group is not None:
                 self.wait_async_reduce()
-                self.reduce_work = dist.all_reduce(self.cuda_shard, group=self.extra_dp_group, async_op=async_op)
+                self.grad_reduce_work = dist.all_reduce(self.cuda_shard, group=self.extra_dp_group, async_op=async_op)
 
             free_storage(self.cuda_global_chunk)
             self.is_gathered = False
         self.__update_tensors_state(TensorState.HOLD)
 
     def wait_async_reduce(self) -> None:
-        if self.reduce_work is not None:
-            self.reduce_work.wait()
-            self.reduce_work = None
+        if self.grad_reduce_work is not None:
+            self.grad_reduce_work.wait()
+            self.grad_reduce_work = None
 
     def tensor_trans_state(self, tensor: torch.Tensor, tensor_state: TensorState) -> None:
         """

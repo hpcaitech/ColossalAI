@@ -272,7 +272,7 @@ class ChunkManager:
         return grad_chunk
 
     def rearrange_accumulated_grad_chunk(self, chunk: Chunk) -> Chunk:
-        """Rearrange gradients accumulated in chunk.grad_chunk, and getP prepared for gradient reduction."""
+        """Rearrange gradients accumulated in chunk.grad_chunk, and get prepared for gradient reduction."""
 
         assert chunk.grad_chunk is not None
 
