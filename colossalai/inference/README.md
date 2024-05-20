@@ -9,15 +9,11 @@
   - [🗺 Roadmap](#-roadmap)
   - [🪅 Support Matrix](#-support-matrix)
   - [🛠 Design and Components](#-design-and-components)
-    - [Engine](#-engine)
-    - [Blocked KV Cache Manager](#-blocked-kvcache)
-    - [Batching](#-batching)
-  - [⌨️ Development Notes](#️-development-notes)
-    - [Add New Policy to Shardformer](#add-new-policy-to-shardformer)
-    - [Write Your Unit Testing](#write-your-unit-testing)
-  - [📊 Benchmarking](#-benchmarking)
-    - [Kernel Performance](#kernel-performance)
-    - [System Performance](#system-performance)
+    - [Overview](#overview)
+    - [Engine](#engine)
+    - [Blocked KV Cache Manager](#kv-cache)
+    - [Batching](#batching)
+    - [Modeling](#modeling)
   - [🌟 Acknowledgement](#-acknowledgement)
 
 
@@ -68,7 +64,7 @@ You could run the sample code by
 colossalai run --nproc_per_node 1 your_sample_name.py
 ```
 
-For detailed examples, you might want to check `examples/inference/llama`.
+For detailed examples, you might want to check [inference examples](../../examples/inference/llama/README.md).
 
 ### :bookmark: Customize your inference engine
 Besides the basic quick-start inference, you can also customize your inference engine via modifying inference config or uploading your own models, policies, or decoding components (logits processors or sampling strategies).
@@ -142,7 +138,7 @@ Notations:
 
 ## 🛠 Design and Components
 
-### :book: Overview
+### Overview
 
 ColossalAI-Inference has **4** major components, namely `engine`, `request handler`, `kv cache manager`, and `modeling`.
 
@@ -164,11 +160,11 @@ An overview of the inter-component interaction is given below (RPC version). We 
    <br/>
 </p>
 
-### :mailbox_closed: Engine
+### Engine
 
 Engine is designed as the entry point where the user kickstarts an inference loop. User can easily initialize an inference engine with the inference configurations and execute with their requests. We provided several versions of inference engines, namely `InferenceEngine`, `RPCInferenceEngine`, and `AsyncInferenceEngine`, which are used for different conditions and purposes.
 
-For `InferenceEngine` and `RPCInferenceEngine`, we expose the following APIs for inference:
+For examples/inference/llama and `RPCInferenceEngine`, we expose the following APIs for inference:
 
 -  `generate`: main function which handles inputs, performs inference and returns outputs.
 -  `add_request`: add a single or multiple requests to the inference engine.
@@ -182,8 +178,10 @@ For `AsyncInferenceEngine`, we expose the following APIs for inference:
 - `generate`: async method. Perform inference from a request.
 - `step`: async method. Perform one decoding iteration, if there exists any request in waiting queue.
 
+For now, `InferenceEngine` is used for offline generation; `AsyncInferenceEngine` is used for online serving with a single card; and `RPCInferenceEngine` is used for online serving with multiple cards. In future, we will focus on `RPCInferenceEngine` and improve user experience of LLM serving.
 
-### :radio: KV cache and cache manager
+
+### KV cache
 
 Learnt from [PagedAttention](https://arxiv.org/abs/2309.06180) by [vLLM](https://github.com/vllm-project/vllm) team, we use a unified blocked KV cache and cache manager to allocate and manage memory. The physical memory is pre-allocated during initialization and represented by a logical block table. During decoding process, cache manager administrates the physical memory through `block table` of a batch and so that other components (i.e. engine) can focus on the lightweight `block table`. More details are given below.
 
@@ -197,7 +195,7 @@ Learnt from [PagedAttention](https://arxiv.org/abs/2309.06180) by [vLLM](https:/
 </p>
 
 
-### :game_die: Request Handler
+### Batching
 
 Request handler is responsible for managing requests and scheduling a proper batch from exisiting requests. Based on [Orca's](https://www.usenix.org/conference/osdi22/presentation/yu) and [vLLM's](https://github.com/vllm-project/vllm) research and work on batching requests, we applied continuous batching with unpadded sequences, which enables various number of sequences to pass projections (i.e. Q, K, and V) together in different steps by hiding the dimension of number of sequences, and decrement the latency of incoming sequences by inserting a prefill batch during a decoding step and then decoding together.
 
@@ -213,20 +211,10 @@ Request handler is responsible for managing requests and scheduling a proper bat
    <em>Continuous Batching: dynamically adjust the batch size by popping out finished sequences and inserting prefill batch</em>
 </p>
 
-### :railway_car: Modeling
+### Modeling
 
 Modeling contains models, layers, and policy, which are hand-crafted for better performance easier usage. Integrated with `shardformer`, users can define their own policy or use our preset policies for specific models. Our modeling files are aligned with [Transformers](https://github.com/huggingface/transformers). For more details about the usage of modeling and policy, please check `colossalai/shardformer`.
 
-
-### Logits Processors
-A logits processor receives logits and return processed results. You can take the following step to make your own.
-
-```python
-@register_logits_processor("xxx")
-def apply_xxx(logits, *args, **kwargs):
-  logits = do_some_process(logits)
-  return logits
-```
 
 ## 🌟 Acknowledgement
 
