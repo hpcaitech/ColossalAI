@@ -1,7 +1,9 @@
 import ctypes
 import random
 import warnings
+from collections import defaultdict
 from contextlib import contextmanager
+from copy import deepcopy
 from functools import partial
 from types import MethodType
 from typing import Any, Callable, Dict, Iterator, List, Optional, OrderedDict, Tuple, Union
@@ -24,6 +26,8 @@ from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOpt
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.interface.optimizer import DistributedOptim
+from colossalai.nn.optimizer import DistGaloreAwamW
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
@@ -735,7 +739,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Get all working gradients and gradients to be synchronized.
         all_working_grads = _get_all_working_grads()
         grads_to_sync = _get_grads_to_sync(all_working_grads)
-        if self.require_grad_sync and grads_to_sync is not None:
+        if self._grad_store.require_grad_sync and grads_to_sync is not None:
             # Synchronize sequence parallelism gradients if required.
             SeqParallelUtils.allreduce_partial_data_grad(process_group=self.tp_pg, grads=grads_to_sync)
         else:
@@ -759,7 +763,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Call the superclass backward method to compute gradients.
         super().backward(loss, retain_graph)
 
-        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+        if self._grad_store.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
             self._sync_sp_grads()
         else:
@@ -784,7 +788,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Call the superclass backward_by_grad method to compute gradients.
         super().backward_by_grad(tensor, grad)
 
-        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+        if self._grad_store.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
             self._sync_sp_grads()
         else:
@@ -1171,6 +1175,15 @@ class HybridParallelPlugin(PipelinePluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         param_info = get_param_info(optimizer)
+
+        # TODO: Support Galore + ZeRO
+        zero_stage = self.zero_stage
+        zero_config = deepcopy(self.zero_config)
+        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
+            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            zero_config["partition_grad"] = False
+            zero_stage = 0
+
         if not isinstance(model, ModelWrapper):
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
                 self.dp_size == 1
@@ -1194,7 +1207,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                 custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-            if self.zero_stage == 0:
+            if zero_stage == 0:
+                is_zero = False
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
                         optimizer,
@@ -1218,11 +1232,11 @@ class HybridParallelPlugin(PipelinePluginBase):
                         tp_process_group=self.tp_group,
                     )
             else:
-                zero_dp_size = dist.get_world_size(dp_group)
-                if zero_dp_size == 1:
+                is_zero = self.dp_size > 1
+                if self.dp_size == 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
-                        "If you are not intended to use cpu_offload, please consider set zero_stage=0."
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
                     )
 
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
@@ -1236,11 +1250,19 @@ class HybridParallelPlugin(PipelinePluginBase):
                     pp_process_group=self.pp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
-                    **self.zero_config,
+                    **zero_config,
                     **self.amp_config,
                 )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+
+            # Setup optimizers that require global states
+            optim = optimizer.optim
+            if isinstance(optim, DistributedOptim):
+                shard_to_param = optimizer.get_master_to_working_map() if is_zero else {}
+                padding_map = optimizer.get_param_padding_map() if is_zero else defaultdict(int)
+                optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
+
         return model, optimizer, criterion, dataloader, lr_scheduler
 
     def execute_pipeline(
@@ -1272,7 +1294,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # run with gradients accumulation
         if model.require_grad_sync == False or (
-            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
+            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer._grad_store.require_grad_sync == False
         ):
             return outputs
 

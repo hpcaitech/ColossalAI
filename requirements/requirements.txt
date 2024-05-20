@@ -20,3 +20,4 @@ transformers==4.36.2
 peft>=0.7.1
 bitsandbytes>=0.39.0
 rpyc==6.0.0
+galore_torch
