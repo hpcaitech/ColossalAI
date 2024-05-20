@@ -189,7 +189,7 @@ class GeminiDDP(ModelWrapper):
                         master_weights=self.master_weights,
                         enable_gradient_accumulation=self.enable_gradient_accumulation,
                         p=p,
-                        async_reduce=enable_async_reduce
+                        async_reduce=enable_async_reduce,
                     )
                 )
 
@@ -338,9 +338,9 @@ class GeminiDDP(ModelWrapper):
 
     def _post_backward(self):
         for param in self.param2name:
-            if hasattr(param, '_release_grad_chunk_cb'):
+            if hasattr(param, "_release_grad_chunk_cb"):
                 param._release_grad_chunk_cb()
-                delattr(param, '_release_grad_chunk_cb')
+                delattr(param, "_release_grad_chunk_cb")
 
         if self.chunk_manager.accessed_mem != 0:
             error_params = ["Reduction failed at followed parameters:"]
@@ -420,16 +420,30 @@ class GeminiDDP(ModelWrapper):
                 if async_reduce:
                     # dirty fix by installing callback
                     assert not hasattr(p, "_release_grad_chunk_cb")
+
                     def _release_grad_chunk_cb():
                         grad_chunk.wait_async_reduce()
-                        GeminiDDP.release_grad_chunk_handle(chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk)
+                        GeminiDDP.release_grad_chunk_handle(
+                            chunk_manager,
+                            grads_device,
+                            master_weights,
+                            enable_gradient_accumulation,
+                            p,
+                            chunk,
+                            grad_chunk,
+                        )
+
                     p._release_grad_chunk_cb = _release_grad_chunk_cb
                 else:
-                    GeminiDDP.release_grad_chunk_handle(chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk)
+                    GeminiDDP.release_grad_chunk_handle(
+                        chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk
+                    )
         return empty_grad
 
     @staticmethod
-    def release_grad_chunk_handle(chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk):
+    def release_grad_chunk_handle(
+        chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk
+    ):
         if not chunk_manager.reuse_fp16_chunk:
             if chunk.keep_gathered:
                 chunk_manager.fake_release_chunk(chunk)
@@ -445,7 +459,7 @@ class GeminiDDP(ModelWrapper):
                 grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
                 # check overflow elements
         chunk_manager.overflow_counter += grad_chunk.has_inf_or_nan
-                # record l2 norm for gradient clipping. flag is bound to fp16 chunk
+        # record l2 norm for gradient clipping. flag is bound to fp16 chunk
         if chunk.l2_norm_flag:
             grad_chunk.set_l2_norm()
         chunk_manager.move_chunk(grad_chunk, grads_device[p], force_copy=True)

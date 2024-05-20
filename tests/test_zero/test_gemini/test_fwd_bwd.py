@@ -47,7 +47,7 @@ def exam_gpt_fwd_bwd(
     model_name: str,
     use_grad_checkpoint: bool = False,
     master_weights: bool = True,
-    enable_async_reduce = True
+    enable_async_reduce=True,
 ):
     init_device = get_accelerator().get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
@@ -71,7 +71,13 @@ def exam_gpt_fwd_bwd(
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gather
     model = GeminiDDP(
-        model, config_dict, init_device, pin_memory=True, **placement_config, master_weights=master_weights, enable_async_reduce=enable_async_reduce
+        model,
+        config_dict,
+        init_device,
+        pin_memory=True,
+        **placement_config,
+        master_weights=master_weights,
+        enable_async_reduce=enable_async_reduce,
     )
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=1)

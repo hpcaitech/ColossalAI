@@ -393,14 +393,18 @@ class Chunk:
             self.grad_reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.torch_pg, async_op=async_op)
             if self.extra_dp_group is not None:  # cannot guranatee the order of multiple all-reduce
                 self.wait_async_reduce()
-                self.grad_reduce_work = dist.all_reduce(self.cuda_global_chunk, group=self.extra_dp_group, async_op=async_op)
+                self.grad_reduce_work = dist.all_reduce(
+                    self.cuda_global_chunk, group=self.extra_dp_group, async_op=async_op
+                )
         else:
             self.cuda_shard = torch.empty(
                 self.shard_size, dtype=self.dtype, device=get_accelerator().get_current_device()
             )
 
             input_list = list(torch.chunk(self.cuda_global_chunk, chunks=self.pg_size, dim=0))
-            self.grad_reduce_work = dist.reduce_scatter(self.cuda_shard, input_list, group=self.torch_pg, async_op=async_op)
+            self.grad_reduce_work = dist.reduce_scatter(
+                self.cuda_shard, input_list, group=self.torch_pg, async_op=async_op
+            )
 
             if self.extra_dp_group is not None:
                 self.wait_async_reduce()
