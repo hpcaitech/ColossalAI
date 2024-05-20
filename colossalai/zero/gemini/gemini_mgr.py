@@ -154,7 +154,6 @@ class GeminiManager:
 
     def _record_warmup_chunks_order(self, chunks: Tuple[Chunk, ...], record_anyway: bool = False) -> None:
         self._compute_idx += 1
-        # TODO(haze188): _compute_list 记录块的访问顺序
         if self._warmup and (self._placement_policy.need_mem_stats or record_anyway):
             self._compute_list.append(chunks)
 

@@ -66,18 +66,18 @@ class GPTLMLoss(nn.Module):
 
 
 def get_cpu_mem():
-    return psutil.Process().memory_info().rss / 1024**2
+    return psutil.Process().memory_info().rss / 1024**2  # 返回值是B，转换成MB
 
 
 def get_gpu_mem():
-    return torch.cuda.memory_allocated() / 1024**2
+    return torch.cuda.memory_allocated() / 1024**2  # 转换成MB
 
 
 def get_mem_info(prefix=""):
     return f"{prefix}GPU memory usage: {get_gpu_mem():.2f} MB, CPU memory usage: {get_cpu_mem():.2f} MB"
 
 
-def get_model_size(model: nn.Module):
+def get_model_size(model: nn.Module):  # 得到模型参数量
     total_numel = 0
     for module in model.modules():
         for p in module.parameters(recurse=False):
