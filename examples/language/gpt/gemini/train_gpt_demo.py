@@ -66,11 +66,11 @@ class GPTLMLoss(nn.Module):
 
 
 def get_cpu_mem():
-    return psutil.Process().memory_info().rss / 1024**2
+    return psutil.Process().memory_info().rss / 1024**2  # MB unit
 
 
 def get_gpu_mem():
-    return torch.cuda.memory_allocated() / 1024**2
+    return torch.cuda.memory_allocated() / 1024**2  # MB unit
 
 
 def get_mem_info(prefix=""):
@@ -78,6 +78,7 @@ def get_mem_info(prefix=""):
 
 
 def get_model_size(model: nn.Module):
+    # get the number of parameter of the model
     total_numel = 0
     for module in model.modules():
         for p in module.parameters(recurse=False):

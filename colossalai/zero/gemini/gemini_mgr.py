@@ -45,7 +45,7 @@ class GeminiManager:
         self._placement_policy = policy_cls(self, chunk_manager, self._mem_stats_collector, **placement_kwargs)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
-        self._async_works: Dict[Chunk, dist.work] = {}
+        self._async_works: Dict[Chunk, dist.Work] = {}
 
         self._h2d_volume = 0
         self._d2h_volume = 0
@@ -182,6 +182,10 @@ class GeminiManager:
     @property
     def compute_idx(self) -> int:
         return self._compute_idx
+
+    @property
+    def async_works(self) -> Dict[Chunk, dist.Work]:
+        return self._async_works
 
     @property
     def placement_policy(self) -> PlacementPolicy:

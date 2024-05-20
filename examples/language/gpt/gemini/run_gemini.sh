@@ -6,7 +6,7 @@ export DISTPLAN=${DISTPLAN:-"CAI_Gemini"}
 export GPUNUM=${GPUNUM:-1}
 export BATCH_SIZE=${BATCH_SIZE:-16}
 export MODEL_TYPE=${MODEL_TYPE:-"gpt2_medium"}
-export TRAIN_STEP=${TRAIN_STEP:-10}
+export TRAIN_STEP=${TRAIN_STEP:-2}
 # export PYTHONPATH=$PWD:$PYTHONPATH
 
 
