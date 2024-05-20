@@ -41,7 +41,6 @@ class GeminiZeROHook(ColoParamOpHook):
         self._gemini_manager.sample_overall_data()
 
         # evit chunks, aware of async fetched
-        # TODO: check if prefetched chunks will be evicted
         self._gemini_manager.adjust_layout(
             all_chunks, record_anyway=self._gemini_manager.placement_policy.max_prefetch > 0
         )
