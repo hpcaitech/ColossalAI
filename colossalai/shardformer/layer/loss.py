@@ -116,7 +116,7 @@ class DistCrossEntropy(Function):
         partion_vocab_size = grad_logits.shape[-1]
         grad_logits_2d = grad_logits.view(-1, partion_vocab_size)
 
-        update = 1.0 - mask.view(-1).to(ctx.dtype)
+        update = 1.0 - mask.view(-1).float().to(ctx.dtype)
         grad_logits_2d[torch.arange(0, grad_logits_2d.shape[0]), masked_target_1d] -= update
 
         grad_logits.mul_(grad_output.unsqueeze(dim=-1))
