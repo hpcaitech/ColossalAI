@@ -26,7 +26,7 @@ PLACEMENT_CONFIGS = [
         "offload_optim_frac": 1.0,
         "offload_param_frac": 1.0,
     },  # zero3-offload-all
-    {"placement_policy": "auto"},
+    # {"placement_policy": "auto"},
 ]
 
 # this model is large enough to slice to chunks
