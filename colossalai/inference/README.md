@@ -87,7 +87,7 @@ Refer to transformers [GenerationConfig](https://huggingface.co/docs/transformer
 - `top_k`: The number of highest probability vocabulary tokens to keep for top-k-filtering. Defaults to 50.
 - `top_p`: If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation. Defaults to 1.0.
 - `temperature`: The value used to modulate the next token probabilities. Defaults to 1.0.
-- `no_repeat_ngram_size`: If set to int > 0, all ngrams of that size can only occur once. If set to int > 0, all ngrams of that size can only occur once. Defaults to 0.
+- `no_repeat_ngram_size`: If set to int > 0, all ngrams of that size can only occur once. Defaults to 0.
 - `repetition_penalty`: The parameter for repetition penalty. 1.0 means no penalty. Defaults to 1.0.
 - `forced_eos_token_id`: The id of the token to force as the last generated token when max_length is reached. Defaults to `None`.
 
