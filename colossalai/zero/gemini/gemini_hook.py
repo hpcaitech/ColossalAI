@@ -33,7 +33,7 @@ class GeminiZeROHook(ColoParamOpHook):
         all_chunks = self._chunk_manager.get_chunks(params)
 
         # wait for prefetched chunks, filter those are not prefetched
-        chunks_fetch_sync = self._gemini_manager.wait_chunks(all_chunks)  # 当前要fetch的chunk
+        chunks_fetch_sync = self._gemini_manager.wait_chunks(all_chunks)
 
         # transfer state
         for p in params:

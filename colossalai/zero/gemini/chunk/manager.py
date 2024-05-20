@@ -83,7 +83,7 @@ class ChunkManager:
             if chunk_group:
                 # the chunk group is not empty
                 # close the last chunk
-                self.__close_one_chunk(chunk_group[-1])  # chunk[-1] 满了，所以关闭，不能再添加，然后同时scatter到ZeRO PG中
+                self.__close_one_chunk(chunk_group[-1])
 
             if tensor.numel() > chunk_size:
                 chunk_size = tensor.numel()

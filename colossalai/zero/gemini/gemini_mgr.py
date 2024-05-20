@@ -125,7 +125,7 @@ class GeminiManager:
                 self._async_works[chunk].wait()
                 del self._async_works[chunk]
             else:
-                non_prefetched_chunks.append(chunk)  # 没在之前prefetch过，现在要prefetch的chunk
+                non_prefetched_chunks.append(chunk)
         return tuple(non_prefetched_chunks)
 
     def add_work(self, chunk: Chunk, work: dist.Work):
