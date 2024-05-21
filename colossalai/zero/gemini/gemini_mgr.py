@@ -42,9 +42,7 @@ class GeminiManager:
         self._mem_stats_collector = (
             ChunkMemStatsCollector(chunk_manager, self._memstats) if policy_cls.need_mem_stats else None
         )
-        self._placement_policy = policy_cls(
-            chunk_manager=chunk_manager, mem_stats_collector=self._mem_stats_collector, **placement_kwargs
-        )
+        self._placement_policy = policy_cls(chunk_manager=chunk_manager, mem_stats_collector=self._mem_stats_collector, **placement_kwargs)
         self._compute_list: List[Tuple[Chunk, ...]] = []
         self._compute_idx: int = -1
         self._async_works: Dict[Chunk, dist.Work] = {}
@@ -176,22 +174,6 @@ class GeminiManager:
         if self._mem_stats_collector:
             return self._mem_stats_collector.cuda_margin_mem
         return None
-
-    @property
-    def compute_list(self) -> List[Tuple[Chunk, ...]]:
-        return self._compute_list
-
-    @property
-    def compute_idx(self) -> int:
-        return self._compute_idx
-
-    @property
-    def async_works(self) -> Dict[Chunk, dist.Work]:
-        return self._async_works
-
-    @property
-    def placement_policy(self) -> PlacementPolicy:
-        return self._placement_policy
 
     @property
     def is_cuda_margin_mem_avail(self) -> bool:

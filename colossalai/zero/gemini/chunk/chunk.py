@@ -361,10 +361,11 @@ class Chunk:
         """Make the chunk usable for the parameters inside it. It's an operation done in CUDA."""
         # sanity check
         assert self.chunk_temp is None
+        maybe_work = None
         if not self.is_gathered:
-            return self.__gather(async_op=async_access)
+            maybe_work = self.__gather(async_op=async_access)
         self.__update_tensors_ptr()
-        return None
+        return maybe_work
 
     def release_chunk(self):
         """Release the usable chunk. It's an operation done in CUDA."""
