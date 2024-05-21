@@ -55,14 +55,14 @@ class Async_DynamicBatchManager(DynamicBatchManager):
                 self.stats_tool.count_prompt_tokens(new_batch)
                 self.running_batch = new_batch
                 has_new_finished, outputs = self._prefill_batch(self.running_batch)
-                self._filter_runing_batch()
+                self._filter_running_batch()
                 self.has_wait_tokens = 0
 
         else:
             if self.has_wait_tokens < self.max_wait_tokens:
                 self.stats_tool.count_output_tokens(self.running_batch)
                 has_new_finished, outputs = self._decode_batch(self.running_batch)
-                self._filter_runing_batch()
+                self._filter_running_batch()
                 self.has_wait_tokens += 1
 
             else:
@@ -78,7 +78,7 @@ class Async_DynamicBatchManager(DynamicBatchManager):
                 else:
                     self.stats_tool.count_output_tokens(self.running_batch)
                     has_new_finished, outputs = self._decode_batch(self.running_batch)
-                    self._filter_runing_batch()
+                    self._filter_running_batch()
                     self.has_wait_tokens += 1
 
         if has_new_finished:
