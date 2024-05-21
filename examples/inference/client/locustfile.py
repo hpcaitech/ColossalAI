@@ -55,5 +55,5 @@ class QuickstartUser(HttpUser):
 
     @tag("online-generation", "offline-generation")
     @task
-    def get_models(self):
-        self.client.get("/models")
+    def health_check(self):
+        self.client.get("/ping")

@@ -30,7 +30,6 @@ from colossalai.inference.utils import find_available_ports
 from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
-supported_models_dict = {"Llama_Models": ("llama2", "llama3", "glide_llama", "vicuna"), "Baichuan": ("baichuan")}
 prompt_template_choices = ["llama", "vicuna"]
 async_engine = None
 chat_serving = None
@@ -39,10 +38,10 @@ completion_serving = None
 app = FastAPI()
 
 
-# NOTE: (CjhHa1) models are still under development, need to be updated
-@app.get("/models")
-def get_available_models() -> Response:
-    return JSONResponse(supported_models_dict)
+@app.get("/ping")
+def health_check(slef) -> bool:
+    """Health Check for server."""
+    return JSONResponse({"status": "Healthy"})
 
 
 @app.post("/generate")
@@ -134,7 +133,7 @@ def add_engine_config(parser):
     # Parallel arguments not supported now
 
     # KV cache arguments
-    parser.add_argument("--block-size", type=int, default=16, choices=[8, 16, 32], help="token block size")
+    parser.add_argument("--block_size", type=int, default=16, choices=[8, 16, 32], help="token block size")
 
     parser.add_argument("--max_batch_size", type=int, default=8, help="maximum number of batch size")
 
