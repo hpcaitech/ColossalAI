@@ -5,7 +5,6 @@ from typing import List
 
 import torch
 
-from colossalai.logging import DistributedLogger
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.utils import is_ddp_ignored
 from colossalai.zero.gemini import TensorState
@@ -15,9 +14,6 @@ from colossalai.zero.gemini.gemini_mgr import GeminiManager
 class TrainingPhase(Enum):
     FORWARD = 0
     BACKWARD = 1
-
-
-logger = DistributedLogger("gemini_hook")
 
 
 class GeminiZeROHook(ColoParamOpHook):

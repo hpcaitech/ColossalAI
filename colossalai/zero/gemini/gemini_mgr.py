@@ -178,6 +178,10 @@ class GeminiManager:
         return None
 
     @property
+    def placement_policy(self) -> PlacementPolicy:
+        return self._placement_policy
+
+    @property
     def compute_list(self) -> List[Tuple[Chunk, ...]]:
         return self._compute_list
 
@@ -188,10 +192,6 @@ class GeminiManager:
     @property
     def async_works(self) -> Dict[Chunk, dist.Work]:
         return self._async_works
-
-    @property
-    def placement_policy(self) -> PlacementPolicy:
-        return self._placement_policy
 
     @property
     def is_cuda_margin_mem_avail(self) -> bool:

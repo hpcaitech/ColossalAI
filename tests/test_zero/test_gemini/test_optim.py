@@ -71,7 +71,10 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
 @parameterize("model_name", TEST_MODELS)
 @parameterize("mixed_precision", [torch.half, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool):
+@parameterize("max_prefetch", [0, 1, 4])
+def exam_model_step(
+    placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool, max_prefetch: int
+):
     set_seed(42)
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
@@ -94,7 +97,12 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = False
     model = GeminiDDP(
-        model, config_dict, **placement_config, mixed_precision=mixed_precision, master_weights=master_weights
+        model,
+        config_dict,
+        **placement_config,
+        mixed_precision=mixed_precision,
+        master_weights=master_weights,
+        max_prefetch=max_prefetch,
     )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
