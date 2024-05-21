@@ -45,7 +45,14 @@ def exam_state_dict(placement_config, keep_gathered, model_name: str, master_wei
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gathered
-    model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True, master_weights=master_weights, max_prefetch=max_prefetch)
+    model = GeminiDDP(
+        model,
+        config_dict,
+        **placement_config,
+        pin_memory=True,
+        master_weights=master_weights,
+        max_prefetch=max_prefetch,
+    )
     model.train()
 
     zero_dict = model.state_dict(only_rank_0=False)

@@ -52,7 +52,12 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("use_grad_checkpoint", [False, True])
 @parameterize("max_prefetch", [0, 1, 4])
 def exam_gemini_grad_acc(
-    placement_config, keep_gathered: bool, model_name: str, master_weights: bool, use_grad_checkpoint: bool, max_prefetch: int
+    placement_config,
+    keep_gathered: bool,
+    model_name: str,
+    master_weights: bool,
+    use_grad_checkpoint: bool,
+    max_prefetch: int,
 ):
     init_device = get_accelerator().get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(

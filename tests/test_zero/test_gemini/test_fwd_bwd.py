@@ -71,7 +71,13 @@ def exam_gpt_fwd_bwd(
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gather
     model = GeminiDDP(
-        model, config_dict, init_device, pin_memory=True, **placement_config, master_weights=master_weights, max_prefetch=max_prefetch
+        model,
+        config_dict,
+        init_device,
+        pin_memory=True,
+        **placement_config,
+        master_weights=master_weights,
+        max_prefetch=max_prefetch,
     )
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
     zero_optim = GeminiOptimizer(optimizer, model, initial_scale=1)
