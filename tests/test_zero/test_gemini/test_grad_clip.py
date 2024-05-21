@@ -52,7 +52,8 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [True, False])
-def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
+@parameterize("max_prefetch", [0, 1, 4])
+def exam_grad_clipping(placement_config, model_name: str, master_weights: bool, max_prefetch: int):
     set_seed(1912)
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
@@ -84,6 +85,7 @@ def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
         chunk_init_device=init_device,
         pin_memory=True,
         master_weights=master_weights,
+        max_prefetch=max_prefetch,
         **placement_config,
     )
 

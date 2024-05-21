@@ -20,7 +20,8 @@ PLACEMENT_CONFIGS = [
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [True, False])
-def exam_zero_optim_state_dict(placement_config, keep_gathered):
+@parameterize("max_prefetch", [0, 1, 4])
+def exam_zero_optim_state_dict(placement_config, keep_gathered, max_prefetch):
     set_seed(431)
     model_builder, data_gen_fn, output_transform_fn, *_ = next(
         iter(model_zoo.get_sub_registry("transformers_gpt_lm").values())
@@ -35,7 +36,7 @@ def exam_zero_optim_state_dict(placement_config, keep_gathered):
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gathered
 
-    model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True)
+    model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True, max_prefetch=max_prefetch)
 
     optimizer = HybridAdam(model.parameters())
     optim = GeminiOptimizer(optimizer, model, initial_scale=32)  # initialize the link between chunk16 and chunk32
