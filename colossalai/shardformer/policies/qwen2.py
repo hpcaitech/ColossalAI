@@ -11,23 +11,51 @@ from colossalai.shardformer.layer import (
     Linear1D_Col,
     Linear1D_Row,
     PaddingEmbedding,
-    PaddingLMHead,
+    RMSNorm,
     VocabParallelEmbedding1D,
-    VocabParallelLMHead1D,
 )
 
-from ..modeling.mistral import (
-    MistralForwards,
+from ..modeling.qwen2 import (
+    Qwen2PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
-    get_mistral_flash_attention_forward,
-    get_mistral_model_forward_for_flash_attn,
+    get_qwen2_flash_attention_forward,
+    get_qwen2_model_forward_for_flash_attn,
 )
+
+try:
+    from transformers.models.qwen2.modeling_qwen2 import (
+        Qwen2Attention,
+        Qwen2DecoderLayer,
+        Qwen2FlashAttention2,
+        Qwen2ForCausalLM,
+        Qwen2ForSequenceClassification,
+        Qwen2Model,
+        Qwen2SdpaAttention,
+    )
+except ImportError:
+    Qwen2ForCausalLM = "Qwen2ForCausalLM"
+    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
+    Qwen2Attention = "Qwen2Attention"
+    Qwen2FlashAttention2 = "Qwen2FlashAttention2"
+    Qwen2SdpaAttention = "Qwen2SdpaAttention"
+    Qwen2DecoderLayer = "Qwen2DecoderLayer"
+    Qwen2Model = "Qwen2Model"
+
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["MistralPolicy", "MistralModelPolicy", "MistralForCausalLMPolicy", "MistralForSequenceClassificationPolicy"]
+__all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificationPolicy"]
 
 
-class MistralPolicy(Policy):
+class Qwen2Policy(Policy):
+    def __init__(self) -> None:
+        super().__init__()
+        import transformers
+        from packaging.version import Version
+
+        assert Version(transformers.__version__) >= Version(
+            "4.39.1"
+        ), "The Qwen2 model should run on a transformers version of 4.39.1."
+
     def config_sanity_check(self):
         pass
 
@@ -37,50 +65,45 @@ class MistralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mistral.modeling_mistral import (
-            MistralAttention,
-            MistralDecoderLayer,
-            MistralFlashAttention2,
-            MistralModel,
-        )
-
         ATTN_IMPLEMENTATION = {
-            "eager": MistralAttention,
-            "flash_attention_2": MistralFlashAttention2,
+            "eager": Qwen2Attention,
+            "flash_attention_2": Qwen2FlashAttention2,
+            "sdpa": Qwen2SdpaAttention,
         }
 
         policy = {}
 
-        attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
-
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
         else:
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
+        norm_cls = FusedRMSNorm if self.shard_config.enable_fused_normalization else RMSNorm
 
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
-            warnings.warn(
-                "Mistral doesn't support sequence parallelism now, will ignore the sequence parallelism flag."
-            )
+            warnings.warn("Qwen2 doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
             ), f"The number of attention heads must be divisible by tensor parallel size."
-            assert (
-                self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
-            ), f"The number of key_value heads must be divisible by tensor parallel size."
+            if hasattr(self.model.config, "num_key_value_heads"):
+                assert (
+                    self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+                ), f"The number of key_value heads must be divisible by tensor parallel size."
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
                 "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
-                // self.shard_config.tensor_parallel_size,
             }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = (
+                    self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
+                )
 
-            policy[MistralDecoderLayer] = ModulePolicyDescription(
+            policy[Qwen2DecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -122,51 +145,51 @@ class MistralPolicy(Policy):
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
-                target_key=MistralModel,
+                target_key=Qwen2Model,
             )
 
         # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="input_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="post_attention_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=MistralDecoderLayer,
-            )
-
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="norm",
-                    target_module=FusedRMSNorm,
+        self.append_or_create_submodule_replacement(
+            description=[
+                SubModuleReplacementDescription(
+                    suffix="input_layernorm",
+                    target_module=norm_cls,
                 ),
-                policy=policy,
-                target_key=MistralModel,
-            )
+                SubModuleReplacementDescription(
+                    suffix="post_attention_layernorm",
+                    target_module=norm_cls,
+                ),
+            ],
+            policy=policy,
+            target_key=Qwen2DecoderLayer,
+        )
 
+        self.append_or_create_submodule_replacement(
+            description=SubModuleReplacementDescription(
+                suffix="norm",
+                target_module=norm_cls,
+            ),
+            policy=policy,
+            target_key=Qwen2Model,
+        )
+
+        # use flash attention
         if self.shard_config.enable_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_mistral_flash_attention_forward(self.shard_config),
+                    "forward": get_qwen2_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
                 target_key=attn_cls,
             )
             if self.pipeline_stage_manager is None:
-                # replace llama model forward method
+                # replace qwen2 model forward method
                 self.append_or_create_method_replacement(
                     description={
-                        "forward": get_mistral_model_forward_for_flash_attn(self.shard_config),
+                        "forward": get_qwen2_model_forward_for_flash_attn(self.shard_config),
                     },
                     policy=policy,
-                    target_key=MistralModel,
+                    target_key=Qwen2Model,
                 )
 
         return policy
@@ -181,7 +204,7 @@ class MistralPolicy(Policy):
             return
 
         stage_manager = self.pipeline_stage_manager
-        if self.model.__class__.__name__ == "MistralModel":
+        if self.model.__class__.__name__ == "Qwen2Model":
             module = self.model
         else:
             module = self.model.model
@@ -201,6 +224,9 @@ class MistralPolicy(Policy):
                     new_forward, stage_manager=stage_manager, stage_index=stage_index, shard_config=self.shard_config
                 )
             }
+            self.append_or_create_method_replacement(
+                description=method_replacement, policy=policy, target_key=model_cls
+            )
 
         self.append_or_create_method_replacement(description=method_replacement, policy=policy, target_key=model_cls)
 
@@ -208,10 +234,11 @@ class MistralPolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "MistralModel":
+        if self.model.__class__.__name__ == "Qwen2Model":
             module = self.model
         else:
             module = self.model.model
+
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
@@ -234,22 +261,19 @@ class MistralPolicy(Policy):
             held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.is_last_stage():
                 held_layers.append(module.norm)
+
         return held_layers
 
 
-class MistralModelPolicy(MistralPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
+class Qwen2ModelPolicy(Qwen2Policy):
     def module_policy(self):
         policy = super().module_policy()
-        from transformers.models.mistral.modeling_mistral import MistralModel
 
         if self.pipeline_stage_manager:
+            # set None as default
             self.set_pipeline_forward(
-                model_cls=MistralModel, new_forward=MistralForwards.mistral_model_forward, policy=policy
+                model_cls=Qwen2Model, new_forward=Qwen2PipelineForwards.qwen2_model_forward, policy=policy
             )
-
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -258,55 +282,31 @@ class MistralModelPolicy(MistralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in mistral model"""
+        """No shared params in Qwen2 model"""
         return []
 
 
-class MistralForCausalLMPolicy(MistralPolicy):
+class Qwen2ForCausalLMPolicy(Qwen2Policy):
     def module_policy(self):
-        from transformers import MistralForCausalLM
-
         policy = super().module_policy()
+        setattr(self.shard_config, "causal_lm", True)
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
-                MistralForCausalLM: ModulePolicyDescription(
+                Qwen2ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head",
-                            target_module=VocabParallelLMHead1D,
-                            kwargs={
-                                "gather_output": not self.shard_config.parallel_output,
-                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                            },
-                        )
-                    ]
+                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                    ],
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
-            if self.shard_config.parallel_output:
-                new_item[MistralForCausalLM].method_replacement = {
-                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
-                }
-        else:
-            new_item = {
-                MistralForCausalLM: ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head",
-                            target_module=PaddingLMHead,
-                            kwargs=dict(make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by),
-                        )
-                    ]
-                )
-            }
-
-        policy.update(new_item)
+            policy.update(new_item)
 
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=MistralForCausalLM, new_forward=MistralForwards.mistral_for_causal_lm_forward, policy=policy
+                model_cls=Qwen2ForCausalLM, new_forward=Qwen2PipelineForwards.qwen2_for_causal_lm_forward, policy=policy
             )
 
         return policy
@@ -320,32 +320,29 @@ class MistralForCausalLMPolicy(MistralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        mistral_model = self.model.model
+        qwen2_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(mistral_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(qwen2_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: mistral_model.embed_tokens.weight,
+                        0: qwen2_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
         return []
 
 
-class MistralForSequenceClassificationPolicy(MistralPolicy):
+class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
     def module_policy(self):
-        from transformers import MistralForSequenceClassification
-
         policy = super().module_policy()
-
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
             new_item = {
-                MistralForSequenceClassification: ModulePolicyDescription(
+                Qwen2ForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
@@ -354,15 +351,14 @@ class MistralForSequenceClassificationPolicy(MistralPolicy):
                 )
             }
             policy.update(new_item)
-
+        # to be confirmed
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=MistralForSequenceClassification,
-                new_forward=MistralForwards.mistral_for_sequence_classification_forward,
+                model_cls=Qwen2ForSequenceClassification,
+                new_forward=Qwen2PipelineForwards.qwen2_for_sequence_classification_forward,
                 policy=policy,
             )
-
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -374,5 +370,5 @@ class MistralForSequenceClassificationPolicy(MistralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama for sequence classification model"""
+        """No shared params in Qwen2 for sequence classification model"""
         return []

@@ -1,6 +1,7 @@
-from typing import Union
+from typing import Dict, Optional, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch import Tensor
 from torch.optim import Optimizer
@@ -133,3 +134,25 @@ class OptimizerWrapper:
         Unwrap the optimizer for checkpoint saving/loading.
         """
         return self.optim
+
+
+class DistributedOptim(Optimizer):
+    def setup_distributed(
+        self,
+        tp_group: Optional[dist.ProcessGroup] = None,
+        dp_group: Optional[dist.ProcessGroup] = None,
+        shard_to_working_param: Optional[Dict] = {},
+        padding_map: Optional[Dict] = None,
+        is_zero: Optional[bool] = False,
+    ):
+        """Assign process groups for TP and ZeRO 2.
+        Arguments:
+            tp_group (dist.ProcessGroup): Tensor Parallel process group
+            dp_group (dist.ProcessGroup): ZeRO stage 2 process group
+            shard_to_working_param (Dict): ZeRO stage 2 feeds the optimizer a sharded param view to match grad shape.
+                This maps from id(view) to model params used in forward & backward.
+            padding_map (Dict): Per-param padding from ZeRO stage 2
+            is_zero (bool): Whether to use ZeRO stage 2.
+        """
+
+        raise NotImplementedError("setup_distributed for TP/DP isn't supported by this optimizer yet!")

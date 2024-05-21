@@ -22,3 +22,4 @@ bitsandbytes>=0.39.0
 rpyc==6.0.0
 fastapi
 uvicorn==0.29.0
+galore_torch

@@ -6,6 +6,7 @@ class BaseStore:
     def __init__(self, torch_pg: ProcessGroup):
         self._world_size = dist.get_world_size(group=torch_pg)
         self._local_rank = dist.get_rank(group=torch_pg)
+        self.torch_pg = torch_pg
 
     @property
     def world_size(self):

@@ -8,6 +8,13 @@ body:
   attributes:
     value: >
       #### Not suitable for your needs? [Open a blank issue](https://github.com/hpcaitech/ColossalAI/issues/new).
+- type: checkboxes
+  attributes:
+    label: Is there an existing issue for this bug?
+    description: Please search [here](https://github.com/hpcaitech/ColossalAI/issues) to see if an open or closed issue already exists for the bug you have encountered.
+    options:
+    - label: I have searched the existing issues
+      required: true
 - type: textarea
   attributes:
     label: 🐛 Describe the bug
