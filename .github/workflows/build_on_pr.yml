@@ -91,7 +91,7 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
-    timeout-minutes: 75
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -140,7 +140,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          pip install -v -e .
+          BUILD_EXT=1 pip install -v -e .
           pip install -r requirements/requirements-test.txt
 
       - name: Store Colossal-AI Cache
