@@ -30,7 +30,7 @@ from colossalai.inference.utils import find_available_ports
 from colossalai.inference.core.async_engine import AsyncInferenceEngine, InferenceEngine  # noqa
 
 TIMEOUT_KEEP_ALIVE = 5  # seconds.
-supported_models_dict = {"Llama_Models": ("llama2-7b",)}
+supported_models_dict = {"Llama_Models": ("llama2", "llama3", "glide_llama", "vicuna"), "Baichuan": ("baichuan")}
 prompt_template_choices = ["llama", "vicuna"]
 async_engine = None
 chat_serving = None
@@ -48,6 +48,7 @@ def get_available_models() -> Response:
 @app.post("/generate")
 async def generate(request: Request) -> Response:
     """Generate completion for the request.
+    NOTE: THIS API IS USED ONLY FOR TESTING, DO NOT USE THIS IF YOU ARE IN ACTUAL APPLICATION.
 
     A request should be a JSON object with the following fields:
     - prompts: the prompts to use for the generation.
