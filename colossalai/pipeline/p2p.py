@@ -356,7 +356,7 @@ def _communicate(
     if (send_dst is not None and recv_src is not None) and (send_metadata or metadata_recv is None):
         assert (
             send_first is not None
-        ), "If you're doing both send & receive, priority must be set to avoid deadlock, lol"
+        ), "If you're doing both send & receive with metadata, priority must be set to avoid deadlock, lol"
         if send_first:
             _, send_handles = _communicate(
                 object,

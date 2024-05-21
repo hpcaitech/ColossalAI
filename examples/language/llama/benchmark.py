@@ -81,6 +81,7 @@ def main():
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
+    parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -209,6 +210,7 @@ def main():
         config = MODEL_CONFIGS[args.config]
     else:
         config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
+    torch.cuda.manual_seed(42)
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
@@ -257,18 +259,21 @@ def main():
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
-    with profiler.profile(
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=1, repeat=1),
-        on_trace_ready=profiler.tensorboard_trace_handler("./log"),
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True,
-    ) as prof:
+    if args.profile:
+        ctx = profiler.profile(
+            schedule=torch.profiler.schedule(wait=1, warmup=2, active=1, repeat=1),
+            on_trace_ready=profiler.tensorboard_trace_handler("./log"),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+        )
+    else:
+        ctx = nullcontext()
+    with ctx:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
                 performance_evaluator.on_step_start(step)
-                prof.step()
                 loss = booster.execute_pipeline(
                     data_iter,
                     model,
@@ -276,6 +281,8 @@ def main():
                     optimizer=optimizer,
                     return_loss=True,
                 )
+                if args.profile:
+                    ctx.step()
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step: {step}, loss: {loss} ")
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
@@ -284,10 +291,11 @@ def main():
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step: {step}, loss: {loss} ")
                 performance_evaluator.on_step_start(step)
-                prof.step()
                 outputs = model(**batch)
                 loss = outputs[0]
                 booster.backward(loss, optimizer)
+                if args.profile:
+                    ctx.step()
                 optimizer.step()
                 optimizer.zero_grad()
                 performance_evaluator.on_step_end(**batch)
