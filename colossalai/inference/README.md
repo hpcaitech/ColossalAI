@@ -1,229 +1,249 @@
-# 🚀 Colossal-Inference
+# ⚡️ ColossalAI-Inference
+
+## 📚 Table of Contents
+
+- [⚡️ ColossalAI-Inference](#️-colossalai-inference)
+  - [📚 Table of Contents](#-table-of-contents)
+  - [📌 Introduction](#-introduction)
+  - [🕹 Usage](#-usage)
+  - [🗺 Roadmap](#-roadmap)
+  - [🪅 Support Matrix](#-support-matrix)
+  - [🛠 Design and Components](#-design-and-components)
+    - [Overview](#overview)
+    - [Engine](#engine)
+    - [Blocked KV Cache Manager](#kv-cache)
+    - [Batching](#batching)
+    - [Modeling](#modeling)
+  - [🌟 Acknowledgement](#-acknowledgement)
 
 
-## Table of Contents
-
-- [💡 Introduction](#introduction)
-- [🔗 Design](#design)
-- [🔨 Usage](#usage)
-    - [Quick start](#quick-start)
-    - [Example](#example)
-- [📊 Performance](#performance)
-
-## Introduction
-
-`Colossal Inference` is a module that contains colossal-ai designed inference framework, featuring high performance, steady and easy usability. `Colossal Inference` incorporated the advantages of the latest open-source inference systems, including LightLLM, TGI, vLLM, FasterTransformer and flash attention. while combining the design of Colossal AI, especially Shardformer, to reduce the learning curve for users.
-
-## Design
-
-Colossal Inference is composed of three main components:
-
-1. High performance kernels and ops: which are inspired from existing libraries and modified correspondingly.
-2. Efficient memory management mechanism：which includes the key-value cache manager, allowing for zero memory waste during inference.
-   1. `cache manager`: serves as a memory manager to help manage the key-value cache, it integrates functions such as memory allocation, indexing and release.
-   2. `batch_infer_info`: holds all essential elements of a batch inference, which is updated every batch.
-3. High-level inference engine combined with `Shardformer`: it allows our inference framework to easily invoke and utilize various parallel methods.
-   1. `HybridEngine`: it is a high level interface that integrates with shardformer, especially for multi-card (tensor parallel, pipline parallel) inference:
-   2. `modeling.llama.LlamaInferenceForwards`: contains the `forward` methods for llama inference. (in this case : llama)
-   3. `policies.llama.LlamaModelInferPolicy` : contains the policies for `llama` models, which is used to call `shardformer` and segmentate the model forward in tensor parallelism way.
+## 📌 Introduction
+ColossalAI-Inference is a module which offers acceleration to the inference execution of Transformers models, especially LLMs. In ColossalAI-Inference, we leverage high-performance kernels, KV cache, paged attention, continous batching and other techniques to accelerate the inference of LLMs. We also provide simple and unified APIs for the sake of user-friendliness.
 
 
-## Architecture of inference:
+## 🕹 Usage
 
-In this section we discuss how the colossal inference works and integrates with the `Shardformer` . The details can be found in our codes.
+### :arrow_right: Quick Start
 
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/inference-arch.png" alt="Colossal-Inference" style="zoom: 33%;"/>
+The sample usage of the inference engine is given below:
 
-## Roadmap of our implementation
-
-- [x] Design cache manager and batch infer state
-- [x] Design TpInference engine to integrates with `Shardformer`
-- [x] Register corresponding high-performance `kernel` and `ops`
-- [x] Design policies and forwards (e.g. `Llama` and `Bloom`)
-  - [x] policy
-  - [x] context forward
-  - [x] token forward
-  - [x] support flash-decoding
-- [x] Support all models
-  - [x] Llama
-  - [x] Llama-2
-  - [x] Bloom
-  - [x] Chatglm2
-- [x] Quantization
-  - [x] GPTQ
-  - [x] SmoothQuant
-- [ ] Benchmarking for all models
-
-## Get started
-
-### Installation
-
-```bash
-pip install -e .
-```
-
-### Requirements
-
-Install dependencies.
-
-```bash
-pip install -r requirements/requirements-infer.txt
-
-# if you want use smoothquant quantization, please install torch-int
-git clone --recurse-submodules https://github.com/Guangxuan-Xiao/torch-int.git
-cd torch-int
-git checkout 65266db1eadba5ca78941b789803929e6e6c6856
-pip install -r requirements.txt
-source environment.sh
-bash build_cutlass.sh
-python setup.py install
-```
-
-### Docker
-
-You can use docker run to use docker container to set-up environment
-
-```
-# env: python==3.8, cuda 11.6, pytorch == 1.13.1 triton==2.0.0.dev20221202, vllm kernels support, flash-attention-2 kernels support
-docker pull hpcaitech/colossalai-inference:v2
-docker run -it --gpus all --name ANY_NAME -v $PWD:/workspace -w /workspace hpcaitech/colossalai-inference:v2 /bin/bash
-
-# enter into docker container
-cd /path/to/ColossalAI
-pip install -e .
-
-```
-
-## Usage
-### Quick start
-
-example files are in
-
-```bash
-cd ColossalAI/examples
-python hybrid_llama.py --path /path/to/model --tp_size 2 --pp_size 2 --batch_size 4 --max_input_size 32 --max_out_len 16 --micro_batch_size 2
-```
-
-
-
-### Example
 ```python
-# import module
-from colossalai.inference import CaiInferEngine
+import torch
+import transformers
 import colossalai
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from colossalai.inference import InferenceEngine, InferenceConfig
+from pprint import pprint
 
-#launch distributed environment
 colossalai.launch_from_torch()
 
-# load original model and tokenizer
-model = LlamaForCausalLM.from_pretrained("/path/to/model")
-tokenizer = LlamaTokenizer.from_pretrained("/path/to/model")
+# Step 1: create a model in "transformers" way
+model_path = "lmsys/vicuna-7b-v1.3"
+model = transformers.LlamaForCausalLM.from_pretrained(model_path).cuda()
+tokenizer = transformers.AutoTokenizer.from_pretrained(model_path)
 
-# generate token ids
-input = ["Introduce a landmark in London","Introduce a landmark in Singapore"]
-data = tokenizer(input, return_tensors='pt')
+# Step 2: create an inference_config
+inference_config = InferenceConfig(
+                dtype=torch.float16,
+                max_batch_size=4,
+                max_input_len=1024,
+                max_output_len=512,
+                use_cuda_kernel=True,
+            )
 
-# set parallel parameters
-tp_size=2
-pp_size=2
-max_output_len=32
-micro_batch_size=1
+# Step 3: create an engine with model and config
+engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
-# initial inference engine
-engine = CaiInferEngine(
-    tp_size=tp_size,
-    pp_size=pp_size,
-    model=model,
-    max_output_len=max_output_len,
-    micro_batch_size=micro_batch_size,
-)
-
-# inference
-output = engine.generate(data)
-
-# get results
-if dist.get_rank() == 0:
-    assert len(output[0]) == max_output_len, f"{len(output)}, {max_output_len}"
-
+# Step 4: try inference
+prompts = ['Who is the best player in the history of NBA?']
+response = engine.generate(prompts)
+pprint(response)
 ```
 
-## Performance
+You could run the sample code by
+```bash
+colossalai run --nproc_per_node 1 your_sample_name.py
+```
 
-### environment:
+For detailed examples, you might want to check [inference examples](../../examples/inference/llama/README.md).
 
-We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `colossal-inference` and original `hugging-face torch fp16`.
+### :bookmark: Customize your inference engine
+Besides the basic quick-start inference, you can also customize your inference engine via modifying inference config or uploading your own models, policies, or decoding components (logits processors or sampling strategies).
 
-For various models, experiments were conducted using multiple batch sizes under the consistent model configuration of `7 billion(7b)` parameters, `1024` input length, and 128 output length. The obtained results are as follows (due to time constraints, the evaluation has currently been performed solely on the `A100` single GPU performance; multi-GPU performance will be addressed in the future):
+#### Inference Config
+Inference Config is a unified config for initializing the inference engine, controlling multi-GPU generation (Tensor Parallelism), as well as presetting generation configs. Below are some commonly used `InferenceConfig`'s arguments:
 
-### Single GPU Performance:
+- `max_batch_size`: The maximum batch size. Defaults to 8.
+- `max_input_len`: The maximum input length (number of tokens). Defaults to 256.
+- `max_output_len`: The maximum output length (number of tokens). Defaults to 256.
+- `dtype`: The data type of the model for inference. This can be one of `fp16`, `bf16`, or `fp32`. Defaults to `fp16`.
+- `kv_cache_dtype`: The data type used for KVCache. Defaults to the same data type as the model (`dtype`). KVCache quantization will be automatically enabled if it is different from that of model (`dtype`).
+- `use_cuda_kernel`: Determine whether to use CUDA kernels or not. If disabled, Triton kernels will be used. Defaults to False.
+- `tp_size`: Tensor-Parallelism size. Defaults to 1 (tensor parallelism is turned off by default).
 
-Currently the stats below are calculated based on A100 (single GPU), and we calculate token latency based on average values of context-forward and decoding forward process, which means we combine both of processes to calculate token generation times. We are actively developing new features and methods to further optimize the performance of LLM models. Please stay tuned.
+#### Generation Config
+Refer to transformers [GenerationConfig](https://huggingface.co/docs/transformers/en/main_classes/text_generation#transformers.GenerationConfig) on functionalities and usage of specific configs. In ColossalAI-Inference, generation configs can be preset in `InferenceConfig`. Supported generation configs include:
 
-### Tensor Parallelism Inference
+- `do_sample`: Whether or not to use sampling. Defaults to False (greedy decoding).
+- `top_k`: The number of highest probability vocabulary tokens to keep for top-k-filtering. Defaults to 50.
+- `top_p`: If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation. Defaults to 1.0.
+- `temperature`: The value used to modulate the next token probabilities. Defaults to 1.0.
+- `no_repeat_ngram_size`: If set to int > 0, all ngrams of that size can only occur once. Defaults to 0.
+- `repetition_penalty`: The parameter for repetition penalty. 1.0 means no penalty. Defaults to 1.0.
+- `forced_eos_token_id`: The id of the token to force as the last generated token when max_length is reached. Defaults to `None`.
 
-##### Llama
+Users can also create a transformers [GenerationConfig](https://huggingface.co/docs/transformers/en/main_classes/text_generation#transformers.GenerationConfig) as an input argument for `InferenceEngine.generate` API. For example
 
-|       batch_size        |   8    |   16   |   32   |
-|:-----------------------:|:------:|:------:|:------:|
-| hugging-face torch fp16 | 199.12 | 246.56 | 278.4  |
-|   colossal-inference    | 326.4  | 582.72 | 816.64 |
+```python
+generation_config = GenerationConfig(
+    max_length=128,
+    do_sample=True,
+    temperature=0.7,
+    top_k=50,
+    top_p=1.0,
+)
+response = engine.generate(prompts=prompts, generation_config=generation_config)
+```
 
-![llama](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-llama7b.png)
+## 🗺 Roadmap
 
-#### Bloom
+We will follow the following roadmap to develop major features of ColossalAI-Inference:
 
-|       batch_size        |   8    |   16   |   32   |
-|:-----------------------:|:------:|:------:|:------:|
-| hugging-face torch fp16 | 189.68 | 226.66 | 249.61 |
-|   colossal-inference    | 323.28 | 538.52 | 611.64 |
+- [x] Blocked KV Cache
+- [x] Paged Attention
+- 🟩 Fused Kernels
+- [x] Speculative Decoding
+- [x] Continuous Batching
+- 🟩 Tensor Parallelism
+- [ ] Online Inference
+- [ ] Beam Search
+- [ ] SplitFuse
 
-![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Infer-bloom7b.png)
+Notations:
+- [x] Completed
+- 🟩 Model specific and in still progress.
 
+## 🪅 Support Matrix
 
-### Pipline Parallelism Inference
-We conducted multiple benchmark tests to evaluate the performance. We compared the inference `latency` and `throughputs` between `Pipeline Inference` and `hugging face` pipeline. The test environment is 2 * A10, 20G / 2 * A800, 80G. We set  input length=1024, output length=128.
-
-
-#### A10 7b, fp16
-
-| batch_size(micro_batch size) | 2(1)  | 4(2)  |  8(4)  | 16(8)  | 32(8)  | 32(16) |
-|:----------------------------:|:-----:|:-----:|:------:|:------:|:------:|:------:|
-|      Pipeline Inference      | 40.35 | 77.10 | 139.03 | 232.70 | 257.81 |  OOM   |
-|         Hugging Face         | 41.43 | 65.30 | 91.93  | 114.62 |  OOM   |  OOM   |
-
-
-![ppllama7b](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama7b.png)
-
-#### A10 13b, fp16
-
-| batch_size(micro_batch size) | 2(1)  | 4(2)  | 8(4)  | 16(4) |
-|:----------------------------:|:-----:|:-----:|:-----:|:-----:|
-|      Pipeline Inference      | 25.39 | 47.09 | 83.7  | 89.46 |
-|         Hugging Face         | 23.48 | 37.59 | 53.44 |  OOM  |
-
-![ppllama13](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a10-llama13b.png)
-
-
-#### A800 7b, fp16
-
-| batch_size(micro_batch size) | 2(1)  |  4(2)  |  8(4)  | 16(8)  | 32(16) |
-|:----------------------------:|:-----:|:------:|:------:|:------:|:------:|
-|      Pipeline Inference      | 57.97 | 110.13 | 213.33 | 389.86 | 670.12 |
-|         Hugging Face         | 42.44 |  76.5  | 151.97 | 212.88 | 256.13 |
-
-![ppllama7b_a800](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/pp-a800-llama7b.png)
-
-### Quantization LLama
-
-|  batch_size   |   8    |   16   |   32   |
-|:-------------:|:------:|:------:|:------:|
-|   auto-gptq   | 199.20 | 232.56 | 253.26 |
-| smooth-quant  | 142.28 | 222.96 | 300.59 |
-| colossal-gptq | 231.98 | 388.87 | 573.03 |
-
-![bloom](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/inference-quant.png)
+| Model     | Model Card                                                                                     | Tensor Parallel | Lazy Initialization | Paged Attention | Fused Kernels | Speculative Decoding |
+|-----------|------------------------------------------------------------------------------------------------|-----------------|---------------------|-----------------|---------------|----------------------|
+| Baichuan  | `baichuan-inc/Baichuan2-7B-Base`,<br> `baichuan-inc/Baichuan2-13B-Base`, etc                   | ✅              | [ ]                   | ✅               | ✅             | [ ]                    |
+| ChatGLM   |                                                                                                | [ ]             | [ ]                 | [ ]             | [ ]           | [ ]                  |
+| DeepSeek  |                                                                                                | [ ]             | [ ]                 | [ ]             | [ ]           | [ ]                  |
+| Llama     | `meta-llama/Llama-2-7b`,<br> `meta-llama/Llama-2-13b`,<br> `meta-llama/Meta-Llama-3-8B`,<br> `meta-llama/Meta-Llama-3-70B`, etc | ✅               | [ ]                   | ✅               | ✅             | ✅                    |
+| Mixtral   |                                                                                                | [ ]             | [ ]                 | [ ]             | [ ]           | [ ]                  |
+| Qwen      |                                                                                                | [ ]             | [ ]                 | [ ]             | [ ]           | [ ]                  |
+| Vicuna    | `lmsys/vicuna-13b-v1.3`,<br> `lmsys/vicuna-7b-v1.5`                                            | ✅              | [ ]                   | ✅               | ✅             | ✅                    |
+| Yi        | `01-ai/Yi-34B`, etc                                                                            | ✅              | [ ]                   | ✅               | ✅             | ✅                    |
 
 
+## 🛠 Design and Components
 
-The results of more models are coming soon!
+### Overview
+
+ColossalAI-Inference has **4** major components, namely `engine`, `request handler`, `kv cache manager`, and `modeling`.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossalai-inference-overview-abstract.png" alt="colossalai-inference-components-overview" width="600" />
+   <br/>
+</p>
+
+- **Engine**: It orchestrates the inference step. During inference, it recives a request, calls `request handler` to schedule a decoding batch, and executes the model forward pass to perform a iteration. It returns the inference results back to the user at the end.
+- **Request Handler**: It manages requests and schedules a proper batch from exisiting requests.
+- **KV Cache Manager** It is bound within the `request handler`, updates cache blocks and logical block tables as scheduled by the `request handler`.
+- **Modelling**: We rewrite the model and layers of LLMs to simplify and optimize the forward pass for inference.
+
+
+An overview of the inter-component interaction is given below (RPC version). We would also introduce more details in the next few sections.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossalai-inference-framework.png" alt="colossalai-inference-framework-rpc" width="600"/>
+   <br/>
+</p>
+
+### Engine
+
+Engine is designed as the entry point where the user kickstarts an inference loop. User can easily initialize an inference engine with the inference configurations and execute with their requests. We provided several versions of inference engines, namely `InferenceEngine`, `RPCInferenceEngine`, and `AsyncInferenceEngine`, which are used for different conditions and purposes.
+
+For examples/inference/llama and `RPCInferenceEngine`, we expose the following APIs for inference:
+
+-  `generate`: main function which handles inputs, performs inference and returns outputs.
+-  `add_request`: add a single or multiple requests to the inference engine.
+-  `step`: perform one decoding iteration. The `request handler` first schedules a batch to do prefill/decoding. Then, it invokes a model to generate a batch of token and afterwards does logit processing and sampling, checks and decodes finished requests.
+- `enable_spec_dec`: used for speculative decoding. Enable speculative decoding for subsequent generations.
+- `disable_spec_dec`: used for speculative decoding. Disable speculative decoding for subsequent generations
+- `clear_spec_dec`: clear structures and models related to speculative decoding, if exists.
+
+For `AsyncInferenceEngine`, we expose the following APIs for inference:
+- `add_request`: async method. Add a request to the inference engine, as well as to the waiting queue of the background tracker.
+- `generate`: async method. Perform inference from a request.
+- `step`: async method. Perform one decoding iteration, if there exists any request in waiting queue.
+
+For now, `InferenceEngine` is used for offline generation; `AsyncInferenceEngine` is used for online serving with a single card; and `RPCInferenceEngine` is used for online serving with multiple cards. In future, we will focus on `RPCInferenceEngine` and improve user experience of LLM serving.
+
+
+### KV cache
+
+Learnt from [PagedAttention](https://arxiv.org/abs/2309.06180) by [vLLM](https://github.com/vllm-project/vllm) team, we use a unified blocked KV cache and cache manager to allocate and manage memory. The physical memory is pre-allocated during initialization and represented by a logical block table. During decoding process, cache manager administrates the physical memory through `block table` of a batch and so that other components (i.e. engine) can focus on the lightweight `block table`. More details are given below.
+
+- `logical cache block`: We group physical memory into different memory blocks. A typical cache block is shaped `(num_kv_heads, block_size, head_size)`. We determine the block number beforehand. The memory allocation and computation are executed at the granularity of memory block.
+- `block table`: Block table is the logical representation of cache blocks. Concretely, a block table of a single sequence is a 1D tensor, with each element holding a block ID. Block ID of `-1` means "Not Allocated". In each iteration, we pass through a batch block table to the corresponding model.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/Structure/BlockTable.svg"/>
+   <br/>
+   <em>Example of block table for a batch</em>
+</p>
+
+
+### Batching
+
+Request handler is responsible for managing requests and scheduling a proper batch from exisiting requests. Based on [Orca's](https://www.usenix.org/conference/osdi22/presentation/yu) and [vLLM's](https://github.com/vllm-project/vllm) research and work on batching requests, we applied continuous batching with unpadded sequences, which enables various number of sequences to pass projections (i.e. Q, K, and V) together in different steps by hiding the dimension of number of sequences, and decrement the latency of incoming sequences by inserting a prefill batch during a decoding step and then decoding together.
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/continuous_batching.png" width="800"/>
+   <br/>
+   <em>Naive Batching: decode until each sequence encounters eos in a batch</em>
+</p>
+
+<p align="center">
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/naive_batching.png" width="800"/>
+   <br/>
+   <em>Continuous Batching: dynamically adjust the batch size by popping out finished sequences and inserting prefill batch</em>
+</p>
+
+### Modeling
+
+Modeling contains models, layers, and policy, which are hand-crafted for better performance easier usage. Integrated with `shardformer`, users can define their own policy or use our preset policies for specific models. Our modeling files are aligned with [Transformers](https://github.com/huggingface/transformers). For more details about the usage of modeling and policy, please check `colossalai/shardformer`.
+
+
+## 🌟 Acknowledgement
+
+This project was written from scratch but we learned a lot from several other great open-source projects during development. Therefore, we wish to fully acknowledge their contribution to the open-source community. These projects include
+
+- [vLLM](https://github.com/vllm-project/vllm)
+- [flash-attention](https://github.com/Dao-AILab/flash-attention)
+
+If you wish to cite relevant research papars, you can find the reference below.
+
+```bibtex
+# vllm
+@inproceedings{kwon2023efficient,
+  title={Efficient Memory Management for Large Language Model Serving with PagedAttention},
+  author={Woosuk Kwon and Zhuohan Li and Siyuan Zhuang and Ying Sheng and Lianmin Zheng and Cody Hao Yu and Joseph E. Gonzalez and Hao Zhang and Ion Stoica},
+  booktitle={Proceedings of the ACM SIGOPS 29th Symposium on Operating Systems Principles},
+  year={2023}
+}
+
+# flash attention v1 & v2
+@inproceedings{dao2022flashattention,
+  title={Flash{A}ttention: Fast and Memory-Efficient Exact Attention with {IO}-Awareness},
+  author={Dao, Tri and Fu, Daniel Y. and Ermon, Stefano and Rudra, Atri and R{\'e}, Christopher},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2022}
+}
+@article{dao2023flashattention2,
+  title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
+  author={Dao, Tri},
+  year={2023}
+}
+```
