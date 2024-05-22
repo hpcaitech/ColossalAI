@@ -29,6 +29,11 @@ def infer(args):
     tokenizer.pad_token = tokenizer.eos_token
     # coordinator.print_on_master(f"Model Config:\n{model.config}")
 
+    prompts = [
+        "介绍一下北京,",
+        "介绍一下武汉,",
+    ]
+
     # ==============================
     # Initialize InferenceEngine
     # ==============================
@@ -41,9 +46,11 @@ def infer(args):
         block_size=16,
         tp_size=args.tp_size,
         use_cuda_kernel=args.use_cuda_kernel,
+        enable_streamingllm=False,
+        generate_token_size=64,
     )
     coordinator.print_on_master(f"Initializing Inference Engine...")
-    engine = InferenceEngine(model, tokenizer, inference_config, model_policy=POLICY_CLS(), verbose=True)
+    engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
     # ==============================
     # Generation
@@ -56,9 +63,11 @@ def infer(args):
         temperature=args.temperature,
         top_k=args.top_k,
         top_p=args.top_p,
+        no_repeat_ngram_size=1,
+        repetition_penalty=1.5,
     )
     coordinator.print_on_master(f"Generating...")
-    out = engine.generate(prompts=[args.prompt], generation_config=generation_config)
+    out = engine.generate(prompts=prompts, generation_config=generation_config)
     coordinator.print_on_master(out)
 
     # ==============================
@@ -70,7 +79,7 @@ def infer(args):
         # turn on speculative decoding with the drafter model
         engine.enable_spec_dec(drafter_model)
         coordinator.print_on_master(f"Generating...")
-        out = engine.generate(prompts=[args.prompt], generation_config=generation_config)
+        out = engine.generate(prompts=prompts, generation_config=generation_config)
         coordinator.print_on_master(out)
 
         engine.disable_spec_dec()
