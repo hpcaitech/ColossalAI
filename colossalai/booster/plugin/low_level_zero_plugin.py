@@ -32,7 +32,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.nn.optimizer import DistGaloreAwamW
+from colossalai.nn.optimizer import DistGaloreAwamW, optim2DistOptim
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.zero import LowLevelZeroOptimizer
 
@@ -437,6 +437,12 @@ class LowLevelZeroPlugin(DPPluginBase):
         zero_stage = self.stage
         zero_optim_kwargs = {**self.zero_optim_kwargs}
         dp_size = dist.get_world_size()
+
+        # Replace with the distributed implementation if exists
+        _class = optimizer.__class__
+        if _class in optim2DistOptim.keys():
+            optimizer = optim2DistOptim[_class](optimizer.param_groups)
+
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
             warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
             zero_optim_kwargs["partition_grad"] = False

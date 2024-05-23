@@ -27,7 +27,7 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.nn.optimizer import DistGaloreAwamW
+from colossalai.nn.optimizer import DistGaloreAwamW, optim2DistOptim
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
@@ -1179,6 +1179,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         # TODO: Support Galore + ZeRO
         zero_stage = self.zero_stage
         zero_config = deepcopy(self.zero_config)
+
+        # Replace with distributed implementation if exists
+        _class = optimizer.__class__
+        if _class in optim2DistOptim.keys():
+            optimizer = optim2DistOptim[_class](optimizer.param_groups)
+
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
             warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
             zero_config["partition_grad"] = False

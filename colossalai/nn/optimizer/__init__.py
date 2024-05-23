@@ -34,3 +34,10 @@ __all__ = [
     "Adafactor",
     "DistributedAdaFactor",
 ]
+
+optim2DistOptim = {
+    GaLoreAdamW8bit: DistGaloreAwamW,
+    Lamb: DistributedLamb,
+    CAME: DistributedCAME,
+    Adafactor: DistributedAdaFactor,
+}

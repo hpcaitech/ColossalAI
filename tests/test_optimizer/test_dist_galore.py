@@ -319,7 +319,7 @@ def check_dist_galore(rank, world_size, port):
     )
     for config in test_config:
         try:
-            run_bert_test(test_config=config, optim_class=GaLoreAdamW8bit, sharded_optim_class=DistGaloreAwamW)
+            run_bert_test(test_config=config, optim_class=GaLoreAdamW8bit, sharded_optim_class=GaLoreAdamW8bit)
         except Exception as e:
             print(e)
     dist.barrier()
