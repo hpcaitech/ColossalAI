@@ -378,7 +378,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-2.png" width=1000/>
 </p>
 
- - AI大模型推理速度翻倍，与vLLM的离线推理性能相比
+ - AI大模型推理速度部分接近翻倍，与vLLM的离线推理性能相比
 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
 [[博客]](https://hpc-ai.com/blog/colossal-inference)
 
@@ -399,25 +399,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): 开源解决方案打破了多轮对话的 LLM 长度限制，推理性能提高了46%
-
-
-<p id="GPT-3-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
-</p>
-
-- [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
-
-<p id="OPT-Serving" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=600/>
-</p>
-
-- [OPT推理服务](https://colossalai.org/docs/advanced_tutorials/opt_service): 体验1750亿参数OPT在线推理服务
-
-<p id="BLOOM-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
-</p>
-
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1760亿参数BLOOM模型部署推理成本超10倍
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 
