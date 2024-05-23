@@ -385,7 +385,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-2.png" width=1000/>
 </p>
 
- - Large AI models inference speed doubled, compared to the offline inference performance of vLLM.
+ - Large AI models inference speed doubled, compared to the offline inference performance of vLLM in some cases.
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
 [[blog]](https://hpc-ai.com/blog/colossal-inference)
 
