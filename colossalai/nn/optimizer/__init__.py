@@ -1,3 +1,4 @@
+import torch.distributed as dist
 from galore_torch import GaLoreAdafactor, GaLoreAdamW
 
 from .came import CAME
@@ -41,3 +42,15 @@ optim2DistOptim = {
     CAME: DistributedCAME,
     Adafactor: DistributedAdaFactor,
 }
+
+
+def cast_to_distributed(optim):
+    if optim.__class__ in optim2DistOptim:
+        if dist.is_initialized() and dist.get_rank() == 0:
+            print(f"Converting optimizer {optim.__class__.__name__} to its distributed version.")
+
+        if isinstance(optim, GaLoreAdamW8bit):
+            return optim2DistOptim[GaLoreAdamW8bit](optim.param_groups, args=optim.args)
+        return optim2DistOptim[optim.__class__](optim.param_groups)
+
+    return optim

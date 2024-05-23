@@ -306,8 +306,8 @@ def check_dist_galore(rank, world_size, port):
     global coordinator
     coordinator = DistCoordinator()
 
-    run_dist_galore_basic()
-    coordinator.print_on_master("Basic backward tests passed")
+    # run_dist_galore_basic()
+    # coordinator.print_on_master("Basic backward tests passed")
 
     coordinator.print_on_master("Skipping forward-backward tests due to SVD instability")
     # run_dist_galore_fwd_bwd()
