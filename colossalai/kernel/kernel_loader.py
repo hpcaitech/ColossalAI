@@ -8,6 +8,7 @@ from .extensions import (
     FlashAttentionNpuExtension,
     FlashAttentionSdpaCudaExtension,
     FusedOptimizerCudaExtension,
+    InferenceOpsCudaExtension,
     LayerNormCudaExtension,
     MoeCudaExtension,
     ScaledMaskedSoftmaxCudaExtension,
@@ -21,6 +22,7 @@ __all__ = [
     "LayerNormLoader",
     "MoeLoader",
     "FusedOptimizerLoader",
+    "InferenceOpsLoader",
     "ScaledMaskedSoftmaxLoader",
     "ScaledUpperTriangleMaskedSoftmaxLoader",
 ]
@@ -95,6 +97,10 @@ class MoeLoader(KernelLoader):
 
 class FusedOptimizerLoader(KernelLoader):
     REGISTRY = [FusedOptimizerCudaExtension]
+
+
+class InferenceOpsLoader(KernelLoader):
+    REGISTRY = [InferenceOpsCudaExtension]
 
 
 class ScaledMaskedSoftmaxLoader(KernelLoader):

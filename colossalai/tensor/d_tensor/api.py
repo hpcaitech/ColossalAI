@@ -8,12 +8,29 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 
 from .layout import Layout
 from .layout_converter import LayoutConverter
 from .sharding_spec import ShardingSpec
 
 layout_converter = LayoutConverter()
+
+_SHARD_DIM = DimSpec([0])
+
+
+def get_shard_dim_1d(p: torch.Tensor):
+    """
+    Get the dimension along which the tensor is sharded, for example in 1D Tensor Parallel.
+    Args:
+        p (torch.Tensor): the input tensor
+    Returns:
+        int: the dimension along which the tensor is sharded
+    """
+    if not is_distributed_tensor(p):
+        raise ValueError("p is not a distributed tensor")
+    sharding = p.dist_layout.sharding_spec.sharding_sequence
+    return sharding.index(_SHARD_DIM)
 
 
 def clear_layout_converter():
