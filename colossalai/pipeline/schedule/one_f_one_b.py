@@ -32,7 +32,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
-        overlap_p2p: bool = True,
+        overlap_p2p=None,
     ) -> None:
         """1F1B pipeline schedule.
 
@@ -40,14 +40,14 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             stage_manager (PipelineStageManager): Pipeline stage manager
             num_microbatches (Optional[int], optional): The number of microbatches. If not provided, it will be derived from microbatch size. Defaults to None.
             microbatch_size (Optional[int], optional): Microbatch size. If num_microbatches is provided, this will be ignored. Defaults to None.
+            overlap_p2p: Placeholder for interface consistency
         """
         super().__init__(stage_manager)
         assert (
             num_microbatches is not None or microbatch_size is not None
         ), "Either num_microbatches or microbatch_size should be provided"
 
-        self.comm = PipelineP2PCommunication(stage_manager)
-        self.overlap_p2p = overlap_p2p
+        self.comm = PipelineP2PCommunication(stage_manager, overlap_p2p=False)
 
         self.num_microbatches = num_microbatches
         self.microbatch_size = microbatch_size
@@ -127,7 +127,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             Any: The input tensor or input tensor list.
         """
         if not self.stage_manager.is_first_stage():
-            input_tensor = self.comm.recv_forward(prev_rank, metadata_recv=self.tensor_metadata_recv)
+            input_tensor, _ = self.comm.recv_forward(prev_rank, metadata_recv=self.tensor_metadata_recv)
             if self.enable_metadata_cache and self.tensor_metadata_recv is None:
                 self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
@@ -144,7 +144,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             Any: The input gradient tensor or gradient tensor list.
         """
         if not self.stage_manager.is_last_stage():
-            output_tensor_grad = self.comm.recv_backward(next_rank, metadata_recv=self.grad_metadata_recv)
+            output_tensor_grad, _ = self.comm.recv_backward(next_rank, metadata_recv=self.grad_metadata_recv)
             if self.enable_metadata_cache and self.grad_metadata_recv is None:
                 self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
 
@@ -174,9 +174,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             self.comm.send_backward(input_tensor_grad, prev_rank, send_metadata=self.send_grad_metadata)
             self.send_grad_metadata = not self.enable_metadata_cache
 
-    def send_forward_recv_backward(
-        self, output_tensor: Any, next_rank: int = None, send_prior_fallback: Optional[bool] = None
-    ) -> Any:
+    def send_forward_recv_backward(self, output_tensor: Any, send_first: Optional[bool] = None) -> Any:
         """Sends the input tensor to the next stage and copy the gradient tensor from the next stage in pipeline.
            For 1F1B.
 
@@ -186,13 +184,12 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         """
         if not self.stage_manager.is_last_stage():
             if not self.send_tensor_metadata and self.grad_metadata_recv is not None:
-                send_prior_fallback = None  # must not fallback
+                send_first = None
             output_tensor_grad, _ = self.comm.send_forward_recv_backward(
                 output_tensor,
-                next_rank,
                 send_metadata=self.send_tensor_metadata,
                 metadata_recv=self.grad_metadata_recv,
-                send_prior_fallback=send_prior_fallback,
+                send_first=send_first,
             )
             self.send_tensor_metadata = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.grad_metadata_recv is None:
@@ -200,9 +197,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
             return output_tensor_grad
 
-    def send_backward_recv_forward(
-        self, input_tensor_grad: Any, prev_rank: int = None, send_prior_fallback: Optional[bool] = None
-    ) -> Any:
+    def send_backward_recv_forward(self, input_tensor_grad: Any, send_first: Optional[bool] = None) -> Any:
         """Sends the gradient tensor to the previous stage and copy the input tensor from the previous stage in pipeline.
            For 1F1B.
 
@@ -212,13 +207,12 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         """
         if not self.stage_manager.is_first_stage():
             if not self.send_grad_metadata and self.tensor_metadata_recv is not None:
-                send_prior_fallback = None  # must not fallback
+                send_first = None  # must not fallback
             input_tensor, _ = self.comm.send_backward_recv_forward(
                 input_tensor_grad,
-                prev_rank,
                 send_metadata=self.send_grad_metadata,
                 metadata_recv=self.tensor_metadata_recv,
-                send_prior_fallback=send_prior_fallback,
+                send_first=send_first,
             )
             self.send_grad_metadata = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.tensor_metadata_recv is None:
@@ -384,9 +378,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             last_iteration = i == (num_microbatches_remaining - 1)
 
             output_obj = self.forward_step(model, input_obj, criterion, accum_loss, outputs)
-            output_obj_grad = self.send_forward_recv_backward(
-                output_obj, send_prior_fallback=self.stage_manager.stage % 2 == 0
-            )
+            output_obj_grad = self.send_forward_recv_backward(output_obj, send_first=self.stage_manager.stage % 2 == 0)
             # Add input_obj and output_obj to end of list.
             input_objs.append(input_obj)
             output_objs.append(output_obj)
@@ -401,7 +393,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
                 self.send_backward(input_obj_grad)
             else:
                 input_obj = self.send_backward_recv_forward(
-                    input_obj_grad, send_prior_fallback=self.stage_manager.stage % 2 == 0
+                    input_obj_grad, send_first=self.stage_manager.stage % 2 == 0
                 )
 
         # Run cooldown backward passes.

@@ -184,7 +184,8 @@ def create_send_metadata(
         else:
             non_tensor_obj_idx.append(idx)
             non_tensor_objs.append(obj)
-
+    # if dist.get_rank() == 0:
+    #     print(f"non_tensor_obj_idx: {non_tensor_obj_idx}, strict: {strict}")
     assert not strict or len(non_tensor_objs) == 0, "Only support tensor for fast send"
     metadata = P2PMetadata(tree_spec, tensor_metadata, non_tensor_obj_idx, non_tensor_objs)
     return metadata if not return_tensor else (metadata, tensor_objs)
@@ -353,56 +354,56 @@ def _communicate(
 
     # NOTE: send & recv should be atomic operations. However, if we need to send metadata or receive metadata,
     #   we are not able to do that (1. send & recv metadata 2. send & recv). So we need to split the send & recv into two parts in this case.
-    if (send_dst is not None and recv_src is not None) and (send_metadata or metadata_recv is None):
-        assert (
-            send_first is not None
-        ), "If you're doing both send & receive with metadata, priority must be set to avoid deadlock, lol"
-        if send_first:
-            _, send_handles = _communicate(
-                object,
-                send_dst=send_dst,
-                recv_src=None,
-                send_group=send_group,
-                send_metadata=send_metadata,
-                overlap_p2p=overlap_p2p,
-            )
-            recv_data, recv_handles = _communicate(
-                None,
-                send_dst=None,
-                recv_src=recv_src,
-                recv_group=recv_group,
-                metadata_recv=metadata_recv,
-                overlap_p2p=overlap_p2p,
-            )
-            wait_handles = send_handles + recv_handles
-            return recv_data, wait_handles
-        else:
-            recv_data, recv_handles = _communicate(
-                None,
-                send_dst=None,
-                recv_src=recv_src,
-                recv_group=recv_group,
-                metadata_recv=metadata_recv,
-                overlap_p2p=overlap_p2p,
-            )
-            _, send_handles = _communicate(
-                object,
-                send_dst=send_dst,
-                recv_src=None,
-                send_group=send_group,
-                send_metadata=send_metadata,
-                overlap_p2p=overlap_p2p,
-            )
-            wait_handles = send_handles + recv_handles
-            return recv_data, wait_handles
+    # if (send_dst is not None and recv_src is not None) and (send_metadata or metadata_recv is None):
+    #     assert (
+    #         send_first is not None
+    #     ), "If you're doing both send & receive with metadata, priority must be set to avoid deadlock, lol"
+    #     if send_first:
+    #         _, send_handles = _communicate(
+    #             object,
+    #             send_dst=send_dst,
+    #             recv_src=None,
+    #             send_group=send_group,
+    #             send_metadata=send_metadata,
+    #             overlap_p2p=overlap_p2p,
+    #         )
+    #         recv_data, recv_handles = _communicate(
+    #             None,
+    #             send_dst=None,
+    #             recv_src=recv_src,
+    #             recv_group=recv_group,
+    #             metadata_recv=metadata_recv,
+    #             overlap_p2p=overlap_p2p,
+    #         )
+    #         wait_handles = send_handles + recv_handles
+    #         return recv_data, wait_handles
+    #     else:
+    #         recv_data, recv_handles = _communicate(
+    #             None,
+    #             send_dst=None,
+    #             recv_src=recv_src,
+    #             recv_group=recv_group,
+    #             metadata_recv=metadata_recv,
+    #             overlap_p2p=overlap_p2p,
+    #         )
+    #         _, send_handles = _communicate(
+    #             object,
+    #             send_dst=send_dst,
+    #             recv_src=None,
+    #             send_group=send_group,
+    #             send_metadata=send_metadata,
+    #             overlap_p2p=overlap_p2p,
+    #         )
+    #         wait_handles = recv_handles + send_handles
+    #         return recv_data, wait_handles
 
-    # NOTE: only the following cases are valid:
-    #   1. send() [needs extra metadata] and no recv()
-    #   2. recv() [needs extra metadata] and no send()
-    #   3. neither send() nor recv() need extra metadata
-    assert not (send_dst is not None and send_metadata) or recv_src is None
-    assert not (recv_src is not None and metadata_recv is None) or send_dst is None
-    assert not (send_dst is not None and recv_src is not None) or (not send_metadata and metadata_recv is not None)
+    # # NOTE: only the following cases are valid:
+    # #   1. send() [needs extra metadata] and no recv()
+    # #   2. recv() [needs extra metadata] and no send()
+    # #   3. neither send() nor recv() need extra metadata
+    # assert not (send_dst is not None and send_metadata) or recv_src is None
+    # assert not (recv_src is not None and metadata_recv is None) or send_dst is None
+    # assert not (send_dst is not None and recv_src is not None) or (not send_metadata and metadata_recv is not None)
     assert not c10d._rank_not_in_group(send_group) and not c10d._rank_not_in_group(recv_group)
 
     current_send_device, is_send_nccl_backend = _check_device(send_group)
@@ -413,6 +414,8 @@ def _communicate(
     assert current_send_device == current_recv_device
     current_device = current_send_device
 
+    if (send_dst is not None and send_metadata) and (recv_src is not None and metadata_recv is None):
+        print("Both sending and receiving metadata!")
     if (send_dst is not None and send_metadata) or (recv_src is not None and metadata_recv is None):
         # Send and receive metadata
         _metadata_recv = _send_recv_serialization_object(
@@ -456,35 +459,6 @@ def _communicate(
         return recv_object, wait_handles
     # return handles for send
     return None, wait_handles
-
-
-# def _send_object(object: Any, src: int, dst: int, group: ProcessGroup, **kwargs) -> None:
-#     # TODO: intergrate this helper with its parent function
-#     """send anything to dst rank
-
-#     Args:
-#         object (Any): object needed to be sent
-#         dst (int): rank of the destination
-
-#     Returns:
-#         Any: handle of the send operation to call wait() on
-#     """
-#     _, send_handles = _communicate(object, send_dst=dst, recv_src=None, send_group=group, **kwargs)
-#     return send_handles
-
-
-# def _recv_object(src: int, dst: int, group: ProcessGroup, **kwargs) -> Any:
-#     """recv anything from src
-
-#     Args:
-#         src (int): source rank of data. local rank will receive data from src rank.
-
-#     Returns:
-#         Any: Object received from src.
-#         Any: handle of the recv operation to call wait() on
-#     """
-#     recv_object, recv_handles = _communicate(None, send_dst=None, recv_src=src, recv_group=group, **kwargs)
-#     return recv_object, recv_handles
 
 
 def _p2p_comm(
@@ -570,7 +544,9 @@ class PipelineP2PCommunication:
         self.stage_manager = stage_manager
         self.overlap_p2p = overlap_p2p
 
-    def recv_forward(self, prev_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None) -> Any:
+    def recv_forward(
+        self, prev_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None
+    ) -> Tuple[Any, List]:
         """Copy the forward output from the previous stage in pipeline as the input tensor of this stage.
 
         Args:
@@ -578,6 +554,7 @@ class PipelineP2PCommunication:
 
         Returns:
             Any: The input tensor or input tensor list.
+            List: List of handles for the communication requests, if overlap is enabled.
         """
         if prev_rank is None:
             prev_rank = self.stage_manager.get_prev_rank()
@@ -593,14 +570,16 @@ class PipelineP2PCommunication:
 
         return input_tensor, wait_handles
 
-    def recv_backward(self, next_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None) -> Any:
+    def recv_backward(
+        self, next_rank: Optional[int] = None, metadata_recv: Optional[P2PMetadata] = None
+    ) -> Tuple[Any, List]:
         """Copy the gradient tensor from the next stage in pipeline as the input gradient of this stage.
-
         Args:
             next_rank (int, optional): The rank of the source of the tensor.
 
         Returns:
-            Any: The input gradient tensor or gradient tensor list.
+            Any: The input tensor or input tensor list.
+            List: List of handles for the communication requests, if overlap is enabled.
         """
         if next_rank is None:
             next_rank = self.stage_manager.get_next_rank()
@@ -616,12 +595,15 @@ class PipelineP2PCommunication:
 
         return output_tensor_grad, wait_handles
 
-    def send_forward(self, output_object: Any, next_rank: Optional[int] = None, send_metadata: bool = True) -> None:
+    def send_forward(self, output_object: Any, next_rank: Optional[int] = None, send_metadata: bool = True) -> List:
         """Sends the input tensor to the next stage in pipeline.
 
         Args:
             output_object (Any): Object to be sent.
             next_rank (int, optional): The rank of the recipient of the tensor.
+
+        Returns:
+            List: List of handles for the communication requests, if overlap is enabled.
         """
         if next_rank is None:
             next_rank = self.stage_manager.get_next_rank()
@@ -636,12 +618,15 @@ class PipelineP2PCommunication:
         )
         return handles
 
-    def send_backward(self, input_object: Any, prev_rank: Optional[int] = None, send_metadata: bool = True) -> None:
+    def send_backward(self, input_object: Any, prev_rank: Optional[int] = None, send_metadata: bool = True) -> List:
         """Sends the gradient tensor to the previous stage in pipeline.
 
         Args:
             input_object (Any): Object to be sent.
             prev_rank (int, optional): The rank of the recipient of the tensor
+
+        Returns:
+            List: List of handles for the communication requests, if overlap is enabled.
         """
         if prev_rank is None:
             prev_rank = self.stage_manager.get_prev_rank()
@@ -659,20 +644,20 @@ class PipelineP2PCommunication:
     def send_forward_recv_backward(
         self,
         input_object: Any,
-        next_rank: Optional[int] = None,
         send_metadata: bool = True,
         metadata_recv: Optional[P2PMetadata] = None,
         send_first: Optional[bool] = None,
-    ) -> Any:
-        """Sends the gradient tensor to and copy the gradient tensor from the next stage in pipeline
+    ) -> Tuple[Any, List]:
+        """Sends the gradient tensor to and copy the gradient tensor from the next pipeline stage
 
         Args:
             input_object (Any): Object to be sent.
-            next_rank (int, optional): The rank of the sender and recipient of the tensor
-        """
-        if next_rank is None:
-            next_rank = self.stage_manager.get_next_rank()
 
+        Returns:
+            Any: The input tensor or input tensor list.
+            List: List of handles for the communication requests, if overlap is enabled.
+        """
+        next_rank = self.stage_manager.get_next_rank()
         cur_rank = self.stage_manager.get_rank()
         group = self.stage_manager.get_p2p_process_group(cur_rank, next_rank)
         return _communicate(
@@ -684,26 +669,26 @@ class PipelineP2PCommunication:
             send_metadata=send_metadata,
             metadata_recv=metadata_recv,
             send_first=send_first,
-            overlap_p2p=self.overlap_p2p,
+            overlap_p2p=False,
         )
 
     def send_backward_recv_forward(
         self,
         input_object: Any,
-        prev_rank: Optional[int] = None,
         send_metadata: bool = True,
         metadata_recv: Optional[P2PMetadata] = None,
         send_first: Optional[bool] = None,
-    ) -> Any:
+    ) -> Tuple[Any, List]:
         """Sends the gradient tensor to and copy the gradient tensor from the previous stage in pipeline
 
         Args:
             input_object (Any): Object to be sent.
-            prev_rank (int, optional): The rank of the sender and recipient of the tensor
-        """
-        if prev_rank is None:
-            prev_rank = self.stage_manager.get_prev_rank()
 
+        Returns:
+            Any: The input tensor or input tensor list.
+            List: List of handles for the communication requests, if overlap is enabled.
+        """
+        prev_rank = self.stage_manager.get_prev_rank()
         cur_rank = self.stage_manager.get_rank()
         group = self.stage_manager.get_p2p_process_group(prev_rank, cur_rank)
         return _communicate(
@@ -715,7 +700,7 @@ class PipelineP2PCommunication:
             send_metadata=send_metadata,
             metadata_recv=metadata_recv,
             send_first=send_first,
-            overlap_p2p=self.overlap_p2p,
+            overlap_p2p=False,
         )
 
     def p2p_communicate(
@@ -724,7 +709,7 @@ class PipelineP2PCommunication:
         recv_pre: bool,
         next_rank: Optional[int] = None,
         comm_dtype: torch.dtype = torch.float16,
-    ) -> None:
+    ) -> Any:
         """
         Sends the input tensor to the next stage in pipeline, using `P2Pop` in torch.
 

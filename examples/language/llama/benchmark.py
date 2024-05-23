@@ -170,7 +170,7 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
-            pp_style="interleaved",
+            pp_style=args.pp_style,
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             enable_fused_normalization=torch.cuda.is_available(),
@@ -179,13 +179,14 @@ def main():
             precision="bf16",
             dp_outside=False,
             overlap_p2p=args.overlap,
+            enable_metadata_cache=True,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
-            pp_style="interleaved",
+            pp_style=args.pp_style,
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             cpu_offload=True,
@@ -214,7 +215,7 @@ def main():
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
-    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
+    dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, seed=42)
 
     # ==============================
     # Initialize Model and Optimizer
@@ -274,17 +275,20 @@ def main():
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
                 performance_evaluator.on_step_start(step)
-                loss = booster.execute_pipeline(
+                outputs = booster.execute_pipeline(
                     data_iter,
                     model,
                     criterion=lambda outputs, inputs: outputs[0],
                     optimizer=optimizer,
                     return_loss=True,
+                    return_outputs=True,
                 )
                 if args.profile:
                     ctx.step()
                 if dist.get_rank() == dist.get_world_size() - 1:
-                    print(f"Step: {step}, loss: {loss} ")
+                    loss = outputs["loss"]
+                    outputs = outputs["outputs"]["logits"]
+                    print(f"Step: {step}, loss: {loss}, output: {outputs.mean()} ")
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
         else:
             for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
