@@ -761,7 +761,7 @@ class InferenceEngine:
 
         if self.inference_config.enable_streamingllm:
             updated_block_ids = batch.streamingllm_update_batch(
-                self.inference_config.start_token_size, self.inference_config.generate_token_size
+                self.inference_config.start_token_size, self.inference_config.generated_token_size
             )
             self.request_handler.streamingllm_free_block_tables(updated_block_ids)
 

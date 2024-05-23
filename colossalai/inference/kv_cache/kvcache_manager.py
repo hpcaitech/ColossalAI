@@ -82,7 +82,7 @@ class KVCacheManager:
         # NOTE: `num_blocks` is not prompted, but evaluated from the maximum input/output length, and the maximum batch size
         if config.enable_streamingllm:
             self.max_blocks_per_sequence = (
-                config.start_token_size + config.generate_token_size + self.block_size - 1
+                config.start_token_size + config.generated_token_size + self.block_size - 1
             ) // self.block_size + 1
         else:
             self.max_blocks_per_sequence = (
@@ -557,7 +557,7 @@ class RPCKVCacheManager(KVCacheManager):
         # NOTE: `num_blocks` is not prompted, but evaluated from the maximum input/output length, and the maximum batch size
         if config.enable_streamingllm:
             self.max_blocks_per_sequence = (
-                config.start_token_size + config.generate_token_size + self.block_size - 1
+                config.start_token_size + config.generated_token_size + self.block_size - 1
             ) // self.block_size + 1
         else:
             self.max_blocks_per_sequence = (

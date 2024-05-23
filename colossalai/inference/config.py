@@ -181,8 +181,8 @@ class InferenceConfig(RPC_PARAM):
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
         max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
         enable_streamingllm(bool): Whether to use StreamingLLM, the relevant algorithms refer to the paper at https://arxiv.org/pdf/2309.17453 for implementation.
-        start_token_size(int): The size of the start token, When using StreamingLLM,
-        generate_token_size(int):
+        start_token_size(int): The size of the start_token, When using StreamingLLM.
+        generated_token_size(int): The size of the generated_token, When using StreamingLLM.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -237,7 +237,7 @@ class InferenceConfig(RPC_PARAM):
     # StreamingLLM
     enable_streamingllm: bool = False
     start_token_size: int = 4
-    generate_token_size: int = 512
+    generated_token_size: int = 512
 
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len
