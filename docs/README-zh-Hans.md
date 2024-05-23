@@ -379,7 +379,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
  - AI大模型推理速度翻倍，与vLLM的离线推理性能相比
-
 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
 [[博客]](https://hpc-ai.com/blog/colossal-inference)
 
