@@ -39,9 +39,18 @@ app = FastAPI()
 
 
 @app.get("/ping")
-def health_check(slef) -> bool:
+def health_check() -> JSONResponse:
     """Health Check for server."""
     return JSONResponse({"status": "Healthy"})
+
+
+@app.get("/engine_check")
+def engine_check() -> bool:
+    """Check if the background loop is running."""
+    loop_status = async_engine.background_loop_status
+    if loop_status == False:
+        return JSONResponse({"status": "Error"})
+    return JSONResponse({"status": "Running"})
 
 
 @app.post("/generate")
@@ -133,7 +142,7 @@ def add_engine_config(parser):
     # Parallel arguments not supported now
 
     # KV cache arguments
-    parser.add_argument("--block_size", type=int, default=16, choices=[8, 16, 32], help="token block size")
+    parser.add_argument("--block_size", type=int, default=16, choices=[16, 32], help="token block size")
 
     parser.add_argument("--max_batch_size", type=int, default=8, help="maximum number of batch size")
 
