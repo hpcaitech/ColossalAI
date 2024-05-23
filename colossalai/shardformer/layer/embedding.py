@@ -249,7 +249,6 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
 
     The ``args`` and ``kwargs`` used in :class:``torch.nn.functional.embedding`` should contain:
     ::
-
         max_norm (float, optional): If given, each embedding vector with norm larger than max_norm is
                     renormalized to have norm max_norm. Note: this will modify weight in-place.
         norm_type (float, optional): The p of the p-norm to compute for the max_norm option. Default 2.

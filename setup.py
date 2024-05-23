@@ -111,7 +111,6 @@ setup(
             "tests",
             "scripts",
             "requirements",
-            "extensions",
             "*.egg-info",
         ),
     ),
