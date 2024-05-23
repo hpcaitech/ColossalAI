@@ -8,6 +8,7 @@ on:
     # any change in the examples folder will trigger check for the corresponding example.
     paths:
       - "examples/**"
+      - "!examples/**.md"
 
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
@@ -19,6 +20,7 @@ jobs:
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}
+      anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
     name: Detect changed example files
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
@@ -36,6 +38,16 @@ jobs:
           commonCommit=$(git merge-base origin/main $curBranch)
           echo $commonCommit
           echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+
+      - name: Find the changed extension-related files
+        id: find-extension-change
+        uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+          files: |
+            op_builder/**
+            colossalai/kernel/**
+            setup.py
 
       - name: Get all changed example files
         id: changed-files
@@ -79,16 +91,27 @@ jobs:
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-example-${{ matrix.directory }}
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v3
 
+      - name: Restore Colossal-AI Cache
+        if: needs.detect.outputs.anyExtensionFileChanged != 'true'
+        run: |
+          if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
+            cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          fi
+
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
+
+      - name: Store Colossal-AI Cache
+        run: |
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
       - name: Test the example
         run: |
