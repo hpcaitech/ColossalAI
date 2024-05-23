@@ -218,9 +218,15 @@ Modeling contains models, layers, and policy, which are hand-crafted for better 
 ## Online Service
 Colossal-Inference supports fast-api based online service. Simple completion and chat are both supported. Follow the commands below and you can simply construct a server with both completion and chat functionalities. For now we support `Llama2`,`Llama3` and `Baichuan2` model, etc. we will fullfill the blank quickly.
 
-### Completion
+### API
+
+- GET '/ping':
+Ping is used to check if the server can receive and send information.
+- GET '/engine_check':
+Check is the background engine is working.
+- POST '/completion':
 Completion api is used for single sequence request, like answer a question or complete words.
-### Chat
+- POST '/chat':
 Chat api is used for conversation-style request, which often includes dialogue participants(i.e. roles) and corresponding words. Considering the input data are very different from normal inputs, we introduce Chat-Template to match the data format in chat models.
 #### chat-template
 Followed `transformers`, we add the chat-template argument. As chat models have been trained with very different formats for converting conversations into a single tokenizable string. Using a format that matches the training data is extremely important. This attribute(chat_template) is inclueded in HuggingFace tokenizers, containing a Jinja template that converts conversation histories into a correctly formatted string. You can refer to the [HuggingFace-blog](https://huggingface.co/blog/chat-templates) for more information. We also provide a simple example temlate bellow. Both str or file style chat template are supported.
