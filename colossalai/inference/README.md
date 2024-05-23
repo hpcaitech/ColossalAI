@@ -215,19 +215,17 @@ Request handler is responsible for managing requests and scheduling a proper bat
 
 Modeling contains models, layers, and policy, which are hand-crafted for better performance easier usage. Integrated with `shardformer`, users can define their own policy or use our preset policies for specific models. Our modeling files are aligned with [Transformers](https://github.com/huggingface/transformers). For more details about the usage of modeling and policy, please check `colossalai/shardformer`.
 
-# Online Service
+## Online Service
 Colossal-Inference supports fast-api based online service. Simple completion and chat are both supported. Follow the commands below and you can simply construct a server with both completion and chat functionalities. For now we support `Llama2`,`Llama3` and `Baichuan2` model, etc. we will fullfill the blank quickly.
-
-## API
 
 ### Completion
 Completion api is used for single sequence request, like answer a question or complete words.
 ### Chat
 Chat api is used for conversation-style request, which often includes dialogue participants(i.e. roles) and corresponding words. Considering the input data are very different from normal inputs, we introduce Chat-Template to match the data format in chat models.
 #### chat-template
-Followed `transformers`, we add the chat-template argument. As chat models have been trained with very different formats for converting conversations into a single tokenizable string. Using a format that matches the training data is extremely important. This attribute(chat_template) is inclueded in HuggingFace tokenizers, containing a Jinja template that converts conversation histories into a correctly formatted string. You can refer to the [blog](https://huggingface.co/blog/chat-templates) for more information. We also provide a simple example temlate bellow. Both str or file style chat template are supported.
-## Usage
-### Args for customizing your server
+Followed `transformers`, we add the chat-template argument. As chat models have been trained with very different formats for converting conversations into a single tokenizable string. Using a format that matches the training data is extremely important. This attribute(chat_template) is inclueded in HuggingFace tokenizers, containing a Jinja template that converts conversation histories into a correctly formatted string. You can refer to the [HuggingFace-blog](https://huggingface.co/blog/chat-templates) for more information. We also provide a simple example temlate bellow. Both str or file style chat template are supported.
+### Usage
+#### Args for customizing your server
 The configuration for api server contains both serving interface and engine backend.
 For Interface:
 - `--host`: The host url on your device for the server.
@@ -266,7 +264,7 @@ This project was written from scratch but we learned a lot from several other gr
 
 - [vLLM](https://github.com/vllm-project/vllm)
 - [flash-attention](https://github.com/Dao-AILab/flash-attention)
-
+- [HuggingFace](https://huggingface.co)
 If you wish to cite relevant research papars, you can find the reference below.
 
 ```bibtex
