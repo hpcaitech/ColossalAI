@@ -200,13 +200,13 @@ Learnt from [PagedAttention](https://arxiv.org/abs/2309.06180) by [vLLM](https:/
 Request handler is responsible for managing requests and scheduling a proper batch from exisiting requests. Based on [Orca's](https://www.usenix.org/conference/osdi22/presentation/yu) and [vLLM's](https://github.com/vllm-project/vllm) research and work on batching requests, we applied continuous batching with unpadded sequences, which enables various number of sequences to pass projections (i.e. Q, K, and V) together in different steps by hiding the dimension of number of sequences, and decrement the latency of incoming sequences by inserting a prefill batch during a decoding step and then decoding together.
 
 <p align="center">
-   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/continuous_batching.png" width="800"/>
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/naive_batching.png" width="800"/>
    <br/>
    <em>Naive Batching: decode until each sequence encounters eos in a batch</em>
 </p>
 
 <p align="center">
-   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/naive_batching.png" width="800"/>
+   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/continuous_batching.png" width="800"/>
    <br/>
    <em>Continuous Batching: dynamically adjust the batch size by popping out finished sequences and inserting prefill batch</em>
 </p>
