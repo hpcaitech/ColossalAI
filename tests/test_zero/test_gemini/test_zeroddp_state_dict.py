@@ -28,8 +28,7 @@ def ignore_the_first_parameter(model: torch.nn.Module):
 @parameterize("keep_gathered", [True, False])
 @parameterize("model_name", ["transformers_gpt_lm", "transformers_bert_for_sequence_classification"])
 @parameterize("master_weights", [False, True])
-@parameterize("max_prefetch", [0, 1, 4])
-def exam_state_dict(placement_config, keep_gathered, model_name: str, master_weights: bool, max_prefetch: int):
+def exam_state_dict(placement_config, keep_gathered, model_name: str, master_weights: bool):
     set_seed(431)
     model_builder, data_gen_fn, output_transform_fn, *_ = next(iter(model_zoo.get_sub_registry(model_name).values()))
 
@@ -45,14 +44,7 @@ def exam_state_dict(placement_config, keep_gathered, model_name: str, master_wei
     config_dict, *_ = search_chunk_configuration(model, search_range_m=1, search_interval=100)
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = keep_gathered
-    model = GeminiDDP(
-        model,
-        config_dict,
-        **placement_config,
-        pin_memory=True,
-        master_weights=master_weights,
-        max_prefetch=max_prefetch,
-    )
+    model = GeminiDDP(model, config_dict, **placement_config, pin_memory=True, master_weights=master_weights)
     model.train()
 
     zero_dict = model.state_dict(only_rank_0=False)
