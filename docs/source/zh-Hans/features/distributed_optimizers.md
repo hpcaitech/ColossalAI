@@ -9,7 +9,7 @@ Author: Wenxuan Tan, Junwen Duan, Renjie Mao
 - [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes] (https://arxiv.org/pdf/1904.00962)
 
 ## 介绍
-除了广泛采用的Adam和SGD外，许多现代优化器需要逐层统计信息以有效更新参数，因此无法直接应用于模型层在多个设备上分片的并行设置。我们以提供了优化的分布式实现，，并且通过插件与Tensor Parallel、DDP和ZeRO无缝集成。
+除了广泛采用的Adam和SGD外，许多现代优化器需要逐层统计信息以有效更新参数，因此无法直接应用于模型层在多个设备上分片的并行设置。我们以提供了优化的分布式实现，，并且通过plugin与Tensor Parallel、DDP和ZeRO无缝集成。
 ## 优化器
 Adafactor 是一种首次采用非负矩阵分解（NMF）的 Adam 变体，用于减少内存占用。CAME 通过引入一个置信度矩阵来改进 NMF 的效果。GaLore 通过将梯度投影到低秩空间，并使用 8 位块状量化进一步减少内存占用。Lamb 允许使用巨大的批量大小而不失准确性，通过按其 Lipschitz 常数的倒数界定的逐层自适应更新实现
 
@@ -21,7 +21,7 @@ Adafactor 是一种首次采用非负矩阵分解（NMF）的 Adam 变体，用�
 {{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
 
 ## 使用
-We now demonstrate how to use Distributed Adafactor with booster API combining Tensor Parallel and ZeRO 2 with 4 GPUs.
+现在我们展示如何使用分布式 Adafactor 与 booster API 结合 Tensor Parallel 和 ZeRO 2。即使您不使用distributed optimizer，plugin 也会自动将optimizer转换为分布式版本以方便使用。
 ### step 1. 导包
 
 ```python
@@ -34,15 +34,13 @@ import torch
 ```
 
 ### step 2. 初始化分布式
-We need to initialize distributed environment. For demo purpose, we use `colossal run --nproc_per_node 4`. You can refer to [Launch Colossal-AI](../basics/launch_colossalai.md)
+我们需要先初始化分布式环境. 为了展示, 我们使用 `colossal run --nproc_per_node 4`. 更多初始化方式请参考 [Launch Colossal-AI](../basics/launch_colossalai.md)
 
 ```python
 colossalai.launch_from_torch()
 ```
 
 ### step 3. 初始化模型和优化器
-Build our model. We created an MLP using two Linear Layer.
-
 ```python
 configuration = LlamaConfig()
 model = LlamaModel(configuration).cuda()
