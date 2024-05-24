@@ -362,6 +362,7 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_parallelism: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
+        enable_async_reduce: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -388,6 +389,7 @@ class GeminiPlugin(DPPluginBase):
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
             master_weights=master_weights,
             max_prefetch=max_prefetch,
+            enable_async_reduce=enable_async_reduce,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
