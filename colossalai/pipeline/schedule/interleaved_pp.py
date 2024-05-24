@@ -140,15 +140,7 @@ class InterleavedSchedule(PipelineSchedule):
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if not self.stage_manager.is_first_stage():
                 input_tensor, wait_handles = self.comm.recv_forward(prev_rank, metadata_recv=self.tensor_metadata_recv)
-                metadata = create_send_metadata(input_tensor)
-                if (
-                    self.enable_metadata_cache
-                    and self.tensor_metadata_recv is not None
-                    and self.tensor_metadata_recv.tensor_metadata[0] != metadata.tensor_metadata[0]
-                ):
-                    print(
-                        f"old metadata shape: {self.tensor_metadata_recv.tensor_metadata[0]}, new metadata : {metadata.tensor_metadata[0]}"
-                    )
+
                 if self.enable_metadata_cache and self.tensor_metadata_recv is None:
                     self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
@@ -172,18 +164,10 @@ class InterleavedSchedule(PipelineSchedule):
                 output_tensor_grad, wait_handles = self.comm.recv_backward(
                     next_rank, metadata_recv=self.grad_metadata_recv
                 )
-                metadata = create_send_metadata(output_tensor_grad)
-                if (
-                    self.enable_metadata_cache
-                    and self.grad_metadata_recv is not None
-                    and self.grad_metadata_recv.tensor_metadata[0] != metadata.tensor_metadata[0]
-                ):
-                    print(
-                        f"old metadata shape: {self.grad_metadata_recv.tensor_metadata[0]}, new metadata : {metadata.tensor_metadata[0]}"
-                    )
                 if self.enable_metadata_cache and self.grad_metadata_recv is None:
                     self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
                 return output_tensor_grad, wait_handles
+
         return None, []
 
     def send_forward(self, model_chunk_id: int, output_tensor: Any, next_rank: int = None) -> List:
@@ -229,21 +213,43 @@ class InterleavedSchedule(PipelineSchedule):
     def send_forward_recv_forward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool
     ) -> Tuple[Any, List]:
-        if send_first:
-            send_handle = self.send_forward(model_chunk_id_send, output_tensor)
-            input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
-            wait_handles = send_handle.extend(recv_handle)
-        else:
-            input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
-            send_handle = self.send_forward(model_chunk_id_send, output_tensor)
-            wait_handles = recv_handle.extend(send_handle)
+        # if send_first:
+        #     send_handle = self.send_forward(model_chunk_id_send, output_tensor)
+        #     input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
+        #     # NOTE: Debug
+        #     # for req in recv_handle:
+        #     #     req.wait()
+        #     wait_handles = send_handle.extend(recv_handle)
+        # else:
+        #     input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
+        #     send_handle = self.send_forward(model_chunk_id_send, output_tensor)
+        #     # for req in recv_handle:
+        #     #     req.wait()
+        #     wait_handles = recv_handle.extend(send_handle)
+        # input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
+
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+            is_send = not self.stage_manager.is_last_stage()
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+            is_recv = not self.stage_manager.is_first_stage()
+        input_tensor, wait_handles = self.comm.send_forward_recv_forward(
+            output_tensor,
+            is_send,
+            is_recv,
+            send_metadata=self.send_tensor_metadata,
+            metadata_recv=self.tensor_metadata_recv,
+            send_first=send_first,
+        )
+        # Cache metadata
+        self.send_tensor_metadata = not self.enable_metadata_cache and is_send
+        if is_recv and self.enable_metadata_cache and self.tensor_metadata_recv is None:
+            self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
         return input_tensor, wait_handles
 
     def send_backward_recv_backward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool
     ) -> Tuple[Any, List]:
-        # It's NOT possible to send & recv in one batch here, since they use different
         # p2p process groups
         if send_first:
             send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
@@ -370,7 +376,7 @@ class InterleavedSchedule(PipelineSchedule):
 
         for i in range(self.num_microbatch * self.num_model_chunks):
             # Wait until current input is received
-            if fwd_wait_handles is not None:
+            if self.overlap_p2p and fwd_wait_handles is not None:
                 for req in fwd_wait_handles:
                     req.wait()
 
@@ -435,7 +441,7 @@ class InterleavedSchedule(PipelineSchedule):
         # Run warmup forward passes.
         for i in range(num_warmup_microbatch):
             # Wait for input
-            if fwd_wait_handles is not None:
+            if self.overlap_p2p and fwd_wait_handles is not None:
                 for req in fwd_wait_handles:
                     req.wait()
 
@@ -444,8 +450,8 @@ class InterleavedSchedule(PipelineSchedule):
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
             input_objs[model_chunk_id].append(input_obj)
             output_objs[model_chunk_id].append(output_obj)
-            if torch.isnan(output_obj["hidden_states"]).any():
-                print(f"rank {torch.distributed.get_rank()} warmup batch {i} output is nan. input: {input_obj}")
+            # if torch.isnan(output_obj["hidden_states"]).any():
+            #     print(f"rank {torch.distributed.get_rank()} warmup batch {i} output is nan. input: {input_obj}")
             if last_batch and num_microbatch_remaining == 0:
                 fwd_wait_handles = self.send_forward(model_chunk_id, output_obj)
             else:
@@ -465,7 +471,7 @@ class InterleavedSchedule(PipelineSchedule):
         for i in range(num_microbatch_remaining):
             fwd_batch_id = i + num_warmup_microbatch
             # Wait for input
-            if fwd_wait_handles is not None:
+            if self.overlap_p2p and fwd_wait_handles is not None:
                 for req in fwd_wait_handles:
                     req.wait()
 
@@ -490,7 +496,7 @@ class InterleavedSchedule(PipelineSchedule):
                 )
                 nan_checked = True
             # Wait for upstream grad
-            if bwd_wait_handles is not None:
+            if self.overlap_p2p and bwd_wait_handles is not None:
                 for req in bwd_wait_handles:
                     req.wait()
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
@@ -542,9 +548,10 @@ class InterleavedSchedule(PipelineSchedule):
             _output_obj = output_objs[model_chunk_id].pop(0)
             # output_obj_grad = self.recv_backward(model_chunk_id)
             # Wait for upstream grad
-            if bwd_wait_handles is not None:
+            if self.overlap_p2p and bwd_wait_handles is not None:
                 for req in bwd_wait_handles:
                     req.wait()
+
             # backward local grads
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
             if not last_batch:

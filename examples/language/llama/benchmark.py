@@ -1,5 +1,6 @@
 import argparse
 import resource
+import warnings
 from contextlib import nullcontext
 
 import torch
@@ -22,6 +23,7 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 
+warnings.filterwarnings("ignore")
 # ==============================
 # Constants
 # ==============================
@@ -82,6 +84,7 @@ def main():
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
+    parser.add_argument("--cache", default=True, type=eval)
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -179,7 +182,7 @@ def main():
             precision="bf16",
             dp_outside=False,
             overlap_p2p=args.overlap,
-            enable_metadata_cache=True,
+            enable_metadata_cache=args.cache,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
