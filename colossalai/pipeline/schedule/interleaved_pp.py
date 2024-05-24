@@ -213,21 +213,6 @@ class InterleavedSchedule(PipelineSchedule):
     def send_forward_recv_forward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool
     ) -> Tuple[Any, List]:
-        # if send_first:
-        #     send_handle = self.send_forward(model_chunk_id_send, output_tensor)
-        #     input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
-        #     # NOTE: Debug
-        #     # for req in recv_handle:
-        #     #     req.wait()
-        #     wait_handles = send_handle.extend(recv_handle)
-        # else:
-        #     input_tensor, recv_handle = self.recv_forward(model_chunk_id_recv)
-        #     send_handle = self.send_forward(model_chunk_id_send, output_tensor)
-        #     # for req in recv_handle:
-        #     #     req.wait()
-        #     wait_handles = recv_handle.extend(send_handle)
-        # input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
-
         with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
             is_send = not self.stage_manager.is_last_stage()
         with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
@@ -251,14 +236,31 @@ class InterleavedSchedule(PipelineSchedule):
         self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool
     ) -> Tuple[Any, List]:
         # p2p process groups
-        if send_first:
-            send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
-            output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
-            wait_handles = send_handle.extend(recv_handle)
-        else:
-            output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
-            send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
-            wait_handles = recv_handle.extend(send_handle)
+        # if send_first:
+        #     send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
+        #     output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
+        #     wait_handles = send_handle.extend(recv_handle)
+        # else:
+        #     output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
+        #     send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
+        #     wait_handles = recv_handle.extend(send_handle)
+
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+            is_send = not self.stage_manager.is_first_stage()
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+            is_recv = not self.stage_manager.is_last_stage()
+        output_tensor_grad, wait_handles = self.comm.send_backward_recv_backward(
+            input_tensor_grad,
+            is_send,
+            is_recv,
+            send_metadata=self.send_grad_metadata,
+            metadata_recv=self.grad_metadata_recv,
+            send_first=send_first,
+        )
+        # Cache metadata
+        self.send_grad_metadata = not self.enable_metadata_cache and is_send
+        if is_recv and self.enable_metadata_cache and self.grad_metadata_recv is None:
+            self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
         return output_tensor_grad, wait_handles
 
     def forward_step(

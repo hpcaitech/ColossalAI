@@ -50,26 +50,9 @@ class PipelineStageManager:
         # the next rank of the last rank is rank0
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
-
-        # init p2p process groups
-        # stages = list(range(self.num_stages))
-        # for prev, cur in zip(stages[:-1], stages[1:]):
-        #     group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [prev, cur])
-        #     if self.stage in [prev, cur]:
-        #         ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
-        #         self.p2p_groups[tuple(ranks_in_group)] = group
-
         self.is_interleave = enable_interleave
         # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
         self.num_model_chunks: int = num_model_chunks
-        # if enable_interleave:
-        #     # use circle p2p communication
-        #     # add the process group of the first rank and the last rank
-        #     group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, [stages[0], stages[-1]])
-        #     if self.stage in [stages[0], stages[-1]]:
-        #         ranks_in_group = self.pg_mesh.get_ranks_in_group(group)
-        #         self.p2p_groups[tuple(ranks_in_group)] = group
-
         # for shardformer, hold stage indices of model
         self.stage_indices: List[Tuple[int, int]]
         # for shardformer, hold model chunk id
@@ -189,42 +172,12 @@ class PipelineStageManager:
         """
         return self.next_rank
 
-    # def get_p2p_process_group(self, first_rank: int, second_rank: int) -> ProcessGroup:
-    #     """Get the p2p process group between two ranks. The order of the two ranks does not matter.
-
-    #     Args:
-    #         first_rank (int): The first rank.
-    #         second_rank (int): The second rank.
-
-    #     Returns:
-    #         ProcessGroup: P2P process group between the two ranks.
-    #     """
-    #     if first_rank > second_rank:
-    #         first_rank, second_rank = second_rank, first_rank
-    #     return self.p2p_groups[(first_rank, second_rank)]
-
-    def get_p2p_process_group(
-        self, first_rank: int = None, second_rank: int = None, ranks: List[int] = None
-    ) -> ProcessGroup:
+    def get_p2p_process_group(self) -> ProcessGroup:
         """Get the p2p process group between two ranks. The order of the two ranks does not matter.
-
-        Args:
-            ranks (List[int]): The ranks participating in a p2p call.
         Returns:
             ProcessGroup: P2P process group between the two ranks.
         """
-        if experimental:
-            return self.p2p_group
-
-        assert (first_rank != None and second_rank != None) or ranks != None
-        ranks = [first_rank, second_rank] if ranks == None else ranks
-        ranks.sort()
-        ranks = tuple(ranks)
-
-        if not ranks in self.p2p_groups:
-            group = self.pg_mesh.get_group_along_axis(self.pipeline_axis, ranks)
-            self.p2p_groups[ranks] = group
-        return self.p2p_groups[ranks]
+        return self.p2p_group
 
     def init_process_group_by_stages(self, stages: List[int]) -> ProcessGroup:
         """Get the process group of the given stages.
