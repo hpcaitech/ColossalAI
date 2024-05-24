@@ -50,8 +50,14 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [False, True])
 @parameterize("use_grad_checkpoint", [False, True])
+@parameterize("enable_async_reduce", [False, True])
 def exam_gemini_grad_acc(
-    placement_config, keep_gathered: bool, model_name: str, master_weights: bool, use_grad_checkpoint: bool
+    placement_config,
+    keep_gathered: bool,
+    model_name: str,
+    master_weights: bool,
+    use_grad_checkpoint: bool,
+    enable_async_reduce: bool,
 ):
     init_device = get_accelerator().get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
@@ -81,10 +87,13 @@ def exam_gemini_grad_acc(
         pin_memory=True,
         enable_gradient_accumulation=True,
         master_weights=master_weights,
+        enable_async_reduce=enable_async_reduce,
         **placement_config,
     )
     optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
-    gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1, max_norm=1.0)
+    gemini_optim = GeminiOptimizer(
+        optimizer, gemini_model, initial_scale=1, max_norm=1.0, enable_async_reduce=enable_async_reduce
+    )
 
     rank = dist.get_rank()
 

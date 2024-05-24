@@ -76,6 +76,8 @@ def main():
     parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
+    parser.add_argument("--disable-async-reduce", action="store_true", help="Customize checkpoint", default=False)
+
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -110,6 +112,7 @@ def main():
             extra_dp_size=args.extra_dp,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
+            enable_async_reduce=not args.disable_async_reduce,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
