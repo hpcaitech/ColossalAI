@@ -36,6 +36,12 @@ def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir):
         def step(self):
             self.step_number += 1
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            pass
+
     if enable_flag:
         return profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
