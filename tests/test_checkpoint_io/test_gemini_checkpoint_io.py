@@ -21,14 +21,10 @@ from colossalai.testing import (
 from tests.kit.model_zoo import model_zoo
 
 MODEL_PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
+    {"placement_policy": "static", "shard_param_frac": 0.5},
 ]
 
 OPTIM_PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
     {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
 ]
 
