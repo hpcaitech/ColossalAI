@@ -78,7 +78,9 @@ def main():
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
     parser.add_argument("--profile", action="store_true", help="Enable profiling", default=False)
-    parser.add_argument("--disable-async-reduce", action="store_true", help="Customize checkpoint", default=False)
+    parser.add_argument(
+        "--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation", default=False
+    )
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     args = parser.parse_args()
 
