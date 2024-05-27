@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pip install -U pip setuptools<=68.2.2 wheel --user
+          pip install -U pip setuptools==68.2.2 wheel --user
 
       - uses: actions/checkout@v2
         with:
