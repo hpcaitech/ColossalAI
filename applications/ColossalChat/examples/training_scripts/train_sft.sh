@@ -17,22 +17,22 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 # export CUDA_VISIBLE_DEVICES=4,5,6
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="sft"
-PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
-PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+PARENT_SAVE_DIR="/home/yeanbang/data/experiment/output/model" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiment/logs/tensorboard" # Path to a folder to save logs
+PARENT_CONFIG_FILE="/home/yeanbang/data/experiment/logs/config" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="/mnt/jfs-hdd/share/models/Llama-2-7b-chat-hf" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="/mnt/jfs-hdd/share/models/Llama-2-7b-chat-hf" # huggingface or local tokenizer path
 declare -a dataset=(
-    YOUR/SFT/DATA/DIR/arrow/part-00000
-    YOUR/SFT/DATA/DIR/arrow/part-00001
-    YOUR/SFT/DATA/DIR/arrow/part-00002
-    YOUR/SFT/DATA/DIR/arrow/part-00003
-    YOUR/SFT/DATA/DIR/arrow/part-00004
-    YOUR/SFT/DATA/DIR/arrow/part-00005
-    YOUR/SFT/DATA/DIR/arrow/part-00006
-    YOUR/SFT/DATA/DIR/arrow/part-00007
-    YOUR/SFT/DATA/DIR/arrow/part-00008
-    YOUR/SFT/DATA/DIR/arrow/part-00009
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00000
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00001
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00002
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00003
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00004
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00005
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00006
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00007
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00008
+    /home/yeanbang/data/experiment/dataset/alpaca/test/Llama-2-7b-chat-hf/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -40,6 +40,8 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
+echo $(which colossalai)
+echo $(which python)
 # the real batch size for gradient descent is number_of_node_in_hostfile * nproc_per_node * train_batch_size
 colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
@@ -50,10 +52,14 @@ colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile trai
     --config_file $CONFIG_FILE \
     --lora_rank 0 \
     --plugin zero2 \
-    --batch_size 8 \
-    --max_epochs 1 \
-    --accumulation_steps 1 \
-    --lr 2e-5 \
-    --max_len 2048 \
+    --tp 1 \
+    --pp 1 \
+    --zero_stage 2 \
+    --batch_size 4 \
+    --max_epochs 3 \
+    --accumulation_steps 4 \
+    --lr 5e-5 \
+    --max_len 400 \
     --grad_checkpoint \
-    --use_wandb
+    --use_wandb \
+    --use_flash_attn

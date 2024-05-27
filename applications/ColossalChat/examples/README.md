@@ -338,7 +338,18 @@ In this code we provide a flexible way for users to set the conversation templat
   {
       "chat_template": (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. If a path to a huggingface model or local model is provided, will use the chat_template of that model. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
       "system_message": A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added,
-      "stop_ids": (Optional), A list of string indicating the end of assistant's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically,
+      "end_of_assistant": The token(s) in string that denotes the end of assistance's response. For example, in the ChatGLM2 prompt format,
+      ```
+      <|im_start|>system
+      system messages
+      
+      <|im_end|>
+      <|im_start|>user
+       How far is the moon? <|im_end|>
+      <|im_start|>assistant\n The moon is about 384,400 kilometers away from Earth.<|im_end|>...
+       ```
+       the end_of_assistant tokens are "<|im_end|>"
+      "stop_ids": (Optional), A list of integers corresponds to the `end_of_assistant` tokens that indicating the end of assistance's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically
   }
   ```
   On your first run of the data preparation script, you only need to define the "chat_template" (if you want to use custom chat template) and the "system message" (if you want to use a custom system message),

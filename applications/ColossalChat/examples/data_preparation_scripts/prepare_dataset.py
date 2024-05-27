@@ -226,7 +226,7 @@ def main():
                 "max_length": args.max_length,
             },
             keep_in_memory=False,
-            num_proc=min(len(dataset), cpu_count()),
+            num_proc= min(len(dataset), cpu_count()),
         )
 
         dataset = dataset.filter(
