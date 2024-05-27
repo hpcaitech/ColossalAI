@@ -4,7 +4,7 @@ import torch
 from transformers.configuration_utils import PretrainedConfig
 from transformers.generation import GenerationConfig
 
-from colossalai.inference.batch_bucket import BatchBucket
+from colossalai.inference.batch_bucket import BatchBucket, RPCBatchBucket
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache import KVCacheManager, RPCKVCacheManager
@@ -376,7 +376,7 @@ class RPCRequestHandler(RequestHandler):
 
         # TODO In the continuous batching scenario, the batch size may be greater than max_batch_size,
         # which may cause bugs and this issue should be fixed later.
-        self.running_bb = BatchBucket(
+        self.running_bb = RPCBatchBucket(
             num_heads=model_config.num_attention_heads // inference_config.tp_size,
             head_dim=head_dim,
             max_batch_size=self.max_batch_size,
@@ -386,7 +386,7 @@ class RPCRequestHandler(RequestHandler):
             fd_interm_tensor=None,
             dtype=self.dtype,
         )
-        self.prefill_bb = BatchBucket(
+        self.prefill_bb = RPCBatchBucket(
             num_heads=model_config.num_attention_heads // inference_config.tp_size,
             head_dim=head_dim,
             max_batch_size=self.max_batch_size,
