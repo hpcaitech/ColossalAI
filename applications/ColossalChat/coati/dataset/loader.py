@@ -249,8 +249,10 @@ class StatefulDistributedSampler(DistributedSampler):
         seed: int = 0,
         drop_last: bool = False,
         tp_size: int = 1,
+        sp_size: int = 1,
+        pp_size: int = 1,
     ) -> None:
-        if not tp_size>1:
+        if not tp_size > 1:
             super().__init__(
                 dataset=dataset,
                 num_replicas=num_replicas,
@@ -263,9 +265,9 @@ class StatefulDistributedSampler(DistributedSampler):
             # adapted from https://github.com/pytorch/pytorch/blob/4979f9c0d72490970e2019bb1d2284f83d93f76b/torch/utils/data/distributed.py#L62
             if rank is None:
                 rank = dist.get_rank()
-            world_size = dist.get_world_size()
-            dp_size = world_size // tp_size # data parallel size
-            dp_rank = int(rank / tp_size) # data parallel rank
+            dist.get_world_size()
+            # dp_size = world_size // (tp_size * sp_size * pp_size)
+            dp_rank = int(rank / (tp_size * sp_size * pp_size))  # data parallel rank:
             if rank < 0:
                 raise ValueError(f"Invalid rank {rank}, rank should be in the interval [0, 0]")
             self.dataset = dataset
@@ -318,7 +320,7 @@ class StatefulDistributedSampler(DistributedSampler):
 
             # subsample
             indices = indices[
-                self.dp_rank: self.dp_rank + self.total_size : self.num_replicas
+                self.dp_rank : self.dp_rank + self.total_size : self.num_replicas
             ]  # num_replicas=tp_group=1, we only support tp_group==1 for now
             assert len(indices) == self.num_samples
             return iter(indices)
@@ -347,6 +349,8 @@ def setup_distributed_dataloader(
     collate_fn: Callable[[Sequence[Dict[str, Union[str, List[int]]]]], Dict[str, torch.Tensor]] = None,
     process_group: Optional[ProcessGroup] = None,
     tp_size: Optional[int] = 1,
+    sp_size: Optional[int] = 1,
+    pp_size: Optional[int] = 1,
     **kwargs,
 ) -> DataLoader:
     """
@@ -355,15 +359,19 @@ def setup_distributed_dataloader(
     _kwargs = kwargs.copy()
     process_group = process_group or _get_default_group()
     # world_size = tp_size * pp_size
-    assert process_group.size()%tp_size == 0, f"process_group.size()={process_group.size()} must be divisible by tp_size={tp_size}"
+    assert (
+        process_group.size() % tp_size == 0
+    ), f"process_group.size()={process_group.size()} must be divisible by tp_size={tp_size}"
     sampler = StatefulDistributedSampler(
         dataset=dataset,
-        num_replicas=int(process_group.size()/tp_size),
+        num_replicas=int(process_group.size() / tp_size),
         rank=process_group.rank(),
         shuffle=shuffle,
         seed=seed,
         drop_last=drop_last,
         tp_size=tp_size,
+        sp_size=sp_size,
+        pp_size=pp_size,
     )
 
     # Deterministic dataloader

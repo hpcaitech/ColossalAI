@@ -15,8 +15,7 @@ from coati.dataset import (
 from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
 from coati.trainer import RewardModelTrainer
 from coati.utils import load_checkpoint
-from transformers import AutoTokenizer, AutoConfig
-from colossalai.shardformer.policies.auto_policy import get_autopolicy
+from transformers import AutoConfig, AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
@@ -24,6 +23,7 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLev
 from colossalai.cluster import DistCoordinator
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 
 def train(args):
@@ -47,7 +47,6 @@ def train(args):
     # )
 
     init_ctx = nullcontext()
-    booster_policy = None
     with init_ctx:
         if args.use_flash_attn:
             model = RewardModel(
@@ -57,7 +56,7 @@ def train(args):
             )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
-            model_config = AutoConfig.from_pretrained(args.pretrain)
+            AutoConfig.from_pretrained(args.pretrain)
             model = RewardModel(
                 args.pretrain,
             )
@@ -114,12 +113,12 @@ def train(args):
             sequence_parallelism_mode=args.sp_mode,
             zero_stage=args.zero_stage,
             enable_flash_attention=args.use_flash_attn,
-            enable_sequence_parallelism=True if args.sp > 1 else False,
-            cpu_offload=True if args.zero_stage>=1 and args.zero_cpu_offload else False,
+            enable_sequence_parallelism=args.enable_sequence_parallelism,
+            cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
             parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
-            custom_policy=get_autopolicy(model.model)
+            custom_policy=get_autopolicy(model.model),
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -177,7 +176,9 @@ def train(args):
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
-        tp_size=args.tp,
+        tp_size=plugin.tp_size if hasattr(plugin, "tp_size") else 1,
+        sp_size=plugin.sp_size if hasattr(plugin, "sp_size") else 1,
+        pp_size=plugin.pp_size if hasattr(plugin, "pp_size") else 1,
     )
 
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
@@ -297,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--sp", type=int, default=1)
+    parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
     parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
     parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
