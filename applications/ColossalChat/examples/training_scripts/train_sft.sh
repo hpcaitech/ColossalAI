@@ -17,22 +17,22 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 # export CUDA_VISIBLE_DEVICES=4,5,6
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 PROJECT_NAME="sft"
-PARENT_SAVE_DIR="/home/yeanbang/data/experiment/output/model" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiment/logs/tensorboard" # Path to a folder to save logs
-PARENT_CONFIG_FILE="/home/yeanbang/data/experiment/logs/config" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/mnt/jfs-hdd/share/models/Yi-1.5-6B" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/mnt/jfs-hdd/share/models/Yi-1.5-6B" # huggingface or local tokenizer path
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 declare -a dataset=(
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00000
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00001
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00002
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00003
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00004
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00005
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00006
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00007
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00008
-    /home/yeanbang/data/experiment/dataset/alpaca/test/Yi-1.5-6B/arrow/part-00009
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00000
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00001
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00002
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00003
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00004
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00005
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00006
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00007
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00008
+    YOUR/PREFERENCE/DATA/DIR/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
