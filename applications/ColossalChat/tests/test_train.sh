@@ -30,7 +30,7 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
+PLUGINS=('3d' 'gemini' 'gemini_auto' 'zero2' 'zero2_cpu')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8

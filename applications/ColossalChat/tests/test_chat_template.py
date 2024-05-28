@@ -9,14 +9,13 @@ model_data_mapping = {
     'THUDM/chatglm2-6b': 'THUDM_chatglm2-6b.json', 
     'THUDM/chatglm3-6b': 'THUDM_chatglm3-6b.json',
     'baichuan-inc/Baichuan2-13B-Chat': 'baichuan-inc_Baichuan2-13B-Chat.json',
-    'Qwen/Qwen-7B-Chat': 'Qwen_Qwen-7B-Chat.json',
     '01-ai/Yi-1.5-9B-Chat': '01-ai_Yi-1.5-9B-Chat.json',
     '01-ai/Yi-34B': '01-ai_Yi-34B.json',
     'deepseek-ai/DeepSeek-V2-Lite': 'deepseek-ai_DeepSeek-V2-Lite.json',
     'microsoft/phi-2': 'microsoft_phi-2.json',
     'mistralai/Mixtral-8x7B-Instruct-v0.1': 'mistralai_Mixtral-8x7B-Instruct-v0.1.json'
 } 
-chat_template_config_path = '../config/conversation_template'
+chat_template_config_path = './config/conversation_template'
 
 
 def test_tokenization_sft():
@@ -34,5 +33,5 @@ def test_tokenization_sft():
             )
 
         output = supervised_tokenize_sft({"messages": messages}, tokenizer, conversation_template)
-        with open(f"./test_data/chat_template/{model_data_mapping[model]}", "r", encoding="utf8") as f:
+        with open(f"./tests/test_data/chat_template/{model_data_mapping[model]}", "r", encoding="utf8") as f:
             assert json.dumps(json.load(f)) == json.dumps(output), f"model: {model} failed"

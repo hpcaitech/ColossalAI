@@ -247,7 +247,7 @@ def apply_rlhf_data_format(
     target_turn = int(len(template.messages) / 2)
     prompt = template.get_prompt(target_turn * 2)
     chunks, require_loss = split_templated_prompt_into_chunks(template.messages[: 2 * target_turn], prompt, 
-        tempalte.end_of_assistant)
+        template.end_of_assistant)
     tokenized, starts, ends = tokenize_and_concatenate(tokenizer, chunks, require_loss)
     loss_mask = [0] * len(tokenized)
     mask_token = tokenizer.eos_token_id or tokenizer.pad_token_id
