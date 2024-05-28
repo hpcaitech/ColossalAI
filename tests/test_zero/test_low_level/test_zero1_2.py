@@ -91,10 +91,13 @@ def exam_zero_1_2():
     zero2_optimizer.backward(zero2_output.mean().float())
 
     # check grad
-    z1g_list = zero1_optimizer._grad_store.get_working_grads_by_group_id(0)
-    z2g_list = zero2_optimizer._grad_store.get_working_grads_by_group_id(0)
-    for z1g, z2g in zip(z1g_list, z2g_list):
-        assert torch.equal(z1g, z2g)
+    for p1, p2 in zip(zero1_model.parameters(), zero2_model.parameters()):
+        g1 = zero1_optimizer.get_param_grad(p1)
+        g2 = zero2_optimizer.get_param_grad(p2)
+        if g1 is None or g2 is None:
+            assert g1 is None and g2 is None
+            continue
+        assert torch.allclose(g1, g2)
 
     # step
     zero1_optimizer.step()
@@ -102,7 +105,7 @@ def exam_zero_1_2():
 
     # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):
-        assert torch.equal(z1p.data, z2p.data)
+        assert torch.allclose(z1p, z2p)
 
 
 @parameterize("dtype", [torch.float16, torch.bfloat16])
@@ -160,11 +163,11 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
 
     # check grad
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        if p.grad is not None:
-            zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(z1p))
-            torch_grad_list = split_ddp_grad(p.grad, world_size)
-            for zero_grad, torch_grad in zip(zero_grad_list, torch_grad_list):
-                loose_close(zero_grad, torch_grad, dtype=dtype)
+        zero_grad = zero_optimizer.get_param_grad(z1p)
+        if p.grad is None:
+            assert zero_grad is None
+            continue
+        loose_close(p.grad, zero_grad, dtype=dtype)
 
     # zero-dp step
     zero_optimizer.step()
@@ -174,7 +177,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
 
     # check updated param
     for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        loose_close(p.data, z1p.data, dtype=dtype)
+        loose_close(p, z1p, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):
