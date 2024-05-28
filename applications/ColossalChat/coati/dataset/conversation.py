@@ -25,7 +25,9 @@ class Conversation:
         Setup the conversation template from config
         """
         tokenizer.chat_template = config["chat_template"]
-        conv = cls(tokenizer, config["system_message"], config["chat_template"], config["stop_ids"], config["end_of_assistant"])
+        conv = cls(
+            tokenizer, config["system_message"], config["chat_template"], config["stop_ids"], config["end_of_assistant"]
+        )
         conv.clear()
         return conv
 

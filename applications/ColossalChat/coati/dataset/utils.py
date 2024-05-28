@@ -121,8 +121,10 @@ def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: s
     for line in messages:
         content_length = len(line["content"])
         first_occur = prompt.find(line["content"], start_idx)
-        if line["role"].lower() == "assistant" and end_of_assistant in prompt[first_occur + content_length:]:
-            content_length = prompt.find(end_of_assistant, first_occur + content_length) + len(end_of_assistant) - first_occur
+        if line["role"].lower() == "assistant" and end_of_assistant in prompt[first_occur + content_length :]:
+            content_length = (
+                prompt.find(end_of_assistant, first_occur + content_length) + len(end_of_assistant) - first_occur
+            )
         if prompt[first_occur - 1] != " ":
             chunks.append(prompt[start_idx:first_occur])
             chunks.append(prompt[first_occur : first_occur + content_length])
