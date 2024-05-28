@@ -74,17 +74,14 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     data = data_gen_fn()
     model.train()
     if booster.plugin.stage_manager is not None:
-        booster.execute_pipeline(
-            _preprocess_data(data), model, _criterion, optimizer, return_loss=True
-        )
+        booster.execute_pipeline(_preprocess_data(data), model, _criterion, optimizer, return_loss=True)
     else:
         output = model(**_preprocess_data(data))
         loss = criterion(output)
         optimizer.backward(loss)
 
     optimizer.step()
-    for group in optimizer.param_groups:
-        group["lr"] = 0.1
+    optimizer.zero_grad()
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
@@ -108,9 +105,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     data_for_shard = data_gen_fn()
     data_for_origin = data_gen_fn()
     if booster.plugin.stage_manager is not None:
-        booster.execute_pipeline(
-            _preprocess_data(data_for_shard), model, _criterion, optimizer, return_loss=True
-        )
+        booster.execute_pipeline(_preprocess_data(data_for_shard), model, _criterion, optimizer, return_loss=True)
         booster.execute_pipeline(
             _preprocess_data(data_for_origin),
             new_model,
@@ -137,8 +132,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
 
 

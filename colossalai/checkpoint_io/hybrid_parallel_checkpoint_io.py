@@ -14,6 +14,12 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.tensor.padded_tensor import (
+    init_as_padded_tensor,
+    is_padded_tensor,
+    to_padded_tensor,
+    to_unpadded_tensor,
+)
 from colossalai.utils import get_current_device
 
 from .general_checkpoint_io import GeneralCheckpointIO
@@ -32,6 +38,7 @@ from .utils import (
     save_param_groups,
     save_state_dict,
     save_state_dict_shards,
+    search_padding_dim,
     search_tp_partition_dim,
     sharded_optimizer_loading_epilogue,
 )
@@ -89,6 +96,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if param is None:
                 continue
             # Gather tensor pieces when using tensor parallel.
+            if is_padded_tensor(param):
+                param = to_unpadded_tensor(param)
             param_ = gather_distributed_param(param, keep_vars=False)
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
@@ -231,7 +240,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is used, each stage produces its own shard files and index files.
             # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
             # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
-
             final_index_file_path = copy.deepcopy(save_index_file)
             tmp_index_file_folder = os.path.join(checkpoint, "tmp_index_files")
             Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
@@ -251,6 +259,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
             )
+
             if control_saving:
                 assert (
                     self.dp_rank == 0 and self.tp_rank == 0
@@ -867,6 +876,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dist.all_gather(gather_tensor, v, group=tp_group)
                     v = torch.cat(gather_tensor, dim=partition_dim)
 
+                padding_dim = search_padding_dim(v.shape, original_shape)
+                if padding_dim is not None:
+                    v = init_as_padded_tensor(v, v.shape[padding_dim], original_shape[padding_dim], padding_dim)
+                    v = to_unpadded_tensor(v)
+
                 state_[k] = v.detach().clone().to(device)
 
         return state_
@@ -899,6 +913,19 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if isinstance(v, torch.Tensor) and k != "step":
                 # Shard state along tensor parallel group.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
+                global_shape = current_shape
+                if partition_dim is not None:
+                    # pad embedding params
+                    global_shape = (
+                        *current_shape[:partition_dim],
+                        current_shape[partition_dim] * self.tp_size,
+                        *current_shape[partition_dim + 1 :],
+                    )
+
+                padding_dim = search_padding_dim(global_shape, original_shape)
+                if padding_dim is not None:
+                    v = to_padded_tensor(v, global_shape[padding_dim], padding_dim)
+
                 if partition_dim is not None:
                     slice_size = current_shape[partition_dim]
                     v = v.split(slice_size, dim=partition_dim)[self.tp_rank]

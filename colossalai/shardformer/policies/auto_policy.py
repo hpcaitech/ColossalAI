@@ -151,10 +151,10 @@ _POLICY_LIST = {
         file_name="blip2", class_name="Blip2ForConditionalGenerationPolicy"
     ),
     # ChatGLM
-    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel": PolicyLocation(
+    "transformers_modules.modeling_chatglm.ChatGLMModel": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMModelPolicy"
     ),
-    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
+    "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
     # Falcon
@@ -182,11 +182,15 @@ _POLICY_LIST = {
     "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
         file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
     ),
-    "transformers.models.mixtral.modeling_mixtral.MixtralModel": PolicyLocation(
-        file_name="mixtral", class_name="MixtralModelPolicy"
+    # Qwen2
+    "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ModelPolicy"
     ),
-    "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
-        file_name="mixtral", class_name="MixtralForCausalLMPolicy"
+    "transformers.models.qwen2.modeling_qwen2.Qwen2ForCausalLM": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ForCausalLMPolicy"
+    ),
+    "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
+        file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
 }
 
@@ -208,6 +212,13 @@ def _fullname(obj):
     module = klass.__module__
     if module == "builtins":
         return klass.__qualname__  # avoid outputs like 'builtins.str'
+    # patch custom models which are not in transformers
+    # it can be like 'transformers_modules.THUDM.chatglm3-6b.103caa40027ebfd8450289ca2f278eac4ff26405.modeling_chatglm' (from huggingface hub)
+    # or like 'transformers_modules.chatglm.modeling_chatglm' (from local directory)
+    if module.startswith("transformers_modules"):
+        split_module = module.split(".")
+        if len(split_module) >= 2:
+            module = f"{split_module[0]}.{split_module[-1]}"
     return module + "." + klass.__qualname__
 
 
@@ -226,7 +237,7 @@ def get_autopolicy(model: nn.Module) -> Policy:
 
     if policy_location is None:
         raise NotImplementedError(
-            f"Auto policy for {model.__class__.__qualname__} is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
+            f"Auto policy for {model.__class__.__qualname__} ({full_name}) is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"
         )
     else:
         policy = import_policy(policy_location)

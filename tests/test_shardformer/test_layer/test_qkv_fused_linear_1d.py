@@ -126,7 +126,7 @@ def check_linear_conv_1d_row(lazy_init: bool):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # test for linear conv
     check_linear_conv_1d_col()

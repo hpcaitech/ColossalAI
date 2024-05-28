@@ -120,6 +120,15 @@ def search_tp_partition_dim(current_shape: torch.Size, original_shape: torch.Siz
     return partition_dim
 
 
+def search_padding_dim(global_shape: torch.Size, original_shape: torch.Size) -> Optional[int]:
+    padding_dim = None
+    for dim, length in enumerate(global_shape):
+        if length > original_shape[dim]:
+            padding_dim = dim
+            break
+    return padding_dim
+
+
 # ======================================
 # Helper classes and functions for saving shard file
 # ======================================
@@ -294,6 +303,7 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # Helper functions for saving state dict
 # ======================================
 
+
 def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
     """
     Save state dict to checkpoint.
@@ -305,7 +315,7 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
     """
     # Move all tensors in the state_dict to CPU before saving to avoid serialization issues
     state_dict_cpu = tree_map(lambda x: x.cpu() if torch.is_tensor(x) else x, state_dict)
-    
+
     if use_safetensors:
         assert is_safetensors_available(), "safetensors is not available."
         assert checkpoint_file_path.endswith(

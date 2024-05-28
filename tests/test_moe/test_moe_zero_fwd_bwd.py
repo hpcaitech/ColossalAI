@@ -61,7 +61,7 @@ def run_zero_test(local_rank, stage=1):
 
 
 def run_dist(rank, world_size, port, stage):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     seed_all(42 + rank)
     run_zero_test(rank, stage=stage)
 

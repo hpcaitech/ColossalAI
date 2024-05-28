@@ -70,7 +70,7 @@ PP_SIZE = 2
 首先我们创建一个分布式环境
 ```python
 # Launch ColossalAI
-colossalai.launch_from_torch(config={}, seed=SEEDå)
+colossalai.launch_from_torch(seed=SEEDå)
 coordinator = DistCoordinator()
 world_size = coordinator.world_size
 ```
@@ -220,7 +220,7 @@ model, optimizer, _criterion, train_dataloader, lr_scheduler = booster.boost(
     )
 ```
 ## 使用混合并行训练 ViT
-最后就可以使用混合并行策略来训练模型了。我们先定义一个训练函数，描述训练过程。需要注意的是，如果使用了管道并行策略，需要调用`booster.execute_pipeline`来执行模型的训练，它会调用`scheduler`管理模型的前后向操作。  
+最后就可以使用混合并行策略来训练模型了。我们先定义一个训练函数，描述训练过程。需要注意的是，如果使用了管道并行策略，需要调用`booster.execute_pipeline`来执行模型的训练，它会调用`scheduler`管理模型的前后向操作。
 ```python
 def run_forward_backward(
     model: nn.Module,

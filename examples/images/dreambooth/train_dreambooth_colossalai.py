@@ -372,9 +372,9 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     if args.seed is None:
-        colossalai.launch_from_torch(config={})
+        colossalai.launch_from_torch()
     else:
-        colossalai.launch_from_torch(config={}, seed=args.seed)
+        colossalai.launch_from_torch(seed=args.seed)
 
     local_rank = dist.get_rank()
     world_size = dist.get_world_size()

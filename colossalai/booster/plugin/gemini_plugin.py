@@ -3,7 +3,7 @@ import logging
 import os
 import random
 from pathlib import Path
-from typing import Callable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -44,10 +44,10 @@ ZERO_AXIS, DP_AXIS, TP_AXIS = 0, 1, 2
 def get_param_info(optim: Optimizer):
     # Get a backup of necessary information of parameters for future use, which includes:
     # 1. A mapping from integer param_id to param32 shape.
-
     if optim is None:
         return {}
     param_info = {"id2shape": {}}
+
     start_index = 0
     for group in optim.param_groups:
         for param_id, param in enumerate(group["params"], start_index):
@@ -361,6 +361,7 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_parallelism: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
+        enable_async_reduce: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
@@ -386,6 +387,7 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
             master_weights=master_weights,
+            enable_async_reduce=enable_async_reduce,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,
@@ -424,6 +426,7 @@ class GeminiPlugin(DPPluginBase):
         )
         self.extra_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS) if self.extra_dp_size > 1 else None
         self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS) if self.tp_size > 1 else None
+        self.dp_size = self.zero_size * self.extra_dp_size
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -441,6 +444,9 @@ class GeminiPlugin(DPPluginBase):
         self.pg_mesh.destroy_mesh_process_groups()
 
     def support_no_sync(self) -> bool:
+        return False
+
+    def support_lora(self) -> bool:
         return False
 
     def control_precision(self) -> bool:
@@ -527,7 +533,7 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
-        optimizer_params_info = get_param_info(optimizer)
+        params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn
             # FIXME(ver217): gemini does not support sync bn
@@ -558,7 +564,7 @@ class GeminiPlugin(DPPluginBase):
                 **self.zero_optim_config,
                 **self.optim_kwargs,
                 tp_group=self.tp_group,
-                optimizer_params_info=optimizer_params_info,
+                params_info=params_info,
                 verbose=self.verbose,
             )
 
@@ -571,4 +577,9 @@ class GeminiPlugin(DPPluginBase):
         return GeminiCheckpointIO()
 
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
+        raise NotImplementedError
+
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
         raise NotImplementedError

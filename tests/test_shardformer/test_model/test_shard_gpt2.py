@@ -132,6 +132,28 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
             "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 4,
@@ -253,7 +275,6 @@ def run_gpt2_3d_test(test_config):
 def check_gpt2(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",
@@ -266,7 +287,6 @@ def check_gpt2(rank, world_size, port):
 def check_gpt2_3d(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",

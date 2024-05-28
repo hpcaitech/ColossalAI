@@ -8,24 +8,24 @@ except ImportError:
 
 # There may exist import error even if we have triton installed.
 if HAS_TRITON:
-    from .context_attention import bloom_context_attn_fwd, llama_context_attn_fwd
-    from .copy_kv_cache_dest import copy_kv_cache_to_dest
-    from .fused_layernorm import layer_norm
-    from .gptq_triton import gptq_fused_linear_triton
-    from .int8_rotary_embedding_kernel import int8_rotary_embedding_fwd
-    from .smooth_attention import smooth_llama_context_attn_fwd, smooth_token_attention_fwd
+    from .context_attn_unpad import context_attention_unpadded
+    from .flash_decoding import flash_decoding_attention
+    from .fused_rotary_embedding import fused_rotary_embedding
+    from .kvcache_copy import copy_k_to_blocked_cache, copy_kv_to_blocked_cache
+    from .no_pad_rotary_embedding import decoding_fused_rotary_embedding, rotary_embedding
+    from .rms_layernorm import rms_layernorm
+    from .rotary_cache_copy import get_xine_cache
     from .softmax import softmax
-    from .token_attention_kernel import token_attention_fwd
 
     __all__ = [
-        "llama_context_attn_fwd",
-        "bloom_context_attn_fwd",
+        "context_attention_unpadded",
+        "flash_decoding_attention",
+        "copy_k_to_blocked_cache",
+        "copy_kv_to_blocked_cache",
         "softmax",
-        "layer_norm",
-        "copy_kv_cache_to_dest",
-        "token_attention_fwd",
-        "gptq_fused_linear_triton",
-        "int8_rotary_embedding_fwd",
-        "smooth_llama_context_attn_fwd",
-        "smooth_token_attention_fwd",
+        "rms_layernorm",
+        "rotary_embedding",
+        "fused_rotary_embedding",
+        "get_xine_cache",
+        "decoding_fused_rotary_embedding",
     ]

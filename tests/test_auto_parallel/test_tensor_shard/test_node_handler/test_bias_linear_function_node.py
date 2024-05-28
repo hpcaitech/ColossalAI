@@ -34,7 +34,7 @@ class LinearModule(torch.nn.Module):
 
 def check_linear_module_handler(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = LinearModule(weight_shape=WEIGHT_SHAPE).cuda()
 
     physical_mesh_id = torch.arange(0, 4)

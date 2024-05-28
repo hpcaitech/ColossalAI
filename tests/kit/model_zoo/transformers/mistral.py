@@ -52,6 +52,9 @@ config = MistralConfig(
     hidden_size=256, intermediate_size=256, num_attention_heads=64, num_hidden_layers=2, vocab_size=50258
 )
 
+if hasattr(config, "pad_token_id"):
+    config.pad_token_id = config.eos_token_id
+
 model_zoo.register(
     name="transformers_mistral",
     model_fn=lambda: transformers.MistralModel(config),

@@ -8,6 +8,14 @@ import torch.nn as nn
 
 from colossalai.kernel.kernel_loader import ScaledMaskedSoftmaxLoader, ScaledUpperTriangleMaskedSoftmaxLoader
 
+# NOTE: These kernels are compiled on specific GPU arch and not widely applicable.
+# try:
+#     from colossalai._C import scaled_masked_softmax as scaled_masked_softmax, scaled_upper_triangle_masked_softmax_cuda as scaled_upper_triang_masked_softmax
+# except ImportError:
+
+scaled_masked_softmax = None
+scaled_upper_triang_masked_softmax = None
+
 
 class AttnMaskType(enum.Enum):
     padding = 1

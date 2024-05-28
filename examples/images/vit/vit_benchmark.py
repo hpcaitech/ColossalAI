@@ -46,7 +46,7 @@ def main():
     args = parse_benchmark_args()
 
     # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
+    colossalai.launch_from_torch(seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
 
@@ -119,9 +119,7 @@ def main():
             if hasattr(booster.plugin, "stage_manager") and booster.plugin.stage_manager is not None:
                 # run pipeline forward backward
                 batch = iter([batch])
-                outputs = booster.execute_pipeline(
-                    batch, model, criterion, optimizer, return_loss=True
-                )
+                outputs = booster.execute_pipeline(batch, model, criterion, optimizer, return_loss=True)
             else:
                 outputs = model(**batch)
                 loss = criterion(outputs, None)

@@ -86,7 +86,7 @@ def check_comm(size, rank, prev_rank, next_rank, logger):
 
 
 def run_check(rank, world_size, port):
-    launch(config=CONFIG, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     logger = get_dist_logger()
     rank = gpc.get_global_rank()
     prev_rank = gpc.get_prev_global_rank(ParallelMode.PIPELINE)

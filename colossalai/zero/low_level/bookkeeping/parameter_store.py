@@ -1,3 +1,5 @@
+from typing import Dict
+
 from torch import Tensor
 from torch.distributed import ProcessGroup
 
@@ -47,3 +49,12 @@ class ParameterStore(BaseStore):
 
         self.master_to_working_param[id(master_param)] = working_param
         self.working_to_master_param[id(working_param)] = master_param
+
+    def get_padding_map(self) -> Dict[int, Tensor]:
+        """Return the padding map
+
+        Returns:
+            Dict[int, Tensor]: The padding map
+        """
+
+        return self._padding_map

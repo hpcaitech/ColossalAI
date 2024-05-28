@@ -11,7 +11,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 def check_apply(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     physical_mesh_id = torch.arange(0, 4)
     mesh_shape = (2, 2)

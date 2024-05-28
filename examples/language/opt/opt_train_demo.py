@@ -41,9 +41,7 @@ def train_epoch(epoch, model, optimizer, _criterion, lr_scheduler, dataloader, b
         # Forward pass
         for _ in pbar:
             if use_pipeline:
-                outputs = booster.execute_pipeline(
-                    dataloader, model, _criterion, optimizer, return_loss=True
-                )
+                outputs = booster.execute_pipeline(dataloader, model, _criterion, optimizer, return_loss=True)
                 # Backward and optimize
                 if is_pp_last_stage:
                     loss = outputs["loss"]
@@ -66,7 +64,7 @@ def main():
     args = parse_demo_args()
 
     # Launch ColossalAI
-    colossalai.launch_from_torch(config={}, seed=args.seed)
+    colossalai.launch_from_torch(seed=args.seed)
     coordinator = DistCoordinator()
     world_size = coordinator.world_size
 

@@ -60,7 +60,7 @@ from colossalai.booster.plugin import TorchDDPPlugin
 
 def train():
     # launch colossalai
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host='localhost')
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host='localhost')
 
     # create plugin and objects for training
     plugin = TorchDDPPlugin()

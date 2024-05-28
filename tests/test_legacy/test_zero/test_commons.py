@@ -7,7 +7,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def run_tensor_move(rank, world_size, port):
-    colossalai.legacy.launch(config={}, rank=0, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.legacy.launch(rank=0, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     src_t = torch.ones(2, 3).cuda()
     tgt_t = torch.zeros(2, 3)

@@ -52,7 +52,8 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [True, False])
-def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
+@parameterize("enable_async_reduce", [False, True])
+def exam_grad_clipping(placement_config, model_name: str, master_weights: bool, enable_async_reduce: bool):
     set_seed(1912)
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
@@ -84,6 +85,7 @@ def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
         chunk_init_device=init_device,
         pin_memory=True,
         master_weights=master_weights,
+        enable_async_reduce=enable_async_reduce,
         **placement_config,
     )
 
@@ -117,8 +119,7 @@ def exam_grad_clipping(placement_config, model_name: str, master_weights: bool):
 
 
 def run_dist(rank, world_size, port):
-    config = {}
-    colossalai.launch(config=config, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_grad_clipping()
 
 

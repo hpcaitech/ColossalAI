@@ -2,7 +2,7 @@ import logging
 import os
 import warnings
 from pathlib import Path
-from typing import Callable, Iterable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -27,7 +27,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
-from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO, utils, CheckpointIndexFile
+from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO, utils
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 
@@ -93,9 +93,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
         with FSDP.state_dict_type(
-            model.unwrap(),
-            StateDictType.FULL_STATE_DICT,
-            FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+            model.unwrap(), StateDictType.FULL_STATE_DICT, FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         ):
             state_dict = model.unwrap().state_dict()
 
@@ -172,7 +170,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         with FSDP.state_dict_type(
             optimizer.unwrap_model().unwrap(),
             StateDictType.FULL_STATE_DICT,
-            FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+            FullStateDictConfig(offload_to_cpu=True, rank0_only=True),
         ):
             fsdp_optim_state = FSDP.full_optim_state_dict(
                 optimizer.unwrap_model().unwrap(), optim=optimizer, rank0_only=True
@@ -240,7 +238,6 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                 model=optimizer.unwrap_model().unwrap(), optim=optimizer, optim_state_dict=fsdp_optim_dict
             )
             optimizer.load_state_dict(fsdp_state)
-
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -321,6 +318,9 @@ class TorchFSDPPlugin(DPPluginBase):
     def support_no_sync(self) -> bool:
         return False
 
+    def support_lora(self) -> bool:
+        return False
+
     def no_sync(self, model: nn.Module, optimizer: OptimizerWrapper) -> Iterator[None]:
         raise NotImplementedError("Torch fsdp no_sync func not supported yet.")
 
@@ -364,3 +364,8 @@ class TorchFSDPPlugin(DPPluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return TorchFSDPCheckpointIO()
+
+    def enable_lora(
+        self, model: nn.Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+    ) -> nn.Module:
+        raise NotImplementedError

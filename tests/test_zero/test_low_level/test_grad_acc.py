@@ -130,7 +130,7 @@ def exam_zero_1_grad_acc(sync):
 
 
 def run_dist(rank, world_size, port):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
     exam_zero_1_grad_acc(sync=True)
     exam_zero_1_grad_acc(sync=False)

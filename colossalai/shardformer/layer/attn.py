@@ -8,7 +8,6 @@ from colossalai.kernel.kernel_loader import (
     FlashAttentionForFloatAndCustomMaskLoader,
     FlashAttentionLoader,
     FlashAttentionWithCustomMaskLoader,
-    FlashAttentionWithPaddingMaskLoader,
     KernelLoader,
 )
 
@@ -65,15 +64,17 @@ class ColoAttention:
             half_dispatch_map = {
                 None: FlashAttentionLoader(),
                 AttnMaskType.CUSTOM: FlashAttentionWithCustomMaskLoader(),
-                AttnMaskType.PADDED: FlashAttentionWithPaddingMaskLoader(),
+                AttnMaskType.PADDED: FlashAttentionLoader(),
                 AttnMaskType.CAUSAL: FlashAttentionLoader(),
-                AttnMaskType.PADDED_CAUSAL: FlashAttentionWithPaddingMaskLoader(),
+                AttnMaskType.PADDED_CAUSAL: FlashAttentionLoader(),
             }
             # fp32
             float_dispatch_map = {
                 None: FlashAttentionForFloatAndCustomMaskLoader(),
                 AttnMaskType.CUSTOM: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.PADDED: FlashAttentionForFloatAndCustomMaskLoader(),
                 AttnMaskType.CAUSAL: FlashAttentionForFloatAndCustomMaskLoader(),
+                AttnMaskType.PADDED_CAUSAL: FlashAttentionForFloatAndCustomMaskLoader(),
             }
             ColoAttention._kernel_dispatch_map = {
                 torch.float16: half_dispatch_map,
@@ -140,16 +141,22 @@ class ColoAttention:
             outputs["attention_mask_type"] = AttnMaskType.CAUSAL
             attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
         else:
+            assert q_padding_mask.shape == (
+                b,
+                s_q,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be the same. ({shape_4d})"
+            max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
                 kv_padding_mask = q_padding_mask
-            assert q_padding_mask.shape == (b, s_q) and kv_padding_mask.shape == (
+                max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
+            else:
+                max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
+            assert kv_padding_mask.shape == (
                 b,
                 s_kv,
-            ), f"q_padding_mask shape {q_padding_mask.shape} and kv_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
-            attention_mask = torch.einsum("bi,bj->bij", q_padding_mask, kv_padding_mask).to(dtype=dtype, device=device)
-            max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
-            max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
+            ), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
+            attention_mask = q_padding_mask[:, None, :].expand(b, s_kv, s_q).to(dtype=dtype, device=device)
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,

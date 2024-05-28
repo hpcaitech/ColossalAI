@@ -58,7 +58,7 @@ def run_pp(
     This test is to examine the correctness of interleaved 1F1B, compared with torch.
     Be aware it contains some hardcodes.
     """
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
     # create model
     seed_all(1453)
@@ -103,9 +103,7 @@ def run_pp(
     torch_loss = criterion(torch_output)
     torch_loss.backward()
 
-    pp_ret = schedule.forward_backward_step(
-        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
-    )
+    pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
 
     # check loss
     if stage_manager.is_last_stage(ignore_chunk=True):

@@ -32,7 +32,7 @@ class MyModule(torch.nn.Module):
 
 def _run_act_ckpt_codegen(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and run forward
     model = MyModule()
@@ -96,7 +96,7 @@ def test_act_ckpt_codegen():
 
 def _run_act_ckpt_python_code_torch11(rank, world_size, port):
     # launch colossalai to make sure we could execute colossalai.utils.checkpoint currently
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     # build model and run forward
     model = MyModule()

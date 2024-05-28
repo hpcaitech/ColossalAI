@@ -32,7 +32,7 @@ class MLP(torch.nn.Module):
 
 def check_compatibility_with_ddp(rank, world_size, port):
     disable_existing_loggers()
-    launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     model = MLP(4).cuda()
     if rank in [0, 1]:
         input = torch.arange(0, 16, dtype=torch.float).reshape(4, 4).cuda()

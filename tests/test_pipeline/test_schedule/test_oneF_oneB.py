@@ -99,9 +99,7 @@ def examine_pp(num_microbatch: int, batch_size: int):
     torch_output = torch_model(input_list[0])
     torch_loss = criterion(torch_output)
     torch_loss.backward()
-    pp_ret = schedule.forward_backward_step(
-        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
-    )
+    pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
 
     # check loss
     if stage_manager.is_last_stage():
@@ -150,7 +148,7 @@ def run_dist(
     num_microbatch: int,
     batch_size: int,
 ):
-    colossalai.launch(config=dict(), rank=rank, world_size=world_size, port=port, host="localhost")
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     examine_pp(num_microbatch, batch_size)
 
 

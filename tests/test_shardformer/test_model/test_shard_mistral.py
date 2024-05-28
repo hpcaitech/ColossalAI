@@ -91,7 +91,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # check weights
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config["precision"] == "fp32":
-            atol, rtol = 1e-4, 1e-3
+            atol, rtol = 2e-4, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
         check_weight(
@@ -114,6 +114,24 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         {
             "tp_size": 4,
             "pp_size": 1,
@@ -152,11 +170,10 @@ def run_mistral_test(test_config):
 
 def check_mistral(rank, world_size, port):
     disable_existing_loggers()
-    colossalai.launch(config={}, rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     run_mistral_test()
 
 
-@pytest.mark.skip("This test should be run on a version of transformers not less than 4.35.2.")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

@@ -8,12 +8,29 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.device.device_mesh import DeviceMesh
+from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 
 from .layout import Layout
 from .layout_converter import LayoutConverter
 from .sharding_spec import ShardingSpec
 
 layout_converter = LayoutConverter()
+
+_SHARD_DIM = DimSpec([0])
+
+
+def get_shard_dim_1d(p: torch.Tensor):
+    """
+    Get the dimension along which the tensor is sharded, for example in 1D Tensor Parallel.
+    Args:
+        p (torch.Tensor): the input tensor
+    Returns:
+        int: the dimension along which the tensor is sharded
+    """
+    if not is_distributed_tensor(p):
+        raise ValueError("p is not a distributed tensor")
+    sharding = p.dist_layout.sharding_spec.sharding_sequence
+    return sharding.index(_SHARD_DIM)
 
 
 def clear_layout_converter():
@@ -128,7 +145,10 @@ def distribute_tensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_sp
 
     return sharded_tensor
 
-def init_as_dtensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size) -> torch.Tensor:
+
+def init_as_dtensor(
+    tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec, global_shape: torch.Size
+) -> torch.Tensor:
     assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
     dist_layout = Layout(device_mesh=device_mesh, sharding_spec=sharding_spec, global_shape=global_shape)
 
@@ -139,6 +159,7 @@ def init_as_dtensor(tensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec
     _hijack_detach_and_clone(tensor)
 
     return tensor
+
 
 def redistribute(dtensor: torch.Tensor, device_mesh: DeviceMesh, sharding_spec: ShardingSpec) -> None:
     """
@@ -467,7 +488,6 @@ def init_tensor_as_customization_distributed(tensor: torch.Tensor, shard_fn, gat
     assert callable(shard_fn), "The shard_fn must be callable."
     assert callable(gather_fn), "The gather_fn must be callable."
     assert not is_distributed_tensor(tensor), "The input tensor is already a distributed tensor."
-
 
     # set the shard_fn and gather_fn as attributes of the distributed tensor
     tensor.shard_fn = shard_fn

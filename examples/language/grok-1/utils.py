@@ -33,7 +33,7 @@ def inference(model, tokenizer, text, **generate_kwargs):
     return outputs[0].tolist()
 
 
-def get_defualt_parser():
+def get_default_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pretrained", type=str, default="hpcaitech/grok-1")
     parser.add_argument("--tokenizer", type=str, default="tokenizer.model")

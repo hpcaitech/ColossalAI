@@ -1,5 +1,4 @@
 import copy
-import math
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional
 
@@ -12,15 +11,20 @@ from torch.nn import Module
 from torch.optim import Adam, Optimizer
 from torch.testing import assert_close
 
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
-from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin
 from colossalai.booster.plugin.hybrid_parallel_plugin import HybridParallelModule
+from colossalai.checkpoint_io.utils import gather_distributed_param
 from colossalai.lazy import LazyInitContext
+from colossalai.nn.optimizer import GaLoreAdamW8bit
+from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer._utils import getattr_
 from colossalai.shardformer.policies.auto_policy import Policy
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.tensor.padded_tensor.api import is_padded_tensor, to_unpadded_tensor
 
 
 def build_model(
@@ -112,7 +116,9 @@ def check_state_dict(org_model: Module, sharded_model: Module, name: str = ""):
         assert torch.equal(v, shard_v), f"{name} {k} value mismatch"
 
 
-def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any]):
+def build_model_from_hybrid_plugin(
+    model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any], optim_class=Adam, sharded_optim_class=Adam
+):
     use_lazy_init = False
     if "use_lazy_init" in test_config:
         use_lazy_init = test_config.pop("use_lazy_init")
@@ -123,10 +129,26 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
         sharded_model = copy.deepcopy(org_model)
     if use_lazy_init:
         ctx.materialize(org_model)
-
     org_model = org_model.cuda()
-    org_optimizer = Adam(org_model.parameters(), lr=1e-3)
-    sharded_optimizer = Adam(sharded_model.parameters(), lr=1e-3)
+    if optim_class == GaLoreAdamW8bit:
+        # Disable clipping and block-wise quantization
+        org_optimizer = optim_class(
+            get_galore_param_groups(org_model, weight_decay=0, rank=4),
+            lr=1e-3,
+            percentile_clipping=101,
+            block_wise=False,
+            min_8bit_size=1e10,
+        )
+        sharded_optimizer = sharded_optim_class(
+            get_galore_param_groups(sharded_model, weight_decay=0, rank=4),
+            lr=1e-3,
+            percentile_clipping=101,
+            block_wise=False,
+            min_8bit_size=1e10,
+        )
+    else:
+        org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+        sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
     criterion = loss_fn
 
     plugin = HybridParallelPlugin(**test_config)
@@ -141,6 +163,32 @@ def build_model_from_hybrid_plugin(model_fn: Callable, loss_fn: Callable, test_c
         criterion,
         booster,
     )
+
+
+def build_model_from_low_level_zero_plugin(
+    model_fn: Callable, loss_fn: Callable, test_config: Dict[str, Any], optim_class=Adam, sharded_optim_class=Adam
+):
+    use_lazy_init = False
+    if "use_lazy_init" in test_config:
+        use_lazy_init = test_config.pop("use_lazy_init")
+
+    ctx = LazyInitContext() if use_lazy_init else nullcontext()
+    with ctx:
+        org_model = model_fn()
+        sharded_model = copy.deepcopy(org_model)
+    if use_lazy_init:
+        ctx.materialize(org_model)
+
+    org_model = org_model.cuda()
+    org_optimizer = optim_class(org_model.parameters(), lr=1e-3)
+    sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
+    criterion = loss_fn
+
+    plugin = LowLevelZeroPlugin(**test_config)
+    booster = Booster(plugin=plugin)
+
+    sharded_model, sharded_optimizer, criterion, _, _ = booster.boost(sharded_model, sharded_optimizer, criterion)
+    return org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster
 
 
 def run_forward_backward_with_hybrid_plugin(
@@ -162,24 +210,22 @@ def run_forward_backward_with_hybrid_plugin(
 
     data = data_gen_fn()
 
-    if booster.plugin.shard_config.enable_sequence_parallelism and booster.plugin.tp_size != 0:
-        seq_len = data["input_ids"].shape[-1]
-        lcm = booster.plugin.tp_size * seq_len // math.gcd(booster.plugin.tp_size, seq_len)
-        times = lcm // seq_len
-        input_shape = data["input_ids"].shape
-        for k, v in data.items():
-            if v.shape == input_shape:
-                data[k] = v.repeat((1,) * (v.dim() - 1) + (times,))
+    shard_test_data = {}
+    for k, v in data.items():
+        shard_test_data[k] = data[k].clone()
+    unshard_test_data = {}
+    for k, v in data.items():
+        unshard_test_data[k] = data[k].clone()
 
     sharded_model.train()
     if booster.plugin.stage_manager is not None:
-        for k, v in data.items():
+        for k, v in shard_test_data.items():
             if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
                 new_shape = [1] * v.dim()
                 new_shape[0] = 4
-                data[k] = v.to("cuda").repeat(*new_shape)
+                shard_test_data[k] = v.to("cuda").repeat(*new_shape)
 
-        data_iter = iter([data])
+        data_iter = iter([shard_test_data])
         sharded_output = booster.execute_pipeline(
             data_iter,
             sharded_model,
@@ -189,17 +235,60 @@ def run_forward_backward_with_hybrid_plugin(
             return_outputs=True,
         )
         sharded_loss = sharded_output["loss"]
-    else:
-        data = {k: v.cuda() for k, v in data.items()}
-        sharded_output = sharded_model(**data)
 
+    else:
+        shard_test_data = {k: v.cuda() for k, v in shard_test_data.items()}
+        sharded_output = sharded_model(**shard_test_data)
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
     org_model.train()
-    data = {k: v.cuda() for k, v in data.items()}
-    org_output = org_model(**data)
+    if booster.plugin.stage_manager is not None:
+        for k, v in unshard_test_data.items():
+            if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
+                new_shape = [1] * v.dim()
+                new_shape[0] = 4
+                unshard_test_data[k] = v.to("cuda").repeat(*new_shape)
+    unshard_test_data = {k: v.cuda() for k, v in unshard_test_data.items()}
+    org_output = org_model(**unshard_test_data)
+    org_loss = criterion(org_output)
+    org_loss.backward()
 
+    return org_loss, org_output, sharded_loss, sharded_output
+
+
+def run_forward_backward_with_low_level_zero_plugin(
+    org_model: Module,
+    sharded_model: Module,
+    sharded_optimizer: Optimizer,
+    data_gen_fn: Callable,
+    output_transform_fn: Callable,
+    criterion: Callable,
+    booster: Booster,
+):
+    get_accelerator().get_current_device()
+    org_model.cuda()
+    sharded_model.cuda()
+
+    def _criterion(outputs, inputs):
+        outputs = output_transform_fn(outputs)
+        loss = criterion(outputs)
+        return loss
+
+    data = data_gen_fn()
+
+    # data = {
+    #     k: v.to(device) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+    # }
+    data = {k: v.cuda() for k, v in data.items()}
+
+    sharded_model.train()
+    sharded_output = sharded_model(**data)
+    sharded_loss = criterion(sharded_output)
+    sharded_optimizer.backward(sharded_loss)
+
+    org_model.train()
+    org_output = org_model(**data)
     org_loss = criterion(org_output)
     org_loss.backward()
 
@@ -212,7 +301,6 @@ def check_output_hidden_state(
     stage_manager: Optional[PipelineStageManager] = None,
     atol: float = 1e-5,
     rtol: float = 1e-3,
-    dim: int = 0,
 ):
     org_hidden_state = org_output.last_hidden_state
 
@@ -225,7 +313,7 @@ def check_output_hidden_state(
 
 
 def check_loss(org_loss: Tensor, sharded_loss: Tensor, atol: float = 1e-5, rtol: float = 1e-3):
-    assert torch.allclose(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol)
+    assert_close(org_loss.float(), sharded_loss.float(), atol=atol, rtol=rtol)
 
 
 def check_weight(
@@ -247,11 +335,10 @@ def check_weight(
             continue
 
         if is_distributed_tensor(sharded_weight) or is_customized_distributed_tensor(sharded_weight):
-            sharded_weight_list = [
-                torch.zeros_like(sharded_weight).to("cuda") for _ in range(dist.get_world_size(tp_group))
-            ]
-            dist.all_gather(sharded_weight_list, sharded_weight, tp_group)
-            sharded_weight = torch.cat(sharded_weight_list, dim=dim)
+            sharded_weight = gather_distributed_param(sharded_weight, keep_vars=False)
+
+        if is_padded_tensor(sharded_weight):
+            sharded_weight = to_unpadded_tensor(sharded_weight)
 
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' weight: {org_weight}, {sharded_weight}")
@@ -311,6 +398,9 @@ def check_grad(
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
+        # if verbose and dist.get_rank() == 0:
+        #     print("shard_weight", shard_weight)
+        #     print("org_grad", org_grad)
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_grad_list = [torch.zeros_like(shard_grad).to("cuda") for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)

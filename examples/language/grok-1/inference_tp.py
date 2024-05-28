@@ -3,7 +3,7 @@ import time
 import torch
 from grok1_policy import Grok1ForCausalLMPolicy
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import get_defualt_parser, inference, print_output
+from utils import get_default_parser, inference, print_output
 
 import colossalai
 from colossalai.booster import Booster
@@ -13,10 +13,10 @@ from colossalai.lazy import LazyInitContext
 from colossalai.utils import get_current_device
 
 if __name__ == "__main__":
-    parser = get_defualt_parser()
+    parser = get_default_parser()
     args = parser.parse_args()
     start = time.time()
-    colossalai.launch_from_torch({})
+    colossalai.launch_from_torch()
     coordinator = DistCoordinator()
     plugin = HybridParallelPlugin(
         tp_size=coordinator.world_size,

@@ -125,7 +125,7 @@ def main():
     # ==============================
     # Launch Distributed Environment
     # ==============================
-    colossalai.launch_from_torch(config={}, seed=42)
+    colossalai.launch_from_torch(seed=42)
     coordinator = DistCoordinator()
 
     # local_batch_size = BATCH_SIZE // coordinator.world_size

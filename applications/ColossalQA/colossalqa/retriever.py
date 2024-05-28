@@ -59,7 +59,7 @@ class CustomRetriever(BaseRetriever):
         Add documents to retriever
         Args:
             docs: the documents to add
-            cleanup: choose from "incremental" (update embeddings, skip existing embeddings) and "full" (destory and rebuild retriever)
+            cleanup: choose from "incremental" (update embeddings, skip existing embeddings) and "full" (destroy and rebuild retriever)
             mode: choose from "by source" (documents are grouped by source) and "merge" (documents are merged into one vector store)
         """
         if cleanup == "full":
@@ -99,13 +99,7 @@ class CustomRetriever(BaseRetriever):
     def clear_documents(self):
         """Clear all document vectors from database"""
         for source in self.vector_stores:
-            index(
-                [],
-                self.record_managers[source],
-                self.vector_stores[source],
-                cleanup="full",
-                source_id_key="source"
-            )
+            index([], self.record_managers[source], self.vector_stores[source], cleanup="full", source_id_key="source")
         self.vector_stores = {}
         self.sql_index_database = {}
         self.record_managers = {}
