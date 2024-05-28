@@ -57,6 +57,7 @@ class GeminiManager:
         self._comp_cuda_demand_time = 0
 
     def reset_attributes(self):
+        assert self._compute_idx + 1 == len(self._compute_list)
         self._compute_idx = -1
         self._h2d_volume = 0
         self._d2h_volume = 0
