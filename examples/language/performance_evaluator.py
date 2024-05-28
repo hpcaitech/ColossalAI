@@ -47,8 +47,8 @@ def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir):
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
             schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),
             on_trace_ready=tensorboard_trace_handler(save_dir),
-            # record_shapes=True,
-            # profile_memory=True,
+            record_shapes=True,
+            profile_memory=True,
             with_stack=True,
         )
     else:
