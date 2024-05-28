@@ -206,7 +206,7 @@ class AutoPlacementPolicy(PlacementPolicy):
                     f"Adjust layout failed! No enough CUDA memory! "
                     f"Need {to_free_cuda_model_data}, freed {freed_cuda_model_data}"
                 )
-        self.__avail_cuda_model_data_for_prefetch = avail_cuda_model_data - freed_cuda_model_data
+        self.__avail_cuda_model_data_for_prefetch = avail_cuda_model_data + freed_cuda_model_data
         return freed_cuda_model_data, time() - start
 
     @staticmethod
