@@ -227,18 +227,30 @@ def _batch_send_recv_tensor(
     recv_group: Optional[ProcessGroup],
     current_device: Any,
     overlap_p2p: bool = True,
+    send_first: bool = True,
 ) -> Optional[Union[torch.Tensor, List[torch.Tensor]]]:
     buffer_recv = None
     if recv_tensor_metadata is not None:
         buffer_recv = _create_recv_buffer(recv_tensor_metadata, current_device)
 
     ops = []
-    if send_dst is not None and send_tensor_list is not None:
-        assert send_group is not None
-        _filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, send_group)
-    if recv_src is not None and buffer_recv is not None:
-        assert recv_group is not None
-        _filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, recv_group)
+    is_send = send_dst is not None and send_tensor_list is not None
+    is_recv = recv_src is not None and buffer_recv is not None
+
+    if send_first:
+        if is_send:
+            assert send_group is not None
+            _filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, send_group)
+        if is_recv:
+            assert recv_group is not None
+            _filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, recv_group)
+    else:
+        if is_recv:
+            assert recv_group is not None
+            _filling_ops_queue(buffer_recv, dist.irecv, recv_src, ops, recv_group)
+        if is_send:
+            assert send_group is not None
+            _filling_ops_queue(send_tensor_list, dist.isend, send_dst, ops, send_group)
 
     if len(ops) > 0:
         reqs = dist.batch_isend_irecv(ops)
@@ -410,6 +422,7 @@ def _communicate(
         recv_group,
         current_device,
         overlap_p2p=overlap_p2p,
+        send_first=send_first if send_first != None else True,
     )
 
     if metadata_recv is not None:

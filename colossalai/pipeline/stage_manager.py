@@ -7,8 +7,6 @@ from torch.distributed import ProcessGroup
 
 from colossalai.cluster import ProcessGroupMesh
 
-experimental = True
-
 
 class PipelineStageManager:
     """PipelineStageManager is a helper class to manage pipeline stages.
@@ -57,9 +55,7 @@ class PipelineStageManager:
         self.stage_indices: List[Tuple[int, int]]
         # for shardformer, hold model chunk id
         self.model_chunk_id: Optional[int] = None
-
-        if experimental:
-            self.p2p_group = self.pg_mesh.get_group_along_axis(self.pipeline_axis)
+        self.p2p_group = self.pg_mesh.get_group_along_axis(self.pipeline_axis)
 
     def get_stage_index(
         self,

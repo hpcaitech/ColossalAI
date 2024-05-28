@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 import torch.cuda
+import torch.distributed
 from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
@@ -14,6 +15,12 @@ from colossalai.utils import get_current_device
 
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
+
+
+def _wait_p2p(wait_handles: List[torch.cuda.Event]) -> None:
+    if wait_handles is not None:
+        for req in wait_handles:
+            req.wait()
 
 
 class InterleavedSchedule(PipelineSchedule):
@@ -211,7 +218,7 @@ class InterleavedSchedule(PipelineSchedule):
         return []
 
     def send_forward_recv_forward(
-        self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool
+        self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
         with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
             is_send = not self.stage_manager.is_last_stage()
@@ -233,18 +240,8 @@ class InterleavedSchedule(PipelineSchedule):
         return input_tensor, wait_handles
 
     def send_backward_recv_backward(
-        self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool
+        self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
-        # p2p process groups
-        # if send_first:
-        #     send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
-        #     output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
-        #     wait_handles = send_handle.extend(recv_handle)
-        # else:
-        #     output_tensor_grad, recv_handle = self.recv_backward(model_chunk_id_recv)
-        #     send_handle = self.send_backward(model_chunk_id_send, input_tensor_grad)
-        #     wait_handles = recv_handle.extend(send_handle)
-
         with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
             is_send = not self.stage_manager.is_first_stage()
         with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
@@ -378,9 +375,7 @@ class InterleavedSchedule(PipelineSchedule):
 
         for i in range(self.num_microbatch * self.num_model_chunks):
             # Wait until current input is received
-            if self.overlap_p2p and fwd_wait_handles is not None:
-                for req in fwd_wait_handles:
-                    req.wait()
+            _wait_p2p(fwd_wait_handles)
 
             last_batch = i == self.num_microbatch * self.num_model_chunks - 1
             model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
@@ -422,7 +417,6 @@ class InterleavedSchedule(PipelineSchedule):
         # Steps needed to reach the last chunk
         num_warmup_microbatch += (self.num_model_chunks - 1) * self.stage_manager.num_stages
         num_warmup_microbatch = min(num_warmup_microbatch, num_microbatch)
-
         num_microbatch_remaining = num_microbatch - num_warmup_microbatch
 
         # Input, output tensors only need to be saved when doing backward passes
@@ -443,17 +437,14 @@ class InterleavedSchedule(PipelineSchedule):
         # Run warmup forward passes.
         for i in range(num_warmup_microbatch):
             # Wait for input
-            if self.overlap_p2p and fwd_wait_handles is not None:
-                for req in fwd_wait_handles:
-                    req.wait()
+            _wait_p2p(fwd_wait_handles)
 
             last_batch = i == num_warmup_microbatch - 1
             model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
             input_objs[model_chunk_id].append(input_obj)
             output_objs[model_chunk_id].append(output_obj)
-            # if torch.isnan(output_obj["hidden_states"]).any():
-            #     print(f"rank {torch.distributed.get_rank()} warmup batch {i} output is nan. input: {input_obj}")
+
             if last_batch and num_microbatch_remaining == 0:
                 fwd_wait_handles = self.send_forward(model_chunk_id, output_obj)
             else:
@@ -469,13 +460,10 @@ class InterleavedSchedule(PipelineSchedule):
             output_obj_grad, bwd_wait_handles = self.recv_backward(model_chunk_id)
 
         # Run 1F1B in steady state.
-        nan_checked = False
         for i in range(num_microbatch_remaining):
             fwd_batch_id = i + num_warmup_microbatch
             # Wait for input
-            if self.overlap_p2p and fwd_wait_handles is not None:
-                for req in fwd_wait_handles:
-                    req.wait()
+            _wait_p2p(fwd_wait_handles)
 
             last_batch = i == num_microbatch_remaining - 1
 
@@ -490,17 +478,8 @@ class InterleavedSchedule(PipelineSchedule):
             _input_obj = input_objs[model_chunk_id].pop(0)
             _output_obj = output_objs[model_chunk_id].pop(0)
 
-            out = output_obj["hidden_states"] if isinstance(output_obj, dict) else output_obj
-            if not nan_checked and torch.isnan(out).any():
-                _input = input_obj["hidden_states"].isnan().any()
-                print(
-                    f"rank {torch.distributed.get_rank()} steady batch {i} output is nan. input is_nan = {_input}. model chunk: {model_chunk_id}"
-                )
-                nan_checked = True
             # Wait for upstream grad
-            if self.overlap_p2p and bwd_wait_handles is not None:
-                for req in bwd_wait_handles:
-                    req.wait()
+            _wait_p2p(bwd_wait_handles)
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
 
             def send_forward_recv_forward():
@@ -513,7 +492,8 @@ class InterleavedSchedule(PipelineSchedule):
                         model_chunk_id_send=self.get_model_chunk_id(fwd_batch_id, is_forward=True),
                         model_chunk_id_recv=self.get_model_chunk_id(fwd_batch_id + 1, is_forward=True),
                         output_tensor=output_obj,
-                        send_first=self.stage_manager.stage % 2 == 0,
+                        send_first=self.stage_manager.stage % 2 == 0
+                        and i > 0,  # Receive from warmup stage first in the first batch
                     )
                     return input_obj, wait_handles
 
@@ -524,12 +504,11 @@ class InterleavedSchedule(PipelineSchedule):
                     wait_handles = self.send_backward(model_chunk_id, input_obj_grad)
                     return None, wait_handles
                 else:
-                    # TODO: fix the model chunk id here
                     output_obj_grad, wait_handles = self.send_backward_recv_backward(
                         model_chunk_id_send=self.get_model_chunk_id(i, is_forward=False),
                         model_chunk_id_recv=self.get_model_chunk_id(i + 1, is_forward=False),
                         input_tensor_grad=input_obj_grad,
-                        send_first=self.stage_manager.stage % 2 == 0 and i > 0,
+                        send_first=self.stage_manager.stage % 2 == 0,
                     )
                     return output_obj_grad, wait_handles
 
@@ -545,14 +524,9 @@ class InterleavedSchedule(PipelineSchedule):
             last_batch = i == num_microbatch - 1
             model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
             _input_obj = input_objs[model_chunk_id].pop(0)
-            # if _input_obj is not None and torch.isnan(_input_obj["hidden_states"]).any():
-            #     print(f"rank {torch.distributed.get_rank()} remaining batch {i} input is nan")
             _output_obj = output_objs[model_chunk_id].pop(0)
-            # output_obj_grad = self.recv_backward(model_chunk_id)
             # Wait for upstream grad
-            if self.overlap_p2p and bwd_wait_handles is not None:
-                for req in bwd_wait_handles:
-                    req.wait()
+            _wait_p2p(bwd_wait_handles)
 
             # backward local grads
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
@@ -563,6 +537,7 @@ class InterleavedSchedule(PipelineSchedule):
                     input_tensor_grad=input_obj_grad,
                     send_first=self.stage_manager.stage % 2 == 0 and i > num_microbatch_remaining,
                 )
+                assert (not self.overlap_p2p) or len(bwd_wait_handles) > 0
             else:
                 model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
                 bwd_wait_handles = self.send_backward(model_chunk_id, input_obj_grad)
@@ -571,8 +546,6 @@ class InterleavedSchedule(PipelineSchedule):
 
         if outputs is not None:
             outputs = merge_batch(outputs)
-        # if outputs is not None and torch.isnan(outputs["logits"]).any():
-        #     print(f"rank {torch.distributed.get_rank()} outputs is nan, input: {_input_obj}")
         return {"loss": accum_loss, "outputs": outputs}
 
     def forward_backward_step(

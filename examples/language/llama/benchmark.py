@@ -265,7 +265,7 @@ def main():
     )
     if args.profile:
         ctx = profiler.profile(
-            schedule=torch.profiler.schedule(wait=1, warmup=2, active=1, repeat=1),
+            schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
             on_trace_ready=profiler.tensorboard_trace_handler("./log"),
             record_shapes=True,
             profile_memory=True,
