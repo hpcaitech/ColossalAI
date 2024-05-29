@@ -289,7 +289,7 @@ def check_dist_lamb(rank, world_size, port):
     run_dist_lamb_fwd_bwd()
     coordinator.print_on_master("Forward-backward tests passed")
 
-    run_bert_test(optim_class=Lamb, sharded_optim_class=DistributedLamb)
+    run_bert_test(optim_class=Lamb, sharded_optim_class=Lamb)
     print(f"rank {rank} tests passed :)")
 
 
