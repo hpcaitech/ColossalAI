@@ -425,8 +425,9 @@ class GeminiDDP(ModelWrapper):
                 async_reduce_stream.wait_stream(torch.cuda.current_stream())
 
             with torch.cuda.stream(async_reduce_stream):
-                reduced = chunk_manager.reduce_chunk(grad_chunk)
+                reduced = chunk_manager.reduce_chunk(grad_chunk, async_op=(async_reduce_stream is not None))
                 if reduced:
+                    grad_chunk.wait_async_reduce()
                     if not chunk_manager.reuse_fp16_chunk:
                         if chunk.keep_gathered:
                             chunk_manager.fake_release_chunk(chunk)
