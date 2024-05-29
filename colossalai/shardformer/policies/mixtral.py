@@ -51,6 +51,8 @@ class MixtralPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
+        if getattr(self.shard_config, "ep_group", None) is None:
+            raise ValueError("You must pass in ep_group via shard_config for expert parallel!")
 
         # expert parallel
         self.append_or_create_submodule_replacement(
@@ -58,6 +60,7 @@ class MixtralPolicy(Policy):
                 SubModuleReplacementDescription(
                     suffix="block_sparse_moe",
                     target_module=EPMixtralSparseMoeBlock,
+                    kwargs={"ep_group": self.shard_config.ep_group},
                 )
             ],
             policy=policy,
@@ -167,7 +170,7 @@ class MixtralModelPolicy(MixtralPolicy):
 class MixtralForCausalLMPolicy(MixtralPolicy):
     def module_policy(self):
         policy = super().module_policy()
-
+        # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {

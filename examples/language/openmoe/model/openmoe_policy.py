@@ -172,6 +172,7 @@ class OpenMoeForCausalLMPolicy(OpenMoePolicy):
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
+            # TODO: recursively assign ep group foe all modules
             new_item = {
                 OpenMoeForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[

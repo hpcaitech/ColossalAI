@@ -20,7 +20,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.moe.layers import apply_load_balance
-from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import skip_init
 from colossalai.nn.optimizer import HybridAdam
 
@@ -221,48 +220,49 @@ def main():
         "precision": args.precision,
         "zero_stage": args.zero_stage,
     }
-    mgr_dict = {}
     if args.plugin == "ep":
         dp_size = dist.get_world_size()
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
+            ep_size=args.ep_size,
             **hybrid_dict,
         )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size,
-            **mgr_dict,
-        )
+        # MOE_MANAGER.setup(
+        #     parallel="EP",
+        #     max_ep_size=dp_size,
+        #     **mgr_dict,
+        # )
     elif args.plugin == "ep_zero":
         dp_size = dist.get_world_size()
         use_ep_inside = False
         plugin = MoeHybridParallelPlugin(
             pp_size=1,
-            extra_dp_size=args.extra_dp_size,
+            ep_size=dp_size // args.ep_size,
             use_ep_inside=use_ep_inside,
             **hybrid_dict,
         )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            max_ep_size=dp_size // args.extra_dp_size,
-            use_ep_inside=use_ep_inside,
-            **mgr_dict,
-        )
+        # MOE_MANAGER.setup(
+        #     parallel="EP",
+        #     max_ep_size=dp_size // args.extra_dp_size,
+        #     use_ep_inside=use_ep_inside,
+        #     **mgr_dict,
+        # )
     elif args.plugin == "hybrid":
         dp_size = dist.get_world_size() // args.pp_size
         plugin = MoeHybridParallelPlugin(
             pp_size=args.pp_size,
+            ep_size=args.ep_size,
             microbatch_size=args.microbatch_size,
             **hybrid_dict,
         )
-        MOE_MANAGER.setup(
-            parallel="EP",
-            mode="fixed",
-            fixed_dp_size=args.dp_size,
-            fixed_ep_size=args.ep_size,
-            fixed_pp_size=args.pp_size,
-            **mgr_dict,
-        )
+        # MOE_MANAGER.setup(
+        #     parallel="EP",
+        #     mode="fixed",
+        #     fixed_dp_size=args.dp_size,
+        #     fixed_ep_size=args.ep_size,
+        #     fixed_pp_size=args.pp_size,
+        #     **mgr_dict,
+        # )
     else:
         raise ValueError(f"Invalid plugin {args.plugin}")
     coordinator.print_on_master(f"Set plugin as {plugin.__class__.__name__}")
