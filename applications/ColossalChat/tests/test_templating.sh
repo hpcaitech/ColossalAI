@@ -6,7 +6,7 @@ TEST_DATA_DIR=$BASE_DIR/tests/test_data
 DATA_SAVE_PATH=$BASE_TEMP_DIR/tests
 CONFIG_DIR=$BASE_DIR/config
 
-# MODELS=("colossal-llama2" "llama2" "mistral" "chatGLM2" "chatGLM3" "deepseek" "Yi" "baichuan")
+# MODELS=("colossal-llama2" "llama2" "mistral" "chatGLM2" "chatGLM3" "deepseek" "Yi")
 MODELS=("colossal-llama2" "llama2" "chatGLM2" "chatGLM3" "deepseek" "Yi" "baichuan")
 
 get_pretrain() {
