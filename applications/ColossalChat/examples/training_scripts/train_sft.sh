@@ -23,16 +23,16 @@ PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 declare -a dataset=(
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00000
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00001
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00002
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00003
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00004
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00005
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00006
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00007
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00008
-    YOUR/PREFERENCE/DATA/DIR/arrow/part-00009
+    YOUR/SFT/DATA/DIR/arrow/part-00000
+    YOUR/SFT/DATA/DIR/arrow/part-00001
+    YOUR/SFT/DATA/DIR/arrow/part-00002
+    YOUR/SFT/DATA/DIR/arrow/part-00003
+    YOUR/SFT/DATA/DIR/arrow/part-00004
+    YOUR/SFT/DATA/DIR/arrow/part-00005
+    YOUR/SFT/DATA/DIR/arrow/part-00006
+    YOUR/SFT/DATA/DIR/arrow/part-00007
+    YOUR/SFT/DATA/DIR/arrow/part-00008
+    YOUR/SFT/DATA/DIR/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
