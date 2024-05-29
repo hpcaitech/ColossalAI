@@ -15,7 +15,7 @@ from coati.dataset import (
 from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
 from coati.trainer import RewardModelTrainer
 from coati.utils import load_checkpoint
-from transformers import AutoConfig, AutoTokenizer
+from transformers import AutoTokenizer
 
 import colossalai
 from colossalai.booster import Booster
@@ -56,7 +56,6 @@ def train(args):
             )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
-            AutoConfig.from_pretrained(args.pretrain)
             model = RewardModel(
                 args.pretrain,
             )
