@@ -143,12 +143,12 @@ class ChunkManager:
         chunk = self.tensor_chunk_map[tensor]
         chunk.tensor_trans_state(tensor, state)
 
-    def reduce_chunk(self, chunk: Chunk, async_op: bool = False) -> bool:
+    def reduce_chunk(self, chunk: Chunk) -> bool:
         """Reduce or all reduce the chunk."""
         if not chunk.can_reduce:
             return False
         self.__sub_memory_usage(chunk.memory_usage)
-        chunk.reduce(async_op=async_op)
+        chunk.reduce()
         self.__sub_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
         return True

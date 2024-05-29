@@ -34,8 +34,7 @@ def check_equal(param, param_cp):
 @parameterize("init_device", [None, torch.device("cpu")])
 @parameterize("keep_gathered", [True, False])
 @parameterize("pin_memory", [True, False])
-@parameterize("async_op", [True, False])
-def exam_chunk_basic(init_device, keep_gathered, pin_memory, async_op):
+def exam_chunk_basic(init_device, keep_gathered, pin_memory):
     world_size = torch.distributed.get_world_size()
     pg = _get_default_group()
     my_chunk = Chunk(
@@ -95,11 +94,8 @@ def exam_chunk_basic(init_device, keep_gathered, pin_memory, async_op):
 
     assert my_chunk.tensor_state_cnter[TensorState.READY_FOR_REDUCE] == 4
     assert my_chunk.can_reduce
-    my_chunk.reduce(async_op)
+    my_chunk.reduce()
     assert my_chunk.tensor_state_cnter[TensorState.HOLD] == 4
-
-    if async_op:
-        my_chunk.wait_async_reduce()
 
     if keep_gathered is False:
         assert my_chunk.cuda_shard.size(0) == 1024 // world_size
