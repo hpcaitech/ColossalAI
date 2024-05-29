@@ -363,12 +363,15 @@ class GeminiPlugin(DPPluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
         enable_async_reduce: bool = True,
+        enable_prefetch: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
         if get_accelerator().name == "npu":
             assert placement_policy == "static", "NPU only supports static placement policy"
+        if enable_prefetch:
+            pin_memory = True
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_accelerator().get_current_device()),

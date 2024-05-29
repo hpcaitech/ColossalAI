@@ -338,8 +338,7 @@ class Chunk:
 
             if self.cuda_shard:
                 return
-
-            self.cuda_shard = self.cpu_shard.to(get_accelerator().get_current_device())
+            self.cuda_shard = self.cpu_shard.to(get_accelerator().get_current_device(), non_blocking=True)
 
             if not self.pin_memory:
                 self.cpu_shard = None
@@ -349,7 +348,7 @@ class Chunk:
 
             if self.pin_memory:
                 if force_copy or not self.cpu_vis_flag:
-                    self.cpu_shard.copy_(self.cuda_shard)
+                    self.cpu_shard.copy_(self.cuda_shard, non_blocking=True)
                 # if cpu_shard has been visited
                 # copy operation is not need
             else:
