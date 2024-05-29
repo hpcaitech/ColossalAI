@@ -50,6 +50,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [False, True])
 @parameterize("use_grad_checkpoint", [False, True])
+@parameterize("max_prefetch", [0, 4])
 @parameterize("enable_async_reduce", [False, True])
 def exam_gemini_grad_acc(
     placement_config,
@@ -57,6 +58,7 @@ def exam_gemini_grad_acc(
     model_name: str,
     master_weights: bool,
     use_grad_checkpoint: bool,
+    max_prefetch: int,
     enable_async_reduce: bool,
 ):
     init_device = get_accelerator().get_current_device()
@@ -87,6 +89,7 @@ def exam_gemini_grad_acc(
         pin_memory=True,
         enable_gradient_accumulation=True,
         master_weights=master_weights,
+        max_prefetch=max_prefetch,
         enable_async_reduce=enable_async_reduce,
         **placement_config,
     )
