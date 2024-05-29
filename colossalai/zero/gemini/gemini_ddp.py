@@ -421,6 +421,9 @@ class GeminiDDP(ModelWrapper):
             else:
                 grad_chunk.add_tensor_to_chunk_slice(p, grad)
 
+            if async_reduce_stream is not None:
+                async_reduce_stream.wait_stream(torch.cuda.current_stream())
+
             with torch.cuda.stream(async_reduce_stream):
                 reduced = chunk_manager.reduce_chunk(grad_chunk)
                 if reduced:
