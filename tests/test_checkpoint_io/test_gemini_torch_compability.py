@@ -62,12 +62,11 @@ def exam_torch_load_from_gemini(shard: bool, model_name: str):
         check_state_dict_equal(
             model.state_dict(only_rank_0=False, prefix="module.module."),
             new_model.state_dict(),
-            False,
             ignore_dtype=True,
         )
 
         new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.state_dict(only_rank_0=False), new_optimizer.state_dict(), False)
+        check_state_dict_equal(optimizer.state_dict(only_rank_0=False), new_optimizer.state_dict())
 
         # Check the new model/optimizer can successfully run.
         data = data_gen_fn()
@@ -128,7 +127,6 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
         check_state_dict_equal(
             new_model.state_dict(only_rank_0=False, prefix="module.module."),
             model.state_dict(),
-            False,
             ignore_dtype=True,
         )
 
@@ -145,7 +143,7 @@ def exam_gemini_load_from_torch(shard: bool, model_name: str):
                     k in old_group and k in new_group
                 ), f"Old group's keys: {list(old_group.keys())}, New group's keys: {list(new_group.keys())}"
                 assert old_group[k] == new_group[k]
-        check_state_dict_equal(old_state_dict["state"], new_state_dict["state"], False)
+        check_state_dict_equal(old_state_dict["state"], new_state_dict["state"])
 
         # Check the new model/optimizer can successfully run.
         data = data_gen_fn()

@@ -52,12 +52,12 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
         )
 
         booster.load_model(new_model, model_ckpt_path)
-        check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+        check_state_dict_equal(model.state_dict(), new_model.state_dict())
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict(), False)
+        check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
         booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
-        check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict(), False)
+        check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict())
 
 
 def run_dist(rank, world_size, port):

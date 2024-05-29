@@ -1,3 +1,4 @@
+import time
 from copy import deepcopy
 from typing import Optional
 
@@ -55,7 +56,9 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
         new_model, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
 
         booster.load_model(new_model, model_ckpt_path)
-        check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+        if offload:
+            pass
+        check_state_dict_equal(model.state_dict(), new_model.state_dict())
         # check master weight
         assert isinstance(new_optimizer, LowLevelZeroOptimizer)
         working_param_id_set = set(id(p) for p in new_model.parameters())
@@ -70,7 +73,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
             )
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
+        check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
     torch.cuda.empty_cache()
 
 
@@ -110,7 +113,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
             new_model = new_booster.enable_lora(new_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
             new_model, new_optimizer, criterion, _, _ = new_booster.boost(new_model, new_optimizer, criterion)
-            check_state_dict_equal(model.state_dict(), new_model.state_dict(), False)
+            check_state_dict_equal(model.state_dict(), new_model.state_dict())
 
             # check master weight
             assert isinstance(new_optimizer, LowLevelZeroOptimizer)
@@ -126,7 +129,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
                 )
 
             new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-            check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict(), False)
+            check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
 
     except Exception as e:
         # return repr(e)
@@ -181,7 +184,10 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_low_level_zero_checkpointIO():
+    t1 = time.time()
     spawn(run_dist, 2)
+    t2 = time.time()
+    print("Total time: ", t2 - t1)
 
 
 if __name__ == "__main__":
