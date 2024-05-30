@@ -1,9 +1,14 @@
-from .cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
-from .flash_attention import FlashAttentionDaoCudaExtension, FlashAttentionNpuExtension, FlashAttentionSdpaCudaExtension
-from .layernorm import LayerNormCudaExtension
-from .moe import MoeCudaExtension
-from .optimizer import FusedOptimizerCudaExtension
-from .softmax import ScaledMaskedSoftmaxCudaExtension, ScaledUpperTriangleMaskedSoftmaxCudaExtension
+from .pybind.cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
+from .pybind.flash_attention import (
+    FlashAttentionDaoCudaExtension,
+    FlashAttentionNpuExtension,
+    FlashAttentionSdpaCudaExtension,
+)
+from .pybind.inference import InferenceOpsCudaExtension
+from .pybind.layernorm import LayerNormCudaExtension
+from .pybind.moe import MoeCudaExtension
+from .pybind.optimizer import FusedOptimizerCudaExtension
+from .pybind.softmax import ScaledMaskedSoftmaxCudaExtension, ScaledUpperTriangleMaskedSoftmaxCudaExtension
 
 ALL_EXTENSIONS = [
     CpuAdamArmExtension,
@@ -11,6 +16,7 @@ ALL_EXTENSIONS = [
     LayerNormCudaExtension,
     MoeCudaExtension,
     FusedOptimizerCudaExtension,
+    InferenceOpsCudaExtension,
     ScaledMaskedSoftmaxCudaExtension,
     ScaledUpperTriangleMaskedSoftmaxCudaExtension,
     FlashAttentionDaoCudaExtension,
@@ -24,6 +30,7 @@ __all__ = [
     "LayerNormCudaExtension",
     "MoeCudaExtension",
     "FusedOptimizerCudaExtension",
+    "InferenceOpsCudaExtension",
     "ScaledMaskedSoftmaxCudaExtension",
     "ScaledUpperTriangleMaskedSoftmaxCudaExtension",
     "FlashAttentionDaoCudaExtension",

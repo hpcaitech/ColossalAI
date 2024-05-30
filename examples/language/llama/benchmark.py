@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--mbs", type=int, default=1, help="Micro batch size of pipeline parallel")
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
+
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
@@ -126,6 +127,8 @@ def main():
             extra_dp_size=args.extra_dp,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
+            max_prefetch=args.prefetch_num,
+            enable_async_reduce=not args.disable_async_reduce,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -135,6 +138,8 @@ def main():
             tp_size=args.tp,
             extra_dp_size=args.extra_dp,
             enable_fused_normalization=torch.cuda.is_available(),
+            max_prefetch=args.prefetch_num,
+            enable_async_reduce=not args.disable_async_reduce,
             enable_flash_attention=args.xformers,
         )
     elif args.plugin == "fsdp":
@@ -270,6 +275,7 @@ def main():
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
+    
     if args.profile:
         prof = profiler.profile(
             schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
@@ -309,6 +315,7 @@ def main():
                     optimizer.step()
                     optimizer.zero_grad()
                     performance_evaluator.on_step_end(**batch)
+
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")

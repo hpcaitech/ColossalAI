@@ -20,7 +20,12 @@ class ChunkManager:
         init_device (torch.device): optional, the device on which the chunk is initialized. The default is None.
     """
 
-    def __init__(self, chunk_configuration, init_device: Optional[torch.device] = None) -> None:
+    def __init__(
+        self,
+        chunk_configuration,
+        init_device: Optional[torch.device] = None,
+        reuse_fp16_chunk: bool = True,
+    ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
         self.kwargs_config = chunk_configuration
@@ -33,6 +38,10 @@ class ChunkManager:
         self.accessed_chunks: Set[Chunk] = set()
         self.accessed_mem: int = 0
         self.total_mem: Dict[str, int] = {"cpu": 0, "cuda": 0}
+        self.reuse_fp16_chunk = reuse_fp16_chunk
+        # Whether model is accumulating gradients,
+        self.accumulating_grads = False
+        self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
 
     def register_tensor(
         self,
@@ -102,15 +111,16 @@ class ChunkManager:
         for group_name in self.chunk_groups:
             self.__close_one_chunk(self.chunk_groups[group_name][-1])
 
-    def access_chunk(self, chunk: Chunk) -> None:
+    def access_chunk(self, chunk: Chunk, async_access: bool = False) -> Optional[dist.Work]:
         """Make the chunk can be used for calculation."""
         if chunk in self.accessed_chunks:
-            return
+            return None
         self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == "cpu":
             chunk.shard_move(get_accelerator().get_current_device())
-        self.__add_accessed_chunk(chunk)
+        maybe_work = self.__add_accessed_chunk(chunk, async_access=async_access)
         self.__add_memory_usage(chunk.memory_usage)
+        return maybe_work
 
     def release_chunk(self, chunk: Chunk) -> None:
         """Scatter the chunk in CUDA."""
@@ -134,12 +144,12 @@ class ChunkManager:
         chunk = self.tensor_chunk_map[tensor]
         chunk.tensor_trans_state(tensor, state)
 
-    def reduce_chunk(self, chunk: Chunk) -> bool:
+    def reduce_chunk(self, chunk: Chunk, async_op: bool = False) -> bool:
         """Reduce or all reduce the chunk."""
         if not chunk.can_reduce:
             return False
         self.__sub_memory_usage(chunk.memory_usage)
-        chunk.reduce()
+        chunk.reduce(async_op=async_op)
         self.__sub_accessed_chunk(chunk)
         self.__add_memory_usage(chunk.memory_usage)
         return True
@@ -242,10 +252,11 @@ class ChunkManager:
         for k, v in usage.items():
             self.total_mem[k] += v
 
-    def __add_accessed_chunk(self, chunk: Chunk):
-        chunk.access_chunk()
+    def __add_accessed_chunk(self, chunk: Chunk, async_access: bool = False) -> Optional[dist.Work]:
+        maybe_work = chunk.access_chunk(async_access=async_access)
         self.accessed_chunks.add(chunk)
         self.accessed_mem += chunk.chunk_mem
+        return maybe_work
 
     def __sub_accessed_chunk(self, chunk: Chunk):
         chunk.release_chunk()
@@ -263,7 +274,7 @@ class ChunkManager:
         return grad_chunk
 
     def rearrange_accumulated_grad_chunk(self, chunk: Chunk) -> Chunk:
-        """Rearrange gradients accumulated in chunk.grad_chunk, and getP prepared for gradient reduction."""
+        """Rearrange gradients accumulated in chunk.grad_chunk, and get prepared for gradient reduction."""
 
         assert chunk.grad_chunk is not None
 

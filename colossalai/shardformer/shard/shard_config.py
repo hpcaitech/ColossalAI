@@ -125,9 +125,3 @@ class ShardConfig:
         # It may also slow down training when seq len is small. Plz enable manually.
         # self.enable_sequence_parallelism = True
         # self.enable_sequence_overlap = True
-
-    def _infer(self):
-        """
-        Set default params for inference.
-        """
-        # assert self.pipeline_stage_manager is None, "pipeline parallelism is not supported in inference for now"

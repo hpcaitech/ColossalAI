@@ -249,6 +249,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     splited_param_current_rank = splited_params
 
+                # Send the splited view to the optimizer to match ZeRO 2 grad shape
                 params_current_rank.append(splited_param_current_rank)
                 self._param_store.link_master_and_working_param(splited_param_current_rank, param)
 
@@ -395,15 +396,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     if bucket_store.moe_extra_dp_pg is None:
                         flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.zero_world_size))
-                        recieved_grad = torch.zeros_like(flat_grads_list[0])
-                        dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
+                        received_grad = torch.zeros_like(flat_grads_list[0])
+                        dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
 
-                        if recieved_grad.dtype != grad_dtype:
-                            recieved_grad = recieved_grad.to(grad_dtype)
+                        if received_grad.dtype != grad_dtype:
+                            received_grad = received_grad.to(grad_dtype)
 
                         grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.zero_local_rank]
                         LowLevelZeroOptimizer.update_partitoned_grad(
-                            bucket_store, grad_store, grad_in_bucket_current_rank, recieved_grad, group_id, 1
+                            bucket_store, grad_store, grad_in_bucket_current_rank, received_grad, group_id, 1
                         )
                     else:
                         # categorize moe and non moe param
@@ -420,13 +421,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             flat_grads_list = list(
                                 non_moe_flat_grads.split(len(non_moe_flat_grads) // bucket_store.zero_world_size)
                             )
-                            recieved_grad = torch.zeros_like(flat_grads_list[0])
-                            dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
+                            received_grad = torch.zeros_like(flat_grads_list[0])
+                            dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
                             LowLevelZeroOptimizer.update_partitoned_grad(
                                 bucket_store,
                                 grad_store,
                                 non_moe_grad_in_bucket_current_rank,
-                                recieved_grad,
+                                received_grad,
                                 group_id,
                                 1,
                             )
@@ -435,15 +436,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             flat_grads_list = list(
                                 moe_flat_grads.split(len(moe_flat_grads) // bucket_store.moe_extra_dp_pg_size)
                             )
-                            recieved_grad = torch.zeros_like(flat_grads_list[0])
+                            received_grad = torch.zeros_like(flat_grads_list[0])
                             dist.reduce_scatter(
-                                recieved_grad,
+                                received_grad,
                                 flat_grads_list,
                                 group=bucket_store.moe_extra_dp_pg,
                             )
                             param_slice = bucket_store.zero_world_size // bucket_store.moe_extra_dp_pg_size
-                            recieved_grad = list(recieved_grad.split(len(recieved_grad) // param_slice))
-                            for split_recieved_grad in recieved_grad:
+                            received_grad = list(received_grad.split(len(received_grad) // param_slice))
+                            for split_recieved_grad in received_grad:
                                 split_recieved_grad = _unflatten_dense_tensors(
                                     split_recieved_grad, moe_grad_in_bucket_current_rank
                                 )
@@ -1019,3 +1020,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 **self.moe_master_to_working_map,
             }
         return self._param_store.master_to_working_param
+
+    def get_param_padding_map(self) -> Dict[int, torch.Tensor]:
+        return self._param_store.get_padding_map()

@@ -78,6 +78,7 @@ class GeminiDDP(ModelWrapper):
         chunk_init_device: torch.device = torch.device("cpu"),
         placement_policy: str = "static",
         enable_gradient_accumulation: bool = False,
+        max_prefetch: int = 0,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
@@ -96,10 +97,17 @@ class GeminiDDP(ModelWrapper):
         master_weights: bool = True,
         extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
+        enable_async_reduce: bool = True,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
+        reuse_fp16_chunk = master_weights if not enable_gradient_accumulation else False
+        self.enable_gradient_accumulation = enable_gradient_accumulation
         if chunk_config_dict is not None:
-            self.chunk_manager = ChunkManager(chunk_config_dict, chunk_init_device)
+            self.chunk_manager = ChunkManager(
+                chunk_config_dict,
+                chunk_init_device,
+                reuse_fp16_chunk=reuse_fp16_chunk,
+            )
         else:
             # some ugly hotfix for the compatibility with Lightning
             if search_range_m is None:
@@ -112,6 +120,7 @@ class GeminiDDP(ModelWrapper):
                 min_chunk_size_m=min_chunk_size_m,
                 strict_ddp_flag=strict_ddp_mode,
                 process_group=zero_group,
+                reuse_fp16_chunk=reuse_fp16_chunk,
                 verbose=verbose,
             )
         self.gemini_manager = GeminiManager(
@@ -123,12 +132,12 @@ class GeminiDDP(ModelWrapper):
             offload_param_frac=offload_param_frac,
             warmup_non_model_data_ratio=warmup_non_model_data_ratio,
             steady_cuda_cap_ratio=steady_cuda_cap_ratio,
+            max_prefetch=max_prefetch,
         )
         self.force_outputs_fp32 = force_outputs_fp32
         self.param_op_hook = GeminiZeROHook(self.gemini_manager)
         self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
-        self.overflow_counter = 0
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
         self.param2name: Dict[nn.Parameter, str] = dict()
         self.name2param: Dict[str, nn.Parameter] = dict()
@@ -137,13 +146,7 @@ class GeminiDDP(ModelWrapper):
         self.zero_group = zero_group or _get_default_group()
         self.extra_dp_group = extra_dp_group
 
-        self.reuse_fp16_chunk = master_weights
         self.master_weights = master_weights
-
-        self.enable_gradient_accumulation = enable_gradient_accumulation
-        if self.enable_gradient_accumulation:
-            self.reuse_fp16_chunk = False
-        self.accumulating_grads = False  # Whether model is accumulating gradients
 
         self._logger = get_dist_logger()
 
@@ -178,7 +181,31 @@ class GeminiDDP(ModelWrapper):
             if is_ddp_ignored(p):
                 continue
             if p.requires_grad:
-                p.register_hook(partial(self.grad_handle, p))
+                assert not hasattr(p, "_grad_handle")
+                p._grad_handle = p.register_hook(
+                    partial(
+                        GeminiDDP.grad_handle,
+                        chunk_manager=self.chunk_manager,
+                        param2name=self.param2name,
+                        grads_device=self.grads_device,
+                        master_weights=self.master_weights,
+                        enable_gradient_accumulation=self.enable_gradient_accumulation,
+                        p=p,
+                        async_reduce=enable_async_reduce,
+                    )
+                )
+
+    def remove_hooks(self):
+        for p in self.module.parameters():
+            if is_ddp_ignored(p):
+                continue
+            if p.requires_grad:
+                assert hasattr(p, "_grad_handle")
+                p._grad_handle.remove()
+                delattr(p, "_grad_handle")
+
+    def __del__(self):
+        self.remove_hooks()
 
     def parameters(self, recurse: bool = True):
         return self.module.parameters(recurse)
@@ -312,6 +339,11 @@ class GeminiDDP(ModelWrapper):
                 setattr(param, "_gemini_reduced", False)
 
     def _post_backward(self):
+        for param in self.param2name:
+            if hasattr(param, "_release_grad_chunk_cb"):
+                param._release_grad_chunk_cb()
+                delattr(param, "_release_grad_chunk_cb")
+
         if self.chunk_manager.accessed_mem != 0:
             error_params = ["Reduction failed at followed parameters:"]
             for param in self.param2name:
@@ -324,8 +356,8 @@ class GeminiDDP(ModelWrapper):
                 f"{error_str}",
             )
         self._setup_grads_ptr()
-        if self.enable_gradient_accumulation and not self.accumulating_grads:
-            self.accumulating_grads = True  # Turn on the state of gradient accumulation.
+        if self.enable_gradient_accumulation and not self.chunk_manager.accumulating_grads:
+            self.chunk_manager.accumulating_grads = True  # Turn on the state of gradient accumulation.
         self._logger.debug(
             f"comp cuda demand time: {self.gemini_manager._comp_cuda_demand_time}, layout time: {self.gemini_manager._layout_time}, evict time: {self.gemini_manager._evict_time}, CPU->CUDA vol: {self.gemini_manager._h2d_volume}B, CUDA->CPU vol: {self.gemini_manager._d2h_volume}"
         )
@@ -340,25 +372,35 @@ class GeminiDDP(ModelWrapper):
     def backward_by_grad(self, tensor, grad):
         raise RuntimeError("Gemini is not compatible with pipeline. backward_by_grad shoudn't be called in Gemini.")
 
-    def grad_handle(self, p, grad):
+    @staticmethod
+    def grad_handle(
+        grad,
+        chunk_manager: ChunkManager,
+        param2name: Dict,
+        grads_device: Dict,
+        master_weights: bool,
+        enable_gradient_accumulation: bool,
+        p: nn.Parameter,
+        async_reduce: bool,
+    ):
         setattr(p, "_gemini_reduced", True)
         empty_grad = torch.empty_like(grad)
         free_storage(empty_grad)
         with torch._C.DisableTorchFunction():
-            chunk = self.chunk_manager.get_chunk(p)
+            chunk = chunk_manager.get_chunk(p)
             if chunk.tensors_info[p].state != TensorState.HOLD_AFTER_BWD:
                 raise RuntimeError(
-                    f"Parameter `{self.param2name[p]}` failed at the gradient reduction. "
+                    f"Parameter `{param2name[p]}` failed at the gradient reduction. "
                     "Some unsupported torch function is operated upon this parameter."
                 )
             grad_chunk = chunk
-            if not self.reuse_fp16_chunk:
-                if not self.accumulating_grads:
-                    grad_chunk = self.chunk_manager.init_grad_chunk(chunk)
+            if not chunk_manager.reuse_fp16_chunk:
+                if not chunk_manager.accumulating_grads:
+                    grad_chunk = chunk_manager.init_grad_chunk(chunk)
                 else:
                     assert chunk.grad_chunk is not None
-                    if chunk.grad_chunk not in self.chunk_manager.accessed_chunks:
-                        grad_chunk = self.chunk_manager.rearrange_accumulated_grad_chunk(chunk)
+                    if chunk.grad_chunk not in chunk_manager.accessed_chunks:
+                        grad_chunk = chunk_manager.rearrange_accumulated_grad_chunk(chunk)
                     else:
                         grad_chunk = chunk.grad_chunk
                         chunk.grad_chunk.l2_norm = None
@@ -371,34 +413,60 @@ class GeminiDDP(ModelWrapper):
                 chunk.tensor_trans_state(p, TensorState.HOLD)
 
             grad_chunk.tensor_trans_state(p, TensorState.READY_FOR_REDUCE)
-            if not self.accumulating_grads:
-                grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=self.reuse_fp16_chunk)
+            if not chunk_manager.accumulating_grads:
+                grad_chunk.copy_tensor_to_chunk_slice(p, grad, update_ptr=chunk_manager.reuse_fp16_chunk)
             else:
                 grad_chunk.add_tensor_to_chunk_slice(p, grad)
-            reduced = self.chunk_manager.reduce_chunk(grad_chunk)
-            if reduced:
-                if not self.reuse_fp16_chunk:
-                    if chunk.keep_gathered:
-                        self.chunk_manager.fake_release_chunk(chunk)
-                    else:
-                        self.chunk_manager.release_chunk(chunk)
-                if grad_chunk.is_gathered:
-                    grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
-                    if self.extra_dp_group is not None:
-                        grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
+            reduced = chunk_manager.reduce_chunk(grad_chunk, async_op=async_reduce)
+            if reduced:  # if not async, can release immediately, else release in when work finished
+                if async_reduce:
+                    # dirty fix by installing callback
+                    assert not hasattr(p, "_release_grad_chunk_cb")
+
+                    def _release_grad_chunk_cb():
+                        grad_chunk.wait_async_reduce()
+                        GeminiDDP.release_grad_chunk_handle(
+                            chunk_manager,
+                            grads_device,
+                            master_weights,
+                            enable_gradient_accumulation,
+                            p,
+                            chunk,
+                            grad_chunk,
+                        )
+
+                    p._release_grad_chunk_cb = _release_grad_chunk_cb
                 else:
-                    grad_chunk.cuda_shard.div_(chunk.pg_size)
-                    if self.extra_dp_group is not None:
-                        grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
-                # check overflow elements
-                self.overflow_counter += grad_chunk.has_inf_or_nan
-                # record l2 norm for gradient clipping. flag is bound to fp16 chunk
-                if chunk.l2_norm_flag:
-                    grad_chunk.set_l2_norm()
-                self.chunk_manager.move_chunk(grad_chunk, self.grads_device[p], force_copy=True)
-                if not (self.master_weights) or (self.enable_gradient_accumulation):
-                    self.chunk_manager.move_chunk(chunk, self.grads_device[p], force_copy=True)
+                    GeminiDDP.release_grad_chunk_handle(
+                        chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk
+                    )
         return empty_grad
+
+    @staticmethod
+    def release_grad_chunk_handle(
+        chunk_manager, grads_device, master_weights, enable_gradient_accumulation, p, chunk, grad_chunk
+    ):
+        if not chunk_manager.reuse_fp16_chunk:
+            if chunk.keep_gathered:
+                chunk_manager.fake_release_chunk(chunk)
+            else:
+                chunk_manager.release_chunk(chunk)
+        if grad_chunk.is_gathered:
+            grad_chunk.cuda_global_chunk.div_(chunk.pg_size)
+            if chunk.extra_dp_group is not None:
+                grad_chunk.cuda_global_chunk.div_(chunk.extra_dp_size)
+        else:
+            grad_chunk.cuda_shard.div_(chunk.pg_size)
+            if chunk.extra_dp_group is not None:
+                grad_chunk.cuda_shard.div_(chunk.extra_dp_size)
+                # check overflow elements
+        chunk_manager.overflow_counter += grad_chunk.has_inf_or_nan
+        # record l2 norm for gradient clipping. flag is bound to fp16 chunk
+        if chunk.l2_norm_flag:
+            grad_chunk.set_l2_norm()
+        chunk_manager.move_chunk(grad_chunk, grads_device[p], force_copy=True)
+        if not (master_weights) or (enable_gradient_accumulation):
+            chunk_manager.move_chunk(chunk, grads_device[p], force_copy=True)
 
     def zero_grad(self, set_to_none: bool = False) -> None:
         self.module.zero_grad(set_to_none=True)
@@ -513,11 +581,11 @@ class GeminiDDP(ModelWrapper):
 
         # get copies of fp32 parameters in CPU
         # as memory of fp16_params may be reused by grad, it's not reliable, we should use fp32_params and convert to fp16
-        params = self.fp32_params if self.reuse_fp16_chunk else self.fp16_params
+        params = self.fp32_params if self.chunk_manager.reuse_fp16_chunk else self.fp16_params
         param_to_save_data = self._get_param_to_save_data(params, only_rank_0)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
-        if self.reuse_fp16_chunk:
+        if self.chunk_manager.reuse_fp16_chunk:
             for p, fp32_p in zip(self.fp16_params, self.fp32_params):
                 name = self.param2name[p]
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
@@ -713,7 +781,7 @@ class GeminiDDP(ModelWrapper):
                 name = self.param2name[p]
                 fp32_to_name[fp32_p] = name
 
-        params_to_load = self.fp32_params if self.reuse_fp16_chunk else self.fp16_params
+        params_to_load = self.fp32_params if self.chunk_manager.reuse_fp16_chunk else self.fp16_params
         chunk_list = self.chunk_manager.get_chunks(params_to_load)
         for chunk in chunk_list:
             temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
@@ -728,7 +796,9 @@ class GeminiDDP(ModelWrapper):
                     shard_fn = tensor.shard_fn
                     gather_fn = tensor.gather_fn
 
-                parameter_name = fp32_to_name[tensor] if self.reuse_fp16_chunk else self.param2name[tensor]
+                parameter_name = (
+                    fp32_to_name[tensor] if self.chunk_manager.reuse_fp16_chunk else self.param2name[tensor]
+                )
                 parameter_slice = temp_chunk[tensor_info.offset : tensor_info.end]
                 load(
                     parameter_name,
@@ -900,7 +970,7 @@ class GeminiDDP(ModelWrapper):
                     gathered_param = param if keep_vars else param.detach()
                 else:
                     # as memory of fp16 param may be reused, we should use fp32 param and then convert to fp16
-                    param_to_save = fp16_to_fp32[param] if self.reuse_fp16_chunk else param
+                    param_to_save = fp16_to_fp32[param] if self.chunk_manager.reuse_fp16_chunk else param
                     if param_to_save not in gathered_param_buffer:
                         chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))

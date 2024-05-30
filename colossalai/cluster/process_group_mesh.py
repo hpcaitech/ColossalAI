@@ -38,7 +38,12 @@ class ProcessGroupMesh:
 
     def __init__(self, *size: int) -> None:
         assert dist.is_initialized(), "Please initialize torch.distributed first."
-        assert prod(size) == dist.get_world_size(), "The product of the size must be equal to the world size."
+        world_size = dist.get_world_size()
+        prod_size = prod(size)
+        assert (
+            prod_size == world_size
+        ), f"The product of the size({prod_size}) must be equal to the world size({world_size})."
+
         self._shape = size
         self._rank = dist.get_rank()
         self._coord = ProcessGroupMesh.unravel(self._rank, self._shape)
