@@ -4,7 +4,6 @@ import warnings
 from contextlib import nullcontext
 
 import torch
-import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
@@ -184,7 +183,7 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             enable_fused_normalization=torch.cuda.is_available(),
-            # enable_flash_attention=args.xformers,
+            enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
             dp_outside=False,
@@ -225,7 +224,6 @@ def main():
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
-    print(f"input_ids: {dataset.input_ids[0][0]}")
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, seed=42)
 
     # ==============================
@@ -241,8 +239,8 @@ def main():
     if config.model_type == "chatglm":
         init_kwargs["empty_init"] = False
 
-    # with init_ctx:
-    model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **init_kwargs)
+    with init_ctx:
+        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **init_kwargs)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -264,7 +262,6 @@ def main():
     optimizer = HybridAdam(model.parameters())
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
-    print(f"model weight: {list(model.parameters())[0][0][0]}")
 
     torch.set_default_dtype(torch.float)
     coordinator.print_on_master(
@@ -274,7 +271,7 @@ def main():
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
     if args.profile:
-        ctx = profiler.profile(
+        prof = profiler.profile(
             schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
             on_trace_ready=profiler.tensorboard_trace_handler("./log"),
             record_shapes=True,
@@ -282,28 +279,22 @@ def main():
             with_stack=True,
         )
     else:
-        ctx = nullcontext()
-    with ctx:
+        prof = nullcontext()
+
+    with prof:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
                 performance_evaluator.on_step_start(step)
-                outputs = booster.execute_pipeline(
+                booster.execute_pipeline(
                     data_iter,
                     model,
                     criterion=lambda outputs, inputs: outputs[0],
                     optimizer=optimizer,
-                    return_loss=True,
-                    return_outputs=True,
+                    return_loss=False,
                 )
                 if args.profile:
-                    ctx.step()
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    loss = outputs["loss"]
-                    outputs = outputs["outputs"]["logits"]
-                    if step == 0:
-                        torch.save(outputs, "pp_output.pt")
-                    print(f"Step: {step}, loss: {loss}, output: {outputs.mean()} ")
+                    prof.step()
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
         else:
             with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -311,14 +302,10 @@ def main():
                     performance_evaluator.on_step_start(step)
                     outputs = model(**batch)
                     loss = outputs[0]
-                    output = outputs[1]
-                    if dist.get_rank() == dist.get_world_size() - 1:
-                        if step == 0:
-                            torch.save(output, "output.pt")
-                        print(f"Step: {step}, loss: {loss}, output: {output.mean()}")
                     booster.backward(loss, optimizer)
+
                     if args.profile:
-                        ctx.step()
+                        prof.step()
                     optimizer.step()
                     optimizer.zero_grad()
                     performance_evaluator.on_step_end(**batch)
