@@ -29,6 +29,13 @@ warnings.filterwarnings("ignore")
 # ==============================
 
 MODEL_CONFIGS = {
+    "1b": LlamaConfig(
+        max_position_embeddings=4096,
+        num_hidden_layers=4,
+        num_attention_heads=32,
+        intermediate_size=2048,
+        hidden_size=1024,
+    ),
     "7b": LlamaConfig(max_position_embeddings=4096),
     "13b": LlamaConfig(
         hidden_size=5120,
@@ -177,7 +184,7 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             enable_fused_normalization=torch.cuda.is_available(),
-            enable_flash_attention=args.xformers,
+            # enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
             dp_outside=False,
@@ -218,6 +225,7 @@ def main():
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
+    print(f"input_ids: {dataset.input_ids[0][0]}")
     dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, seed=42)
 
     # ==============================
@@ -233,8 +241,8 @@ def main():
     if config.model_type == "chatglm":
         init_kwargs["empty_init"] = False
 
-    with init_ctx:
-        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **init_kwargs)
+    # with init_ctx:
+    model = AutoModelForCausalLM.from_config(config, trust_remote_code=True, **init_kwargs)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -256,6 +264,8 @@ def main():
     optimizer = HybridAdam(model.parameters())
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
+    print(f"model weight: {list(model.parameters())[0][0][0]}")
+
     torch.set_default_dtype(torch.float)
     coordinator.print_on_master(
         f"Booster init max CUDA memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
@@ -291,21 +301,27 @@ def main():
                 if dist.get_rank() == dist.get_world_size() - 1:
                     loss = outputs["loss"]
                     outputs = outputs["outputs"]["logits"]
+                    if step == 0:
+                        torch.save(outputs, "pp_output.pt")
                     print(f"Step: {step}, loss: {loss}, output: {outputs.mean()} ")
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
         else:
-            for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    print(f"Step: {step}, loss: {loss} ")
-                performance_evaluator.on_step_start(step)
-                outputs = model(**batch)
-                loss = outputs[0]
-                booster.backward(loss, optimizer)
-                if args.profile:
-                    ctx.step()
-                optimizer.step()
-                optimizer.zero_grad()
-                performance_evaluator.on_step_end(**batch)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
+                    performance_evaluator.on_step_start(step)
+                    outputs = model(**batch)
+                    loss = outputs[0]
+                    output = outputs[1]
+                    if dist.get_rank() == dist.get_world_size() - 1:
+                        if step == 0:
+                            torch.save(output, "output.pt")
+                        print(f"Step: {step}, loss: {loss}, output: {output.mean()}")
+                    booster.backward(loss, optimizer)
+                    if args.profile:
+                        ctx.step()
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")

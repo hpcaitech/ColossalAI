@@ -184,8 +184,7 @@ def create_send_metadata(
         else:
             non_tensor_obj_idx.append(idx)
             non_tensor_objs.append(obj)
-    # if dist.get_rank() == 0:
-    #     print(f"non_tensor_obj_idx: {non_tensor_obj_idx}, strict: {strict}")
+
     assert not strict or len(non_tensor_objs) == 0, "Only support tensor for fast send"
     metadata = P2PMetadata(tree_spec, tensor_metadata, non_tensor_obj_idx, non_tensor_objs)
     return metadata if not return_tensor else (metadata, tensor_objs)
@@ -384,6 +383,8 @@ def _communicate(
         # NOTE: if object contains non-tensor objects, we have to send metadata
         metadata_send, tensor_objs = create_send_metadata(object, strict=False, return_tensor=True)
         send_metadata = send_metadata or len(metadata_send.non_tensor_obj_idx) > 0
+    else:
+        send_metadata = False
 
     assert not c10d._rank_not_in_group(send_group) and not c10d._rank_not_in_group(recv_group)
     current_send_device, is_send_nccl_backend = _check_device(send_group)
@@ -563,6 +564,7 @@ class PipelineP2PCommunication:
         """
         if next_rank is None:
             next_rank = self.stage_manager.get_next_rank()
+
         output_tensor_grad, wait_handles = _communicate(
             object=None,
             recv_src=next_rank,
