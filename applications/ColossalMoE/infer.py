@@ -10,7 +10,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.moe.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 
 
 def parse_args():
@@ -70,8 +69,6 @@ def main():
             ep_size=ep_size,
             zero_stage=1,
             precision=args.precision,
-            # custom_policy=MixtralForCausalLMPolicy(),
-            checkpoint_io=MixtralMoEHybridParallelCheckpointIO,
             enable_fused_normalization=args.use_layernorm_kernel,
             enable_jit_fused=args.use_kernel,
         )

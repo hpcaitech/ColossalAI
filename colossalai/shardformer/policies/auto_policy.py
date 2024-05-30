@@ -241,7 +241,6 @@ def get_autopolicy(model: nn.Module) -> Policy:
         :class:`Policy`: The auto policy for the model
     """
     full_name = _fullname(model)
-    print(full_name)
     policy_location = _POLICY_LIST.get(full_name, None)
 
     if policy_location is None:
