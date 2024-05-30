@@ -275,7 +275,7 @@ def main():
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
-    
+
     if args.profile:
         prof = profiler.profile(
             schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
@@ -315,7 +315,6 @@ def main():
                     optimizer.step()
                     optimizer.zero_grad()
                     performance_evaluator.on_step_end(**batch)
-
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
