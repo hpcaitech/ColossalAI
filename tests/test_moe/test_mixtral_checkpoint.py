@@ -3,8 +3,6 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
 from torch.optim import Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
@@ -12,6 +10,8 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.moe.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
+from colossalai.shardformer.policies.mixtral_policy import MixtralForCausalLMPolicy
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4

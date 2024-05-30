@@ -2,20 +2,20 @@ import argparse
 
 import torch
 import torch.distributed as dist
-from colossal_moe.models.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossal_moe.models.mixtral_policy import MixtralForCausalLMPolicy
-from colossal_moe.utils import load_checkpoint, move_to_cuda, save_checkpoint
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import AutoTokenizer
 from transformers.models.mixtral import MixtralForCausalLM
 
 import colossalai
+from applications.ColossalMoE.utils import load_checkpoint, move_to_cuda, save_checkpoint
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.moe.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.shardformer.policies.mixtral_policy import MixtralForCausalLMPolicy
 from colossalai.utils import get_current_device
 
 
