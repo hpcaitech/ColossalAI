@@ -11,7 +11,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.moe.mixtral_checkpoint import MixtralMoEHybridParallelCheckpointIO
-from colossalai.shardformer.policies.mixtral_policy import MixtralForCausalLMPolicy
+from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4
