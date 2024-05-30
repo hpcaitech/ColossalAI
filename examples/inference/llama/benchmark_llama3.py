@@ -17,6 +17,13 @@ GIGABYTE = 1024**3
 MEGABYTE = 1024**2
 N_WARMUP_STEPS = 2
 
+TORCH_DTYPE_MAP = {
+    "fp16": torch.float16,
+    "fp32": torch.float32,
+    "bf16": torch.bfloat16,
+}
+
+
 CONFIG_MAP = {
     "toy": transformers.LlamaConfig(num_hidden_layers=4),
     "llama-7b": transformers.LlamaConfig(
@@ -104,10 +111,13 @@ def print_details_info(model_config, whole_end2end, total_token_num, dtype, coor
 def benchmark_inference(args):
     coordinator = DistCoordinator()
 
+    torch_dtype = TORCH_DTYPE_MAP.get(args.dtype, None)
     config = CONFIG_MAP[args.model]
+    config.torch_dtype = torch_dtype
     config.pad_token_id = config.eos_token_id
+
     if args.model_path is not None:
-        model = transformers.LlamaForCausalLM.from_pretrained(args.model_path)
+        model = transformers.LlamaForCausalLM.from_pretrained(args.model_path, torch_dtype=torch_dtype)
         tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     else:
         # Random weights
