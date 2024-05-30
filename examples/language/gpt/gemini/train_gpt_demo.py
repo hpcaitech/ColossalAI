@@ -8,7 +8,8 @@ import psutil
 import torch
 import torch.nn as nn
 from commons.model_zoo import model_builder
-from commons.utils import get_data, get_profile_context, get_tflops, get_time_stamp
+from commons.performance_evaluator import get_profile_context
+from commons.utils import get_data, get_tflops, get_time_stamp
 from packaging import version
 
 import colossalai
