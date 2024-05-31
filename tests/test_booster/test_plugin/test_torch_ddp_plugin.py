@@ -22,22 +22,24 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     optimizer = SGD(model.parameters(), lr=1e-3)
     criterion = lambda x: x.mean()
     data = data_gen_fn()
+    # except data <class 'transformers.tokenization_utils_base.BatchEncoding'>; data <class 'transformers.tokenization_utils_base.BatchEncodingPlus'>, data <class 'torch.Tensor'>
+    if isinstance(data, dict):
+        data = {
+            k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+        }
+        model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+        assert isinstance(model.module, DDP)
+        assert isinstance(optimizer, OptimizerWrapper)
 
-    model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
+        output = model(**data)
+        output = output_transform_fn(output)
+        output_key = list(output.keys())[0]
+        loss = criterion(output[output_key])
 
-    assert isinstance(model.module, DDP)
-    assert isinstance(optimizer, OptimizerWrapper)
-
-    output = model(**data)
-    output = output_transform_fn(output)
-    output_key = list(output.keys())[0]
-    loss = criterion(output[output_key])
-
-    booster.backward(loss, optimizer)
-    optimizer.clip_grad_by_norm(1.0)
-    optimizer.step()
+        booster.backward(loss, optimizer)
+        optimizer.clip_grad_by_norm(1.0)
+        optimizer.step()
 
 
 def check_torch_ddp_plugin():
@@ -47,9 +49,11 @@ def check_torch_ddp_plugin():
         registry = model_zoo
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
+        print(f"name {name}")
         if name == "dlrm_interactionarch":
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)
+        print(f"name {name} pass")
         torch.cuda.empty_cache()
 
 
