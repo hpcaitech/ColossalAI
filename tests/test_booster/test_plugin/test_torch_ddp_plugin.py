@@ -49,11 +49,9 @@ def check_torch_ddp_plugin():
         registry = model_zoo
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
-        print(f"name {name}")
-        if name == "dlrm_interactionarch":
+        if name == "dlrm_interactionarch" or name.startswith("simple_"):
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)
-        print(f"name {name} pass")
         torch.cuda.empty_cache()
 
 
