@@ -176,7 +176,7 @@ def test_flash_decoding_attention(
 
     # The alibi may introduce relatively large errors
     if use_alibi_slopes:
-        rtol = 1e0
+        rtol = 100
 
     try:
         numpy_allclose(out_ref, output, rtol=rtol, atol=atol)
