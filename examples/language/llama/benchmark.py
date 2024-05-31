@@ -4,6 +4,7 @@ import warnings
 from contextlib import nullcontext
 
 import torch
+import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator
@@ -292,13 +293,17 @@ def main():
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
                 performance_evaluator.on_step_start(step)
-                booster.execute_pipeline(
+                outputs = booster.execute_pipeline(
                     data_iter,
                     model,
                     criterion=lambda outputs, inputs: outputs[0],
                     optimizer=optimizer,
-                    return_loss=False,
+                    return_loss=True,
                 )
+                loss = outputs["loss"]
+                if dist.get_rank() == dist.get_world_size() - 1:
+                    print(f"Step {step} loss: {loss}")
+
                 if args.profile:
                     prof.step()
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))

@@ -1,4 +1,3 @@
-# Initialize an array for flags
 FLAGS=()
 
 # Loop through all the arguments
@@ -13,10 +12,8 @@ done
 
 # Check if FLAGS array is not empty
 if [ ${#FLAGS[@]} -ne 0 ]; then
-    echo "Using flags ${FLAGS[@]} from the command line."
-else
-    echo "Using no additional flags."
+    echo "Addings flags ${FLAGS[@]} from the command line."
 fi
 
 export OMP_NUM_THREADS=8
-colossalai run --nproc_per_node 4 --master_port 29501 benchmark.py -p 3d --pp 4 -b 16 -g -x --n_chunks 2 --pp_style 1f1b "${FLAGS[@]}"
+colossalai run --nproc_per_node 4  --master_port 29501 benchmark.py -p 3d --pp 4 -b 16 -g -x --pp_style interleaved --n_chunks 2 "${FLAGS[@]}"

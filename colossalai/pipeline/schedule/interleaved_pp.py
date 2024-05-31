@@ -32,6 +32,7 @@ class InterleavedSchedule(PipelineSchedule):
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
         overlap_p2p: bool = True,
+        two_p2p_batches: bool = False,
     ) -> None:
         super().__init__(stage_manager)
         assert (
@@ -43,6 +44,8 @@ class InterleavedSchedule(PipelineSchedule):
         self.num_microbatch = num_microbatch
         self.microbatch_size = microbatch_size
         self.num_model_chunks = num_model_chunks
+        # Split send and recv into two batches and don't wait for send
+        self.two_p2p_batches = two_p2p_batches
 
         self.batch: Any
         self.batch_size: int
@@ -220,44 +223,60 @@ class InterleavedSchedule(PipelineSchedule):
     def send_forward_recv_forward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
-        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
-            is_send = not self.stage_manager.is_last_stage()
-        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
-            is_recv = not self.stage_manager.is_first_stage()
-        input_tensor, wait_handles = self.comm.send_forward_recv_forward(
-            output_tensor,
-            is_send,
-            is_recv,
-            send_metadata=self.send_tensor_metadata,
-            metadata_recv=self.tensor_metadata_recv,
-            send_first=send_first,
-        )
-        # Cache metadata
-        self.send_tensor_metadata = not self.enable_metadata_cache and is_send
-        if is_recv and self.enable_metadata_cache and self.tensor_metadata_recv is None:
-            self.tensor_metadata_recv = create_send_metadata(input_tensor)
+        if self.two_p2p_batches:
+            if send_first:
+                self.send_forward(model_chunk_id_send, output_tensor)
+                input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
+            else:
+                input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
+                self.send_forward(model_chunk_id_send, output_tensor)
+        else:
+            with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+                is_send = not self.stage_manager.is_last_stage()
+            with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+                is_recv = not self.stage_manager.is_first_stage()
+            input_tensor, wait_handles = self.comm.send_forward_recv_forward(
+                output_tensor,
+                is_send,
+                is_recv,
+                send_metadata=self.send_tensor_metadata,
+                metadata_recv=self.tensor_metadata_recv,
+                send_first=send_first,
+            )
+            # Cache metadata
+            self.send_tensor_metadata = not self.enable_metadata_cache and is_send
+            if is_recv and self.enable_metadata_cache and self.tensor_metadata_recv is None:
+                self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
         return input_tensor, wait_handles
 
     def send_backward_recv_backward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
-        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
-            is_send = not self.stage_manager.is_first_stage()
-        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
-            is_recv = not self.stage_manager.is_last_stage()
-        output_tensor_grad, wait_handles = self.comm.send_backward_recv_backward(
-            input_tensor_grad,
-            is_send,
-            is_recv,
-            send_metadata=self.send_grad_metadata,
-            metadata_recv=self.grad_metadata_recv,
-            send_first=send_first,
-        )
-        # Cache metadata
-        self.send_grad_metadata = not self.enable_metadata_cache and is_send
-        if is_recv and self.enable_metadata_cache and self.grad_metadata_recv is None:
-            self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
+        if self.two_p2p_batches:
+            if send_first:
+                self.send_backward(model_chunk_id_send, input_tensor_grad)
+                output_tensor_grad, wait_handles = self.recv_backward(model_chunk_id_recv)
+            else:
+                output_tensor_grad, wait_handles = self.recv_backward(model_chunk_id_recv)
+                self.send_backward(model_chunk_id_send, input_tensor_grad)
+        else:
+            with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+                is_send = not self.stage_manager.is_first_stage()
+            with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+                is_recv = not self.stage_manager.is_last_stage()
+            output_tensor_grad, wait_handles = self.comm.send_backward_recv_backward(
+                input_tensor_grad,
+                is_send,
+                is_recv,
+                send_metadata=self.send_grad_metadata,
+                metadata_recv=self.grad_metadata_recv,
+                send_first=send_first,
+            )
+            # Cache metadata
+            self.send_grad_metadata = not self.enable_metadata_cache and is_send
+            if is_recv and self.enable_metadata_cache and self.grad_metadata_recv is None:
+                self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
         return output_tensor_grad, wait_handles
 
     def forward_step(
@@ -436,11 +455,11 @@ class InterleavedSchedule(PipelineSchedule):
 
         # Run warmup forward passes.
         for i in range(num_warmup_microbatch):
-            # Wait for input
-            _wait_p2p(fwd_wait_handles)
-
             last_batch = i == num_warmup_microbatch - 1
             model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
+
+            # Wait for input
+            _wait_p2p(fwd_wait_handles)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
             input_objs[model_chunk_id].append(input_obj)
             output_objs[model_chunk_id].append(output_obj)
@@ -462,12 +481,11 @@ class InterleavedSchedule(PipelineSchedule):
         # Run 1F1B in steady state.
         for i in range(num_microbatch_remaining):
             fwd_batch_id = i + num_warmup_microbatch
-            # Wait for input
-            _wait_p2p(fwd_wait_handles)
-
             last_batch = i == num_microbatch_remaining - 1
-
             model_chunk_id = self.get_model_chunk_id(fwd_batch_id, is_forward=True)
+
+            # Wait for input.
+            _wait_p2p(fwd_wait_handles)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
             # Add input_obj and output_obj to end of list.
             input_objs[model_chunk_id].append(input_obj)
@@ -478,10 +496,7 @@ class InterleavedSchedule(PipelineSchedule):
             _input_obj = input_objs[model_chunk_id].pop(0)
             _output_obj = output_objs[model_chunk_id].pop(0)
 
-            # Wait for upstream grad
-            _wait_p2p(bwd_wait_handles)
-            input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
-
+            # Helper functions
             def send_forward_recv_forward():
                 if last_batch:
                     model_chunk_id = self.get_model_chunk_id(fwd_batch_id, is_forward=True)
@@ -513,6 +528,14 @@ class InterleavedSchedule(PipelineSchedule):
                     return output_obj_grad, wait_handles
 
             input_obj, fwd_wait_handles = send_forward_recv_forward()
+            # Wait for upstream grad
+            _wait_p2p(bwd_wait_handles)
+            input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
+            # NOTE: It's documented by NCCL that running two concurrent communicators (batch_isend_irecv)
+            # risks deadlock (https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2134/user-guide/docs/usage/communicators.html)
+            # however in practice this works fine, and Megatron does this too
+            # (https://github.com/microsoft/Megatron-DeepSpeed/blob/bcedecd1ff788d4d363f3365fd396053a08d65be/megatron/core/pipeline_parallel/schedules.py#L774)
+            # if deadlock, call _wait_p2p(fwd_wait_handles) here
             output_obj_grad, bwd_wait_handles = send_backward_recv_backward()
 
         if num_microbatch_remaining == 0:
@@ -525,9 +548,9 @@ class InterleavedSchedule(PipelineSchedule):
             model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
             _input_obj = input_objs[model_chunk_id].pop(0)
             _output_obj = output_objs[model_chunk_id].pop(0)
+
             # Wait for upstream grad
             _wait_p2p(bwd_wait_handles)
-
             # backward local grads
             input_obj_grad = self.backward_step(optimizer, _input_obj, _output_obj, output_obj_grad)
             if not last_batch:
@@ -540,7 +563,7 @@ class InterleavedSchedule(PipelineSchedule):
                 assert (not self.overlap_p2p) or len(bwd_wait_handles) > 0
             else:
                 model_chunk_id = self.get_model_chunk_id(i, is_forward=False)
-                bwd_wait_handles = self.send_backward(model_chunk_id, input_obj_grad)
+                _ = self.send_backward(model_chunk_id, input_obj_grad)
 
         assert all(len(v) == 0 for v in input_objs) and all(len(v) == 0 for v in output_objs)
 
