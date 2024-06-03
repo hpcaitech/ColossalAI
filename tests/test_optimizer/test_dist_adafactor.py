@@ -28,7 +28,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_dist_param
+from tests.test_optimizer._utils import check_dist_optim_state, check_dist_param, check_optim_states
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     build_model_from_low_level_zero_plugin,
@@ -428,8 +428,7 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
                 atol, rtol = 5e-4, 5e-4
 
             check_dist_param(org_model, sharded_model, weight_layer_for_check, atol, rtol)
-            # TODO: this currently causes shape mismatch
-            # check_optim_states(org_optimizer, sharded_optimizer.optim)
+            check_optim_states(org_optimizer, sharded_optimizer.optim)
 
     Randomizer.reset_index()
     torch.cuda.empty_cache()
@@ -516,7 +515,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
             if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
                 check_weight(bert, sharded_bert, weight_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1)
                 # check optim states
-                # check_dist_optim_state(org_optimizer, sharded_optimizer.optim)
+                check_dist_optim_state(org_optimizer, sharded_optimizer.optim)
 
     clear_layout_converter()
     Randomizer.reset_index()
