@@ -1,0 +1,6 @@
+colossalai >= 0.1.12
+torch >= 1.8.1
+numpy>=1.24.1
+tqdm>=4.61.2
+transformers>=4.20.0
+datasets

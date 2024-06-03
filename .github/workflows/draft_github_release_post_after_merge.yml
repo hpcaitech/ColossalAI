@@ -1,0 +1,43 @@
+name: Draft GitHub Release Post
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'version.txt'
+    types:
+      - closed
+
+jobs:
+  release:
+    name: Draft Release Post
+    if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.14'
+      - name: generate draft
+        id: generate_draft
+        run: |
+          version=v$(cat version.txt)
+          pip install requests
+          python ./.github/workflows/scripts/generate_release_draft.py --out $PWD/release_draft.md --version $version
+          echo "::set-output name=version::$version"
+          echo "::set-output name=path::$PWD/release_draft.md"
+        env:
+          GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.generate_draft.outputs.version }}
+          release_name: Version ${{ steps.generate_draft.outputs.version }} Release Today!
+          body_path: ${{ steps.generate_draft.outputs.path }}
+          draft: True
+          prerelease: false

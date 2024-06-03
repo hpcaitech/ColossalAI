@@ -1,0 +1,89 @@
+name: Compatibility Test on PR
+
+on:
+  pull_request:
+    paths:
+      - "version.txt"
+      - ".compatibility"
+
+jobs:
+  matrix_preparation:
+    name: Prepare Container List
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-prepare-matrix
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v3
+      - id: set-matrix
+        run: |
+          IFS=','
+          DOCKER_IMAGE=()
+
+          while read tag; do
+            DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tag}\"")
+          done <.compatibility
+
+          container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
+          container="[${container}]"
+          echo "$container"
+          echo "::set-output name=matrix::{\"container\":$(echo "$container")}"
+
+  build:
+    name: Test for PyTorch Compatibility
+    needs: matrix_preparation
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, 8-gpu]
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
+    container:
+      image: ${{ matrix.container }}
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+    timeout-minutes: 200
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test-${{ matrix.container }}
+      cancel-in-progress: true
+    steps:
+      - name: Install dependencies
+        run: |
+          pip install -U pip setuptools==68.2.2 wheel --user
+      - uses: actions/checkout@v2
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+      - name: Install tensornvme
+        run: |
+          cd TensorNVMe
+          apt update && apt install -y cmake
+          pip install -r requirements.txt
+          DISABLE_URING=1 pip install -v .
+      - uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+      - name: Download cub for CUDA 10.2
+        run: |
+          CUDA_VERSION=$(nvcc -V | awk -F ',| ' '/release/{print $6}')
+
+          # check if it is CUDA 10.2
+          # download cub
+          if [ "$CUDA_VERSION" = "10.2" ]; then
+            wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
+            unzip 1.8.0.zip
+            cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
+          fi
+
+      - name: Install Colossal-AI
+        run: |
+          BUILD_EXT=1 pip install -v .
+          pip install -r requirements/requirements-test.txt
+      - name: Unit Testing
+        run: |
+          PYTHONPATH=$PWD pytest --durations=0 tests
+        env:
+          DATA: /data/scratch/cifar-10
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+          LLAMA_PATH: /data/scratch/llama-tiny

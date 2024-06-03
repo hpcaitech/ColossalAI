@@ -1,0 +1,85 @@
+name: Build on Schedule
+
+on:
+  schedule:
+    # run at 00:00 of every Sunday
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Test Colossal-AI
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+    timeout-minutes: 90
+    steps:
+      - name: Check GPU Availability # ensure all GPUs have enough memory
+        id: check-avai
+        run: |
+          avai=true
+          ngpu=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+          endIndex=$(($ngpu-1))
+          for i in $(seq 0 $endIndex);
+          do
+            gpu_used=$(nvidia-smi -i $i --query-gpu=memory.used --format=csv,noheader,nounits)
+            [ "$gpu_used" -gt "2000" ] && avai=false
+          done
+
+          echo "GPU is available: $avai"
+          echo "avai=$avai" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v2
+        if: steps.check-avai.outputs.avai == 'true'
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+
+      - name: Install tensornvme
+        if: steps.check-avai.outputs.avai == 'true'
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          DISABLE_URING=1 pip install -v .
+
+      - uses: actions/checkout@v2
+        if: steps.check-avai.outputs.avai == 'true'
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+
+      - name: Install Colossal-AI
+        if: steps.check-avai.outputs.avai == 'true'
+        run: |
+          [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ] && cp -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          BUILD_EXT=1 pip install -v -e .
+          cp -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+          pip install -r requirements/requirements-test.txt
+
+      - name: Unit Testing
+        if: steps.check-avai.outputs.avai == 'true'
+        run: |
+          PYTHONPATH=$PWD pytest \
+          -m "not largedist" \
+          --durations=0 \
+          tests/
+        env:
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+          LLAMA_PATH: /data/scratch/llama-tiny
+
+      - name: Notify Lark
+        id: message-preparation
+        if: ${{ failure() }}
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+          msg="Scheduled Build and Test failed, please visit $url for details"
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}

@@ -1,0 +1,21 @@
+diffusers
+pytest
+coverage==7.2.3
+git+https://github.com/hpcaitech/pytest-testmon
+torchvision
+timm
+titans
+torchaudio>=0.13.1
+torchx-nightly==2022.6.29 # torchrec 0.2.0 requires torchx-nightly. This package is updated every day. We fix the version to a specific date to avoid breaking changes.
+torchrec==0.2.0
+contexttimer
+einops
+triton==2.1.0
+requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
+SentencePiece
+ninja
+flash_attn
+datasets
+pydantic
+ray
+peft>=0.7.1

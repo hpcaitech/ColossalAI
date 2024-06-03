@@ -1,0 +1,35 @@
+name: 🚀 Feature request
+description: Suggest an idea for this project
+title: "[FEATURE]: "
+labels: [enhancement]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Not suitable for your needs? [Open a blank issue](https://github.com/hpcaitech/ColossalAI/issues/new).
+- type: textarea
+  attributes:
+    label: Describe the feature
+    description: |
+      **Is your feature request related to a problem? Please describe.**
+      A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+      **Describe the solution you'd like**
+      A clear and concise description of what you want to happen.
+      **Describe alternatives you've considered**
+      A clear and concise description of any alternative solutions or features you've considered.
+      **Screenshots**
+      If applicable, add screenshots to help explain your problem.
+      **Suggest a potential alternative/fix**
+      Tell us how we could improve this project.
+      **Optional: Affiliation**
+      Institution/email information helps better analyze and evaluate users to improve the project. Welcome to establish in-depth cooperation.
+    placeholder: |
+      A clear and concise description of your idea.
+  validations:
+    required: true
+
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉!

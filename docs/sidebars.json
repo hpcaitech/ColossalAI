@@ -1,0 +1,75 @@
+{
+  "tutorialSidebar": [
+    {
+      "type": "category",
+      "label": "Get started",
+      "collapsed": true,
+      "items": [
+        "get_started/installation",
+        "get_started/run_demo",
+        "get_started/reading_roadmap"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Concepts",
+      "collapsed": true,
+      "items": [
+        "concepts/distributed_training",
+        "concepts/paradigms_of_parallelism",
+        "concepts/colossalai_overview"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Basics",
+      "collapsed": true,
+      "items": [
+        "basics/command_line_tool",
+        "basics/launch_colossalai",
+        "basics/booster_api",
+        "basics/booster_plugins",
+        "basics/booster_checkpoint"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Features",
+      "collapsed": true,
+      "items": [
+        "features/shardformer",
+        "features/mixed_precision_training_with_booster",
+        "features/gradient_accumulation_with_booster",
+        "features/gradient_clipping_with_booster",
+        "features/zero_with_chunk",
+        {
+          "type": "category",
+          "label": "Tensor Parallel",
+          "collapsed": true,
+          "items": [
+            "features/1D_tensor_parallel",
+            "features/2D_tensor_parallel",
+            "features/2p5D_tensor_parallel",
+            "features/3D_tensor_parallel"
+          ]
+        },
+        "features/pipeline_parallel",
+        "features/nvme_offload",
+        "features/lazy_init",
+        "features/cluster_utils"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Advanced Tutorials",
+      "collapsed": true,
+      "items": [
+        "advanced_tutorials/train_vit_with_hybrid_parallelism",
+        "advanced_tutorials/train_gpt_using_hybrid_parallelism",
+        "advanced_tutorials/meet_gemini",
+        "advanced_tutorials/integrate_mixture_of_experts_into_your_model",
+        "advanced_tutorials/opt_service"
+      ]
+    }
+  ]
+}

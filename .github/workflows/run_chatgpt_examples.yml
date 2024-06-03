@@ -1,0 +1,62 @@
+name: Run ChatGPT examples
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened]
+    paths:
+      - "applications/Chat/coati/**"
+      - "applications/Chat/requirements.txt"
+      - "applications/Chat/setup.py"
+      - "applications/Chat/examples/**"
+
+jobs:
+  tests:
+    name: Run ChatGPT examples
+    if: |
+      github.event.pull_request.draft == false &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/scratch/examples-data --shm-size=10.24gb
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v2
+
+      - name: Install Colossal-AI
+        run: |
+          BUILD_EXT=1 pip install -v -e .
+
+      - name: Install ChatGPT
+        run: |
+          cd applications/ColossalChat
+          pip install -v .
+          export BUILD_EXT=1
+          pip install -r examples/requirements.txt
+
+      - name: Install Transformers
+        run: |
+          pip install transformers==4.34.1
+
+      - name: Execute Examples
+        run: |
+          cd applications/ColossalChat
+          rm -rf ~/.cache/colossalai
+          mkdir models
+          mkdir sft_data
+          mkdir prompt_data
+          mkdir preference_data
+          ./tests/test_data_preparation.sh
+          ./tests/test_train.sh
+        env:
+          NCCL_SHM_DISABLE: 1
+          MAX_JOBS: 8
+          PRETRAINED_MODEL_PATH: ./models
+          SFT_DATASET: ./sft_data
+          PROMPT_DATASET: ./prompt_data
+          PREFERENCE_DATASET: ./preference_data

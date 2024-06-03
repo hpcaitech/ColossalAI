@@ -1,0 +1,7 @@
+torch==1.12.1
+colossalai
+titans
+pulp
+datasets
+matplotlib
+transformers==4.22.1

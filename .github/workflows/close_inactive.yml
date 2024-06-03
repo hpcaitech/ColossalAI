@@ -1,0 +1,26 @@
+name: Close inactive issues
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  close-issues:
+    if: github.event.pull_request.draft == false && github.base_ref == 'main' && github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@v3
+        with:
+          days-before-issue-stale: 14
+          days-before-issue-close: -1
+          stale-issue-label: "stale"
+          stale-issue-message: "This issue is stale because it has been open for 14 days with no activity."
+#           close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
+          days-before-pr-stale: 14
+          days-before-pr-close: -1
+          stale-pr-message: "This PR is stale because it has been open for 14 days with no activity."
+#           close-pr-message: "This PR was closed because it has been inactive for 14 days since being marked as stale."
+          repo-token: ${{ secrets.GITHUB_TOKEN }}

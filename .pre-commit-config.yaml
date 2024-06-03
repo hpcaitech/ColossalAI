@@ -1,0 +1,39 @@
+repos:
+
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.2.1
+    hooks:
+      - id: autoflake
+        name: autoflake (python)
+        args: ['--in-place', '--remove-unused-variables', '--remove-all-unused-imports', '--ignore-init-module-imports']
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: sort all imports (python)
+
+  - repo: https://github.com/psf/black-pre-commit-mirror
+    rev: 23.9.1
+    hooks:
+    - id: black
+      name: black formatter
+      args: ['--line-length=120', '--target-version=py37', '--target-version=py38', '--target-version=py39','--target-version=py310']
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v13.0.1
+    hooks:
+    - id: clang-format
+      name: clang formatter
+      types_or: [c++, c]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.3.0
+    hooks:
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: ['--fix=lf']

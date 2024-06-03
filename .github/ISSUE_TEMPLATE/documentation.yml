@@ -1,0 +1,29 @@
+name: 📚 Documentation
+description: Report an issue related to https://www.colossalai.org/
+title: "[DOC]: "
+labels: [documentation]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Not suitable for your needs? [Open a blank issue](https://github.com/hpcaitech/ColossalAI/issues/new).
+- type: textarea
+  attributes:
+    label: 📚 The doc issue
+    description: |
+      **Description** What content in [Documentation](https://www.colossalai.org/) is an issue?
+      **Location** Where is the issue location?
+      **Expectation** What is your expected content about it?
+      **Screenshots** If applicable, add screenshots to help explain your problem.
+      **Suggestions** Tell us how we could improve the documentation.
+      **Optional: Affiliation** Institution/email information helps better analyze and evaluate users to improve the project. Welcome to establish in-depth cooperation.
+    placeholder: |
+      A clear and concise description of the issue.
+  validations:
+    required: true
+
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉!

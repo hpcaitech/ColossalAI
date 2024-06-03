@@ -1,0 +1,5 @@
+colossalai >= 0.3.3
+torch >= 1.8.1
+transformers == 4.36.0
+sentencepiece
+datasets

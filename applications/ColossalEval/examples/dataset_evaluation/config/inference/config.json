@@ -1,0 +1,84 @@
+{
+  "model": [
+    {
+      "name": "model name",
+      "model_class": "HuggingFaceCausalLM",
+      "parameters": {
+        "path": "path to model",
+        "model_max_length": 4096,
+        "tokenizer_path": "",
+        "tokenizer_kwargs": {
+          "trust_remote_code": true
+        },
+        "peft_path": null,
+        "model_kwargs": {
+          "torch_dtype": "torch.float32",
+          "trust_remote_code": true
+        },
+        "prompt_template": "plain",
+        "batch_size": 4
+      }
+    },
+    {
+      "name": "model2 name",
+      "model_class": "HuggingFaceCausalLM",
+      "parameters": {
+        "path": "path to model2",
+        "model_max_length": 4096,
+        "tokenizer_path": "",
+        "tokenizer_kwargs": {
+          "trust_remote_code": true
+        },
+        "peft_path": null,
+        "model_kwargs": {
+          "torch_dtype": "torch.float32",
+          "trust_remote_code": true
+        },
+        "prompt_template": "plain",
+        "batch_size": 4
+      }
+    }
+  ],
+  "dataset": [
+    {
+      "name": "agieval",
+      "dataset_class": "AGIEvalDataset",
+      "debug": false,
+      "few_shot": false,
+      "path": "path to original dataset (folder)",
+      "save_path": "path to save converted dataset (e.g. inference_data/agieval.json)"
+    },
+    {
+      "name": "ceval",
+      "dataset_class": "CEvalDataset",
+      "debug": false,
+      "few_shot": true,
+      "path": "path to original dataset (folder)",
+      "save_path": "path to save converted dataset (e.g. inference_data/ceval.json)"
+    },
+    {
+      "name": "cmmlu",
+      "dataset_class": "CMMLUDataset",
+      "debug": false,
+      "few_shot": true,
+      "path": "path to original dataset (folder)",
+      "save_path": "path to save converted dataset (e.g. inference_data/cmmlu.json)"
+    },
+    {
+      "name": "gaokaobench",
+      "dataset_class": "GaoKaoBenchDataset",
+      "debug": false,
+      "few_shot": false,
+      "path": "path to original dataset (folder)",
+      "save_path": "path to save converted dataset (e.g. inference_data/gaokaobench.json)"
+    },
+    {
+      "name": "mmlu",
+      "dataset_class": "MMLUDataset",
+      "debug": false,
+      "few_shot": true,
+      "path": "path to original dataset (folder)",
+      "save_path": "path to save converted dataset (e.g. inference_data/mmlu.json)"
+    }
+  ]
+}

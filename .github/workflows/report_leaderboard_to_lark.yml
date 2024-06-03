@@ -1,0 +1,29 @@
+name: Generate Community Report and Send to Lark
+
+on:
+  workflow_dispatch:
+  schedule:
+    # release on every Friday 09:00 UTC time, 17:00 Beijing/Singapore time
+    - cron:  '0 9 * * 5'
+
+jobs:
+  generate-and-publish:
+    if: github.repository == 'hpcaitech/ColossalAI'
+    name: Generate leaderboard report and publish to Lark
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8.14'
+
+    - run: pip install requests matplotlib seaborn requests_toolbelt pytz
+
+    - run: python .github/workflows/scripts/generate_leaderboard_and_send_to_lark.py
+      env:
+        LARK_APP_ID: ${{ secrets.LARK_LEADERBOARD_APP_ID }}
+        LARK_APP_SECRET: ${{ secrets.LARK_LEADERBOARD_APP_SECRET }}
+        LARK_WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+        GITHUB_TOKEN: ${{ github.token }}

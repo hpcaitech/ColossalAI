@@ -1,0 +1,54 @@
+name: Publish to Test-PyPI Before Merge
+
+on:
+  pull_request:
+    paths:
+      - 'version.txt'
+
+jobs:
+  build-n-publish:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
+    name: Build and publish Python 🐍 distributions 📦 to Test PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8.14'
+
+    - name: add timestamp to the version
+      id: prep-version
+      run: |
+        version=$(cat version.txt)
+        timestamp=$(date +%s)
+        new_version="${version}.post${timestamp}"
+        echo $new_version > ./version.txt
+        echo "version=$new_version" >> $GITHUB_OUTPUT
+
+    - run: |
+        pip install --upgrade pip
+        python setup.py sdist build
+
+    # publish to PyPI if executed on the main branch
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        repository_url: https://test.pypi.org/legacy/
+        verbose: true
+
+    - name: Wait for Test-PyPI refresh
+      run: sleep 300s
+      shell: bash
+
+    - name: Try installation
+      run: |
+        # we need to install the requirements.txt first
+        # as test-pypi may not contain the distributions for libs listed in the txt file
+        pip install -r requirements/requirements.txt
+        pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.python.org/pypi colossalai==$VERSION
+      env:
+        VERSION: ${{ steps.prep-version.outputs.version }}

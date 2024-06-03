@@ -1,0 +1,26 @@
+{
+  "sidebar.tutorialSidebar.category.Get started": {
+    "message": "Get started",
+    "description": "The label for category Get started in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Concepts": {
+    "message": "Concepts",
+    "description": "The label for category Concepts in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Basics": {
+    "message": "Basics",
+    "description": "The label for category Basics in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Features": {
+    "message": "Features",
+    "description": "The label for category Features in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Tensor Parallel": {
+    "message": "Tensor Parallel",
+    "description": "The label for category Tensor Parallel in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Advanced Tutorials": {
+    "message": "Advanced Tutorials",
+    "description": "The label for category Advanced Tutorials in sidebar tutorialSidebar"
+  }
+}

@@ -1,0 +1,45 @@
+name: 🐛 Bug Report
+description: Create a report to help us reproduce and fix the bug
+title: "[BUG]: "
+labels: [bug]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Not suitable for your needs? [Open a blank issue](https://github.com/hpcaitech/ColossalAI/issues/new).
+- type: checkboxes
+  attributes:
+    label: Is there an existing issue for this bug?
+    description: Please search [here](https://github.com/hpcaitech/ColossalAI/issues) to see if an open or closed issue already exists for the bug you have encountered.
+    options:
+    - label: I have searched the existing issues
+      required: true
+- type: textarea
+  attributes:
+    label: 🐛 Describe the bug
+    description: |
+      **Describe the bug**
+      A clear and concise description of what the bug is.
+      **To Reproduce**
+      Steps or code snippet to reproduce the behavior.
+      **Expected behavior**
+      A clear and concise description of what you expected to happen.
+      **Screenshots**
+      If applicable, add screenshots to help explain your problem.
+      **Optional: Affiliation**
+      Institution/email information helps better analyze and evaluate users to improve the project. Welcome to establish in-depth cooperation.
+    placeholder: |
+      A clear and concise description of what the bug is.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Environment
+    description: |
+      Please provide the environment information, eg. CUDA/cuDNN/NCCL/Python/PyTorch version.
+
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉!

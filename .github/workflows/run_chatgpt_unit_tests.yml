@@ -1,0 +1,48 @@
+name: Run ChatGPT unit tests
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened]
+    paths:
+      - 'applications/Chat/coati/**'
+      - 'applications/Chat/requirements.txt'
+      - 'applications/Chat/setup.py'
+      - 'applications/Chat/requirements-test.txt'
+      - 'applications/Chat/tests/**'
+      - 'applications/Chat/pytest.ini'
+
+jobs:
+  tests:
+    name: Run ChatGPT unit tests
+    if: |
+      github.event.pull_request.draft == false &&
+      github.base_ref == 'main' &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /data/scratch/examples-data:/data/scratch/examples-data
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout ColossalAI
+        uses: actions/checkout@v2
+
+      - name: Install ChatGPT
+        run: |
+          cd applications/ColossalChat
+          pip install -v .
+          pip install pytest
+
+      - name: Execute Unit Testing
+        run: |
+          cd applications/ColossalChat
+          rm -rf ~/.cache/colossalai
+          pytest tests/
+          cd ./tests
+          ./test_templating.sh
+        env:
+          NCCL_SHM_DISABLE: 1
+          MAX_JOBS: 8

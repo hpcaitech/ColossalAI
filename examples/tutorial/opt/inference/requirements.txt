@@ -1,0 +1,10 @@
+fastapi==0.85.1
+locust==2.11.0
+pydantic==1.10.2
+sanic==22.9.0
+sanic_ext==22.9.0
+torch>=1.10.0
+transformers==4.23.1
+uvicorn==0.19.0
+colossalai
+git+https://github.com/hpcaitech/EnergonAI@main

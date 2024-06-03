@@ -1,0 +1,204 @@
+name: Build on PR
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened, ready_for_review, closed, edited]
+    branches:
+      - "main"
+      - "develop"
+      - "feature/**"
+    paths:
+      - ".github/workflows/build_on_pr.yml" # run command & env variables change
+      - "colossalai/**" # source code change
+      - "!colossalai/**.md" # ignore doc change
+      - "op_builder/**" # cuda extension change
+      - "!op_builder/**.md" # ignore doc change
+      - "requirements/**" # requirements change
+      - "tests/**" # test change
+      - "!tests/**.md" # ignore doc change
+      - "pytest.ini" # test config change
+      - "setup.py" # install command change
+  create:
+  delete:
+
+jobs:
+  detect:
+    name: Detect file change
+    if: |
+      github.event_name == 'pull_request' &&
+      (github.event.action == 'synchronize' || github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'ready_for_review') &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    outputs:
+      changedExtenisonFiles: ${{ steps.find-extension-change.outputs.all_changed_files }}
+      anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
+      changedLibraryFiles: ${{ steps.find-lib-change.outputs.all_changed_files }}
+      anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Locate base commit
+        id: locate-base-sha
+        run: |
+          curBranch=$(git rev-parse --abbrev-ref HEAD)
+          commonCommit=$(git merge-base origin/main $curBranch)
+          echo $commonCommit
+          echo "baseSHA=$commonCommit" >> $GITHUB_OUTPUT
+
+      - name: Find the changed extension-related files
+        id: find-extension-change
+        uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+          files: |
+            op_builder/**
+            colossalai/kernel/**
+            setup.py
+
+      - name: Find the changed library-related files
+        id: find-lib-change
+        uses: tj-actions/changed-files@v35
+        with:
+          base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
+          files: |
+            **/*.py
+            **/*.h
+            **/*.cpp
+            **/*.cu
+            **/*.txt
+
+      - name: List changed files
+        run: |
+          for file in ${{ steps.find-extension-change.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+          for file in ${{ steps.find-lib-change.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+
+  build:
+    name: Build and Test Colossal-AI
+    needs: detect
+    if: needs.detect.outputs.anyLibraryFileChanged == 'true'
+    runs-on: [self-hosted, gpu]
+    container:
+      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test
+      cancel-in-progress: true
+    steps:
+      - name: Checkout TensorNVMe
+        uses: actions/checkout@v2
+        with:
+          repository: hpcaitech/TensorNVMe
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+          path: TensorNVMe
+
+      - name: Restore TensorNVMe Cache
+        run: |
+          if [ -d /github/home/tensornvme_cache ] && [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ]; then
+            cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
+          fi
+
+      - name: Install TensorNVMe
+        run: |
+          cd TensorNVMe
+          conda install cmake
+          pip install -r requirements.txt
+          DISABLE_URING=1 pip install -v .
+
+      - name: Store TensorNVMe Cache
+        run: |
+          cd TensorNVMe
+          cp -p -r ./build /github/home/tensornvme_cache/
+          cp -p -r ./cmake-build /github/home/tensornvme_cache/
+
+      - name: Checkout Colossal-AI
+        uses: actions/checkout@v2
+        with:
+          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
+
+      - name: Restore Colossal-AI Cache
+        if: needs.detect.outputs.anyExtensionFileChanged != 'true'
+        run: |
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          if [ -d /github/home/cuda_ext_cache ] && [ ! -z "$(ls -A /github/home/cuda_ext_cache/)" ]; then
+            cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
+          fi
+
+      - name: Install Colossal-AI
+        run: |
+          BUILD_EXT=1 pip install -v -e .
+          pip install -r requirements/requirements-test.txt
+
+      - name: Store Colossal-AI Cache
+        run: |
+          # -p flag is required to preserve the file timestamp to avoid ninja rebuild
+          cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
+
+      - name: Execute Unit Testing
+        run: |
+          CURL_CA_BUNDLE="" PYTHONPATH=$PWD FAST_TEST=1 pytest \
+          -m "not largedist" \
+          --durations=0 \
+          --ignore tests/test_analyzer \
+          --ignore tests/test_auto_parallel \
+          --ignore tests/test_fx \
+          --ignore tests/test_autochunk \
+          --ignore tests/test_gptq \
+          --ignore tests/test_infer_ops \
+          --ignore tests/test_legacy \
+          --ignore tests/test_smoothquant \
+          tests/
+        env:
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+          LLAMA_PATH: /data/scratch/llama-tiny
+
+      - name: Collate artifact
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          changedLibraryFiles: ${{ needs.detect.outputs.changedLibraryFiles }}
+          anyLibraryFileChanged: ${{ needs.detect.outputs.anyLibraryFileChanged }}
+          changedExtenisonFiles: ${{ needs.detect.outputs.changedExtenisonFiles }}
+        run: |
+          mkdir report
+          echo $PR_NUMBER > ./report/pr_number
+
+          # generate coverage.xml if any
+          if [ "$anyLibraryFileChanged" == "true" ] && [ -e .coverage ]; then
+            allFiles=""
+            for file in $changedLibraryFiles; do
+              if [ "$allFiles" == "" ]; then
+                allFiles=$file
+              else
+                allFiles=$allFiles,$file
+              fi
+            done
+
+            coverage report --data-file .coverage --include $allFiles > ./coverage.txt
+
+            covPercentage=$(tail -n 1 coverage.txt  | grep -o '[1-9]*%$')
+            covNum=${covPercentage::-1}
+            mv coverage.txt ./report
+            echo $covNum > ./report/cov_number
+          else
+            echo "No coverage report is generated"
+          fi
+
+      - name: Upload test coverage artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: report
+          path: report/

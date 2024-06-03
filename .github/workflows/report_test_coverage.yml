@@ -1,0 +1,81 @@
+name: Report Test Coverage
+
+on:
+  workflow_run:
+    workflows: [Build on PR]
+    types:
+      - completed
+
+jobs:
+  report-test-coverage:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: "Download artifact"
+        uses: actions/github-script@v6
+        with:
+          script: |
+            let allArtifacts = await github.rest.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: context.payload.workflow_run.id,
+            });
+            let matchArtifact = allArtifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "report"
+            })[0];
+            let download = await github.rest.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            let fs = require('fs');
+            fs.writeFileSync(`${process.env.GITHUB_WORKSPACE}/report.zip`, Buffer.from(download.data));
+
+      - name: "Unzip artifact"
+        id: unzip
+        run: |
+          unzip report.zip
+          if [ -f "coverage.txt" ]; then
+            echo "hasReport=true" >> $GITHUB_OUTPUT
+          else
+            echo "hasReport=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Make Coverage Report Collapsable
+        if: steps.unzip.outputs.hasReport == 'true'
+        run: |
+          covNum=$(cat cov_number)
+          title="The code coverage for the changed files is ${covNum}%."
+          touch coverage_report.txt
+          echo $title >> coverage_report.txt
+          echo " " >> coverage_report.txt
+          echo "<details>" >> coverage_report.txt
+          echo "<summary>Click me to view the complete report</summary>" >> coverage_report.txt
+          echo " " >> coverage_report.txt
+          echo "\`\`\`" >> coverage_report.txt
+          cat coverage.txt >> coverage_report.txt
+          echo "\`\`\`" >> coverage_report.txt
+          echo "</details>" >> coverage_report.txt
+          mv coverage_report.txt coverage.txt
+
+      - name: "Comment on PR"
+        if: steps.unzip.outputs.hasReport == 'true'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            let fs = require('fs');
+            let issue_number = Number(fs.readFileSync('./pr_number'));
+            let owner = context.repo.owner;
+            let repo = context.repo.repo;
+            let run_id = context.payload.workflow_run.id;
+            let run_url = `https://github.com/${owner}/${repo}/actions/runs/${run_id}`
+            let body = fs.readFileSync('./coverage.txt', {encoding:'utf8', flag:'r'})
+
+            await github.rest.issues.createComment({
+              owner: owner,
+              repo: repo,
+              issue_number: issue_number,
+              body: body
+            });

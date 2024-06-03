@@ -1,0 +1,202 @@
+[
+  {
+    "category": "brainstorming",
+    "instruction": "列举一些可以促进头发生长的食物。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 1
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "中年夫妻如何提升夫妻感情，请给出三个实用的的方法，并举例说明。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 2
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "请列举4种日常的环保行为。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 3
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "请给出5个可以随时随地锻炼身体的小动作。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 4
+  },
+  {
+    "category": "brainstorming",
+    "instruction": "请问如何制作一份美味的西红柿炒鸡蛋？",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 5
+  },
+  {
+    "category": "chat",
+    "instruction": "基于以下角色信息完成一段对话。小张是一名新手爱好者，对养鸡有浓厚的兴趣。老李是一名有丰富经验的养鸡大师。",
+    "input": "小张：您好，老李，我最近开始对养鸡感兴趣了，想请教您一些问题。 老李：你好，小张，我很乐意帮助你。你想问些什么？ 小张：我想知道如何确定鸡的品种和性别？ 老李：确切的品种可以通过鸡的外貌特征来确定，而性别一般是通过鸡卵的大小和形状来判断。还有什么问题吗？ 小张：",
+    "output": "",
+    "target": "",
+    "id": 6
+  },
+  {
+    "category": "chat",
+    "instruction": "基于以下角色信息完成一段对话。李华是一名参加了期末考试的学生，他已经很担心自己的考试成绩。老师Lucy正在帮助他度过这个紧张的时刻。",
+    "input": "李华：Lucy老师，我很担心自己的考试成绩，我不知道我是否能够通过这次考试。 Lucy：放松，李华，你已经做好了充分的准备。相信你自己，你会做得很好的。 李华：我很怕考试时会忘记自己所学的知识。 Lucy：你可以预留一些时间，过一遍自己所学的知识点或笔记，这样你会更有信心和准确地回答考题。 李华：如果我还是失败了，该怎么办？ Lucy：",
+    "output": "",
+    "target": "",
+    "id": 7
+  },
+  {
+    "category": "chat",
+    "instruction": "基于以下角色信息完成一段对话。张先生是一名企业家，正在考虑是否开拓海外市场；李女士是一名跨境电商专家，擅长国际商务和电子商务。",
+    "input": "张先生：你好，李女士，我正在考虑将我们的产品销售扩大至海外市场，您有什么建议吗？ 李女士：您好，张先生，我们需要考虑到海外市场对于产品的需求是否与国内市场一致，需要进行市场调研和定位。然后再进行各种软性、硬性的创新。 张先生：听起来很专业，您能具体解释一下吗？ 李女士：",
+    "output": "",
+    "target": "",
+    "id": 8
+  },
+  {
+    "category": "chat",
+    "instruction": "基于以下角色信息完成一段对话。小明是一名医生。一名病患想要提前停药。小王是病患的儿子，希望父亲能够听取医生的建议。",
+    "input": "小明：你好，小王，我了解你想要让你父亲停药。小王：是的，我父亲已经吃了那么久的药，我担心药物对他的身体会有副作用。小明：",
+    "output": "",
+    "target": "",
+    "id": 9
+  },
+  {
+    "category": "chat",
+    "instruction": "基于以下角色信息完成一段对话。张三是一位语文老师，对学生认真负责；李四是张三的学生，对语文兴趣不是很高。",
+    "input": "张三：同学们，今天要讲的是一篇古文《岳阳楼记》。这篇文章非常精彩，希望同学们能够认真听课，理解其中的含义。 李四：怎么又是古文？ 张三：",
+    "output": "",
+    "target": "",
+    "id": 10
+  },
+  {
+    "category": "generation",
+    "instruction": "根据主题写一封邮件。",
+    "input": "主题: \"加入我们，共创未来\"",
+    "output": "",
+    "target": "",
+    "id": 11
+  },
+  {
+    "category": "generation",
+    "instruction": "为公司编写一份职场行为准则，包括明确的行为规范和道德准则。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 12
+  },
+  {
+    "category": "generation",
+    "instruction": "请撰写一篇文章，介绍如何通过改善生活习惯来预防疾病和延长寿命。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 13
+  },
+  {
+    "category": "generation",
+    "instruction": "请为一家咖啡店编写一篇简短的广告语，吸引更多的顾客。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 14
+  },
+  {
+    "category": "generation",
+    "instruction": "根据以下故事提示写一篇故事：",
+    "input": "故事提示：```在一个废弃的古堡中，一个小女孩遇到了一只会说话的黑猫，他们一起揭开了一个古老的谜题。```",
+    "output": "",
+    "target": "",
+    "id": 15
+  },
+  {
+    "category": "open_qa",
+    "instruction": "请介绍一下《红楼梦》这部经典小说的故事情节。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 16
+  },
+  {
+    "category": "open_qa",
+    "instruction": "解释什么是RNA病毒和DNA病毒。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 17
+  },
+  {
+    "category": "open_qa",
+    "instruction": "什么是比特币？",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 18
+  },
+  {
+    "category": "open_qa",
+    "instruction": "在计算机中，什么是RAM？与ROM有什么区别？",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 19
+  },
+  {
+    "category": "open_qa",
+    "instruction": "请简单介绍一下世界上最长的河流途经的国家。",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 20
+  },
+  {
+    "category": "roleplay",
+    "instruction": "我要你把我写的句子翻译成表情符号。我会写句子，你会用表情符号表达它。我只是想让你用表情符号来表达它。除了表情符号，我不希望你回复任何内容。当我需要用中文告诉你一些事情时，我会用 {} 这样的大括号括起来。我的第一句话是“{我的职业是消防员。}”\n",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 21
+  },
+  {
+    "category": "roleplay",
+    "instruction": "我希望你假定自己是雅思写作考官，根据雅思评判标准，按我给你的雅思考题和对应答案给我评分，并且按照雅思写作评分细则给出打分依据。此外，请给我详细的修改意见并写出满分范文。第一个问题是：It is sometimes argued that too many students go to university, while others claim that a university education should be a universal right. Discuss both sides of the argument and give your own opinion.对于这个问题，我的答案是：In some advanced countries, it is not unusual for more than 50% of young adults to attend college or university. Critics, however, claim that many university courses are worthless and young people would be better off gaining skills in the workplace. In this essay, I will examine both sides of this argument and try to reach a conclusion.There are several reasons why young people today believe they have the right to a university education. First, growing prosperity in many parts of the world has increased the number of families with money to invest in their children’s future. At the same time, falling birthrates mean that one- or two-child families have become common, increasing the level of investment in each child. It is hardly surprising, therefore, that young people are willing to let their families support them until the age of 21 or 22. Furthermore, millions of new jobs have been created in knowledge industries, and these jobs are typically open only to university graduates.However, it often appears that graduates end up in occupations unrelated to their university studies. It is not uncommon for an English literature major to end up working in sales, or an engineering graduate to retrain as a teacher, for example. Some critics have suggested that young people are just delaying their entry into the workplace, rather than developing professional skills.请依次给到我以下内容：具体分数及其评分依据、文章修改意见、满分范文。\n",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 22
+  },
+  {
+    "category": "roleplay",
+    "instruction": "我想让你充当 Linux 终端。我将输入命令，您将回复终端应显示的内容。我希望您只在一个唯一的代码块内回复终端输出，而不是其他任何内容。不要写解释。除非我指示您这样做，否则不要键入命令。当我需要用英语告诉你一些事情时，我会把文字放在中括号内[就像这样]。我的第一个命令是 pwd\n",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 23
+  },
+  {
+    "category": "roleplay",
+    "instruction": "我希望你充当宠物行为主义者。我将为您提供一只宠物和它们的主人，您的目标是帮助主人了解为什么他们的宠物表现出某些行为，并提出帮助宠物做出相应调整的策略。您应该利用您的动物心理学知识和行为矫正技术来制定一个有效的计划，双方的主人都可以遵循，以取得积极的成果。我的第一个请求是“我有一只好斗的德国牧羊犬，它需要帮助来控制它的攻击性。”\n",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 24
+  },
+  {
+    "category": "roleplay",
+    "instruction": "我希望你充当正则表达式生成器。您的角色是生成匹配文本中特定模式的正则表达式。您应该以一种可以轻松复制并粘贴到支持正则表达式的文本编辑器或编程语言中的格式提供正则表达式。不要写正则表达式如何工作的解释或例子；只需提供正则表达式本身。我的第一个提示是生成一个匹配电子邮件地址的正则表达式。\n",
+    "input": "",
+    "output": "",
+    "target": "",
+    "id": 25
+  }
+]

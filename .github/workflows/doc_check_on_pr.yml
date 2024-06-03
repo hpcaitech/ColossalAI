@@ -1,0 +1,76 @@
+name: Check Documentation on PR
+
+on:
+  pull_request:
+    branches:
+      - "main"
+      - "develop"
+      - "feature/**"
+    paths:
+      - "docs/**"
+
+jobs:
+  check-i18n:
+    name: Check docs in diff languages
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-i18n
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.8.14"
+
+      - run: python .github/workflows/scripts/check_doc_i18n.py -d docs/source
+
+  check-doc-build:
+    name: Test if the docs can be built
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-doc
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: "./ColossalAI"
+          fetch-depth: 0
+
+      - uses: actions/checkout@v2
+        with:
+          path: "./ColossalAI-Documentation"
+          repository: "hpcaitech/ColossalAI-Documentation"
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: "3.8.14"
+
+      # we use the versions in the main branch as the guide for versions to display
+      # checkout will give your merged branch
+      # therefore, we need to make the merged branch as the main branch
+      # there is no main branch, so it's safe to checkout the main branch from the merged branch
+      # docer will rebase the remote main branch to the merged branch, so we have to config user
+      - name: Make the merged branch main
+        run: |
+          cd ColossalAI
+          git checkout -b main
+          git branch -u origin/main
+          git config user.name 'github-actions'
+          git config user.email 'github-actions@github.com'
+
+      - name: Build docs
+        run: |
+          cache_dir=ColossalAI-Documentation/doc-build/.cache
+          mkdir $cache_dir
+          mv ColossalAI $cache_dir
+          cd ColossalAI-Documentation
+          pip install -v ./doc-build/third_party/hf-doc-builder
+          pip install -v ./doc-build
+          bash ./scripts/build.sh

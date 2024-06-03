@@ -1,0 +1,16 @@
+# TS frontend parameters settings
+minWorkers: 1        # minimum number of workers of a model
+maxWorkers: 1        # maximum number of workers of a model
+batchSize: 8         # batch size of a model
+maxBatchDelay: 100   # maximum delay of a batch (ms)
+responseTimeout: 120 # timeout of a specific model's response (*in sec)
+deviceType: "gpu"
+# deviceIds: [0, 1]    # seting CUDA_VISIBLE_DEVICES
+
+handler:
+    mode: "text_generation"
+    model_type: "bloom"
+    tp_size: 1
+    max_batch_size: 8
+    max_input_len: 1024
+    max_output_len: 128

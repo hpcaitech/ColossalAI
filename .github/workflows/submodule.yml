@@ -1,0 +1,45 @@
+name: Synchronize Submodule
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  sync-submodule:
+    runs-on: ubuntu-latest
+    if: github.repository == 'hpcaitech/ColossalAI'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          ref: 'main'
+          submodules: true
+
+      - name: echo
+        run: |
+          echo ${{github}}
+
+      - name: Git Sumbodule Update
+        run: |
+          git pull --recurse-submodules
+          git submodule update --remote --recursive
+
+      - name: Commit update
+        run: |
+          git config --global user.name 'github-actions'
+          git config --global user.email 'github-actions@github.com'
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git commit -am "Automated submodule synchronization"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          title: '[Bot] Synchronize Submodule References'
+          body: |
+            Automated PR to update submodule commits
+          committer: GitHub <noreply@github.com>
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          assignees: ${{ github.actor }}
+          delete-branch: true
+          branch: create-pull-request/patch-sync-submodule

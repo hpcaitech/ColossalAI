@@ -1,0 +1,69 @@
+name: Publish Nightly Version to PyPI
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron:  '0 0 * * 6' # release on every Sunday 00:00 UTC time
+
+jobs:
+  publish:
+    if: github.repository == 'hpcaitech/ColossalAI'
+    name: Build and publish Python 🐍 distributions 📦 to PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      status: ${{ steps.publish.outcome }}
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8.14'
+
+    - run: |
+        python .github/workflows/scripts/update_setup_for_nightly.py
+        python setup.py sdist build
+
+    # publish to PyPI if executed on the main branch
+    - name: Publish package to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      id: publish
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true
+
+  notify:
+    name: Notify Lark via webhook
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ always() }} && github.repository == 'hpcaitech/ColossalAI'
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.14'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Notify Lark
+        id: message-preparation
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+
+          if [ $STATUS == 'success' ]
+          then
+            msg="The Colossal-AI nightly version has been successfully released to PyPI."
+          else
+            msg="Failed to release Colossal-AI nightly version to PyPI, please visit $url for details."
+          fi
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          STATUS: ${{ needs.publish.outputs.status }}

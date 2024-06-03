@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ❓ Simple question - Slack Chat
+    url: https://github.com/hpcaitech/public_assets/tree/main/colossalai/contact/slack
+    about: This issue tracker is not for technical support. Please use our Slack chat, and ask the community for help.
+  - name: ❓ Simple question - WeChat
+    url: https://github.com/hpcaitech/ColossalAI/blob/main/docs/images/WeChat.png
+    about: This issue tracker is not for technical support. Please use WeChat, and ask the community for help.
+  - name: 😊 Advanced question - GitHub Discussions
+    url: https://github.com/hpcaitech/ColossalAI/discussions
+    about: Use GitHub Discussions for advanced and unanswered technical questions, requiring a maintainer's answer.

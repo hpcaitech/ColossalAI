@@ -1,0 +1,68 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'version.txt'
+    types:
+      - closed
+
+jobs:
+  build-n-publish:
+    if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main'
+    name: Build and publish Python 🐍 distributions 📦 to PyPI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8.14'
+
+    - run: python setup.py sdist build
+
+    # publish to PyPI if executed on the main branch
+    - name: Publish package to PyPI
+      id: publish
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        verbose: true
+
+  notify:
+    name: Notify Lark via webhook
+    needs: build-n-publish
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.14'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Notify Lark
+        id: message-preparation
+        run: |
+          url=$SERVER_URL/$REPO/actions/runs/$RUN_ID
+
+          if [ "$STATUS" == 'success' ]
+          then
+            msg="The Colossal-AI latest version has been successfully released to PyPI."
+          else
+            msg="Failed to release Colossal-AI to PyPI, please visit $url for details."
+          fi
+          echo $msg
+          python .github/workflows/scripts/send_message_to_lark.py -m "$msg" -u $WEBHOOK_URL
+        env:
+          SERVER_URL: ${{github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ secrets.LARK_NOTIFICATION_WEBHOOK_URL }}
+          STATUS: ${{ needs.build-n-publish.result }}

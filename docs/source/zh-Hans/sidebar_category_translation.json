@@ -1,0 +1,26 @@
+{
+  "sidebar.tutorialSidebar.category.Get started": {
+    "message": "快速开始",
+    "description": "The label for category Get started in sidebar docs"
+  },
+  "sidebar.tutorialSidebar.category.Concepts": {
+    "message": "概念",
+    "description": "The label for category Concepts in sidebar docs"
+  },
+  "sidebar.tutorialSidebar.category.Basics": {
+    "message": "基础",
+    "description": "The label for category Basics in sidebar docs"
+  },
+  "sidebar.dotutorialSidebarcs.category.Features": {
+    "message": "功能",
+    "description": "The label for category Features in sidebar docs"
+  },
+  "sidebar.dtutorialSidebarocs.category.Tensor Parallel": {
+    "message": "张量并行",
+    "description": "The label for category Tensor Parallel in sidebar docs"
+  },
+  "sidebar.tutorialSidebar.category.Advanced Tutorials": {
+    "message": "高级教程",
+    "description": "The label for category Advanced Tutorials in sidebar docs"
+  }
+}
