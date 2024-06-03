@@ -24,6 +24,7 @@
 </div>
 
 ## 新闻
+* [2024/05] [Large AI Models Inference Speed Doubled, Colossal-Inference Open Source Release](https://hpc-ai.com/blog/colossal-inference)
 * [2024/04] [Open-Sora Unveils Major Upgrade: Embracing Open Source with Single-Shot 16-Second Video Generation and 720p Resolution](https://hpc-ai.com/blog/open-soras-comprehensive-upgrade-unveiled-embracing-16-second-video-generation-and-720p-resolution-in-open-source)
 * [2024/04] [Most cost-effective solutions for inference, fine-tuning and pretraining, tailored to LLaMA3 series](https://hpc-ai.com/blog/most-cost-effective-solutions-for-inference-fine-tuning-and-pretraining-tailored-to-llama3-series)
 * [2024/03] [314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, Efficient and Easy-to-Use PyTorch+HuggingFace version is Here](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
@@ -74,11 +75,9 @@
 <li>
    <a href="#推理">推理</a>
    <ul>
+     <li><a href="#Colossal-Inference">Colossal-Inference: AI大模型推理速度翻倍</a></li>
      <li><a href="#Grok-1">Grok-1: 3140亿参数PyTorch + HuggingFace推理</a></li>
      <li><a href="#SwiftInfer">SwiftInfer:打破LLM多轮对话的长度限制，推理加速46%</a></li>
-     <li><a href="#GPT-3-Inference">GPT-3</a></li>
-     <li><a href="#OPT-Serving">1750亿参数OPT在线推理服务</a></li>
-     <li><a href="#BLOOM-Inference">1760亿参数 BLOOM</a></li>
    </ul>
  </li>
  <li>
@@ -370,6 +369,19 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 
 
 ## 推理
+### Colossal-Inference
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-1.png" width=1000/>
+</p>
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-2.png" width=1000/>
+</p>
+
+ - AI大模型推理速度部分接近翻倍，与vLLM的离线推理性能相比
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
+[[博客]](https://hpc-ai.com/blog/colossal-inference)
+
 ### Grok-1
 <p id="Grok-1" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/grok-1-inference.jpg" width=600/>
@@ -387,25 +399,6 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): 开源解决方案打破了多轮对话的 LLM 长度限制，推理性能提高了46%
-
-
-<p id="GPT-3-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
-</p>
-
-- [Energon-AI](https://github.com/hpcaitech/EnergonAI) ：用相同的硬件推理加速50%
-
-<p id="OPT-Serving" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=600/>
-</p>
-
-- [OPT推理服务](https://colossalai.org/docs/advanced_tutorials/opt_service): 体验1750亿参数OPT在线推理服务
-
-<p id="BLOOM-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
-</p>
-
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): 降低1760亿参数BLOOM模型部署推理成本超10倍
 
 <p align="right">(<a href="#top">返回顶端</a>)</p>
 

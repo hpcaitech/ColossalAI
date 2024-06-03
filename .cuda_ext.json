@@ -7,10 +7,6 @@
     {
       "torch_command": "pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118",
       "cuda_image": "hpcaitech/cuda-conda:11.8"
-    },
-    {
-      "torch_command": "pip install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1",
-      "cuda_image": "hpcaitech/cuda-conda:11.7"
     }
   ]
 }

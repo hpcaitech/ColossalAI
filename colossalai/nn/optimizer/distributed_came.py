@@ -34,9 +34,6 @@ class DistributedCAME(DistributedOptim):
         betas=(0.9, 0.999, 0.9999),
         weight_decay=0.0,
     ):
-        assert lr > 0.0
-        assert all([0.0 <= beta <= 1.0 for beta in betas])
-
         defaults = dict(
             lr=lr,
             eps=eps,

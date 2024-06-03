@@ -20,7 +20,7 @@ class QuickstartUser(HttpUser):
         self.client.post(
             "/chat",
             json={
-                "converation": [
+                "messages": [
                     {"role": "system", "content": "you are a helpful assistant"},
                     {"role": "user", "content": "what is 1+1?"},
                 ],
@@ -34,7 +34,7 @@ class QuickstartUser(HttpUser):
         self.client.post(
             "/chat",
             json={
-                "converation": [
+                "messages": [
                     {"role": "system", "content": "you are a helpful assistant"},
                     {"role": "user", "content": "what is 1+1?"},
                 ],
@@ -42,6 +42,7 @@ class QuickstartUser(HttpUser):
             },
         )
 
+    # offline-generation is only for showing the usage, it will never be used in actual serving.
     @tag("offline-generation")
     @task(5)
     def generate_streaming(self):
@@ -54,5 +55,5 @@ class QuickstartUser(HttpUser):
 
     @tag("online-generation", "offline-generation")
     @task
-    def get_models(self):
-        self.client.get("/models")
+    def health_check(self):
+        self.client.get("/ping")

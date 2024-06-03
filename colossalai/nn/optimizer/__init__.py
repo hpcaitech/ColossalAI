@@ -1,5 +1,7 @@
 from galore_torch import GaLoreAdafactor, GaLoreAdamW
 
+from colossalai.logging import get_dist_logger
+
 from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
@@ -34,3 +36,22 @@ __all__ = [
     "Adafactor",
     "DistributedAdaFactor",
 ]
+
+optim2DistOptim = {
+    GaLoreAdamW8bit: DistGaloreAwamW,
+    Lamb: DistributedLamb,
+    CAME: DistributedCAME,
+    Adafactor: DistributedAdaFactor,
+}
+_logger = get_dist_logger()
+
+
+def cast_to_distributed(optim):
+    if optim.__class__ in optim2DistOptim:
+        _logger.info(f"Converting optimizer {optim.__class__.__name__} to its distributed version.", ranks=[0])
+
+        if isinstance(optim, GaLoreAdamW8bit):
+            return optim2DistOptim[GaLoreAdamW8bit](optim.param_groups, args=optim.args)
+        return optim2DistOptim[optim.__class__](optim.param_groups)
+
+    return optim
