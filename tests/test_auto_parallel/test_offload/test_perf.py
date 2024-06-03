@@ -10,11 +10,14 @@ from colossalai.auto_parallel.offload.amp_optimizer import AMPOptimizer
 from colossalai.auto_parallel.offload.mem_optimize import memory_optimize
 from colossalai.auto_parallel.offload.solver import NOT_NVML
 from colossalai.fx.profiler import parameter_size
+from colossalai.legacy.zero.gemini.colo_init_context import ColoInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-from colossalai.zero import ColoInitContext, zero_model_wrapper, zero_optim_wrapper
+from colossalai.utils import set_seed
+from colossalai.zero import zero_model_wrapper, zero_optim_wrapper
 from tests.test_auto_parallel.test_offload.model_utils import *
-from tests.test_tensor.common_utils import set_seed
+
+# from tests.test_tensor.common_utils import set_seed
 
 
 @parameterize("model_name", ["gpt2_"])
