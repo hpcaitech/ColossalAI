@@ -134,7 +134,7 @@ class BatchBucket:
                 # We assume that the start token occupies the entire first block.
                 if sequence_lengths_list[batch_id] == start_token_size + generated_token_size + self.block_size - 1:
                     need_update = True
-                    sequence_lengths_list[batch_id] = start_token_size + generated_token_size
+                    sequence_lengths_list[batch_id] = start_token_size + generated_token_size - 1
                     block_id = block_tables_list[batch_id].pop(1)
                     updated_block_ids.append(block_id)
                     block_tables_list[batch_id].append(-1)

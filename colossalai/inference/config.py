@@ -268,6 +268,16 @@ class InferenceConfig(RPC_PARAM):
         if self.dtype == torch.float32:
             self.high_precision = False
 
+        # check streamingLLM
+        assert (
+            self.start_token_size <= self.block_size
+        ), f"According to the paper https://arxiv.org/pdf/2309.17453, the start_token_size greater than 4 has little impact on inference performance. Therefore, we assume that the start_token_size should be less or equal than the block_size={self.block_size}, but got {self.start_token_size}."
+        assert (
+            self.generated_token_size % self.block_size == 0
+        ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
+        # We assume that start_token_size occupies one block.
+        self.start_token_size = self.block_size
+
         # check prompt template
         if self.prompt_template is None:
             return
@@ -279,15 +289,6 @@ class InferenceConfig(RPC_PARAM):
             assert (
                 "{input_text}" in self.prompt_template
             ), "The prompt template should contain '{input_text}' for formatting the input text. For example: 'USER: {input_text}\n\nASSISTANT: '"
-
-        assert (
-            self.start_token_size <= self.block_size
-        ), f"According to the paper https://arxiv.org/pdf/2309.17453, the start_token_size greater than 4 has little impact on inference performance. Therefore, we assume that the start_token_size should be less or equal than the block_size={self.block_size}, but got {self.start_token_size}."
-        assert (
-            self.generated_token_size % self.block_size == 0
-        ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
-        # We assume that start_token_size occupies one block.
-        self.start_token_size = self.block_size
 
     def to_generation_config(self, model_config) -> GenerationConfig:
         meta_config = {
