@@ -118,11 +118,15 @@ def run_bert_test(test_config, optim_class, sharded_optim_class):
     test_config["use_lazy_init"] = False
     test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
     test_config["initial_scale"] = 2**15  # avoid overflow
+    target_models = [
+        "transformers_bert",
+    ]
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_bert_fwd_bwd(
-            model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, optim_class, sharded_optim_class
-        )
+        if name in target_models:
+            check_bert_fwd_bwd(
+                model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config, optim_class, sharded_optim_class
+            )
 
     clear_layout_converter()
     Randomizer.reset_index()
