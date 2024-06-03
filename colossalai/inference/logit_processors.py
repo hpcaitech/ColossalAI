@@ -157,6 +157,7 @@ def apply_forced_eos_token_id(
 
     select_indexes = []
     num_sequences = logits.shape[0]
+    # NOTE (yuehuayingxueluo): When streamingLLM is enabled, the following logic may cause errors.
     sequence_lengths = sequence_lengths[:num_sequences]
     max_lengths = max_lengths[:num_sequences]
     for i, (sequence_length, max_out_length) in enumerate(zip(sequence_lengths, max_lengths)):

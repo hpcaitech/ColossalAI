@@ -364,6 +364,213 @@ def _fwd_context_paged_attention_kernel_v2(
 
 
 # Triton 2.1.0
+# TODO(yuanheng-zhao): This is a temporary dispatch to use the new layout for kcache
+# merge `_fwd_context_paged_attention_kernel_v2` with `_fwd_context_paged_attention_kernel` later
+# as the kcache layout has been supported in the whole triton flow.
+@triton.jit
+def _prefix_fwd_context_paged_attention_kernel_v1(
+    Q,
+    K,
+    V,
+    O,
+    KCache,  # [num_blocks, num_kv_heads, head_dim // x, block_size, x]
+    VCache,  # [num_blocks, num_kv_heads, block_size, head_dim]
+    BLOCK_TABLES,  # [num_seqs, max_blocks_per_sequence]
+    batch_size,
+    stride_qt,
+    stride_qh,
+    stride_qd,
+    stride_kt,
+    stride_kh,
+    stride_kd,
+    stride_vt,
+    stride_vh,
+    stride_vd,
+    stride_ot,
+    stride_oh,
+    stride_od,
+    stride_kcb,  # k cache stride(0) - num_blocks
+    stride_kch,  # k cache stride(1) - num_kv_heads
+    stride_kcsplit_x,  # k cache stride(2) - head_dim // x
+    stride_kcs,  # k cache stride(3) - block_szie
+    stride_kcd,  # k cache stride(4) - x
+    stride_vcb,  # v cache stride(0) - num_blocks
+    stride_vch,  # v cache stride(1) - num_kv_heads
+    stride_vcbs,  # v cache stride(2) - block_size
+    stride_vcd,  # v cache stride(3) - head_dim
+    stride_bts,
+    stride_btb,
+    context_lengths,
+    current_prompt_lengths,
+    sm_scale,
+    KV_GROUPS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
+    KCACHE_X: tl.constexpr,  # k stride on the second last dimension
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    cur_seq_idx = tl.program_id(0)
+    if cur_seq_idx >= batch_size:
+        return
+    cur_head_idx = tl.program_id(1)
+    block_start_m = tl.program_id(2)  # Br, max_input_len // Block_M
+    cur_kv_head_idx = cur_head_idx // KV_GROUPS
+
+    # NOTE It requires BLOCK_M, BLOCK_N, and BLOCK_SIZE to be the same
+    tl.static_assert(BLOCK_M == BLOCK_N)
+    tl.static_assert(BLOCK_N == BLOCK_SIZE)
+
+    # get the context sequence length from provided context lengths tensor
+    context_seq_len = tl.load(context_lengths + cur_seq_idx)
+    # get the current prompt length from provided context lengths tensor
+    current_prompt_len = tl.load(current_prompt_lengths + cur_seq_idx)
+
+    if block_start_m * BLOCK_M >= context_seq_len:
+        return
+
+    # NOTE when talking to fused QKV and a nopadding context attention,
+    # we assume that the input Q/K/V is contiguous, and thus here `prev_seq_len_sum`
+    # could be considered as the start index of the context sequence.
+    # FIXME might want to explore better way to get the summation of prev seq lengths.
+    # `tl.sum(tensor[:end])` is invalid as tensor slice is not supported in triton.
+    prev_seq_len_sum = 0
+    for i in range(0, cur_seq_idx):
+        prev_seq_len_sum += tl.load(current_prompt_lengths + i)
+
+    offset_q = prev_seq_len_sum * stride_qt + cur_head_idx * stride_qh
+    offset_kv = prev_seq_len_sum * stride_kt + cur_kv_head_idx * stride_kh
+
+    computed_blocks = (context_seq_len - current_prompt_len) // BLOCK_SIZE
+    computed_slots = (context_seq_len - current_prompt_len) % BLOCK_SIZE
+
+    # block table for the context sequence
+    block_table_ptr = BLOCK_TABLES + cur_seq_idx * stride_bts
+    # block indexes on block table (i.e. 0, 1, 2, ..., max_blocks_per_seq)
+    # Consider `block_start_m` as the logical block idx in the context block table,
+    # as we have BLOCK_M the same size as the block size.
+    cur_block_idx = block_start_m
+    cur_block_id = tl.load(block_table_ptr + cur_block_idx * stride_btb)
+    offsets_dmodel = tl.arange(0, HEAD_DIM)
+    block_range = tl.arange(0, BLOCK_SIZE)
+
+    if block_start_m >= computed_blocks:
+        offset_kvcache = cur_block_id * stride_vcb + cur_kv_head_idx * stride_vch
+
+        offsets_m = block_start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offsets_n = tl.arange(0, BLOCK_N)
+
+        if cur_head_idx % KV_GROUPS == 0:
+            # Copy k to corresponding cache block
+            if block_start_m == computed_blocks:
+                block_range = tl.arange(computed_slots, BLOCK_SIZE)
+
+            X_range = tl.arange(0, KCACHE_X)
+            # unroll the loop aggressively
+            for split_x_group_id in tl.static_range(HEAD_DIM // KCACHE_X):
+                offsets_dmodel_x_partition = tl.arange(split_x_group_id * KCACHE_X, (split_x_group_id + 1) * KCACHE_X)
+                offsets_k = (
+                    K + offset_kv + offsets_dmodel_x_partition[None, :] * stride_kd + offsets_m[:, None] * stride_kt
+                )
+                k = tl.load(offsets_k, mask=offsets_m[:, None] < current_prompt_len, other=0.0)
+                # HACK: KCache must be contiguous in order to apply the following offsets calculation
+                offsets_kcache = (
+                    KCache
+                    + offset_kvcache
+                    + split_x_group_id * BLOCK_SIZE * KCACHE_X
+                    + block_range[:, None] * KCACHE_X
+                    + X_range[None, :]
+                )
+                tl.store(offsets_kcache, k, mask=block_range[:, None] < current_prompt_len - block_start_m * BLOCK_SIZE)
+            # Copy v to corresponding cache block
+            offsets_dmodel = tl.arange(0, HEAD_DIM)  # offsets_dmodel
+            offsets_vt = block_start_m * BLOCK_N + offsets_n
+            offsets_v = V + offset_kv + offsets_vt[None, :] * stride_vt + offsets_dmodel[:, None] * stride_vd
+            v = tl.load(offsets_v, mask=offsets_vt[None, :] < current_prompt_len, other=0.0)
+            offsets_vcache = (
+                VCache + offset_kvcache + block_range[None, :] * stride_vcbs + offsets_dmodel[:, None] * stride_vcd
+            )
+            tl.store(offsets_vcache, v, mask=block_range[None, :] < current_prompt_len - block_start_m * BLOCK_SIZE)
+
+    prev_seq_len_sum = 0
+    for i in range(0, cur_seq_idx):
+        prev_seq_len_sum += tl.load(context_lengths + i)
+
+    offset_kv_cache = cur_block_id * stride_kcb + cur_kv_head_idx * stride_kch
+
+    Q_block_ptr = tl.make_block_ptr(
+        base=Q + offset_q,
+        shape=(current_prompt_len, HEAD_DIM),
+        strides=(stride_qt, stride_qd),
+        offsets=(block_start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, HEAD_DIM),
+        order=(1, 0),
+    )
+
+    K_block_ptr = tl.make_block_ptr(
+        base=KCache + offset_kv_cache,
+        shape=(HEAD_DIM, current_prompt_len),
+        strides=(stride_kd, stride_kt),
+        offsets=(0, 0),
+        block_shape=(HEAD_DIM, BLOCK_N),
+        order=(0, 1),
+    )
+    V_block_ptr = tl.make_block_ptr(
+        base=VCache + offset_kv_cache,
+        shape=(current_prompt_len, HEAD_DIM),
+        strides=(stride_vt, stride_vd),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, HEAD_DIM),
+        order=(1, 0),
+    )
+    O_block_ptr = tl.make_block_ptr(
+        base=O + offset_q,
+        shape=(current_prompt_len, HEAD_DIM),
+        strides=(stride_ot, stride_od),
+        offsets=(block_start_m * BLOCK_M, 0),
+        block_shape=(BLOCK_M, HEAD_DIM),
+        order=(1, 0),
+    )
+
+    m_i = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+
+    Q_i = tl.load(Q_block_ptr, boundary_check=(1, 0))
+
+    for block_start_n in range(0, (block_start_m + 1) * BLOCK_M, BLOCK_N):
+        block_start_n = tl.multiple_of(block_start_n, BLOCK_N)
+
+        k = tl.load(K_block_ptr, boundary_check=(0, 1))
+        S_ij = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        S_ij += tl.dot(Q_i, k)
+        S_ij *= sm_scale
+        S_ij += tl.where(offsets_m[:, None] >= (block_start_n + offsets_n[None, :]), 0, float("-inf"))
+
+        m_ij = tl.max(S_ij, 1)  # rowmax(Sij)
+        m_ij = tl.maximum(m_i, m_ij)  # m_ij
+        S_ij -= m_ij[:, None]
+        p_ij_hat = tl.exp(S_ij)
+        scale = tl.exp(m_i - m_ij)
+        l_ij = scale * l_i + tl.sum(p_ij_hat, 1)
+        acc = acc * scale[:, None]
+
+        v = tl.load(V_block_ptr, boundary_check=(1, 0))
+        p_ij_hat = p_ij_hat.to(v.type.element_ty)
+
+        acc += tl.dot(p_ij_hat, v)
+        l_i = l_ij
+        m_i = m_ij
+        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
+
+    acc = acc / l_i[:, None]
+    tl.store(O_block_ptr, acc.to(O.type.element_ty), boundary_check=(1, 0))
+
+    return
+
+
+# Triton 2.1.0
 @triton.jit
 def _alibi_fwd_context_paged_attention_kernel(
     Q,
@@ -553,11 +760,12 @@ def context_attention_unpadded(
     q: torch.Tensor,  # [num_tokens, num_heads, head_dim]
     k: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
     v: torch.Tensor,  # [num_tokens, num_kv_heads, head_dim]
-    k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, block_size, head_dim]
+    k_cache: torch.Tensor,  # [num_blocks, num_kv_heads, head_dim // x, block_size, x]
     v_cache: torch.Tensor,  # [num_blocks, num_kv_heads, block_size, head_dim]
     context_lengths: torch.Tensor,  # [num_seqs]
-    block_tables: torch.Tensor,  # [num_seqs, max_blocks_per_sequence],
-    block_size: int,
+    current_prompt_lengths: torch.Tensor = None,  # [num_seqs]
+    block_tables: torch.Tensor = None,  # [num_seqs, max_blocks_per_sequence],
+    block_size: int = 16,
     output: torch.Tensor = None,  # [num_tokens, num_heads, head_dim]
     alibi_slopes: torch.Tensor = None,  # [num_heads]
     max_seq_len: int = None,
@@ -612,42 +820,86 @@ def context_attention_unpadded(
         ), "Alibi Slopes will be supported with new kcache layout later when the whole triton flow is ready"
         x = k_cache_shape[4]  # Intuition: 16 // dtype_size
 
-        _fwd_context_paged_attention_kernel_v2[grid](
-            q,
-            k,
-            v,
-            output,
-            k_cache,
-            v_cache,
-            block_tables,
-            num_seqs,
-            q.stride(0),
-            q.stride(1),
-            q.stride(2),
-            k.stride(0),
-            k.stride(1),
-            k.stride(2),
-            v.stride(0),
-            v.stride(1),
-            v.stride(2),
-            output.stride(0),
-            head_dim,
-            1,
-            v_cache.stride(0),
-            v_cache.stride(1),
-            v_cache.stride(2),
-            v_cache.stride(3),
-            block_tables.stride(0),
-            block_tables.stride(1),
-            context_lengths,
-            sm_scale,
-            KV_GROUPS=num_kv_group,
-            BLOCK_SIZE=block_size,
-            HEAD_DIM=Lk,
-            KCACHE_X=x,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-        )
+        if current_prompt_lengths:
+            _prefix_fwd_context_paged_attention_kernel_v1(
+                q,
+                k,
+                v,
+                output,
+                k_cache,
+                v_cache,
+                block_tables,
+                num_seqs,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                v.stride(0),
+                v.stride(1),
+                v.stride(2),
+                output.stride(0),
+                head_dim,
+                1,
+                k_cache.stride(0),
+                k_cache.stride(1),
+                k_cache.stride(2),
+                k_cache.stride(3),
+                k_cache.stride(4),
+                v_cache.stride(0),
+                v_cache.stride(1),
+                v_cache.stride(2),
+                v_cache.stride(3),
+                block_tables.stride(0),
+                block_tables.stride(1),
+                context_lengths,
+                current_prompt_lengths,
+                sm_scale,
+                KV_GROUPS=num_kv_group,
+                BLOCK_SIZE=block_size,
+                HEAD_DIM=Lk,
+                KCACHE_X=x,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+        else:
+            _fwd_context_paged_attention_kernel_v2[grid](
+                q,
+                k,
+                v,
+                output,
+                k_cache,
+                v_cache,
+                block_tables,
+                num_seqs,
+                q.stride(0),
+                q.stride(1),
+                q.stride(2),
+                k.stride(0),
+                k.stride(1),
+                k.stride(2),
+                v.stride(0),
+                v.stride(1),
+                v.stride(2),
+                output.stride(0),
+                head_dim,
+                1,
+                v_cache.stride(0),
+                v_cache.stride(1),
+                v_cache.stride(2),
+                v_cache.stride(3),
+                block_tables.stride(0),
+                block_tables.stride(1),
+                context_lengths,
+                sm_scale,
+                KV_GROUPS=num_kv_group,
+                BLOCK_SIZE=block_size,
+                HEAD_DIM=Lk,
+                KCACHE_X=x,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
         return output
 
     if alibi_slopes is not None:

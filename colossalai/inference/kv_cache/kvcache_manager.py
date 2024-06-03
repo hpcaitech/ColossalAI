@@ -84,11 +84,12 @@ class KVCacheManager:
             self.max_blocks_per_sequence = (
                 config.start_token_size + config.generated_token_size + self.block_size - 1
             ) // self.block_size + 1
+            self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width * 2
         else:
             self.max_blocks_per_sequence = (
                 self.max_input_length + self.max_output_length + self.block_size - 1
             ) // self.block_size
-        self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
+            self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Physical cache allocation
         if config.use_cuda_kernel:
@@ -290,6 +291,82 @@ class KVCacheManager:
             block.add_ref()
             self._allocate_on_block(block, block.block_size)
 
+    def allocate_context_from_non_empty_block_tables(
+        self, block_tables: torch.Tensor, context_lengths: torch.Tensor
+    ) -> None:
+        """Allocate logical cache blocks for a batch of sequences during prefill stage from non-empty block_tables.
+
+        Args:
+            block_tables (torch.Tensor): [bsz, max_blocks_per_sequence]
+            context_lengths (torch.Tensor): [bsz]]
+        """
+        assert block_tables.dim() == 2
+        assert block_tables.size(0) == context_lengths.size(0)
+
+        blocks_required = context_lengths // self.block_size
+        num_blocks_required = torch.sum(blocks_required).item()
+        assert isinstance(num_blocks_required, int)
+        if num_blocks_required > self._available_blocks:
+            self.logger.error(
+                f"Lacking blocks to allocate. Available blocks {self._available_blocks}; blocks asked {num_blocks_required}."
+            )
+            return
+
+        block_start = torch.sum(block_tables > 0, dim=1)
+
+        for i, block_id in enumerate(block_tables[block_start] - 1):
+            block: CacheBlock = self._cache_blocks[block_id]
+            self._allocate_on_block(
+                block,
+                block.block_size
+                if context_lengths[i] % block.block_size == 0
+                else context_lengths[i].item() % block.block_size,
+            )
+
+        bsz = block_tables.size(0)
+        # Try contiguous allocation
+        torch.cumsum(self._block_states, dim=-1, out=self._block_states_cum[1:])
+        torch.subtract(
+            self._block_states_cum[num_blocks_required:],
+            self._block_states_cum[:-num_blocks_required],
+            out=self._block_finder[num_blocks_required - 1 :],
+        )
+        end_indexes = torch.nonzero(self._block_finder == num_blocks_required, as_tuple=False).view(-1)
+        if end_indexes.numel() > 0:
+            # contiguous cache exists
+            end_idx = end_indexes[0].item() + 1  # open interval
+            start_idx = end_idx - num_blocks_required  # closed interval
+            alloc_block_ids = torch.arange(start_idx, end_idx)
+            for i in range(bsz):
+                curr_required = blocks_required[i]
+                block_tables[i, block_start[i] : curr_required] = torch.arange(
+                    start_idx, start_idx + curr_required, device=block_tables.device
+                )
+                start_idx += curr_required
+        else:
+            # non-contiguous cache
+            available_block_ids = torch.nonzero(self._block_states > 0).view(-1)
+            alloc_block_ids = available_block_ids[:num_blocks_required]
+            alloc_block_ids = alloc_block_ids.to(dtype=block_tables.dtype, device=block_tables.device)
+            start_idx = 0
+            for i in range(bsz):
+                curr_required = blocks_required[i]
+                block_tables[i, block_start[i] : curr_required] = alloc_block_ids[start_idx, start_idx + curr_required]
+                start_idx += curr_required
+
+        # Update cache blocks
+        self._block_states[alloc_block_ids] = 0
+        self._available_blocks -= num_blocks_required
+        last_block_locs = torch.cumsum(blocks_required, dim=0) - 1
+        last_block_locs = last_block_locs.to(device=alloc_block_ids.device)
+
+        for block_id in alloc_block_ids:
+            if block_id in alloc_block_ids[last_block_locs]:
+                continue
+            block: CacheBlock = self._cache_blocks[block_id]
+            block.add_ref()
+            self._allocate_on_block(block, block.block_size)
+
     def allocate_token_from_block_table(self, block_table: torch.Tensor, context_len: int) -> None:
         """Allocate the logical cache block for a single sequence during decoding stage,
         and updates the provided block table if a new cache block is needed.
@@ -466,6 +543,12 @@ class KVCacheManager:
                 self._available_blocks += 1
                 self._block_states[global_block_id] = 1
 
+    def get_used_slots(self, block_table: torch.Tensor):
+        num_positive_elements = torch.sum(block_table > 0, dim=0).items()
+        last_block_id = block_table[num_positive_elements - 1]
+        block: CacheBlock = self._cache_blocks[last_block_id]
+        return (num_positive_elements - 1) * self.block_size + block.allocated_size
+
     def get_physical_cache(self, layer_id: int, block_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get the tensor corresponding to the cache block with the prompted id for a specific layer."""
         return self._kv_caches[0][layer_id][block_idx], self._kv_caches[1][layer_id][block_idx]
@@ -518,6 +601,12 @@ class KVCacheManager:
             v_cache.append(torch.zeros(valloc_shape, dtype=self.kv_cache_dtype, device=self.device))
         return k_cache, v_cache
 
+    def check_block_full(self, global_block_id: int) -> bool:
+        if global_block_id < 0:
+            return False
+        block: CacheBlock = self._cache_blocks[global_block_id]
+        return block.available_space <= 0
+
 
 class RPCKVCacheManager(KVCacheManager):
     def __init__(self, config: InferenceConfig, model_config: PretrainedConfig, verbose: bool = False) -> None:
@@ -559,11 +648,12 @@ class RPCKVCacheManager(KVCacheManager):
             self.max_blocks_per_sequence = (
                 config.start_token_size + config.generated_token_size + self.block_size - 1
             ) // self.block_size + 1
+            self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width * 2
         else:
             self.max_blocks_per_sequence = (
                 self.max_input_length + self.max_output_length + self.block_size - 1
             ) // self.block_size
-        self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
+            self.num_blocks = self.max_blocks_per_sequence * self.max_batch_size * self.beam_width
 
         # Logical cache blocks allocation
         self._available_blocks = self.num_blocks

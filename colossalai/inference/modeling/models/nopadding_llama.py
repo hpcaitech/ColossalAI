@@ -107,6 +107,9 @@ def llama_model_forward(
         use_cuda_kernel = False
         logger.warning("CUDA kernel is disabled for speculative-decoding.")
 
+    if inputmetadata.current_prompt_lengths:
+        current_prompt_lengths = inputmetadata.current_prompt_lengths
+
     hidden_states = self.embed_tokens(input_tokens_ids)
 
     cu_seqlens = None
@@ -133,9 +136,21 @@ def llama_model_forward(
         total_length = hidden_states.size(0)
         cos = torch.empty((total_length, hidden_dim), dtype=self._cos_cached.dtype, device=self._cos_cached.device)
         sin = torch.empty((total_length, hidden_dim), dtype=self._sin_cached.dtype, device=self._sin_cached.device)
-        inference_ops.get_cos_and_sin(
-            self._cos_cached, self._sin_cached, cos, sin, sequence_lengths, kv_seq_len, inputmetadata.is_prompts
-        )
+        if current_prompt_lengths:
+            inference_ops.prefix_get_cos_and_sin(
+                self._cos_cached,
+                self._sin_cached,
+                cos,
+                sin,
+                sequence_lengths,
+                current_prompt_lengths,
+                kv_seq_len,
+                inputmetadata.is_prompts,
+            )
+        else:
+            inference_ops.get_cos_and_sin(
+                self._cos_cached, self._sin_cached, cos, sin, sequence_lengths, kv_seq_len, inputmetadata.is_prompts
+            )
         cos_sin = (cos, sin)
     else:
         cos_sin = get_xine_cache(sequence_lengths, self._cos_cached, self._sin_cached, inputmetadata.is_prompts)
@@ -157,6 +172,7 @@ def llama_model_forward(
             is_verifier=inputmetadata.use_spec_dec,
             tokens_to_verify=tokens_to_verify,
             sequence_lengths=sequence_lengths,
+            current_prompt_lengths=current_prompt_lengths,
             cos_sin=cos_sin,
             fd_inter_tensor=inputmetadata.fd_inter_tensor,
             kv_seq_len=kv_seq_len,
@@ -186,6 +202,7 @@ def llama_decoder_layer_forward(
     k_cache: torch.Tensor,
     v_cache: torch.Tensor,
     sequence_lengths: torch.Tensor,
+    current_prompt_lengths: torch.Tensor,
     cos_sin: Tuple[torch.Tensor],
     fd_inter_tensor: FDIntermTensors,
     is_prompts: bool = True,
@@ -233,6 +250,7 @@ def llama_decoder_layer_forward(
         is_verifier=is_verifier,
         tokens_to_verify=tokens_to_verify,
         sequence_lengths=sequence_lengths,
+        current_prompt_lengths=current_prompt_lengths,
         cos_sin=cos_sin,
         fd_inter_tensor=fd_inter_tensor,
         kv_seq_len=kv_seq_len,
@@ -486,6 +504,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         k_cache: torch.Tensor,
         v_cache: torch.Tensor,
         sequence_lengths: torch.Tensor,
+        current_prompt_lengths: torch.Tensor,
         cos_sin: Tuple[torch.Tensor],
         fd_inter_tensor: FDIntermTensors,
         is_prompts: bool = True,
@@ -534,26 +553,50 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         block_size = k_cache.size(-2)
 
         if is_prompts:
-            if not is_verifier and use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
-                # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
-                inference_ops.context_kv_cache_memcpy(
-                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
-                )
+            if current_prompt_lengths:
+                if not is_verifier and use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
+                    # flash attn 2 currently only supports FP16/BF16.
+                    inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
+                    inference_ops.context_kv_cache_memcpy(
+                        key_states,
+                        value_states,
+                        k_cache,
+                        v_cache,
+                        sequence_lengths,
+                        cu_seqlens,
+                        block_tables,
+                        kv_seq_len,
+                    )
 
-                attn_output = flash_attn_varlen_func(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cu_seqlens_q=cu_seqlens,
-                    cu_seqlens_k=cu_seqlens,
-                    max_seqlen_q=kv_seq_len,
-                    max_seqlen_k=kv_seq_len,
-                    dropout_p=0.0,
-                    softmax_scale=sm_scale,
-                    causal=True,
-                )
-                attn_output = attn_output.view(token_nums, -1)
+                    attn_output = flash_attn_varlen_func(
+                        query_states,
+                        key_states,
+                        value_states,
+                        cu_seqlens_q=cu_seqlens,
+                        cu_seqlens_k=cu_seqlens,
+                        max_seqlen_q=kv_seq_len,
+                        max_seqlen_k=kv_seq_len,
+                        dropout_p=0.0,
+                        softmax_scale=sm_scale,
+                        causal=True,
+                    )
+                    attn_output = attn_output.view(token_nums, -1)
+                else:
+                    rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
+                    attn_output = context_attention_unpadded(
+                        q=query_states,
+                        k=key_states,
+                        v=value_states,
+                        k_cache=k_cache,
+                        v_cache=v_cache,
+                        context_lengths=sequence_lengths,
+                        block_tables=block_tables,
+                        block_size=block_size,
+                        output=output_tensor,
+                        max_seq_len=kv_seq_len,
+                        sm_scale=sm_scale,
+                        use_new_kcache_layout=use_cuda_kernel,
+                    )
             else:
                 rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
                 attn_output = context_attention_unpadded(
@@ -563,6 +606,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
                     k_cache=k_cache,
                     v_cache=v_cache,
                     context_lengths=sequence_lengths,
+                    current_prompt_lengths=current_prompt_lengths,
                     block_tables=block_tables,
                     block_size=block_size,
                     output=output_tensor,

@@ -2,6 +2,8 @@ import enum
 from dataclasses import dataclass
 from typing import Any, List
 
+import torch
+
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -51,7 +53,9 @@ class Sequence:
     """Store information of input sequence.
 
     Args:
+        user_id (int): The ID of the input sequence's owner.
         request_id (int): The ID of input sequence.
+        timestamp: (float): It represents the last time seq was called.
         prompt (str): The prompt of input sequence.
         input_token_id (List[int]): The tokens ID of input sequence.
         block_size (int): The block size of input sequence.
@@ -62,13 +66,17 @@ class Sequence:
         max_output_len (int): Maximum output length.
         ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
         output(str): The output of sequence
+
     """
 
+    user_id: int
     request_id: int
+    timestamp: float
     prompt: str
     input_token_id: List[int]
     block_size: int
     sample_params: Any  # SampleParams needs to be imported later.
+    block_table: torch.Tensor
     eos_token_id: int
     pad_token_id: int
     max_output_len: int = 256
@@ -78,6 +86,7 @@ class Sequence:
 
     def __post_init__(self):
         self.output_token_id = []
+        self.streaningllm_prompt_len = 0
         self.status = RequestStatus.WAITING
 
     @property
@@ -93,6 +102,13 @@ class Sequence:
         Get length of input sentence.
         """
         return len(self.input_token_id)
+
+    @property
+    def streaningllm_prompt_len(self) -> int:
+        """
+        Get the length of sentences used for streamingLLM.
+        """
+        return self.streaningllm_prompt_len
 
     @property
     def output_len(self) -> int:
@@ -161,6 +177,14 @@ class Sequence:
         ), "The running sequence \
         is already done but it still in running list"
         self.status = RequestStatus.RECYCLED
+
+    def reused(self, request_id: int, timestamp: float, prompt: str, input_token_id: List[int]) -> None:
+        self.request_id = request_id
+        self.timestamp = timestamp
+        self.prompt = prompt
+        self.input_token_id = input_token_id
+        self.output_token_id = []
+        self.status = RequestStatus.WAITING
 
     def __repr__(self) -> str:
         return (

@@ -54,6 +54,7 @@ class InputMetaData(RPC_PARAM):
     Args:
     block_tables (torch.Tensor, optional): Sequences' BlockTables Defaults to None.
     sequence_lengths (torch.Tensor): A tensor containing sequence lengths.
+    current_prompt_lengths (torch.Tensor): A tensor containing current prompt lengths.
     fd_inter_tensor (torch.Tensor, optional): A tensor representing intermediate data for flash decoding. Defaults to None.
     batch_size (int, optional): The current batch size. Defaults to 64.
     is_prompts (bool, optional): Indicates whether prefill or decoding. Defaults to False(decoding).
@@ -70,6 +71,7 @@ class InputMetaData(RPC_PARAM):
 
     block_tables: torch.Tensor = None
     sequence_lengths: torch.Tensor = None
+    current_prompt_lengths: torch.Tensor = None
     fd_inter_tensor: FDIntermTensors = None
     batch_size: int = 64  # current_batch_size
     is_prompts: bool = False
@@ -89,6 +91,7 @@ class InputMetaData(RPC_PARAM):
         return {
             "block_tables": self.block_tables.tolist(),
             "sequence_lengths": self.sequence_lengths.tolist(),
+            "current_prompt_lengths": self.current_prompt_lengths.tolist(),
             "batch_size": self.batch_size,
             "is_prompts": self.is_prompts,
             "use_cuda_kernel": self.use_cuda_kernel,
@@ -117,6 +120,9 @@ class InputMetaData(RPC_PARAM):
             sequence_lengths=torch.tensor(
                 rpc_dict["sequence_lengths"], dtype=torch.int, device=get_accelerator().get_current_device()
             ),
+            current_prompt_lengths=torch.tensor(
+                rpc_dict["current_prompt_lengths"], dtype=torch.int, device=get_accelerator().get_current_device()
+            ),
             batch_size=rpc_dict["batch_size"],
             is_prompts=rpc_dict["is_prompts"],
             use_cuda_kernel=rpc_dict["use_cuda_kernel"],
@@ -134,6 +140,7 @@ class InputMetaData(RPC_PARAM):
         return (
             f"InputMetaData(block_tables={self.block_tables}, "
             f"sequence_lengths={self.sequence_lengths}, "
+            f"current_prompt_lengths={self.current_prompt_lengths}, "
             f"fd_inter_tensor={self.fd_inter_tensor}, "
             f"batch_size={self.batch_size}, "
             f"is_prompts={self.is_prompts}, "
@@ -280,14 +287,21 @@ class InferenceConfig(RPC_PARAM):
                 "{input_text}" in self.prompt_template
             ), "The prompt template should contain '{input_text}' for formatting the input text. For example: 'USER: {input_text}\n\nASSISTANT: '"
 
-        assert (
-            self.start_token_size <= self.block_size
-        ), f"According to the paper https://arxiv.org/pdf/2309.17453, the start_token_size greater than 4 has little impact on inference performance. Therefore, we assume that the start_token_size should be less or equal than the block_size={self.block_size}, but got {self.start_token_size}."
-        assert (
-            self.generated_token_size % self.block_size == 0
-        ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
-        # We assume that start_token_size occupies one block.
-        self.start_token_size = self.block_size
+        if self.enable_streamingllm:
+            assert (
+                self.use_cuda_graph == False
+            ), "We currently do not support using streamingLLM and CUDA graph simultaneously."
+            assert (
+                self.max_input_len <= self.inference_config.generated_token_size
+            ), f"When enabling streamingLLM, max_input_len={self.max_input_len} must be less or equal than self.inference_config.generated_token_size={self.inference_config.generated_token_size}."
+            assert (
+                self.start_token_size <= self.block_size
+            ), f"According to the paper https://arxiv.org/pdf/2309.17453, the start_token_size greater than 4 has little impact on inference performance. Therefore, we assume that the start_token_size should be less or equal than the block_size={self.block_size}, but got {self.start_token_size}."
+            assert (
+                self.generated_token_size % self.block_size == 0
+            ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
+            # We assume that start_token_size occupies one block.
+            self.start_token_size = self.block_size
 
     def to_generation_config(self, model_config) -> GenerationConfig:
         meta_config = {

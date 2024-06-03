@@ -89,6 +89,9 @@ class InferenceEngine:
 
         self.use_cuda_graph = self.inference_config.use_cuda_graph
         if self.use_cuda_graph:
+            assert (
+                self.inference_config.enable_streamingllm == False
+            ), "We currently do not support using streamingLLM and CUDA graph simultaneously."
             self.graph_runners: Dict[int, CUDAGraphRunner] = {}
             self.graph_memory_pool = None  # Set during graph capture.
             if verbose:
@@ -197,6 +200,9 @@ class InferenceEngine:
     @torch.inference_mode()
     def capture_model(self, k_cache: List[torch.Tensor], v_cache: List[torch.Tensor]):
         assert self.use_cuda_graph, "please turn on the cuda graph"
+        assert (
+            self.inference_config.enable_streamingllm == False
+        ), "We currently do not support using streamingLLM and CUDA graph simultaneously."
 
         if self.verbose:
             self.logger.info("Colossal AI CUDA Graph Capture begin")
@@ -348,6 +354,11 @@ class InferenceEngine:
         engine.clear_spec_dec()
         ```
         """
+
+        assert (
+            self.inference_config.enable_streamingllm == False
+        ), "We currently do not support using streamingLLM and Speculative Decoding simultaneously."
+
         if drafter_model is None and self.drafter is None:
             raise ValueError("Drafter not initialized. Please provide a Drafter Model")
         if n_spec_tokens is not None:
@@ -555,6 +566,9 @@ class InferenceEngine:
 
             if self.use_spec_dec:
                 assert self.drafter is not None, "Drafter Model is not initialized."
+                assert (
+                    self.inference_config.enable_streamingllm == False
+                ), "We currently do not support using streamingLLM and Speculative Decoding simultaneously."
                 while self.request_handler.check_unfinished_seqs():
                     output_seqs_list += self.steps_spec_dec()
             else:
@@ -596,6 +610,7 @@ class InferenceEngine:
 
     def add_request(
         self,
+        user_ids: Union[List[int], int] = None,
         request_ids: Union[List[int], int] = None,
         prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
@@ -605,6 +620,7 @@ class InferenceEngine:
         Add requests.
 
         Args:
+            user_id (List[int], optional): The IDs of the input sequences' owner.
             request_ids (List[int], optional): The request ID. Defaults to None.
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
@@ -616,6 +632,9 @@ class InferenceEngine:
             prompts = self.format_prompt(prompts)
 
         block_size = self.inference_config.block_size
+
+        if user_ids is not None and not isinstance(user_ids, list):
+            user_ids = [user_ids]
 
         if request_ids is not None and not isinstance(request_ids, list):
             request_ids = [request_ids]
@@ -653,8 +672,11 @@ class InferenceEngine:
                 ), f"The request_id type must be int, but got {type(request_ids[0])}"
                 assert len(request_ids) == prompts_num
                 request_id = request_ids[i]
+                user_id = user_id[i]
             else:
                 request_id = next(self.counter)
+                # Default user_id to request_id if not provided.
+                user_id = request_id
             if prompts == None:
                 prompt = None
             else:
@@ -671,25 +693,47 @@ class InferenceEngine:
                 self.inference_config.max_output_len >= max_new_tokens
             ), f"max_new_tokens={max_new_tokens} must be less than max_output_len={self.inference_config.max_output_len}."
 
-            sequence = Sequence(
-                request_id,
-                prompt,
-                prompts_token_ids[i],
-                block_size,
-                None,
-                self.tokenizer.eos_token_id,
-                self.tokenizer.pad_token_id,
-                max_output_len=max_new_tokens,
-                ignore_eos=self.inference_config.ignore_eos,
-            )
+            timestamp = time.time()
+            cached_sequences_dict = self.request_handler.cached_sequences_dict
+
+            assert len(
+                prompts_token_ids[i] <= self.inference_config.max_input_len
+            ), f"The lengths of prompt must be less or equal than max_input_len={self.inference_config.max_input_len}, but got {len(prompts_token_ids[i])}."
+
+            if self.inference_config.enable_streamingllm and user_id in cached_sequences_dict:
+                sequence = cached_sequences_dict[user_id]
+                sequence.reused(
+                    request_id,
+                    timestamp,
+                    prompt,
+                    prompts_token_ids[i],
+                )
+            else:
+                sequence = Sequence(
+                    user_id=user_id,
+                    request_id=request_id,
+                    prompt=prompt,
+                    input_token_id=prompts_token_ids[i],
+                    block_size=block_size,
+                    sample_params=None,
+                    block_table=None,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    max_output_len=max_new_tokens,
+                    ignore_eos=self.inference_config.ignore_eos,
+                )
+
             self.request_handler.add_sequence(sequence)
 
     def prepare_input(self, batch: BatchBucket) -> Tuple[torch.Tensor, torch.Tensor, InputMetaData]:
         input_ids = batch.get_1D_inputs()
         sequence_lengths = batch.get_sequence_lengths()
+        current_prompt_lengths = None
 
         if batch.is_prompts:
-            n_tokens = sequence_lengths.sum().item()
+            if self.inference_config.enable_streamingllm and batch.has_reused_seqs():
+                current_prompt_lengths = batch.get_1D_inputs()
+            n_tokens = current_prompt_lengths.sum().item()
         else:
             n_tokens = batch.current_batch_size
             if batch.use_spec_dec:
@@ -716,6 +760,7 @@ class InferenceEngine:
         input_meta_data = InputMetaData(
             block_tables=batch.get_block_table_tensor(),
             sequence_lengths=sequence_lengths,
+            current_prompt_lengths=current_prompt_lengths,
             fd_inter_tensor=batch.fd_inter_tensor,
             batch_size=batch.current_batch_size,
             is_prompts=batch.is_prompts,
@@ -750,19 +795,27 @@ class InferenceEngine:
         input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
 
         if input_meta_data.use_cuda_graph:
+            assert (
+                self.inference_config.enable_streamingllm == False
+            ), "We currently do not support using streamingLLM and CUDA graph simultaneously."
             model_executable = self.graph_runners[input_meta_data.batch_size]
         else:
             model_executable = self.model
 
         # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
-        logits = model_executable(input_token_ids, output_tensor, input_meta_data, self.k_cache, self.v_cache)
+        logits = model_executable(
+            input_token_ids,
+            output_tensor,
+            input_meta_data,
+            self.k_cache,
+            self.v_cache,
+            self.inference_config.enable_streamingllm and batch.has_reused_seqs(),
+        )
         if self.inference_config.pad_input:
             logits = logits[:, -1, :]
 
         if self.inference_config.enable_streamingllm:
-            updated_block_ids = batch.streamingllm_update_batch(
-                self.inference_config.start_token_size, self.inference_config.generated_token_size
-            )
+            updated_block_ids = batch.streamingllm_update_batch()
             self.request_handler.streamingllm_free_block_tables(updated_block_ids)
 
         next_tokens = search_tokens(

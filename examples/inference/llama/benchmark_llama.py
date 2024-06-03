@@ -142,6 +142,8 @@ def benchmark_inference(args):
                 block_size=32,
                 tp_size=args.tp_size,
                 use_cuda_kernel=True,
+                enable_streamingllm=True,
+                generated_token_size=32,
             )
             engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
         elif args.mode == "vllm":

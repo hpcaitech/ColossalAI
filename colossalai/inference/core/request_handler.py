@@ -127,6 +127,15 @@ class RequestHandler:
         ) // inference_config.block_size
         head_dim = model_config.hidden_size // model_config.num_attention_heads
 
+        if self.inference_config.enable_streamingllm:
+            # user_id -> sequences
+            self.cached_sequences_dict = {}
+            # The current default cache size is the max_batch_size.
+            self.cache_size = inference_config.max_batch_size
+        else:
+            self.cached_sequences_dict = None
+            self.cache_size = 0
+
         fd_inter_tensor = FDIntermTensors()
 
         if fd_inter_tensor._tensors_initialized:
@@ -230,10 +239,17 @@ class RequestHandler:
             for seq in self.running_list.prefill[:num_seqs_to_add]:
                 seq.mark_running()
             # allocate blocks for the prefill batch
-            self.prefill_bb.add_seqs(
-                self.running_list.prefill[:num_seqs_to_add],
-                alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
-            )
+            if self.inference_config.enable_streamingllm and self.prefill_bb.has_reused_seqs():
+                self.streamingllm_prefill_alloc(
+                    num_seqs_to_add,
+                    self.cache_manager.allocate_context_from_block_tables,
+                    self.cache_manager.allocate_context_from_non_empty_block_tables,
+                )
+            else:
+                self.prefill_bb.add_seqs(
+                    self.running_list.prefill[:num_seqs_to_add],
+                    alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
+                )
 
             return self.prefill_bb
 
@@ -242,7 +258,7 @@ class RequestHandler:
                 self.running_bb.block_tables, self.running_bb.seq_lengths, self.running_bb.current_batch_size
             )
             if seqs_ids_to_recycle:
-                seqs_to_recycle = self.running_bb.pop_seqs(seqs_ids_to_recycle)
+                seqs_to_recycle, _ = self.running_bb.pop_seqs(seqs_ids_to_recycle, self.cached_sequences_dict)
                 for seq in seqs_to_recycle:
                     seq.recycle()
                     self.running_list.remove(seq)
@@ -349,18 +365,77 @@ class RequestHandler:
             # since we want to reuse the memory recorded on the block tables
             self.prefill_bb.clear(free_block_tables_fn=None)
 
-        finished_seqs, _ = self.running_bb.pop_finished(self.cache_manager.free_block_table)
+        finished_seqs, _ = self.running_bb.pop_finished(cached_sequences_dict=self.update_cached_sequences)
         for seq in finished_seqs:
             self.running_list.remove(seq)
         self.done_list.extend(finished_seqs)
 
         return finished_seqs
 
+    def update_cached_sequences(self, seq: Sequence, block_table: torch.Tensor):
+        if seq.user_id not in self.cached_sequences_dict:
+            if self.cache_size == self.max_batch_size:
+                outdated_seq = min(self.cached_sequences_dict.values(), key=lambda x: x.timestamp)
+                self.cache_manager.free_block_table(outdated_seq.block_table)
+                del self.cached_sequences_dict[outdated_seq.user_id]
+        seq.block_table = block_table.clone()
+        self.cached_sequences_dict[seq.user_id] = seq
+
     def streamingllm_free_block_tables(self, updated_block_ids: List[int]):
         """
         Free the block that needs to be swapped out.
         """
         self.cache_manager.streamingllm_free_block_tables(updated_block_ids)
+
+    def streamingllm_prefill_alloc(
+        self,
+        num_seqs_to_add: int = 0,
+    ):
+        current_seqs = self.running_list.prefill[:num_seqs_to_add]
+
+        reused_seqs = [seq for seq in current_seqs if seq.block_table is None]
+        normal_seqs = [seq for seq in current_seqs if seq.block_table is not None]
+
+        if normal_seqs:
+            self.prefill_bb.add_seqs(
+                normal_seqs,
+                alloc_block_tables_fn=self.cache_manager.allocate_context_from_block_tables,
+            )
+
+        if reused_seqs:
+            block_size = self.inference_config.block_size
+            start_block_num = self.inference_config.start_token_size // block_size
+            max_blocks_per_sequence = self.cache_manager.get_max_blocks_per_sequence()
+            streaningllm_prompt_lens = []
+            for seq in reused_seqs:
+                block_table = seq.block_table
+                streaningllm_prompt_len = self.cache_manager.get_used_slots(block_table)
+                vaild_block_num = sum(1 for x in block_table if x > 0)
+                unused_block_num = max_blocks_per_sequence - vaild_block_num
+                assert (
+                    seq.input_len <= self.inference_config.generated_token_size
+                ), f"When enabling streamingLLM, the length of seq={seq} must be less or equal than self.inference_config.generated_token_size={self.inference_config.generated_token_size}, but got seq.input_len."
+                need_swap_blocks = (seq.input_len + block_size - 1) // block_size - unused_block_num
+
+                if streaningllm_prompt_len + seq.input_len >= max_blocks_per_sequence:
+                    streaningllm_prompt_len = max_blocks_per_sequence
+                else:
+                    streaningllm_prompt_len = streaningllm_prompt_len + seq.input_len
+
+                if need_swap_blocks > 0:
+                    block_table[start_block_num : vaild_block_num - need_swap_blocks] = block_table[
+                        start_block_num + need_swap_blocks : vaild_block_num
+                    ]
+                    block_table[vaild_block_num - need_swap_blocks :] = [-1] * (
+                        max_blocks_per_sequence - vaild_block_num + need_swap_blocks
+                    )
+
+            self.prefill_bb.add_seqs(
+                reused_seqs,
+                alloc_block_tables_fn=self.cache_manager.allocate_context_from_non_empty_block_tables,
+                need_reused_block_table=True,
+                streaningllm_prompt_lens=streaningllm_prompt_lens,
+            )
 
 
 class RPCRequestHandler(RequestHandler):
