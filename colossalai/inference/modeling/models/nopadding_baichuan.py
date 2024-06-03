@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.utils import get_alibi_slopes
 from colossalai.inference.modeling.models.nopadding_llama import NopadLlamaMLP
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.kernel.triton import (
@@ -45,22 +46,6 @@ except ImportError:
 inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
-
-
-# alibi slopes calculation adapted from https://github.com/huggingface/transformers/blob/v4.36.0/src/transformers/models/bloom/modeling_bloom.py#L57
-def get_alibi_slopes(num_heads: int, device: torch.device) -> torch.Tensor:
-    closest_power_of_2 = 2 ** math.floor(math.log2(num_heads))
-    base = torch.tensor(2 ** (-(2 ** -(math.log2(closest_power_of_2) - 3))), dtype=torch.float32, device=device)
-    powers = torch.arange(1, 1 + closest_power_of_2, dtype=torch.int32, device=device)
-    slopes = torch.pow(base, powers)
-    if closest_power_of_2 != num_heads:
-        extra_base = torch.tensor(
-            2 ** (-(2 ** -(math.log2(2 * closest_power_of_2) - 3))), dtype=torch.float32, device=device
-        )
-        num_remaining_heads = min(closest_power_of_2, num_heads - closest_power_of_2)
-        extra_powers = torch.arange(1, 1 + 2 * num_remaining_heads, 2, dtype=torch.int32, device=device)
-        slopes = torch.cat([slopes, torch.pow(extra_base, extra_powers)], dim=0)
-    return slopes
 
 
 def baichuan_rmsnorm_forward(
