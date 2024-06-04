@@ -129,7 +129,7 @@ class BatchBucket:
         if self.current_batch_size > 0:
             need_update = False
             sequence_lengths_list = self._sequence_lengths.tolist()
-            block_tables_list = self._block_tables[: self._current_batch_size - 1].tolist()
+            block_tables_list = self._block_tables[: self._current_batch_size].tolist()
             for batch_id in range(self.current_batch_size):
                 # We assume that the start token occupies the entire first block.
                 if sequence_lengths_list[batch_id] == start_token_size + generated_token_size + self.block_size - 1:
