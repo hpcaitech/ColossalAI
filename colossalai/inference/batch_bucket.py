@@ -521,3 +521,67 @@ class BatchBucket:
 
     def __repr__(self) -> str:
         return f"(sequences_dict={self._sequences_dict}, is_prompts={self.is_prompts})"
+
+
+class RPCBatchBucket(BatchBucket):
+    def __init__(self, *args, **argv):
+        self.is_rpc = True
+        super().__init__(*args, **argv)
+
+    # For compatibility
+    def get_1D_inputs(self) -> List[int]:
+        assert len(self._sequences_dict) > 0, "No sequence in the batch"
+        first_seq = next(iter(self._sequences_dict.values()))  # not exactly the first sequence
+        if first_seq.output_len == 0:
+            # Assume prefill stage
+            assert all(
+                seq.output_len == 0 for seq in self._sequences_dict.values()
+            ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
+            out_li = []
+            seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
+            for seq_id in seq_ids:
+                seq: Sequence = self._sequences_dict[seq_id]
+                out_li.extend(seq.input_token_id)
+            return out_li
+        else:
+            # Assume decoding stage
+            if self.use_spec_dec:
+                # For Speculative Decoding
+                # the number of tokens to be verified in parallel plus the correct token in the last step
+                return self.get_1D_inputs_spec_dec(self.num_tokens_to_verify + 1)
+            assert all(
+                seq.output_len > 0 for seq in self._sequences_dict.values()
+            ), "Sequence stage (Prefill/Decoding) must be the same in the batch"
+            assert self.is_compact, "BatchBucket is not compact"
+            out = [0] * self.current_batch_size
+            for seq_id, index_in_b in self._sequences_indexes.items():
+                seq: Sequence = self._sequences_dict[seq_id]
+                out[index_in_b] = seq.output_token_id[-1]
+            return out
+
+    # For compatibility
+    def get_sequence_lengths(self) -> List[int]:
+        assert self.is_compact  # Debug usage
+        sequence_lengths = self.seq_lengths[: self.current_batch_size]
+        return sequence_lengths
+
+    def get_1D_inputs_spec_dec(self, n: int) -> List[int]:
+        # Used for main model verification in **Decoding Stage**
+        # `n` is the number of tokens to be verified,
+        # and so that prepare the last `n` tokens of each sequence as the inputs
+        assert len(self._sequences_dict) > 0, "No sequence in the batch"
+        assert all(
+            seq.output_len >= n for seq in self._sequences_dict.values()
+        ), "Sequence output tokens must be greater than or equal to the number of tokens to be verified."
+        out_li = []
+        seq_ids = sorted(self._sequences_indexes.keys(), key=lambda x: self._sequences_indexes[x])
+        for seq_id in seq_ids:
+            seq: Sequence = self._sequences_dict[seq_id]
+            out_li.extend(seq.output_token_id[-n:])
+        return out_li
+
+    # For compatibility
+    def get_block_table_tensor(self) -> torch.Tensor:
+        assert self.is_compact  # Debug usage
+        block_table = self.block_tables[: self.current_batch_size]
+        return block_table
