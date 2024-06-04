@@ -117,7 +117,7 @@ class ChunkManager:
             return None
         self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == "cpu":
-            chunk.shard_move(get_accelerator().get_current_device())
+            chunk.shard_move(get_accelerator().get_current_device(), non_blocking=async_access)
         maybe_work = self.__add_accessed_chunk(chunk, async_access=async_access)
         self.__add_memory_usage(chunk.memory_usage)
         return maybe_work
