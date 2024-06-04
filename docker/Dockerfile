@@ -37,7 +37,8 @@ RUN git clone https://github.com/NVIDIA/apex && \
 ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
-    && BUILD_EXT=1 pip install -v -e .
+    && BUILD_EXT=1 pip install -v . \
+    && rm -rf colossalai
 
 # install tensornvme
 RUN conda install -y cmake && \
