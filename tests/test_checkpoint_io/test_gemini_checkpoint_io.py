@@ -1,5 +1,4 @@
 import os
-import time
 
 import pytest
 import torch
@@ -181,10 +180,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_gemini_ckpIO():
-    t1 = time.time()
     spawn(run_dist, 4)
-    t2 = time.time()
-    print(f"Total time: {t2 - t1}")
 
 
 if __name__ == "__main__":

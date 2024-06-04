@@ -1,4 +1,3 @@
-import time
 from copy import deepcopy
 from typing import Optional
 
@@ -56,8 +55,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
         new_model, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
 
         booster.load_model(new_model, model_ckpt_path)
-        if offload:
-            pass
         check_state_dict_equal(model.state_dict(), new_model.state_dict())
         # check master weight
         assert isinstance(new_optimizer, LowLevelZeroOptimizer)
@@ -184,10 +181,7 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_low_level_zero_checkpointIO():
-    t1 = time.time()
     spawn(run_dist, 2)
-    t2 = time.time()
-    print("Total time: ", t2 - t1)
 
 
 if __name__ == "__main__":
