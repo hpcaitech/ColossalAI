@@ -42,7 +42,9 @@ def run_moe_dispatch_combine_fwd_bwd(data_type=torch.float32, hidden_size=128, n
 
     # use kernel
     route_result_list_kernel = (
-        torch.load(f"{MOE_TENSOR_PATH}/") if MOE_TENSOR_PATH else torch.load(f"True_4_{data_type}.pt")
+        torch.load(f"{MOE_TENSOR_PATH}/True_4_{data_type}.pt")
+        if MOE_TENSOR_PATH
+        else torch.load(f"True_4_{data_type}.pt")
     )
     # dispatch
     dispatch_data_kernel = MoeDispatch.apply(tokens, *route_result_list_kernel[1:])
@@ -53,7 +55,9 @@ def run_moe_dispatch_combine_fwd_bwd(data_type=torch.float32, hidden_size=128, n
 
     # no kernel
     route_result_list_no_kernel = (
-        torch.load(f"{MOE_TENSOR_PATH}/") if MOE_TENSOR_PATH else torch.load(f"False_2_{data_type}.pt")
+        torch.load(f"{MOE_TENSOR_PATH}/False_2_{data_type}.pt")
+        if MOE_TENSOR_PATH
+        else torch.load(f"False_2_{data_type}.pt")
     )
     # dispatch
     sec_mask_f = route_result_list_no_kernel[1].type_as(tokens)
