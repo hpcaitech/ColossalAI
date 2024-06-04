@@ -268,14 +268,14 @@ class InferenceConfig(RPC_PARAM):
         if self.dtype == torch.float32:
             self.high_precision = False
 
-        # check streamingLLM
+        # check StreamingLLM
         assert (
             self.start_token_size <= self.block_size
         ), f"According to the paper https://arxiv.org/pdf/2309.17453, the start_token_size greater than 4 has little impact on inference performance. Therefore, we assume that the start_token_size should be less or equal than the block_size={self.block_size}, but got {self.start_token_size}."
         assert (
             self.generated_token_size % self.block_size == 0
         ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
-        # Our streamingLLM implementation (sliding window attention with attention sinks) references https://arxiv.org/pdf/2309.17453 and has been optimized
+        # Our StreamingLLM implementation (sliding window attention with attention sinks) references https://arxiv.org/pdf/2309.17453 and has been optimized
         # based on our framework's kvcache management mechanism. According to the paper, a start_token_size of 4 is sufficient. Therefore,
         # we assume the start_token_size is less than or equal to the block size. When the start_token_size is smaller than the block size,
         # we fill the first block with the start_token_size and subsequently generated tokens, using these as the "start tokens."

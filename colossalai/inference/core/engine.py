@@ -667,9 +667,10 @@ class InferenceEngine:
             elif max_length is not None:
                 max_new_tokens = max_length - len(prompts_token_ids[i])
 
-            assert (
-                self.inference_config.max_output_len >= max_new_tokens
-            ), f"max_new_tokens={max_new_tokens} must be less than max_output_len={self.inference_config.max_output_len}."
+            if not self.inference_config.enable_streamingllm:
+                assert (
+                    self.inference_config.max_output_len >= max_new_tokens
+                ), f"max_new_tokens={max_new_tokens} must be less than max_output_len={self.inference_config.max_output_len}."
 
             sequence = Sequence(
                 request_id,
