@@ -181,8 +181,8 @@ class InferenceConfig(RPC_PARAM):
         use_cuda_graph (bool): Whether to enforce CUDA graph execution. If False, we will disable CUDA graph and always execute the model in eager mode. If True, we will use eager execution in hybrid.
         max_context_len_to_capture (int): max context len that could be captured by CUDA Graph, per sequence
         enable_streamingllm(bool): Whether to use StreamingLLM, the relevant algorithms refer to the paper at https://arxiv.org/pdf/2309.17453 for implementation.
-        start_token_size(int): The size of the start_token, When using StreamingLLM.
-        generated_token_size(int): The size of the generated_token, When using StreamingLLM.
+        start_token_size(int): The size of the start tokens, when using StreamingLLM.
+        generated_token_size(int): The size of the generated tokens, When using StreamingLLM.
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -234,7 +234,7 @@ class InferenceConfig(RPC_PARAM):
     use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
     max_context_len_to_capture: int = 512
 
-    # StreamingLLM
+    # StreamingLLM (sliding window attention with attention sinks)
     enable_streamingllm: bool = False
     start_token_size: int = 4
     generated_token_size: int = 512
@@ -275,7 +275,11 @@ class InferenceConfig(RPC_PARAM):
         assert (
             self.generated_token_size % self.block_size == 0
         ), f"We assume that the generated_token_size should be a multiple of the block_size, got generated_token_size={self.generated_token_size}."
-        # We assume that start_token_size occupies one block.
+        # Our streamingLLM implementation (sliding window attention with attention sinks) references https://arxiv.org/pdf/2309.17453 and has been optimized
+        # based on our framework's kvcache management mechanism. According to the paper, a start_token_size of 4 is sufficient. Therefore,
+        # we assume the start_token_size is less than or equal to the block size. When the start_token_size is smaller than the block size,
+        # we fill the first block with the start_token_size and subsequently generated tokens, using these as the "start tokens."
+        # Thereafter, we swap out tokens in units of blocks, and always swapping out the second block when the generated tokens exceeded the limit.
         self.start_token_size = self.block_size
 
         # check prompt template

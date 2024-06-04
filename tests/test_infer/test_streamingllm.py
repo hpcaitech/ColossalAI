@@ -1,9 +1,7 @@
 import random
 
 import numpy as np
-import pytest
 import torch
-import torch.distributed as dist
 from torch.multiprocessing import Manager
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
@@ -50,15 +48,11 @@ def check_streamingllm():
         max_output_len=output_len,
         dtype="fp32",
         use_cuda_kernel=True,
-        tp_size=dist.get_world_size(),
         enable_streamingllm=True,
         start_token_size=4,
         generated_token_size=32,
     )
 
-    print("inference_config.start_token_size: ", inference_config.start_token_size)
-
-    # assert inference_config.start_token_size == inference_config.block_size
     inference_engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
     assert inference_engine.generation_config.max_new_tokens == output_len
     inference_engine.add_request(prompts_token_ids=input_token_ids)
@@ -115,9 +109,8 @@ def run_dist(rank, world_size, port, func_to_run, ret=None, **kwargs):
         func_to_run(**kwargs)
 
 
-@pytest.mark.largedist
 @rerun_if_address_is_in_use()
-def test_tp_engine():
+def test_engine():
     manager = Manager()
     result_list = manager.list([-1] * 1)  # Create a shared list
 
@@ -126,4 +119,4 @@ def test_tp_engine():
 
 
 if __name__ == "__main__":
-    test_tp_engine()
+    test_engine()
