@@ -351,7 +351,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
 
         policy = super().module_policy()
 
-        if self.shard_config.enable_tensor_parallelism and not self.shard_config.enable_sequence_parallelism:
+        if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(

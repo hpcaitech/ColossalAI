@@ -40,6 +40,7 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("use_grad_checkpoint", [False, True])
 @parameterize("master_weights", [False, True])
+@parameterize("max_prefetch", [0, 4])
 @parameterize("enable_async_reduce", [False, True])
 def exam_gpt_fwd_bwd(
     placement_config,
@@ -47,6 +48,7 @@ def exam_gpt_fwd_bwd(
     model_name: str,
     use_grad_checkpoint: bool = False,
     master_weights: bool = True,
+    max_prefetch: int = 0,
     enable_async_reduce=True,
 ):
     init_device = get_accelerator().get_current_device()
@@ -77,6 +79,7 @@ def exam_gpt_fwd_bwd(
         pin_memory=True,
         **placement_config,
         master_weights=master_weights,
+        max_prefetch=max_prefetch,
         enable_async_reduce=enable_async_reduce,
     )
     optimizer = HybridAdam(model.parameters(), lr=1e-3)

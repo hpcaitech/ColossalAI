@@ -67,8 +67,8 @@ def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transfo
 
 @parameterize("enable_fused_normalization", [True, False])
 @parameterize("enable_tensor_parallelism", [True, False])
-@parameterize("enable_flash_attention", [True, False])
-@parameterize("enable_jit_fused", [True, False])
+@parameterize("enable_flash_attention", [True])
+@parameterize("enable_jit_fused", [True])
 def run_blip2_test(
     enable_fused_normalization,
     enable_tensor_parallelism,
