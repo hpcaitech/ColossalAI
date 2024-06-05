@@ -42,14 +42,14 @@ jobs:
     container:
       image: ${{ matrix.container }}
       options: --gpus all --rm -v /dev/shm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
-    timeout-minutes: 120
+    timeout-minutes: 200
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test-${{ matrix.container }}
       cancel-in-progress: true
     steps:
       - name: Install dependencies
         run: |
-          pip install -U pip setuptools wheel --user
+          pip install -U pip setuptools==68.2.2 wheel --user
       - uses: actions/checkout@v2
         with:
           repository: hpcaitech/TensorNVMe
