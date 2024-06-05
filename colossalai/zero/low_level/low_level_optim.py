@@ -987,7 +987,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
                 if self._bucket_store.moe_extra_dp_pg is not None and is_moe_tensor(p):
-                    master_param.copy_(working_param.chunk(self.extra_dp_pg_size)[self.extra_dp_pg_rank])
+                    master_param.copy_(
+                        working_param.chunk(self._bucket_store.moe_extra_dp_pg_size)[
+                            self._bucket_store.moe_extra_dp_pg_rank
+                        ]
+                    )
                 else:
                     master_param.copy_(
                         working_param.chunk(self._bucket_store.zero_world_size)[self._bucket_store.zero_local_rank]

@@ -12,7 +12,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.moe import MoECheckpointIO
-from colossalai.shardformer.policies.mixtral import MixtralForCausalLMPolicy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing.utils import spawn
 
@@ -102,7 +101,6 @@ def check_mixtral_moe_layer():
         ep_size=2,
         tp_size=1,
         checkpoint_io=MoECheckpointIO,
-        custom_policy=MixtralForCausalLMPolicy(),
         microbatch_size=1,
         zero_stage=1,
     )
@@ -168,10 +166,10 @@ def run_dist(rank: int, world_size: int, port: int):
 
 
 # Test EP + ZeRO + PP
-@pytest.mark.parametrize("world_size", [8])
+@pytest.mark.parametrize("world_size", [4])
 def test_mixtral_moe_layer(world_size: int):
     spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_mixtral_moe_layer(8)
+    test_mixtral_moe_layer(4)
