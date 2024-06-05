@@ -72,7 +72,7 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         dist.barrier()
 
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
-        check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict(), False)
+        check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict())
 
 
 @clear_cache_before_run()
@@ -130,13 +130,11 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
 
         booster.load_model(new_model, model_ckpt_path)
         check_state_dict_equal(
-            model.state_dict(only_rank_0=False), new_model.state_dict(only_rank_0=False), False, ignore_dtype=True
+            model.state_dict(only_rank_0=False), new_model.state_dict(only_rank_0=False), ignore_dtype=True
         )
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(
-            optimizer.state_dict(only_rank_0=False), new_optimizer.state_dict(only_rank_0=False), False
-        )
+        check_state_dict_equal(optimizer.state_dict(only_rank_0=False), new_optimizer.state_dict(only_rank_0=False))
         for group in new_optimizer.param_groups:
             assert group["lr"] == 0.1
 
@@ -169,7 +167,7 @@ def exam_lazy_from_pretrained():
         booster.save_model(model, save_path, shard=False)
         dist.barrier()
         state_dict = torch.load(save_path, map_location="cpu")
-        check_state_dict_equal(state_dict, orig_state_dict, False, ignore_dtype=True)
+        check_state_dict_equal(state_dict, orig_state_dict, ignore_dtype=True)
 
 
 def run_dist(rank, world_size, port):
