@@ -149,8 +149,8 @@ class Timer:
         end_time = time.time()
         elapsed_time = end_time - self.start_time
         self.times.append(elapsed_time)
-        print(f"{self.name} took {elapsed_time:.6f} seconds")
-        self.print_info()
+        # print(f"{self.name} took {elapsed_time:.6f} seconds")
+        # self.print_info()
 
     def print_info(self):
         average_prefill_time = self.times[0]

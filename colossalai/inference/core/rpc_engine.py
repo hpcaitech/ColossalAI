@@ -1,4 +1,7 @@
 import asyncio
+import concurrent
+import pickle
+from contextlib import nullcontext
 from itertools import count
 from time import sleep
 from typing import List, Tuple, Union
@@ -14,7 +17,7 @@ from transformers.configuration_utils import PretrainedConfig
 from colossalai.inference.batch_bucket import RPCBatchBucket
 from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.executor.rpc_worker import rpcWorkerService
-from colossalai.inference.utils import find_available_ports
+from colossalai.inference.utils import Timer, find_available_ports
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.policies.base_policy import Policy
 
@@ -119,7 +122,20 @@ class RPCInferenceEngine(InferenceEngine):
         self.counter = count()
         self._verify_args()
 
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+        self.timer = False
+        self.t_prepare = Timer("[Timer] prepare the data 2") if self.timer else nullcontext()
+        self.t_exe = Timer("[Timer] execute rpc worker") if self.timer else nullcontext()
+        # self.t_sampler = Timer("[Timer] sampler time")
+
         self.logger.info("engine init over ")
+
+    def __del__(self):
+        if self.timer:
+            del self.t_prepare
+            del self.t_exe
 
     def _verify_args(self) -> None:
         """Verify the input args"""
@@ -268,7 +284,7 @@ class RPCInferenceEngine(InferenceEngine):
         assert async_res.ready
         return async_res.value
 
-    async def step_(self, input_token_ids, input_meta_data: InputMetaData):
+    async def step_async(self, input_token_ids, input_meta_data: InputMetaData):
         assert len(self.workers) == self.tp_size, "init workers first"
 
         init_tasks = []
@@ -277,9 +293,9 @@ class RPCInferenceEngine(InferenceEngine):
                 init_tasks.append(
                     self.async_parallel_forward(
                         async_forward,
-                        input_token_ids,
-                        input_meta_data.to_rpc_param(),
-                        self.generation_config_dict,
+                        pickle.dumps(input_token_ids),
+                        pickle.dumps(input_meta_data.to_rpc_param()),
+                        pickle.dumps(self.generation_config_dict),
                     )
                 )
             else:
@@ -296,12 +312,45 @@ class RPCInferenceEngine(InferenceEngine):
 
         return ret[0]
 
-    def step(self) -> List[str]:
-        batch = self.request_handler.schedule()
+    def step_(self, input_token_ids, input_meta_data: InputMetaData):
+        assert len(self.workers) == self.tp_size, "init workers first"
+        init_tasks = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.workers)) as executor:
+            for rank, worker in enumerate(self.workers):
+                if rank == 0:
+                    init_tasks.append(
+                        executor.submit(
+                            worker.execute_model_forward,
+                            pickle.dumps(input_token_ids),
+                            pickle.dumps(input_meta_data.to_rpc_param()),
+                            pickle.dumps(self.generation_config_dict),
+                        )
+                    )
+                else:
+                    init_tasks.append(
+                        executor.submit(
+                            worker.execute_model_forward,
+                            None,
+                            None,
+                            None,
+                        )
+                    )
 
-        input_token_ids, input_meta_data = self.prepare_input(batch)
-        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
-        next_tokens = asyncio.run(self.step_(input_token_ids, input_meta_data))
+        concurrent.futures.wait(init_tasks)
+        results = [future.result() for future in init_tasks]
+        return results[0]
+
+    def step(self) -> List[str]:
+        with self.t_prepare:
+            batch = self.request_handler.schedule()
+
+            input_token_ids, input_meta_data = self.prepare_input(batch)
+
+        with self.t_exe:
+            # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
+            next_tokens = self.loop.run_until_complete(self.step_async(input_token_ids, input_meta_data))
+        # with self.t_exe:
+        #     next_tokens = self.step_(input_token_ids, input_meta_data)
 
         # update the request_handler
         self.request_handler.append_next_tokens(next_tokens)

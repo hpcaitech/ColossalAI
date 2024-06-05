@@ -87,12 +87,14 @@ class InputMetaData(RPC_PARAM):
 
     def to_rpc_param(self) -> Dict[str, any]:
         return {
-            "block_tables": self.block_tables.tolist()
-            if isinstance(self.block_tables, torch.Tensor)
-            else self.block_tables,
-            "sequence_lengths": self.sequence_lengths.tolist()
-            if isinstance(self.block_tables, torch.Tensor)
-            else self.sequence_lengths,
+            "block_tables": self.block_tables,
+            # "block_tables": self.block_tables.tolist()
+            # if isinstance(self.block_tables, torch.Tensor)
+            # else self.block_tables,
+            "sequence_lengths": self.sequence_lengths,
+            # "sequence_lengths": self.sequence_lengths.tolist()
+            # if isinstance(self.block_tables, torch.Tensor)
+            # else self.sequence_lengths,
             "batch_size": self.batch_size,
             "is_prompts": self.is_prompts,
             "use_cuda_kernel": self.use_cuda_kernel,
@@ -114,17 +116,14 @@ class InputMetaData(RPC_PARAM):
         from colossalai.accelerator import get_accelerator
 
         dtype = getattr(torch, rpc_dict["dtype"])
+        device = get_accelerator().get_current_device()
         return InputMetaData(
-            block_tables=torch.tensor(
-                rpc_dict["block_tables"], dtype=torch.int, device=get_accelerator().get_current_device()
-            )
+            block_tables=torch.tensor(rpc_dict["block_tables"], dtype=torch.int, device=device)
             if isinstance(rpc_dict["block_tables"], list)
-            else rpc_dict["block_tables"],
-            sequence_lengths=torch.tensor(
-                rpc_dict["sequence_lengths"], dtype=torch.int, device=get_accelerator().get_current_device()
-            )
+            else rpc_dict["block_tables"].to(device),
+            sequence_lengths=torch.tensor(rpc_dict["sequence_lengths"], dtype=torch.int, device=device)
             if isinstance(rpc_dict["sequence_lengths"], list)
-            else rpc_dict["sequence_lengths"],
+            else rpc_dict["sequence_lengths"].to(device),
             batch_size=rpc_dict["batch_size"],
             is_prompts=rpc_dict["is_prompts"],
             use_cuda_kernel=rpc_dict["use_cuda_kernel"],

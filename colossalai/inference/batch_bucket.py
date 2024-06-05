@@ -526,6 +526,7 @@ class BatchBucket:
 class RPCBatchBucket(BatchBucket):
     def __init__(self, *args, **argv):
         self.is_rpc = True
+        self.device = "cpu"
         super().__init__(*args, **argv)
 
     # For compatibility
