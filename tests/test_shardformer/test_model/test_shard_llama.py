@@ -133,15 +133,29 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
-        {
+        {  # Test ring + Flash attention
             "tp_size": 2,
             "pp_size": 1,
+            "sp_size": 2,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "ring",
             "enable_flash_attention": True,
             "use_lazy_init": True,
             "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {  # Ulysess + Flash attention
+            "tp_size": 1,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
         },
@@ -347,4 +361,4 @@ def test_llama_3d():
 
 if __name__ == "__main__":
     test_llama()
-    test_llama_3d()
+    # test_llama_3d()

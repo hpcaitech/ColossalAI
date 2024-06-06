@@ -1,5 +1,4 @@
 import math
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -7,7 +6,6 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from transformers.cache_utils import Cache
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -468,220 +466,225 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
-    from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
+# def get_llama_flash_attention_forward(sp_mode, sp_group, sp_size):
+#     from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
-    try:
-        from transformers.models.llama.modeling_llama import repeat_kv
-    except:
-        warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
+#     try:
+#         from transformers.models.llama.modeling_llama import repeat_kv
+#     except:
+#         warnings.warn("using llamav1, llamav1 hasn't repeat_kv function")
 
-    def forward(
-        self: LlamaAttention,
-        hidden_states: torch.Tensor,
-        attention_mask: Optional[dict] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_value: Optional[Cache] = None,
-        output_attentions: bool = False,
-        use_cache: bool = False,
-        **kwargs,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
-        if "padding_mask" in kwargs:
-            warnings.warn(
-                "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
-            )
-        bsz, q_len, _ = hidden_states.size()
+#     def forward(
+#         self: LlamaAttention,
+#         hidden_states: torch.Tensor,
+#         attention_mask: Optional[dict] = None,
+#         position_ids: Optional[torch.LongTensor] = None,
+#         past_key_value: Optional[Cache] = None,
+#         output_attentions: bool = False,
+#         use_cache: bool = False,
+#         **kwargs,
+#     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+#         if "padding_mask" in kwargs:
+#             warnings.warn(
+#                 "Passing `padding_mask` is deprecated and will be removed in v4.37. Please make sure use `attention_mask` instead.`"
+#             )
+#         bsz, q_len, _ = hidden_states.size()
 
-        if sp_mode in ["split_gather", "ring"]:
-            q_len *= sp_size
-        assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
+#         if sp_mode in ["split_gather", "ring"]:
+#             q_len *= sp_size
+#         # assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
-        query_states = self.q_proj(hidden_states)
-        key_states = self.k_proj(hidden_states)
-        value_states = self.v_proj(hidden_states)
+#         query_states = self.q_proj(hidden_states)
+#         key_states = self.k_proj(hidden_states)
+#         value_states = self.v_proj(hidden_states)
 
-        # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
-            bsz, q_len, _ = query_states.size()
+#         # sp: all-to-all comminucation when introducing sequence parallel
+#         if sp_mode == "all_to_all":
+#             query_states = all_to_all_comm(query_states, sp_group)
+#             key_states = all_to_all_comm(key_states, sp_group)
+#             value_states = all_to_all_comm(value_states, sp_group)
+#             bsz, q_len, _ = query_states.size()
 
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+#         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
+#         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+#         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            if self.layer_idx is None:
-                raise ValueError(
-                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
-                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
-                    "with a layer index."
-                )
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+#         kv_seq_len = key_states.shape[-2]
+#         if past_key_value is not None:
+#             if self.layer_idx is None:
+#                 raise ValueError(
+#                     f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+#                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+#                     "with a layer index."
+#                 )
+#             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+#         cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+#         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        if past_key_value is not None:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
-            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+#         if past_key_value is not None:
+#             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+#             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
-        key_states = repeat_kv(key_states, self.num_key_value_groups)
-        value_states = repeat_kv(value_states, self.num_key_value_groups)
+#         key_states = repeat_kv(key_states, self.num_key_value_groups)
+#         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
-        attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
-        attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+#         assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
+#         attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+#         attn_output = attn_output.transpose(1, 2).contiguous()
+#         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
-        # sp: all-to-all comminucation when introducing sequence parallel
-        if sp_mode == "all_to_all":
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
-        attn_output = self.o_proj(attn_output)
+#         # sp: all-to-all comminucation when introducing sequence parallel
+#         if sp_mode == "all_to_all":
+#             attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
+#         attn_output = self.o_proj(attn_output)
 
-        return attn_output, None, past_key_value
+#         return attn_output, None, past_key_value
 
-    return forward
+#     return forward
 
 
-def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig):
-    logger = logging.get_logger(__name__)
-    assert shard_config.enable_flash_attention, "Flash Attention is not enabled."
+# def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+#     logger = logging.get_logger(__name__)
+#     assert shard_config.enable_flash_attention, "Flash Attention is not enabled."
 
-    def forward(
-        self: LlamaModel,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPast]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+#     def forward(
+#         self: LlamaModel,
+#         input_ids: torch.LongTensor = None,
+#         attention_mask: Optional[torch.Tensor] = None,
+#         position_ids: Optional[torch.LongTensor] = None,
+#         past_key_values: Optional[List[torch.FloatTensor]] = None,
+#         inputs_embeds: Optional[torch.FloatTensor] = None,
+#         use_cache: Optional[bool] = None,
+#         output_attentions: Optional[bool] = None,
+#         output_hidden_states: Optional[bool] = None,
+#         return_dict: Optional[bool] = None,
+#     ) -> Union[Tuple, BaseModelOutputWithPast]:
+#         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+#         output_hidden_states = (
+#             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+#         )
+#         use_cache = use_cache if use_cache is not None else self.config.use_cache
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+#         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape
-        elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape
-        else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+#         # retrieve input_ids and inputs_embeds
+#         if input_ids is not None and inputs_embeds is not None:
+#             raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+#         elif input_ids is not None:
+#             batch_size, seq_length = input_ids.shape
+#         elif inputs_embeds is not None:
+#             batch_size, seq_length, _ = inputs_embeds.shape
+#         else:
+#             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
+#         seq_length_with_past = seq_length
+#         past_key_values_length = 0
 
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
+#         if past_key_values is not None:
+#             past_key_values_length = past_key_values[0][0].shape[2]
+#             seq_length_with_past = seq_length_with_past + past_key_values_length
 
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
-            )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
+#         if position_ids is None:
+#             device = input_ids.device if input_ids is not None else inputs_embeds.device
+#             position_ids = torch.arange(
+#                 past_key_values_length,
+#                 seq_length + past_key_values_length,
+#                 dtype=torch.long,
+#                 device=device,
+#             )
+#             position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+#         else:
+#             position_ids = position_ids.view(-1, seq_length).long()
 
-        if inputs_embeds is None:
-            inputs_embeds = self.embed_tokens(input_ids)
-        # embed positions
-        hidden_states = inputs_embeds
+#         if inputs_embeds is None:
+#             inputs_embeds = self.embed_tokens(input_ids)
 
-        # in this case, attention_mask is a dict rather than a tensor
-        mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
-        attention_mask = ColoAttention.prepare_attn_kwargs(
-            mask_shape,
-            hidden_states.dtype,
-            hidden_states.device,
-            q_padding_mask=attention_mask,
-            is_causal=True,
-        )
+#         if sp_mode in ["ring", "split_gather"]:
+#             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+#         elif sp_mode == "all_to_all":
+#             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+#         # embed positions
+#         hidden_states = inputs_embeds
 
-        if self.gradient_checkpointing and self.training:
-            if use_cache:
-                logger.warning_once(
-                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                )
-                use_cache = False
+#         # in this case, attention_mask is a dict rather than a tensor
+#         mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+#         attention_mask = ColoAttention.prepare_attn_kwargs(
+#             mask_shape,
+#             hidden_states.dtype,
+#             hidden_states.device,
+#             q_padding_mask=attention_mask,
+#             is_causal=True,
+#         )
 
-        # decoder layers
-        all_hidden_states = () if output_hidden_states else None
-        all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+#         if self.gradient_checkpointing and self.training:
+#             if use_cache:
+#                 logger.warning_once(
+#                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+#                 )
+#                 use_cache = False
 
-        for idx, decoder_layer in enumerate(self.layers):
-            if output_hidden_states:
-                all_hidden_states += (hidden_states,)
+#         # decoder layers
+#         all_hidden_states = () if output_hidden_states else None
+#         all_self_attns = () if output_attentions else None
+#         next_decoder_cache = () if use_cache else None
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
+#         for idx, decoder_layer in enumerate(self.layers):
+#             if output_hidden_states:
+#                 all_hidden_states += (hidden_states,)
 
-            if self.gradient_checkpointing and self.training:
+#             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions)
+#             if self.gradient_checkpointing and self.training:
 
-                    return custom_forward
+#                 def create_custom_forward(module):
+#                     def custom_forward(*inputs):
+#                         # None for past_key_value
+#                         return module(*inputs, past_key_value, output_attentions)
 
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
-                    hidden_states,
-                    attention_mask,
-                    position_ids,
-                )
-            else:
-                layer_outputs = decoder_layer(
-                    hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    past_key_value=past_key_value,
-                    output_attentions=output_attentions,
-                    use_cache=use_cache,
-                )
+#                     return custom_forward
 
-            hidden_states = layer_outputs[0]
+#                 layer_outputs = torch.utils.checkpoint.checkpoint(
+#                     create_custom_forward(decoder_layer),
+#                     hidden_states,
+#                     attention_mask,
+#                     position_ids,
+#                 )
+#             else:
+#                 layer_outputs = decoder_layer(
+#                     hidden_states,
+#                     attention_mask=attention_mask,
+#                     position_ids=position_ids,
+#                     past_key_value=past_key_value,
+#                     output_attentions=output_attentions,
+#                     use_cache=use_cache,
+#                 )
 
-            if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+#             hidden_states = layer_outputs[0]
 
-            if output_attentions:
-                all_self_attns += (layer_outputs[1],)
+#             if use_cache:
+#                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
-        hidden_states = self.norm(hidden_states)
+#             if output_attentions:
+#                 all_self_attns += (layer_outputs[1],)
 
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
-            all_hidden_states += (hidden_states,)
+#         hidden_states = self.norm(hidden_states)
 
-        next_cache = next_decoder_cache if use_cache else None
-        if not return_dict:
-            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
-        return BaseModelOutputWithPast(
-            last_hidden_state=hidden_states,
-            past_key_values=next_cache,
-            hidden_states=all_hidden_states,
-            attentions=all_self_attns,
-        )
+#         # add hidden states from the last decoder layer
+#         if output_hidden_states:
+#             all_hidden_states += (hidden_states,)
 
-    return forward
+#         next_cache = next_decoder_cache if use_cache else None
+#         if not return_dict:
+#             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+#         return BaseModelOutputWithPast(
+#             last_hidden_state=hidden_states,
+#             past_key_values=next_cache,
+#             hidden_states=all_hidden_states,
+#             attentions=all_self_attns,
+#         )
+
+#     return forward
 
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
@@ -787,7 +790,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
     return forward
 
 
-def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
+def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -797,6 +800,12 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if sp_mode is not None:
+            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert (sp_size is not None) and (
+                sp_group is not None
+            ), "Must specify sp_size and sp_group for sequence parallel"
+
         bsz, q_len, _ = hidden_states.size()
         # sp: modify sp_len when sequence parallel mode is ring
         if sp_mode in ["split_gather", "ring"]:
@@ -851,30 +860,34 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        if shard_config.enable_flash_attention:
+            assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
+            attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+        else:
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
                 raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
                 )
-            attn_weights = attn_weights + attention_mask
 
-        # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_output = torch.matmul(attn_weights, value_states)
+            if attention_mask is not None:
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                    raise ValueError(
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    )
+                attn_weights = attn_weights + attention_mask
 
-        if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
-            raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
-            )
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_output = torch.matmul(attn_weights, value_states)
+
+            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+                raise ValueError(
+                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                    f" {attn_output.size()}"
+                )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         # sp: all-to-all comminucation when introducing sequence parallel
@@ -898,7 +911,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
     return forward
 
 
-def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
+def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -967,9 +980,19 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                 device=inputs_embeds.device,
             )
 
-        attention_mask = _prepare_4d_causal_attention_mask(
-            attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
-        )
+        if shard_config.enable_flash_attention:
+            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            attention_mask = ColoAttention.prepare_attn_kwargs(
+                mask_shape,
+                inputs_embeds.dtype,
+                inputs_embeds.device,
+                q_padding_mask=attention_mask,
+                is_causal=True,
+            )
+        else:
+            attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
+            )
 
         hidden_states = inputs_embeds
 
