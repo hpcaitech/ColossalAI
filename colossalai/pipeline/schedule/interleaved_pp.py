@@ -32,7 +32,6 @@ class InterleavedSchedule(PipelineSchedule):
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
         overlap_p2p: bool = True,
-        two_p2p_batches: bool = False,
     ) -> None:
         super().__init__(stage_manager)
         assert (
@@ -44,8 +43,6 @@ class InterleavedSchedule(PipelineSchedule):
         self.num_microbatch = num_microbatch
         self.microbatch_size = microbatch_size
         self.num_model_chunks = num_model_chunks
-        # Split send and recv into two batches and don't wait for send
-        self.two_p2p_batches = two_p2p_batches
 
         self.batch: Any
         self.batch_size: int
@@ -223,60 +220,44 @@ class InterleavedSchedule(PipelineSchedule):
     def send_forward_recv_forward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, output_tensor: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
-        if self.two_p2p_batches:
-            if send_first:
-                self.send_forward(model_chunk_id_send, output_tensor)
-                input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
-            else:
-                input_tensor, wait_handles = self.recv_forward(model_chunk_id_recv)
-                self.send_forward(model_chunk_id_send, output_tensor)
-        else:
-            with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
-                is_send = not self.stage_manager.is_last_stage()
-            with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
-                is_recv = not self.stage_manager.is_first_stage()
-            input_tensor, wait_handles = self.comm.send_forward_recv_forward(
-                output_tensor,
-                is_send,
-                is_recv,
-                send_metadata=self.send_tensor_metadata,
-                metadata_recv=self.tensor_metadata_recv,
-                send_first=send_first,
-            )
-            # Cache metadata
-            self.send_tensor_metadata = not self.enable_metadata_cache and is_send
-            if is_recv and self.enable_metadata_cache and self.tensor_metadata_recv is None:
-                self.tensor_metadata_recv = create_send_metadata(input_tensor)
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+            is_send = not self.stage_manager.is_last_stage()
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+            is_recv = not self.stage_manager.is_first_stage()
+        input_tensor, wait_handles = self.comm.send_forward_recv_forward(
+            output_tensor,
+            is_send,
+            is_recv,
+            send_metadata=self.send_tensor_metadata,
+            metadata_recv=self.tensor_metadata_recv,
+            send_first=send_first,
+        )
+        # Cache metadata
+        self.send_tensor_metadata = not self.enable_metadata_cache and is_send
+        if is_recv and self.enable_metadata_cache and self.tensor_metadata_recv is None:
+            self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
         return input_tensor, wait_handles
 
     def send_backward_recv_backward(
         self, model_chunk_id_send: int, model_chunk_id_recv: int, input_tensor_grad: Any, send_first: bool = True
     ) -> Tuple[Any, List]:
-        if self.two_p2p_batches:
-            if send_first:
-                self.send_backward(model_chunk_id_send, input_tensor_grad)
-                output_tensor_grad, wait_handles = self.recv_backward(model_chunk_id_recv)
-            else:
-                output_tensor_grad, wait_handles = self.recv_backward(model_chunk_id_recv)
-                self.send_backward(model_chunk_id_send, input_tensor_grad)
-        else:
-            with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
-                is_send = not self.stage_manager.is_first_stage()
-            with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
-                is_recv = not self.stage_manager.is_last_stage()
-            output_tensor_grad, wait_handles = self.comm.send_backward_recv_backward(
-                input_tensor_grad,
-                is_send,
-                is_recv,
-                send_metadata=self.send_grad_metadata,
-                metadata_recv=self.grad_metadata_recv,
-                send_first=send_first,
-            )
-            # Cache metadata
-            self.send_grad_metadata = not self.enable_metadata_cache and is_send
-            if is_recv and self.enable_metadata_cache and self.grad_metadata_recv is None:
-                self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_send):
+            is_send = not self.stage_manager.is_first_stage()
+        with self.stage_manager.switch_model_chunk_id(model_chunk_id_recv):
+            is_recv = not self.stage_manager.is_last_stage()
+        output_tensor_grad, wait_handles = self.comm.send_backward_recv_backward(
+            input_tensor_grad,
+            is_send,
+            is_recv,
+            send_metadata=self.send_grad_metadata,
+            metadata_recv=self.grad_metadata_recv,
+            send_first=send_first,
+        )
+        # Cache metadata
+        self.send_grad_metadata = not self.enable_metadata_cache and is_send
+        if is_recv and self.enable_metadata_cache and self.grad_metadata_recv is None:
+            self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
         return output_tensor_grad, wait_handles
 
     def forward_step(
