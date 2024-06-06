@@ -87,3 +87,4 @@ jobs:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
+          MOE_TENSOR_PATH: /data/scratch/moe_tensors
