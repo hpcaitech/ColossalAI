@@ -34,6 +34,7 @@ class InferCheckpoint_io(GeneralCheckpointIO):
 
     def load_sharded_model(self, model: ModelWrapper, checkpoint_index_file: Path, strict: bool = False):
         """
+        TODO(@lry89757) optimize the logic of loading model, the load_sharded_model of GeneralCheckpointIO doesn't work here.
         Load sharded model with the given path to index file of checkpoint folder.
 
         Args:

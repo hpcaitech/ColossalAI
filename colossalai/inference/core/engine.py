@@ -1,3 +1,4 @@
+import os
 import time
 from itertools import count
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -24,12 +25,13 @@ from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
-from colossalai.inference.utils import get_model_size
+from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.lazy import LazyInitContext
 
 from .request_handler import RequestHandler
 
@@ -115,14 +117,17 @@ class InferenceEngine:
         """
 
         if isinstance(model_or_path, str):
+            is_local = os.path.isdir(model_or_path)
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
-                    # NOTE(lry89757) Currently we load the model using transformers-api,
-                    # but we will use lazy tensor and checkpoint io to accelerate
-                    # the model load process in the future.
-                    model = _supported_models[arch].from_pretrained(model_or_path, trust_remote_code=True)
+                    if is_local:
+                        with LazyInitContext(default_device="cuda"):
+                            model = _supported_models[arch](hf_config)
+                    else:
+                        # load the real checkpoint
+                        model = _supported_models[arch](hf_config).from_pretrained(model_or_path, trust_remote_code=True)
                 else:
                     raise ValueError(f"Model {arch} is not supported.")
 
@@ -178,14 +183,13 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        # NOTE(lry89757) Deprecated currently, will reused when introduce lazy tensor
-        # if isinstance(model_or_path, str) and not isinstance(casuallm, AutoModelForCausalLM):
-        #     from colossalai.inference.core.plugin import InferCheckpoint_io
+        if isinstance(model_or_path, str) and is_local:
+            from colossalai.inference.core.plugin import InferCheckpoint_io
 
-        #     cpt_io = InferCheckpoint_io()
-        #     if_has_index_file, model_index_file = has_index_file(model_or_path)
-        #     assert if_has_index_file, "the model path is invalid"
-        #     cpt_io.load_model(self.model, model_index_file)
+            cpt_io = InferCheckpoint_io()
+            if_has_index_file, model_index_file = has_index_file(model_or_path)
+            assert if_has_index_file, "the model path is invalid"
+            cpt_io.load_model(self.model, model_index_file)
 
         free_gpu_memory, total_gpu_memory = torch.cuda.mem_get_info()
         peak_memory = init_gpu_memory - free_gpu_memory
