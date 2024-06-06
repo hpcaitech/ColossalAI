@@ -361,4 +361,4 @@ def test_llama_3d():
 
 if __name__ == "__main__":
     test_llama()
-    # test_llama_3d()
+    test_llama_3d()
