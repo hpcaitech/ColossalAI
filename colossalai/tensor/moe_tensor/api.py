@@ -20,7 +20,7 @@ def is_moe_tensor(tensor: torch.Tensor) -> bool:
     return hasattr(tensor, "ep_group")
 
 
-def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None:
+def set_moe_tensor_ep_group(tensor: torch.Tensor, ep_group: ProcessGroup) -> None:
     """
     Set moe info for the given tensor.
 
@@ -29,7 +29,7 @@ def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None
         moe_info (dict): The moe info to be set.
 
     """
-    tensor.__setattr__("moe_info", moe_info)
+    tensor.__setattr__("ep_group", ep_group)
 
 
 def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> MoeParallelInfo:
