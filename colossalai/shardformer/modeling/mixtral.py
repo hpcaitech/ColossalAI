@@ -7,10 +7,10 @@ from torch.distributed import ProcessGroup
 
 # from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.models.mixtral.modeling_mixtral import (
     MixtralSparseMoeBlock,
     MoeCausalLMOutputWithPast,
-    _prepare_4d_causal_attention_mask,
     load_balancing_loss_func,
 )
 from transformers.utils import logging
@@ -37,7 +37,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
         set_tensors_to_none(self.experts, exclude=set(held_experts))
-        for n, p in self.experts.named_parameters():
+        for p in self.experts.named_parameters():
             p.ep_group = ep_group
 
     @staticmethod

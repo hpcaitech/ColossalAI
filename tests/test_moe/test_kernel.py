@@ -41,11 +41,7 @@ def run_moe_dispatch_combine_fwd_bwd(data_type=torch.float32, hidden_size=128, n
     )
 
     # use kernel
-    route_result_list_kernel = (
-        torch.load(f"{MOE_TENSOR_PATH}/True_4_{data_type}.pt")
-        if MOE_TENSOR_PATH
-        else torch.load(f"True_4_{data_type}.pt")
-    )
+    route_result_list_kernel = torch.load(f"{MOE_TENSOR_PATH}/True_4_{data_type}.pt")
     # dispatch
     dispatch_data_kernel = MoeDispatch.apply(tokens, *route_result_list_kernel[1:])
     dispatch_data_kernel = dispatch_data_kernel.reshape(num_experts, -1, hidden_size)
@@ -54,11 +50,7 @@ def run_moe_dispatch_combine_fwd_bwd(data_type=torch.float32, hidden_size=128, n
     ans_kernel = MoeCombine.apply(expert_output, *route_result_list_kernel)
 
     # no kernel
-    route_result_list_no_kernel = (
-        torch.load(f"{MOE_TENSOR_PATH}/False_2_{data_type}.pt")
-        if MOE_TENSOR_PATH
-        else torch.load(f"False_2_{data_type}.pt")
-    )
+    route_result_list_no_kernel = torch.load(f"{MOE_TENSOR_PATH}/False_2_{data_type}.pt")
     # dispatch
     sec_mask_f = route_result_list_no_kernel[1].type_as(tokens)
     dispatch_data_no_kernel = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
