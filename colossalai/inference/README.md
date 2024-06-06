@@ -278,6 +278,7 @@ This project was written from scratch but we learned a lot from several other gr
 - [vLLM](https://github.com/vllm-project/vllm)
 - [flash-attention](https://github.com/Dao-AILab/flash-attention)
 - [HuggingFace](https://huggingface.co)
+- [StreamingLLM](https://github.com/mit-han-lab/streaming-llm)
 If you wish to cite relevant research papars, you can find the reference below.
 
 ```bibtex
@@ -299,6 +300,14 @@ If you wish to cite relevant research papars, you can find the reference below.
 @article{dao2023flashattention2,
   title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
   author={Dao, Tri},
+  year={2023}
+}
+
+# StreamingLLM
+@article{xiao2023streamingllm,
+  title={Efficient Streaming Language Models with Attention Sinks},
+  author={Xiao, Guangxuan and Tian, Yuandong and Chen, Beidi and Han, Song and Lewis, Mike},
+  journal={arXiv},
   year={2023}
 }
 ```

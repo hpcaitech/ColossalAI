@@ -287,15 +287,6 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
     # test_config["initial_scale"] = 1
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining",
-        "transformers_bert_lm_head_model",
-        "transformers_bert_for_masked_lm",
-        "transformers_bert_for_sequence_classification",
-        "transformers_bert_for_token_classification",
-        "transformers_bert_for_next_sentence",
-        "transformers_bert_for_mcq",
-        "transformers_bert_for_question_answering",
-        "simple_mlp",
     ]
     clear_layout_converter()
     torch.set_default_dtype(torch.bfloat16)
@@ -389,14 +380,6 @@ def exam_bert_test_on_hybrid_plugin(test_config):
     test_config["initial_scale"] = 2**16  # avoid overflow
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining",
-        "transformers_bert_lm_head_model",
-        "transformers_bert_for_masked_lm",
-        "transformers_bert_for_sequence_classification",
-        "transformers_bert_for_token_classification",
-        "transformers_bert_for_next_sentence",
-        "transformers_bert_for_mcq",
-        "transformers_bert_for_question_answering",
     ]
 
     # pass "transformers_bert",

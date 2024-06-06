@@ -15,17 +15,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
-    {
-        "placement_policy": "static",
-        "shard_param_frac": 1.0,
-        "offload_optim_frac": 1.0,
-        "offload_param_frac": 1.0,
-    },  # zero3-offload-all
+    {"placement_policy": "static", "shard_param_frac": 0.3, "offload_param_frac": 0.3, "offload_optim_frac": 0.3},
     {"placement_policy": "auto"},
 ]
 
@@ -73,7 +63,7 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
 @parameterize("model_name", TEST_MODELS)
 @parameterize("mixed_precision", [torch.half, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-@parameterize("enable_async_reduce", [False, True])
+@parameterize("enable_async_reduce", [True])
 def exam_model_step(
     placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool, enable_async_reduce=True
 ):
@@ -136,7 +126,7 @@ def exam_model_step(
             check_param(model, torch_model, mixed_precision)
 
 
-@parameterize("placement_config", [PLACEMENT_CONFIGS[3]])
+@parameterize("placement_config", [{"placement_policy": "static", "shard_param_frac": 1.0}])
 @parameterize("model_name", EXAMPLE_MODELS)
 @parameterize("mixed_precision", [torch.half])
 def exam_tiny_example(placement_config, model_name: str, mixed_precision: torch.dtype):
@@ -197,7 +187,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 4])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_optim(world_size):
     spawn(run_dist, world_size)

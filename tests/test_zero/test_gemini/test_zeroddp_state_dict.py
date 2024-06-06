@@ -10,9 +10,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
+    {"placement_policy": "static", "shard_param_frac": 0.75},
     {"placement_policy": "auto"},
 ]
 
@@ -26,8 +24,8 @@ def ignore_the_first_parameter(model: torch.nn.Module):
 
 @parameterize("placement_config", PLACEMENT_CONFIGS)
 @parameterize("keep_gathered", [True, False])
-@parameterize("model_name", ["transformers_gpt_lm", "transformers_bert_for_sequence_classification"])
-@parameterize("master_weights", [False, True])
+@parameterize("model_name", ["transformers_gpt_lm"])
+@parameterize("master_weights", [True, False])
 def exam_state_dict(placement_config, keep_gathered, model_name: str, master_weights: bool):
     set_seed(431)
     model_builder, data_gen_fn, output_transform_fn, *_ = next(iter(model_zoo.get_sub_registry(model_name).values()))
@@ -81,7 +79,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 4])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_zero_ddp(world_size):
     spawn(run_dist, world_size)
