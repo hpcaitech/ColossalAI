@@ -27,9 +27,8 @@ hidden_size = 8
 top_k = 2
 
 
-# @parameterize("dtype", [torch.float16, torch.bfloat16])
-@parameterize("dtype", [torch.bfloat16])
-@parameterize("master_weights", [False])
+@parameterize("dtype", [torch.float16, torch.bfloat16])
+@parameterize("master_weights", [True, False])
 def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torch.dtype):
     torch.distributed.get_rank()
 
