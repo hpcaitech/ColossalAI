@@ -27,11 +27,11 @@ from colossalai.inference.spec import Drafter, GlideInput
 from colossalai.inference.struct import Sequence
 from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.lazy import LazyInitContext
 
 from .request_handler import RequestHandler
 
@@ -127,7 +127,9 @@ class InferenceEngine:
                             model = _supported_models[arch](hf_config)
                     else:
                         # load the real checkpoint
-                        model = _supported_models[arch](hf_config).from_pretrained(model_or_path, trust_remote_code=True)
+                        model = _supported_models[arch](hf_config).from_pretrained(
+                            model_or_path, trust_remote_code=True
+                        )
                 else:
                     raise ValueError(f"Model {arch} is not supported.")
 
