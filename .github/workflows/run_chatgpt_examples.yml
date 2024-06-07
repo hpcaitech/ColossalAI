@@ -42,7 +42,7 @@ jobs:
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.34.1
+          pip install transformers==4.36.2
 
       - name: Execute Examples
         run: |

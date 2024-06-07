@@ -281,7 +281,7 @@ echo "[Test]: testing ppo ..."
 
 
 SKIPPED_TESTS=(
-    llama-3d # 3d plugin doesn't support lora
+    # llama-3d # 3d plugin doesn't support lora
     llama-gemini # gemini doesn't support lora
 )
 
