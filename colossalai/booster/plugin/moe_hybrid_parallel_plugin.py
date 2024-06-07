@@ -30,7 +30,7 @@ from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
-PP_AXIS, DP_AXIS, EP_AXIS, TP_AXIS = 0, 1, 2, -1
+PP_AXIS, DP_AXIS, EP_AXIS, TP_AXIS = 0, 1, 2, 3
 
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):

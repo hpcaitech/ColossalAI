@@ -190,10 +190,7 @@ class ProcessGroupMesh:
         def add_index(base_coord, axis, indices_at_axis):
             coords_in_group = []
             for idx in indices_at_axis:
-                coord = base_coord[:axis] + (idx,)
-                if axis + 1 < len(base_coord) and axis != -1:
-                    coord += base_coord[axis + 1 :]
-                coords_in_group.append(coord)
+                coords_in_group.append(base_coord[:axis] + (idx,) + base_coord[axis + 1 :])
             return coords_in_group
 
         coords_in_group = [base_coord]
