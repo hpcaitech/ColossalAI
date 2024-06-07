@@ -97,8 +97,8 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     ori_optimizer.step()
 
     # check updated param
-    for p, z1p in zip(ori_model.parameters(), zero_model.parameters()):
-        loose_close(p.data, z1p.data, dtype=dtype)
+    for p, zp in zip(ori_model.parameters(), zero_model.parameters()):
+        loose_close(p.data, zp.data, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):

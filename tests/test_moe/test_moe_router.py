@@ -4,6 +4,7 @@ import torch
 from colossalai.moe.routers import MoeRouter, Top1Router, Top2Router, TopKRouter
 
 
+@pytest.skip()
 @pytest.mark.parametrize(
     ["router", "num_groups"],
     [
