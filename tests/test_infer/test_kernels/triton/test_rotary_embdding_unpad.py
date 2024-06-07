@@ -46,10 +46,10 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, use_new_kcache_layout):
     x0 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
     x1 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
     emb = LlamaRotaryEmbedding(D)
-    cos, sin = emb(x0, TOTAL_TOKENS)
+    position_ids = torch.arange(TOTAL_TOKENS)
+    cos, sin = emb(x0, position_ids)
     cos_2 = cos[:, :32]
     sin_2 = sin[:, :32]
-    position_ids = torch.arange(TOTAL_TOKENS)
     embd_x0, _ = apply_rotary_pos_emb(x0, x1, cos, sin, position_ids)
     embd_stimulated_x = torch_rotary_emb(x0, cos_2, sin_2)
     assert torch.allclose(embd_x0, embd_stimulated_x)

@@ -69,7 +69,7 @@ def test_context_attention():
 
     position_ids = torch.arange(0, 8, dtype=torch.long, device=proj_q.device)
     position_ids = position_ids.unsqueeze(0)
-    cos, sin = transformer_attn.rotary_emb(proj_v, 8)
+    cos, sin = transformer_attn.rotary_emb(proj_v, position_ids)
     proj_q, proj_k = apply_rotary_pos_emb(proj_q, proj_k, cos, sin, position_ids)
 
     pad_attn_output = attn.pad_context_forward(
