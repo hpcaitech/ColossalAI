@@ -30,8 +30,9 @@ top_k = 2
 
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torch.dtype):
-    torch.distributed.get_rank()
+@parameterize("stage", [1, 2])
+def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torch.dtype, stage: int):
+    rank = torch.distributed.get_rank()
 
     torch.cuda.set_device(dist.get_rank())
 
@@ -55,6 +56,7 @@ def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torc
         reduce_bucket_size=1024 * 1024,
         master_weights=master_weights,
         moe_extra_dp_process_group=plugin.ep_group,
+        partition_grad=(stage == 2),
     )
 
     ori_optimizer = torch.optim.SGD(ori_model.parameters(), lr=1)
@@ -76,21 +78,20 @@ def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torc
     ori_output.mean().float().backward()
 
     # check grad
-    for (n1, p1), (n2, p2) in zip(ori_model.named_parameters(), zero_model.named_parameters()):
-        if dist.get_rank() == 0:
-            print(n1, p1.shape, p1.grad is None, "\t", n2, p2.shape, p2.grad is None)
-
+    for p1, p2 in zip(ori_model.named_parameters(), zero_model.named_parameters()):
         if p1.grad is not None:
-            if is_moe_tensor(p2):  # moe tensor
+            if is_moe_tensor(p2):  # moe param
                 loose_close(p1.grad, p2.grad, dtype=dtype)
                 continue
             else:  # non-moe param
                 zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(p2))
                 assert len(zero_grad_list) != 0
 
-            ori_grad_list = split_grad(
-                p1.grad, world_size
-            )  # just flatten the original model grad to match the zero model grad shape
+            # just flatten the original model grad to match the zero model grad shape
+            ori_grad_list = split_grad(p1.grad, world_size)
+            if stage == 2:
+                # Zero2 splits the gradient, and each rank holds the corresponding part
+                ori_grad_list = ori_grad_list[rank : rank + 1]
             for zero_grad, torch_grad in zip(zero_grad_list, ori_grad_list):
                 loose_close(zero_grad, torch_grad, dtype=dtype)
 
@@ -101,7 +102,7 @@ def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torc
     ori_optimizer.step()
 
     # check updated param
-    for (n, p), z1p in zip(ori_model.named_parameters(), zero_model.parameters()):
+    for p, z1p in zip(ori_model.parameters(), zero_model.parameters()):
         loose_close(p.data, z1p.data, dtype=dtype)
 
 
@@ -112,7 +113,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [2])
+@pytest.mark.parametrize("world_size", [2, 4])
 @rerun_if_address_is_in_use()
 def test_moe_zero_model(world_size):
     spawn(run_dist, world_size)
