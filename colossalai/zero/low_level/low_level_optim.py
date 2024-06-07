@@ -278,7 +278,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # we iterate over the working params
         # on each param, we register a hook to its AccumulateGrad object
         for group_id in range(self.num_param_groups):
-            param_group = self._working_param_groups[group_id]
+            param_group = self._working_param_groups[group_id]  # TODO(haze188) refactor moe: moe-param hook for reduce
             for param in param_group:
                 if param.requires_grad:
                     param._grad_handle = param.register_post_accumulate_grad_hook(
@@ -377,7 +377,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     # sync extra zero group
                     else:
                         # sync non moe param in global dp group
+
                         if len(non_moe_grad_list) > 0:
+                            print("bbbbbbbbbbbbbbb allreduce moe params")
                             dist.all_reduce(non_moe_flat_grads, group=bucket_store.torch_pg)
                             flat_grads_per_rank = non_moe_flat_grads.split(
                                 non_moe_flat_grads.numel() // bucket_store.zero_world_size
@@ -401,7 +403,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.zero_world_size))
                         received_grad = torch.zeros_like(flat_grads_list[0])
                         dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
-
                         if received_grad.dtype != grad_dtype:
                             received_grad = received_grad.to(grad_dtype)
 
@@ -627,7 +628,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     # moe hybrid zero
                     if self._bucket_store.moe_extra_dp_pg is not None and is_moe_tensor(
                         working_param
-                    ):  # TODO(@haze188): this code may be useless for next refactor
+                    ):  # TODO(@haze188) refactor: this code may be useless, never run
                         real_working_params[group_id].append(working_param)
                         if self._grad_store._partition_grads:
                             grad = grads

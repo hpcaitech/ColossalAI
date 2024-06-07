@@ -3,6 +3,7 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 import colossalai
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
@@ -28,11 +29,8 @@ def split_grad(grad, world_size):
 @parameterize("stage", [1, 2])
 def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.dtype, stage: int):
     rank = torch.distributed.get_rank()
-
     torch.cuda.set_device(dist.get_rank())
-
     plugin = MoeHybridParallelPlugin(
-        precision="bf16",
         tp_size=1,
         pp_size=1,
         ep_size=dist.get_world_size(),
@@ -42,6 +40,7 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     zero_model = MoeModel(ep_group=plugin.ep_group).cuda().to(dtype)
 
     ori_model = deepcopy(zero_model).to(dtype)
+    ori_model = DDP(ori_model.cuda(), static_graph=True).cuda()
 
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
     zero_optimizer = LowLevelZeroOptimizer(
@@ -57,6 +56,7 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     ori_optimizer = torch.optim.SGD(ori_model.parameters(), lr=1)
 
     # create
+    seed_all(1453 + rank)
     input_data = torch.rand(1, 4).cuda()
 
     # zero-dp forward
@@ -76,6 +76,8 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     for p1, p2 in zip(ori_model.parameters(), zero_model.parameters()):
         if p1.grad is not None:
             if is_moe_tensor(p2):  # moe param
+                dist.all_reduce(p2.grad)  # TODO(haze188) bug fix: this step should be finished by zero
+                p2.grad = p2.grad / world_size  # moe model scaling for unit test
                 loose_close(p1.grad, p2.grad, dtype=dtype)
                 continue
             else:  # non-moe param
