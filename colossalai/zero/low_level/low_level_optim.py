@@ -379,7 +379,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         # sync non moe param in global dp group
 
                         if len(non_moe_grad_list) > 0:
-                            print("bbbbbbbbbbbbbbb allreduce moe params")
                             dist.all_reduce(non_moe_flat_grads, group=bucket_store.torch_pg)
                             flat_grads_per_rank = non_moe_flat_grads.split(
                                 non_moe_flat_grads.numel() // bucket_store.zero_world_size
