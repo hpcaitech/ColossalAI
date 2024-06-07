@@ -26,7 +26,7 @@ def split_grad(grad, world_size):
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("master_weights", [True, False])
 @parameterize("stage", [1, 2])
-def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torch.dtype, stage: int):
+def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.dtype, stage: int):
     rank = torch.distributed.get_rank()
 
     torch.cuda.set_device(dist.get_rank())
@@ -103,8 +103,7 @@ def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torc
 
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_zero_1_with_original_model(world_size=world_size)
-    # run_zero_1_2()
+    run_zero_with_original_model(world_size=world_size)
 
 
 @pytest.mark.dist
