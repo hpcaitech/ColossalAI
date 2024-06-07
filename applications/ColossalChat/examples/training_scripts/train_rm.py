@@ -6,12 +6,7 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import (
-    DataCollatorForPreferenceDataset,
-    StatefulDistributedSampler,
-    load_tokenized_dataset,
-    setup_distributed_dataloader,
-)
+from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler, load_tokenized_dataset
 from coati.models import LogExpLoss, LogSigLoss, RewardModel, convert_to_lora_module
 from coati.trainer import RewardModelTrainer
 from coati.utils import load_checkpoint
@@ -169,17 +164,15 @@ def train(args):
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train", mode_map=mode_map)
     data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
-    train_dataloader = setup_distributed_dataloader(
+
+    train_dataloader = plugin.prepare_dataloader(
         dataset=train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
-        tp_size=plugin.tp_size if hasattr(plugin, "tp_size") else 1,
-        sp_size=plugin.sp_size if hasattr(plugin, "sp_size") else 1,
-        pp_size=plugin.pp_size if hasattr(plugin, "pp_size") else 1,
+        distributed_sampler_cls=StatefulDistributedSampler,
     )
-
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
     math.ceil(args.max_epochs * num_update_steps_per_epoch)
 

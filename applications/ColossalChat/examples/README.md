@@ -29,6 +29,7 @@
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
+  - [List of Supported Models](#)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
@@ -744,6 +745,26 @@ For DPO, we recommend using zero2 or zero2-cpu. We tested the VRAM consumption o
 - 4 H800 GPUs
   - zero2, batch size=4, VRAM Usage=67544.47 MB
 
+## List of Supported Models
+
+For SFT, we support the following models/series:
+- Colossal-LLaMA-2
+- ChatGLM2
+- ChatGLM3 (only with zero2, zero2_cpu plugin)
+- Baichuan2
+- LLaMA2
+- Qwen1.5-7B-Chat (with transformers==4.39.1)
+- Yi-1.5
+
+For PPO and DPO, we theoratically support the following models/series (without guarantee):
+- Colossal-LLaMA-2 (tested)
+- ChatGLM2
+- Baichuan2
+- LLaMA2 (tested)
+- Qwen1.5-7B-Chat (with transformers==4.39.1)
+- Yi-1.5
+
+*-* The zero2, zero2_cpu plugin also support a wide range of chat models not listed above.
 
 ## Inference example
 

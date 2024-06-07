@@ -8,7 +8,7 @@ import sys
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForSupervisedDataset, load_tokenized_dataset, setup_distributed_dataloader
+from coati.dataset import DataCollatorForSupervisedDataset, StatefulDistributedSampler, load_tokenized_dataset
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.utils import load_checkpoint
@@ -189,21 +189,15 @@ def train(args):
     )
     dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, max_length=args.max_len)
-    train_dataloader = setup_distributed_dataloader(
+
+    train_dataloader = plugin.prepare_dataloader(
         dataset=dataset,
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
         collate_fn=data_collator,
-        tp_size=plugin.tp_size if hasattr(plugin, "tp_size") else 1,
-        sp_size=plugin.sp_size if hasattr(plugin, "sp_size") else 1,
-        pp_size=plugin.pp_size if hasattr(plugin, "pp_size") else 1,
+        distributed_sampler_cls=StatefulDistributedSampler,
     )
-    # print(len(train_dataloader))
-    # for batch in train_dataloader:
-    #     print(dist.get_rank(), tokenizer.batch_decode(batch["input_ids"]))
-    #     break
-
     coordinator.print_on_master(
         f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
