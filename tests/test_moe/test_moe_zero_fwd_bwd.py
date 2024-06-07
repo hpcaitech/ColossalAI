@@ -23,11 +23,6 @@ def split_grad(grad, world_size):
     return splited_grad
 
 
-tokens, n_experts = 7, 4
-hidden_size = 8
-top_k = 2
-
-
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("master_weights", [True, False])
 @parameterize("stage", [1, 2])
