@@ -1,6 +1,6 @@
+import os
 from typing import List, Tuple, Union
 
-import os
 import rpyc
 import torch
 import torch.distributed as dist
@@ -21,12 +21,12 @@ from colossalai.inference.modeling.policy import (
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from colossalai.lazy import LazyInitContext
 PP_AXIS, TP_AXIS = 0, 1
 
 _SUPPORTED_MODELS = {
@@ -183,14 +183,16 @@ class rpcWorkerService(rpyc.Service):
         if isinstance(model_or_path, str):
             is_local = os.path.isdir(model_or_path)
             try:
-                hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+                hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True, torch_dtype=self.dtype)
                 arch = getattr(hf_config, "architectures")[0]
                 if is_local:
                     with LazyInitContext(default_device="cuda"):
                         model = _SUPPORTED_MODELS[arch](hf_config)
                 else:
                     # load the real checkpoint
-                    model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
+                    model = _SUPPORTED_MODELS[arch].from_pretrained(
+                        model_or_path, trust_remote_code=True, torch_dtype=self.dtype
+                    )
             except Exception as e:
                 logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
