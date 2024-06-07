@@ -73,7 +73,7 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     ori_output.mean().float().backward()
 
     # check grad
-    for p1, p2 in zip(ori_model.named_parameters(), zero_model.named_parameters()):
+    for p1, p2 in zip(ori_model.parameters(), zero_model.parameters()):
         if p1.grad is not None:
             if is_moe_tensor(p2):  # moe param
                 loose_close(p1.grad, p2.grad, dtype=dtype)
