@@ -6,13 +6,14 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.test_moe.moe_utils import MoeModel, loose_close
 
 
-def split_ddp_grad(grad, world_size):
+def split_grad(grad, world_size):
     with torch.no_grad():
         grad = grad.clone().detach().flatten()
         padding_size = (world_size - grad.numel() % world_size) % world_size
@@ -80,13 +81,14 @@ def run_zero_1_with_original_model(world_size, master_weights: bool, dtype: torc
             print(n1, p1.shape, p1.grad is None, "\t", n2, p2.shape, p2.grad is None)
 
         if p1.grad is not None:
-            if p2.grad is None:
-                zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(1, id(p2))
-            else:  # moe param
+            if is_moe_tensor(p2):  # moe tensor
                 loose_close(p1.grad, p2.grad, dtype=dtype)
                 continue
+            else:  # non-moe param
+                zero_grad_list = zero_optimizer._grad_store.get_partitioned_gradients_by_param_id(0, id(p2))
+                assert len(zero_grad_list) != 0
 
-            ori_grad_list = split_ddp_grad(
+            ori_grad_list = split_grad(
                 p1.grad, world_size
             )  # just flatten the original model grad to match the zero model grad shape
             for zero_grad, torch_grad in zip(zero_grad_list, ori_grad_list):
