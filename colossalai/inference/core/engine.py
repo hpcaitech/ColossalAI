@@ -1,5 +1,6 @@
 import os
 import time
+from contextlib import nullcontext
 from itertools import count
 from typing import Dict, List, Optional, Tuple, Type, Union
 
@@ -123,11 +124,12 @@ class InferenceEngine:
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
                     if is_local:
-                        with LazyInitContext(default_device="cuda"):
-                            model = _supported_models[arch](hf_config)
+                        ctx = LazyInitContext(default_device="cuda")
                     else:
                         # load the real checkpoint
-                        model = _supported_models[arch](hf_config).from_pretrained(
+                        ctx = nullcontext()
+                    with ctx:
+                        model = _supported_models[arch].from_pretrained(
                             model_or_path, trust_remote_code=True, torch_dtype=self.dtype
                         )
                 else:
