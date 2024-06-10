@@ -29,7 +29,7 @@
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
-  - [List of Supported Models](#)
+  - [List of Supported Models](#list-of-supported-models)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
