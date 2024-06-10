@@ -16,18 +16,13 @@ from transformers.models.llama.modeling_llama import (
     LlamaRMSNorm,
 )
 
-from colossalai.inference.config import InputMetaData
+from colossalai.inference.config import InputMetaData, ModelShardInferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.modeling.backends.attention_backend import AttentionMetaData, get_attention_backend
+from colossalai.inference.modeling.backends.pre_attention_backend import get_pre_attention_backend
+from colossalai.inference.utils import can_use_flash_attn2
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
-from colossalai.kernel.triton import (
-    context_attention_unpadded,
-    copy_k_to_blocked_cache,
-    decoding_fused_rotary_embedding,
-    flash_decoding_attention,
-    get_xine_cache,
-    rms_layernorm,
-    rotary_embedding,
-)
+from colossalai.kernel.triton import get_xine_cache, rms_layernorm
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.layer.parallel_module import ParallelModule
 from colossalai.tensor.d_tensor import distribute_tensor, is_distributed_tensor
@@ -35,14 +30,6 @@ from colossalai.tensor.d_tensor import distribute_tensor, is_distributed_tensor
 inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
-
-try:
-    from flash_attn import flash_attn_varlen_func
-
-    use_flash_attn2 = True
-except ImportError:
-    use_flash_attn2 = False
-    logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
 def llama_causal_lm_forward(
@@ -126,7 +113,7 @@ def llama_model_forward(
         cos_sin = (self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes])
 
     elif use_cuda_kernel:
-        if inputmetadata.dtype != torch.float32 and use_flash_attn2:
+        if can_use_flash_attn2(inputmetadata.dtype):
             cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
 
         hidden_dim = self._cos_cached.size(-1)
@@ -238,7 +225,6 @@ def llama_decoder_layer_forward(
         kv_seq_len=kv_seq_len,
         output_tensor=output_tensor,
         sm_scale=sm_scale,
-        use_cuda_kernel=use_cuda_kernel,
         cu_seqlens=cu_seqlens,
         high_precision=high_precision,
     )
@@ -402,6 +388,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         attn_vproj_w: torch.Tensor = None,
         attn_oproj: ParallelModule = None,
         process_group: ProcessGroup = None,
+        model_shard_infer_config: ModelShardInferenceConfig = None,
         num_heads: int = None,
         hidden_size: int = None,
         num_key_value_heads: int = None,
@@ -433,6 +420,9 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         self.rope_theta = config.rope_theta
         self.is_causal = True
 
+        self.attention_backend = get_attention_backend(model_shard_infer_config)
+        self.pre_attention_backend = get_pre_attention_backend(model_shard_infer_config)
+
         if self.num_heads == self.num_key_value_heads:
             qkv_weight_list = [attn_qproj_w.transpose(0, 1), attn_kproj_w.transpose(0, 1), attn_vproj_w.transpose(0, 1)]
             self.qkv_weight = nn.Parameter(torch.stack(qkv_weight_list, dim=0))
@@ -462,6 +452,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         attn_vproj_w = module.v_proj.weight
         assert is_distributed_tensor(attn_qproj_w), "attn_qproj_w must be dist tensor"
         attn_oproj = module.o_proj
+        model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
 
         attn_layer = NopadLlamaAttention(
             config=config,
@@ -471,6 +462,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
             attn_vproj_w=attn_vproj_w,
             attn_oproj=attn_oproj,
             process_group=process_group,
+            model_shard_infer_config=model_shard_infer_config,
             num_heads=module.num_heads,
             hidden_size=module.hidden_size,
             num_key_value_heads=module.num_key_value_heads,
@@ -533,111 +525,50 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
 
         block_size = k_cache.size(-2)
 
-        if is_prompts:
-            if not is_verifier and use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
-                # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
-                inference_ops.context_kv_cache_memcpy(
-                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
-                )
+        attn_metadata = AttentionMetaData(
+            query_states=query_states,
+            key_states=key_states,
+            value_states=value_states,
+            k_cache=k_cache,
+            v_cache=v_cache,
+            block_tables=block_tables,
+            block_size=block_size,
+            kv_seq_len=kv_seq_len,
+            sequence_lengths=sequence_lengths,
+            sm_scale=sm_scale,
+            alibi_slopes=None,
+            cu_seqlens=cu_seqlens,
+            output_tensor=output_tensor,
+            use_spec_dec=is_verifier,
+            use_alibi_attn=False,
+        )
 
-                attn_output = flash_attn_varlen_func(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cu_seqlens_q=cu_seqlens,
-                    cu_seqlens_k=cu_seqlens,
-                    max_seqlen_q=kv_seq_len,
-                    max_seqlen_k=kv_seq_len,
-                    dropout_p=0.0,
-                    softmax_scale=sm_scale,
-                    causal=True,
-                )
-                attn_output = attn_output.view(token_nums, -1)
-            else:
-                rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                attn_output = context_attention_unpadded(
-                    q=query_states,
-                    k=key_states,
-                    v=value_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    context_lengths=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    output=output_tensor,
-                    max_seq_len=kv_seq_len,
-                    sm_scale=sm_scale,
-                    use_new_kcache_layout=use_cuda_kernel,
-                )
-        else:
+        if is_prompts:  # prefilling stage
+            self.pre_attention_backend.prefill(
+                attn_metadata,
+                cos=cos_sin[0],
+                sin=cos_sin[1],
+                high_precision=high_precision,
+            )
+            attn_output = self.attention_backend.prefill(
+                attn_metadata,
+                token_nums=token_nums,
+            )
+        else:  # decoding stage
             q_len = tokens_to_verify + 1 if is_verifier else 1
 
-            if use_cuda_kernel:
-                inference_ops.rotary_embedding_and_cache_copy(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cos_sin[0],
-                    cos_sin[1],
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    high_precision,
-                )
-                inference_ops.flash_decoding_attention(
-                    output_tensor,
-                    query_states,
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    block_size,
-                    kv_seq_len,
-                    fd_inter_tensor.mid_output,
-                    fd_inter_tensor.exp_sums,
-                    fd_inter_tensor.max_logits,
-                    None,
-                    sm_scale,
-                )
-                attn_output = output_tensor
-            else:
-                if is_verifier:
-                    rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                    copy_k_to_blocked_cache(
-                        key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
-                    )
-                    copy_k_to_blocked_cache(
-                        value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
-                    )
-                else:
-                    decoding_fused_rotary_embedding(
-                        query_states,
-                        key_states,
-                        value_states,
-                        cos_sin[0],
-                        cos_sin[1],
-                        k_cache,
-                        v_cache,
-                        block_tables,
-                        sequence_lengths,
-                    )
-                attn_output = flash_decoding_attention(
-                    q=query_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    kv_seq_len=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    max_seq_len_in_batch=kv_seq_len,
-                    output=output_tensor,
-                    mid_output=fd_inter_tensor.mid_output,
-                    mid_output_lse=fd_inter_tensor.mid_output_lse,
-                    sm_scale=sm_scale,
-                    kv_group_num=self.num_key_value_groups,
-                    q_len=q_len,
-                )
+            self.pre_attention_backend.decode(
+                attn_metadata,
+                cos=cos_sin[0],
+                sin=cos_sin[1],
+                q_len=q_len,
+            )
+            attn_output = self.attention_backend.decode(
+                attn_metadata,
+                fd_inter_tensor=fd_inter_tensor,
+                num_key_value_groups=self.num_key_value_groups,
+                q_len=q_len,
+            )
 
         attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = self.o_proj(attn_output)
