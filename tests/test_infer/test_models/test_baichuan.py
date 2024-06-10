@@ -55,7 +55,7 @@ def check_inference_engine(use_engine=False, do_sample=False, use_cuda_kernel=Fa
         assert inference_engine.generation_config.max_new_tokens == output_len
         inference_engine.add_request(prompts=inputs)
         assert inference_engine.request_handler._has_waiting()
-        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k)
+        generation_config = GenerationConfig(do_sample=do_sample, top_p=top_p, top_k=top_k, max_new_tokens=output_len)
         outputs = inference_engine.generate(generation_config=generation_config)
     else:
         if prompt_template:
