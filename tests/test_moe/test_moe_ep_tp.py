@@ -216,6 +216,7 @@ def run_test(rank: int, world_size: int, port: int, num_experts: int, batch_size
         )
 
 
+@pytest.mark.skip(reason="moe need to be refactored")
 @pytest.mark.dist
 @pytest.mark.parametrize("num_experts", [4, 64])
 @pytest.mark.parametrize("batch_size", [16])

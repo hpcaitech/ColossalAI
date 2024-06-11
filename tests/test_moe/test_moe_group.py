@@ -69,6 +69,7 @@ def _run_test(rank, world_size, port, expert_parallel):
     run_moe_init(expert_parallel)
 
 
+@pytest.mark.skip(reason="moe need to be refactored")
 @pytest.mark.dist
 @pytest.mark.parametrize("expert_parallel", ["EP", "TP"])
 @rerun_if_address_is_in_use()

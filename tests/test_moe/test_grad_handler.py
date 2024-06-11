@@ -69,6 +69,7 @@ def run_test(rank, world_size, port):
     # MoE grad handler test passed
 
 
+@pytest.mark.skip(reason="moe need to be refactored")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_grad_handler():

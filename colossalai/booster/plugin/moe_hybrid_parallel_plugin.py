@@ -352,7 +352,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         if self.checkpoint_io is None:
-            self.checkpoint_io = MoECheckpointIO(self.global_dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            self.checkpoint_io = MoECheckpointIO(
+                self.global_dp_group, self.pp_group, self.tp_group, self.ep_group, self.moe_dp_group, self.zero_stage
+            )
         else:
             self.checkpoint_io = self.checkpoint_io(
                 self.global_dp_group,
