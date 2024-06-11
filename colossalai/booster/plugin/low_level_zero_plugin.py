@@ -34,7 +34,6 @@ from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
-from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.zero import LowLevelZeroOptimizer
 
 from .dp_plugin_base import DPPluginBase
