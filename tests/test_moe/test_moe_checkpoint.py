@@ -75,7 +75,7 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
                 assert state1[k] == state2[k]
         if bug:
             passed = False
-            print(f"rank {dist.get_rank()} optim mismatch: {param2name[pid]}")
+            # print(f"rank {dist.get_rank()} optim mismatch: {param2name[pid]}")
 
     if not passed:
         raise AssertionError(f"A total of {count} optim states are not equal")
@@ -141,8 +141,8 @@ def check_mixtral_moe_layer():
     booster.save_optimizer(optimizer, "mixtral_optim", shard=True)
     dist.barrier()
 
-    working2master = optimizer.get_working_to_master_map()
-    param2name = {id(working2master[id(p)]): n for n, p in model.named_parameters()}
+    # working2master = optimizer.get_working_to_master_map()
+    # param2name = {id(working2master[id(p)]): n for n, p in model.named_parameters()}
     # reset optimizer state
     for state in optimizer.unwrap().state.values():
         for v in state.values():
@@ -150,7 +150,7 @@ def check_mixtral_moe_layer():
                 v.zero_()
     booster.load_optimizer(optimizer, "mixtral_optim")
     loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, param2name, model)
+    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, None, model)
 
     # Clean up
     dist.barrier()
