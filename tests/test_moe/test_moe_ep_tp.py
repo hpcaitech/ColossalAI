@@ -8,9 +8,9 @@ import torch.distributed as dist
 
 import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import sync_moe_model_param
+from colossalai.shardformer.layer.moe import SparseMLP
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from tests.test_moe.moe_utils import MoeGradientHandler

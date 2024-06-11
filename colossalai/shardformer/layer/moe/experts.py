@@ -9,7 +9,7 @@ from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
 from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.tensor.moe_tensor.api import get_ep_rank, get_ep_size, set_moe_tensor_info
+from colossalai.tensor.moe_tensor.api import get_ep_rank, get_ep_size
 
 if HAS_TRITON:
     from colossalai.kernel.triton.llama_act_combine_kernel import LlamaActCombine
