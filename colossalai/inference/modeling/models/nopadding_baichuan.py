@@ -200,8 +200,6 @@ class NopadBaichuanAttention(ParallelModule):
 
             self.pre_attention_backend.decode(
                 attn_metadata,
-                cos=cos_sin[0],
-                sin=cos_sin[1],
                 q_len=q_len,
             )
             attn_output = self.attention_backend.decode(

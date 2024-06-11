@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 import torch
-from flash_attn import flash_attn_varlen_func
 
 from colossalai.inference.config import ModelShardInferenceConfig
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
@@ -52,6 +51,9 @@ class CudaAttentionBackend(AttentionBackend):
     def prefill(self, attn_metadata: AttentionMetaData, **kwargs):
         if self.use_flash_attn:
             token_nums = kwargs.get("token_nums", -1)
+
+            from flash_attn import flash_attn_varlen_func
+
             attn_output = flash_attn_varlen_func(
                 attn_metadata.query_states,
                 attn_metadata.key_states,
