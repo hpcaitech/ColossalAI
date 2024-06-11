@@ -17,7 +17,7 @@ class BaichuanLMHeadLinear1D_Col(Linear1D_Col):
         module.bias = None
         module.weight.data = nn.functional.normalize(
             module.weight
-        )  # TODO(lry89757) This behavior may not apply to lazy init. When we use lazy init, the weight of shardformer is not the real weight.
+        )  # NOTE(lry89757) This behavior may not apply to lazy init. When we use lazy init, the weight of shardformer is not the real weight.
         # So we should rewrite our own load_from_state_dict of `BaichuanLMHeadLinear1D_Col` to fix this potential issue.
 
         return Linear1D_Col.from_native_module(
@@ -25,4 +25,12 @@ class BaichuanLMHeadLinear1D_Col(Linear1D_Col):
             process_group,
             *args,
             **kwargs,
+        )
+
+    def _load_from_state_dict(
+        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ):
+        state_dict[prefix + "weight"].data = nn.functional.normalize(state_dict[prefix + "weight"])
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )

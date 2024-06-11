@@ -607,7 +607,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
             key = "qkv_weight"
 
             # NOTE(@lry89757) We will load the sharded checkpoint file according to the weight map from *.index.json
-            # Here we need to the weight of q,k,v to stack the weights of q,k,v into one qkv weight.
+            # Here we need the weight of q,k,v to stack the weights of q,k,v into one qkv weight.
             # Unfortunately, it is highly like that all weights of q,k,v are not in the same sharded checkpoint file(like meta-llama/llama3-70B)
             # so here we will stack them when we really collect all the three weights.
             for weight_name in self.qkv_dict:
