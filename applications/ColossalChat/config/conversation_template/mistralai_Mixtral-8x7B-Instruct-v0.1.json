@@ -3,5 +3,6 @@
     "system_message": null,
     "stop_ids": [
         2
-    ]
+    ],
+    "end_of_assistant": "</s>"
 }

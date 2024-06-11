@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 
 # export CUDA_VISIBLE_DEVICES=4,5,6
-set_n_least_used_CUDA_VISIBLE_DEVICES 4
+set_n_least_used_CUDA_VISIBLE_DEVICES 2
 PROJECT_NAME="sft"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
 PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
@@ -40,8 +40,10 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
+echo $(which colossalai)
+echo $(which python)
 # the real batch size for gradient descent is number_of_node_in_hostfile * nproc_per_node * train_batch_size
-colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
+colossalai run --nproc_per_node 2 --master_port 31312 --hostfile ./hostfile train_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --save_interval 4000 \
@@ -49,11 +51,15 @@ colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile trai
     --save_path $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --lora_rank 0 \
-    --plugin zero2 \
-    --batch_size 8 \
-    --max_epochs 1 \
+    --plugin 3d \
+    --tp 2 \
+    --pp 1 \
+    --zero_stage 0 \
+    --batch_size 2 \
+    --max_epochs 3 \
     --accumulation_steps 1 \
-    --lr 2e-5 \
-    --max_len 2048 \
+    --lr 5e-5 \
+    --max_len 400 \
     --grad_checkpoint \
-    --use_wandb
+    --use_wandb \
+    --use_flash_attn
