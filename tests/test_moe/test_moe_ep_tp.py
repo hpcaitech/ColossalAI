@@ -10,13 +10,14 @@ import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import sync_moe_model_param
-from colossalai.shardformer.layer.moe import SparseMLP
+
+# from colossalai.shardformer.layer import SparseMLP
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_rank, get_ep_size, is_moe_tensor
 from colossalai.testing import assert_equal_in_group, rerun_if_address_is_in_use, spawn
 from tests.test_moe.moe_utils import MoeGradientHandler
 
 
-def sync_tp_from_local(tp_model: SparseMLP, local_model: SparseMLP, assert_grad_flag: bool = False) -> None:
+def sync_tp_from_local(tp_model, local_model, assert_grad_flag: bool = False) -> None:
     """Sync the parameters of tp model from local model
 
     Args:
@@ -48,7 +49,7 @@ def sync_tp_from_local(tp_model: SparseMLP, local_model: SparseMLP, assert_grad_
             tp_param.data.copy_(local_param[tuple(tp_slice)].data)
 
 
-def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
+def sync_tp_from_ep(tp_model, ep_model, assert_grad_flag: bool = False) -> None:
     """Sync the parameters of tp model from ep model
 
     Args:
@@ -90,7 +91,7 @@ def sync_tp_from_ep(tp_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: 
             tp_param.data.copy_(new_tp_param.data)
 
 
-def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
+def sync_local_from_ep(local_model, ep_model, assert_grad_flag: bool = False) -> None:
     """Sync the parameters of tp model from ep model
 
     Args:
