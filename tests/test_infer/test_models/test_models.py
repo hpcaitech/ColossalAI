@@ -14,7 +14,8 @@ from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConf
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
-# NOTE: To test a model with the inference engine, you need to provide the path to your local pretrained model weights in the MODEL_MAP dictionary
+# NOTE: To test a model with the inference engine, you need to provide the path to your
+# local pretrained model weights in the MODEL_MAP dictionary
 MODEL_MAP = {
     "baichuan": {
         "model": AutoModelForCausalLM,
@@ -26,12 +27,11 @@ MODEL_MAP = {
         "model": LlamaForCausalLM,
         "tokenizer": LlamaTokenizer,
         "policy": policy.NoPaddingLlamaModelInferPolicy,
-        # "model_name_or_path": "meta-llama/Llama-2-70b-hf",
-        "model_name_or_path": "/mnt/jfs-hdd/share/models/Llama-2-7b-hf",
+        "model_name_or_path": "meta-llama/Llama-2-70b-hf",
     },
 }
 
-MODELS_TO_TEST = ["llama"]  # Specify the models to test
+MODELS_TO_TEST = ["llama", "baichuan"]  # Specify the models to test
 
 
 @parameterize("model", MODELS_TO_TEST)
