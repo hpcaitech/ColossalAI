@@ -10,6 +10,7 @@ import torch
 from transformers.generation import GenerationConfig
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.utils import can_use_flash_attn2
 
 GibiByte = 1024**3
 
@@ -169,7 +170,8 @@ class InferenceConfig(RPC_PARAM):
         no_repeat_ngram_size (Optional[int]): If no_repeat_ngram_size > 0, the consecutive tokens of ngram size can only appear once in inference sentences.
         repetition_penalty (Optional[float]): The parameter that influences the model's treatment of new tokens in relation to their appearance in the prompt and the generated text. Values greater than 1 incentivize the model to introduce new tokens, whereas values less than 1 incentivize token repetition., defaults to 1.0.
         ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
-        n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
+        use_spec_dec (bool): Indicate whether to use speculative decoding, defaults to False.
+        max_n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
         glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
         tp_size (int): Tensor parallel size, defaults to 1.
@@ -214,6 +216,7 @@ class InferenceConfig(RPC_PARAM):
     ignore_eos: bool = False
 
     # speculative decoding configs
+    use_spec_dec: bool = False
     max_n_spec_tokens: int = 5
     glimpse_large_kv: bool = False
 
@@ -311,6 +314,16 @@ class InferenceConfig(RPC_PARAM):
 
         return GenerationConfig.from_dict(meta_config)
 
+    def to_model_shard_inference_config(self) -> "ModelShardInferenceConfig":
+        use_flash_attn = can_use_flash_attn2(self.dtype)
+        model_inference_config = ModelShardInferenceConfig(
+            dtype=self.dtype,
+            use_cuda_kernel=self.use_cuda_kernel,
+            use_spec_dec=self.use_spec_dec,
+            use_flash_attn=use_flash_attn,
+        )
+        return model_inference_config
+
     def to_rpc_param(self) -> dict:
         kwargs = {
             "dtype": str(self.dtype).split(".")[-1],
@@ -362,3 +375,21 @@ class InferenceConfig(RPC_PARAM):
         # Set the attributes from the parsed arguments.
         inference_config = cls(**inference_config_args)
         return inference_config
+
+
+@dataclass
+class ModelShardInferenceConfig:
+    """
+    Configurations used during init of module for inference modeling.
+
+    Args:
+        dtype (torch.dtype): The data type for weights and activations.
+        use_cuda_kernel (bool): Whether to use cuda kernel, faster but lose some precision occasionally
+        use_spec_dec (bool): Indicate whether to use speculative decoding.
+        use_flash_attn (bool): Indicate whether to use flash attention.
+    """
+
+    dtype: torch.dtype = None
+    use_cuda_kernel: bool = False
+    use_spec_dec: bool = False
+    use_flash_attn: bool = False

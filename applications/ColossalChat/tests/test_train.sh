@@ -30,7 +30,8 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-PLUGINS=('gemini' 'gemini_auto' 'zero2' 'zero2_cpu' '3d')
+ADVANCED_PLUGINS=('sp_split_gather' 'sp_ring' 'sp_all_to_all' 'tp_zero2' '3d' 'gemini' 'gemini_auto' 'zero2' 'zero2_cpu')  # pp is still buggy
+PLUGINS=('3d' 'gemini' 'gemini_auto' 'zero2' 'zero2_cpu')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 
 export OMP_NUM_THREADS=8
@@ -80,6 +81,8 @@ random_choice() {
 }
 
 
+
+
 echo "[Test]: testing sft ..."
 
 SKIPPED_TESTS=(
@@ -91,7 +94,7 @@ SKIPPED_TESTS=(
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
-        for plugin in ${PLUGINS[@]}; do
+        for plugin in ${ADVANCED_PLUGINS[@]}; do
             if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
                 echo "[Test]: Skipped $model-$plugin-$lora_rank"
                 continue
@@ -104,9 +107,55 @@ for lora_rank in ${LORA_RANK[@]}; do
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
             bs='2'
+            pp='1'
+            zero_stage='0'
+            sp='1'
+            sp_mode='split_gather'
+            enable_sequence_parallelism=''
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='8'
+            fi
+            if [[ $plugin == "tp_zero2" ]]; then
+                tp='4'
+                bs='8'
+                zero_stage='2'
+                plugin='3d'
+            fi
+            if [[ $plugin == "tp_pp" ]]; then
+                tp='2'
+                bs='8'
+                pp='2'
+                plugin='3d'
+            fi
+            if [[ $plugin == "pp" ]]; then
+                bs='8'
+                pp='4'
+                plugin='3d'
+            fi
+            if [[ $plugin == "sp_split_gather" ]]; then
+                enable_sequence_parallelism='--enable_sequence_parallelism'
+                sp_mode='split_gather'
+                tp='4'
+                sp='1'
+                bs='8'
+                plugin='3d'
+            fi
+            if [[ $plugin == "sp_ring" ]]; then
+                enable_sequence_parallelism='--enable_sequence_parallelism'
+                sp_mode='ring'
+                tp='4'
+                sp='1'
+                bs='8'
+                plugin='3d'
+            fi
+            if [[ $plugin == "sp_all_to_all" ]]; then
+                enable_sequence_parallelism='--enable_sequence_parallelism'
+                sp_mode='all_to_all'
+                tp='1'
+                sp='4'
+                bs='8'
+                plugin='3d'
             fi
             grad_accu='2'
             # Check if the plugin is either "gemini_auto" or "gemini" and set grad_accu to '1'
@@ -132,6 +181,11 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --max_epochs 1 \
                     --accumulation_steps $grad_accu \
                     --tp $tp \
+                    --pp $pp \
+                    --zero_stage $zero_stage \
+                    --sp $sp \
+                    --sp_mode $sp_mode \
+                    $enable_sequence_parallelism \
                     --lr 2e-5 \
                     $grad_ckpt \
                     --max_len 400 \
@@ -226,8 +280,8 @@ echo "[Test]: testing ppo ..."
 
 
 SKIPPED_TESTS=(
-    llama-3d-20 # 3d plugin doesn't support lora
-    llama-gemini-20 # gemini doesn't support lora
+    llama-3d # 3d plugin doesn't support lora
+    llama-gemini # gemini doesn't support lora
 )
 
 GRAD_CKPTS=('--grad_checkpoint')
@@ -304,7 +358,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     $grad_ckpt \
                     --max_len 400 \
                     --max_seq_len 10 \
-                    --use_flash_attn
+                    # --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf $MODEL_SAVE_PATH/*
