@@ -66,7 +66,9 @@ class LowLevelOptStrategyBase(ABC):
         # it will not manage the tensors used by mixed precision training
         self._param_store = ParameterStore(process_group)
         self._grad_store = GradientStore(process_group, partition_grad=partition_grad)
-        self._bucket_store = BucketStore(process_group)
+        self._bucket_store = BucketStore(
+            process_group, reduce_bucket_size=reduce_bucket_size, overlap_communication=overlap_communication
+        )
 
         # working and master params for mixed precision training
         group_params = []
