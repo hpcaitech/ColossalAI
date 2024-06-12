@@ -117,7 +117,7 @@ class MistralForwards:
                 attention_mask = _prepare_4d_causal_attention_mask(
                     attention_mask,
                     (batch_size, seq_length),
-                    inputs_embeds,
+                    hidden_states,
                     past_key_values_length,
                     sliding_window=self.config.sliding_window,
                 )
