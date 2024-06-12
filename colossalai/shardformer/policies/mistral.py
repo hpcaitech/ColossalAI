@@ -42,11 +42,13 @@ class MistralPolicy(Policy):
             MistralDecoderLayer,
             MistralFlashAttention2,
             MistralModel,
+            MistralSdpaAttention,
         )
 
         ATTN_IMPLEMENTATION = {
             "eager": MistralAttention,
             "flash_attention_2": MistralFlashAttention2,
+            "sdpa": MistralSdpaAttention,
         }
 
         policy = {}
