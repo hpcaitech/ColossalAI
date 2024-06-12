@@ -70,7 +70,6 @@ class NopadBaichuanAttention(ParallelModule):
             attn_oproj (Linear1D_Row, optional): The Linear1D_Row o_proj. Defaults to None.
         """
         ParallelModule.__init__(self)
-        self.o_proj = attn_oproj
 
         self.config = config
         self.num_heads = num_heads
@@ -78,6 +77,7 @@ class NopadBaichuanAttention(ParallelModule):
         self.head_dim = self.hidden_size // self.num_heads
         self.process_group = process_group
         self.W_pack = W_pack
+        self.o_proj = attn_oproj
         self.use_cuda_kernel = model_shard_infer_config.use_cuda_kernel
         self.attention_backend = get_attention_backend(model_shard_infer_config)
         self.pre_attention_backend = get_pre_attention_backend(model_shard_infer_config)

@@ -639,7 +639,6 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
 
                 del self.qkv_dict
 
-            strict = False  # to avoid unexpected_keys
         else:
 
             def _load(origin_weight_name="q_proj.weight", local_weight_name="q_proj_weight"):
@@ -669,8 +668,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
             if prefix + "v_proj.weight" in state_dict.keys():
                 _load(origin_weight_name="v_proj.weight", local_weight_name="v_proj_weight")
 
-            strict = False  # to avoid unexpected_keys
-
+        strict = False  # to avoid unexpected_keys
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )

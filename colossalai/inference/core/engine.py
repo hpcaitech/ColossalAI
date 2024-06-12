@@ -1,6 +1,4 @@
-import os
 import time
-from contextlib import nullcontext
 from itertools import count
 from typing import Dict, List, Optional, Tuple, Type, Union
 
@@ -125,22 +123,20 @@ class InferenceEngine:
             model_inference_config: the configuration for modeling initialization when inference.
             model_shard_infer_config (ModelShardInferenceConfig): the configuration for init of module when inference.
         """
-
+        pretrained_path = None
         if isinstance(model_or_path, str):
-            is_local = os.path.isdir(model_or_path)
+            import colossalai.interface.pretrained as pretrained_utils
+
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True, torch_dtype=self.dtype)
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
-                    if is_local:
-                        ctx = LazyInitContext(default_device="cuda")
-                    else:
-                        # load the real checkpoint
-                        ctx = nullcontext()
+                    ctx = LazyInitContext(default_device="cuda")
                     with ctx:
                         model = _supported_models[arch].from_pretrained(
                             model_or_path, trust_remote_code=True, torch_dtype=self.dtype
                         )
+                    pretrained_path = pretrained_utils.get_pretrained_path(model)
                 else:
                     # TODO(char-1ee): if the model not supported, use transformers APIs to load and generate
                     raise ValueError(f"Model {arch} is not supported.")
@@ -198,11 +194,11 @@ class InferenceEngine:
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str) and is_local:
+        if pretrained_path:
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
-            if_has_index_file, model_index_file = has_index_file(model_or_path)
+            if_has_index_file, model_index_file = has_index_file(pretrained_path)
             assert if_has_index_file, "the model path is invalid"
             cpt_io.load_model(self.model, model_index_file)
 

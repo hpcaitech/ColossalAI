@@ -674,6 +674,8 @@ class FusedLinear1D_Col(ParallelModule):
             process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
             n_fused (int): The number of layers to be fused. In common, Q,K,V are fused in one weight.
         """
+        LazyInitContext.materialize(module)
+
         # get the attributes
         in_features = module.in_features
         out_features = module.out_features
