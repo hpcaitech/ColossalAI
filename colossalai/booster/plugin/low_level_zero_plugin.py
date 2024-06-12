@@ -448,7 +448,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer: LowLevelZeroOptimizer = LowLevelZeroOptimizer(
-                optimizer, **zero_optim_kwargs, verbose=self.verbose
+                optimizer, **self.zero_optim_kwargs, verbose=self.verbose
             )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
