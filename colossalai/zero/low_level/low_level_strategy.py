@@ -66,9 +66,7 @@ class LowLevelOptStrategyBase(ABC):
         # it will not manage the tensors used by mixed precision training
         self._param_store = ParameterStore(process_group)
         self._grad_store = GradientStore(process_group, partition_grad=partition_grad)
-        self._bucket_store = BucketStore(
-            process_group, reduce_bucket_size=reduce_bucket_size, overlap_communication=overlap_communication
-        )
+        self._bucket_store = BucketStore(process_group, reduce_bucket_size=reduce_bucket_size)
 
         # working and master params for mixed precision training
         group_params = []
@@ -85,7 +83,6 @@ class LowLevelOptStrategyBase(ABC):
 
         # communication params
         self._overlap_communication = overlap_communication
-        self._reduce_bucket_size = reduce_bucket_size
         self._communication_dtype = communication_dtype
 
         # initialize communication stream for
@@ -172,7 +169,7 @@ class LowLevelOptStrategyBase(ABC):
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if (
-            self._bucket_store.num_elements_in_bucket() + param_size > self._reduce_bucket_size
+            self._bucket_store.num_elements_in_bucket() + param_size > self._bucket_store.reduce_bucket_size
             or LowLevelOptStrategy.DEFAULT_STORE_GROUP_ID != self._bucket_store.current_group_id
         ):
             self._run_reduction()
