@@ -104,9 +104,7 @@ class GeminiDDP(ModelWrapper):
         self.enable_gradient_accumulation = enable_gradient_accumulation
         if chunk_config_dict is not None:
             self.chunk_manager = ChunkManager(
-                chunk_config_dict,
-                chunk_init_device,
-                reuse_fp16_chunk=reuse_fp16_chunk,
+                chunk_config_dict, chunk_init_device, reuse_fp16_chunk=reuse_fp16_chunk, max_prefetch=max_prefetch
             )
         else:
             # some ugly hotfix for the compatibility with Lightning
@@ -122,6 +120,7 @@ class GeminiDDP(ModelWrapper):
                 process_group=zero_group,
                 reuse_fp16_chunk=reuse_fp16_chunk,
                 verbose=verbose,
+                max_prefetch=max_prefetch,
             )
         self.gemini_manager = GeminiManager(
             placement_policy,
