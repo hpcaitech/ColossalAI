@@ -9,13 +9,15 @@ from transformers.modeling_outputs import (
 )
 
 try:
+    from transformers.modeling_attn_mask_utils import (
+        _prepare_4d_causal_attention_mask,
+        _prepare_4d_causal_attention_mask_for_sdpa,
+    )
     from transformers.models.qwen2.modeling_qwen2 import (
         Qwen2Attention,
         Qwen2ForCausalLM,
         Qwen2ForSequenceClassification,
         Qwen2Model,
-        _prepare_4d_causal_attention_mask,
-        _prepare_4d_causal_attention_mask_for_sdpa,
         apply_rotary_pos_emb,
         repeat_kv,
     )
