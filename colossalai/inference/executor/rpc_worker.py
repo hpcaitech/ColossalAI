@@ -1,4 +1,3 @@
-import os
 from typing import List, Tuple, Union
 
 import rpyc
@@ -180,19 +179,19 @@ class rpcWorkerService(rpyc.Service):
             model_policy (Policy): the policy to replace the model
         """
 
+        pretrained_path = None
         if isinstance(model_or_path, str):
-            is_local = os.path.isdir(model_or_path)
+            import colossalai.interface.pretrained as pretrained_utils
+
             try:
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True, torch_dtype=self.dtype)
                 arch = getattr(hf_config, "architectures")[0]
-                if is_local:
-                    with LazyInitContext(default_device="cuda"):
-                        model = _SUPPORTED_MODELS[arch](hf_config)
-                else:
-                    # load the real checkpoint
+                ctx = LazyInitContext(default_device="cuda")
+                with ctx:
                     model = _SUPPORTED_MODELS[arch].from_pretrained(
                         model_or_path, trust_remote_code=True, torch_dtype=self.dtype
                     )
+                pretrained_path = pretrained_utils.get_pretrained_path(model)
             except Exception as e:
                 logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
@@ -241,11 +240,11 @@ class rpcWorkerService(rpyc.Service):
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        if isinstance(model_or_path, str) and is_local:
+        if pretrained_path:
             from colossalai.inference.core.plugin import InferCheckpoint_io
 
             cpt_io = InferCheckpoint_io()
-            if_has_index_file, model_index_file = has_index_file(model_or_path)
+            if_has_index_file, model_index_file = has_index_file(pretrained_path)
             assert if_has_index_file, "the model path is invalid"
             cpt_io.load_model(self.model, model_index_file)
 
