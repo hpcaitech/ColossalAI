@@ -43,7 +43,7 @@ class CudaAttentionBackend(AttentionBackend):
     it uses Triton op `context_attention_unpadded` for prefilling and our cuda op `flash_decoding_attention` for decoding.
     """
 
-    def __init__(self, use_flash_attn: bool):
+    def __init__(self, use_flash_attn: bool = False):
         super().__init__()
         self.inference_ops = InferenceOpsLoader().load()
         self.use_flash_attn = use_flash_attn
