@@ -363,7 +363,6 @@ class GeminiPlugin(DPPluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
         enable_async_reduce: bool = True,
-        enable_prefetch: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
