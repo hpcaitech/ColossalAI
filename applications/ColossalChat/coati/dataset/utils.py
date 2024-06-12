@@ -113,20 +113,25 @@ def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], re
     return input_ids, loss_starts, loss_ends
 
 
-def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: str):
+def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: str, end_of_assistant: str):
     # Seperate templated prompt into chunks by human/assistant's lines, prepare data for tokenize_and_concatenate
     start_idx = 0
     chunks = []
     require_loss = []
     for line in messages:
+        content_length = len(line["content"])
         first_occur = prompt.find(line["content"], start_idx)
+        if line["role"].lower() == "assistant" and end_of_assistant in prompt[first_occur + content_length :]:
+            content_length = (
+                prompt.find(end_of_assistant, first_occur + content_length) + len(end_of_assistant) - first_occur
+            )
         if prompt[first_occur - 1] != " ":
             chunks.append(prompt[start_idx:first_occur])
-            chunks.append(prompt[first_occur : first_occur + len(line["content"])])
+            chunks.append(prompt[first_occur : first_occur + content_length])
         else:
             chunks.append(prompt[start_idx : first_occur - 1])
-            chunks.append(prompt[first_occur - 1 : first_occur + len(line["content"])])
-        start_idx = first_occur + len(line["content"])
+            chunks.append(prompt[first_occur - 1 : first_occur + content_length])
+        start_idx = first_occur + content_length
         if line["role"].lower() == "assistant":
             require_loss.append(False)
             require_loss.append(True)
