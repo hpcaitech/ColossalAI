@@ -114,7 +114,7 @@ def llama_model_forward(
 
     elif use_cuda_kernel:
         if can_use_flash_attn2(inputmetadata.dtype):
-            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
+            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.int32), (1, 0))
 
         hidden_dim = self._cos_cached.size(-1)
         total_length = hidden_states.size(0)
@@ -265,7 +265,7 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
         mlp_dproj: ParallelModule = None,
         process_group: ProcessGroup = None,
     ):
-        """A Unified Layer for
+        """Replacement of LlamaMLP layer.
 
         Args:
             config (LlamaConfig): Holding the Llama model config.
