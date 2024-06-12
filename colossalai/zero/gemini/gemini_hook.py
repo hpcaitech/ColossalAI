@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.utils import is_ddp_ignored
 from colossalai.zero.gemini import TensorState
@@ -54,10 +55,11 @@ class GeminiZeROHook(ColoParamOpHook):
         )
 
         # prefetch
-        for chunk in chunks_fetch_async:
-            maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
-            if maybe_work is not None:
-                self._gemini_manager.add_work(chunk, maybe_work)
+        with get_accelerator().stream(self._gemini_manager.chunk_manager._prefetch_stream):
+            for chunk in chunks_fetch_async:
+                maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
+                if maybe_work is not None:
+                    self._gemini_manager.add_work(chunk, maybe_work)
 
         # record cuda model data of the current OP, including memory for prefetched chunks
         self._gemini_manager.record_model_data_volume()

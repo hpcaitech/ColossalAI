@@ -72,6 +72,9 @@ class NoPaddingLlamaModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
                 SubModuleReplacementDescription(
                     suffix="self_attn",
                     target_module=NopadLlamaAttention,
+                    kwargs={
+                        "model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"],
+                    },
                 ),
             ],
         )

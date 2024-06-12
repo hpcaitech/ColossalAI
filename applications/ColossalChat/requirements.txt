@@ -1,9 +1,8 @@
-transformers==4.34.1
-huggingface_hub==0.17.3
+transformers>=4.36.2
 tqdm
-datasets
+datasets==2.14.7
 loralib
-colossalai>=0.3.6
+colossalai>=0.3.7
 torch>=1.12.1
 langchain
 tokenizers

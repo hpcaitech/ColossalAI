@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
+from colossalai.inference.utils import get_alibi_slopes
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 from colossalai.utils import get_current_device
 from tests.test_infer.test_kernels.triton.test_context_attn_unpad import generate_alibi_mask

@@ -21,6 +21,7 @@ def init_chunk_manager(
     hidden_dim: Optional[int] = None,
     reuse_fp16_chunk: bool = True,
     verbose: bool = False,
+    max_prefetch: int = 0,
     **kwargs,
 ) -> ChunkManager:
     if hidden_dim:
@@ -51,9 +52,5 @@ def init_chunk_manager(
         )
     dist.barrier()
 
-    chunk_manager = ChunkManager(
-        config_dict,
-        init_device,
-        reuse_fp16_chunk=reuse_fp16_chunk,
-    )
+    chunk_manager = ChunkManager(config_dict, init_device, reuse_fp16_chunk=reuse_fp16_chunk, max_prefetch=max_prefetch)
     return chunk_manager
