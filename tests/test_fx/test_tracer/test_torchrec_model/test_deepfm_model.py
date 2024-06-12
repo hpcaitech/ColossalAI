@@ -52,7 +52,7 @@ def trace_and_compare(model_cls, data, output_transform_fn, meta_args=None):
 
 @clear_cache_before_run()
 def test_torchrec_deepfm_models():
-    deepfm_models = model_zoo.get_sub_registry("deepfm")
+    deepfm_models = model_zoo.get_sub_registry(keyword="deepfm", allow_empty=True)
     torch.backends.cudnn.deterministic = True
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, attribute) in deepfm_models.items():

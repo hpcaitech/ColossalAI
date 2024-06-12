@@ -16,9 +16,9 @@ def test_gpt():
         model = model_fn()
 
         # TODO(ver217): support the following models
-        # 1. GPT2DoubleHeadsModel
+        # 1. "GPT2DoubleHeadsModel", "GPT2ForQuestionAnswering", "GPTJForQuestionAnswering"
         # as they are not supported, let's skip them
-        if model.__class__.__name__ in ["GPT2DoubleHeadsModel", "GPT2ForQuestionAnswering"]:
+        if model.__class__.__name__ in ["GPT2DoubleHeadsModel", "GPT2ForQuestionAnswering", "GPTJForQuestionAnswering"]:
             continue
 
         trace_model_and_compare_output(model, data_gen_fn, ignore_data=["labels"])
