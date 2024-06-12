@@ -11,7 +11,6 @@ from colossalai.moe._operation import AllGather, AllToAll, HierarchicalAllToAll,
 from colossalai.moe.load_balance import LoadBalancer
 from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
 from colossalai.shardformer.layer.moe import MLPExperts
-from colossalai.shardformer.layer.moe.routers import MoeRouter, get_router_cls
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_group_ranks, get_ep_size
 
 

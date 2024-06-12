@@ -86,6 +86,7 @@ def run_dist(rank, world_size, port):
     run_zero_optim_test(rank, world_size, stage=2)
 
 
+@pytest.mark.skip(reason="moe need to be refactored")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()

@@ -133,7 +133,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             group_params = list()
             for param in param_group["params"]:
                 if param.requires_grad:
-                    if self._bucket_store.moe_extra_dp_pg is None:
+                    if self._bucket_store.moe_extra_dp_pg is not None:
                         # skip moe param
                         if is_moe_tensor(param):
                             self.working_moe_params.append(param)
@@ -161,7 +161,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     param_group[key] = value
             self.master_moe_params = []
             for param in self.working_moe_params:
-                self.master_moe_params.append(param.clone().to(torch.float32).detach())
+                if self._master_weights:
+                    self.master_moe_params.append(param.clone().to(torch.float32).detach())
+                else:
+                    self.master_moe_params.append(param.detach())
             # create mapping from master to working for optimizer io
             self.moe_master_to_working_map = {}
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
@@ -275,7 +278,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # we iterate over the working params
         # on each param, we register a hook to its AccumulateGrad object
         for group_id in range(self.num_param_groups):
-            param_group = self._working_param_groups[group_id]
+            param_group = self._working_param_groups[group_id]  # TODO(haze188) refactor moe: moe-param hook for reduce
             for param in param_group:
                 if param.requires_grad:
                     param._grad_handle = param.register_post_accumulate_grad_hook(
@@ -374,6 +377,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     # sync extra zero group
                     else:
                         # sync non moe param in global dp group
+
                         if len(non_moe_grad_list) > 0:
                             dist.all_reduce(non_moe_flat_grads, group=bucket_store.torch_pg)
                             flat_grads_per_rank = non_moe_flat_grads.split(
@@ -398,7 +402,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.zero_world_size))
                         received_grad = torch.zeros_like(flat_grads_list[0])
                         dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
-
                         if received_grad.dtype != grad_dtype:
                             received_grad = received_grad.to(grad_dtype)
 
@@ -622,7 +625,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 grads = self._grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 if len(grads) > 0:
                     # moe hybrid zero
-                    if self._bucket_store.moe_extra_dp_pg is not None and is_moe_tensor(working_param):
+                    if self._bucket_store.moe_extra_dp_pg is not None and is_moe_tensor(
+                        working_param
+                    ):  # TODO(@haze188) refactor: this code may be useless, never run
                         real_working_params[group_id].append(working_param)
                         if self._grad_store._partition_grads:
                             grad = grads
@@ -656,6 +661,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # update param for moe ep
         # move grad to master param and compute norm
+
         if len(self.working_moe_params) > 0:
             moe_grads = []
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
@@ -685,6 +691,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if len(self.working_moe_params) > 0:
             for master_moe_param, working_moe_param in zip(self.master_moe_params, self.working_moe_params):
                 master_moe_param.grad = None
+
                 working_moe_param.data = (
                     master_moe_param.data.to(working_moe_param.device).to(working_moe_param.dtype).detach()
                 )
@@ -987,7 +994,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
                 if self._bucket_store.moe_extra_dp_pg is not None and is_moe_tensor(p):
-                    master_param.copy_(working_param.chunk(self.extra_dp_pg_size)[self.extra_dp_pg_rank])
+                    master_param.copy_(
+                        working_param.chunk(self._bucket_store.moe_extra_dp_pg_size)[
+                            self._bucket_store.moe_extra_dp_pg_rank
+                        ]
+                    )
                 else:
                     master_param.copy_(
                         working_param.chunk(self._bucket_store.zero_world_size)[self._bucket_store.zero_local_rank]

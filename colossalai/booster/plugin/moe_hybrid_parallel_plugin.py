@@ -30,7 +30,7 @@ from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
-PP_AXIS, DP_AXIS, EP_AXIS, TP_AXIS = 0, 1, 2, -1
+PP_AXIS, DP_AXIS, EP_AXIS, TP_AXIS = 0, 1, 2, 3
 
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
@@ -352,7 +352,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         if self.checkpoint_io is None:
-            self.checkpoint_io = MoECheckpointIO(self.global_dp_group, self.pp_group, self.tp_group, self.zero_stage)
+            self.checkpoint_io = MoECheckpointIO(
+                self.global_dp_group, self.pp_group, self.tp_group, self.ep_group, self.moe_dp_group, self.zero_stage
+            )
         else:
             self.checkpoint_io = self.checkpoint_io(
                 self.global_dp_group,
