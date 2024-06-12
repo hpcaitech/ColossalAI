@@ -30,8 +30,6 @@ from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
-PP_AXIS, DP_AXIS, EP_AXIS, TP_AXIS = 0, 1, 2, 3
-
 
 class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
     def __init__(
@@ -185,7 +183,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         custom_policy: Policy = None,
         checkpoint_io: Optional[MoECheckpointIO] = None,
     ) -> None:
-        global DP_AXIS, EP_AXIS
         world_size = dist.get_world_size()
         assert tp_size == 1, "Tensor parallel is not supported in MoE yet"
         assert (
@@ -224,28 +221,30 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.moe_dp_size = self.dp_size // self.ep_size
         self.use_ep_inside = use_ep_inside
         if self.use_ep_inside:
+            self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.moe_dp_size, ep_size, tp_size)
-            self.moe_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-            self.ep_group = self.pg_mesh.get_group_along_axis(EP_AXIS)
+            self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
+            self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
             if dist.get_rank() == 0:
                 print(f"MoE Parallel: pp {self.pp_size}, outer_dp {self.moe_dp_size}, inner_ep {ep_size}, tp {tp_size}")
         else:
             warnings.warn("Using ep outside dp (cross-node) is strongly discouraged due to communication costs.")
+            self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 2, 1, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, ep_size, self.moe_dp_size, tp_size)
-            EP_AXIS = 1
-            DP_AXIS = 2
-            self.moe_dp_group = self.pg_mesh.get_group_along_axis(DP_AXIS)
-            self.ep_group = self.pg_mesh.get_group_along_axis(EP_AXIS)
+            self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
+            self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
             if dist.get_rank() == 0:
                 print(f"MoE Parallel: pp {self.pp_size}, outer_ep {ep_size}, inner_dp {self.moe_dp_size}, tp {tp_size}")
         if dist.get_rank() == 0:
             print(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}")
 
-        self.tp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)  # TODO: support custom tp size for mixtral lm head
-        self.global_dp_group = self.pg_mesh.get_group_along_axis((DP_AXIS, EP_AXIS))
-        self.pp_group = self.pg_mesh.get_group_along_axis(PP_AXIS)
+        self.tp_group = self.pg_mesh.get_group_along_axis(
+            self.tp_axis
+        )  # TODO: support custom tp size for mixtral lm head
+        self.global_dp_group = self.pg_mesh.get_group_along_axis((self.dp_axis, self.ep_axis))
+        self.pp_group = self.pg_mesh.get_group_along_axis(self.pp_axis)
         # TODO: Currently moe only support partially sequence parallel
-        self.sp_group = self.pg_mesh.get_group_along_axis(TP_AXIS)
+        self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
 
         self.custom_policy = custom_policy
         self.stage_manager = None
@@ -257,7 +256,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
             assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
-            self.stage_manager = PipelineStageManager(self.pg_mesh, PP_AXIS)
+            self.stage_manager = PipelineStageManager(self.pg_mesh, self.pp_axis)
             self.schedule = OneForwardOneBackwardSchedule(
                 self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
             )
@@ -329,7 +328,10 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         """
         _kwargs = kwargs.copy()
         sampler = DistributedSampler(
-            dataset, num_replicas=self.pg_mesh.size(DP_AXIS), rank=self.pg_mesh.coordinate(DP_AXIS), shuffle=shuffle
+            dataset,
+            num_replicas=self.pg_mesh.size(self.dp_axis),
+            rank=self.pg_mesh.coordinate(self.dp_axis),
+            shuffle=shuffle,
         )
 
         # Deterministic dataloader
