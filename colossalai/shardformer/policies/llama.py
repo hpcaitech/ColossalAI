@@ -80,8 +80,6 @@ class LlamaPolicy(Policy):
         )
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
 
-        self.shard_config.enable_flash_attention
-
         if sp_mode == "all_to_all":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,

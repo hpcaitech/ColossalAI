@@ -1046,8 +1046,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             (
                 self.dp_axis,
                 self.pp_axis,
-                self.sp_axis,
                 self.tp_axis,
+                self.sp_axis,
             ) = (
                 0,
                 1,
@@ -1056,7 +1056,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
         else:
-            self.pp_axis, self.dp_axis, self.sp_axis, self.tp_axis = 0, 1, 2, 3
+            self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
 
         self.stage_manager = None
