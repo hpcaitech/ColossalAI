@@ -26,7 +26,7 @@ def prepare_data(
     num_tokens = torch.sum(context_lengths).item()
 
     max_seq_len_in_batch = context_lengths.max()
-    cu_seqlens = F.pad(torch.cumsum(context_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
+    cu_seqlens = F.pad(torch.cumsum(context_lengths, dim=0, dtype=torch.int32), (1, 0))
 
     kv_size = (num_tokens, num_kv_heads, HEAD_DIM)
     key = torch.empty(size=kv_size, dtype=dtype, device=device).normal_(mean=0.0, std=0.5)

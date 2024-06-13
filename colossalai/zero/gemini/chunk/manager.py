@@ -25,6 +25,7 @@ class ChunkManager:
         chunk_configuration,
         init_device: Optional[torch.device] = None,
         reuse_fp16_chunk: bool = True,
+        max_prefetch: int = 0,
     ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
@@ -42,6 +43,7 @@ class ChunkManager:
         # Whether model is accumulating gradients,
         self.accumulating_grads = False
         self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
+        self._prefetch_stream = get_accelerator().Stream() if max_prefetch else None
 
     def register_tensor(
         self,
