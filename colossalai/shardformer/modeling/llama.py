@@ -513,6 +513,9 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
 
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
+        print("position_ids.shape", position_ids.shape)
+        print("query_states.shape", query_states.shape)
+        print("key_states.shape", key_states.shape)
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
