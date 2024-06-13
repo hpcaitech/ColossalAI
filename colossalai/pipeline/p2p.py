@@ -266,7 +266,9 @@ def _send_recv_serialization_object(
     send_object_tensor = None
     if object is not None and send_dst is not None:
         if Version(torch.__version__) >= Version("1.13.0"):
-            send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object, device=current_device)
+            send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(
+                object, device=current_device, group=c10d._get_default_group()
+            )
         else:
             send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object)
 
