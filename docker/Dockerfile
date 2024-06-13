@@ -1,9 +1,9 @@
-FROM hpcaitech/cuda-conda:11.3
+FROM hpcaitech/cuda-conda:12.1
 
 # metainformation
 LABEL org.opencontainers.image.source = "https://github.com/hpcaitech/ColossalAI"
 LABEL org.opencontainers.image.licenses = "Apache License 2.0"
-LABEL org.opencontainers.image.base.name = "docker.io/library/hpcaitech/cuda-conda:11.3"
+LABEL org.opencontainers.image.base.name = "docker.io/library/hpcaitech/cuda-conda:12.1"
 
 # enable passwordless ssh
 RUN mkdir ~/.ssh && \
@@ -18,7 +18,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # install torch
-RUN conda install -y pytorch==1.12.1 torchvision==0.13.1 torchaudio==0.12.1 cudatoolkit=11.3 -c pytorch
+RUN conda install -y python==3.10 && conda install -y pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=12.1 -c pytorch -c nvidia
 
 # install ninja
 RUN apt-get update && \
@@ -29,23 +29,18 @@ RUN apt-get update && \
 # install apex
 RUN git clone https://github.com/NVIDIA/apex && \
     cd apex && \
-    git checkout 91fcaa && \
+    git checkout a7de60 && \
     pip install packaging && \
-    pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--fast_layer_norm" ./
+    pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # install colossalai
 ARG VERSION=main
 RUN git clone -b ${VERSION} https://github.com/hpcaitech/ColossalAI.git \
     && cd ./ColossalAI \
-    && BUILD_EXT=1 pip install -v --no-cache-dir .
-
-# install titans
-RUN pip install --no-cache-dir titans
+    && BUILD_EXT=1 pip install -v . \
+    && rm -rf colossalai
 
 # install tensornvme
 RUN conda install -y cmake && \
-    git clone https://github.com/hpcaitech/TensorNVMe.git && \
-    cd TensorNVMe && \
     apt update -y && apt install -y libaio-dev && \
-    pip install -r requirements.txt && \
-    pip install -v --no-cache-dir .
+    pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
