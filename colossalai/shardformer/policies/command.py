@@ -7,8 +7,8 @@ from torch import Tensor
 from torch.nn import Module
 
 from colossalai.shardformer.layer import (
-    CohereLayerNorm,
-    FusedCohereLayerNorm,
+    FusedLayerNorm,
+    LayerNorm,
     Linear1D_Col,
     Linear1D_Row,
     PaddingEmbedding,
@@ -64,9 +64,9 @@ class CommandPolicy(Policy):
                 embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
-            norm_cls = FusedCohereLayerNorm
+            norm_cls = FusedLayerNorm
         else:
-            norm_cls = CohereLayerNorm
+            norm_cls = LayerNorm
 
         if self.pipeline_stage_manager is not None:
             self.shard_config.enable_sequence_parallelism = False
