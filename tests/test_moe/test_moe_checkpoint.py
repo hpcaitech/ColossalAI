@@ -11,7 +11,7 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.moe import MoECheckpointIO
+from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing.utils import spawn
 

@@ -304,6 +304,7 @@ class LowLevelOptStrategyBase(ABC):
     def update_master_param(self, master_param):
         working_param = self.master2working(master_param)
         padding_size = self.get_param_padding_size(working_param)
+        working_param = working_param.data.view(-1)
         if padding_size > 0:
             working_param = torch.nn.functional.pad(working_param, [0, padding_size])
         master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])

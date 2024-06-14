@@ -86,11 +86,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         elif len(self.optim.param_groups) > 1 and group_strategies is None:
             raise ValueError("group_strategies must be provided when the optimizer has multiple param groups")
 
-        self.masterparam2strategy: Dict[torch.nn.Parameter, LowLevelOptStrategyBase] = {}
+        self.workingparam2strategy: Dict[torch.nn.Parameter, LowLevelOptStrategyBase] = {}
         for grp, strategy in zip(self.optim.param_groups, group_strategies):
             assert grp["params"] is strategy.param_group["params"], "param groups should be in the same order"
             for param in strategy.working_param_group:
-                self.masterparam2strategy[param] = strategy
+                self.workingparam2strategy[param] = strategy
         self._group_strategies = group_strategies
 
         # initialize mixed precision mixin
@@ -139,9 +139,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     # another way of doing this is to reassign tensor.grad, however this won't apply for zero-2
     # since the shape doesn't match
-    def get_param_grad(self, master_param):
-        strategy = self.masterparam2strategy[master_param]
-        return strategy.get_param_grad(master_param)
+    def get_param_grad(self, working_param):
+        strategy = self.workingparam2strategy[working_param]
+        return strategy.get_param_grad(working_param)
 
     def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
@@ -265,8 +265,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         Args:
             model (nn.Module): The model to update master params
         """
-        for master_param in model.parameters():
-            strategy = self.masterparam2strategy[master_param]
+        for working_param in model.parameters():
+            strategy = self.workingparam2strategy[working_param]
+            master_param = strategy.working2master(working_param=working_param)
             strategy.update_master_param(master_param)
 
     def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
