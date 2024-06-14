@@ -120,9 +120,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 1e-4, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        check_weight(
-            llama_model, shard_llama_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
-        )
+        try:
+            check_weight(
+                llama_model,
+                shard_llama_model,
+                col_layer_for_check,
+                tp_group,
+                atol=atol,
+                rtol=rtol,
+                dim=1,
+                verbose=False,
+            )
+        except Exception as e:
+            print(f"Failed config: {test_config}")
+            raise e
 
     # check grads
     check_all_grad_tensors(grads_to_check)
