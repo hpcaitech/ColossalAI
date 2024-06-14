@@ -68,6 +68,9 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
 
+        assert (
+            len(optimizer.param_groups) == 1
+        ), "Currently only one parameter group is supported, and we will support multiple groups later."
         zero_params = list(filter(lambda x: not is_moe_tensor(x), model.parameters()))
         moe_params = list(filter(lambda x: is_moe_tensor(x), model.parameters()))
 
