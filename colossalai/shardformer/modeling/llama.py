@@ -7,11 +7,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
-from transformers.cache_utils import Cache
-from transformers.modeling_attn_mask_utils import (
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
+from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -21,7 +17,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaModel,
-    apply_rotary_pos_emb,
+    StaticCache,
     repeat_kv,
 )
 from transformers.utils import logging
@@ -55,6 +51,7 @@ class LlamaPipelineForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
@@ -67,6 +64,11 @@ class LlamaPipelineForwards:
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
+        if use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with pipeline parallelism. Setting `use_cache=False`..."
+            )
+            use_cache = False
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -83,14 +85,24 @@ class LlamaPipelineForwards:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
+
             hidden_states = inputs_embeds
         else:
             input_shape = hidden_states.shape[:-1]
             batch_size, seq_length = input_shape
             device = hidden_states.device
 
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
+        past_seen_tokens = 0
+        if use_cache:  # kept for BC (cache positions)
+            if not isinstance(past_key_values, StaticCache):
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                past_seen_tokens = past_key_values.get_seq_length()
+        if cache_position is None:
+            if isinstance(past_key_values, StaticCache):
+                raise ValueError("cache_position is a required argument when using StaticCache.")
+            cache_position = torch.arange(past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=device)
+
+        seq_length_with_past = seq_length + past_seen_tokens
 
         # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
         if output_attentions:
@@ -103,18 +115,8 @@ class LlamaPipelineForwards:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
 
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
-
         if position_ids is None:
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
-            )
-            position_ids = position_ids.unsqueeze(0)
+            position_ids = cache_position.unsqueeze(0)
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
@@ -129,28 +131,9 @@ class LlamaPipelineForwards:
                 is_causal=True,
             )
         else:
-            if self._use_flash_attention_2:
-                # 2d mask is passed through the layers
-                attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-            elif self._use_sdpa and not output_attentions:
-                # output_attentions=True can not be supported when using SDPA, and we fall back on
-                # the manual implementation that requires a 4D causal mask in all cases.
-                attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-                    attention_mask,
-                    (batch_size, seq_length),
-                    inputs_embeds,
-                    past_key_values_length,
-                )
-            else:
-                # 4d mask is passed through the layers
-                attention_mask = _prepare_4d_causal_attention_mask(
-                    attention_mask,
-                    (batch_size, seq_length),
-                    hidden_states,
-                    past_key_values_length,
-                )
+            attention_mask = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
-        if self.gradient_checkpointing and self.training:
+        if self.gradient_checkpointing and self.training and use_cache:
             if use_cache:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
@@ -190,6 +173,7 @@ class LlamaPipelineForwards:
                     past_key_values,
                     output_attentions,
                     use_cache,
+                    cache_position,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -199,6 +183,7 @@ class LlamaPipelineForwards:
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                 )
 
             hidden_states = layer_outputs[0]
@@ -249,6 +234,7 @@ class LlamaPipelineForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
@@ -306,6 +292,7 @@ class LlamaPipelineForwards:
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
@@ -368,6 +355,7 @@ class LlamaPipelineForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
@@ -401,6 +389,7 @@ class LlamaPipelineForwards:
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
             stage_manager=stage_manager,
             hidden_states=hidden_states,
             stage_index=stage_index,
@@ -486,6 +475,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -520,13 +510,14 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
                     "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
                     "with a layer index."
                 )
+
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        cos, sin = self.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
@@ -562,6 +553,7 @@ def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -572,41 +564,40 @@ def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape
-        elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape
-        else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
-
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-            seq_length_with_past = seq_length_with_past + past_key_values_length
-
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
+        if (input_ids is None) ^ (inputs_embeds is not None):
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time, and must specify either one"
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
+
+        if self.gradient_checkpointing and self.training and use_cache:
+            logger.warning_once(
+                "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`."
+            )
+            use_cache = False
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
+
+        past_seen_tokens = 0
+        if use_cache:  # kept for BC (cache positions)
+            if not isinstance(past_key_values, StaticCache):
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                past_seen_tokens = past_key_values.get_seq_length()
+        if cache_position is None:
+            if isinstance(past_key_values, StaticCache):
+                raise ValueError("cache_position is a required argument when using StaticCache.")
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
         # embed positions
         hidden_states = inputs_embeds
 
         # in this case, attention_mask is a dict rather than a tensor
-        mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+        mask_shape = (hidden_states.shape[0], 1, past_seen_tokens, past_seen_tokens)
         attention_mask = ColoAttention.prepare_attn_kwargs(
             mask_shape,
             hidden_states.dtype,
@@ -625,43 +616,38 @@ def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig):
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
-        next_decoder_cache = () if use_cache else None
+        next_decoder_cache = None
 
-        for idx, decoder_layer in enumerate(self.layers):
+        for decoder_layer in self.layers:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
             if self.gradient_checkpointing and self.training:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions)
-
-                    return custom_forward
-
-                layer_outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(decoder_layer),
+                layer_outputs = self._gradient_checkpointing_func(
+                    decoder_layer.__call__,
                     hidden_states,
                     attention_mask,
                     position_ids,
+                    past_key_values,
+                    output_attentions,
+                    use_cache,
+                    cache_position,
                 )
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                 )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -672,7 +658,11 @@ def get_llama_model_forward_for_flash_attn(shard_config: ShardConfig):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = None
+        if use_cache:
+            next_cache = (
+                next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
+            )
         if not return_dict:
             return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         return BaseModelOutputWithPast(
@@ -700,6 +690,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -744,6 +735,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            cache_position=cache_position,
         )
 
         hidden_states = outputs[0]
@@ -789,6 +781,8 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
 
 
 def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
+    from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -797,6 +791,7 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
         # sp: modify sp_len when sequence parallel mode is ring
@@ -835,18 +830,14 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            kv_seq_len += past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        past_key_value = getattr(self, "past_key_value", past_key_value)
+        cos, sin = self.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
-            # reuse k, v, self_attention
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
-
-        past_key_value = (key_states, value_states) if use_cache else None
+            # sin and cos are specific to RoPE models; cache_position needed for the static cache
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
@@ -854,18 +845,9 @@ def get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group):
 
         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
-        if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
-            raise ValueError(
-                f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                f" {attn_weights.size()}"
-            )
-
-        if attention_mask is not None:
-            if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
-                raise ValueError(
-                    f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
-                )
-            attn_weights = attn_weights + attention_mask
+        if attention_mask is not None:  # no matter the length, we just slice it
+            causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+            attn_weights = attn_weights + causal_mask
 
         # upcast attention to fp32
         attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
@@ -903,7 +885,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
     logger = logging.get_logger(__name__)
 
     def forward(
-        self,
+        self: LlamaModel,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -913,6 +895,7 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -924,55 +907,12 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
 
         # retrieve input_ids and inputs_embeds
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
-        elif input_ids is not None:
-            batch_size, seq_length = input_ids.shape
-        elif inputs_embeds is not None:
-            batch_size, seq_length, _ = inputs_embeds.shape
-        else:
-            raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
-
-        seq_length_with_past = seq_length
-        past_key_values_length = 0
-
-        if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
-            # modify past_key_values_length when using sequence parallel
-            past_key_values_length *= sp_size
-            seq_length_with_past = seq_length_with_past + past_key_values_length
-
-        if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
+            raise ValueError(
+                "You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time, and must specify either one"
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
-
-        if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
-        elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
-
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                (batch_size, seq_length_with_past),
-                dtype=torch.bool,
-                device=inputs_embeds.device,
-            )
-
-        attention_mask = _prepare_4d_causal_attention_mask(
-            attention_mask, attention_mask.shape, inputs_embeds, past_key_values_length
-        )
-
-        hidden_states = inputs_embeds
 
         if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
             if use_cache:
@@ -980,6 +920,29 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
+
+        past_seen_tokens = 0
+        if use_cache:  # kept for BC (cache positions)
+            if not isinstance(past_key_values, StaticCache):
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                past_seen_tokens = past_key_values.get_seq_length()
+        if cache_position is None:
+            if isinstance(past_key_values, StaticCache):
+                raise ValueError("cache_position is a required argument when using StaticCache.")
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
+
+        if sp_mode in ["ring", "split_gather"]:
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+
+        hidden_states = inputs_embeds
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -990,14 +953,12 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
             if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
                         # None for past_key_value
-                        return module(*inputs, past_key_value, output_attentions)
+                        return module(*inputs, past_key_value=past_key_values, output_attentions=output_attentions)
 
                     return custom_forward
 
@@ -1013,15 +974,20 @@ def get_llama_seq_parallel_model_forward(sp_mode, sp_size, sp_group):
                     hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    past_key_value=past_key_value,
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    cache_position=cache_position,
                 )
 
             hidden_states = layer_outputs[0]
 
             if use_cache:
-                next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
+                next_decoder_cache = (
+                    next_decoder_cache.to_legacy_cache()
+                    if isinstance(next_decoder_cache, Cache)
+                    else next_decoder_cache
+                )
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
