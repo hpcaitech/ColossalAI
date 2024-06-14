@@ -68,7 +68,7 @@ def main():
         default="gemini",
         help="Choose which plugin to use",
     )
-    parser.add_argument("--overlap", default=True, type=eval)
+    parser.add_argument("--overlap", action="store_true", help="Overlap communication with computation in Pipeline Parallel.")
     parser.add_argument("-b", "--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("-s", "--num_steps", type=int, default=5, help="Number of steps to run")
     parser.add_argument("-i", "--ignore_steps", type=int, default=2, help="Number of steps to ignore")
@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
+    parser.add_argument("--log_dir", default="./log", type=str, help="Directory for profile logs")
     parser.add_argument("--cache", default=True, type=eval)
     args = parser.parse_args()
 
@@ -280,7 +281,7 @@ def main():
     if args.profile:
         prof = profiler.profile(
             schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
-            on_trace_ready=profiler.tensorboard_trace_handler("./log"),
+            on_trace_ready=profiler.tensorboard_trace_handler(args.log_dir),
             record_shapes=True,
             profile_memory=True,
             with_stack=True,

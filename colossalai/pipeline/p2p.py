@@ -645,7 +645,6 @@ class PipelineP2PCommunication:
         """
         next_rank = self.stage_manager.get_next_rank() if is_send else None
         prev_rank = self.stage_manager.get_prev_rank() if is_recv else None
-
         group = self.stage_manager.get_p2p_process_group()
         return _communicate(
             output_object,
