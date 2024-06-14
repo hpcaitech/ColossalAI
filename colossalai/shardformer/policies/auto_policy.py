@@ -192,6 +192,13 @@ _POLICY_LIST = {
     "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
         file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
+    # Command-R
+    "transformers.models.cohere.modeling_cohere.CohereModel": PolicyLocation(
+        file_name="command", class_name="CommandModelPolicy"
+    ),
+    "transformers.models.cohere.modeling_cohere.CohereForCausalLM": PolicyLocation(
+        file_name="command", class_name="CommandForCausalLMPolicy"
+    ),
 }
 
 
