@@ -139,9 +139,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     # another way of doing this is to reassign tensor.grad, however this won't apply for zero-2
     # since the shape doesn't match
-    def get_param_grad(self, master_param):
-        strategy = self.masterparam2strategy[master_param]
-        return strategy.get_param_grad(master_param)
+    def get_param_grad(self, working_param):
+        strategy = self.workingparam2strategy[working_param]
+        return strategy.get_param_grad(working_param)
 
     def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
         # compute combined scale factor for this group
