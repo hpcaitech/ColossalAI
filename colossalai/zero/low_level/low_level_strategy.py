@@ -306,7 +306,7 @@ class LowLevelOptStrategyBase(ABC):
         padding_size = self.get_param_padding_size(working_param)
         if padding_size > 0:
             working_param = torch.nn.functional.pad(working_param, [0, padding_size])
-        master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
+        master_param.copy_(working_param.flatten().chunk(self._world_size)[self._local_rank])
 
     def get_grad_norm(self, norm_type: int = 2) -> float:
         r"""

@@ -21,17 +21,18 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
     get_param_info,
     init_pipeline_optimizer,
 )
+from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.moe import MoECheckpointIO
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
-from colossalai.zero.low_level import LowLevelZeroOptimizer
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.zero.low_level import LowLevelOptStrategy, LowLevelZeroOptimizer, MoeZeroStrategy
 
 
-class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
+class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
     def __init__(
         self,
         optimizer: Optimizer,
@@ -66,8 +67,36 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.pp_pg = pp_process_group
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
+
+        zero_params = list(filter(lambda x: not is_moe_tensor(x), model.parameters()))
+        moe_params = list(filter(lambda x: is_moe_tensor(x), model.parameters()))
+
+        optimizer.param_groups.clear()
+        optimizer.add_param_group({"params": zero_params})
+        optimizer.add_param_group({"params": moe_params})
+        strategies = [
+            LowLevelOptStrategy(
+                param_group=optimizer.param_groups[0],
+                process_group=dp_process_group,
+                reduce_bucket_size=reduce_bucket_size,
+                communication_dtype=communication_dtype,
+                overlap_communication=overlap_communication,
+                partition_grad=partition_grad,
+                cpu_offload=cpu_offload,
+            ),
+            MoeZeroStrategy(
+                param_group=optimizer.param_groups[1],
+                process_group=moe_extra_dp_process_group,
+                reduce_bucket_size=reduce_bucket_size,
+                communication_dtype=communication_dtype,
+                overlap_communication=overlap_communication,
+                partition_grad=partition_grad,
+                cpu_offload=cpu_offload,
+            ),
+        ]
         super().__init__(
             optimizer=optimizer,
+            group_strategies=strategies,
             initial_scale=initial_scale,
             min_scale=min_scale,
             growth_factor=growth_factor,
@@ -77,14 +106,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             max_scale=max_scale,
             clip_grad_norm=clip_grad_norm,
             verbose=verbose,
-            reduce_bucket_size=reduce_bucket_size,
-            communication_dtype=communication_dtype,
-            overlap_communication=overlap_communication,
-            partition_grad=partition_grad,
-            cpu_offload=cpu_offload,
-            dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
-            moe_extra_dp_process_group=moe_extra_dp_process_group,
         )
 
 
@@ -411,7 +433,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
-                optimizer = HybridParallelZeroOptimizer(
+                optimizer = MoeHybridParallelZeroOptimizer(
                     optimizer,
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
