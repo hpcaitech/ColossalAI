@@ -1,5 +1,6 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from functools import partial
 from typing import Any, Dict, List, Optional
 
@@ -257,6 +258,24 @@ class LowLevelOptStrategyBase(ABC):
     def working_grads(self):
         return self._grad_store.get_working_grads_by_group_id(LowLevelOptStrategyBase.DEFAULT_STORE_GROUP_ID)
 
+    @property
+    def master2working_map(self):
+        return self._param_store.master_to_working_param
+
+    @property
+    def working2master_map(self):
+        return self._param_store.working_to_master_param
+
+    @property
+    def padding_map(self):
+        return self._param_store._padding_map
+
+    def master2working(self, master_param):
+        return self._param_store.master_to_working_param[id(master_param)]
+
+    def working2master(self, working_param):
+        return self._param_store.working_to_master_param[id(working_param)]
+
     def get_param_padding_size(self, param):
         return self._param_store.get_param_padding_size(param)
 
@@ -265,12 +284,29 @@ class LowLevelOptStrategyBase(ABC):
             LowLevelOptStrategy.DEFAULT_STORE_GROUP_ID, id(working_param)
         )
 
-    def update_master_params(self, working_param):
-        for working_param, master_param in zip(self.working_params, self.master_params):
-            padding_size = self.get_param_padding_size(working_param)
-            if padding_size > 0:
-                working_param = torch.nn.functional.pad(working_param, [0, padding_size])
-            master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
+    def state_dict(self, optim: torch.optim.Optimizer) -> Dict:
+        zero_state = {}
+        device = get_accelerator().get_current_device()
+        for working_param, master_param in zip(self.working_param_group, self.master_param_group):
+            zero_state[master_param] = deepcopy(optim.state[master_param])
+            for k, v in zero_state[master_param].items():
+                if isinstance(v, torch.Tensor) and k != "step":
+                    gather_tensor = [
+                        torch.zeros(v.shape, device=device, dtype=v.dtype) for _ in range(self._world_size)
+                    ]
+                    dist.all_gather(gather_tensor, v, group=self.process_group)
+                    param_state = (
+                        torch.stack(gather_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
+                    )
+                    zero_state[master_param][k] = param_state
+        return zero_state
+
+    def update_master_param(self, master_param):
+        working_param = self.master2working(master_param)
+        padding_size = self.get_param_padding_size(working_param)
+        if padding_size > 0:
+            working_param = torch.nn.functional.pad(working_param, [0, padding_size])
+        master_param.copy_(working_param.chunk(self._world_size)[self._local_rank])
 
     def get_grad_norm(self, norm_type: int = 2) -> float:
         r"""
@@ -323,16 +359,6 @@ class LowLevelOptStrategyBase(ABC):
 
     def zero_working_grad(self):
         self._grad_store.reset_grads_by_group_id(LowLevelOptStrategy.DEFAULT_STORE_GROUP_ID)
-
-    def allgather_optim_state(self, master_param, master_state) -> torch.Tensor:
-        device = get_accelerator().get_current_device()
-        working_param = self._param_store.master_to_working_param[id(master_param)]
-        gather_tensor = [
-            torch.zeros(master_state.shape, device=device, dtype=master_state.dtype) for _ in range(self._world_size)
-        ]
-        dist.all_gather(gather_tensor, master_state, group=self.process_group)
-        param_state = torch.stack(gather_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
-        return param_state
 
     def scatter_optim_state(self, optim_state):
         with torch.no_grad():
@@ -483,14 +509,16 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
 
         # update working partition updated by the current rank
         device = get_accelerator().get_current_device()
-        for working_param, master_param in zip(self.working_param_group, self.master_param_group):
+        for working_param, master_param in zip(
+            self.working_param_group, self.master_param_group
+        ):  # initial value of zhe two group are stored in tmp variables
             all_splited_param = [
                 torch.zeros(master_param.shape, device=device, dtype=self._dtype) for _ in range(self._world_size)
             ]
             dist.all_gather(all_splited_param, master_param.to(device).to(self._dtype), group=self.process_group)
             working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
 
-        # restore saved values
+        # restore tmp values
         self.working_param_group = self.__saved_working_params
         self.master_param_group = self.__saved_master_params
         self.__saved_master_params = self.__saved_working_params = None
