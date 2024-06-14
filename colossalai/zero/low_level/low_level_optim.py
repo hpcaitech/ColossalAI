@@ -86,11 +86,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         elif len(self.optim.param_groups) > 1 and group_strategies is None:
             raise ValueError("group_strategies must be provided when the optimizer has multiple param groups")
 
-        self.param2strategy: Dict[torch.nn.Parameter, LowLevelOptStrategyBase] = {}
+        self.masterparam2strategy: Dict[torch.nn.Parameter, LowLevelOptStrategyBase] = {}
         for grp, strategy in zip(self.optim.param_groups, group_strategies):
             assert grp["params"] is strategy.param_group["params"], "param groups should be in the same order"
             for param in strategy.working_param_group:
-                self.param2strategy[param] = strategy
+                self.masterparam2strategy[param] = strategy
         self._group_strategies = group_strategies
 
         # initialize mixed precision mixin
@@ -109,6 +109,22 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         elif self._dtype is torch.bfloat16:
             self.mixed_precision_mixin = BF16MixedPrecisionMixin()
 
+    def _sanity_checks(self):
+        assert get_accelerator().name in ["cuda", "npu"], "device is required"
+        inv = defaultdict(list)
+        for param_group in self.optim.param_groups:
+            group_params = param_group["params"]
+            for param in group_params:
+                inv[param].append(param_group)
+                assert (
+                    param.dtype == self._dtype
+                ), f"Parameters are expected to have the same dtype `{self._dtype}`, but got `{param.dtype}`"
+
+        for _, grps in inv.items():
+            assert (
+                len(grps) == 1
+            ), "Parameters should only appear in one group, since we assume that each strategy only manages one param group"
+
     def backward(self, loss, retain_graph=False):
         for strategy in self._group_strategies:
             strategy.pre_backward(loss, retain_graph)
@@ -121,52 +137,26 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for strategy in self._group_strategies:
             strategy.post_backward()
 
-    def state_dict(self) -> Dict:
-        """Return a state_dict same with DDP
+    # another way of doing this is to reassign tensor.grad, however this won't apply for zero-2
+    # since the shape doesn't match
+    def get_param_grad(self, master_param):
+        strategy = self.masterparam2strategy[master_param]
+        return strategy.get_param_grad(master_param)
 
-        Returns:
-            Dict: the pytorch form state_dict
-        """
-        zero_state = dict()
-        device = get_accelerator().get_current_device()
-        for strategy in self._group_strategies:
-            param_group = strategy.param_group
-            for param in param_group:
-                state = self.optim.state[param]
-                zero_state[param] = copy.deepcopy(state)
-                for k, v in state.items():
-                    if isinstance(v, torch.Tensor) and k != "step":
-                        param_state = strategy.allgather_optim_state(param, v)
-                        zero_state[param][k] = param_state
+    def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
+        # compute combined scale factor for this group
+        div_scale = 1.0
+        if self.mixed_precision_mixin is not None:
+            div_scale = self.mixed_precision_mixin.get_grad_div_scale()
 
-        states_dict = self._pack_state(zero_state)
+        if self._clip_grad_norm > 0.0:
+            # norm is in fact norm*scale
+            clip = ((total_norm / div_scale) + 1e-6) / self._clip_grad_norm
+            if clip > 1:
+                div_scale = clip * div_scale
 
-        return states_dict
-
-    def load_state_dict(self, state_dict: Dict):
-        """Load state dict, requires the state_dict be the pytorch form
-
-        Args:
-            state_dict (dict): A pytorch form state_dict
-        """
-        zero_state_dict = copy.deepcopy(state_dict)
-        self.optim.load_state_dict(zero_state_dict)
-        for strategy in self._group_strategies:
-            strategy.scatter_optim_state(self.optim.state)
-
-    def update_master_params(self, model: nn.Module) -> None:
-        """Update master params from working params
-
-        Args:
-            model (nn.Module): The model to update master params
-        """
-        all_working_params = []
-        for stategy in self._group_strategies:
-            all_working_params.extend(stategy.working_params)
-            stategy.update_master_params()
-        assert set(map(lambda x: id(x), all_working_params)) == set(
-            map(lambda x: id(x), model.parameters())
-        ), "model parameters should be the same"
+        for grad in grad_groups_flat:
+            grad.data.mul_(1.0 / div_scale)
 
     def step(self, closure=None):
         assert closure is None, "closure is not supported by step()"
@@ -220,39 +210,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for strategy in self._group_strategies:
                 strategy.require_grad_sync = old_require_grad_sync
 
-    ##################################################################################
-
-    def _unscale_and_clip_grads(self, grad_groups_flat, total_norm):
-        # compute combined scale factor for this group
-        div_scale = 1.0
-        if self.mixed_precision_mixin is not None:
-            div_scale = self.mixed_precision_mixin.get_grad_div_scale()
-
-        if self._clip_grad_norm > 0.0:
-            # norm is in fact norm*scale
-            clip = ((total_norm / div_scale) + 1e-6) / self._clip_grad_norm
-            if clip > 1:
-                div_scale = clip * div_scale
-
-        for grad in grad_groups_flat:
-            grad.data.mul_(1.0 / div_scale)
-
-    def _sanity_checks(self):
-        assert get_accelerator().name in ["cuda", "npu"], "device is required"
-        inv = defaultdict(list)
-        for param_group in self.optim.param_groups:
-            group_params = param_group["params"]
-            for param in group_params:
-                inv[param].append(param_group)
-                assert (
-                    param.dtype == self._dtype
-                ), f"Parameters are expected to have the same dtype `{self._dtype}`, but got `{param.dtype}`"
-
-        for _, grps in inv.items():
-            assert (
-                len(grps) == 1
-            ), "Parameters should only appear in one group, since we assume that each strategy only manages one param group"
-
     def _pack_state(self, state: Dict) -> Dict:
         # comes from pytorch optimizer.state_dict()
         param_mappings = {}
@@ -274,8 +231,64 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         return {"state": packed_state, "param_groups": param_groups}
 
-    # another way of doing this is to reassign tensor.grad, however this won't apply for zero-2
-    # since the shape doesn't match
-    def get_param_grad(self, param):
-        strategy = self.param2strategy[param]
-        return strategy.get_param_grad(param)
+    def state_dict(self) -> Dict:
+        """Return a state_dict same with DDP
+
+        Returns:
+            Dict: the pytorch form state_dict
+        """
+        state_dict = {}
+        for strategy in self._group_strategies:
+            partial_dict = strategy.state_dict(self.optim)
+            assert len(set(partial_dict.keys()) & set(state_dict.keys())) == 0, "state_dict key conflict"
+            state_dict.update(partial_dict)
+        state_dict = self._pack_state(state_dict)
+        return state_dict
+
+    def load_state_dict(self, state_dict: Dict):
+        """Load state dict, requires the state_dict be the pytorch form
+
+        Args:
+            state_dict (dict): A pytorch form state_dict
+        """
+        zero_state_dict = copy.deepcopy(state_dict)
+        # cannot load state_dict into torch.optim.Optimizer strategy by strategy
+        # due to torch internal param group assertion
+        # thus load first and then scatter
+        self.optim.load_state_dict(zero_state_dict)
+        for strategy in self._group_strategies:
+            strategy.scatter_optim_state(self.optim.state)
+
+    def update_master_params(self, model: nn.Module) -> None:
+        """Update master params from working params
+
+        Args:
+            model (nn.Module): The model to update master params
+        """
+        for master_param in model.parameters():
+            strategy = self.masterparam2strategy[master_param]
+            strategy.update_master_param(master_param)
+
+    def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
+        mapp = {}
+        for strategy in self._group_strategies:
+            partial_map = strategy.working2master_map
+            assert len(set(partial_map.keys()) & set(mapp.keys())) == 0, "working_to_master_map key conflict"
+            mapp.update(partial_map)
+        return mapp
+
+    def get_master_to_working_map(self) -> Dict[int, torch.Tensor]:
+        mapp = {}
+        for strategy in self._group_strategies:
+            partial_map = strategy.master2working_map
+            assert len(set(partial_map.keys()) & set(mapp.keys())) == 0, "master_to_working_map key conflict"
+            mapp.update(partial_map)
+        return mapp
+
+    def get_param_padding_map(self) -> Dict[int, torch.Tensor]:
+        mapp = {}
+        for strategy in self._group_strategies:
+            partial_map = strategy.padding_map
+            assert len(set(partial_map.keys()) & set(mapp.keys())) == 0, "param_padding_map key conflict"
+            mapp.update(partial_map)
+        return mapp
