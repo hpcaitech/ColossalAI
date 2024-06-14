@@ -250,7 +250,6 @@ class FusedLayerNorm(BaseLayerNorm):
         return layernorm
 
 
-
 class CohereLayerNorm(BaseLayerNorm):
     r"""
     This is a wrapper around the transformers.models.cohere.CohereLayerNorm. It is meant to be used only with the from_native_module interface.
