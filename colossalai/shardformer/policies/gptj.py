@@ -34,15 +34,11 @@ class GPTJPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJBlock, GPTJModel
-
-        ATTN_IMPLEMENTATION = {
-            "eager": GPTJAttention,
-        }
+        from transformers.models.gptj.modeling_gptj import GPTJ_ATTENTION_CLASSES, GPTJBlock, GPTJModel
 
         policy = {}
 
-        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+        attn_cls = GPTJ_ATTENTION_CLASSES[self.origin_attn_implement]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
