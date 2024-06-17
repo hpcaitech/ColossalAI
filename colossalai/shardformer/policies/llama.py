@@ -20,9 +20,7 @@ from colossalai.shardformer.layer import (
 from ..modeling.llama import (
     LlamaPipelineForwards,
     get_llama_flash_attention_forward,
-    get_llama_model_forward_for_flash_attn,
-    get_llama_seq_parallel_attention_forward,
-    get_llama_seq_parallel_model_forward,
+    get_llama_flash_attention_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -82,33 +80,7 @@ class LlamaPolicy(Policy):
         )
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
 
-        use_flash_attention = self.shard_config.enable_flash_attention
-        # Currently sp cannot to be used with flashattention
-        if sp_mode in ["split_gather", "ring", "all_to_all"]:
-            if use_flash_attention:
-                warnings.warn(
-                    f"Sequence parallelism mode {sp_mode} need to be used with FlashAttention, will disable FlashAttention automatically."
-                )
-                use_flash_attention = False
-
-        if sp_mode in ["split_gather", "ring"]:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_model_forward(
-                        sp_mode=sp_mode, sp_size=sp_size, sp_group=sp_group
-                    ),
-                },
-                policy=policy,
-                target_key=LlamaModel,
-            )
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
-                },
-                policy=policy,
-                target_key=attn_cls,
-            )
-        elif sp_mode == "all_to_all":
+        if sp_mode == "all_to_all":
             decoder_attribute_replacement = {
                 "num_heads": self.model.config.num_attention_heads // sp_size,
             }
@@ -118,24 +90,27 @@ class LlamaPolicy(Policy):
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
+        if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_seq_parallel_attention_forward(sp_mode, sp_size, sp_group),
+                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=attn_cls,
             )
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_seq_parallel_model_forward(
-                        sp_mode=sp_mode,
-                        sp_size=sp_size,
-                        sp_group=sp_group,
-                    ),
-                },
-                policy=policy,
-                target_key=LlamaModel,
-            )
+            if self.pipeline_stage_manager is None:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_llama_flash_attention_model_forward(
+                            self.shard_config,
+                            sp_mode=sp_mode,
+                            sp_size=sp_size,
+                            sp_group=sp_group,
+                        ),
+                    },
+                    policy=policy,
+                    target_key=LlamaModel,
+                )
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
@@ -234,25 +209,6 @@ class LlamaPolicy(Policy):
             policy=policy,
             target_key=LlamaModel,
         )
-
-        # use flash attention
-        if use_flash_attention:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_group, sp_size),
-                },
-                policy=policy,
-                target_key=attn_cls,
-            )
-            if self.pipeline_stage_manager is None:
-                # replace llama model forward method
-                self.append_or_create_method_replacement(
-                    description={
-                        "forward": get_llama_model_forward_for_flash_attn(self.shard_config),
-                    },
-                    policy=policy,
-                    target_key=LlamaModel,
-                )
 
         return policy
 
