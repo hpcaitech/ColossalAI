@@ -1006,10 +1006,18 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.sequence_parallelism_mode in SUPPORT_SP_MODE
             ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
             if self.sequence_parallelism_mode in ["split_gather", "ring"]:
-                self.sp_size = sp_size if sp_size is not None else 1
-                self.dp_size = dist.get_world_size() // (tp_size * pp_size * self.sp_size)
+                assert (
+                    tp_size > 1
+                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
+                if sp_size != 1:
+                    warnings.warn(
+                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
+                    )
+                self.sp_size = 1
+                self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+
             elif self.sequence_parallelism_mode in ["all_to_all"]:
-                self.sp_size = dist.get_world_size() // pp_size if sp_size is None else sp_size
+                self.sp_size = 1 if sp_size is None else sp_size
                 self.dp_size = dist.get_world_size() // (self.sp_size * pp_size * tp_size)
         else:
             self.dp_size = dist.get_world_size() // (tp_size * pp_size)
