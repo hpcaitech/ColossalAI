@@ -12,7 +12,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.moe.checkpoint import MoECheckpointIO
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
@@ -158,7 +157,6 @@ def main():
             enable_jit_fused=args.use_kernel,
             precision=args.precision,
             zero_stage=args.zero_stage,
-            checkpoint_io=MoECheckpointIO,
         )
 
     else:
