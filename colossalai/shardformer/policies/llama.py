@@ -90,14 +90,14 @@ class LlamaPolicy(Policy):
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
-
-        self.append_or_create_method_replacement(
-            description={
-                "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
-            },
-            policy=policy,
-            target_key=attn_cls,
-        )
+        if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=attn_cls,
+            )
         if self.pipeline_stage_manager is None:
             self.append_or_create_method_replacement(
                 description={

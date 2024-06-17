@@ -1015,7 +1015,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                     )
                 self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
-
             elif self.sequence_parallelism_mode in ["all_to_all"]:
                 self.sp_size = 1 if sp_size is None else sp_size
                 self.dp_size = dist.get_world_size() // (self.sp_size * pp_size * tp_size)
