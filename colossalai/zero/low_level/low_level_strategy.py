@@ -34,7 +34,7 @@ class LowLevelOptStrategyBase(ABC):
     def __init__(
         self,
         param_group,
-        process_group,
+        dp_process_group,
         master_weights,
         partition_grad,
         cpu_offload,
@@ -46,14 +46,14 @@ class LowLevelOptStrategyBase(ABC):
         self.param_group = param_group
         self._dtype = self.param_group["params"][0].dtype
 
-        if process_group is None:  # if process_group is none, convert to default explicitly
-            process_group = dist.group.WORLD
+        if dp_process_group is None:  # if dp_process_group is none, convert to default explicitly
+            dp_process_group = dist.group.WORLD
 
-        self.process_group = process_group
+        self.dp_process_group = dp_process_group
 
-        # if process_group is none, will use the default one
-        self._local_rank = dist.get_rank(group=self.process_group)
-        self._world_size = dist.get_world_size(group=self.process_group)
+        # if dp_process_group is none, will use the default one
+        self._local_rank = dist.get_rank(group=self.dp_process_group)
+        self._world_size = dist.get_world_size(group=self.dp_process_group)
 
         # master weights copy
         self._master_weights = master_weights
@@ -65,9 +65,9 @@ class LowLevelOptStrategyBase(ABC):
 
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
-        self._param_store = ParameterStore(process_group)
-        self._grad_store = GradientStore(process_group, partition_grad=partition_grad)
-        self._bucket_store = BucketStore(process_group, reduce_bucket_size=reduce_bucket_size)
+        self._param_store = ParameterStore(dp_process_group)
+        self._grad_store = GradientStore(dp_process_group, partition_grad=partition_grad)
+        self._bucket_store = BucketStore(dp_process_group, reduce_bucket_size=reduce_bucket_size)
 
         # working and master params for mixed precision training
         group_params = []
@@ -224,7 +224,7 @@ class LowLevelOptStrategyBase(ABC):
                 flat_grads = flat_grads.to(self._communication_dtype)
 
             if not self._partition_grad:
-                dist.all_reduce(flat_grads, group=self.process_group)
+                dist.all_reduce(flat_grads, group=self.dp_process_group)
                 if flat_grads.dtype != grad_dtype:
                     flat_grads = flat_grads.to(grad_dtype)
 
@@ -234,7 +234,7 @@ class LowLevelOptStrategyBase(ABC):
             else:
                 flat_grads_list = list(flat_grads.split(len(flat_grads) // self._world_size))
                 recieved_grad = torch.zeros_like(flat_grads_list[0])
-                dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.process_group)
+                dist.reduce_scatter(recieved_grad, flat_grads_list, group=self.dp_process_group)
 
                 if recieved_grad.dtype != grad_dtype:
                     recieved_grad = recieved_grad.to(grad_dtype)
@@ -294,7 +294,7 @@ class LowLevelOptStrategyBase(ABC):
                     gather_tensor = [
                         torch.zeros(v.shape, device=device, dtype=v.dtype) for _ in range(self._world_size)
                     ]
-                    dist.all_gather(gather_tensor, v, group=self.process_group)
+                    dist.all_gather(gather_tensor, v, group=self.dp_process_group)
                     param_state = (
                         torch.stack(gather_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
                     )
@@ -328,7 +328,7 @@ class LowLevelOptStrategyBase(ABC):
             total_norm_cuda = torch.tensor(
                 [float(total_norm)], device=get_accelerator().get_current_device(), dtype=torch.float
             )
-            dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.process_group)
+            dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=self.dp_process_group)
             total_norm = total_norm_cuda.item()
 
         else:
@@ -342,7 +342,7 @@ class LowLevelOptStrategyBase(ABC):
                 [float(total_norm_exponentiated)], device=get_accelerator().get_current_device(), dtype=torch.float
             )
             torch.distributed.all_reduce(
-                total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.process_group
+                total_norm_exponentiated_cuda, op=torch.distributed.ReduceOp.SUM, group=self.dp_process_group
             )
             total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
@@ -381,7 +381,7 @@ class LowLevelOptStrategyBase(ABC):
             return None
         if self._partition_grad:
             tensor_list = [torch.empty_like(grad_maybe_partial[0]) for _ in range(self._world_size)]
-            dist.all_gather(tensor_list, grad_maybe_partial[0], group=self.process_group)
+            dist.all_gather(tensor_list, grad_maybe_partial[0], group=self.dp_process_group)
             grad_flat = torch.cat(tensor_list, dim=0)
         else:
             grad_flat = torch.cat(grad_maybe_partial, dim=0)
@@ -420,7 +420,7 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
     def __init__(
         self,
         param_group: Dict[str, Any],  # from optimizer.param_groups
-        process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
+        dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         reduce_bucket_size: int = 1024 * 1024,  # communication
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = False,
@@ -430,7 +430,7 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
     ):
         super().__init__(
             param_group=param_group,
-            process_group=process_group,
+            dp_process_group=dp_process_group,
             cpu_offload=cpu_offload,
             partition_grad=partition_grad,
             master_weights=master_weights,
@@ -516,7 +516,7 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
             all_splited_param = [
                 torch.zeros(master_param.shape, device=device, dtype=self._dtype) for _ in range(self._world_size)
             ]
-            dist.all_gather(all_splited_param, master_param.to(device).to(self._dtype), group=self.process_group)
+            dist.all_gather(all_splited_param, master_param.to(device).to(self._dtype), group=self.dp_process_group)
             working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
 
         # restore tmp values
@@ -535,7 +535,7 @@ class MoeZeroStrategy(LowLevelOptStrategy):
         overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
-        process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
+        dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         master_weights: bool = True,  # master weights
     ):
         for param in param_group["params"]:
@@ -544,7 +544,7 @@ class MoeZeroStrategy(LowLevelOptStrategy):
 
         super().__init__(
             param_group=param_group,
-            process_group=process_group,
+            dp_process_group=dp_process_group,
             cpu_offload=cpu_offload,
             partition_grad=partition_grad,
             master_weights=master_weights,
@@ -556,6 +556,6 @@ class MoeZeroStrategy(LowLevelOptStrategy):
     # def get_param_grad(self, param):  # TODO @botbw: discuss whether it's intuitive to return grad of divided of full moe tensor
     #     moe_partial_grad = super().get_param_grad(param)
     #     moe_grad_list = [torch.empty_like(moe_partial_grad) for _ in range(self._world_size)]
-    #     dist.all_gather(moe_grad_list, moe_partial_grad, group=self.process_group)
+    #     dist.all_gather(moe_grad_list, moe_partial_grad, group=self.dp_process_group)
     #     moe_grad = torch.cat(moe_grad_list, dim=0).reshape(param.shape[0] * self._world_size, *param.shape[1:])
     #     return moe_grad

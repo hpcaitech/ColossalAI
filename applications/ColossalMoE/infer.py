@@ -9,7 +9,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
-from colossalai.moe.checkpoint import MoECheckpointIO
 
 
 def parse_args():
@@ -69,7 +68,6 @@ def main():
             ep_size=ep_size,
             zero_stage=1,
             precision=args.precision,
-            checkpoint_io=MoECheckpointIO,
             enable_fused_normalization=args.use_layernorm_kernel,
             enable_jit_fused=args.use_kernel,
         )
