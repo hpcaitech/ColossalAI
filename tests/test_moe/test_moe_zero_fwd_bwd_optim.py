@@ -68,13 +68,13 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
     strategies = [
         LowLevelOptStrategy(
             param_group=zero_optimizer.param_groups[0],
-            process_group=plugin.global_dp_group,
+            dp_process_group=plugin.global_dp_group,
             overlap_communication=False,
             partition_grad=(stage == 2),
         ),
         MoeZeroStrategy(
             param_group=zero_optimizer.param_groups[1],
-            process_group=plugin.moe_dp_group,
+            dp_process_group=plugin.moe_dp_group,
             overlap_communication=True,
             partition_grad=(stage == 2),
         ),
