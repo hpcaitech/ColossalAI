@@ -4,9 +4,9 @@ Author: [Wenxuan Tan](https://github.com/Edenzzzz), [Junwen Duan](https://github
 
 **Related Paper**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
-- [CAME: Confidence-guided Adaptive Memory Efficient Optimization] (https://arxiv.org/abs/2307.02047)
-- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection] (https://arxiv.org/abs/2403.03507)
-- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes] (https://arxiv.org/pdf/1904.00962)
+- [CAME: Confidence-guided Adaptive Memory Efficient Optimization](https://arxiv.org/abs/2307.02047)
+- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)
+- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes](https://arxiv.org/pdf/1904.00962)
 
 ## Introduction
 Apart from the widely adopted Adam and SGD, many modern optimizers require layer-wise statistics to update parameters, and thus aren't directly applicable to settings where model layers are sharded across multiple devices. We provide optimized distributed implementations with minimal extra communications, and seamless integrations with Tensor Parallel, DDP and ZeRO plugins, which automatically uses distributed optimizers with 0 code change.
@@ -14,12 +14,6 @@ Apart from the widely adopted Adam and SGD, many modern optimizers require layer
 ## Optimizers
 Adafactor is a first-order Adam variant using Non-negative Matrix Factorization(NMF) to reduce memory footprint. CAME improves by introducting a confidence matrix to correct NMF. GaLore further reduces memory by projecting gradients into a low-rank space and 8-bit block-wise quantization. Lamb allows huge batch sizes without lossing accuracy via layer-wise adaptive update bounded by the inverse of its Lipschiz constant.
 
-## API Reference
-
-{{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
-{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
-{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
-{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
 
 ## Hands-On Practice
 We now demonstrate how to use Distributed Adafactor with booster API combining Tensor Parallel and ZeRO 2 with 4 GPUs. **Note that even if you're not aware of distributed optimizers, the plugins automatically casts yours to the distributed version for convenience.**
@@ -140,3 +134,10 @@ optim = DistGaloreAwamW(
 </table>
 
 <!-- doc-test-command: colossalai run --nproc_per_node 4 distributed_optimizers.py  -->
+
+## API Reference
+
+{{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
+{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
+{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
+{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
