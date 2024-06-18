@@ -73,11 +73,9 @@ class CommandPolicy(Policy):
             warnings.warn(
                 f"For Command, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
             )
-        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
-        sp_size = self.shard_config.sequence_parallel_size if self.shard_config.enable_sequence_parallelism else None
-        sp_group = (
-            self.shard_config.sequence_parallel_process_group if self.shard_config.enable_sequence_parallelism else None
-        )
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
 
         if sp_mode == "all_to_all":
@@ -111,7 +109,6 @@ class CommandPolicy(Policy):
                     policy=policy,
                     target_key=CohereModel,
                 )
-
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
