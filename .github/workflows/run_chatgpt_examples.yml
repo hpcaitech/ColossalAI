@@ -4,10 +4,11 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - "applications/Chat/coati/**"
-      - "applications/Chat/requirements.txt"
-      - "applications/Chat/setup.py"
-      - "applications/Chat/examples/**"
+      - "applications/ColossalChat/coati/**"
+      - "applications/ColossalChat/requirements.txt"
+      - "applications/ColossalChat/setup.py"
+      - "applications/ColossalChat/examples/**"
+      - "applications/ColossalChat/tests/**"
 
 jobs:
   tests:
@@ -41,7 +42,7 @@ jobs:
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.34.1
+          pip install transformers==4.36.2
 
       - name: Execute Examples
         run: |
