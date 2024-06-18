@@ -311,18 +311,17 @@ def main():
                     prof.step()
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
         else:
-            with torch.autocast("cuda", dtype=torch.bfloat16):
-                for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
-                    performance_evaluator.on_step_start(step)
-                    outputs = model(**batch)
-                    loss = outputs[0]
-                    booster.backward(loss, optimizer)
+            for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
+                performance_evaluator.on_step_start(step)
+                outputs = model(**batch)
+                loss = outputs[0]
+                booster.backward(loss, optimizer)
 
-                    if args.profile:
-                        prof.step()
-                    optimizer.step()
-                    optimizer.zero_grad()
-                    performance_evaluator.on_step_end(**batch)
+                if args.profile:
+                    prof.step()
+                optimizer.step()
+                optimizer.zero_grad()
+                performance_evaluator.on_step_end(**batch)
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
