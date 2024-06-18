@@ -112,7 +112,6 @@ class CommandPolicy(Policy):
                     target_key=CohereModel,
                 )
 
-
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
