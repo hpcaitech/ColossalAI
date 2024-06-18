@@ -94,9 +94,9 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
         new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
 
         booster.load_model(new_model, model_ckpt_path)
-        check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict(), False)
+        check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict())
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict(), False)
+        check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict())
         dist.barrier()
 
     # Check whether the loaded model & optimizer works smoothly.

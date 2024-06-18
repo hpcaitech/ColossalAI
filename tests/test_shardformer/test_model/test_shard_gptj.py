@@ -240,7 +240,6 @@ def run_gptj_3d_test(test_config):
 def check_gptj(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",
@@ -253,7 +252,6 @@ def check_gptj(rank, world_size, port):
 def check_gptj_3d(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(
-        config={},
         rank=rank,
         world_size=world_size,
         host="localhost",

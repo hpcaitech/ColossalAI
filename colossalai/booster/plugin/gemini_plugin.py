@@ -369,6 +369,11 @@ class GeminiPlugin(DPPluginBase):
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
         if get_accelerator().name == "npu":
             assert placement_policy == "static", "NPU only supports static placement policy"
+        if placement_policy == "auto" and enable_async_reduce:
+            logging.warning(
+                f"enable_async_reduce requires pin_memory to achieve best performance, which is not implicitly set."
+            )
+            pin_memory = True
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_accelerator().get_current_device()),

@@ -75,6 +75,8 @@ def run_engine(tp_size, **kwargs):
     return check_inference_engine(tp_size=tp_size, **kwargs)
 
 
+# TODO: fix the test
+@pytest.mark.skip("model is too large")
 @pytest.mark.largedist
 @parameterize("prompt_template", [None, "llama"])
 @parameterize("do_sample", [False])

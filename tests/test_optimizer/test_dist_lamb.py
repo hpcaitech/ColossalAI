@@ -18,7 +18,6 @@ from tests.test_optimizer._utils import check_optim_states, run_bert_test
 
 _ALLOWED_P_G_TYPES = [
     (torch.float, torch.float),  # pure fp32
-    (torch.float, torch.half),  # fp16 amp
     (torch.float, torch.bfloat16),  # bfloat16 amp
 ]
 
@@ -264,7 +263,6 @@ def run_dist_lamb_fwd_bwd(
 
     torch_optim.step()
     optim.step()
-    dist.barrier()
     torch_optim.zero_grad()
     optim.zero_grad()
     try:

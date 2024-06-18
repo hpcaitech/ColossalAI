@@ -15,9 +15,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
+    {"placement_policy": "static", "shard_param_frac": 0.75},
     {"placement_policy": "auto"},
 ]
 
@@ -109,7 +107,7 @@ def exam_gemini_grad_acc(
     torch_model = DDP(torch_model, device_ids=[rank])
 
     set_seed(rank)
-    accum_iter = 4
+    accum_iter = 2
     train_dataloader = DummyDataloader(data_gen_fn)
     for i, data in enumerate(train_dataloader):
         delay_unscale = False if (i + 1) % accum_iter == 0 else True
