@@ -97,21 +97,22 @@ class LowLevelOptStrategyBase(ABC):
         # if it is stage 1 without overlapping, no hook will be attached
         self.grad_handles = []
         if self._overlap_communication or self._partition_grad:
+            self_weak_proxy = weakref.proxy(self)
+
+            def _grad_handler(grad, param):
+                # if run with no_sync context, would not sync grad when backward
+                if self_weak_proxy.require_grad_sync:
+                    self_weak_proxy._add_to_bucket(param)
+                return grad
+
             # we iterate over the working params
             # on each param, we register a hook to its AccumulateGrad object
             param_group = self.working_param_group
             for param in param_group:
                 if param.requires_grad:
-                    self_weak_proxy = weakref.proxy(self)
-                    param_weak_proxy = weakref.proxy(param)
-
-                    def _grad_handler(grad):
-                        # if run with no_sync context, would not sync grad when backward
-                        if self_weak_proxy.require_grad_sync:
-                            self_weak_proxy._add_to_bucket(param_weak_proxy)
-                        return grad
-
-                    self.grad_handles.append(param.register_post_accumulate_grad_hook(partial(_grad_handler)))
+                    self.grad_handles.append(
+                        param.register_post_accumulate_grad_hook(partial(_grad_handler, param=param))
+                    )
 
     def __del__(self):
         for handle in self.grad_handles:
