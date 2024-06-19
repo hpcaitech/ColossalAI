@@ -466,6 +466,7 @@ class InferenceEngine:
                     self.k_cache[-1],  # use kv cahces of the last layer
                     self.v_cache[-1],
                     batch.get_sequence_lengths(),
+                    n_spec_tokens=self.n_spec_tokens,
                 )
 
             drafter_out = self.drafter.speculate(
