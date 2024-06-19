@@ -13,7 +13,7 @@ from colossalai.accelerator import get_accelerator
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import flatten, release_param_grad, sync_tensor
-from .bookkeeping import BucketStore, GradientStore, ParameterStore
+from .bookkeeping import BucketStore, GradientStore
 
 
 class LowLevelOptStrategyBase(ABC):

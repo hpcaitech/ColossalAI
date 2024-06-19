@@ -105,7 +105,7 @@ class GradientStore(BaseStore):
         for group in self._grads_of_params.values():
             if param_id in group.keys():
                 return group[param_id][self._working_index]
-
+        return None
         raise KeyError(f"Working gradient for param_id {param_id} not found.")
 
     def reset_grads_by_group_id(self, group_id: int):
