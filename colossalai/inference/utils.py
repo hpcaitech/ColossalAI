@@ -5,9 +5,10 @@ import math
 import os
 import re
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
+from diffusers import DiffusionPipeline
 from torch import nn
 
 from colossalai.logging import get_dist_logger
@@ -158,3 +159,22 @@ def can_use_flash_attn2(dtype: torch.dtype) -> bool:
     except ImportError:
         logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
         return False
+
+
+from enum import Enum
+
+
+class ModelType(Enum):
+    DIFFUSION_MODEL = "Diffusion Model"
+    LLM = "Large Language Model (LLM)"
+    UNKNOWN = "Unknown Model Type"
+
+
+def get_model_type(model_or_path: Union[nn.Module, str, DiffusionPipeline]):
+    if isinstance(model_or_path, DiffusionPipeline):
+        return ModelType.DIFFUSION_MODEL
+    elif isinstance(model_or_path, nn.Module):
+        return ModelType.LLM
+    elif isinstance(model_or_path, str):
+        # TODO(lry89757) we need to support string input for diffusion model
+        return ModelType.LLM

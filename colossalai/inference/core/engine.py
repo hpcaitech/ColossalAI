@@ -3,8 +3,10 @@ from itertools import count
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import numpy as np
+import PIL.Image
 import torch
 import torch.nn as nn
+from diffusers import DiffusionPipeline
 from torch import distributed as dist
 from transformers import (
     AutoConfig,
@@ -18,20 +20,21 @@ from transformers.models.llama.modeling_llama import LlamaForCausalLM
 from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.batch_bucket import BatchBucket
-from colossalai.inference.config import InferenceConfig, InputMetaData, ModelShardInferenceConfig
+from colossalai.inference.config import GenerationParams, InferenceConfig, InputMetaData, ModelShardInferenceConfig
 from colossalai.inference.graph_runner import CUDAGraphRunner
+from colossalai.inference.modeling.models.stable_diffusion import DiffusionPipe
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.spec import Drafter, GlideInput
-from colossalai.inference.struct import Sequence
-from colossalai.inference.utils import get_model_size
+from colossalai.inference.struct import Sequence, Sequence_
+from colossalai.inference.utils import ModelType, get_model_size, get_model_type
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .request_handler import RequestHandler
+from .request_handler import NaiveRequestHandler, RequestHandler
 
 __all__ = ["InferenceEngine"]
 
@@ -40,6 +43,7 @@ PP_AXIS, TP_AXIS = 0, 1
 _supported_models = {
     "LlamaForCausalLM": LlamaForCausalLM,
     "BaichuanForCausalLM": AutoModelForCausalLM,
+    "DiffusionPipe": DiffusionPipeline,
 }
 
 _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
@@ -60,9 +64,9 @@ class InferenceEngine:
 
     def __init__(
         self,
-        model_or_path: Union[nn.Module, str],
-        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast],
-        inference_config: InferenceConfig,
+        model_or_path: Union[nn.Module, str, DiffusionPipeline],
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast] = None,
+        inference_config: InferenceConfig = None,
         verbose: bool = False,
         model_policy: Union[Policy, Type[Policy]] = None,
     ) -> None:
@@ -74,16 +78,26 @@ class InferenceEngine:
         self.logger = get_dist_logger(__name__)
         self.model_shard_infer_config = inference_config.to_model_shard_inference_config()
 
+        self.model_type = get_model_type(model_or_path=model_or_path)
+
         self.init_model(model_or_path, model_policy, self.model_shard_infer_config)
 
-        self.generation_config = inference_config.to_generation_config(self.model_config)
-        self.generation_config_dict = self.generation_config.to_dict()
+        if self.model_type == ModelType.LLM:
+            self.generation_config = inference_config.to_generation_config(self.model_config)
+            self.generation_config_dict = self.generation_config.to_dict()
 
-        self.tokenizer = tokenizer
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer = tokenizer
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        elif self.model_type == ModelType.DIFFUSION_MODEL:
+            pass
+        else:
+            self.logger.error(f"Model Type either Difffusion or LLM!")
 
-        self.request_handler = RequestHandler(self.inference_config, self.model_config)
-        self.k_cache, self.v_cache = self.request_handler.get_kvcache()
+        if self.model_type == ModelType.DIFFUSION_MODEL:
+            self.request_handler = NaiveRequestHandler()
+        elif self.model_type == ModelType.LLM:
+            self.request_handler = RequestHandler(self.inference_config, self.model_config)
+            self.k_cache, self.v_cache = self.request_handler.get_kvcache()
         # DISCUSS maybe move this into batch info?
 
         self.counter = count()
@@ -109,7 +123,7 @@ class InferenceEngine:
 
     def init_model(
         self,
-        model_or_path: Union[nn.Module, str],
+        model_or_path: Union[str, nn.Module, DiffusionPipeline],
         model_policy: Union[Policy, Type[Policy]] = None,
         model_shard_infer_config: ModelShardInferenceConfig = None,
     ):
@@ -140,10 +154,12 @@ class InferenceEngine:
                 self.logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
                 )
-        else:
+        elif isinstance(model_or_path, DiffusionPipeline):
+            model = DiffusionPipe(model_or_path)
+        elif isinstance(model_or_path, nn.Module):
             model = model_or_path
-
-        self.model_config = model.config
+        else:
+            self.logger.error(f"model_or_path support only str, nn.Module or DiffusionPipeline currently!")
 
         torch.cuda.empty_cache()
         init_gpu_memory = torch.cuda.mem_get_info()[0]
@@ -159,9 +175,15 @@ class InferenceEngine:
                 f"Before the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(model)} GB, model's device is: {model.device}"
             )
 
+        if self.model_type == ModelType.LLM:
+            self.model_config = model.config
+
         if model_policy is None:
-            prefix = "nopadding" if not self.inference_config.pad_input else "padding"
-            model_policy_key = f"{prefix}_{getattr(self.model_config, 'model_type', None)}"
+            if self.model_type == ModelType.LLM:
+                prefix = "nopadding" if not self.inference_config.pad_input else "padding"
+                model_policy_key = f"{prefix}_{getattr(self.model_config, 'model_type', None)}"
+            elif self.model_type == ModelType.DIFFUSION_MODEL:
+                model_policy_key = self.model.__class__.__name__
             model_policy = model_policy_map.get(model_policy_key)
 
         if not isinstance(model_policy, Policy):
@@ -284,7 +306,9 @@ class InferenceEngine:
             raise TypeError("Invalid type of inference config provided.")
         if not isinstance(self.model, nn.Module):
             raise TypeError(f"the model type must be nn.Module, but got {type(self.model)}")
-        if not isinstance(self.tokenizer, (PreTrainedTokenizerFast, PreTrainedTokenizer)):
+        if hasattr(self, "tokenizer") and not isinstance(
+            self.tokenizer, (PreTrainedTokenizerFast, PreTrainedTokenizer, None)
+        ):
             raise TypeError(
                 f"the tokenizer type must be PreTrainedTokenizer or PreTrainedTokenizerFast, but got {type(self.tokenizer)}"
             )
@@ -292,7 +316,7 @@ class InferenceEngine:
             model = self.model.module
         assert (
             model.__class__.__name__ in _supported_models.keys()
-        ), f"Model {self.model.__class__.__name__} is not supported."
+        ), f"Model {model.__class__.__name__} is not supported."
 
     def _shardformer(
         self,
@@ -530,8 +554,9 @@ class InferenceEngine:
         prompts: Union[List[str], str] = None,
         prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
         return_token_ids: bool = False,
-        generation_config: Optional[GenerationConfig] = None,
-    ) -> Union[List[str], Tuple[List[str], List[List[int]]]]:
+        generation_config: Optional[Union[GenerationConfig, GenerationParams]] = None,
+        **kwargs,
+    ) -> Union[List[Union[str, List[PIL.Image.Image], np.ndarray]], Tuple[List[str], List[List[int]]]]:
         """
         Executing the inference step.
 
@@ -540,7 +565,8 @@ class InferenceEngine:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (Union[List[int], torch.Tensor, np.ndarray], optional): token ids of input prompts. Defaults to None.
             return_token_ids (bool, optional): Whether to return output token ids. Defaults to False.
-            generation_config (Optional[GenerationConfig], optional): Huggingface GenerationConfig used for inference. Defaults to None.
+            generation_config (Optional[Union[GenerationConfig, GenerationParams]], optional): Huggingface GenerationConfig used for LLM inference or GenerationParams for Diffusion inference. Defaults to None.
+            kwargs: (optional): Could be the GenerationParams in dict
 
         Returns:
             Union[List[str], Tuple[List[str], List[List[int]]]]: Inference result returned by one generation.
@@ -557,10 +583,10 @@ class InferenceEngine:
                     prompts=prompts,
                     prompts_token_ids=prompts_token_ids,
                     **gen_config_dict,
+                    **kwargs,
                 )
 
-            output_seqs_list = []
-            total_tokens_list = []
+            output_reqs_list = []
 
             # intuition: If user provide a generation config, we should replace the existing one.
             if generation_config is not None:
@@ -569,24 +595,28 @@ class InferenceEngine:
 
             if self.use_spec_dec:
                 assert self.drafter is not None, "Drafter Model is not initialized."
-                while self.request_handler.check_unfinished_seqs():
-                    output_seqs_list += self.steps_spec_dec()
+                while self.request_handler.check_unfinished_reqs():
+                    output_reqs_list += self.steps_spec_dec()
             else:
-                while self.request_handler.check_unfinished_seqs():
-                    output_seqs_list += self.step()
+                while self.request_handler.check_unfinished_reqs():
+                    output_reqs_list += self.step()
 
-            output_seqs_list = sorted(output_seqs_list, key=lambda x: int(x.request_id))
+            if self.model_type == ModelType.LLM:
+                output_reqs_list = sorted(output_reqs_list, key=lambda x: int(x.request_id))
+                total_tokens_list = []
+                for seq in output_reqs_list:
+                    total_tokens_list.append(seq.input_token_id + seq.output_token_id)
 
-            for seq in output_seqs_list:
-                total_tokens_list.append(seq.input_token_id + seq.output_token_id)
+                output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
 
-            output_str = self.tokenizer.batch_decode(total_tokens_list, skip_special_tokens=True)
-
-            if return_token_ids:
-                output_tokens_list = [seq.output_token_id for seq in output_seqs_list]
-                return output_str, output_tokens_list
-            else:
-                return output_str
+                if return_token_ids:
+                    output_tokens_list = [seq.output_token_id for seq in output_reqs_list]
+                    return output_str, output_tokens_list
+                else:
+                    return output_str
+            elif self.model_type == ModelType.DIFFUSION_MODEL:
+                # TODO process the output
+                return output_reqs_list
 
     @property
     def has_prompt_template(self) -> bool:
@@ -622,8 +652,52 @@ class InferenceEngine:
             request_ids (List[int], optional): The request ID. Defaults to None.
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
+            kwargs: for LLM, it could be max_length, max_new_tokens
+                    for diffusion, it could be prompt_2, prompt_3, num_images_per_prompt, do_classifier_free_guidance, negative_prompt, negative_prompt_2, negative_prompt_3, prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds, clip_skip, which aligns with
         """
 
+        if self.model_type == ModelType.DIFFUSION_MODEL:
+            self.add_request_for_diffusion(request_ids=request_ids, prompts=prompts, **kwargs)
+        elif self.model_type == ModelType.LLM:
+            self.add_request_for_llm(
+                request_ids=request_ids, prompts=prompts, prompts_token_ids=prompts_token_ids, **kwargs
+            )
+
+    def add_request_for_diffusion(
+        self,
+        prompts: Union[List[str], str],
+        request_ids: Union[List[int], int] = None,
+        **kwargs,
+    ):
+        if request_ids is not None and not isinstance(request_ids, list):
+            request_ids = [request_ids]
+
+        if not isinstance(prompts, list):
+            prompts = [prompts]
+
+        generation_config = GenerationParams.from_kwargs(**kwargs)
+        prompts_num = len(prompts)
+        for i in range(prompts_num):
+            if request_ids:
+                assert isinstance(
+                    request_ids[0], int
+                ), f"The request_id type must be int, but got {type(request_ids[0])}"
+                assert len(request_ids) == prompts_num
+                request_id = request_ids[i]
+            else:
+                request_id = next(self.counter)
+
+            seq = Sequence_(request_id=request_id, prompt=prompts[i], generation_config=generation_config)
+
+            self.request_handler.add_sequence(seq)
+
+    def add_request_for_llm(
+        self,
+        request_ids: Union[List[int], int] = None,
+        prompts: Union[List[str], str] = None,
+        prompts_token_ids: Union[List[int], torch.Tensor, np.ndarray] = None,
+        **kwargs,
+    ):
         # apply the prompt template to the input prompts
 
         if self.has_prompt_template and prompts is not None:
@@ -760,7 +834,21 @@ class InferenceEngine:
             List[str]: Decoded finished sequences generated by one step.
         """
 
-        batch = self.request_handler.schedule()
+        input = self.request_handler.schedule()
+
+        ret = None
+        if self.model_type == ModelType.LLM:
+            ret = self.step_llm(input)
+        elif self.model_type == ModelType.DIFFUSION_MODEL:
+            ret = self.step_diffusion(input)
+        return ret
+
+    def step_diffusion(self, input: Sequence_):
+        ret = self.model(prompt=input.prompt, **input.generation_config.to_dict())
+        return ret
+
+    def step_llm(self, input: BatchBucket):
+        batch = input
 
         input_token_ids, output_tensor, input_meta_data = self.prepare_input(batch)
 
