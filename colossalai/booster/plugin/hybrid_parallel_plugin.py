@@ -1083,7 +1083,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatches=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
-                    overlap_p2p=overlap_p2p,
                 )
             else:
                 raise NotImplementedError()

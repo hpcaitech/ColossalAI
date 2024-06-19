@@ -32,7 +32,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
-        overlap_p2p=None,
     ) -> None:
         """1F1B pipeline schedule.
 
@@ -40,7 +39,6 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             stage_manager (PipelineStageManager): Pipeline stage manager
             num_microbatches (Optional[int], optional): The number of microbatches. If not provided, it will be derived from microbatch size. Defaults to None.
             microbatch_size (Optional[int], optional): Microbatch size. If num_microbatches is provided, this will be ignored. Defaults to None.
-            overlap_p2p: Placeholder for interface consistency
         """
         super().__init__(stage_manager)
         assert (
