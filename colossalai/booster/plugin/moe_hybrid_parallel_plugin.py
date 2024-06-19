@@ -29,7 +29,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
-from colossalai.zero.low_level import LowLevelOptStrategy, LowLevelZeroOptimizer, MoeZeroStrategy
+from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
 class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
@@ -68,38 +68,19 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         if use_pipeline:
             init_pipeline_optimizer(optimizer, model)
 
-        assert (
-            len(optimizer.param_groups) == 1
-        ), "Currently only one parameter group is supported, and we will support multiple groups later."
-        zero_params = list(filter(lambda x: not is_moe_tensor(x), model.parameters()))
-        moe_params = list(filter(lambda x: is_moe_tensor(x), model.parameters()))
+        pg_param_list = {
+            dp_process_group: [],
+            moe_extra_dp_process_group: [],
+        }
+        for param in model.parameters():
+            if is_moe_tensor(param):
+                pg_param_list[moe_extra_dp_process_group].append(param)
+            else:
+                pg_param_list[dp_process_group].append(param)
 
-        optimizer.param_groups.clear()
-        optimizer.add_param_group({"params": zero_params})
-        optimizer.add_param_group({"params": moe_params})
-        strategies = [
-            LowLevelOptStrategy(
-                param_group=optimizer.param_groups[0],
-                process_group=dp_process_group,
-                reduce_bucket_size=reduce_bucket_size,
-                communication_dtype=communication_dtype,
-                overlap_communication=overlap_communication,
-                partition_grad=partition_grad,
-                cpu_offload=cpu_offload,
-            ),
-            MoeZeroStrategy(
-                param_group=optimizer.param_groups[1],
-                process_group=moe_extra_dp_process_group,
-                reduce_bucket_size=reduce_bucket_size,
-                communication_dtype=communication_dtype,
-                overlap_communication=overlap_communication,
-                partition_grad=partition_grad,
-                cpu_offload=cpu_offload,
-            ),
-        ]
         super().__init__(
             optimizer=optimizer,
-            group_strategies=strategies,
+            pg_param_list=pg_param_list,
             initial_scale=initial_scale,
             min_scale=min_scale,
             growth_factor=growth_factor,
@@ -109,6 +90,11 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             max_scale=max_scale,
             clip_grad_norm=clip_grad_norm,
             verbose=verbose,
+            reduce_bucket_size=reduce_bucket_size,
+            communication_dtype=communication_dtype,
+            overlap_communication=overlap_communication,
+            partition_grad=partition_grad,
+            cpu_offload=cpu_offload,
             forced_dtype=forced_dtype,
         )
 

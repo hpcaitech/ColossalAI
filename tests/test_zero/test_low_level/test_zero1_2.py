@@ -123,7 +123,7 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     seed_all(1453)
 
     # create models
-    torch_model = MlpModel().cuda()
+    torch_model = MlpModel().cuda().to(dtype)
     zero_model = copy.deepcopy(torch_model).to(dtype)
 
     torch_model = DDP(torch_model.cuda(), static_graph=True).cuda()
@@ -145,39 +145,41 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
 
     seed_all(1453 + local_rank)
-    # create
-    input_data = torch.rand(32, 123).cuda()
 
-    # zero-dp forward
-    zero_output = zero_model(input_data.to(dtype))
+    for _ in range(2):
+        # create
+        input_data = torch.rand(32, 123).cuda().to(dtype)
 
-    # torch-ddp forward
-    torch_output = torch_model(input_data)
-    loose_close(zero_output, torch_output, dtype=dtype)
+        # zero-dp forward
+        zero_output = zero_model(input_data)
 
-    # zero-dp backward
-    zero_optimizer.backward(zero_output.mean().float())
+        # torch-ddp forward
+        torch_output = torch_model(input_data)
+        loose_close(zero_output, torch_output, dtype=dtype)
 
-    # torch-ddp backward
-    torch_output.mean().backward()
+        # zero-dp backward
+        zero_optimizer.backward(zero_output.mean())
 
-    # check grad
-    for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        zero_grad = zero_optimizer.get_param_grad(z1p)
-        if p.grad is None:
-            assert zero_grad is None
-            continue
-        loose_close(p.grad, zero_grad, dtype=dtype)
+        # torch-ddp backward
+        torch_output.mean().backward()
 
-    # zero-dp step
-    zero_optimizer.step()
+        # check grad
+        for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
+            zero_grad = zero_optimizer.get_param_grad(z1p)
+            if p.grad is None:
+                assert zero_grad is None
+                continue
+            loose_close(p.grad, zero_grad, dtype=dtype)
 
-    # torch ddp step
-    torch_optimizer.step()
+        # zero-dp step
+        zero_optimizer.step()
 
-    # check updated param
-    for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
-        loose_close(p, z1p, dtype=dtype)
+        # torch ddp step
+        torch_optimizer.step()
+
+        # check updated param
+        for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
+            loose_close(p, z1p, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):

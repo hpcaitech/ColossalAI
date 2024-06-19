@@ -3,6 +3,7 @@ import copy
 from contextlib import contextmanager
 from functools import partial
 from typing import Dict, Iterator, List, Optional, Tuple
+from weakref import proxy
 
 import torch
 import torch.distributed as dist
@@ -64,7 +65,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def __init__(
         self,
         optimizer: Optimizer,
-        param2pg: Dict[nn.Parameter, ProcessGroup] = None,
+        pg_param_list: Dict[ProcessGroup, List[nn.Parameter]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -88,14 +89,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
         self._verbose = verbose
 
-        if param2pg is None:
-            param2pg = {}
+        if pg_param_list is None:
+            pg_param_list = {dist.group.WORLD: []}
             for group in self.optim.param_groups:
-                group_params = group["params"]
-                for param in group_params:
-                    param2pg[param] = dist.group.WORLD
+                pg_param_list[dist.group.WORLD].extend(group["params"])
 
-        self.param2pg = param2pg
+        self.pg_param_list = pg_param_list
+        param_to_pg = {}
+        for grp, param_list in pg_param_list.items():
+            for p in param_list:
+                assert isinstance(p, nn.Parameter)
+                param_to_pg[p] = grp
+        self.param_to_pg = param_to_pg
+
         # stage 2
         self._partition_grads = partition_grad
 
@@ -129,7 +135,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # check argument conflict
         self._sanity_checks()
 
-        self.partition_grad = partition_grad
         self.require_grad_sync = True
 
         # ParameterStore will manage the tensor buffers used for zero
@@ -142,13 +147,16 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self.master_to_working_param = dict()
         self.working_to_master_param = dict()
 
-        stores = {pg: GradientStore(pg, partition_grad=self.partition_grad) for pg in param2pg.values()}
-        self._grad_stores = {id(param): stores[param2pg[param]] for param in param2pg}
-        stores = {
+        # NOTE need to gurantee the order of process group is the same accross all ranks
+        self.grad_stores = {pg: GradientStore(pg, partition_grad=self._partition_grads) for pg in self.pg_param_list}
+        # param id to grad store, have to use id(param) as key since it is used in stores
+        self.pid2grad_store = {id(param): self.grad_stores[param_to_pg[param]] for param in param_to_pg}
+        self.bucket_stores = {
             pg: BucketStore(pg, reduce_bucket_size, overlap_comm=self._overlap_communication)
-            for pg in param2pg.values()
+            for pg in self.pg_param_list
         }
-        self._bucket_stores = {id(param): stores[param2pg[param]] for param in param2pg}
+        # param id to bucket store, have to use id(param) as key since it is used in stores
+        self.pid2bucket_store = {id(param): self.bucket_stores[param_to_pg[param]] for param in param_to_pg}
 
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training
@@ -181,7 +189,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self._dtype is torch.float16:
             self.mixed_precision_mixin = LowLevelZeroFP16MixedPrecisionMixin(
                 self.num_param_groups,
-                self._grad_stores,
+                self.grad_stores,
                 initial_scale=initial_scale,
                 min_scale=min_scale,
                 growth_factor=growth_factor,
@@ -218,8 +226,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         for param in param_list:
             padding_size = (
-                self._bucket_stores[id(param)].world_size - param.numel() % self._bucket_stores[id(param)].world_size
-            ) % self._bucket_stores[id(param)].world_size
+                self.pid2bucket_store[id(param)].world_size
+                - param.numel() % self.pid2bucket_store[id(param)].world_size
+            ) % self.pid2bucket_store[id(param)].world_size
             self.record_param_padding_size(param, padding_size)
 
             with torch.no_grad():
@@ -231,8 +240,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     padding_param = param.data.view(-1)
 
-                splited_params = padding_param.split(padding_param.numel() // self._bucket_stores[id(param)].world_size)
-                splited_params = splited_params[self._bucket_stores[id(param)].local_rank]
+                splited_params = padding_param.split(
+                    padding_param.numel() // self.pid2bucket_store[id(param)].world_size
+                )
+                splited_params = splited_params[self.pid2bucket_store[id(param)].local_rank]
 
                 # use fp32 when master_weights is True
                 if self._master_weights is True:
@@ -249,75 +260,75 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # Backward Reduction Hook #
     ###########################
 
-    def _grad_handler(self, group_id, param):
-        # if run with no_sync context, would not sync grad when backward
-        if self.require_grad_sync:
-            self._add_to_bucket(param, group_id)
-
     def _attach_reduction_hook(self):
         # we iterate over the working params
         # on each param, we register a hook to its AccumulateGrad object
+        self_weakref = proxy(self)
+
+        def _grad_handler(param, group_id):
+            # if run with no_sync context, would not sync grad when backward
+            if self_weakref.require_grad_sync:
+                self_weakref._add_to_bucket(param, group_id)
+
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    param.register_post_accumulate_grad_hook(partial(self._grad_handler, group_id))
+                    param.register_post_accumulate_grad_hook(partial(_grad_handler, group_id=group_id))
 
     #######################
     # Reduction Functions #
     #######################
 
     def _run_reduction(self):
-        for bucket_store in self._bucket_stores.values():
-            if bucket_store.num_elements_in_bucket() > 0:
-                bucket_store.build_grad_in_bucket()
+        for bucket_store in self.bucket_stores.values():
+            if bucket_store.num_elements_in_bucket() <= 0:
+                continue
 
-                flat_grads = bucket_store.get_flatten_grad()
-                flat_grads /= bucket_store.world_size
+            bucket_store.build_grad_in_bucket()
 
-                # ready to add other tensors to bucket
-                bucket_store.reset_num_elements_in_bucket()
+            flat_grads = bucket_store.get_flatten_grad()
+            flat_grads /= bucket_store.world_size
 
-                if self._overlap_communication:
-                    stream = bucket_store.comm_stream
-                    # in case of the memory being reused in the default stream
-                    flat_grads.record_stream(stream)
-                    # waiting for ops in the default stream finishing
-                    stream.wait_stream(get_accelerator().current_stream())
+            # ready to add other tensors to bucket
+            bucket_store.reset_num_elements_in_bucket()
+
+            if self._overlap_communication:
+                stream = bucket_store.comm_stream
+                # in case of the memory being reused in the default stream
+                flat_grads.record_stream(stream)
+                # waiting for ops in the default stream finishing
+                stream.wait_stream(get_accelerator().current_stream())
+            else:
+                stream = get_accelerator().current_stream()
+
+            with get_accelerator().stream(stream):
+                group_id = bucket_store.current_group_id
+
+                grad_dtype = flat_grads.dtype
+                if self._communication_dtype is not None:
+                    flat_grads = flat_grads.to(self._communication_dtype)
+
+                if not self._partition_grads:
+                    dist.all_reduce(flat_grads, group=bucket_store.torch_pg)
+                    if flat_grads.dtype != grad_dtype:
+                        flat_grads = flat_grads.to(grad_dtype)
+
+                    flat_grads_per_rank = flat_grads.split(flat_grads.numel() // bucket_store.world_size)
+                    grad_in_bucket = bucket_store.get_grad()
+                    self._update_unpartitoned_grad(bucket_store, grad_in_bucket.values(), flat_grads_per_rank, group_id)
                 else:
-                    stream = get_accelerator().current_stream()
+                    flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
+                    recieved_grad = torch.zeros_like(flat_grads_list[0])
+                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
 
-                with get_accelerator().stream(stream):
-                    group_id = bucket_store.current_group_id
+                    if recieved_grad.dtype != grad_dtype:
+                        recieved_grad = recieved_grad.to(grad_dtype)
 
-                    grad_dtype = flat_grads.dtype
-                    if self._communication_dtype is not None:
-                        flat_grads = flat_grads.to(self._communication_dtype)
+                    grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.local_rank]
+                    self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, recieved_grad, group_id, 1)
 
-                    if not self._partition_grads:
-                        dist.all_reduce(flat_grads, group=bucket_store.torch_pg)
-                        if flat_grads.dtype != grad_dtype:
-                            flat_grads = flat_grads.to(grad_dtype)
-
-                        flat_grads_per_rank = flat_grads.split(flat_grads.numel() // bucket_store.world_size)
-                        grad_in_bucket = bucket_store.get_grad()
-                        self._update_unpartitoned_grad(
-                            bucket_store, grad_in_bucket.values(), flat_grads_per_rank, group_id
-                        )
-                    else:
-                        flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
-                        recieved_grad = torch.zeros_like(flat_grads_list[0])
-                        dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
-
-                        if recieved_grad.dtype != grad_dtype:
-                            recieved_grad = recieved_grad.to(grad_dtype)
-
-                        grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.local_rank]
-                        self._update_partitoned_grad(
-                            bucket_store, grad_in_bucket_current_rank, recieved_grad, group_id, 1
-                        )
-
-                    bucket_store.reset()
+                bucket_store.reset()
 
     def _update_unpartitoned_grad(
         self, bucket_store: BucketStore, origin_grad_list: List, flat_grad_list: List, group_id: int
@@ -349,10 +360,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         param_id: int,
         rank: int = 0,
     ) -> None:
-        if len(self._grad_stores[param_id].get_partitioned_gradients_by_param_id(group_id, param_id)) < partition_num:
-            self._grad_stores[param_id].append_gradients_by_param_id(grad, group_id, param_id)
+        if len(self.pid2grad_store[param_id].get_partitioned_gradients_by_param_id(group_id, param_id)) < partition_num:
+            self.pid2grad_store[param_id].append_gradients_by_param_id(grad, group_id, param_id)
         else:
-            self._grad_stores[param_id].add_gradients_by_param_id(grad, rank, group_id, param_id)
+            self.pid2grad_store[param_id].add_gradients_by_param_id(grad, rank, group_id, param_id)
 
     def _add_to_bucket(self, param, group_id):
         param_size = param.numel()
@@ -362,13 +373,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # or got a grad of param from another group
         # after reduction, the bucket will be empty
         if (
-            self._bucket_stores[id(param)].num_elements_in_bucket() + param_size > self._reduce_bucket_size
-            or group_id != self._bucket_stores[id(param)].current_group_id
+            self.pid2bucket_store[id(param)].num_elements_in_bucket() + param_size > self._reduce_bucket_size
+            or group_id != self.pid2bucket_store[id(param)].current_group_id
         ):
             self._run_reduction()
 
         padding_size = self.get_param_padding_size(param)
-        self._bucket_stores[id(param)].add_param_grad(group_id, param, padding_size)
+        self.pid2bucket_store[id(param)].add_param_grad(group_id, param, padding_size)
 
     ################################
     # torch.optim.Optimizer methods
@@ -392,7 +403,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # clear reduced grads
         if self._overlap_communication:
             get_accelerator().synchronize()
-        self.zero_grad()
 
     def backward_by_grad(self, tensor, grad):
         assert not (
@@ -411,7 +421,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self._overlap_communication:
             get_accelerator().synchronize()
 
-        self.zero_grad()
+    def zero_bucket_stores(self):
+        for bucket_store in self.bucket_stores.values():
+            bucket_store.reset_all()
+
+    def zero_grad_stores(self):
+        for grad_store in self.grad_stores.values():
+            grad_store.reset_all_gradients()
 
     def zero_grad(self, set_to_none=True):
         """
@@ -431,8 +447,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     if param.grad is not None:
                         param.grad.detach()
                         param.grad.zero_()
-        for bucket_store in self._bucket_stores.values():
-            bucket_store.reset_all()
+        self.zero_grad_stores()
+        self.zero_bucket_stores()
 
     ####################
     # Update Parameter #
@@ -444,8 +460,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             return
 
         if self.mixed_precision_mixin is not None and self.mixed_precision_mixin.should_skip_step():
-            for grad_store in self._grad_stores.values():
-                grad_store.reset_all_gradients()
             if self._verbose:
                 self._logger.info(f"Found overflow. Skip step")
             self.zero_grad()
@@ -471,7 +485,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 # if a working param requires grad and has no grad
                 # it is not 'really' working, e.g. the droped layer
                 # else the splited grad should be attached to the splited param
-                grad_store = self._grad_stores[id(working_param)]
+                grad_store = self.pid2grad_store[id(working_param)]
                 grads = grad_store.get_partitioned_gradients_by_param_id(group_id, id(working_param))
                 grad_index = 0 if self._partition_grads else grad_store.local_rank
                 if len(grads) > 0:
@@ -486,9 +500,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             # compute norm
             norm_group = 0
-            for grad_store in self._grad_stores.values():
+            for grad_store in self.grad_stores.values():
                 working_grads = grad_store.get_working_grads_by_group_id(group_id)
-                grad_store.reset_grads_by_group_id(group_id)
                 norm_group += self._compute_grad_norm(pg=grad_store.torch_pg, gradients=working_grads)
 
             norm_groups.append(norm_group)
@@ -514,7 +527,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, master_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
-                pg = self.param2pg[working_param]
+                pg = self.param_to_pg[working_param]
                 all_splited_param = [
                     torch.zeros(master_param.shape, device=device, dtype=self._dtype) for _ in range(pg.size())
                 ]
@@ -662,7 +675,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != "step":
                     working_param = self.master_to_working_param[id(param)]
-                    pg = self.param2pg[working_param]
+                    pg = self.param_to_pg[working_param]
                     gather_tensor = [torch.zeros(v.shape, device=device, dtype=v.dtype) for _ in range(pg.size())]
                     dist.all_gather(gather_tensor, v.to(device), group=pg)
                     param_state = (
@@ -688,7 +701,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 idx2master[cnt] = param
                 cnt += 1
         for param_idx, state in zero_state_dict["state"].items():
-            pg = self.param2pg[self.master_to_working_param[id(idx2master[param_idx])]]
+            pg = self.param_to_pg[self.master_to_working_param[id(idx2master[param_idx])]]
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != "step":
                     padding_size = (pg.size() - v.numel() % pg.size()) % pg.size()
@@ -729,7 +742,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             master_param = idx2master[param_idx]
             working_param = self.master_to_working_param[id(master_param)]
-            pg = self.param2pg[working_param]
+            pg = self.param_to_pg[working_param]
 
             for k, v in states.items():
                 if isinstance(v, torch.Tensor) and k != "step":
@@ -759,7 +772,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """
         for p in model.parameters():
             p_id = id(p)
-            pg = self.param2pg[p]
+            pg = self.param_to_pg[p]
             if p_id in self.working_to_master_param:
                 master_param = self.working_to_master_param[p_id]
                 padding_size = self.get_param_padding_size(p)
@@ -820,7 +833,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         return self._padding_map
 
     def get_param_grad(self, working_param: nn.Parameter) -> Tensor:
-        grad_store = self._grad_stores[id(working_param)]
+        grad_store = self.pid2grad_store[id(working_param)]
         partial_grad = grad_store.get_working_grad_by_param_id(id(working_param))
         if partial_grad is None:
             return None
