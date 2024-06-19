@@ -5,7 +5,6 @@ from .loader import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
-    setup_distributed_dataloader,
 )
 from .tokenization_utils import supervised_tokenize_sft, tokenize_prompt_dataset, tokenize_rlhf
 
@@ -17,7 +16,6 @@ __all__ = [
     "DataCollatorForSupervisedDataset",
     "StatefulDistributedSampler",
     "load_tokenized_dataset",
-    "setup_distributed_dataloader",
     "supervised_tokenize_pretrain",
     "supervised_tokenize_sft",
     "tokenize_rlhf",

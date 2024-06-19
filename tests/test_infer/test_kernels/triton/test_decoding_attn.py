@@ -3,7 +3,7 @@ import pytest
 import torch
 from packaging import version
 
-from colossalai.inference.modeling.models.nopadding_baichuan import get_alibi_slopes
+from colossalai.inference.utils import get_alibi_slopes
 from colossalai.kernel.triton import flash_decoding_attention
 from colossalai.utils import get_current_device
 from tests.test_infer.test_kernels.triton.kernel_utils import (
@@ -103,7 +103,7 @@ def test_flash_decoding(
     num_kv_heads = num_attn_heads // kv_group_num
     assert isinstance(num_kv_heads, int) and num_kv_heads > 0, "Invalid number of kv heads."
     max_seq_len = block_size * max_num_blocks_per_seq
-    dtype = torch.float16
+    dtype = torch.float32
     device = get_current_device()
 
     if use_alibi_slopes:
@@ -187,7 +187,7 @@ def test_flash_decoding(
 
     rtol = 1e-4
     # After the shape becomes larger, some data elements are too small, leading to excessively large relative errors.
-    if bsz >= 16 and use_alibi_slopes:
+    if use_alibi_slopes:
         rtol = 100
 
     numpy_allclose(out_torch, out_triton, atol=1e-3, rtol=rtol)

@@ -236,7 +236,7 @@ Completion api is used for single sequence request, like answer a question or co
 - POST '/chat':
 Chat api is used for conversation-style request, which often includes dialogue participants(i.e. roles) and corresponding words. Considering the input data are very different from normal inputs, we introduce Chat-Template to match the data format in chat models.
 #### chat-template
-Followed `transformers`, we add the chat-template argument. As chat models have been trained with very different formats for converting conversations into a single tokenizable string. Using a format that matches the training data is extremely important. This attribute(chat_template) is inclueded in HuggingFace tokenizers, containing a Jinja template that converts conversation histories into a correctly formatted string. You can refer to the [HuggingFace-blog](https://huggingface.co/blog/chat-templates) for more information. We also provide a simple example temlate bellow. Both str or file style chat template are supported.
+Followed `transformers`, we add the chat-template argument. As chat models have been trained with very different formats for converting conversations into a single tokenizable string. Using a format that matches the training data is extremely important. This attribute(chat_template) is inclueded in HuggingFace tokenizers, containing a Jinja template that converts conversation histories into a correctly formatted string. You can refer to the [HuggingFace-blog](https://huggingface.co/blog/chat-templates) for more information. We also provide a simple example template bellow. Both str or file style chat template are supported.
 ### Usage
 #### Args for customizing your server
 The configuration for api server contains both serving interface and engine backend.
@@ -278,6 +278,7 @@ This project was written from scratch but we learned a lot from several other gr
 - [vLLM](https://github.com/vllm-project/vllm)
 - [flash-attention](https://github.com/Dao-AILab/flash-attention)
 - [HuggingFace](https://huggingface.co)
+- [StreamingLLM](https://github.com/mit-han-lab/streaming-llm)
 If you wish to cite relevant research papars, you can find the reference below.
 
 ```bibtex
@@ -299,6 +300,14 @@ If you wish to cite relevant research papars, you can find the reference below.
 @article{dao2023flashattention2,
   title={Flash{A}ttention-2: Faster Attention with Better Parallelism and Work Partitioning},
   author={Dao, Tri},
+  year={2023}
+}
+
+# StreamingLLM
+@article{xiao2023streamingllm,
+  title={Efficient Streaming Language Models with Attention Sinks},
+  author={Xiao, Guangxuan and Tian, Yuandong and Chen, Beidi and Han, Song and Lewis, Mike},
+  journal={arXiv},
   year={2023}
 }
 ```

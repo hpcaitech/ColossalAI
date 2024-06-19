@@ -43,15 +43,19 @@ def torch_rotary_emb(x, cos, sin):
 def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, D, dtype, use_new_kcache_layout):
     TOTAL_TOKENS = BATCH_SIZE * SEQ_LEN
     # our crafted op equals to Transformers
-    x0 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
-    x1 = torch.randn(TOTAL_TOKENS, SEQ_LEN, D)
+    x0 = torch.randn(BATCH_SIZE, H, SEQ_LEN, D, dtype=dtype)
+    x1 = torch.randn(BATCH_SIZE, H, SEQ_LEN, D, dtype=dtype)
     emb = LlamaRotaryEmbedding(D)
-    cos, sin = emb(x0, TOTAL_TOKENS)
+    position_ids = torch.arange(TOTAL_TOKENS).reshape((BATCH_SIZE, SEQ_LEN))
+    cos, sin = emb(x0, position_ids)
+    embd_x0, _ = apply_rotary_pos_emb(x0, x1, cos, sin)
+    cos = cos.reshape((TOTAL_TOKENS, -1))
+    sin = sin.reshape((TOTAL_TOKENS, -1))
     cos_2 = cos[:, :32]
     sin_2 = sin[:, :32]
-    position_ids = torch.arange(TOTAL_TOKENS)
-    embd_x0, _ = apply_rotary_pos_emb(x0, x1, cos, sin, position_ids)
-    embd_stimulated_x = torch_rotary_emb(x0, cos_2, sin_2)
+    x2 = x0.transpose(1, 2).reshape(TOTAL_TOKENS, H, D)
+    embd_stimulated_x = torch_rotary_emb(x2, cos_2, sin_2)
+    embd_stimulated_x = embd_stimulated_x.reshape((BATCH_SIZE, SEQ_LEN, H, D)).transpose(1, 2)
     assert torch.allclose(embd_x0, embd_stimulated_x)
 
     # create data
