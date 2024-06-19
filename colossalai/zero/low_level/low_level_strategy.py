@@ -3,7 +3,7 @@ import weakref
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from functools import partial
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.distributed as dist
@@ -34,7 +34,10 @@ class LowLevelOptStrategyBase(ABC):
 
     def __init__(
         self,
-        param_group,
+        params_to_handle: List[torch.Tensor],
+        params_group_id: Tuple[int, int],
+        optim: torch.optim.Optimizer,
+        dtype: torch.dtype,
         dp_process_group,
         master_weights,
         partition_grad,
@@ -44,8 +47,11 @@ class LowLevelOptStrategyBase(ABC):
         communication_dtype,
     ):
         # param_group that current strategy is working on
-        self.param_group = param_group
-        self._dtype = self.param_group["params"][0].dtype
+        self.params_to_handle = params_to_handle
+        self.params_group_id = params_group_id
+        self.optim = optim
+
+        self._dtype = dtype
 
         if dp_process_group is None:  # if dp_process_group is none, convert to default explicitly
             dp_process_group = dist.group.WORLD
@@ -72,11 +78,12 @@ class LowLevelOptStrategyBase(ABC):
 
         # working and master params for mixed precision training
         group_params = []
-        for param in param_group["params"]:
+        for param in self.params_to_handle:
             if param.requires_grad:
                 group_params.append(param)
         master_param_current_rank = self._create_master_param_current_rank(group_params)
-        param_group["params"] = master_param_current_rank
+        for (grp_id, tensor_id), param in zip(self.params_group_id, master_param_current_rank):
+            self.optim.param_groups[grp_id]["params"][tensor_id] = param
         self.working_param_group: List[torch.Tensor] = group_params
         self.master_param_group: List[torch.Tensor] = master_param_current_rank
 
@@ -107,8 +114,7 @@ class LowLevelOptStrategyBase(ABC):
 
             # we iterate over the working params
             # on each param, we register a hook to its AccumulateGrad object
-            param_group = self.working_param_group
-            for param in param_group:
+            for param in self.working_param_group:
                 if param.requires_grad:
                     self.grad_handles.append(
                         param.register_post_accumulate_grad_hook(partial(_grad_handler, param=param))
@@ -428,7 +434,10 @@ class LowLevelOptStrategyBase(ABC):
 class LowLevelOptStrategy(LowLevelOptStrategyBase):
     def __init__(
         self,
-        param_group: Dict[str, Any],  # from optimizer.param_groups
+        params_to_handle: List[torch.Tensor],
+        params_group_id: Tuple[int, int],
+        optim: torch.optim.Optimizer,
+        dtype: torch.dtype,
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         reduce_bucket_size: int = 1024 * 1024,  # communication
         communication_dtype: Optional[torch.dtype] = None,
@@ -438,7 +447,10 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
         master_weights: bool = True,  # master weights
     ):
         super().__init__(
-            param_group=param_group,
+            params_to_handle,
+            params_group_id,
+            optim,
+            dtype,
             dp_process_group=dp_process_group,
             cpu_offload=cpu_offload,
             partition_grad=partition_grad,
@@ -509,10 +521,11 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
         # @botbw: to me, it seems like the original author only wants to keep the "real_xxx_params" when do the optimizer
         # computation, and add "non real_xxx_params" back after since we might still need them for checkpoint
         # not sure if it's necessary since None grads don't really bring lots of overhead
-        self.__saved_working_params = self.working_param_group
-        self.__saved_master_params = self.master_param_group
-        self.working_param_group = real_working_params
-        self.master_param_group = self.param_group["params"] = real_master_params
+
+        # self.__saved_working_params = self.working_param_group
+        # self.__saved_master_params = self.master_param_group
+        # self.working_param_group = real_working_params
+        # self.master_param_group = self.param_group["params"] = real_master_params
 
     def post_step(self):
         release_param_grad(self.master_param_group)
@@ -529,16 +542,19 @@ class LowLevelOptStrategy(LowLevelOptStrategyBase):
             working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
 
         # restore tmp values
-        self.working_param_group = self.__saved_working_params
-        self.master_param_group = self.__saved_master_params
-        self.__saved_master_params = self.__saved_working_params = None
-        self.param_group["params"] = self.master_param_group
+        # self.working_param_group = self.__saved_working_params
+        # self.master_param_group = self.__saved_master_params
+        # self.__saved_master_params = self.__saved_working_params = None
+        # self.param_group["params"] = self.master_param_group
 
 
 class MoeZeroStrategy(LowLevelOptStrategy):
     def __init__(
         self,
-        param_group: Dict[str, Any],  # from optimizer.param_groups
+        params_to_handle: List[torch.Tensor],
+        params_group_id: Tuple[int, int],
+        optim: torch.optim.Optimizer,
+        dtype: torch.dtype,
         reduce_bucket_size: int = 1024 * 1024,  # communication
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = False,
@@ -547,12 +563,15 @@ class MoeZeroStrategy(LowLevelOptStrategy):
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
         master_weights: bool = True,  # master weights
     ):
-        for param in param_group["params"]:
+        for param in params_to_handle:
             if not is_moe_tensor(param):
                 raise ValueError(f"Mixture-of-Experts parameters are required for MoeZeroStrategy {type(param)}")
 
         super().__init__(
-            param_group=param_group,
+            params_to_handle,
+            params_group_id,
+            optim,
+            dtype,
             dp_process_group=dp_process_group,
             cpu_offload=cpu_offload,
             partition_grad=partition_grad,

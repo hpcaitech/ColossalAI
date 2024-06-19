@@ -142,4 +142,4 @@ def test_moe_zero_model(world_size):
 
 
 if __name__ == "__main__":
-    test_moe_zero_model(world_size=2)
+    test_moe_zero_model(world_size=4)

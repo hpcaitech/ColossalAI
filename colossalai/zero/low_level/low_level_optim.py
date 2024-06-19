@@ -16,7 +16,8 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.zero.low_level.low_level_strategy import LowLevelOptStrategy, LowLevelOptStrategyBase
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.zero.low_level.low_level_strategy import LowLevelOptStrategy, LowLevelOptStrategyBase, MoeZeroStrategy
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan
 
@@ -81,14 +82,37 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # check argument conflict
         self._sanity_checks()
 
-        if len(self.optim.param_groups) == 1 and group_strategies is None:
-            group_strategies = [LowLevelOptStrategy(param_group=self.optim.param_groups[0], **strategy_kwargs)]
-        elif len(self.optim.param_groups) > 1 and group_strategies is None:
-            raise ValueError("group_strategies must be provided when the optimizer has multiple param groups")
+        assert len(self.optim.param_groups) == 1 and group_strategies is None
+        zero_tensors, moe_tensors = [], []
+        zero_tensors_id, moe_tensors_id = [], []
+        for grp_id, grp in enumerate(self.optim.param_groups):
+            for t_id, t in enumerate(grp["params"]):
+                if is_moe_tensor(t):
+                    moe_tensors.append(t)
+                    moe_tensors_id.append((grp_id, t_id))
+                else:
+                    zero_tensors.append(t)
+                    zero_tensors_id.append((grp_id, t_id))
 
+        group_strategies = self._group_strategies = [
+            LowLevelOptStrategy(
+                zero_tensors,
+                zero_tensors_id,
+                optimizer,
+                self._dtype,
+                **strategy_kwargs,
+            ),
+            MoeZeroStrategy(
+                moe_tensors,
+                moe_tensors_id,
+                optimizer,
+                self._dtype,
+                **strategy_kwargs,
+            ),
+        ]
         self.workingparam2strategy: Dict[torch.nn.Parameter, LowLevelOptStrategyBase] = {}
         for grp, strategy in zip(self.optim.param_groups, group_strategies):
-            assert grp["params"] is strategy.param_group["params"], "param groups should be in the same order"
+            # assert grp["params"] is strategy.param_group["params"], "param groups should be in the same order"
             for param in strategy.working_param_group:
                 self.workingparam2strategy[param] = strategy
         self._group_strategies = group_strategies
