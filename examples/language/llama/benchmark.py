@@ -94,6 +94,8 @@ def main():
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
+    parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
+    parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--log_dir", default="./log", type=str, help="Directory for profile logs")
     parser.add_argument("--cache", default=True, type=eval)
     args = parser.parse_args()

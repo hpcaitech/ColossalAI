@@ -374,11 +374,11 @@ class InterleavedSchedule(PipelineSchedule):
         input_obj, fwd_wait_handles = self.recv_forward(model_chunk_id)
 
         for i in range(self.num_microbatch * self.num_model_chunks):
-            # Wait until current input is received
-            _wait_p2p(fwd_wait_handles)
-
             last_batch = i == self.num_microbatch * self.num_model_chunks - 1
             model_chunk_id = self.get_model_chunk_id(i, is_forward=True)
+
+            # Wait until current input is received
+            _wait_p2p(fwd_wait_handles)
             output_obj = self.forward_step(model_chunk, model_chunk_id, input_obj, criterion, accum_loss, outputs)
 
             if not last_batch:
