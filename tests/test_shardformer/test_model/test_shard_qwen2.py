@@ -217,6 +217,7 @@ def check_qwen2_3d(rank, world_size, port):
 
 
 @pytest.mark.skipif(transformers.__version__ < "4.39.1", reason="Requires transformers version 4.39.1 or later")
+@pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_qwen2():
@@ -224,6 +225,7 @@ def test_qwen2():
 
 
 @pytest.mark.skipif(transformers.__version__ < "4.39.1", reason="Requires transformers version 4.39.1 or later")
+@pytest.mark.largedist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_qwen2_3d():

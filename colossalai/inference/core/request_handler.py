@@ -157,6 +157,9 @@ class RequestHandler:
             fd_interm_tensor=fd_inter_tensor,
             dtype=self.dtype,
             device=device,
+            enable_streamingllm=inference_config.enable_streamingllm,
+            start_token_size=inference_config.start_token_size,
+            generated_token_size=inference_config.generated_token_size,
         )
         self.prefill_bb = BatchBucket(
             num_heads=model_config.num_attention_heads // inference_config.tp_size,
@@ -168,6 +171,9 @@ class RequestHandler:
             fd_interm_tensor=fd_inter_tensor,
             dtype=self.dtype,
             device=device,
+            enable_streamingllm=inference_config.enable_streamingllm,
+            start_token_size=inference_config.start_token_size,
+            generated_token_size=inference_config.generated_token_size,
         )
 
     def _init_cache(self, model_config):
@@ -349,6 +355,12 @@ class RequestHandler:
         self.done_list.extend(finished_seqs)
 
         return finished_seqs
+
+    def streamingllm_free_block_tables(self, updated_block_ids: List[int]):
+        """
+        Free the block that needs to be swapped out.
+        """
+        self.cache_manager.streamingllm_free_block_tables(updated_block_ids)
 
 
 class RPCRequestHandler(RequestHandler):

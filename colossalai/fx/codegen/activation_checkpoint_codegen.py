@@ -859,7 +859,7 @@ if CODEGEN_AVAILABLE:
 {wrap_stmts}
 {prologue}
 {code}"""
-            return PythonCode(fn_code, globals_)
+            return PythonCode(fn_code, globals_, {})
 
 else:
 

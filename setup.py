@@ -144,6 +144,7 @@ setup(
     package_data={
         "colossalai": [
             "kernel/extensions/csrc/**/*",
+            "kernel/extensions/pybind/**/*",
         ]
     },
 )

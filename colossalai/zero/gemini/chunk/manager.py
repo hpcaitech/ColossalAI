@@ -25,6 +25,7 @@ class ChunkManager:
         chunk_configuration,
         init_device: Optional[torch.device] = None,
         reuse_fp16_chunk: bool = True,
+        max_prefetch: int = 0,
     ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
@@ -42,6 +43,7 @@ class ChunkManager:
         # Whether model is accumulating gradients,
         self.accumulating_grads = False
         self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
+        self._prefetch_stream = get_accelerator().Stream() if max_prefetch else None
 
     def register_tensor(
         self,
@@ -117,7 +119,7 @@ class ChunkManager:
             return None
         self.__sub_memory_usage(chunk.memory_usage)
         if chunk.device_type == "cpu":
-            chunk.shard_move(get_accelerator().get_current_device())
+            chunk.shard_move(get_accelerator().get_current_device(), non_blocking=async_access)
         maybe_work = self.__add_accessed_chunk(chunk, async_access=async_access)
         self.__add_memory_usage(chunk.memory_usage)
         return maybe_work

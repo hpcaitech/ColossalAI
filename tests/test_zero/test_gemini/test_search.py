@@ -1,18 +1,31 @@
 import pytest
 import torch
+import transformers
 
 import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.zero.gemini.chunk import init_chunk_manager, search_chunk_configuration
-from tests.kit.model_zoo import model_zoo
+
+CONFIG = transformers.GPT2Config(
+    n_layer=2,
+    n_head=4,
+    n_embd=128,
+    vocab_size=50258,
+    attn_pdrop=0,
+    embd_pdrop=0,
+    resid_pdrop=0,
+    summary_first_dropout=0,
+    hidden_dropout=0,
+    problem_type="single_label_classification",
+    pad_token_id=50256,
+    tie_word_embeddings=True,
+)
+
+model_builder = lambda: transformers.GPT2LMHeadModel(CONFIG)
 
 
 def exam_search_chunk_size():
-    model_builder, data_gen_fn, output_transform_fn, *_ = next(
-        iter(model_zoo.get_sub_registry("transformers_gpt_lm").values())
-    )
-
     # make sure torch_model and model has the same parameter values
     model = model_builder()
     config_dict, *_ = search_chunk_configuration(
@@ -26,10 +39,6 @@ def exam_search_chunk_size():
 
 def exam_chunk_manager():
     world_size = torch.distributed.get_world_size()
-
-    model_builder, data_gen_fn, output_transform_fn, *_ = next(
-        iter(model_zoo.get_sub_registry("transformers_gpt_lm").values())
-    )
 
     sharded_ddp_model = model_builder()
     chunk_manager = init_chunk_manager(
