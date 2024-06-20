@@ -187,10 +187,9 @@ class rpcWorkerService(rpyc.Service):
                 hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True, torch_dtype=self.dtype)
                 arch = getattr(hf_config, "architectures")[0]
                 if arch is "BaichuanForCausalLM":
-                    self.logger.info(
-                        "Attention ! We use lazy init by default, which could be faster for model loading."
+                    self.logger.warning(
+                        "Attention ! We use lazy init by default, which could be faster for model loading. For baichuan model, the output maybe have a slight difference with transformers"
                     )
-                    self.logger.info("For baichuan model, the output maybe have a slight difference with transformers")
                 ctx = LazyInitContext(default_device="cuda")
                 with ctx:
                     model = _SUPPORTED_MODELS[arch].from_pretrained(

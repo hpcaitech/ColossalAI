@@ -132,11 +132,8 @@ class InferenceEngine:
                 arch = getattr(hf_config, "architectures")[0]
                 if arch in _supported_models.keys():
                     if arch is "BaichuanForCausalLM":
-                        self.logger.info(
-                            "Attention ! We use lazy init by default, which could be faster for model loading."
-                        )
-                        self.logger.info(
-                            "For baichuan model, the output maybe have a slight difference with transformers"
+                        self.logger.warning(
+                            "Attention ! We use lazy init by default, which could be faster for model loading. For baichuan model, the output maybe have a slight difference with transformers"
                         )
                     ctx = LazyInitContext(default_device="cuda")
                     with ctx:

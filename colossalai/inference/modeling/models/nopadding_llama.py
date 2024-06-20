@@ -333,7 +333,6 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
             local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
             local_state = {k: v for k, v in local_name_params if v is not None}
 
-            key = "gate_up_weight"
             device_mesh = self.helper_layout.device_mesh
             sharding_spec = self.helper_layout.sharding_spec
             for weight_name in self.gate_up_dict:
@@ -350,7 +349,8 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
                     gate_up_w
                 )  # NOTE gate_up_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
 
-                param = local_state[key]
+                key = "gate_up_weight"
+                param = local_state.get(key, None)
 
                 try:
                     with torch.no_grad():
