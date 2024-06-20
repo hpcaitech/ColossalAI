@@ -15,13 +15,11 @@ class BucketStore(BaseStore):
         self,
         torch_pg: ProcessGroup,
         reduce_bucket_size: int,
-        overlap_comm: bool = False,
     ):
         super().__init__(torch_pg)
         self.reduce_bucket_size = reduce_bucket_size
         self.reset_all()
-        if overlap_comm:
-            self.comm_stream = get_accelerator().Stream()
+        self.comm_stream = get_accelerator().Stream()
 
     def reset_all(self) -> None:
         # init
