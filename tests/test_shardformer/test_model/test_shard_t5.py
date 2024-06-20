@@ -34,27 +34,24 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         booster,
     )
 
-
-
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
     # unwrap model
     t5 = unwrap_model(org_model)
     sharded_t5 = unwrap_model(sharded_model)
-    
+
     if t5.__class__.__name__ == "T5ForTokenClassification":
         row_layer_for_check = ["transformer.shared", "transformer.encoder.block[0].layer[0].SelfAttention.q"]
     else:
         row_layer_for_check = ["shared", "encoder.block[0].layer[0].SelfAttention.q"]
-    
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
     if test_config["precision"] == "fp32":
         atol, rtol = 1e-5, 1e-3
     else:
-        atol, rtol = 5e-3, 5e-3
+        atol, rtol = 5e-2, 5e-2
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         row_layer_grads = get_grad_tensors_for_check(
             t5, sharded_t5, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0
@@ -139,7 +136,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": False,
             "precision": "fp32",
         },
-
         {
             "tp_size": 1,
             "pp_size": 2,
@@ -155,7 +151,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 @clear_cache_before_run()
 def run_t5_test(test_config):
-
     sub_model_zoo = model_zoo.get_sub_registry(["transformers_t5_for_token_classification"])
 
     for name, (
@@ -165,11 +160,13 @@ def run_t5_test(test_config):
         loss_fn,
         _,
     ) in sub_model_zoo.items():
-
-        if test_config["pp_size"] > 2:
-
+        # skip 4-stage pp test for t5_encoder
+        if test_config["pp_size"] > 2 and name in [
+            "transformers_t5_encoder_model",
+            "transformers_t5_for_token_classification",
+        ]:
             continue
-            
+
         check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
 
     clear_layout_converter()

@@ -8,9 +8,9 @@ from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     Seq2SeqLMOutput,
     Seq2SeqModelOutput,
-    TokenClassifierOutput
+    TokenClassifierOutput,
 )
-from transformers.models.t5.modeling_t5 import T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Stack, T5ForTokenClassification
+from transformers.models.t5.modeling_t5 import T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Stack
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -583,82 +583,13 @@ class T5PipelineForwards:
 
         return outputs
 
-
-
-    # @staticmethod
-    # def t5_for_token_classification_forward(
-    #     self: T5EncoderModel,
-    #     input_ids: Optional[torch.LongTensor] = None,
-    #     attention_mask: Optional[torch.FloatTensor] = None,
-    #     head_mask: Optional[torch.FloatTensor] = None,
-    #     inputs_embeds: Optional[torch.FloatTensor] = None,
-    #     output_attentions: Optional[bool] = None,
-    #     output_hidden_states: Optional[bool] = None,
-    #     return_dict: Optional[bool] = None,
-    #     stage_manager: Optional[PipelineStageManager] = None,
-    #     hidden_states: Optional[torch.FloatTensor] = None,
-    #     position_bias: Optional[torch.Tensor] = None,
-    #     encoder_decoder_position_bias: Optional[torch.Tensor] = None,
-    #     labels: Optional[torch.LongTensor] = None,
-    #     backward_tensor_keys: Optional[List[str]] = None,
-    #     stage_index: Optional[List[int]] = None,
-    #     decoder_starting_stage: Optional[int] = None,
-    # ) -> Union[Tuple[torch.FloatTensor], BaseModelOutput]:
-    #     r"""
-    #     This function is modified on the basis of transformers.models.t5.modeling_gpt2.T5EncoderModel.forward.
-    #     Please refer to original code of transformers for more details.
-    #     ```"""
-    #     return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-    #     outputs = T5PipelineForwards.t5_stack_forward(
-    #         self.transformer.encoder,
-    #         input_ids=input_ids,
-    #         attention_mask=attention_mask,
-    #         inputs_embeds=inputs_embeds,
-    #         head_mask=head_mask,
-    #         output_attentions=output_attentions,
-    #         output_hidden_states=output_hidden_states,
-    #         return_dict=return_dict,
-    #         stage_manager=stage_manager,
-    #         hidden_states=hidden_states,
-    #         position_bias=position_bias,
-    #         encoder_decoder_position_bias=encoder_decoder_position_bias,
-    #         stage_index=stage_index,
-    #         decoder_starting_stage=decoder_starting_stage,
-    #     )
-    #     if stage_manager.is_last_stage():
-    #         sequence_output = outputs[0]
-
-    #         sequence_output = self.dropout(sequence_output)
-    #         logits = self.classifier(sequence_output)
-
-    #         loss = None
-    #         if labels is not None:
-    #             loss_fct = CrossEntropyLoss()
-    #             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-
-    #         if not return_dict:
-    #             output = (logits,) + outputs[2:]
-    #             return ((loss,) + output) if loss is not None else output
-
-    #         return TokenClassifierOutput(
-    #             loss=loss,
-    #             logits=logits,
-    #             hidden_states=outputs.hidden_states,
-    #             attentions=outputs.attentions,
-    #         )
-    
-    #     return outputs
-
     @staticmethod
     def t5_for_token_classification_forward(
-        self: T5ForTokenClassification,
+        self: T5EncoderModel,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -666,27 +597,19 @@ class T5PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         position_bias: Optional[torch.Tensor] = None,
         encoder_decoder_position_bias: Optional[torch.Tensor] = None,
+        labels: Optional[torch.LongTensor] = None,
         backward_tensor_keys: Optional[List[str]] = None,
         stage_index: Optional[List[int]] = None,
         decoder_starting_stage: Optional[int] = None,
-    ):
+    ) -> Union[Tuple[torch.FloatTensor], BaseModelOutput]:
         r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
-        """
-        use_cache = use_cache if use_cache is not None else self.config.use_cache
+        This function is modified on the basis of transformers.models.t5.modeling_gpt2.T5EncoderModel.forward.
+        Please refer to original code of transformers for more details.
+        ```"""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
-        logger = logging.get_logger(__name__)
-
-        past_key_values = None
-        output_attentions = False
-        output_hidden_states = False
-        use_cache = False
-
-
-        outputs = T5PipelineForwards.t5_encoder_model_forward(
-            self.transformer,
+        outputs = T5PipelineForwards.t5_stack_forward(
+            self.transformer.encoder,
             input_ids=input_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
@@ -701,7 +624,6 @@ class T5PipelineForwards:
             stage_index=stage_index,
             decoder_starting_stage=decoder_starting_stage,
         )
-        # if True:
         if stage_manager.is_last_stage():
             sequence_output = outputs[0]
 
@@ -723,13 +645,8 @@ class T5PipelineForwards:
                 hidden_states=outputs.hidden_states,
                 attentions=outputs.attentions,
             )
-        else:
-            # return {
-            #     "hidden_states": outputs["hidden_states"],
-            #     # "position_bias": outputs["position_bias"],
-            #     # "encoder_decoder_position_bias":outputs["encoder_decoder_position_bias"]
-            # }
-            return outputs
+
+        return outputs
 
 
 def get_t5_flash_attention_forward():

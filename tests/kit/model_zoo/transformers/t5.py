@@ -16,8 +16,8 @@ def data_gen_for_encoder_only():
     # config = T5Config(decoder_start_token_id=0)
     # tokenizer = T5Tokenizer.from_pretrained("t5-small")
     # input_ids = tokenizer("translate English to German: The house is wonderful.", return_tensors="pt").input_ids
-    input_ids = torch.Tensor([[101, 7592, 1010, 2026, 3899, 2003, 10140, 102]]).long()
-    attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 0]]).long()
+    input_ids = torch.Tensor([[13959, 1566, 12, 2968, 10, 37, 629, 19, 1627, 5, 1, 12, 1627, 5, 1, 12]]).long()
+    attention_mask = torch.Tensor([[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]]).long()
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
 
@@ -39,12 +39,14 @@ def data_gen_for_t5_model():
     data["decoder_input_ids"] = decoder_input_ids
     return data
 
+
 def data_gen_for_token_classification():
     # token classification data gen
     # `labels` is the type not the token id for token classification, 0 or 1
     data = data_gen_for_encoder_only()
-    data["labels"] = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.int64)
+    data["labels"] = torch.tensor([[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=torch.int64)
     return data
+
 
 # output transform function
 output_transform_fn = lambda x: x
@@ -93,4 +95,3 @@ model_zoo.register(
     loss_fn=loss_fn_for_token_classification,
     model_attribute=ModelAttribute(has_control_flow=True),
 )
-
