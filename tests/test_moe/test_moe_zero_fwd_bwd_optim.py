@@ -14,7 +14,6 @@ from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
-from colossalai.zero.low_level.low_level_strategy import LowLevelOptStrategy, MoeZeroStrategy
 from tests.test_moe.moe_utils import loose_close
 
 tokens, n_experts = 7, 4
@@ -56,77 +55,65 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
 
     ori_model = DDP(orig_model.cuda(), static_graph=True).cuda()
 
-    zero_model = deepcopy(orig_model)
+    zero_model = deepcopy(orig_model).to(dtype)
     zero_model = EPMixtralSparseMoeBlock.from_native_module(zero_model, ep_group=plugin.ep_group)
 
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
-    zero_params = list(filter(lambda x: not is_moe_tensor(x), zero_model.parameters()))
-    moe_params = list(filter(lambda x: is_moe_tensor(x), zero_model.parameters()))
-    zero_optimizer.param_groups.clear()
-    zero_optimizer.add_param_group({"params": zero_params})
-    zero_optimizer.add_param_group({"params": moe_params})
-    strategies = [
-        LowLevelOptStrategy(
-            param_group=zero_optimizer.param_groups[0],
-            dp_process_group=plugin.global_dp_group,
-            overlap_communication=False,
-            partition_grad=(stage == 2),
-        ),
-        MoeZeroStrategy(
-            param_group=zero_optimizer.param_groups[1],
-            dp_process_group=plugin.moe_dp_group,
-            overlap_communication=True,
-            partition_grad=(stage == 2),
-        ),
-    ]
+    pg_param_list = {plugin.global_dp_group: [], plugin.moe_dp_group: []}
+    for p in zero_model.parameters():
+        if is_moe_tensor(p):
+            pg_param_list[plugin.moe_dp_group].append(p)
+        else:
+            pg_param_list[plugin.global_dp_group].append(p)
+
     zero_optimizer = LowLevelZeroOptimizer(
         zero_optimizer,
-        strategies,
+        pg_param_list=pg_param_list,
         master_weights=master_weights,
         initial_scale=1,
+        overlap_communication=False,
+        partition_grad=True,
     )
 
     ori_optimizer = torch.optim.SGD(ori_model.parameters(), lr=1)
 
     # create
     seed_all(1453 + rank)
-    input_data = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
-    # zero-dp forward
-    zero_output, zero_logits = zero_model(input_data.to(dtype))
 
-    # torch-ddp forward
-    ori_output, ori_logits = ori_model(input_data.to(dtype))
-    loose_close(zero_output, ori_output, dtype=dtype)
+    for _ in range(2):
+        # zero-dp forward
+        input_data = torch.rand(1, tokens, hidden_size).cuda()
+        zero_output, zero_logits = zero_model(input_data.to(dtype))
 
-    # zero-dp backward
-    zero_optimizer.backward(zero_output.mean().float())
+        # torch-ddp forward
+        ori_output, ori_logits = ori_model(input_data.to(dtype))
+        loose_close(zero_output, ori_output, dtype=dtype)
 
-    # torch-ddp backward
-    ori_output.mean().float().backward()
+        # zero-dp backward
+        zero_optimizer.backward(zero_output.mean().float())
 
-    # check grad
-    name_to_p = {n: p for n, p in ori_model.module.named_parameters()}
-    for n, p in zero_model.named_parameters():
-        zero_grad = zero_optimizer.get_param_grad(p)
-        if p.grad is None:
-            """
-            For fixed input seed, the test input may cause a certain expert not to be routed to,
-            so its gradient is None instead of a tensor, which may lead to a potential bug.
-            """
-            # TODO(haze188) fix later
-            p.grad = torch.zeros_like(p)
-            continue
-        loose_close(zero_grad, name_to_p[n].grad, dtype=dtype)
+        # torch-ddp backward
+        ori_output.mean().backward()
 
-    # zero-dp step
-    zero_optimizer.step()
+        # check grad
+        name_to_p = {n: p for n, p in ori_model.module.named_parameters()}
+        for n, p in zero_model.named_parameters():
+            zero_grad = zero_optimizer.get_param_grad(p)
+            if name_to_p[n].grad is None:
+                assert zero_grad is None
+                continue
 
-    # original model step
-    ori_optimizer.step()
+            loose_close(zero_grad, name_to_p[n].grad, dtype=dtype)
 
-    # check updated param
-    for n, p in zero_model.named_parameters():
-        loose_close(p.data, name_to_p[n].data, dtype=dtype)
+        # zero-dp step
+        zero_optimizer.step()
+
+        # original model step
+        ori_optimizer.step()
+
+        # check updated param
+        for n, p in zero_model.named_parameters():
+            loose_close(p.data, name_to_p[n].data, dtype=dtype)
 
 
 def run_dist(rank, world_size, port):
@@ -142,4 +129,4 @@ def test_moe_zero_model(world_size):
 
 
 if __name__ == "__main__":
-    test_moe_zero_model(world_size=2)
+    test_moe_zero_model(world_size=4)
