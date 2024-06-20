@@ -68,7 +68,7 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
 
     zero_optimizer = LowLevelZeroOptimizer(
         zero_optimizer,
-        pg_param_list=pg_param_list,
+        pg_to_param_list=pg_param_list,
         master_weights=master_weights,
         initial_scale=1,
         overlap_communication=False,

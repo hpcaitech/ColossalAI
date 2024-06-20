@@ -80,7 +80,7 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
         super().__init__(
             optimizer=optimizer,
-            pg_param_list=pg_param_list,
+            pg_to_param_list=pg_param_list,
             initial_scale=initial_scale,
             min_scale=min_scale,
             growth_factor=growth_factor,
