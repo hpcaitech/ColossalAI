@@ -200,7 +200,7 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             dp_process_group=dp_group,
             verbose=True,
         )
-        shard_to_param = dist_optim._param_store.master_to_working_param  # {id(): param tensor} but flattened
+        shard_to_param = dist_optim.master_to_working_param  # {id(): param tensor} but flattened
         dist_optim.optim.setup_distributed(
             tp_group=tp_group,
             dp_group=dp_group,

@@ -32,6 +32,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
+    dp_group = booster.plugin.dp_group
 
     bert = unwrap_model(org_model, "BertModel", "bert")
     sharded_bert = unwrap_model(sharded_model, "BertModel", "bert")
@@ -53,8 +54,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     device = origin_norm.device
     norm_groups = []
     for group_id in range(sharded_optimizer.num_param_groups):
-        working_grads = sharded_optimizer._grad_store.get_working_grads_by_group_id(group_id)
-        norm_group = sharded_optimizer._compute_grad_norm(gradients=working_grads)
+        working_grads = sharded_optimizer.get_working_grads_by_group_id(group_id)
+        norm_group = sharded_optimizer._compute_grad_norm(dp_group, gradients=working_grads)
         norm_groups.append(norm_group)
     total_norm = 0.0
     for norm in norm_groups:
