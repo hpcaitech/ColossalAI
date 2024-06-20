@@ -181,6 +181,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # reduction hook is only used if overlapping communication
         # or stage 2 is used
         # if it is stage 1 without overlapping, no hook will be attached
+        self.grad_handles = []
         if self._overlap_communication or self._partition_grads:
             self._attach_reduction_hook()
 
@@ -200,6 +201,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             )
         elif self._dtype is torch.bfloat16:
             self.mixed_precision_mixin = BF16MixedPrecisionMixin()
+
+    def __del__(self):
+        for hook in self.grad_handles:
+            hook.remove()
 
     @property
     def dtype(self):
@@ -274,7 +279,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
                 if param.requires_grad:
-                    param.register_post_accumulate_grad_hook(partial(_grad_handler, group_id=group_id))
+                    self.grad_handles.append(
+                        param.register_post_accumulate_grad_hook(partial(_grad_handler, group_id=group_id))
+                    )
 
     #######################
     # Reduction Functions #
