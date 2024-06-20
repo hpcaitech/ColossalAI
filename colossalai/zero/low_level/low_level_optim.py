@@ -80,6 +80,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
+        dp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
     ):
@@ -89,16 +90,20 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
         self._verbose = verbose
 
+        if dp_process_group is not None and pg_to_param_list is not None:
+            raise ValueError("dp_process_group and pg_to_param_list should not be provided at the same time.")
+
         if pg_to_param_list is None:
-            pg_to_param_list = {dist.group.WORLD: []}
+            unique_dp_group = dist.group.WORLD if dp_process_group is None else dp_process_group
+            pg_to_param_list = {unique_dp_group: []}
             for group in self.optim.param_groups:
-                pg_to_param_list[dist.group.WORLD].extend(group["params"])
+                pg_to_param_list[unique_dp_group].extend(group["params"])
 
         self.pg_to_param_list = pg_to_param_list
         param_to_pg = {}
         for grp, param_list in pg_to_param_list.items():
             for p in param_list:
-                assert isinstance(p, nn.Parameter)
+                assert isinstance(p, nn.Parameter), f"got {type(p)}"
                 param_to_pg[p] = grp
         self.param_to_pg = param_to_pg
 
@@ -515,7 +520,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             norm_group = 0
             for grad_store in self.pg_to_grad_store.values():
                 working_grads = grad_store.get_working_grads_by_group_id(group_id)
-                norm_group += self._compute_grad_norm(pg=grad_store.torch_pg, gradients=working_grads)
+                norm_group += self._compute_grad_norm(dp_pg=grad_store.torch_pg, gradients=working_grads)
 
             norm_groups.append(norm_group)
 
@@ -552,7 +557,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
 
-    def _compute_grad_norm(self, pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
+    def _compute_grad_norm(self, dp_pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""
         Compute and return the gradient norm for gradient clipping.
 
@@ -575,7 +580,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 device=get_accelerator().get_current_device(),
                 dtype=torch.float,
             )
-            dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=pg)
+            dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=dp_pg)
             total_norm = total_norm_cuda.item()
 
         else:
@@ -593,7 +598,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             torch.distributed.all_reduce(
                 total_norm_exponentiated_cuda,
                 op=torch.distributed.ReduceOp.SUM,
-                group=pg,
+                group=dp_pg,
             )
             total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
@@ -854,3 +859,27 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         dist.all_gather(tensor_list, partial_grad, group=grad_store.torch_pg)
         grad_flat = torch.cat(tensor_list, dim=0)
         return grad_flat[: working_param.numel()].reshape_as(working_param)
+
+    def get_working_grads_by_group_id(self, group_id: int) -> List[Tensor]:
+        working_grads = []
+        for grad_store in self.pg_to_grad_store.values():
+            working_grads.extend(grad_store.get_working_grads_by_group_id(group_id))
+        return working_grads
+
+    def get_param_id_for_grad(self, grad: Tensor) -> int:
+        param_id = None
+        for grad_store in self.pg_to_grad_store.values():
+            id_maybe_none = grad_store.get_param_id_for_grad(grad)
+            if id_maybe_none is not None:
+                if param_id is not None:
+                    raise ValueError("The grad mapping is not unique")
+                param_id = id_maybe_none
+        return param_id
+
+    def get_working_grad_by_param_id(self, param_id: int) -> Tensor:
+        grad_store = self.pid_to_grad_store[param_id]
+        return grad_store.get_working_grad_by_param_id(param_id)
+
+    def get_partitioned_gradients_by_param_id(self, group_id: int, param_id: int) -> List:
+        grad_store = self.pid_to_grad_store[param_id]
+        return grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)

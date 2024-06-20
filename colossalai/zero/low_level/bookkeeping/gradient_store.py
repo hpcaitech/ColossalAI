@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from torch import Tensor
 
@@ -113,7 +113,7 @@ class GradientStore(BaseStore):
     def reset_all_gradients(self):
         self._grads_of_params = dict()
 
-    def get_param_id_for_grad(self, grad: Tensor) -> int:
+    def get_param_id_for_grad(self, grad: Tensor) -> Optional[int]:
         """Return the id of a parameter which the gradient slice belongs to
 
         Args:
@@ -123,4 +123,4 @@ class GradientStore(BaseStore):
             int: the id of a parameter which the gradient slice belongs to
         """
 
-        return self.grad_to_param_mapping[id(grad)]
+        return self.grad_to_param_mapping.get(id(grad), None)
