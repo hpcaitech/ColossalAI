@@ -110,4 +110,6 @@ class DistCrossEntropy(Function):
 def cross_entropy_1d(
     vocab_logits: torch.Tensor, labels: torch.Tensor, ignore_index: int = -100, process_group: ProcessGroup = None
 ) -> torch.Tensor:
+
     return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group)
+
