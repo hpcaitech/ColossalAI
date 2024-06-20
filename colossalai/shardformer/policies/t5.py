@@ -31,7 +31,13 @@ from ..modeling.t5 import (
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy", "T5ForTokenClassificationPolicy"]
+__all__ = [
+    "distribute_t5_layers",
+    "T5ModelPolicy",
+    "T5ForConditionalGenerationPolicy",
+    "T5EncoderPolicy",
+    "T5ForTokenClassificationPolicy",
+]
 
 
 class T5BasePolicy(Policy):
@@ -550,6 +556,7 @@ class T5EncoderPolicy(T5BasePolicy):
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
         return []
+
 
 class T5ForTokenClassificationPolicy(T5EncoderPolicy):
     def module_policy(self):
