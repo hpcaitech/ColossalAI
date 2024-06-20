@@ -4,12 +4,11 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - 'applications/Chat/coati/**'
-      - 'applications/Chat/requirements.txt'
-      - 'applications/Chat/setup.py'
-      - 'applications/Chat/requirements-test.txt'
-      - 'applications/Chat/tests/**'
-      - 'applications/Chat/pytest.ini'
+      - 'applications/ColossalChat/coati/**'
+      - 'applications/ColossalChat/requirements.txt'
+      - 'applications/ColossalChat/setup.py'
+      - 'applications/ColossalChat/tests/**'
+      - 'applications/ColossalChat/pytest.ini'
 
 jobs:
   tests:

@@ -22,3 +22,9 @@ try:
     from .qwen2 import *
 except ImportError:
     print("This version of transformers doesn't support qwen2.")
+
+
+try:
+    from .command import *
+except ImportError:
+    print("This version of transformers doesn't support Command-R.")

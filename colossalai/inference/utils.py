@@ -152,6 +152,8 @@ def can_use_flash_attn2(dtype: torch.dtype) -> bool:
         return False
 
     try:
+        from flash_attn import flash_attn_varlen_func  # noqa
+
         return True
     except ImportError:
         logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")

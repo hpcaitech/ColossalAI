@@ -43,5 +43,8 @@ colossalai run --nproc_per_node 2 llama_generation.py -m PATH_MODEL --drafter_mo
 
 If you want to try the GLIDE model (glide-vicuna7b) as the drafter model with vicuna-7B, you could provide the GLIDE model path or model card as drafter model and enable the feature by
 ```python
+from colossalai.inference.modeling.models.glide_llama import GlideLlamaForCausalLM
+drafter_model = GlideLlamaForCausalLM.from_pretrained(drafter_model_path_or_name)
+...
 engine.enable_spec_dec(drafter_model, use_glide_drafter=True)
 ```

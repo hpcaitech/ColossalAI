@@ -7,28 +7,28 @@ from torch import Tensor
 from torch.nn import Module
 
 from colossalai.shardformer.layer import (
-    FusedRMSNorm,
+    FusedLayerNorm,
+    LayerNorm,
     Linear1D_Col,
     Linear1D_Row,
     PaddingEmbedding,
     PaddingLMHead,
-    RMSNorm,
     VocabParallelEmbedding1D,
     VocabParallelLMHead1D,
 )
 
-from ..modeling.llama import (
-    LlamaPipelineForwards,
-    get_llama_flash_attention_forward,
-    get_llama_flash_attention_model_forward,
+from ..modeling.command import (
+    CommandPipelineForwards,
+    get_command_flash_attention_forward,
+    get_command_flash_attention_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificationPolicy"]
+__all__ = ["CommandPolicy", "CommandForCausalLMPolicy"]
 
 
-class LlamaPolicy(Policy):
+class CommandPolicy(Policy):
     def config_sanity_check(self):
         pass
 
@@ -38,18 +38,18 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import (
-            LlamaAttention,
-            LlamaDecoderLayer,
-            LlamaFlashAttention2,
-            LlamaModel,
-            LlamaSdpaAttention,
+        from transformers.models.cohere.modeling_cohere import (
+            CohereAttention,
+            CohereDecoderLayer,
+            CohereFlashAttention2,
+            CohereModel,
+            CohereSdpaAttention,
         )
 
         ATTN_IMPLEMENTATION = {
-            "eager": LlamaAttention,
-            "flash_attention_2": LlamaFlashAttention2,
-            "sdpa": LlamaSdpaAttention,
+            "eager": CohereAttention,
+            "flash_attention_2": CohereFlashAttention2,
+            "sdpa": CohereSdpaAttention,
         }
         policy = {}
 
@@ -62,16 +62,16 @@ class LlamaPolicy(Policy):
                 embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_fused_normalization:
-            norm_cls = FusedRMSNorm
+            norm_cls = FusedLayerNorm
         else:
-            norm_cls = RMSNorm
+            norm_cls = LayerNorm
 
         if self.pipeline_stage_manager is not None:
             self.shard_config.enable_sequence_parallelism = False
             self.shard_config.enable_sequence_overlap = False
             self.shard_config.sequence_parallelism_mode = None
             warnings.warn(
-                f"For llama, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
+                f"For Command, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
             )
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
@@ -91,7 +91,7 @@ class LlamaPolicy(Policy):
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                    "forward": get_command_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=attn_cls,
@@ -99,7 +99,7 @@ class LlamaPolicy(Policy):
             if self.pipeline_stage_manager is None:
                 self.append_or_create_method_replacement(
                     description={
-                        "forward": get_llama_flash_attention_model_forward(
+                        "forward": get_command_flash_attention_model_forward(
                             self.shard_config,
                             sp_mode=sp_mode,
                             sp_size=sp_size,
@@ -107,7 +107,7 @@ class LlamaPolicy(Policy):
                         ),
                     },
                     policy=policy,
-                    target_key=LlamaModel,
+                    target_key=CohereModel,
                 )
 
         if self.shard_config.enable_tensor_parallelism:
@@ -128,7 +128,7 @@ class LlamaPolicy(Policy):
                     self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
                 )
 
-            policy[LlamaDecoderLayer] = ModulePolicyDescription(
+            policy[CohereDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -177,7 +177,7 @@ class LlamaPolicy(Policy):
                     kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
                 ),
                 policy=policy,
-                target_key=LlamaModel,
+                target_key=CohereModel,
             )
 
         # optimization configuration
@@ -188,14 +188,9 @@ class LlamaPolicy(Policy):
                     target_module=norm_cls,
                     kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
-                SubModuleReplacementDescription(
-                    suffix="post_attention_layernorm",
-                    target_module=norm_cls,
-                    kwargs={"sp_partial_derived": sp_partial_derived},
-                ),
             ],
             policy=policy,
-            target_key=LlamaDecoderLayer,
+            target_key=CohereDecoderLayer,
         )
 
         self.append_or_create_submodule_replacement(
@@ -205,7 +200,7 @@ class LlamaPolicy(Policy):
                 kwargs={"sp_partial_derived": sp_partial_derived},
             ),
             policy=policy,
-            target_key=LlamaModel,
+            target_key=CohereModel,
         )
 
         return policy
@@ -220,7 +215,7 @@ class LlamaPolicy(Policy):
             return
 
         stage_manager = self.pipeline_stage_manager
-        if self.model.__class__.__name__ == "LlamaModel":
+        if self.model.__class__.__name__ == "CohereModel":
             module = self.model
         else:
             module = self.model.model
@@ -247,7 +242,7 @@ class LlamaPolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "LlamaModel":
+        if self.model.__class__.__name__ == "CohereModel":
             module = self.model
         else:
             module = self.model.model
@@ -277,15 +272,15 @@ class LlamaPolicy(Policy):
         return held_layers
 
 
-class LlamaModelPolicy(LlamaPolicy):
+class CommandModelPolicy(CommandPolicy):
     def module_policy(self):
         policy = super().module_policy()
-        from transformers.models.llama.modeling_llama import LlamaModel
+        from transformers.models.cohere.modeling_cohere import CohereModel
 
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=LlamaModel, new_forward=LlamaPipelineForwards.llama_model_forward, policy=policy
+                model_cls=CohereModel, new_forward=CommandPipelineForwards.command_model_forward, policy=policy
             )
         return policy
 
@@ -295,20 +290,20 @@ class LlamaModelPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
+        """No shared params in command model"""
         return []
 
 
-class LlamaForCausalLMPolicy(LlamaPolicy):
+class CommandForCausalLMPolicy(CommandPolicy):
     def module_policy(self):
-        from transformers import LlamaForCausalLM
+        from transformers import CohereForCausalLM
 
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
-                LlamaForCausalLM: ModulePolicyDescription(
+                CohereForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -322,12 +317,12 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                 )
             }
             if self.shard_config.parallel_output:
-                new_item[LlamaForCausalLM].method_replacement = {
+                new_item[CohereForCausalLM].method_replacement = {
                     "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
                 }
         else:
             new_item = {
-                LlamaForCausalLM: ModulePolicyDescription(
+                CohereForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -342,7 +337,9 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=LlamaForCausalLM, new_forward=LlamaPipelineForwards.llama_for_causal_lm_forward, policy=policy
+                model_cls=CohereForCausalLM,
+                new_forward=CommandPipelineForwards.command_for_causal_lm_forward,
+                policy=policy,
             )
 
         return policy
@@ -356,58 +353,17 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        llama_model = self.model.model
+        command_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(command_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: llama_model.embed_tokens.weight,
+                        0: command_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
-        return []
-
-
-class LlamaForSequenceClassificationPolicy(LlamaPolicy):
-    def module_policy(self):
-        from transformers import LlamaForSequenceClassification
-
-        policy = super().module_policy()
-
-        if self.shard_config.enable_tensor_parallelism:
-            # add a new item for sequence classification
-            new_item = {
-                LlamaForSequenceClassification: ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
-                        )
-                    ]
-                )
-            }
-            policy.update(new_item)
-        # to be confirmed
-        if self.pipeline_stage_manager:
-            # set None as default
-            self.set_pipeline_forward(
-                model_cls=LlamaForSequenceClassification,
-                new_forward=LlamaPipelineForwards.llama_for_sequence_classification_forward,
-                policy=policy,
-            )
-        return policy
-
-    def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        stage_manager = self.pipeline_stage_manager
-        held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage(ignore_chunk=True):
-            held_layers.append(self.model.score)
-        return held_layers
-
-    def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama for sequence classification model"""
         return []
