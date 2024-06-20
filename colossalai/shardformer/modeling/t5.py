@@ -10,7 +10,13 @@ from transformers.modeling_outputs import (
     Seq2SeqModelOutput,
     TokenClassifierOutput,
 )
-from transformers.models.t5.modeling_t5 import T5EncoderModel, T5ForConditionalGeneration, T5Model, T5Stack
+from transformers.models.t5.modeling_t5 import (
+    T5EncoderModel,
+    T5ForConditionalGeneration,
+    T5ForTokenClassification,
+    T5Model,
+    T5Stack,
+)
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -585,7 +591,7 @@ class T5PipelineForwards:
 
     @staticmethod
     def t5_for_token_classification_forward(
-        self: T5EncoderModel,
+        self: T5ForTokenClassification,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
@@ -603,7 +609,7 @@ class T5PipelineForwards:
         decoder_starting_stage: Optional[int] = None,
     ) -> Union[Tuple[torch.FloatTensor], BaseModelOutput]:
         r"""
-        This function is modified on the basis of transformers.models.t5.modeling_gpt2.T5EncoderModel.forward.
+        This function is modified on the basis of transformers.models.t5.modeling_t5.T5ForTokenClassification.forward.
         Please refer to original code of transformers for more details.
         ```"""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict

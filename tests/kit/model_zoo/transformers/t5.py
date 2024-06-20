@@ -56,6 +56,7 @@ loss_fn_for_t5_model = lambda x: x["last_hidden_state"].mean()
 loss_fn_for_encoder_only = lambda x: x["last_hidden_state"].mean()
 loss_fn_for_conditional_generation = lambda x: x["loss"]
 loss_fn_for_token_classification = lambda x: x["loss"]
+
 # define model config
 config = transformers.T5Config(d_model=128, num_layers=2, dropout_rate=0, decoder_start_token_id=0)
 
