@@ -261,7 +261,7 @@ def main():
 
     with get_profile_context(
         args.profile,
-        1,
+        args.ignore_steps,
         len(dataloader) - 1,
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
     ) as prof:
