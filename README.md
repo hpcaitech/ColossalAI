@@ -130,7 +130,7 @@ distributed training and inference in a few lines.
 [Open-Sora](https://github.com/hpcaitech/Open-Sora)：Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models
 [[code]](https://github.com/hpcaitech/Open-Sora)
 [[blog]](https://hpc-ai.com/blog/open-sora-from-hpc-ai-tech-team-continues-open-source-generate-any-16-second-720p-hd-video-with-one-click-model-weights-ready-to-use)
-[[HuggingFace model weights]](https://huggingface.co/hpcai-tech/Open-Sora)
+[[Model weights]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#model-weights)
 [[Demo]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
 <div align="center">
