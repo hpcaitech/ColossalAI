@@ -125,7 +125,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [Open-Sora](https://github.com/hpcaitech/Open-Sora)：全面开源类Sora模型参数和所有训练细节
 [[代码]](https://github.com/hpcaitech/Open-Sora)
 [[博客]](https://hpc-ai.com/blog/open-sora-from-hpc-ai-tech-team-continues-open-source-generate-any-16-second-720p-hd-video-with-one-click-model-weights-ready-to-use)
-[[模型权重]](https://huggingface.co/hpcai-tech/Open-Sora)
+[[模型权重]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#model-weights)
 [[演示样例]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
 
 <div align="center">
