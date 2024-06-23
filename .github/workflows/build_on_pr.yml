@@ -199,6 +199,7 @@ jobs:
 
       - name: Upload test coverage artifact
         uses: actions/upload-artifact@v3
+        if: success()
         with:
           name: report
           path: report/
