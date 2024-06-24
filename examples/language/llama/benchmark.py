@@ -96,7 +96,7 @@ def main():
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
-    parser.add_argument("--cache", default=True, type=eval)
+    parser.add_argument("--cache", action="store_false")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
