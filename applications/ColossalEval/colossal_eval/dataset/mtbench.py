@@ -56,9 +56,11 @@ class MTBenchDataset(BaseDataset):
                     "instruction": question["turns"],
                     "input": "",
                     "output": [],
-                    "target": [""] * turn_number
-                    if question["question_id"] not in reference
-                    else reference[question["question_id"]],
+                    "target": (
+                        [""] * turn_number
+                        if question["question_id"] not in reference
+                        else reference[question["question_id"]]
+                    ),
                 }
 
                 if category in dataset["test"]:

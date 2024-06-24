@@ -41,7 +41,6 @@ logger = get_dist_logger(__name__)
 
 
 class rpcWorkerService(rpyc.Service):
-
     """
     Execute the computation tasks and manage its own kv cache
 

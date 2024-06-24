@@ -1,6 +1,7 @@
 """
 Code for custom retriver with incremental update
 """
+
 import copy
 import hashlib
 import os

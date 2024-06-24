@@ -33,6 +33,7 @@ This license shall be governed and construed in accordance with the laws of Peop
 
 Note that the license is subject to update to a more comprehensive version.  For any questions related to the license and copyright, please contact us at glm-130b@googlegroups.com.
 """
+
 """ PyTorch ChatGLM model. """
 
 import copy
