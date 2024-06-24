@@ -109,8 +109,6 @@ def calc_masked_log_probs(
     if not length_normalization:
         return log_probs * mask
     else:
-        if torch.any(mask.sum(dim=-1) == 0):
-            print("Mask should not be all zeros.")
         return log_probs * mask / (mask.sum(dim=-1, keepdim=True) + 0.01)
 
 

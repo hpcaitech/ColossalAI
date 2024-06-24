@@ -187,6 +187,14 @@ class DataCollatorForPreferenceDataset(object):
             f"but now `{self.tokenizer.pad_token_id}`"
         )
 
+        torch.set_printoptions(profile="full")
+
+        for ins in instances:
+            if sum(ins["chosen_loss_mask"][1:]) == 0:
+                print("Before truncated", ins["chosen_loss_mask"], len(ins["chosen_loss_mask"]))
+            if sum(ins["rejected_loss_mask"][1:]) == 0:
+                print("Before truncated", ins["rejected_loss_mask"], len(ins["rejected_loss_mask"]))
+
         (
             chosen_input_ids,
             chosen_loss_mask,  # [batch_size * seq_len]
@@ -198,6 +206,23 @@ class DataCollatorForPreferenceDataset(object):
             chuncate_sequence([ins["rejected_input_ids"] for ins in instances], self.max_length, torch.int64),
             chuncate_sequence([ins["rejected_loss_mask"] for ins in instances], self.max_length, torch.bool),
         )
+
+        for i in range(len(chosen_loss_mask)):
+            if sum(chosen_loss_mask[i][1:]) == 0:
+                print(
+                    "After truncated",
+                    chosen_loss_mask[i],
+                    len(chosen_loss_mask[i]),
+                    len(instances[i]["chosen_input_ids"]),
+                )
+        for i in range(len(reject_loss_mask)):
+            if sum(reject_loss_mask[i][1:]) == 0:
+                print(
+                    "After truncated",
+                    reject_loss_mask[i],
+                    len(reject_loss_mask[i]),
+                    len(instances[i]["rejected_input_ids"]),
+                )
 
         padding_side = self.tokenizer.padding_side
         chosen_attention_mask = [torch.ones_like(seq).bool() for seq in chosen_input_ids]

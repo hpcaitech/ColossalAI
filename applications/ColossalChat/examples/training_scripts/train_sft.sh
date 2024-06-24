@@ -15,24 +15,24 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 
 # export CUDA_VISIBLE_DEVICES=4,5,6
-set_n_least_used_CUDA_VISIBLE_DEVICES 2
+set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="sft"
-PARENT_SAVE_DIR="/home/yeanbang/data/experiment/rlhf_cont/dpo/ckpt" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="/home/yeanbang/data/experiment/rlhf_cont/dpo/log" # Path to a folder to save logs
-PARENT_CONFIG_FILE="/home/yeanbang/data/experiment/rlhf_cont/dpo/log" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/home/yeanbang/data/models/Sheared-LLaMA-1.3B" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/home/yeanbang/data/models/Sheared-LLaMA-1.3B" # huggingface or local tokenizer path
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 declare -a dataset=(
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00000
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00001
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00002
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00003
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00004
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00005
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00006
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00007
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00008
-    /home/yeanbang/data/experiment/rlhf_cont/dpo/dataset_tokenized/sft/arrow/part-00009
+    /Your/Preference/Data/arrow/part-00000
+    /Your/Preference/Data/arrow/part-00001
+    /Your/Preference/Data/arrow/part-00002
+    /Your/Preference/Data/arrow/part-00003
+    /Your/Preference/Data/arrow/part-00004
+    /Your/Preference/Data/arrow/part-00005
+    /Your/Preference/Data/arrow/part-00006
+    /Your/Preference/Data/arrow/part-00007
+    /Your/Preference/Data/arrow/part-00008
+    /Your/Preference/Data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -43,7 +43,7 @@ CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 echo $(which colossalai)
 echo $(which python)
 # the real batch size for gradient descent is number_of_node_in_hostfile * nproc_per_node * train_batch_size
-colossalai run --nproc_per_node 1 --master_port 31312 --hostfile ./hostfile train_sft.py \
+colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --save_interval 4000 \
@@ -56,7 +56,7 @@ colossalai run --nproc_per_node 1 --master_port 31312 --hostfile ./hostfile trai
     --max_epochs 1 \
     --accumulation_steps 4 \
     --lr 5e-5 \
-    --max_len 1000 \
+    --max_len 4096 \
     --grad_checkpoint \
     --use_wandb \
     --use_flash_attn

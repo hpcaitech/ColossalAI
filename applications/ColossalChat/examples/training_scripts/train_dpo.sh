@@ -57,7 +57,7 @@ colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 31313 train_
     --beta 0.1 \
     --mixed_precision "bf16" \
     --grad_clip 1.0 \
-    --max_length 1024 \
+    --max_length 4096 \
     --weight_decay 0.01 \
     --warmup_steps 60 \
     --grad_checkpoint \
