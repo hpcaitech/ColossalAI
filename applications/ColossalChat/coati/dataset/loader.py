@@ -207,23 +207,6 @@ class DataCollatorForPreferenceDataset(object):
             chuncate_sequence([ins["rejected_loss_mask"] for ins in instances], self.max_length, torch.bool),
         )
 
-        for i in range(len(chosen_loss_mask)):
-            if sum(chosen_loss_mask[i][1:]) == 0:
-                print(
-                    "After truncated",
-                    chosen_loss_mask[i],
-                    len(chosen_loss_mask[i]),
-                    len(instances[i]["chosen_input_ids"]),
-                )
-        for i in range(len(reject_loss_mask)):
-            if sum(reject_loss_mask[i][1:]) == 0:
-                print(
-                    "After truncated",
-                    reject_loss_mask[i],
-                    len(reject_loss_mask[i]),
-                    len(instances[i]["rejected_input_ids"]),
-                )
-
         padding_side = self.tokenizer.padding_side
         chosen_attention_mask = [torch.ones_like(seq).bool() for seq in chosen_input_ids]
         reject_attention_mask = [torch.ones_like(seq).bool() for seq in reject_input_ids]
