@@ -346,7 +346,6 @@ def _send_recv_serialization_object(
         return unpickle_object
 
 
-# received_nan = False
 def _communicate(
     object: Any,
     send_dst: Optional[int],
