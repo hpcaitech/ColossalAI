@@ -264,7 +264,10 @@ experience buffer size
 
 ## Alternative Option For RLHF: Direct Preference Optimization
 
-For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
+For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in this [paper](https://arxiv.org/abs/2305.18290), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
+
+## Alternative Option For RLHF: Simple Preference Optimization
+Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2405.14734) is similar to DPO but it abandons the use of the reference model, which makes the training more efficient. It also adds a reward shaping term called target reward margin to enhance training stability. It also use length normalization to better align with the inference process.
 
 ### DPO Training Stage1 - Supervised Instructs Tuning
 
@@ -522,7 +525,7 @@ Coati is developed by ColossalAI Team:
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored version with updated acceleration framework, LoRA, DPO and PPO.
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)

@@ -89,7 +89,9 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
     return mean
 
 
-def calc_masked_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, mask: torch.Tensor) -> torch.Tensor:
+def calc_masked_log_probs(
+    logits: torch.Tensor, sequences: torch.LongTensor, mask: torch.Tensor, length_normalization: bool = False
+) -> torch.Tensor:
     """
     Calculate the masked log probabilities for a given sequence of logits.
 
@@ -103,7 +105,13 @@ def calc_masked_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, mas
     """
     # logits are probabilities of the next token, so we shift them to the left by one
     log_probs = _log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
-    return log_probs * mask
+
+    if not length_normalization:
+        return log_probs * mask
+    else:
+        if torch.any(mask.sum(dim=-1) == 0):
+            print("Mask should not be all zeros.")
+        return log_probs * mask / (mask.sum(dim=-1, keepdim=True) + 0.01)
 
 
 def load_json(file_path: Union[str, os.PathLike]) -> Dict[str, Any]:
