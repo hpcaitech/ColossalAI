@@ -1,5 +1,6 @@
 import argparse
 import resource
+import time
 import warnings
 from contextlib import nullcontext
 
@@ -8,7 +9,6 @@ import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator, get_profile_context
-import time
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM
@@ -303,7 +303,7 @@ def main():
                     print(f"Step {step} loss: {loss}")
                 optimizer.step()
                 optimizer.zero_grad()
-                
+
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
                 prof.step()
         else:
@@ -314,10 +314,9 @@ def main():
                 booster.backward(loss, optimizer)
                 optimizer.step()
                 optimizer.zero_grad()
-                
+
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
-                
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
