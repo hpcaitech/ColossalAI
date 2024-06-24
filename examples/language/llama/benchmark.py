@@ -7,8 +7,8 @@ import torch
 import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
-from performance_evaluator import PerformanceEvaluator
-from torch import profiler
+from performance_evaluator import PerformanceEvaluator, get_profile_context
+import time
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM
@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 # ==============================
 
 MODEL_CONFIGS = {
-    "1b": LlamaConfig(
+    "100m": LlamaConfig(
         max_position_embeddings=4096,
         num_hidden_layers=4,
         num_attention_heads=32,
@@ -96,7 +96,6 @@ def main():
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
-    parser.add_argument("--log_dir", default="./log", type=str, help="Directory for profile logs")
     parser.add_argument("--cache", default=True, type=eval)
     args = parser.parse_args()
 
@@ -282,18 +281,12 @@ def main():
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
 
-    if args.profile:
-        prof = profiler.profile(
-            schedule=torch.profiler.schedule(wait=1, warmup=args.ignore_steps, active=1, repeat=1),
-            on_trace_ready=profiler.tensorboard_trace_handler(args.log_dir),
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=True,
-        )
-    else:
-        prof = nullcontext()
-
-    with prof:
+    with get_profile_context(
+        args.profile,
+        1,
+        len(dataloader) - 1,
+        save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
+    ) as prof:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
@@ -308,22 +301,23 @@ def main():
                 loss = outputs["loss"]
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step {step} loss: {loss}")
-
-                if args.profile:
-                    prof.step()
+                optimizer.step()
+                optimizer.zero_grad()
+                
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
+                prof.step()
         else:
             for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
                 performance_evaluator.on_step_start(step)
                 outputs = model(**batch)
                 loss = outputs[0]
                 booster.backward(loss, optimizer)
-
-                if args.profile:
-                    prof.step()
                 optimizer.step()
                 optimizer.zero_grad()
+                
                 performance_evaluator.on_step_end(**batch)
+                prof.step()
+                
 
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
