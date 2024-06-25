@@ -138,9 +138,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     [
         {  # Ulysess + Flash attention
             "tp_size": 1,
-            "pp_size": 1,
+            "pp_size": 2,
             "sp_size": 2,
-            "num_microbatches": 1,
+            "num_microbatches": 2,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "all_to_all",
             "enable_flash_attention": True,
