@@ -1,4 +1,4 @@
-![image](https://github.com/hpcaitech/ColossalAI/assets/61670638/bc537924-8384-4019-bf50-be1f756cb07c)# Colossal-AI
+# Colossal-AI
 <div id="top" align="center">
 
    [![logo](https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/colossal-ai_logo_vertical.png)](https://www.colossalai.org/)
