@@ -230,7 +230,11 @@ def main():
 
     with init_ctx:
         model = AutoModelForCausalLM.from_config(
-            config, trust_remote_code=True, **init_kwargs, attn_implementation="flash_attention_2", dtype=torch.float16
+            config,
+            trust_remote_code=True,
+            **init_kwargs,
+            attn_implementation="flash_attention_2",
+            torch_dtype=torch.float16,
         )
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
