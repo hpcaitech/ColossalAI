@@ -9,6 +9,7 @@
    <a href="https://www.colossalai.org/"> 文档 </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> 例程 </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> 论坛 </a> |
+   <a href="https://cloud.luchentech.com/">潞晨云 </a> |
    <a href="https://hpc-ai.com/blog"> 博客 </a></h3>
 
    [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
@@ -127,6 +128,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [[博客]](https://hpc-ai.com/blog/open-sora-from-hpc-ai-tech-team-continues-open-source-generate-any-16-second-720p-hd-video-with-one-click-model-weights-ready-to-use)
 [[模型权重]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#model-weights)
 [[演示样例]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
+[[潞晨云]](https://cloud.luchentech.com/)
+[[OpenSora镜像]](https://cloud.luchentech.com/doc/docs/image/open-sora/)
 
 <div align="center">
    <a href="https://www.bilibili.com/video/BV1Fm421G7bV">
@@ -135,6 +138,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </div>
 
 ### Colossal-LLaMA-2
+[[潞晨云]](https://cloud.luchentech.com/)
+[[LLaMA3 镜像]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 - 7B：千元预算半天训练，效果媲美主流大模型，开源可商用中文LLaMA-2
 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
@@ -265,7 +270,9 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 </p>
 
 - 700亿参数LLaMA3训练加速18%
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+[[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+[[潞晨云]](https://cloud.luchentech.com/)
+[[LLaMA3 镜像]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 ### LLaMA2
 <p align="center">
@@ -378,6 +385,8 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
  - AI大模型推理速度部分接近翻倍，与vLLM的离线推理性能相比
 [[代码]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
 [[博客]](https://hpc-ai.com/blog/colossal-inference)
+[[潞晨云]](https://cloud.luchentech.com/)
+[[LLaMA3 镜像]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 ### Grok-1
 <p id="Grok-1" align="center">
