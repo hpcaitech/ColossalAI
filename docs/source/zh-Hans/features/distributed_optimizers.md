@@ -84,44 +84,42 @@ optim = DistGaloreAwamW(
 ## 兼容性
 <table>
   <tr>
-    <th nowrap="nowrap">Model/Feature</th>
-    <th nowrap="nowrap" align="center" title="Lamb">Lamb</th>
-    <th nowrap="nowrap" align="center" title="GaLore">GaLore</th>
-    <th nowrap="nowrap" align="center" title="Adafactor">Adafactor</th>
-    <th nowrap="nowrap" align="center" title="CAME">CAME</th>
+    <th nowrap="nowrap">Optimizer/Plugin</th>
+    <th nowrap="nowrap" align="center">Hybrid Parallel Plugin</th>
+    <th nowrap="nowrap" align="center">Low Level Zero Plugin</th>
+    <th nowrap="nowrap" align="center">Torch DDP Plugin</th>
+    <th nowrap="nowrap" align="center">Gemini Plugin</th>
+    <th nowrap="nowrap" align="center">Moe Hybrid Plugin</th>
   </tr>
   <tr>
-    <td nowrap="nowrap">Hybrid Parallel<br />Plugin</td>
+    <td nowrap="nowrap" align="center" title="Lamb">Lamb</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-  </tr>
-  <tr>
-    <td nowrap="nowrap">Low Level Zero<br />Plugin</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-  </tr>
-  <tr>
-    <td nowrap="nowrap">Torch DDP<br />Plugin</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-  </tr>
-  <tr>
-    <td nowrap="nowrap">Gemini<br />Plugin</td>
-    <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
   </tr>
   <tr>
-    <td nowrap="nowrap">Moe Hybrid<br />Plugin</td>
+    <td nowrap="nowrap" align="center" title="GaLore">GaLore</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap" align="center" title="Adafactor">Adafactor</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
+  </tr>
+  <tr>
+    <td nowrap="nowrap" align="center" title="CAME">CAME</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
   </tr>
@@ -129,6 +127,7 @@ optim = DistGaloreAwamW(
     <td colspan="39"></td>
   </tr>
 </table>
+
 
 <!-- doc-test-command: colossalai run --nproc_per_node 4 distributed_optimizers.py  -->
 
