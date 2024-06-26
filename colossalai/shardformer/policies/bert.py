@@ -48,7 +48,6 @@ class BertPolicy(Policy):
             BertLayer,
             BertModel,
             BertOutput,
-            BertSelfAttention,
             BertSelfOutput,
         )
 

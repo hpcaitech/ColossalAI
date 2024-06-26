@@ -713,6 +713,7 @@ class BloomPipelineForwards:
             hidden_states = outputs.get("hidden_states")
             return {"hidden_states": hidden_states}
 
+
 def get_jit_fused_bloom_attention_forward():
     from transformers.models.bloom.modeling_bloom import BloomAttention
 

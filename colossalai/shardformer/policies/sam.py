@@ -1,5 +1,3 @@
-import warnings
-
 import colossalai.shardformer.layer as col_nn
 
 from ..modeling.sam import forward_fn

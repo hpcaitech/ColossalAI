@@ -17,7 +17,7 @@ from ..modeling.bloom import (
     get_jit_fused_bloom_mlp_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
-from ..modeling.jit import get_dropout_add_func, get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
+from ..modeling.jit import get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
