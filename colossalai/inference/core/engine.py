@@ -22,7 +22,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import GenerationParams, InferenceConfig, InputMetaData, ModelShardInferenceConfig
 from colossalai.inference.graph_runner import CUDAGraphRunner
-from colossalai.inference.modeling.models.stable_diffusion import DiffusionPipe
+from colossalai.inference.modeling.models.diffusion import DiffusionPipe
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.sampler import search_tokens
 from colossalai.inference.spec import Drafter, GlideInput
@@ -168,7 +168,9 @@ class InferenceEngine:
         if self.verbose:
             self.logger.info(f"the device is {self.device}")
 
-        model = model.to(self.dtype).eval()
+        if self.model_type == ModelType.LLM:
+            # NOTE(@lry89757) it is weird that PixArtAlpha(Diffusion DiT Model) doesn't support eval
+            model = model.to(self.dtype).eval()
 
         if self.verbose:
             self.logger.info(
@@ -573,6 +575,7 @@ class InferenceEngine:
         """
 
         gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
+        self.logger.info(f"gen_config_dict: {gen_config_dict}")
         prompts = [prompts] if isinstance(prompts, str) else prompts
         request_ids = [request_ids] if isinstance(request_ids, int) else request_ids
 
@@ -844,6 +847,7 @@ class InferenceEngine:
         return ret
 
     def step_diffusion(self, input: Sequence_):
+        print(f"generation config step: {input.generation_config.to_dict()}")
         ret = self.model(prompt=input.prompt, **input.generation_config.to_dict())
         return ret
 

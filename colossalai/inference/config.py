@@ -3,7 +3,7 @@ Our config contains various options for inference optimization, it is a unified 
 """
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -409,7 +409,9 @@ class GenerationParams:
     num_inference_steps: int = 28
     timesteps: List[int] = None
     guidance_scale: float = 7.0
-    negative_prompt: Optional[Union[str, List[str]]] = None
+    negative_prompt: Optional[
+        Union[str, List[str]]
+    ] = ""  # NOTE(@lry89757) in pixart default to "", in sd3 default to None, we set "" here, but the best solution is change the check_inputs of each forward fuction
     negative_prompt_2: Optional[Union[str, List[str]]] = None
     negative_prompt_3: Optional[Union[str, List[str]]] = None
     num_images_per_prompt: Optional[int] = 1
@@ -427,7 +429,27 @@ class GenerationParams:
     callback_on_step_end_tensor_inputs: List[str] = field(default_factory=lambda: ["latents"])
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        # NOTE(@lry89757) Only return the dict that not the default value
+        result = {}
+        for field_info in fields(self):
+            name = field_info.name
+            value = getattr(self, name)
+
+            if field_info.default is not MISSING:
+                default = field_info.default
+            else:
+                default = None
+
+            if field_info.default_factory is not MISSING:
+                default_factory = field_info.default_factory
+                if default_factory is not None:
+                    default = default_factory()
+
+            # Check if the field value is different from the default
+            if value != default:
+                result[name] = value
+
+        return result
 
     @classmethod
     def from_kwargs(cls, **kwargs) -> "GenerationParams":

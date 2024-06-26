@@ -4,9 +4,10 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import retrieve_timesteps
 
-from .stable_diffusion import DiffusionPipe
+from .diffusion import DiffusionPipe
 
 
+# TODO(@lry89757) temporarily image, please support more return output
 @torch.no_grad()
 def sd3_forward(
     self: DiffusionPipe,
