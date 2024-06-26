@@ -65,7 +65,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             working_p = sharded_optimizer.master_to_working_param[id(p2)]
             grads = sharded_optimizer.get_partitioned_gradients_by_param_id(0, id(working_p))
             grad_index = (
-                0 if sharded_optimizer._partition_grads else sharded_optimizer.pid_to_bucket_store[id(p2)].local_rank
+                0
+                if sharded_optimizer._partition_grads
+                else sharded_optimizer.pid_to_bucket_store[id(working_p)].local_rank
             )
             grad = grads[grad_index]
             sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
