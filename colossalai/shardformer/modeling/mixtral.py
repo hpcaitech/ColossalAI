@@ -13,7 +13,7 @@ from transformers.models.mixtral.modeling_mixtral import (
     MoeCausalLMOutputWithPast,
     load_balancing_loss_func,
 )
-from transformers.utils import logging
+from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
@@ -218,7 +218,7 @@ class MixtralPipelineForwards:
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
-        if self._use_flash_attention_2:
+        if is_flash_attn_2_available():
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         else:
