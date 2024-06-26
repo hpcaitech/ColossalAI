@@ -96,7 +96,7 @@ def main():
     parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
-    parser.add_argument("--cache", action="store_false")
+    parser.add_argument("--no_cache", action="store_true")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -198,7 +198,7 @@ def main():
             precision="bf16",
             dp_outside=False,
             overlap_p2p=args.overlap,
-            enable_metadata_cache=args.cache,
+            enable_metadata_cache=not args.no_cache,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
