@@ -2,6 +2,12 @@
 <h1>
 <img src="https://github.com/hpcaitech/public_assets/blob/main/applications/colossal-llama-2/colossaleval.jpg?raw=true" width=800/>
 </h1>
+
+ <h3>
+ <a href="https://cloud.luchentech.com/">GPU Cloud Playground </a> </a> |
+ <a href="https://cloud.luchentech.com/doc/docs/image/colossal-eval"> Colossal-Eval Image </a>
+ </h3>
+
 </div>
 
 ## Table of Contents
