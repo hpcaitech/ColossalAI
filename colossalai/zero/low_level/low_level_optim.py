@@ -540,8 +540,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self.pg_to_tensor_bucket = {
             pg: TensorBucket(self.pg_to_bucket_store[pg].reduce_bucket_size) for pg in self.pg_to_param_list
         }
-        tensor_bucket = TensorBucket(self._bucket_store.reduce_bucket_size)
-        moe_tensor_bucket = TensorBucket(self._bucket_store.reduce_bucket_size)
 
         # update working partition updated by the current rank
         device = get_accelerator().get_current_device()
