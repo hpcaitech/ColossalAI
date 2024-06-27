@@ -140,8 +140,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # check argument conflict
         self._sanity_checks()
 
-        self.require_grad_sync = True
-
         # ParameterStore will manage the tensor buffers used for zero
         # it will not manage the tensors used by mixed precision training
 
