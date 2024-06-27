@@ -708,19 +708,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     try:
                         moe_tensor_bucket.add_to_bucket(param_to_gather, write_back_tensor=working_param)
                     except RuntimeError:
-                        moe_tensor_bucket.all_gather_(self._bucket_store.moe_extra_dp_pg)
+                        moe_tensor_bucket.all_gather(self._bucket_store.moe_extra_dp_pg)
                         moe_tensor_bucket.add_to_bucket(param_to_gather, write_back_tensor=working_param)
                 else:
                     try:
                         tensor_bucket.add_to_bucket(param_to_gather, write_back_tensor=working_param)
                     except RuntimeError:
-                        tensor_bucket.all_gather_(self._bucket_store.moe_extra_dp_pg)
+                        tensor_bucket.all_gather(self._bucket_store.moe_extra_dp_pg)
                         tensor_bucket.add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
         if not moe_tensor_bucket.is_empty():
-            moe_tensor_bucket.all_gather_(self._bucket_store.moe_extra_dp_pg)
+            moe_tensor_bucket.all_gather(self._bucket_store.moe_extra_dp_pg)
         if not tensor_bucket.is_empty():
-            tensor_bucket.all_gather_(self._bucket_store.torch_pg)
+            tensor_bucket.all_gather(self._bucket_store.torch_pg)
 
     def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""

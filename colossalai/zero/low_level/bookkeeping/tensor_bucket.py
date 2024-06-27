@@ -67,10 +67,7 @@ class TensorBucket:
         dist.all_gather(buffers, flat, group=group)
         unflat_buffers = [self.unflatten(buffer) for buffer in buffers]
         # transpose the list of list
-        return list(map(list, zip(*unflat_buffers)))
-
-    def all_gather_(self, group=None):
-        unflat_buffers = self.all_gather(group)
+        unflat_buffers = list(map(list, zip(*unflat_buffers)))
         for unflat_shards, tensor in zip(unflat_buffers, self._bucket):
             write_back_tensor = self._write_back_pairs[tensor]
             write_back_tensor.data.copy_(
