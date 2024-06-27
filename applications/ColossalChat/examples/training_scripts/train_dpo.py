@@ -299,7 +299,7 @@ if __name__ == "__main__":
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--sp", type=int, default=1)
-    parser.add_argument("--loss_type", type=str, default="dpo_loss", help="do_loss or simpo_loss")
+    parser.add_argument("--loss_type", type=str, default="dpo_loss", help="dpo_loss or simpo_loss")
     parser.add_argument("--beta", type=float, default=0.1, help="beta in DPO loss")
     parser.add_argument("--gamma", type=float, default=0.0, help="gamma in SimPO loss")
     parser.add_argument("--length_normalization", default=False, action="store_true")

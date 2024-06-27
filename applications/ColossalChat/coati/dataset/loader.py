@@ -187,14 +187,6 @@ class DataCollatorForPreferenceDataset(object):
             f"but now `{self.tokenizer.pad_token_id}`"
         )
 
-        torch.set_printoptions(profile="full")
-
-        for ins in instances:
-            if sum(ins["chosen_loss_mask"][1:]) == 0:
-                print("Before truncated", ins["chosen_loss_mask"], len(ins["chosen_loss_mask"]))
-            if sum(ins["rejected_loss_mask"][1:]) == 0:
-                print("Before truncated", ins["rejected_loss_mask"], len(ins["rejected_loss_mask"]))
-
         (
             chosen_input_ids,
             chosen_loss_mask,  # [batch_size * seq_len]
