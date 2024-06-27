@@ -14,7 +14,6 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
-# export CUDA_VISIBLE_DEVICES=6
 
 PROJECT_NAME="dpo"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints

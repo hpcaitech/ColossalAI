@@ -7,7 +7,7 @@ from contextlib import nullcontext
 import torch
 from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler, load_tokenized_dataset
 from coati.models import convert_to_lora_module, disable_dropout
-from coati.trainer import DPOTrainer
+from coati.trainer import ORPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -94,7 +94,6 @@ def train(args):
         raise ValueError(f"Unknown plugin {args.plugin}")
 
     booster = Booster(plugin=plugin)
-    ref_booster = Booster(plugin=plugin)
 
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
@@ -116,19 +115,6 @@ def train(args):
         else:
             model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         disable_dropout(model)
-        if not args.disable_reference_model:
-            if args.use_flash_attn:
-                ref_model = AutoModelForCausalLM.from_pretrained(
-                    args.pretrain,
-                    torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                    use_flash_attention_2=True,
-                )
-            else:
-                ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
-            disable_dropout(ref_model)
-        else:
-            ref_model = None
-        print("ref_model is None", args.disable_reference_model, ref_model is None)
         if args.lora_rank > 0:
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
@@ -199,8 +185,6 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
-    if ref_model is not None:
-        ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -242,9 +226,8 @@ def train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    trainer = DPOTrainer(
+    trainer = ORPOTrainer(
         actor=model,
-        ref_model=ref_model,
         booster=booster,
         actor_optim=optim,
         actor_lr_scheduler=lr_scheduler,
@@ -255,9 +238,7 @@ def train(args):
         save_interval=args.save_interval,
         save_dir=args.save_dir,
         coordinator=coordinator,
-        beta=args.beta,
-        gamma=args.gamma,
-        length_normalization=args.length_normalization,
+        lam=args.lam,
     )
 
     trainer.fit(
@@ -299,10 +280,7 @@ if __name__ == "__main__":
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--sp", type=int, default=1)
-    parser.add_argument("--loss_type", type=str, default="dpo_loss", help="do_loss or simpo_loss")
-    parser.add_argument("--beta", type=float, default=0.1, help="beta in DPO loss")
-    parser.add_argument("--gamma", type=float, default=0.0, help="gamma in SimPO loss")
-    parser.add_argument("--length_normalization", default=False, action="store_true")
+    parser.add_argument("--lam", type=float, default=0.1, help="lambda in ORPO loss")
     parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
     parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
@@ -342,12 +320,6 @@ if __name__ == "__main__":
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
-
-    # fool proof hyperparameter setup
-    if args.loss_type == "simpo_loss":
-        args.length_normalization = True
-        args.gamma = args.gamma if args.gamma > 0 else 1.4
-
     os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
     with open(args.config_file, "w") as f:
         json.dump(args.__dict__, f, indent=4)
