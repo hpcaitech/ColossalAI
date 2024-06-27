@@ -90,7 +90,7 @@ class ProcessGroupMesh:
         else:
             return self._shape[dim]
 
-    def coordinate(self, dim: Optional[int] = None) -> Union[int, Tuple[int, ...]]:
+    def coordinate(self, dim: Union[int, List[int]] = None) -> Union[int, Tuple[int, ...]]:
         """Get the coordinate of the process group mesh.
 
         Args:
@@ -101,8 +101,13 @@ class ProcessGroupMesh:
         """
         if dim is None:
             return self._coord
-        else:
+        elif isinstance(dim, int):
             return self._coord[dim]
+        elif isinstance(dim, List):
+            sub_shape = np.array(self._shape)[dim]
+            sub_coord = np.array(self._coord)[dim]
+            sub_rank = np.ravel_multi_index(sub_coord, sub_shape)
+            return sub_rank
 
     @staticmethod
     def unravel(rank: int, shape: Tuple[int, ...]) -> Tuple[int, ...]:
@@ -264,10 +269,7 @@ class ProcessGroupMesh:
                 indices_at_axis = list(range(self._shape[axis]))
 
         coords_in_group = ProcessGroupMesh.get_coords_along_axis(self._coord, axis, indices_at_axis)
-        try:
-            ranks_in_group = tuple([ProcessGroupMesh.ravel(coord, self._shape) for coord in coords_in_group])
-        except:
-            pass
+        ranks_in_group = tuple([ProcessGroupMesh.ravel(coord, self._shape) for coord in coords_in_group])
         if ranks_in_group not in self._ranks_to_group:
             # no need to cache it explicitly, since it will be cached in `create_group_along_axis`
             return self.create_group_along_axis(axis, indices_at_axis, backend=backend)

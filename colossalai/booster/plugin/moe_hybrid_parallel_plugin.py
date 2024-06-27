@@ -24,12 +24,15 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
 from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.logging import get_dist_logger
 from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
+
+logger = get_dist_logger()
 
 
 class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
@@ -232,22 +235,19 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.moe_dp_size = self.dp_size // self.ep_size
         self.use_ep_inside = use_ep_inside
         if self.use_ep_inside:
+            logger.info(f"MoE Parallel use ep inside dp.")
             self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.moe_dp_size, ep_size, tp_size)
-            self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
-            self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
-            if dist.get_rank() == 0:
-                print(f"MoE Parallel: pp {self.pp_size}, outer_dp {self.moe_dp_size}, inner_ep {ep_size}, tp {tp_size}")
         else:
+            logger.info(f"MoE Parallel use ep outside dp.")
             warnings.warn("Using ep outside dp (cross-node) is strongly discouraged due to communication costs.")
             self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 2, 1, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, ep_size, self.moe_dp_size, tp_size)
-            self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
-            self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
-            if dist.get_rank() == 0:
-                print(f"MoE Parallel: pp {self.pp_size}, outer_ep {ep_size}, inner_dp {self.moe_dp_size}, tp {tp_size}")
-        if dist.get_rank() == 0:
-            print(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}")
+
+        self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
+        self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
+        logger.info(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}")
+        logger.info(f"MoE Parallel: pp {self.pp_size}, ep {ep_size}, moe dp {self.moe_dp_size}, tp {tp_size}")
 
         self.tp_group = self.pg_mesh.get_group_along_axis(
             self.tp_axis
@@ -340,8 +340,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         _kwargs = kwargs.copy()
         sampler = DistributedSampler(
             dataset,
-            num_replicas=self.pg_mesh.size(self.dp_axis),
-            rank=self.pg_mesh.coordinate(self.dp_axis),
+            num_replicas=self.dp_size,
+            rank=self.pg_mesh.coordinate([self.dp_axis, self.ep_axis]),
             shuffle=shuffle,
         )
 

@@ -329,7 +329,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         state_dict_sharder = StateDictSharder(size_per_shard)
         param_info = optimizer.param_info
         master_to_working_map = optimizer.get_master_to_working_map()
-        dist.get_world_size(moe_dp_group)
         for param, state in optimizer.optim.state.items():
             if param is None:
                 continue
@@ -472,7 +471,6 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
                 index_file.write_index_file(save_index_file)
-                print(f"rank {dist.get_rank()} writing index file")
             else:
                 dist.barrier()
                 return
