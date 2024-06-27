@@ -1,4 +1,12 @@
 # Colossal-AI Examples
+<div align="center">
+
+ <h3>
+ <a href="https://cloud.luchentech.com/">GPU Cloud Playground </a> </a> |
+ <a href="https://cloud.luchentech.com/doc/docs/intro"> Playground Document </a>
+ </h3>
+
+</div>
 
 ## Table of Contents
 

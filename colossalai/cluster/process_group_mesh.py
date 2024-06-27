@@ -134,7 +134,7 @@ class ProcessGroupMesh:
         """
 
         assert mode in ["raise", "wrap", "clip"]
-        return np.ravel_multi_index(coord, shape, mode)
+        return int(np.ravel_multi_index(coord, shape, mode))
 
     def get_group(self, ranks_in_group: List[int], backend: Optional[str] = None) -> ProcessGroup:
         """Get the process group with the given ranks. It the process group doesn't exist, it will be created.
@@ -182,7 +182,7 @@ class ProcessGroupMesh:
             axis = [
                 axis,
             ]
-            assert isinstance(indices_at_axis[0], int)
+            assert isinstance(indices_at_axis[0], int), f"Expected int, but got {type(indices_at_axis[0])}."
             indices_at_axis = [
                 indices_at_axis,
             ]

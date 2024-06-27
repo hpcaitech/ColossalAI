@@ -21,8 +21,8 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 
-from ._utils import calculate_global_norm_from_list, flatten, has_inf_or_nan, release_param_grad, sync_tensor
-from .bookkeeping import BucketStore, GradientStore
+from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
+from .bookkeeping import BucketStore, GradientStore, TensorBucket
 
 
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
@@ -537,23 +537,29 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             release_param_grad(self._master_param_groups_of_current_rank[group_id])
 
+        self.pg_to_tensor_bucket = {
+            pg: TensorBucket(self.pg_to_bucket_store[pg].reduce_bucket_size) for pg in self.pg_to_param_list
+        }
+        tensor_bucket = TensorBucket(self._bucket_store.reduce_bucket_size)
+        moe_tensor_bucket = TensorBucket(self._bucket_store.reduce_bucket_size)
+
         # update working partition updated by the current rank
         device = get_accelerator().get_current_device()
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, master_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
+                param_to_gather = master_param.to(device).to(self._dtype)
                 pg = self.param_to_pg[working_param]
-                all_splited_param = [
-                    torch.zeros(master_param.shape, device=device, dtype=self._dtype) for _ in range(pg.size())
-                ]
-                dist.all_gather(
-                    all_splited_param,
-                    master_param.to(device).to(self._dtype),
-                    group=pg,
-                )
-                working_param.data.copy_(flatten(all_splited_param)[: working_param.numel()].reshape_as(working_param))
+                try:
+                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
+                except RuntimeError:
+                    self.pg_to_tensor_bucket[pg].all_gather(pg)
+                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
+        for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
+            if not tensor_bucket.is_empty():
+                tensor_bucket.all_gather(pg)
 
     def _compute_grad_norm(self, dp_pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""

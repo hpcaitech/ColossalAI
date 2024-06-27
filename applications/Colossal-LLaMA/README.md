@@ -2,6 +2,12 @@
 <h1>
 Colossal-LLaMA
 </h1>
+
+ <h3>
+ <a href="https://cloud.luchentech.com/">GPU Cloud Playground </a> </a> |
+ <a href="https://cloud.luchentech.com/doc/docs/image/llama"> LLaMA3 Image </a>
+ </h3>
+
 </div>
 
 ## Table of Contents
