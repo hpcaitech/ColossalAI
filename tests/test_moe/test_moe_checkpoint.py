@@ -1,6 +1,7 @@
 import os
-import shutil
 import tempfile
+import time
+from contextlib import nullcontext
 from copy import deepcopy
 
 import pytest
@@ -20,10 +21,6 @@ from colossalai.testing.utils import spawn
 tokens, n_experts = 7, 4
 hidden_size = 8
 top_k = 2
-
-# Fixed temporary directory for all ranks
-TEMP_DIR_BASE = "/tmp"
-TEMP_DIR_NAME = "mixtral_test"
 
 
 def check_model_equal(model1, model2):
@@ -82,84 +79,90 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
 
 
 def check_mixtral_moe_layer():
-    if dist.get_rank() == 0:
-        tmpdirname = tempfile.mkdtemp(dir=TEMP_DIR_BASE, prefix=TEMP_DIR_NAME)
-    torch.cuda.set_device(dist.get_rank())
-    config = MixtralConfig(
-        hidden_size=hidden_size,
-        intermediate_size=hidden_size * 2,
-        num_local_experts=n_experts,
-        num_experts_per_tok=top_k,
-        num_attention_heads=2,
-        num_key_value_heads=2,
-    )
-    torch.manual_seed(0)
-    input_ids = torch.randint(0, 100, (2, tokens)).cuda()
-    orig_model = MixtralForCausalLM(config).cuda()
-    model = deepcopy(orig_model)
-    optimizer = Adam(model.parameters(), lr=1e-3)
-    plugin = MoeHybridParallelPlugin(
-        pp_size=2,
-        ep_size=2,
-        tp_size=1,
-        checkpoint_io=MoECheckpointIO,
-        microbatch_size=1,
-        zero_stage=1,
-    )
-    booster = Booster(plugin=plugin)
-    model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
-    # initialize grads
-    data_iter = iter(
-        [{"input_ids": input_ids, "attention_mask": torch.ones_like(input_ids), "labels": input_ids.clone()}]
-    )
-    booster.execute_pipeline(
-        data_iter,
-        model,
-        lambda outputs, inputs: outputs.loss,
-        optimizer,
-    )
+    context = tempfile.TemporaryDirectory() if dist.get_rank() == 0 else nullcontext()
+    with context as f:
+        torch.cuda.set_device(dist.get_rank())
+        if dist.get_rank() == 0:
+            broadcast_objects = [f]  # any picklable object
+            print(broadcast_objects)
+        else:
+            broadcast_objects = [None]
+        dist.broadcast_object_list(broadcast_objects, src=0)
 
-    tmpdirname = os.path.join(TEMP_DIR_BASE, TEMP_DIR_NAME)
-    model_dir = os.path.join(tmpdirname, "mixtral_model")
-    hf_model_dir = os.path.join(tmpdirname, "mixtral_hf_model")
-    optim_dir = os.path.join(tmpdirname, "mixtral_optim")
+        config = MixtralConfig(
+            hidden_size=hidden_size,
+            intermediate_size=hidden_size * 2,
+            num_local_experts=n_experts,
+            num_experts_per_tok=top_k,
+            num_attention_heads=2,
+            num_key_value_heads=2,
+        )
+        torch.manual_seed(0)
+        input_ids = torch.randint(0, 100, (2, tokens)).cuda()
+        orig_model = MixtralForCausalLM(config).cuda()
+        model = deepcopy(orig_model)
+        optimizer = Adam(model.parameters(), lr=1e-3)
+        plugin = MoeHybridParallelPlugin(
+            pp_size=2,
+            ep_size=2,
+            tp_size=1,
+            checkpoint_io=MoECheckpointIO,
+            microbatch_size=1,
+            zero_stage=1,
+        )
+        booster = Booster(plugin=plugin)
+        model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
+        # initialize grads
+        data_iter = iter(
+            [{"input_ids": input_ids, "attention_mask": torch.ones_like(input_ids), "labels": input_ids.clone()}]
+        )
+        booster.execute_pipeline(
+            data_iter,
+            model,
+            lambda outputs, inputs: outputs.loss,
+            optimizer,
+        )
 
-    booster.save_model(model, model_dir, shard=True)
-    dist.barrier()
-    if dist.get_rank() == 0:
-        saved_model = MixtralForCausalLM.from_pretrained(model_dir).cuda()
-        check_model_equal(orig_model, saved_model)
-        # check_model_equal(model, saved_model)
-        saved_model.save_pretrained(hf_model_dir)
-    dist.barrier()
-    # check load model
-    new_model = MixtralForCausalLM(config).cuda()
-    new_optimizer = Adam(new_model.parameters(), lr=1e-3)
-    new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
-    booster.load_model(new_model, hf_model_dir)
-    check_model_equal(model, new_model)
+        tmpdirname = broadcast_objects[0]
+        model_dir = os.path.join(tmpdirname, "mixtral_model")
+        hf_model_dir = os.path.join(tmpdirname, "mixtral_hf_model")
+        optim_dir = os.path.join(tmpdirname, "mixtral_optim")
 
-    # check save optimizer
-    optimizer.step()
-    for group in optimizer.param_groups:
-        group["lr"] = 0.1
-    snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    booster.save_optimizer(optimizer, optim_dir, shard=True)
-    dist.barrier()
+        booster.save_model(model, model_dir, shard=True)
+        dist.barrier()
+        if dist.get_rank() == 0:
+            saved_model = MixtralForCausalLM.from_pretrained(model_dir).cuda()
+            check_model_equal(orig_model, saved_model)
+            # check_model_equal(model, saved_model)
+            saved_model.save_pretrained(hf_model_dir)
+        dist.barrier()
+        # check load model
+        new_model = MixtralForCausalLM(config).cuda()
+        new_optimizer = Adam(new_model.parameters(), lr=1e-3)
+        new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
+        booster.load_model(new_model, hf_model_dir)
+        check_model_equal(model, new_model)
 
-    # working2master = optimizer.get_working_to_master_map()
-    # param2name = {id(working2master[id(p)]): n for n, p in model.named_parameters()}
-    # reset optimizer state
-    for state in optimizer.unwrap().state.values():
-        for v in state.values():
-            if isinstance(v, torch.Tensor):
-                v.zero_()
-    booster.load_optimizer(optimizer, optim_dir)
-    loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
-    check_optimizer_snapshot_equal(snapshot, loaded_snapshot, None, model)
-    dist.barrier()
-    if dist.get_rank() == 0:
-        shutil.rmtree(tmpdirname)
+        # check save optimizer
+        optimizer.step()
+        for group in optimizer.param_groups:
+            group["lr"] = 0.1
+        snapshot = get_optimizer_snapshot(optimizer.unwrap())
+        booster.save_optimizer(optimizer, optim_dir, shard=True)
+        dist.barrier()
+
+        # reset optimizer state
+        for state in optimizer.unwrap().state.values():
+            for v in state.values():
+                if isinstance(v, torch.Tensor):
+                    v.zero_()
+        booster.load_optimizer(optimizer, optim_dir)
+        loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
+        check_optimizer_snapshot_equal(snapshot, loaded_snapshot, None, model)
+        # Ensure rank 0 waits for all other ranks to finish
+        dist.barrier()
+        if dist.get_rank() == 0:
+            time.sleep(5)
 
 
 def run_dist(rank: int, world_size: int, port: int):
