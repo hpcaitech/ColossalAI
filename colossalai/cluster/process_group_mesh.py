@@ -90,7 +90,7 @@ class ProcessGroupMesh:
         else:
             return self._shape[dim]
 
-    def coordinate(self, dim: Union[int, List[int]] = None) -> Union[int, Tuple[int, ...]]:
+    def coordinate(self, dim: Optional[int] = None) -> Union[int, Tuple[int, ...]]:
         """Get the coordinate of the process group mesh.
 
         Args:
@@ -101,13 +101,8 @@ class ProcessGroupMesh:
         """
         if dim is None:
             return self._coord
-        elif isinstance(dim, int):
+        else:
             return self._coord[dim]
-        elif isinstance(dim, List):
-            sub_shape = np.array(self._shape)[dim]
-            sub_coord = np.array(self._coord)[dim]
-            sub_rank = np.ravel_multi_index(sub_coord, sub_shape)
-            return sub_rank
 
     @staticmethod
     def unravel(rank: int, shape: Tuple[int, ...]) -> Tuple[int, ...]:

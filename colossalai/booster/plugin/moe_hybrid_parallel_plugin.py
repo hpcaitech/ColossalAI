@@ -341,7 +341,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         sampler = DistributedSampler(
             dataset,
             num_replicas=self.dp_size,
-            rank=self.pg_mesh.coordinate([self.dp_axis, self.ep_axis]),
+            rank=dist.get_rank(self.global_dp_group),
             shuffle=shuffle,
         )
 
