@@ -2,7 +2,6 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 import torch
-import torch.distributed
 import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
@@ -250,7 +249,12 @@ class ColoAttention:
         # sanity check
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
-            if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
+            if attention_mask_type in (
+                AttnMaskType.CUSTOM,
+                AttnMaskType.CAUSAL,
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
                 assert (
                     cu_seqlens_q is None
                     and cu_seqlens_kv is None
@@ -261,18 +265,6 @@ class ColoAttention:
                 )
                 if attention_mask_type == AttnMaskType.CUSTOM:
                     assert not torch.all(attention_mask != 0, dim=-1).any()
-            elif attention_mask_type in (
-                AttnMaskType.PADDED,
-                AttnMaskType.PADDED_CAUSAL,
-            ):
-                assert (
-                    cu_seqlens_q is not None
-                    and cu_seqlens_kv is not None
-                    and max_seqlen_q is not None
-                    and max_seqlen_kv is not None
-                    and q_indices is not None
-                    and kv_indices is not None
-                )
         else:
             # if attention_mask is None, attention_mask_type should be the default value
             assert attention_mask_type == AttnMaskType.CUSTOM
