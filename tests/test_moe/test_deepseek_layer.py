@@ -7,9 +7,9 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer.modeling.deepseek import EPDeepseekMoE
 from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
 from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import DeepseekMoE
-from colossalai.shardformer.modeling.deepseek import EPDeepseekMoE
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4

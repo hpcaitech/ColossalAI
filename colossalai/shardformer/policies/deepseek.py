@@ -4,10 +4,14 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import DeepseekDecoderLayer, DeepseekForCausalLM, DeepseekModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
-from colossalai.shardformer.modeling.deepseek import EPDeepseekMoE, DeepseekPipelineForwards
+from colossalai.shardformer.modeling.deepseek import DeepseekPipelineForwards, EPDeepseekMoE
+from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import (
+    DeepseekDecoderLayer,
+    DeepseekForCausalLM,
+    DeepseekModel,
+)
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["DeepseekPolicy", "DeepseekForCausalLMPolicy"]
