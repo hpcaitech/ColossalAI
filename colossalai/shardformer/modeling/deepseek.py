@@ -2,28 +2,27 @@ from typing import List, Optional
 
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from torch.distributed import ProcessGroup
 
 # from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import (
-    AddAuxiliaryLoss,
-    DeepseekModel,
-    DeepseekMoE,
-    DeepseekForCausalLM,
-    CausalLMOutputWithPast
-)
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
 from transformers.utils import logging
-from transformers.models import Ca
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
+from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import (
+    AddAuxiliaryLoss,
+    CausalLMOutputWithPast,
+    DeepseekForCausalLM,
+    DeepseekModel,
+    DeepseekMoE,
+)
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
+
 
 class EPDeepseekMoE(DeepseekMoE):
     def __init__(self, config: DeepseekConfig):
@@ -95,9 +94,7 @@ class EPDeepseekMoE(DeepseekMoE):
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
         output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(
-            output_states, output_split_list, input_split_list, self.ep_group
-        ) 
+        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
             flat_topk_token_idx.size(0), device=flat_topk_token_idx.device
@@ -112,7 +109,6 @@ class EPDeepseekMoE(DeepseekMoE):
             output_hidden_states = output_hidden_states + self.shared_experts(identity)
         return output_hidden_states
 
-        
 
 class DeepseekPipelineForwards:
     """
@@ -298,11 +294,7 @@ class DeepseekPipelineForwards:
         next_cache = next_decoder_cache if use_cache else None
 
         if stage_manager.is_last_stage():
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns]
-                if v is not None
-            )
+            return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
         # always return dict for imediate stage
         return {
             "hidden_states": hidden_states,
@@ -402,7 +394,6 @@ class DeepseekPipelineForwards:
                 # Enable model parallelism
                 shift_labels = shift_labels.to(shift_logits.device)
                 loss = loss_fct(shift_logits, shift_labels)
-
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
