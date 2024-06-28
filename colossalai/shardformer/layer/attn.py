@@ -24,7 +24,10 @@ __all__ = [
 ]
 
 _flash_attn_forward = _flash_attn_backward = None
+<<<<<<< HEAD
 _unpad_input = _pad_input = None
+=======
+>>>>>>> halfway
 
 
 class AttnMaskType(Enum):
@@ -252,7 +255,12 @@ class ColoAttention:
         # sanity check
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
-            if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
+            if attention_mask_type in (
+                AttnMaskType.CUSTOM,
+                AttnMaskType.CAUSAL,
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
                 assert (
                     cu_seqlens_q is None
                     and cu_seqlens_kv is None
