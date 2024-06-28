@@ -58,14 +58,6 @@ class ChatGLMPolicy(Policy):
             else:
                 norm_cls = col_nn.LayerNorm
 
-        if self.pipeline_stage_manager is not None:
-            self.shard_config.enable_sequence_parallelism = False
-            self.shard_config.enable_sequence_overlap = False
-            self.shard_config.sequence_parallelism_mode = None
-            warnings.warn(
-                f"For ChatGLM, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
-            )
-
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
