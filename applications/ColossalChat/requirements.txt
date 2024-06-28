@@ -1,4 +1,4 @@
-transformers==4.36.2
+transformers==4.39.3
 tqdm
 datasets==2.14.7
 loralib
