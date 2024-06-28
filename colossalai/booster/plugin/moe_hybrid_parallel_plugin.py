@@ -32,8 +32,6 @@ from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
-logger = get_dist_logger()
-
 
 class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
     def __init__(
@@ -165,6 +163,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         pp_size: int,
         ep_size: int,
         tp_size: int = 1,
+        sp_size: int = 1,
         precision: str = "fp16",
         zero_stage: int = 0,
         enable_all_optimization: bool = False,
@@ -199,22 +198,20 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     ) -> None:
         world_size = dist.get_world_size()
         assert tp_size == 1, "Tensor parallel is not supported in MoE yet"
-        assert (
-            world_size % (tp_size * pp_size) == 0
-        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
+        assert sp_size == 1 and enable_sequence_parallelism is False, "Sequence parallelism it not supported in MoE yet"
 
-        if enable_sequence_parallelism:
-            assert tp_size > 1, "Sequence parallelism must be enabled when using tensor parallelism"
         assert (
             world_size % (tp_size * pp_size) == 0
         ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
         assert (
             world_size % (tp_size * pp_size * ep_size) == 0
         ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
+
         self.dp_size = world_size // (tp_size * pp_size)
         self.tp_size = tp_size
         self.pp_size = pp_size
         self.ep_size = ep_size
+        self.sp_size = sp_size
         self.precision = precision
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
@@ -224,6 +221,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.checkpoint_io = checkpoint_io
+
+        logger = get_dist_logger()
 
         # NOTE: Two process meshes: global dp for non-moe param; dp + ep for moe param
         # See https://hpc-ai.com/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient
@@ -235,19 +234,21 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.moe_dp_size = self.dp_size // self.ep_size
         self.use_ep_inside = use_ep_inside
         if self.use_ep_inside:
-            logger.info(f"MoE Parallel use ep inside dp.")
+            logger.info(f"MoE Parallel use ep inside dp.", ranks=[0])
             self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.moe_dp_size, ep_size, tp_size)
         else:
-            logger.info(f"MoE Parallel use ep outside dp.")
+            logger.info(f"MoE Parallel use ep outside dp.", ranks=[0])
             warnings.warn("Using ep outside dp (cross-node) is strongly discouraged due to communication costs.")
             self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 2, 1, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, ep_size, self.moe_dp_size, tp_size)
 
         self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
         self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
-        logger.info(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}")
-        logger.info(f"MoE Parallel: pp {self.pp_size}, ep {ep_size}, moe dp {self.moe_dp_size}, tp {tp_size}")
+        logger.info(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}", ranks=[0])
+        logger.info(
+            f"MoE Parallel: pp {self.pp_size}, ep {ep_size}, moe dp {self.moe_dp_size}, tp {tp_size}", ranks=[0]
+        )
 
         self.tp_group = self.pg_mesh.get_group_along_axis(
             self.tp_axis
