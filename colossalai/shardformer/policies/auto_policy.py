@@ -68,6 +68,9 @@ _POLICY_LIST = {
         file_name="t5", class_name="T5ForConditionalGenerationPolicy"
     ),
     "transformers.models.t5.modeling_t5.T5EncoderModel": PolicyLocation(file_name="t5", class_name="T5EncoderPolicy"),
+    "transformers.models.t5.modeling_t5.T5ForTokenClassification": PolicyLocation(
+        file_name="t5", class_name="T5ForTokenClassificationPolicy"
+    ),
     # GPT2
     "transformers.models.gpt2.modeling_gpt2.GPT2Model": PolicyLocation(file_name="gpt2", class_name="GPT2ModelPolicy"),
     "transformers.models.gpt2.modeling_gpt2.GPT2LMHeadModel": PolicyLocation(

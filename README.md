@@ -9,6 +9,7 @@
    <a href="https://www.colossalai.org/"> Documentation </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/tree/main/examples"> Examples </a> |
    <a href="https://github.com/hpcaitech/ColossalAI/discussions"> Forum </a> |
+   <a href="https://cloud.luchentech.com/">GPU Cloud Playground </a> |
    <a href="https://hpc-ai.com/blog"> Blog </a></h3>
 
    [![GitHub Repo stars](https://img.shields.io/github/stars/hpcaitech/ColossalAI?style=social)](https://github.com/hpcaitech/ColossalAI/stargazers)
@@ -132,6 +133,8 @@ distributed training and inference in a few lines.
 [[blog]](https://hpc-ai.com/blog/open-sora-from-hpc-ai-tech-team-continues-open-source-generate-any-16-second-720p-hd-video-with-one-click-model-weights-ready-to-use)
 [[Model weights]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#model-weights)
 [[Demo]](https://github.com/hpcaitech/Open-Sora?tab=readme-ov-file#-latest-demo)
+[[GPU Cloud Playground]](https://cloud.luchentech.com/)
+[[OpenSora Image]](https://cloud.luchentech.com/doc/docs/image/open-sora/)
 
 <div align="center">
    <a href="https://youtu.be/ilMQpU71ddI?si=J4JSPzZ03ycYmlki">
@@ -142,6 +145,9 @@ distributed training and inference in a few lines.
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 ### Colossal-LLaMA-2
+
+[[GPU Cloud Playground]](https://cloud.luchentech.com/)
+[[LLaMA3 Image]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 - 7B: One half-day of training using a few hundred dollars yields similar results to mainstream large models, open-source and commercial-free domain-specific LLM solution.
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Colossal-LLaMA-2)
@@ -275,6 +281,8 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 
 - 70 billion parameter LLaMA3 model training accelerated by 18%
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/llama)
+[[GPU Cloud Playground]](https://cloud.luchentech.com/)
+[[LLaMA3 Image]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 ### LLaMA2
 <p align="center">
@@ -385,6 +393,8 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
  - Large AI models inference speed doubled, compared to the offline inference performance of vLLM in some cases.
 [[code]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
 [[blog]](https://hpc-ai.com/blog/colossal-inference)
+[[GPU Cloud Playground]](https://cloud.luchentech.com/)
+[[LLaMA3 Image]](https://cloud.luchentech.com/doc/docs/image/llama)
 
 ### Grok-1
 <p id="Grok-1" align="center">

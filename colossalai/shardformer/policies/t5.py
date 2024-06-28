@@ -31,7 +31,13 @@ from ..modeling.t5 import (
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["distribute_t5_layers", "T5ModelPolicy", "T5ForConditionalGenerationPolicy", "T5EncoderPolicy"]
+__all__ = [
+    "distribute_t5_layers",
+    "T5ModelPolicy",
+    "T5ForConditionalGenerationPolicy",
+    "T5EncoderPolicy",
+    "T5ForTokenClassificationPolicy",
+]
 
 
 class T5BasePolicy(Policy):
@@ -312,9 +318,13 @@ class T5BasePolicy(Policy):
         assert self.pipeline_stage_manager is not None
         stage_manager = self.pipeline_stage_manager
 
-        model = self.model
-        encoder = self.model.encoder
-        decoder = getattr(self.model, "decoder", None)
+        if self.model.__class__.__name__ == "T5ForTokenClassification":
+            model = self.model.transformer
+        else:
+            model = self.model
+
+        encoder = model.encoder
+        decoder = getattr(model, "decoder", None)
 
         num_encoder_layers = len(encoder.block)
         num_decoder_layers = len(decoder.block) if decoder else 0
@@ -353,7 +363,11 @@ class T5BasePolicy(Policy):
             raise ValueError("set_pipeline_forward method can only be called when pipeline parallel is enabled.")
         stage_manager = self.pipeline_stage_manager
 
-        encoder = self.model.encoder
+        if self.model.__class__.__name__ == "T5ForTokenClassification":
+            encoder = self.model.transformer.encoder
+        else:
+            encoder = self.model.encoder
+
         decoder = getattr(self.model, "decoder", None)
 
         num_encoder_layers = len(encoder.block)
@@ -541,4 +555,47 @@ class T5EncoderPolicy(T5BasePolicy):
         return super().get_held_layers()
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        return []
+
+
+class T5ForTokenClassificationPolicy(T5EncoderPolicy):
+    def module_policy(self):
+        from transformers.models.t5.modeling_t5 import T5ForTokenClassification
+
+        policy = super().module_policy()
+
+        if self.shard_config.enable_tensor_parallelism:
+            addon_module = {
+                T5ForTokenClassification: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="dropout",
+                            target_module=DropoutForParallelInput,
+                        )
+                    ]
+                )
+            }
+            policy.update(addon_module)
+        if self.pipeline_stage_manager:
+            self.set_pipeline_forward(
+                model_cls=T5ForTokenClassification,
+                new_forward=T5PipelineForwards.t5_for_token_classification_forward,
+                policy=policy,
+            )
+
+        return policy
+
+    def get_held_layers(self) -> List[nn.Module]:
+        """
+        get pipeline layers for current stage
+        """
+        held_layers = super().get_held_layers()
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_last_stage(ignore_chunk=True):
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        # no shared params for sequence classification model
         return []

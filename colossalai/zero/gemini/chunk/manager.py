@@ -133,12 +133,12 @@ class ChunkManager:
             self.__sub_accessed_chunk(chunk)
             self.__add_memory_usage(chunk.memory_usage)
 
-    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
+    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False, async_move=False) -> None:
         """Move the shard of the chunk to the target device."""
         if not chunk.can_move or chunk.device_type == device.type:
             return
         self.__sub_memory_usage(chunk.memory_usage)
-        chunk.shard_move(device, force_copy)
+        chunk.shard_move(device, force_copy, non_blocking=async_move)
         self.__add_memory_usage(chunk.memory_usage)
 
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:
