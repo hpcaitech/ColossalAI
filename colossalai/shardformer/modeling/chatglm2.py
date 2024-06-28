@@ -207,6 +207,13 @@ class ChatGLMPipelineForwards:
                     dim=0,
                     process_group=shard_config.tensor_parallel_process_group,
                 )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=1 / shard_config.sequence_parallel_size,
+                )
         for idx in range(start_idx, end_idx):
             layer = self.encoder._get_layer(idx)
             if output_hidden_states:
@@ -238,6 +245,13 @@ class ChatGLMPipelineForwards:
                     hidden_states,
                     dim=0,
                     process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=shard_config.sequence_parallel_size,
                 )
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)

@@ -1,4 +1,3 @@
-import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -81,14 +80,6 @@ class Qwen2Policy(Policy):
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
         norm_cls = FusedRMSNorm if self.shard_config.enable_fused_normalization else RMSNorm
-
-        if self.pipeline_stage_manager is not None:
-            self.shard_config.enable_sequence_parallelism = False
-            self.shard_config.enable_sequence_overlap = False
-            self.shard_config.sequence_parallelism_mode = None
-            warnings.warn(
-                f"For Qwen2, sequence parallelism is currently not compatible with pipeline parallelism, set to be False"
-            )
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
