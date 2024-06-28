@@ -29,6 +29,7 @@ from colossalai.shardformer.layer._operation import (
     gather_forward_split_backward,
     split_forward_gather_backward,
 )
+from colossalai.shardformer.layer.utils import ring_attn_split_forward
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, dist_cross_entropy
@@ -633,6 +634,7 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
             if not isinstance(past_key_values, StaticCache):
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
                 past_seen_tokens = past_key_values.get_seq_length()
+
         if cache_position is None:
             if isinstance(past_key_values, StaticCache):
                 raise ValueError("cache_position is a required argument when using StaticCache.")
@@ -776,6 +778,14 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+        sp_mode = shard_config.sequence_parallelism_mode
+        sp_group = self.shard_config.sequence_parallel_process_group
+        assert not (
+            shard_config.sp_mode == "ring_attn" and use_cache
+        ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
+        if sp_mode == "ring_attn":
+            inputs_embeds = ring_attn_split_forward(inputs_embeds, sp_group)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(

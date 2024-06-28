@@ -42,7 +42,7 @@ from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_hand
 
 from .pp_plugin_base import PipelinePluginBase
 
-SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
+SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all", "ring_attn"]
 
 PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
 

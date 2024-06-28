@@ -289,3 +289,29 @@ def create_randomizer_with_offset(
         Randomizer.increment_index()
 
     return Randomizer(seed=base_seed)
+
+
+def ring_attn_split_forward(hidden_states: torch.Tensor, sp_group):
+    """
+    Split the input along the sequence dimension. As naively spliting sequence
+    in the causual setting will result in the first ranks having much less workload than the last ranks,
+    we split after "folding" the 2D attention mask in half (https://github.com/zhuzilin/ring-flash-attention/issues/2).
+    For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
+
+    Args:
+        hidden_states (torch.Tensor): The input tensor to split, with shape (bs, n_heads, seq_len, head_dim)
+        sp_group (ProcessGroup): The process group for sequence parallelism.
+
+    Returns:
+        torch.Tensor: The split tensor with shape (bs, n_heads, 2 * seq_len // sp_size, head_dim)
+    """
+    assert hidden_states.dim() == 4, "The input tensor must have 4 dimensions (bs, n_heads, seq_len, head_dim)."
+    b, n, s, d = hidden_states.shape
+    sp_size = dist.get_world_size(sp_group)
+
+    if sp_size > 1:
+        sp_rank = dist.get_rank(sp_group)
+        hidden_states = hidden_states.view(b, n, s // (sp_size * 2), sp_size * 2, d)
+        indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=hidden_states.device)
+        return hidden_states.index_select(3, indices).view(b, n, 2 * s // sp_size, d)
+    return hidden_states
