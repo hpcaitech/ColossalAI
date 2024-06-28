@@ -1,6 +1,5 @@
 import os
 import tempfile
-import time
 from contextlib import nullcontext
 from copy import deepcopy
 
@@ -84,7 +83,6 @@ def check_mixtral_moe_layer():
         torch.cuda.set_device(dist.get_rank())
         if dist.get_rank() == 0:
             broadcast_objects = [f]  # any picklable object
-            print(broadcast_objects)
         else:
             broadcast_objects = [None]
         dist.broadcast_object_list(broadcast_objects, src=0)
@@ -161,8 +159,6 @@ def check_mixtral_moe_layer():
         check_optimizer_snapshot_equal(snapshot, loaded_snapshot, None, model)
         # Ensure rank 0 waits for all other ranks to finish
         dist.barrier()
-        if dist.get_rank() == 0:
-            time.sleep(5)
 
 
 def run_dist(rank: int, world_size: int, port: int):
