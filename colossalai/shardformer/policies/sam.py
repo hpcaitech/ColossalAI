@@ -1,5 +1,3 @@
-import warnings
-
 import colossalai.shardformer.layer as col_nn
 
 from ..modeling.sam import forward_fn
@@ -211,24 +209,6 @@ class SamPolicy(Policy):
             policy=policy,
             target_key=SamTwoWayTransformer,
         )
-
-        # use flash attention
-        if self.shard_config.enable_flash_attention:
-            warnings.warn("Flash attention is not supported in SAM model. Fallback to normal attention.")
-            # self.append_or_create_method_replacement(
-            #     description={
-            #         "forward": get_sam_flash_attention_forward(),
-            #     },
-            #     policy=policy,
-            #     target_key=SamAttention,
-            # )
-            # self.append_or_create_method_replacement(
-            #     description={
-            #         "forward": get_sam_vision_flash_attention_forward(),
-            #     },
-            #     policy=policy,
-            #     target_key=SamVisionAttention,
-            # )
 
         return policy
 
