@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 
 from colossalai.kernel.kernel_loader import (
@@ -15,6 +16,8 @@ __all__ = [
     "AttnMaskType",
     "ColoAttention",
 ]
+
+_flash_attn_forward = _flash_attn_backward = None
 
 
 class AttnMaskType(Enum):
@@ -226,7 +229,12 @@ class ColoAttention:
         # sanity check
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
-            if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
+            if attention_mask_type in (
+                AttnMaskType.CUSTOM,
+                AttnMaskType.CAUSAL,
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
                 assert (
                     cu_seqlens_q is None
                     and cu_seqlens_kv is None
@@ -237,18 +245,6 @@ class ColoAttention:
                 )
                 if attention_mask_type == AttnMaskType.CUSTOM:
                     assert not torch.all(attention_mask != 0, dim=-1).any()
-            elif attention_mask_type in (
-                AttnMaskType.PADDED,
-                AttnMaskType.PADDED_CAUSAL,
-            ):
-                assert (
-                    cu_seqlens_q is not None
-                    and cu_seqlens_kv is not None
-                    and max_seqlen_q is not None
-                    and max_seqlen_kv is not None
-                    and q_indices is not None
-                    and kv_indices is not None
-                )
         else:
             # if attention_mask is None, attention_mask_type should be the default value
             assert attention_mask_type == AttnMaskType.CUSTOM
@@ -274,3 +270,101 @@ class ColoAttention:
             q_indices=q_indices,
             kv_indices=kv_indices,
         )
+
+
+def _load_flash_attn():
+    global _flash_attn_forward, _flash_attn_backward
+    if _flash_attn_forward is not None and _flash_attn_backward is not None:
+        return
+    from flash_attn.flash_attn_interface import _flash_attn_varlen_backward as _flash_attn_backward
+    from flash_attn.flash_attn_interface import _flash_attn_varlen_forward as _flash_attn_forward
+
+
+def ring_attn_p2p_comm(rank, send_tensor, recv_tensor, send_src, recv_src, sp_group):
+    """No metadata as K, V sizes are fixed"""
+    if rank % 2 == 0:
+        send_op = dist.P2POp(dist.isend, send_tensor, send_src, group=sp_group)
+        recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_src, group=sp_group)
+        send_recv_ops = [send_op, recv_op]
+    else:
+        recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_src, group=sp_group)
+        send_op = dist.P2POp(dist.isend, send_tensor, send_src, group=sp_group)
+        send_recv_ops = [recv_op, send_op]
+
+    reqs = dist.batch_isend_irecv(send_recv_ops)
+    return reqs
+
+
+class RingAttention(torch.autograd.Function):
+    """Implements the Ring Attention from `Ring Attention with Blockwise Transformers for Near-Infinite Context`
+    (https://arxiv.org/abs/2310.01889).
+    We referenced the context parallel in Megatron-LM, with several critical optimizations
+    such as removing the negative optimization of using two streams, torch.compile and reusing K, V buffers.
+    For load-balancing we adopted the "zigzag" attention scheme from https://github.com/zhuzilin/ring-flash-attention/tree/main
+    For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
+    which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
+    implemented in Jax and not optimized).
+
+    """
+
+    # TODO: pad to multiple of cp_size
+    @staticmethod
+    def forward(
+        ctx,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask_type: AttnMaskType = AttnMaskType.CUSTOM,
+        cu_seqlens_q: Optional[torch.Tensor] = None,
+        cu_seqlens_kv: Optional[torch.Tensor] = None,
+        max_seqlen_q: Optional[int] = None,
+        max_seqlen_kv: Optional[int] = None,
+        q_indices: Optional[torch.Tensor] = None,
+        kv_indices: Optional[torch.Tensor] = None,
+        dropout_p: float = 0.0,
+        scale: Optional[float] = None,
+    ):
+        """
+        Args:
+            q (torch.Tensor): Query tensor. Shape should be [B, N, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, N, Skv, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, N, Skv, D]
+            attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. Defaults to None.
+            attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
+            cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
+                of the sequences in the batch, used to index into q.
+                Shape should be [B+1]. Defaults to None.
+            cu_seqlens_kv (Optional[torch.Tensor], optional): The cumulative sequence lengths
+                of the sequences in the batch, used to index into kv.
+                Shape should be [B+1]. Defaults to None.
+            max_seqlen_q (Optional[int], optional): Maximum query sequence length in the batch. Defaults to None.
+            max_seqlen_kv (Optional[int], optional): Maximum key/value sequence length in the batch. Defaults to None.
+            indices (Optional[torch.Tensor], optional): The indices of non-masked tokens from the flattened input sequence.
+                Shape should be [NUM_TOKENS]. Defaults to None.
+            dropout_p (float, optional): Dropout probability. Defaults to 0.0.
+            scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
+
+        Returns:
+            torch.Tensor: Output tensor. Shape should be [B, N, Sq, D]
+        """
+        if attention_mask is not None:
+            assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
+            assert attention_mask_type in (
+                AttnMaskType.PADDED_CAUSAL,
+                AttnMaskType.CAUSAL,
+            ), "Ring attention doesn't support non-causal attention"
+            assert (
+                cu_seqlens_q is not None
+                and cu_seqlens_kv is not None
+                and max_seqlen_q is not None
+                and max_seqlen_kv is not None
+                and q_indices is not None
+                and kv_indices is not None
+            )
+        try:
+            _load_flash_attn()
+        except Exception as e:
+            raise RuntimeError(
+                f"Ring attention requires Flash Attention, but import failed. You can re-install it via 'pip install flash-attn --no-build-isolation'"
+            ) from e
