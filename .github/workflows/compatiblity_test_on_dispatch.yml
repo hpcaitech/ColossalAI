@@ -50,7 +50,7 @@ jobs:
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
       image: ${{ matrix.container }}
-      options: --gpus all --rm -v /dev/shm -v /data/scratch/cifar-10:/data/scratch/cifar-10 -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/:/data/scratch/
     timeout-minutes: 200
     steps:
       - name: Install dependencies
@@ -92,3 +92,4 @@ jobs:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
+          MOE_TENSOR_PATH: /data/scratch/moe_tensors

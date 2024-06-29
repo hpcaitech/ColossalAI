@@ -176,6 +176,7 @@ _POLICY_LIST = {
     "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
         file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
     ),
+    # mistral
     "transformers.models.mistral.modeling_mistral.MistralModel": PolicyLocation(
         file_name="mistral", class_name="MistralModelPolicy"
     ),
@@ -184,6 +185,13 @@ _POLICY_LIST = {
     ),
     "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
         file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
+    ),
+    # mixtral
+    "transformers.models.mixtral.modeling_mixtral.MixtralModel": PolicyLocation(
+        file_name="mixtral", class_name="MixtralModelPolicy"
+    ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
+        file_name="mixtral", class_name="MixtralForCausalLMPolicy"
     ),
     # Qwen2
     "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(
@@ -195,7 +203,7 @@ _POLICY_LIST = {
     "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
         file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
-    # Command-R
+    # command
     "transformers.models.cohere.modeling_cohere.CohereModel": PolicyLocation(
         file_name="command", class_name="CommandModelPolicy"
     ),

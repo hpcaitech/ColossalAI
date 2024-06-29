@@ -13,7 +13,7 @@ jobs:
     runs-on: [self-hosted, gpu]
     container:
       image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
-      options: --gpus all --rm -v /dev/shm -v /data/scratch/llama-tiny:/data/scratch/llama-tiny
+      options: --gpus all --rm -v /dev/shm -v /data/scratch/:/data/scratch/
     timeout-minutes: 90
     steps:
       - name: Check GPU Availability # ensure all GPUs have enough memory
@@ -69,6 +69,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
+          MOE_TENSOR_PATH: /data/scratch/moe_tensors
 
       - name: Notify Lark
         id: message-preparation
