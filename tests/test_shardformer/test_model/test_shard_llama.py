@@ -59,6 +59,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if (
         booster.plugin.zero_stage in [1, 2]
         and booster.plugin.shard_config.enable_sequence_parallelism
+        and booster.plugin.shard_config.pipeline_stage_manager is None 
         and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
     ):
         for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
