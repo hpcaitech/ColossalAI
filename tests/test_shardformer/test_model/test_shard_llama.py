@@ -62,8 +62,11 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         and booster.plugin.shard_config.pipeline_stage_manager is None 
         and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
     ):
-        for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
-            working_p = sharded_optimizer.master_to_working_param[id(p2)]
+        master2working = sharded_optimizer.get_master_to_working_map()
+        for (name, p1), p2 in zip(
+            llama_model.named_parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]
+        ):
+            working_p = master2working[id(p2)]
             grads = sharded_optimizer.get_partitioned_gradients_by_param_id(0, id(working_p))
             grad_index = (
                 0
