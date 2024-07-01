@@ -120,12 +120,8 @@ def check_moe_checkpoint(test_config):
 
         config = test_config[0]
         model_cls = test_config[1]
-        if dist.get_rank() == 0:
-            print(model_cls)
         torch.manual_seed(0)
         input_ids = torch.randint(0, 100, (2, tokens)).cuda()
-        # orig_model = MixtralForCausalLM(config).cuda()
-        # orig_model = DeepseekForCausalLM(config).cuda()
         orig_model = model_cls(config).cuda()
         model = deepcopy(orig_model)
         optimizer = Adam(model.parameters(), lr=1e-3)
@@ -157,16 +153,12 @@ def check_moe_checkpoint(test_config):
         booster.save_model(model, model_dir, shard=True)
         dist.barrier()
         if dist.get_rank() == 0:
-            # saved_model = MixtralForCausalLM.from_pretrained(model_dir).cuda()
-            # saved_model = DeepseekForCausalLM.from_pretrained(model_dir).cuda()
             saved_model = model_cls.from_pretrained(model_dir).cuda()
             check_model_equal(orig_model, saved_model)
             # check_model_equal(model, saved_model)
             saved_model.save_pretrained(hf_model_dir)
         dist.barrier()
         # check load model
-        # new_model = MixtralForCausalLM(config).cuda()
-        # new_model = DeepseekForCausalLM(config).cuda()
         new_model = model_cls(config).cuda()
         new_optimizer = Adam(new_model.parameters(), lr=1e-3)
         new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
