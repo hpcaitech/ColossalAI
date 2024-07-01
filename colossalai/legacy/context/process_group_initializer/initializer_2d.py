@@ -138,9 +138,7 @@ class Initializer_2D(ProcessGroupInitializer):
         self.num_group = self.world_size // self.tensor_parallel_size
         self.summa_dim = int(math.sqrt(self.tensor_parallel_size))
 
-        assert (
-            self.tensor_parallel_size == self.summa_dim**2
-        ), "2D summa dim should equal to tensor parallel size ^ 0.5"
+        assert self.tensor_parallel_size == self.summa_dim**2, "2D summa dim should equal to tensor parallel size ^ 0.5"
         _check_summa_env_var(self.summa_dim)
 
         self.col_initializer = Initializer_2D_Col(self.num_group, self.summa_dim, *args, **kwargs)

@@ -2,7 +2,6 @@
 Class for loading table type data. please refer to Pandas-Input/Output for file format details.
 """
 
-
 import glob
 import os
 

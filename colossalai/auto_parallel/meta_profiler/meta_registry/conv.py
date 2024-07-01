@@ -107,20 +107,22 @@ def convnd_meta_info(*args, **kwargs) -> Tuple[TrainCycleItem, TrainCycleItem, L
     # NOTE: currently in SPMD solver we always believe that there will be a new tensor created in forward
     fwd_memory_cost = MemoryCost(
         activation=compute_size_in_bytes([input_tensor, output_tensor]),
-        parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
-        if has_bias
-        else compute_size_in_bytes(weight_tensor),
+        parameter=(
+            compute_size_in_bytes([weight_tensor, bias_tensor]) if has_bias else compute_size_in_bytes(weight_tensor)
+        ),
         temp=0,
         buffer=0,
     )
 
     bwd_memory_cost = MemoryCost(
-        activation=compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor])
-        if has_bias
-        else compute_size_in_bytes([input_tensor, weight_tensor]),
-        parameter=compute_size_in_bytes([weight_tensor, bias_tensor])
-        if has_bias
-        else compute_size_in_bytes(weight_tensor),
+        activation=(
+            compute_size_in_bytes([input_tensor, weight_tensor, bias_tensor])
+            if has_bias
+            else compute_size_in_bytes([input_tensor, weight_tensor])
+        ),
+        parameter=(
+            compute_size_in_bytes([weight_tensor, bias_tensor]) if has_bias else compute_size_in_bytes(weight_tensor)
+        ),
         temp=0,
         buffer=0,
     )

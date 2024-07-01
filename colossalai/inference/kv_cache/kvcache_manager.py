@@ -279,9 +279,11 @@ class KVCacheManager:
             block.add_ref()
             self._allocate_on_block(
                 block,
-                block.block_size
-                if context_lengths[i] % block.block_size == 0
-                else context_lengths[i].item() % block.block_size,
+                (
+                    block.block_size
+                    if context_lengths[i] % block.block_size == 0
+                    else context_lengths[i].item() % block.block_size
+                ),
             )
         for block_id in alloc_block_ids:
             if block_id in alloc_block_ids[last_block_locs]:

@@ -57,7 +57,11 @@ ceval_subject_mapping = {
     "urban_and_rural_planner": ["Urban and Rural Planner", "注册城乡规划师", "Other"],
     "accountant": ["Accountant", "注册会计师", "Other"],
     "fire_engineer": ["Fire Engineer", "注册消防工程师", "Other"],
-    "environmental_impact_assessment_engineer": ["Environmental Impact Assessment Engineer", "环境影响评价工程师", "Other"],
+    "environmental_impact_assessment_engineer": [
+        "Environmental Impact Assessment Engineer",
+        "环境影响评价工程师",
+        "Other",
+    ],
     "tax_accountant": ["Tax Accountant", "税务师", "Other"],
     "physician": ["Physician", "医师资格", "Other"],
 }
