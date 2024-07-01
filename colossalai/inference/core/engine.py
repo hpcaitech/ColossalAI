@@ -575,7 +575,6 @@ class InferenceEngine:
         """
 
         gen_config_dict = generation_config.to_dict() if generation_config is not None else {}
-        self.logger.info(f"gen_config_dict: {gen_config_dict}")
         prompts = [prompts] if isinstance(prompts, str) else prompts
         request_ids = [request_ids] if isinstance(request_ids, int) else request_ids
 
@@ -618,7 +617,7 @@ class InferenceEngine:
                 else:
                     return output_str
             elif self.model_type == ModelType.DIFFUSION_MODEL:
-                # TODO process the output
+                # TODO(@lry89757) process the output
                 return output_reqs_list
 
     @property
@@ -656,7 +655,7 @@ class InferenceEngine:
             prompts (Union[List[str], optional): Input prompts. Defaults to None.
             prompts_token_ids (List[List[int]], optional): token ids of input prompts. Defaults to None.
             kwargs: for LLM, it could be max_length, max_new_tokens
-                    for diffusion, it could be prompt_2, prompt_3, num_images_per_prompt, do_classifier_free_guidance, negative_prompt, negative_prompt_2, negative_prompt_3, prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds, clip_skip, which aligns with
+                    for diffusion, it could be prompt_2, prompt_3, num_images_per_prompt, do_classifier_free_guidance, negative_prompt, negative_prompt_2, negative_prompt_3, prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds, clip_skip, which aligns with Diffusers
         """
 
         if self.model_type == ModelType.DIFFUSION_MODEL:
@@ -847,7 +846,6 @@ class InferenceEngine:
         return ret
 
     def step_diffusion(self, input: Sequence_):
-        print(f"generation config step: {input.generation_config.to_dict()}")
         ret = self.model(prompt=input.prompt, **input.generation_config.to_dict())
         return ret
 

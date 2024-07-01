@@ -2,7 +2,7 @@ from torch import nn
 
 from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.modeling.models.diffusion import DiffusionPipe
-from colossalai.inference.modeling.models.stable_diffusion3 import sd3_forward
+from colossalai.inference.modeling.models.stablediffusion3 import sd3_forward
 from colossalai.shardformer.policies.base_policy import Policy
 
 

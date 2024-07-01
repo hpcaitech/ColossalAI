@@ -1,4 +1,4 @@
-# This code is adapted from huggingface diffusers: https://github.com/huggingface/diffusers/tree/v0.29.0-release/src/transformers/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py TODO Currently there isn't a permanet link for us to refer
+# This code is adapted from huggingface diffusers: https://github.com/huggingface/diffusers/blob/v0.29.0-release/src/diffusers/pipelines/stable_diffusion_3/pipeline_stable_diffusion_3.py
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch

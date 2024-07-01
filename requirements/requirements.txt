@@ -23,4 +23,4 @@ rpyc==6.0.0
 fastapi
 uvicorn==0.29.0
 galore_torch
-diffusers
+diffusers==0.29.0

@@ -1,3 +1,6 @@
+# Code adapted from:
+# https://github.com/huggingface/diffusers/blob/v0.29.0-release/src/diffusers/pipelines/pixart_alpha/pipeline_pixart_alpha.py
+
 from typing import Callable, List, Optional, Union
 
 import PIL.Image
