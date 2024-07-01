@@ -39,11 +39,11 @@ class DeepseekPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             raise NotImplementedError(
-                "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+                "Deepseek dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
             )
 
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
+            raise NotImplementedError("Tensor parallelism is not supported for Deepseek model now.")
         if getattr(self.shard_config, "ep_group", None) is None:
             raise ValueError("You must pass in ep_group via shard_config for expert parallel!")
 
@@ -117,7 +117,7 @@ class DeepseekPolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "MixtralModel":
+        if self.model.__class__.__name__ == "DeepseekModel":
             module = self.model
         else:
             module = self.model.model
@@ -145,7 +145,7 @@ class DeepseekModelPolicy(DeepseekPolicy):
             # set None as default
             self.set_pipeline_forward(
                 model_cls=DeepseekModel,
-                new_forward=DeepseekPipelineForwards.mixtral_model_forward,
+                new_forward=DeepseekPipelineForwards.deepseek_model_forward,
                 policy=policy,
             )
         return policy
