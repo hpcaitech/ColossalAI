@@ -57,7 +57,7 @@ class ChatGLMPolicy(Policy):
             else:
                 norm_cls = col_nn.LayerNorm
 
-        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
         assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for ChatGLM2"
         if sp_mode == "ring":
             warnings.warn(

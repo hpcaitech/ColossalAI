@@ -18,8 +18,9 @@ from colossalai.inference.modeling.policy import (
     model_policy_map,
 )
 from colossalai.inference.sampler import search_tokens
-from colossalai.inference.utils import get_model_size
+from colossalai.inference.utils import get_model_size, has_index_file
 from colossalai.interface import ModelWrapper
+from colossalai.lazy import LazyInitContext
 from colossalai.logging import get_dist_logger
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig, ShardFormer
@@ -178,20 +179,23 @@ class rpcWorkerService(rpyc.Service):
             model_policy (Policy): the policy to replace the model
         """
 
+        pretrained_path = None
         if isinstance(model_or_path, str):
-            # is_local = os.path.isdir(model_or_path)
+            import colossalai.interface.pretrained as pretrained_utils
+
             try:
-                hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+                hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True, torch_dtype=self.dtype)
                 arch = getattr(hf_config, "architectures")[0]
-                # NOTE(lry89757) Currently we load the model using transformers-api,
-                # but we will use lazy tensor and checkpoint io to accelerate
-                # the model load process in the future.
-                model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
-                # if is_local:
-                #     model = _SUPPORTED_MODELS[arch](hf_config)
-                # else:
-                #     # load the real checkpoint
-                #     model = _SUPPORTED_MODELS[arch].from_pretrained(model_or_path, trust_remote_code=True)
+                if arch is "BaichuanForCausalLM":
+                    self.logger.warning(
+                        "Attention ! We use lazy init by default, which could be faster for model loading. For baichuan model, the output maybe have a slight difference with transformers"
+                    )
+                ctx = LazyInitContext(default_device="cuda")
+                with ctx:
+                    model = _SUPPORTED_MODELS[arch].from_pretrained(
+                        model_or_path, trust_remote_code=True, torch_dtype=self.dtype
+                    )
+                pretrained_path = pretrained_utils.get_pretrained_path(model)
             except Exception as e:
                 logger.error(
                     f"An exception occurred during loading model: {e}, model should be loaded by transformers\n"
@@ -240,14 +244,13 @@ class rpcWorkerService(rpyc.Service):
                 f"After the shard, Rank: [{dist.get_rank()}], model size: {get_model_size(self.model)} GB, model's device is: {model.device}"
             )
 
-        # NOTE(lry89757) Deprecated currently, will reused when introduce lazy tensor
-        # if isinstance(model_or_path, str) and is_local:
-        #     from colossalai.inference.core.plugin import InferCheckpoint_io
+        if pretrained_path:
+            from colossalai.inference.core.plugin import InferCheckpoint_io
 
-        #     cpt_io = InferCheckpoint_io()
-        #     if_has_index_file, model_index_file = has_index_file(model_or_path)
-        #     assert if_has_index_file, "the model path is invalid"
-        #     cpt_io.load_model(self.model, model_index_file)
+            cpt_io = InferCheckpoint_io()
+            if_has_index_file, model_index_file = has_index_file(pretrained_path)
+            assert if_has_index_file, "the model path is invalid"
+            cpt_io.load_model(self.model, model_index_file)
 
         free_gpu_memory, total_gpu_memory = torch.cuda.mem_get_info()
         peak_memory = init_gpu_memory - free_gpu_memory

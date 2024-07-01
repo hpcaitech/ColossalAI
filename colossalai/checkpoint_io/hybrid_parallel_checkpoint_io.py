@@ -70,13 +70,13 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         verbose: bool = True,
     ) -> None:
         super().__init__()
-        self.dp_group = dp_group
+        self.global_dp_group = dp_group
         self.pp_group = pp_group
         self.tp_group = tp_group
-        self.dp_rank = dist.get_rank(self.dp_group)
+        self.dp_rank = dist.get_rank(self.global_dp_group)
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
-        self.dp_size = dist.get_world_size(dp_group)
+        self.global_dp_size = dist.get_world_size(dp_group)
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
         self.use_zero = zero_stage > 0
@@ -433,7 +433,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         state_dict_shard = HybridParallelCheckpointIO._optimizer_sharder(
             optimizer,
             use_zero=self.use_zero,
-            dp_group=self.dp_group,
+            dp_group=self.global_dp_group,
             tp_group=self.tp_group,
             size_per_shard=size_per_shard,
         )
@@ -727,7 +727,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 state,
                 working_param,
                 original_shape=original_shape,
-                dp_group=self.dp_group,
+                dp_group=self.global_dp_group,
                 tp_group=self.tp_group,
                 use_zero=self.use_zero,
                 inplace=False,
@@ -932,12 +932,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
                 # Shard state along data parallel group when using Zero.
                 if self.use_zero:
-                    padding_size = (self.dp_size - v.numel() % self.dp_size) % self.dp_size
+                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
                     with torch.no_grad():
                         v = v.flatten()
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
-                        slice_size = v.numel() // self.dp_size
+                        slice_size = v.numel() // self.global_dp_size
                         v = v.split(slice_size, dim=0)[self.dp_rank]
 
                 state_[k] = v.detach().clone().to(device)

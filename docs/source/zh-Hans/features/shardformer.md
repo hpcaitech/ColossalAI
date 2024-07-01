@@ -71,8 +71,8 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -95,8 +95,8 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
@@ -155,8 +155,8 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">❌</td>
-    <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">✔️</td>
+    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">❌</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">❌</td>

@@ -4,21 +4,15 @@ Author: Wenxuan Tan, Junwen Duan, Renjie Mao
 
 **相关论文**
 - [Adafactor: Adaptive Learning Rates with Sublinear Memory Cost](https://arxiv.org/abs/1804.04235)
-- [CAME: Confidence-guided Adaptive Memory Efficient Optimization] (https://arxiv.org/abs/2307.02047)
-- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection] (https://arxiv.org/abs/2403.03507)
-- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes] (https://arxiv.org/pdf/1904.00962)
+- [CAME: Confidence-guided Adaptive Memory Efficient Optimization](https://arxiv.org/abs/2307.02047)
+- [GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection](https://arxiv.org/abs/2403.03507)
+- [Large Batch Optimization for Deep Learning: Training BERT in 76 minutes](https://arxiv.org/pdf/1904.00962)
 
 ## 介绍
 除了广泛采用的Adam和SGD外，许多现代优化器需要逐层统计信息以有效更新参数，因此无法直接应用于模型层在多个设备上分片的并行设置。我们以提供了优化的分布式实现，，并且通过plugin与Tensor Parallel、DDP和ZeRO无缝集成。
 ## 优化器
 Adafactor 是一种首次采用非负矩阵分解（NMF）的 Adam 变体，用于减少内存占用。CAME 通过引入一个置信度矩阵来改进 NMF 的效果。GaLore 通过将梯度投影到低秩空间，并使用 8 位块状量化进一步减少内存占用。Lamb 允许使用巨大的批量大小而不失准确性，通过按其 Lipschitz 常数的倒数界定的逐层自适应更新实现
 
-## API 参考
-
-{{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
-{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
-{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
-{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
 
 ## 使用
 现在我们展示如何使用分布式 Adafactor 与 booster API 结合 Tensor Parallel 和 ZeRO 2。即使您不使用distributed optimizer，plugin 也会自动将optimizer转换为分布式版本以方便使用。
@@ -137,3 +131,10 @@ optim = DistGaloreAwamW(
 </table>
 
 <!-- doc-test-command: colossalai run --nproc_per_node 4 distributed_optimizers.py  -->
+
+## API 参考
+
+{{ autodoc:colossalai.nn.optimizer.distributed_adafactor.DistributedAdaFactor }}
+{{ autodoc:colossalai.nn.optimizer.distributed_lamb.DistributedLamb }}
+{{ autodoc:colossalai.nn.optimizer.distributed_galore.DistGaloreAwamW }}
+{{ autodoc:colossalai.nn.optimizer.distributed_came.DistributedCAME }}
