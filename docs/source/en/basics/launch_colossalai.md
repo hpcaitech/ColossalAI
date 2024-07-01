@@ -237,7 +237,7 @@ Notes:
 - For multi-node distributed training, AzureML has built-in functionality for multi-node communication which means you do not need SSH access between nodes.
 - You will need to build a Docker image for ColossalAI and push it to an Azure Container Registry and create an AzureML environment before you can launch a job.
 
-```
+```python
 import os
 from azure.ai.ml import MLClient, command
 from azure.identity import DefaultAzureCredential
