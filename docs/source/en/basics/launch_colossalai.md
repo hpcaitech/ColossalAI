@@ -228,3 +228,40 @@ mpirun --hostfile <my_hostfile> -np <num_process> python train.py --host <node n
 - --np: set the number of processes (GPUs) to launch in total. For example, if --np 4, 4 python processes will be initialized to run train.py.
 
 <!-- doc-test-command: echo  -->
+
+### Launch on AzureML Compute Cluster
+
+AzureML automatically wraps PyTorch in an abstraction layer. That means you do not need to use `colossalai` or `torchrun` because AzureML does it for you automatically. Instead, you only need to launch your training script using `python`. The following script launches training on a compute cluster with 2 nodes of 8 GPUs.
+
+Notes:
+- For multi-node distributed training, AzureML has built-in functionality for multi-node communication which means you do not need SSH access between nodes.
+- You will need to build a Docker image for ColossalAI and push it to an Azure Container Registry and create an AzureML environment before you can launch a job.
+
+```
+import os
+from azure.ai.ml import MLClient, command
+from azure.identity import DefaultAzureCredential
+
+# client
+ml_client = MLClient.from_config(credential=DefaultAzureCredential())
+
+# Define the job configuration
+job = command(
+    code="./",
+    command="python train.py --arg1 value1 --arg2 value2",
+    environment="YOUR_AZUREML_ENVIRONMENT",
+    compute="YOUR_CLUSTER_NAME",
+    instance_count=2,
+    distribution={
+        "type": "PyTorch",
+        "process_count_per_instance": 8,
+    },
+    display_name="Training Run Multi Node",
+    experiment_name="COLOSSAL_TRAINING"
+)
+
+# Submit the job
+returned_job = ml_client.jobs.create_or_update(job)
+print(f"Job {returned_job.name} submitted.")
+print(f"Monitor your job at: {returned_job.studio_url}")
+```
