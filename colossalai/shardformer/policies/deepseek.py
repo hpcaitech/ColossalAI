@@ -51,7 +51,7 @@ class DeepseekPolicy(Policy):
         self.append_or_create_submodule_replacement(
             description=[
                 SubModuleReplacementDescription(
-                    suffix="block_sparse_moe",
+                    suffix="mlp",
                     target_module=EPDeepseekMoE,
                     kwargs={"ep_group": self.shard_config.ep_group},
                 )
@@ -198,16 +198,16 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        llama_model = self.model.model
+        deepseek_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(deepseek_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: llama_model.embed_tokens.weight,
+                        0: deepseek_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]

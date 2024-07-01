@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -7,7 +7,7 @@ from torch.distributed import ProcessGroup
 # from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
-from transformers.utils import logging
+from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
@@ -17,6 +17,7 @@ from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek imp
     AddAuxiliaryLoss,
     CausalLMOutputWithPast,
     DeepseekForCausalLM,
+    DeepseekMLP,
     DeepseekModel,
     DeepseekMoE,
 )
@@ -43,8 +44,10 @@ class EPDeepseekMoE(DeepseekMoE):
             p.ep_group = ep_group
 
     @staticmethod
-    def from_native_module(module: DeepseekMoE, *args, **kwargs) -> "EPDeepseekMoE":
+    def from_native_module(module: Union[DeepseekMoE, DeepseekMLP], *args, **kwargs) -> "EPDeepseekMoE":
         LazyInitContext.materialize(module)
+        if isinstance(module, DeepseekMLP):
+            return module
         module.__class__ = EPDeepseekMoE
         assert "ep_group" in kwargs, "You should pass ep_group in SubModuleReplacementDescription via shard_config!!"
         module.setup_ep(kwargs["ep_group"])
@@ -68,7 +71,6 @@ class EPDeepseekMoE(DeepseekMoE):
         # Now we adjust the order of the hidden states, also in ascending order of expert id
         dispatch_states = hidden_states[flat_topk_token_idx]
         input_split_sizes = flat_topk_experts_idx.bincount(minlength=self.num_experts)  # [n0, n1, n2, n3]
-        print(f"{input_split_sizes=}")
         output_split_sizes = torch.zeros_like(input_split_sizes)
 
         # [n0, n1, n2, n3] [m0, m1, m2, m3] -> [n0, n1, m0, m1] [n2, n3, m2, m3]
@@ -218,10 +220,9 @@ class DeepseekPipelineForwards:
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
-        if self._use_flash_attention_2:
+        if is_flash_attn_2_available():
             # 2d mask is passed through the layers
-            # attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-            pass
+            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         else:
             # 4d mask is passed through the layers
             attention_mask = _prepare_4d_causal_attention_mask(
@@ -405,7 +406,6 @@ class DeepseekPipelineForwards:
                 past_key_values=None,
                 hidden_states=outputs[0],
                 attentions=None,
-                router_logits=outputs[-1],
             )
         else:
             out = {}
