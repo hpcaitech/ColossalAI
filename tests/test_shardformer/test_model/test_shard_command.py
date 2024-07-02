@@ -58,6 +58,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     # Check the grad when using ZeRO-1 and ZeRO-2
     if (
         booster.plugin.zero_stage in [1, 2]
+        and booster.plugin.shard_config.pipeline_stage_manager is None
         and booster.plugin.shard_config.enable_sequence_parallelism
         and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
     ):
@@ -154,6 +155,45 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+        {  # Ulysess + Flash attention
+            "tp_size": 1,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         {
             "tp_size": 2,
             "pp_size": 1,

@@ -132,7 +132,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         if use_bias:
             bias.view(bias.shape)
 
-        total_input = input
+        total_input = input.contiguous()
         grad_input = grad_output.matmul(weight)
         grad_output = grad_output.contiguous()
         # Convert the tensor shapes to 2D for execution compatibility

@@ -1,4 +1,3 @@
-import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -82,9 +81,20 @@ class Qwen2Policy(Policy):
                 embedding_cls = PaddingEmbedding
         norm_cls = FusedRMSNorm if self.shard_config.enable_fused_normalization else RMSNorm
 
-        if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
-            warnings.warn("Qwen2 doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+
+            policy[attn_cls] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
@@ -109,30 +119,37 @@ class Qwen2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
+                        kwargs=dict(seq_parallel_mode=sp_mode),
                     ),
                 ],
             )
@@ -154,10 +171,12 @@ class Qwen2Policy(Policy):
                 SubModuleReplacementDescription(
                     suffix="input_layernorm",
                     target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 SubModuleReplacementDescription(
                     suffix="post_attention_layernorm",
                     target_module=norm_cls,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
             ],
             policy=policy,
@@ -168,16 +187,16 @@ class Qwen2Policy(Policy):
             description=SubModuleReplacementDescription(
                 suffix="norm",
                 target_module=norm_cls,
+                kwargs={"sp_partial_derived": sp_partial_derived},
             ),
             policy=policy,
             target_key=Qwen2Model,
         )
 
-        # use flash attention
-        if self.shard_config.enable_flash_attention:
+        if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_qwen2_flash_attention_forward(self.shard_config),
+                    "forward": get_qwen2_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=attn_cls,
@@ -186,7 +205,9 @@ class Qwen2Policy(Policy):
                 # replace qwen2 model forward method
                 self.append_or_create_method_replacement(
                     description={
-                        "forward": get_qwen2_model_forward_for_flash_attn(self.shard_config),
+                        "forward": get_qwen2_model_forward_for_flash_attn(
+                            self.shard_config, sp_mode, sp_size, sp_group
+                        ),
                     },
                     policy=policy,
                     target_key=Qwen2Model,
