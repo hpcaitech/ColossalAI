@@ -10,8 +10,6 @@ from colossalai.legacy.engine.gradient_handler.utils import bucket_allreduce
 from colossalai.legacy.registry import GRADIENT_HANDLER
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_moe_epsize_param_dict
-
-# from colossalai.shardformer.layer.moe import SparseMLP
 from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size, set_moe_tensor_ep_group
 
 
