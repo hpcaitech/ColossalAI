@@ -169,6 +169,8 @@ def dist_cross_entropy(
                 dtype=dtype,
             )
         else:
+            # NOTE if use TP and not parallel_output, the output is gathered.
+            # see VocabParallelLMHead1D
             shift_logits = shift_logits.view(-1, vocab_size)
             loss = loss_fct(shift_logits, shift_labels)
 
