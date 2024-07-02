@@ -102,6 +102,8 @@ class SFTTrainer(SLTrainer):
             batch_size = batch["input_ids"].size(0)
             outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             loss = outputs.loss
+            step_bar.set_description(f"Epoch {epoch + 1}/{self.max_epochs} Loss: {loss.detach().cpu().item():.4f}")
+
             self.booster.backward(loss=loss, optimizer=self.optimizer)
 
             loss_mean = all_reduce_mean(tensor=loss)

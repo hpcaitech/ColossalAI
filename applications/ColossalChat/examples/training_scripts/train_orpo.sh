@@ -1,3 +1,4 @@
+#!/bin/bash
 set_n_least_used_CUDA_VISIBLE_DEVICES() {
     local n=${1:-"9999"}
     echo "GPU Memory Usage:"
@@ -12,25 +13,26 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
+set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 4
-PROJECT_NAME="sft"
+PROJECT_NAME="dpo"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
 PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+
 declare -a dataset=(
-    /Your/SFT/Data/arrow/part-00000
-    /Your/SFT/Data/arrow/part-00001
-    /Your/SFT/Data/arrow/part-00002
-    /Your/SFT/Data/arrow/part-00003
-    /Your/SFT/Data/arrow/part-00004
-    /Your/SFT/Data/arrow/part-00005
-    /Your/SFT/Data/arrow/part-00006
-    /Your/SFT/Data/arrow/part-00007
-    /Your/SFT/Data/arrow/part-00008
-    /Your/SFT/Data/arrow/part-00009
+    /Your/Preference/Data/arrow/part-00000
+    /Your/Preference/Data/arrow/part-00001
+    /Your/Preference/Data/arrow/part-00002
+    /Your/Preference/Data/arrow/part-00003
+    /Your/Preference/Data/arrow/part-00004
+    /Your/Preference/Data/arrow/part-00005
+    /Your/Preference/Data/arrow/part-00006
+    /Your/Preference/Data/arrow/part-00007
+    /Your/Preference/Data/arrow/part-00008
+    /Your/Preference/Data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -38,23 +40,24 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-echo $(which colossalai)
-echo $(which python)
-# the real batch size for gradient descent is number_of_node_in_hostfile * nproc_per_node * train_batch_size
-colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
+colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31313 train_orpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
+    --checkpoint_path $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --save_interval 4000 \
     --dataset ${dataset[@]} \
-    --save_path $SAVE_DIR \
+    --plugin "zero2" \
+    --save_interval 1000 \
+    --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
-    --lora_rank 0 \
-    --plugin zero2 \
-    --batch_size 4 \
-    --max_epochs 1 \
-    --accumulation_steps 4 \
-    --lr 5e-5 \
-    --max_len 4096 \
+    --max_epochs 3 \
+    --accumulation_steps 1 \
+    --batch_size 16 \
+    --lr 8e-6 \
+    --lam 0.5 \
+    --mixed_precision "bf16" \
+    --grad_clip 1.0 \
+    --max_length 1024 \
+    --weight_decay 0.01 \
+    --warmup_steps 60 \
     --grad_checkpoint \
-    --use_wandb \
-    --use_flash_attn
+    --use_wandb
