@@ -63,9 +63,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
     ):
         master2working = sharded_optimizer.get_master_to_working_map()
-        for (name, p1), p2 in zip(
-            llama_model.named_parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]
-        ):
+        for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
             working_p = master2working[id(p2)]
             grads = sharded_optimizer.get_partitioned_gradients_by_param_id(0, id(working_p))
             grad_index = (
@@ -75,10 +73,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             )
             grad = grads[grad_index]
             sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
-            try:
-                assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
-            except Exception as e:
-                raise RuntimeError(f"Failed to check grad for {name}") from e
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
