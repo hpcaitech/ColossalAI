@@ -85,7 +85,6 @@ def main():
 
     # Enable gradient checkpointing
     model.gradient_checkpointing_enable()
-    print("model._gradient_checkpointing_func:", model._gradient_checkpointing_func)
 
     # Set plugin
     booster_kwargs = {}
