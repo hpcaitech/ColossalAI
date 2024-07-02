@@ -254,7 +254,7 @@ def get_param_info(optim: Optimizer):
     return param_info
 
 
-def init_pipeline_optimizer(optim: Optimizer, model: Module):
+def reinitialize_optimizer(optim: Optimizer, model: Module):
     model_params = set(model.parameters())
     new_param_groups = []
     for group in optim.param_groups:
@@ -276,7 +276,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
     ):
         self.param_info = param_info
         if use_pipeline:
-            init_pipeline_optimizer(optim, model)
+            reinitialize_optimizer(optim, model)
         self.model = model
         self.stage_manager = model.stage_manager
         self.shared_params = model.shared_params
@@ -497,7 +497,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         self.tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
         self.pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
         if use_pipeline:
-            init_pipeline_optimizer(optim, model)
+            reinitialize_optimizer(optim, model)
         super().__init__(
             optim,
             precision=precision,
@@ -678,7 +678,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.tp_pg = tp_process_group
         self.pp_pg = pp_process_group
         if use_pipeline:
-            init_pipeline_optimizer(optimizer, model)
+            reinitialize_optimizer(optimizer, model)
         super().__init__(
             optimizer=optimizer,
             initial_scale=initial_scale,

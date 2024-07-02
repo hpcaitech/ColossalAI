@@ -19,7 +19,7 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
     HybridParallelNaiveOptimizer,
     HybridParallelPlugin,
     get_param_info,
-    init_pipeline_optimizer,
+    reinitialize_optimizer,
 )
 from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.cluster import ProcessGroupMesh
@@ -67,7 +67,7 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.tp_pg = tp_process_group
         self.pp_pg = pp_process_group
         if use_pipeline:
-            init_pipeline_optimizer(optimizer, model)
+            reinitialize_optimizer(optimizer, model)
 
         pg_param_list = {
             dp_process_group: [],
@@ -400,12 +400,19 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 dp_group=self.global_dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
-                use_ddp=use_ddp,
+                use_ddp=use_ddp,  # TODO fix why this failed
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
+            if self.ep_size > 1:
+                # if ep is enabled, the num of (moe) paramaters changed since they are sharded among ep groups
+                # but the optimizer is not aware of ep, so we need to update the optimizer
+                reinitialize_optimizer(optimizer, model)
+
             if self.zero_stage == 0:
+                assert self.ep_size > 1
+
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
                         optimizer,
