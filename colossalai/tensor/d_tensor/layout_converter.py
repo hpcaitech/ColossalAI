@@ -473,7 +473,7 @@ class LayoutConverter(metaclass=SingletonMeta):
                 for process_group in used_process_groups:
                     try:
                         dist.get_rank(process_group)
-                    except RuntimeError as e:
+                    except (ValueError, RuntimeError) as e:
                         # If the group is not registered, it means it has been deleted
                         if str(e) == (
                             f"Group {process_group} is not registered, please create group with torch.distributed.new_group API"
