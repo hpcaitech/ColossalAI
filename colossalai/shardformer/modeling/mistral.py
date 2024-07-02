@@ -19,7 +19,7 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 logger = logging.get_logger(__name__)
 
@@ -275,29 +275,9 @@ class MistralForwards:
             logits = self.lm_head(hidden_states)
             logits = logits.float()
 
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
-                    new_vocab_size = logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(
-                        shift_logits,
-                        shift_labels,
-                        process_group=shard_config.tensor_parallel_process_group,
-                        vocab_size=self.lm_head.out_features,
-                        dtype=self.model.dtype,
-                    )
-                else:
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels)
+            loss = dist_cross_entropy(
+                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
+            )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -708,23 +688,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         logits = self.lm_head(hidden_states)
         logits = logits.float()
 
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            new_vocab_size = logits.shape[-1]
-            shift_logits = shift_logits.view(-1, new_vocab_size)
-            loss = cross_entropy_1d(
-                shift_logits,
-                shift_labels,
-                process_group=shard_config.tensor_parallel_process_group,
-                vocab_size=self.lm_head.out_features,
-                dtype=self.model.dtype,
-            )
+        loss = dist_cross_entropy(
+            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
+        )
 
         if not return_dict:
             output = (logits,) + outputs[1:]

@@ -28,7 +28,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import cross_entropy_1d
+from ..layer import dist_cross_entropy
 
 logger = logging.get_logger(__name__)
 
@@ -359,30 +359,14 @@ class BloomPipelineForwards:
             hidden_states = transformer_outputs[0]
             lm_logits = self.lm_head(hidden_states).contiguous()
 
-            loss = None
-            if labels is not None:
-                # move labels to correct device to enable model parallelism
-                labels = labels.to(lm_logits.device)
-                # Shift so that tokens < n predict n
-                shift_logits = lm_logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                batch_size, seq_length, vocab_size = shift_logits.shape
-                # Flatten the tokens
-                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
-                    new_vocab_size = lm_logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    shift_labels = shift_labels.view(-1)
-                    loss = cross_entropy_1d(
-                        shift_logits,
-                        shift_labels,
-                        process_group=shard_config.tensor_parallel_process_group,
-                        vocab_size=self.lm_head.out_features,
-                        dtype=self.transformer.dtype,
-                    )
-                else:
-                    loss_fct = CrossEntropyLoss()
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels.view(-1))
+            loss = dist_cross_entropy(
+                labels,
+                lm_logits,
+                shard_config,
+                self.lm_head.out_features,
+                self.config.vocab_size,
+                self.transformer.dtype,
+            )
 
             if not return_dict:
                 output = (lm_logits,) + transformer_outputs[1:]
@@ -1040,24 +1024,10 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = transformer_outputs[0]
         lm_logits = self.lm_head(hidden_states)
 
-        loss = None
-        if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(lm_logits.device)
-            # Shift so that tokens < n predict n
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            new_vocab_size = lm_logits.shape[-1]
-            shift_logits = shift_logits.view(-1, new_vocab_size)
-            shift_labels = shift_labels.view(-1)
-            loss = cross_entropy_1d(
-                shift_logits,
-                shift_labels,
-                process_group=shard_config.tensor_parallel_process_group,
-                vocab_size=self.lm_head.out_features,
-                dtype=self.transformer.dtype,
-            )
+        loss = dist_cross_entropy(
+            labels, lm_logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.transformer.dtype
+        )
+
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]
             return ((loss,) + output) if loss is not None else output

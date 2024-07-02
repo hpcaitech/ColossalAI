@@ -1205,6 +1205,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 and self.enable_sequence_parallelism
                 and self.sequence_parallelism_mode == "all_to_all"
             )
+            # sync gradients across DP * SP ranks
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:
