@@ -184,6 +184,16 @@ class ChatGLMPolicy(Policy):
                 target_key="ChatGLMModel",
             )
 
+        # use flash attention
+        if self.shard_config.enable_flash_attention:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_flash_core_attention_forward(),
+                },
+                policy=policy,
+                target_key="CoreAttention",
+            )
+
         # use sequence parallel
         if self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
@@ -201,16 +211,6 @@ class ChatGLMPolicy(Policy):
                 },
                 policy=policy,
                 target_key="SelfAttention",
-            )
-
-        # use flash attention
-        if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_flash_core_attention_forward(),
-                },
-                policy=policy,
-                target_key="CoreAttention",
             )
 
         # use jit fused operator
