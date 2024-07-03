@@ -408,9 +408,9 @@ class DiffusionGenerationConfig:
     num_inference_steps: int = None
     timesteps: List[int] = None
     guidance_scale: float = None
-    negative_prompt: Optional[
-        Union[str, List[str]]
-    ] = None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
+    negative_prompt: Optional[Union[str, List[str]]] = (
+        None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
+    )
     negative_prompt_2: Optional[Union[str, List[str]]] = None
     negative_prompt_3: Optional[Union[str, List[str]]] = None
     num_images_per_prompt: Optional[int] = None

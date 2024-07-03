@@ -44,7 +44,6 @@ _BATCH_SIZES_TO_CAPTURE = [1, 2, 4] + [8 * i for i in range(1, 33)]
 
 
 class LLMEngine(BaseEngine):
-
     """
     InferenceEngine which manages the inference process..
 
