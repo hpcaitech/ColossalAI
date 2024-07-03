@@ -11,6 +11,7 @@ from .bnb_config import BnbQuantizationConfig
 
 try:
     import bitsandbytes as bnb
+
     try:
         # in case lower version of bitsandbytes does not have __version__ attribute
         BNB_VERSION = Version(bnb.__version__)
