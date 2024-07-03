@@ -215,6 +215,9 @@ class RequestHandler(NaiveRequestHandler):
             generated_token_size=inference_config.generated_token_size,
         )
 
+    def _has_running(self) -> bool:
+        return not self.running_bb.is_empty()
+
     def _init_cache(self, model_config):
         self.cache_manager = KVCacheManager(self.inference_config, model_config)
 
