@@ -8,7 +8,7 @@ from colossalai.inference.batch_bucket import BatchBucket
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
 from colossalai.inference.kv_cache import KVCacheManager, RPCKVCacheManager
-from colossalai.inference.struct import RequestStatus, Sequence, Sequence_Diffusion
+from colossalai.inference.struct import DiffusionSequence, RequestStatus, Sequence
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -100,7 +100,7 @@ class RunningList:
 
 class NaiveRequestHandler:
     def __init__(self) -> None:
-        self.running_list: List[Sequence_Diffusion] = []
+        self.running_list: List[DiffusionSequence] = []
         self.waiting_list: List[str] = []
 
     def _has_waiting(self) -> bool:
@@ -112,14 +112,14 @@ class NaiveRequestHandler:
     def check_unfinished_reqs(self):
         return self._has_waiting() or self._has_running()
 
-    def add_sequence(self, seq: Sequence_Diffusion):
+    def add_sequence(self, seq: DiffusionSequence):
         """
         Add the request to waiting list.
         """
         assert not self._find_sequence(seq.request_id), f"Sequence {seq.request_id} already exists."
         self.waiting_list.append(seq)
 
-    def _find_sequence(self, request_id: int) -> Sequence_Diffusion:
+    def _find_sequence(self, request_id: int) -> DiffusionSequence:
         """
         Find the request by request_id.
         """

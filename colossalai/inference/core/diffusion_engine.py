@@ -10,21 +10,21 @@ from torch import distributed as dist
 
 from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.inference.config import GenerationConfig_Diffusion, InferenceConfig, ModelShardInferenceConfig
+from colossalai.inference.config import DiffusionGenerationConfig, InferenceConfig, ModelShardInferenceConfig
 from colossalai.inference.modeling.models.diffusion import DiffusionPipe
 from colossalai.inference.modeling.policy import model_policy_map
-from colossalai.inference.struct import Sequence_Diffusion
+from colossalai.inference.struct import DiffusionSequence
 from colossalai.inference.utils import get_model_size, get_model_type
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.policies.base_policy import Policy
 
-from .base_engine import InferenceEngine
+from .base_engine import BaseEngine
 from .request_handler import NaiveRequestHandler
 
 PP_AXIS, TP_AXIS = 0, 1
 
 
-class DiffusionEngine(InferenceEngine):
+class DiffusionEngine(BaseEngine):
     def __init__(
         self,
         model_or_path: DiffusionPipeline | str,
@@ -129,7 +129,7 @@ class DiffusionEngine(InferenceEngine):
         self,
         request_ids: Union[List[int], int] = None,
         prompts: Union[List[str], str] = None,
-        generation_config: GenerationConfig_Diffusion = None,
+        generation_config: DiffusionGenerationConfig = None,
         **kwargs,
     ) -> Union[List[Union[str, List[PIL.Image.Image], np.ndarray]], Tuple[List[str], List[List[int]]]]:
         """ """
@@ -170,7 +170,7 @@ class DiffusionEngine(InferenceEngine):
         if not isinstance(prompts, list):
             prompts = [prompts]
 
-        generation_config = GenerationConfig_Diffusion.from_kwargs(**kwargs)
+        generation_config = DiffusionGenerationConfig.from_kwargs(**kwargs)
         prompts_num = len(prompts)
         for i in range(prompts_num):
             if request_ids:
@@ -182,7 +182,7 @@ class DiffusionEngine(InferenceEngine):
             else:
                 request_id = next(self.counter)
 
-            seq = Sequence_Diffusion(request_id=request_id, prompt=prompts[i], generation_config=generation_config)
+            seq = DiffusionSequence(request_id=request_id, prompt=prompts[i], generation_config=generation_config)
 
             self.request_handler.add_sequence(seq)
 

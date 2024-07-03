@@ -3,7 +3,7 @@ Our config contains various options for inference optimization, it is a unified 
 """
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import dataclass, fields
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -396,61 +396,46 @@ class ModelShardInferenceConfig:
 
 
 @dataclass
-class GenerationConfig_Diffusion:
+class DiffusionGenerationConfig:
     """
-    Param for diffusion
+    Param for diffusion model forward
     """
 
-    # prompt: Union[str, List[str]] = None # NOTE no sure if we should add this param
     prompt_2: Optional[Union[str, List[str]]] = None
     prompt_3: Optional[Union[str, List[str]]] = None
     height: Optional[int] = None
     width: Optional[int] = None
-    num_inference_steps: int = 28
+    num_inference_steps: int = None
     timesteps: List[int] = None
-    guidance_scale: float = 7.0
+    guidance_scale: float = None
     negative_prompt: Optional[
         Union[str, List[str]]
     ] = None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
     negative_prompt_2: Optional[Union[str, List[str]]] = None
     negative_prompt_3: Optional[Union[str, List[str]]] = None
-    num_images_per_prompt: Optional[int] = 1
+    num_images_per_prompt: Optional[int] = None
     generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None
     latents: Optional[torch.FloatTensor] = None
     prompt_embeds: Optional[torch.FloatTensor] = None
     negative_prompt_embeds: Optional[torch.FloatTensor] = None
     pooled_prompt_embeds: Optional[torch.FloatTensor] = None
     negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None
-    output_type: Optional[str] = "pil"
-    return_dict: bool = True
+    output_type: Optional[str] = None  # "pil"
+    return_dict: bool = None
     joint_attention_kwargs: Optional[Dict[str, Any]] = None
     clip_skip: Optional[int] = None
     callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None
-    callback_on_step_end_tensor_inputs: List[str] = field(default_factory=lambda: ["latents"])
+    callback_on_step_end_tensor_inputs: List[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        # NOTE(@lry89757) Only return the dict that not the default value
+        # NOTE(@lry89757) Only return the dict that not the default value None
         result = {}
-        for field_info in fields(self):
-            name = field_info.name
-            value = getattr(self, name)
-
-            if field_info.default is not MISSING:
-                default = field_info.default
-            else:
-                default = None
-
-            if field_info.default_factory is not MISSING:
-                default_factory = field_info.default_factory
-                if default_factory is not None:
-                    default = default_factory()
-
-            # Check if the field value is different from the default
-            if value != default:
-                result[name] = value
-
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if value is not None:
+                result[field.name] = value
         return result
 
     @classmethod
-    def from_kwargs(cls, **kwargs) -> "GenerationConfig_Diffusion":
+    def from_kwargs(cls, **kwargs) -> "DiffusionGenerationConfig":
         return cls(**kwargs)

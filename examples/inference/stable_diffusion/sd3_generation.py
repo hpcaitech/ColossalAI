@@ -5,14 +5,14 @@ from torch import bfloat16, float16, float32
 
 import colossalai
 from colossalai.cluster import DistCoordinator
-from colossalai.inference.config import GenerationParams, InferenceConfig
+from colossalai.inference.config import DiffusionGenerationConfig, InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.modeling.policy.pixart_alpha import PixArtAlphaInferPolicy
 from colossalai.inference.modeling.policy.stablediffusion3 import StableDiffusion3InferPolicy
 
 # For Stable Diffusion 3, we'll use the following configuration
-MODEL_CLS = [StableDiffusion3Pipeline, PixArtAlphaPipeline][1]
-POLICY_CLS = [StableDiffusion3InferPolicy, PixArtAlphaInferPolicy][1]
+MODEL_CLS = [StableDiffusion3Pipeline, PixArtAlphaPipeline][0]
+POLICY_CLS = [StableDiffusion3InferPolicy, PixArtAlphaInferPolicy][0]
 
 TORCH_DTYPE_MAP = {
     "fp16": float16,
@@ -50,21 +50,14 @@ def infer(args):
     # Generation
     # ==============================
     coordinator.print_on_master(f"Generating...")
-    out = engine.generate(prompts=[args.prompt], generation_config=GenerationParams())[0]
+    out = engine.generate(prompts=[args.prompt], generation_config=DiffusionGenerationConfig())[0]
     out.save("cat.jpg")
     coordinator.print_on_master(out)
 
 
-# colossalai run --nproc_per_node 1 stablediffusion_generation.py -m MODEL_PATH
-# colossalai run --nproc_per_node 2 stablediffusion_generation.py -m MODEL_PATH --tp_size 2
-# colossalai run --nproc_per_node 1 examples/inference/llama/stablediffusion_generation.py -m stabilityai/stable-diffusion-3-medium-diffusers --tp_size 1
+# colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m MODEL_PATH
+# colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m "stabilityai/stable-diffusion-3-medium-diffusers" --tp_size 1
 
-"""
-torchrun --nnodes=1 --nproc_per_node=2 --master-addr 127.0.0.1 \
-    --master-port 8975 \
-    --rdzv-endpoint 127.0.0.1:9757 \
-    examples/inference/stable_diffusion/sd3_generation.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --tp_size 1 -p "An astronaut riding a green horse"
-"""
 
 if __name__ == "__main__":
     # ==============================
