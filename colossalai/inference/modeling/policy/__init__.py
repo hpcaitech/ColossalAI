@@ -8,7 +8,8 @@ model_policy_map = {
     "nopadding_llama": NoPaddingLlamaModelInferPolicy,
     "nopadding_baichuan": NoPaddingBaichuanModelInferPolicy,
     "glide_llama": GlideLlamaModelPolicy,
-    "DiffusionPipe": StableDiffusion3InferPolicy,
+    "StableDiffusion3Pipeline": StableDiffusion3InferPolicy,
+    "PixArtAlphaPipeline": PixArtAlphaInferPolicy,
 }
 
 __all__ = [

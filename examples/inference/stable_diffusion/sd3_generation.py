@@ -11,8 +11,8 @@ from colossalai.inference.modeling.policy.pixart_alpha import PixArtAlphaInferPo
 from colossalai.inference.modeling.policy.stablediffusion3 import StableDiffusion3InferPolicy
 
 # For Stable Diffusion 3, we'll use the following configuration
-MODEL_CLS = [StableDiffusion3Pipeline, PixArtAlphaPipeline][0]
-POLICY_CLS = [StableDiffusion3InferPolicy, PixArtAlphaInferPolicy][0]
+MODEL_CLS = [StableDiffusion3Pipeline, PixArtAlphaPipeline][1]
+POLICY_CLS = [StableDiffusion3InferPolicy, PixArtAlphaInferPolicy][1]
 
 TORCH_DTYPE_MAP = {
     "fp16": float16,
@@ -60,10 +60,10 @@ def infer(args):
 # colossalai run --nproc_per_node 1 examples/inference/llama/stablediffusion_generation.py -m stabilityai/stable-diffusion-3-medium-diffusers --tp_size 1
 
 """
-torchrun --nnodes=1 --nproc_per_node=1 --master-addr 127.0.0.1 \
+torchrun --nnodes=1 --nproc_per_node=2 --master-addr 127.0.0.1 \
     --master-port 8975 \
     --rdzv-endpoint 127.0.0.1:9757 \
-    examples/inference/llama/stablediffusion_generation.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --tp_size 1 -p "An astronaut riding a green horse"
+    examples/inference/stable_diffusion/sd3_generation.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --tp_size 1 -p "An astronaut riding a green horse"
 """
 
 if __name__ == "__main__":

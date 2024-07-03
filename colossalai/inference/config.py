@@ -396,7 +396,7 @@ class ModelShardInferenceConfig:
 
 
 @dataclass
-class GenerationParams:
+class GenerationConfig_Diffusion:
     """
     Param for diffusion
     """
@@ -411,7 +411,7 @@ class GenerationParams:
     guidance_scale: float = 7.0
     negative_prompt: Optional[
         Union[str, List[str]]
-    ] = ""  # NOTE(@lry89757) in pixart default to "", in sd3 default to None, we set "" here, but the best solution is change the check_inputs of each forward fuction
+    ] = None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
     negative_prompt_2: Optional[Union[str, List[str]]] = None
     negative_prompt_3: Optional[Union[str, List[str]]] = None
     num_images_per_prompt: Optional[int] = 1
@@ -452,5 +452,5 @@ class GenerationParams:
         return result
 
     @classmethod
-    def from_kwargs(cls, **kwargs) -> "GenerationParams":
+    def from_kwargs(cls, **kwargs) -> "GenerationConfig_Diffusion":
         return cls(**kwargs)

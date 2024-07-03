@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Any, List
 
-from colossalai.inference.config import GenerationParams
+from colossalai.inference.config import GenerationConfig_Diffusion
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -48,14 +48,14 @@ class RequestStatus(enum.Enum):
 
 
 @dataclass
-class Sequence_:
+class Sequence_Diffusion:
     """
     parameters for diffusion
     """
 
     request_id: int
     prompt: str
-    generation_config: GenerationParams
+    generation_config: GenerationConfig_Diffusion
 
 
 @dataclass

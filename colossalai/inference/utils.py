@@ -4,12 +4,14 @@ Utils for model inference
 import math
 import os
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
 import torch
 from diffusers import DiffusionPipeline
 from torch import nn
+from transformers import AutoConfig
 
 from colossalai.logging import get_dist_logger
 from colossalai.testing import free_port
@@ -161,9 +163,6 @@ def can_use_flash_attn2(dtype: torch.dtype) -> bool:
         return False
 
 
-from enum import Enum
-
-
 class ModelType(Enum):
     DIFFUSION_MODEL = "Diffusion Model"
     LLM = "Large Language Model (LLM)"
@@ -176,5 +175,10 @@ def get_model_type(model_or_path: Union[nn.Module, str, DiffusionPipeline]):
     elif isinstance(model_or_path, nn.Module):
         return ModelType.LLM
     elif isinstance(model_or_path, str):
-        # TODO(lry89757) we need to support string input for diffusion model
-        return ModelType.LLM
+        try:
+            hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+            return ModelType.LLM
+        except:
+            pass
+    # TODO(lry89757) we need to support string input for diffusion model
+    return ModelType.UNKNOWN
