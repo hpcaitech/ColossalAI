@@ -411,7 +411,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 reinitialize_optimizer(optimizer, model)
 
             if self.zero_stage == 0:
-                assert self.ep_size > 1
+                # assert self.ep_size > 1
 
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
