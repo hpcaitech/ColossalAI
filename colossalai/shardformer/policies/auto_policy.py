@@ -167,12 +167,6 @@ _POLICY_LIST = {
     "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
         file_name="deepseek", class_name="DeepseekForCausalLMPolicy"
     ),
-    "colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek.DeepseekModel": PolicyLocation(
-        file_name="deepseek", class_name="DeepseekModelPolicy"
-    ),
-    "colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
-        file_name="deepseek", class_name="DeepseekForCausalLMPolicy"
-    ),
     # Falcon
     "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
         file_name="falcon", class_name="FalconModelPolicy"
