@@ -2,32 +2,47 @@ from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from torch.distributed import ProcessGroup
 
 # from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
+from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import (
-    AddAuxiliaryLoss,
-    CausalLMOutputWithPast,
-    DeepseekForCausalLM,
-    DeepseekMLP,
-    DeepseekModel,
-    DeepseekMoE,
-)
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
 
 
-class EPDeepseekMoE(DeepseekMoE):
-    def __init__(self, config: DeepseekConfig):
-        super().__init__(config)
+# copied from modeling_deepseek.py
+class AddAuxiliaryLoss(torch.autograd.Function):
+    """
+    The trick function of adding auxiliary (aux) loss,
+    which includes the gradient of the aux loss during backpropagation.
+    """
+
+    @staticmethod
+    def forward(ctx, x, loss):
+        assert loss.numel() == 1
+        ctx.dtype = loss.dtype
+        ctx.required_aux_loss = loss.requires_grad
+        return x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_loss = None
+        if ctx.required_aux_loss:
+            grad_loss = torch.ones(1, dtype=ctx.dtype, device=grad_output.device)
+        return grad_output, grad_loss
+
+
+class EPDeepseekMoE(nn.Module):
+    def __init__(self):
+        super(EPDeepseekMoE, self).__init__()
 
     def setup_ep(self, ep_group: ProcessGroup):
         ep_group = ep_group
@@ -44,9 +59,9 @@ class EPDeepseekMoE(DeepseekMoE):
             p.ep_group = ep_group
 
     @staticmethod
-    def from_native_module(module: Union[DeepseekMoE, DeepseekMLP], *args, **kwargs) -> "EPDeepseekMoE":
+    def from_native_module(module: Union["DeepseekMoE", "DeepseekMLP"], *args, **kwargs) -> "EPDeepseekMoE":
         LazyInitContext.materialize(module)
-        if isinstance(module, DeepseekMLP):
+        if module.__class__.__name__ == "DeepseekMLP":
             return module
         module.__class__ = EPDeepseekMoE
         assert "ep_group" in kwargs, "You should pass ep_group in SubModuleReplacementDescription via shard_config!!"
@@ -120,7 +135,7 @@ class DeepseekPipelineForwards:
 
     @staticmethod
     def deepseek_model_forward(
-        self: DeepseekModel,
+        self: "DeepseekModel",
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -147,9 +162,9 @@ class DeepseekPipelineForwards:
         Example:
 
         ```python
-        >>> from transformers import AutoTokenizer, DeepseekForCausalLM
+        >>> from transformers import AutoTokenizer, AutoModelForCausalLM
 
-        >>> model = DeepseekForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> model = AutoModelForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
         >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
 
         >>> prompt = "Hey, are you conscious? Can you talk to me?"
@@ -303,7 +318,7 @@ class DeepseekPipelineForwards:
 
     @staticmethod
     def deepseek_for_causal_lm_forward(
-        self: DeepseekForCausalLM,
+        self: "DeepseekForCausalLM",
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,

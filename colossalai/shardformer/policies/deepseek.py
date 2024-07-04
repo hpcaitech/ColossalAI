@@ -7,11 +7,6 @@ from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.modeling.deepseek import DeepseekPipelineForwards, EPDeepseekMoE
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import (
-    DeepseekDecoderLayer,
-    DeepseekForCausalLM,
-    DeepseekModel,
-)
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["DeepseekPolicy", "DeepseekForCausalLMPolicy"]
@@ -57,7 +52,7 @@ class DeepseekPolicy(Policy):
                 )
             ],
             policy=policy,
-            target_key=DeepseekDecoderLayer,
+            target_key="DeepseekDecoderLayer",
         )
 
         # optimization configuration
@@ -74,7 +69,7 @@ class DeepseekPolicy(Policy):
                     ),
                 ],
                 policy=policy,
-                target_key=DeepseekDecoderLayer,
+                target_key="DeepseekDecoderLayer",
             )
 
             self.append_or_create_submodule_replacement(
@@ -83,7 +78,7 @@ class DeepseekPolicy(Policy):
                     target_module=FusedRMSNorm,
                 ),
                 policy=policy,
-                target_key=DeepseekModel,
+                target_key="DeepseekModel",
             )
 
         if self.shard_config.enable_flash_attention:
@@ -144,7 +139,7 @@ class DeepseekModelPolicy(DeepseekPolicy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=DeepseekModel,
+                model_cls="DeepseekModel",
                 new_forward=DeepseekPipelineForwards.deepseek_model_forward,
                 policy=policy,
             )
@@ -167,7 +162,7 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
-                DeepseekForCausalLM: ModulePolicyDescription(
+                "DeepseekForCausalLM": ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -182,7 +177,7 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=DeepseekForCausalLM,
+                model_cls="DeepseekForCausalLM",
                 new_forward=DeepseekPipelineForwards.deepseek_for_causal_lm_forward,
                 policy=policy,
             )

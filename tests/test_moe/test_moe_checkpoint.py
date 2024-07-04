@@ -14,8 +14,6 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.checkpoint_io import MoECheckpointIO
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import DeepseekForCausalLM
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, spawn
 from colossalai.testing.utils import spawn
@@ -93,18 +91,6 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
                 num_key_value_heads=2,
             ),
             MixtralForCausalLM,
-        ],
-        [
-            DeepseekConfig(
-                hidden_size=hidden_size,
-                intermediate_size=hidden_size * 2,
-                n_routed_experts=n_experts,
-                num_experts_per_tok=top_k,
-                num_attention_heads=2,
-                num_key_value_heads=2,
-                first_k_dense_replace=4,
-            ),
-            DeepseekForCausalLM,
         ],
     ],
 )
