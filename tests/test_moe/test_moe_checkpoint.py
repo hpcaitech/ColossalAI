@@ -89,7 +89,6 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
                 num_experts_per_tok=top_k,
                 num_attention_heads=2,
                 num_key_value_heads=2,
-                num_hidden_layers=4,
             ),
             MixtralForCausalLM,
         ],
