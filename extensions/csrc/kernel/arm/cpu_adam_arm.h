@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-#define ROUND_DOWN(size, step) ((size) & ~((step)-1))
+#define ROUND_DOWN(size, step) ((size) & ~((step) - 1))
 #define TILE (128 * 1024 * 1024)
 
 #if defined(__aarch64__)

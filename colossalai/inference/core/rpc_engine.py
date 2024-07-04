@@ -34,7 +34,6 @@ def run_server(host, port, event: mp.Event = None):
 
 
 class RPCInferenceEngine(InferenceEngine):
-
     """
     InferenceEngine which manages the inference process..
 
