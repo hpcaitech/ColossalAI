@@ -69,7 +69,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
     """
 
     world_size = dist.get_world_size()
-    rank = dist.get_rank()
+    dist.get_rank()
     input_type = tensor.dtype
     input_shape = tensor.shape
     input_device = tensor.device
