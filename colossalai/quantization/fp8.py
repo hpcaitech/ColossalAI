@@ -72,6 +72,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
     """
 
     world_size = dist.get_world_size()
+    dist.get_rank()
     input_type = tensor.dtype
     input_shape = tensor.shape
     input_device = tensor.device
@@ -105,6 +106,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
         tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
     tensor_out = torch.cat(tensor_list, dim=0)
     tensor.data = tensor_out.view(input_shape).to(input_type)
+<<<<<<< HEAD
 
 
 
@@ -172,3 +174,5 @@ def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
 
     if del_metadata:
         del inp["fp8_scale"]
+=======
+>>>>>>> [pre-commit.ci] auto fixes from pre-commit.com hooks
