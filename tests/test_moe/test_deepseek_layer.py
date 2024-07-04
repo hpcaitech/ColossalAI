@@ -4,12 +4,11 @@ import pytest
 import torch
 import torch.distributed as dist
 from torch.testing import assert_close
+from transformers import AutoConfig, AutoModel
 
 import colossalai
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.shardformer.modeling.deepseek import EPDeepseekMoE
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.configuration_deepseek import DeepseekConfig
-from colossalai.shardformer.modeling.deepseek_moe_16b_base.modeling_deepseek import DeepseekMoE
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4
@@ -25,14 +24,18 @@ def check_deepseek_moe_layer():
         pp_size=1,
         ep_size=dist.get_world_size(),
     )
-    config = DeepseekConfig(
-        hidden_size=hidden_size,
-        intermediate_size=hidden_size * 2,
-        n_routed_experts=n_experts,
-        num_experts_per_tok=top_k,
-    )
+
+    config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
+    config.num_hidden_layers = 1
+    config.n_routed_experts = n_experts
+    config.num_experts_per_tok = top_k
+    config.hidden_size = hidden_size
+    config.intermediate_size = hidden_size * 2
+    config.first_k_dense_replace = 0
+    config.num_attention_heads = 2
     torch.manual_seed(0)
-    orig_model = DeepseekMoE(config).cuda()
+    # get the moe layer in auto model
+    orig_model = AutoModel.from_config(config, trust_remote_code=True).layers[0].mlp.cuda()
     x = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
     orig_output = orig_model(x)
     model = deepcopy(orig_model)
