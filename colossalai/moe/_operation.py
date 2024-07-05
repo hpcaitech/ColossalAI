@@ -393,4 +393,7 @@ def all_to_all_uneven(
     group=None,
     overlap: bool = False,
 ):
+    assert (
+        inputs.requires_grad
+    ), "Input must require grad to assure that backward is executed, otherwise it might hang the program."
     return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap)

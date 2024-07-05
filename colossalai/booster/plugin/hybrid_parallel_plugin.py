@@ -1058,17 +1058,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         if dp_outside:
-            (
-                self.dp_axis,
-                self.pp_axis,
-                self.tp_axis,
-                self.sp_axis,
-            ) = (
-                0,
-                1,
-                2,
-                3,
-            )
+            self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
         else:
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
