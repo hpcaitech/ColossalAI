@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -39,21 +40,20 @@ class DeepseekPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             raise NotImplementedError("Tensor parallelism is not supported for Deepseek model now.")
-        if getattr(self.shard_config, "ep_group", None) is None:
-            raise ValueError("You must pass in ep_group via shard_config for expert parallel!")
 
-        # expert parallel
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="mlp",
-                    target_module=EPDeepseekMoE,
-                    kwargs={"ep_group": self.shard_config.ep_group},
-                )
-            ],
-            policy=policy,
-            target_key="DeepseekDecoderLayer",
-        )
+        if getattr(self.shard_config, "ep_group", None) is not None:
+            # expert parallel
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="mlp",
+                        target_module=EPDeepseekMoE,
+                        kwargs={"ep_group": self.shard_config.ep_group},
+                    )
+                ],
+                policy=policy,
+                target_key="DeepseekDecoderLayer",
+            )
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
@@ -82,7 +82,10 @@ class DeepseekPolicy(Policy):
             )
 
         if self.shard_config.enable_flash_attention:
-            raise NotImplementedError("Flash attention has already been replaced in deepseek.")
+            warnings.warn(
+                "Flash attention has already been replaced in deepseek, and now set enable_flash_attention = False."
+            )
+            self.shard_config.enable_flash_attention = False
 
         return policy
 
