@@ -100,7 +100,7 @@ class BucketStore(BaseStore):
 
         return self._grad_in_bucket
 
-    def get_flatten_grad(self) -> Tensor:
+    def get_flatten_grad(self, dtype=None) -> Tensor:
         """Return the flattened gradients slices in the bucket, the data organization of the flattened tensor:
         [grad0_rank0, grad1_rank0, ..., grad_0_rank1, grad1_rank1, ....]
 
@@ -110,8 +110,12 @@ class BucketStore(BaseStore):
 
         flat_grad = []
         for grad_list in self._grad_in_bucket.values():
-            flat_grad.append(_flatten_dense_tensors(grad_list))
-        flat_grad = _flatten_dense_tensors(flat_grad)
+            if len(grad_list) > 0:
+                flat_grad.append(_flatten_dense_tensors(grad_list))
+        if len(flat_grad) > 0:
+            flat_grad = _flatten_dense_tensors(flat_grad)
+        else:
+            flat_grad = torch.tensor([], device=self.comm_stream.device, dtype=dtype)
         return flat_grad
 
     def get_param_id_of_grad(self, grad: Tensor) -> int:

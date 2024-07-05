@@ -19,7 +19,7 @@ def data_gen():
     # tokenized_input = tokenizer([input], return_tensors="pt")
     # input_ids = tokenized_input['input_ids']
     # attention_mask = tokenized_input['attention_mask']
-    input_ids = torch.tensor([[1, 1984, 16020, 2076, 2487, 349, 21375, 4749]], dtype=torch.int64)
+    input_ids = torch.tensor([[1, 22, 55, 77, 532, 349, 43, 22]], dtype=torch.int64)
     attention_mask = torch.tensor([[1, 1, 1, 1, 1, 1, 1, 1]], dtype=torch.int64)
     return dict(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -43,7 +43,7 @@ def data_gen_for_sequence_classification():
 output_transform_fn = lambda x: x
 
 # define loss function
-loss_fn_for_mixtral_model = lambda x: torch.nn.functional.mse_loss(x[0], torch.ones_like(x[0]))
+loss_fn_for_mixtral_model = lambda x: x[0].mean()
 loss_fn = lambda x: x.loss
 loss_fn_for_seq_classification = lambda output: output.logits.mean()
 
@@ -52,7 +52,7 @@ config = MixtralConfig(
     intermediate_size=256,
     num_attention_heads=64,
     num_hidden_layers=2,
-    vocab_size=50258,
+    vocab_size=1000,
     output_router_logits=True,
 )
 

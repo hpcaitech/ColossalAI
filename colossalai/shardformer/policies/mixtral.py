@@ -101,20 +101,18 @@ class MixtralPolicy(Policy):
             # )
 
         if getattr(self.shard_config, "ep_group", None) is None:
-            raise ValueError("You must pass in ep_group via shard_config for expert parallel!")
-
-        # expert parallel
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="block_sparse_moe",
-                    target_module=EPMixtralSparseMoeBlock,
-                    kwargs={"ep_group": self.shard_config.ep_group},
-                )
-            ],
-            policy=policy,
-            target_key=MixtralDecoderLayer,
-        )
+            # expert parallel
+            self.append_or_create_submodule_replacement(
+                description=[
+                    SubModuleReplacementDescription(
+                        suffix="block_sparse_moe",
+                        target_module=EPMixtralSparseMoeBlock,
+                        kwargs={"ep_group": self.shard_config.ep_group},
+                    )
+                ],
+                policy=policy,
+                target_key=MixtralDecoderLayer,
+            )
 
         # optimization configuration
         if self.shard_config.enable_fused_normalization:
@@ -144,6 +142,7 @@ class MixtralPolicy(Policy):
 
         if self.shard_config.enable_flash_attention:
             warnings.warn("Flash attention is natively supported in transformers, will ignore the flag.")
+            self.shard_config.enable_flash_attention = False
 
         return policy
 
