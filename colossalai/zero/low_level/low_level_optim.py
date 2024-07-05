@@ -301,12 +301,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def _run_reduction(self):
         for bucket_store in self.pg_to_bucket_store.values():
-            if bucket_store.num_elements_in_bucket() <= 0:
-                continue
-
             bucket_store.build_grad_in_bucket()
 
-            flat_grads = bucket_store.get_flatten_grad()
+            flat_grads = bucket_store.get_flatten_grad(self._dtype)
             flat_grads /= bucket_store.world_size
 
             # ready to add other tensors to bucket
@@ -353,6 +350,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self, bucket_store: BucketStore, origin_grad_list: List, flat_grad_list: List, group_id: int
     ) -> None:
         for rank, grad_list in enumerate(origin_grad_list):
+            if len(grad_list) == 0:
+                continue
             sync_tensor(flat_grad_list[rank], grad_list)
             for grad in grad_list:
                 param_id = bucket_store.get_param_id_of_grad(grad)
@@ -869,12 +868,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def get_param_grad(self, working_param: nn.Parameter) -> Tensor:
         grad_store = self.pid_to_grad_store[id(working_param)]
-        partial_grad = grad_store.get_working_grad_by_param_id(id(working_param))
-        if partial_grad is None:
+        grad = grad_store.get_working_grad_by_param_id(id(working_param))
+        if grad is None:
             return None
-        tensor_list = [torch.empty_like(partial_grad) for _ in range(grad_store.world_size)]
-        dist.all_gather(tensor_list, partial_grad, group=grad_store.torch_pg)
-        grad_flat = torch.cat(tensor_list, dim=0)
+        grad_flat = torch.empty((grad_store.world_size, *grad.shape), dtype=grad.dtype, device=grad.device)
+        dist.all_gather_into_tensor(grad_flat, grad, group=grad_store.torch_pg)
         return grad_flat[: working_param.numel()].reshape_as(working_param)
 
     def get_working_grads_by_group_id(self, group_id: int) -> List[Tensor]:

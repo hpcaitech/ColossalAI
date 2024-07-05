@@ -91,7 +91,7 @@ class GradientStore(BaseStore):
 
         return grad_list
 
-    def get_working_grad_by_param_id(self, param_id) -> Tensor:
+    def get_working_grad_by_param_id(self, param_id) -> Optional[Tensor]:
         """
         Return the working gradient for the specified parameter.
 

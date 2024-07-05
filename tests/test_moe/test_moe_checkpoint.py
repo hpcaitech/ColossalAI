@@ -141,7 +141,6 @@ def check_moe_checkpoint(test_config):
         if dist.get_rank() == 0:
             saved_model = model_cls.from_pretrained(model_dir).cuda()
             check_model_equal(orig_model, saved_model)
-            # check_model_equal(model, saved_model)
             saved_model.save_pretrained(hf_model_dir)
         dist.barrier()
         # check load model

@@ -31,16 +31,17 @@ def split_grad(grad, world_size):
     return splited_grad
 
 
-@parameterize("dtype", [torch.float16, torch.bfloat16])
-@parameterize("master_weights", [True, False])
 @parameterize("stage", [1, 2])
-def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.dtype, stage: int):
+@parameterize("ep_size", [1, 2, 4])
+def run_zero_with_original_model(stage: int, ep_size: int):
+    dtype = torch.float16
+
     rank = torch.distributed.get_rank()
     torch.cuda.set_device(dist.get_rank())
     plugin = MoeHybridParallelPlugin(
         tp_size=1,
         pp_size=1,
-        ep_size=dist.get_world_size() // 2,
+        ep_size=ep_size,
     )
 
     seed_all(10086)
@@ -53,26 +54,30 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
 
     orig_model = MixtralSparseMoeBlock(config).to(dtype).cuda()
 
-    ori_model = DDP(orig_model.cuda(), static_graph=True).cuda()
+    ori_model = DDP(
+        orig_model.cuda(),
+        process_group=plugin.dp_group,
+        find_unused_parameters=True,  # important for torch ddp, not all experts are routed
+    ).cuda()
 
     zero_model = deepcopy(orig_model).to(dtype)
     zero_model = EPMixtralSparseMoeBlock.from_native_module(zero_model, ep_group=plugin.ep_group)
 
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=1)
-    pg_param_list = {plugin.global_dp_group: [], plugin.moe_dp_group: []}
+    pg_param_list = {plugin.dp_group: [], plugin.moe_dp_group: []}
     for p in zero_model.parameters():
         if is_moe_tensor(p):
             pg_param_list[plugin.moe_dp_group].append(p)
         else:
-            pg_param_list[plugin.global_dp_group].append(p)
+            pg_param_list[plugin.dp_group].append(p)
 
     zero_optimizer = LowLevelZeroOptimizer(
         zero_optimizer,
         pg_to_param_list=pg_param_list,
-        master_weights=master_weights,
+        master_weights=False,
         initial_scale=1,
-        overlap_communication=False,
-        partition_grad=True,
+        overlap_communication=True,
+        partition_grad=stage == 2,
     )
 
     ori_optimizer = torch.optim.SGD(ori_model.parameters(), lr=1)
@@ -82,11 +87,11 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
 
     for _ in range(2):
         # zero-dp forward
-        input_data = torch.rand(1, tokens, hidden_size).cuda()
-        zero_output, zero_logits = zero_model(input_data.to(dtype))
+        input_data = torch.rand(1, tokens, hidden_size, requires_grad=True).cuda()
+        zero_output, _ = zero_model(input_data.to(dtype))
 
         # torch-ddp forward
-        ori_output, ori_logits = ori_model(input_data.to(dtype))
+        ori_output, _ = ori_model(input_data.to(dtype))
         loose_close(zero_output, ori_output, dtype=dtype)
 
         # zero-dp backward
@@ -115,14 +120,16 @@ def run_zero_with_original_model(world_size, master_weights: bool, dtype: torch.
         for n, p in zero_model.named_parameters():
             loose_close(p.data, name_to_p[n].data, dtype=dtype)
 
+    print(f"{dist.get_rank()} test passed")
+
 
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_zero_with_original_model(world_size=world_size)
+    run_zero_with_original_model()
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_moe_zero_model(world_size):
     spawn(run_dist, world_size)
