@@ -25,14 +25,17 @@ def check_deepseek_moe_layer():
         ep_size=dist.get_world_size(),
     )
 
-    config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
-    config.num_hidden_layers = 1
-    config.n_routed_experts = n_experts
-    config.num_experts_per_tok = top_k
-    config.hidden_size = hidden_size
-    config.intermediate_size = hidden_size * 2
-    config.first_k_dense_replace = 0
-    config.num_attention_heads = 2
+    config = AutoConfig.from_pretrained(
+        "deepseek-ai/deepseek-moe-16b-base",
+        num_hidden_layers=1,
+        n_routed_experts=n_experts,
+        num_experts_per_tok=top_k,
+        hidden_size=hidden_size,
+        intermediate_size=hidden_size * 2,
+        first_k_dense_replace=0,
+        num_attention_heads=2,
+        trust_remote_code=True,
+    )
     torch.manual_seed(0)
     # get the moe layer in auto model
     orig_model = AutoModel.from_config(config, trust_remote_code=True).layers[0].mlp.cuda()

@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -81,7 +82,10 @@ class DeepseekPolicy(Policy):
             )
 
         if self.shard_config.enable_flash_attention:
-            raise NotImplementedError("Flash attention has already been replaced in deepseek.")
+            warnings.warn(
+                "Flash attention has already been replaced in deepseek, and now set enable_flash_attention = True."
+            )
+            self.shard_config.enable_flash_attention = False
 
         return policy
 
