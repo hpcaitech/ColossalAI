@@ -160,6 +160,13 @@ _POLICY_LIST = {
     "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    # Deepseek
+    "transformers_modules.modeling_deepseek.DeepSeekModel": PolicyLocation(
+        file_name="deepseek", class_name="DeepseekModelPolicy"
+    ),
+    "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
+        file_name="deepseek", class_name="DeepseekForCausalLMPolicy"
+    ),
     # Falcon
     "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
         file_name="falcon", class_name="FalconModelPolicy"
@@ -252,7 +259,6 @@ def get_autopolicy(model: nn.Module) -> Policy:
     """
     full_name = _fullname(model)
     policy_location = _POLICY_LIST.get(full_name, None)
-
     if policy_location is None:
         raise NotImplementedError(
             f"Auto policy for {model.__class__.__qualname__} ({full_name}) is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"

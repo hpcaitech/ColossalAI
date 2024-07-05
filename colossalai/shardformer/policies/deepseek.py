@@ -1,19 +1,19 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
-from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock, MixtralPipelineForwards
+from colossalai.shardformer.modeling.deepseek import DeepseekPipelineForwards, EPDeepseekMoE
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
+__all__ = ["DeepseekPolicy", "DeepseekForCausalLMPolicy"]
 
 
-class MixtralPolicy(Policy):
+class DeepseekPolicy(Policy):
     def config_sanity_check(self):
         pass
 
@@ -35,23 +35,24 @@ class MixtralPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             raise NotImplementedError(
-                "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+                "Deepseek dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
             )
 
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
+            raise NotImplementedError("Tensor parallelism is not supported for Deepseek model now.")
+
         if getattr(self.shard_config, "ep_group", None) is not None:
             # expert parallel
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
-                        suffix="block_sparse_moe",
-                        target_module=EPMixtralSparseMoeBlock,
+                        suffix="mlp",
+                        target_module=EPDeepseekMoE,
                         kwargs={"ep_group": self.shard_config.ep_group},
                     )
                 ],
                 policy=policy,
-                target_key=MixtralDecoderLayer,
+                target_key="DeepseekDecoderLayer",
             )
 
         # optimization configuration
@@ -68,7 +69,7 @@ class MixtralPolicy(Policy):
                     ),
                 ],
                 policy=policy,
-                target_key=MixtralDecoderLayer,
+                target_key="DeepseekDecoderLayer",
             )
 
             self.append_or_create_submodule_replacement(
@@ -77,11 +78,14 @@ class MixtralPolicy(Policy):
                     target_module=FusedRMSNorm,
                 ),
                 policy=policy,
-                target_key=MixtralModel,
+                target_key="DeepseekModel",
             )
 
         if self.shard_config.enable_flash_attention:
-            raise NotImplementedError("Flash attention has already been replaced in mixtral.")
+            warnings.warn(
+                "Flash attention has already been replaced in deepseek, and now set enable_flash_attention = False."
+            )
+            self.shard_config.enable_flash_attention = False
 
         return policy
 
@@ -93,7 +97,7 @@ class MixtralPolicy(Policy):
         to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
             stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == "MixtralModel":
+            if self.model.__class__.__name__ == "DeepseekModel":
                 module = self.model
             else:
                 module = self.model.model
@@ -111,7 +115,7 @@ class MixtralPolicy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "MixtralModel":
+        if self.model.__class__.__name__ == "DeepseekModel":
             module = self.model
         else:
             module = self.model.model
@@ -129,7 +133,7 @@ class MixtralPolicy(Policy):
         return held_layers
 
 
-class MixtralModelPolicy(MixtralPolicy):
+class DeepseekModelPolicy(DeepseekPolicy):
     def __init__(self) -> None:
         super().__init__()
 
@@ -138,8 +142,8 @@ class MixtralModelPolicy(MixtralPolicy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=MixtralModel,
-                new_forward=MixtralPipelineForwards.mixtral_model_forward,
+                model_cls="DeepseekModel",
+                new_forward=DeepseekPipelineForwards.deepseek_model_forward,
                 policy=policy,
             )
         return policy
@@ -154,14 +158,14 @@ class MixtralModelPolicy(MixtralPolicy):
         return []
 
 
-class MixtralForCausalLMPolicy(MixtralPolicy):
+class DeepseekForCausalLMPolicy(DeepseekPolicy):
     def module_policy(self):
         policy = super().module_policy()
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
-                MixtralForCausalLM: ModulePolicyDescription(
+                "DeepseekForCausalLM": ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -176,8 +180,8 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=MixtralForCausalLM,
-                new_forward=MixtralPipelineForwards.mixtral_for_causal_lm_forward,
+                model_cls="DeepseekForCausalLM",
+                new_forward=DeepseekPipelineForwards.deepseek_for_causal_lm_forward,
                 policy=policy,
             )
 
@@ -192,16 +196,16 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        mixtral_model = self.model.model
+        deepseek_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(mixtral_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(deepseek_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: mixtral_model.embed_tokens.weight,
+                        0: deepseek_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
