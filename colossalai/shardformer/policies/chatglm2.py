@@ -198,13 +198,6 @@ class ChatGLMPolicy(Policy):
         if self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config, sp_mode, sp_size, sp_group)
-                },
-                policy=policy,
-                target_key="ChatGLMModel",
-            )
-            self.append_or_create_method_replacement(
-                description={
                     "forward": get_chatglm_sequence_parallel_attention_forward(
                         self.shard_config, sp_mode, sp_size, sp_group
                     ),
@@ -212,6 +205,16 @@ class ChatGLMPolicy(Policy):
                 policy=policy,
                 target_key="SelfAttention",
             )
+            if self.pipeline_stage_manager is None:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_chatglm_sequence_parallel_forward_fn(
+                            self.shard_config, sp_mode, sp_size, sp_group
+                        )
+                    },
+                    policy=policy,
+                    target_key="ChatGLMModel",
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
