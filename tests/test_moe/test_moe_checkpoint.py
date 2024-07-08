@@ -15,6 +15,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.testing import parameterize, spawn
 from colossalai.testing.utils import spawn
 
 tokens, n_experts = 7, 4
@@ -77,7 +78,23 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
         raise AssertionError(f"A total of {count} optim states are not equal")
 
 
-def check_mixtral_moe_layer():
+@parameterize(
+    "test_config",
+    [
+        [
+            MixtralConfig(
+                hidden_size=hidden_size,
+                intermediate_size=hidden_size * 2,
+                num_local_experts=n_experts,
+                num_experts_per_tok=top_k,
+                num_attention_heads=2,
+                num_key_value_heads=2,
+            ),
+            MixtralForCausalLM,
+        ],
+    ],
+)
+def check_moe_checkpoint(test_config):
     context = tempfile.TemporaryDirectory() if dist.get_rank() == 0 else nullcontext()
     with context as f:
         torch.cuda.set_device(dist.get_rank())
@@ -87,17 +104,11 @@ def check_mixtral_moe_layer():
             broadcast_objects = [None]
         dist.broadcast_object_list(broadcast_objects, src=0)
 
-        config = MixtralConfig(
-            hidden_size=hidden_size,
-            intermediate_size=hidden_size * 2,
-            num_local_experts=n_experts,
-            num_experts_per_tok=top_k,
-            num_attention_heads=2,
-            num_key_value_heads=2,
-        )
+        config = test_config[0]
+        model_cls = test_config[1]
         torch.manual_seed(0)
         input_ids = torch.randint(0, 100, (2, tokens)).cuda()
-        orig_model = MixtralForCausalLM(config).cuda()
+        orig_model = model_cls(config).cuda()
         model = deepcopy(orig_model)
         optimizer = Adam(model.parameters(), lr=1e-3)
         plugin = MoeHybridParallelPlugin(
@@ -120,7 +131,6 @@ def check_mixtral_moe_layer():
             lambda outputs, inputs: outputs.loss,
             optimizer,
         )
-
         tmpdirname = broadcast_objects[0]
         model_dir = os.path.join(tmpdirname, "mixtral_model")
         hf_model_dir = os.path.join(tmpdirname, "mixtral_hf_model")
@@ -129,13 +139,13 @@ def check_mixtral_moe_layer():
         booster.save_model(model, model_dir, shard=True)
         dist.barrier()
         if dist.get_rank() == 0:
-            saved_model = MixtralForCausalLM.from_pretrained(model_dir).cuda()
+            saved_model = model_cls.from_pretrained(model_dir).cuda()
             check_model_equal(orig_model, saved_model)
             # check_model_equal(model, saved_model)
             saved_model.save_pretrained(hf_model_dir)
         dist.barrier()
         # check load model
-        new_model = MixtralForCausalLM(config).cuda()
+        new_model = model_cls(config).cuda()
         new_optimizer = Adam(new_model.parameters(), lr=1e-3)
         new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
         booster.load_model(new_model, hf_model_dir)
@@ -163,7 +173,7 @@ def check_mixtral_moe_layer():
 
 def run_dist(rank: int, world_size: int, port: int):
     colossalai.launch(rank, world_size, "localhost", port)
-    check_mixtral_moe_layer()
+    check_moe_checkpoint()
 
 
 # Test EP + ZeRO + PP

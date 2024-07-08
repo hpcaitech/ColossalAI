@@ -32,7 +32,7 @@ SOFTWARE
 #include <x86intrin.h>
 #endif
 
-#define ROUND_DOWN(size, step) ((size) & ~((step)-1))
+#define ROUND_DOWN(size, step) ((size) & ~((step) - 1))
 #define TILE (128 * 1024 * 1024)
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)

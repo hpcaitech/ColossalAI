@@ -14,6 +14,7 @@ class BatchInferState:
     Information to be passed and used for a batch of inputs during
     a single model forward
     """
+
     batch_size: int
     max_len_in_batch: int
 

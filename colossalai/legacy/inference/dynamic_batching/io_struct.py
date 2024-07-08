@@ -118,16 +118,16 @@ class Batch:
 
 class BatchTokenIdOut:
     def __init__(self):
-        self.reqs_infs: List[
-            Tuple[str, int, Dict, bool, bool]
-        ] = []  # [req_id, new_token_id, gen_metadata, finished_state, abort_state]
+        self.reqs_infs: List[Tuple[str, int, Dict, bool, bool]] = (
+            []
+        )  # [req_id, new_token_id, gen_metadata, finished_state, abort_state]
 
 
 class BatchStrOut:
     def __init__(self):
-        self.reqs_infs: List[
-            Tuple[str, str, Dict, bool, bool]
-        ] = []  # [req_id, token_str, gen_metadata, finished_state, abort_state]
+        self.reqs_infs: List[Tuple[str, str, Dict, bool, bool]] = (
+            []
+        )  # [req_id, token_str, gen_metadata, finished_state, abort_state]
 
 
 class AbortReq:

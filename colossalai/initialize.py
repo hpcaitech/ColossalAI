@@ -3,6 +3,12 @@
 
 import os
 
+# set CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that when overlapping communication and computation,
+# the order of of kernel launches on GPUs are the same as on the CPU so that comm is launched first.
+# see https://github.com/NVIDIA/Megatron-LM/issues/533
+# https://forums.developer.nvidia.com/t/how-many-streams-maximum-number-of-streams/6571/16
+os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+
 import torch.distributed as dist
 
 from colossalai.accelerator import get_accelerator
