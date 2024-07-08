@@ -37,6 +37,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
 
+    # check last hidden state & loss
+    if stage_manager is None or stage_manager.is_last_stage():
+        if test_config["precision"] == "fp32":
+            atol, rtol = 1e-5, 1e-3
+        else:
+            atol, rtol = 5e-3, 5e-3
+
+        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
+
     # unwrap model
     mixtral_model = unwrap_model(org_model, "MixtralModel", "model")
     shard_mixtral_model = unwrap_model(sharded_model, "MixtralModel", "model")
@@ -81,15 +90,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_optimizer.step()
     sharded_optimizer.step()
 
-    # check last hidden state & loss
-    if stage_manager is None or stage_manager.is_last_stage():
-        if test_config["precision"] == "fp32":
-            atol, rtol = 1e-5, 1e-3
-        else:
-            atol, rtol = 5e-3, 5e-3
-
-        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
-
     # check weights
     if stage_manager is None or stage_manager.is_first_stage():
         if test_config["precision"] == "fp32":
@@ -121,16 +121,32 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp32",
         },  # pp + ep
-        # {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 1, "precision": "fp16"},  # full dp for moe and non-moe
-        # {  # moe_dp = 2, non_moe_dp = 4
-        #     "tp_size": 1,
-        #     "pp_size": 1,
-        #     "ep_size": 2,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        # },  # moe_dp = 1, non_moe_dp = 4
-        # {"tp_size": 1, "pp_size": 1, "ep_size": 4, "zero_stage": 1, "precision": "fp16"},
-        # {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 0, "precision": "fp32"},  # full dp for moe and non-moe
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 1,
+            "zero_stage": 0,
+            "precision": "fp32",
+        },  # pp + ep
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 4,
+            "zero_stage": 0,
+            "precision": "fp32",
+        },  # pp + ep
+        {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 1, "precision": "bf16"},  # full dp for moe and non-moe
+        {  # moe_dp = 2, non_moe_dp = 4
+            "tp_size": 1,
+            "pp_size": 1,
+            "ep_size": 2,
+            "zero_stage": 1,
+            "precision": "fp32",
+        },  # moe_dp = 1, non_moe_dp = 4
+        {"tp_size": 1, "pp_size": 1, "ep_size": 4, "zero_stage": 1, "precision": "fp32"},  # full dp for non-moe and full ep for moe
+        {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 0, "precision": "fp32"},  # full dp for moe and non-moe
     ],
 )
 def run_mixtral_test(test_config):
