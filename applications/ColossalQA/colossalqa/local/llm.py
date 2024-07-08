@@ -12,6 +12,7 @@ TEST_PROMPT_CHATGLM="续写文章：惊蛰一过，春寒加剧。先是料料�
 logger.info(llm(TEST_PROMPT_CHATGLM, max_new_tokens=100), verbose=True)
 
 """
+
 from typing import Any, List, Mapping, Optional
 
 import torch

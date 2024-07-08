@@ -1,6 +1,7 @@
 """
 Script for Chinese retrieval based conversation system backed by ChatGLM
 """
+
 import argparse
 import os
 

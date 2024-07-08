@@ -14,7 +14,6 @@ __all__ = ["InferenceEngine"]
 
 
 class InferenceEngine:
-
     """
     InferenceEngine which manages the inference process..
 

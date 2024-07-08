@@ -292,7 +292,7 @@ def main():
     with get_profile_context(
         args.profile,
         args.ignore_steps,
-        len(dataloader) - 1,
+        1,  # avoid creating massive log files
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
     ) as prof:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:

@@ -1,6 +1,7 @@
 """
 Script for Chinese retrieval based conversation system backed by ChatGLM
 """
+
 from typing import Tuple
 
 from colossalqa.chain.retrieval_qa.base import RetrievalQA

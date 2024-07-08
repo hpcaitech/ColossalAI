@@ -52,9 +52,11 @@ class pretraining_dataset(Dataset):
 
     def __getitem__(self, index):
         [input_ids, input_mask, segment_ids, masked_lm_labels] = [
-            torch.from_numpy(input[index].astype(np.int64))
-            if indice < 5
-            else torch.from_numpy(np.asarray(input[index].astype(np.int64)))
+            (
+                torch.from_numpy(input[index].astype(np.int64))
+                if indice < 5
+                else torch.from_numpy(np.asarray(input[index].astype(np.int64)))
+            )
             for indice, input in enumerate(self.inputs)
         ]
 

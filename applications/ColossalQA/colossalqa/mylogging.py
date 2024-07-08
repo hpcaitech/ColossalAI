@@ -1,6 +1,7 @@
 """
 Class for logging with extra control for debugging
 """
+
 import logging
 
 

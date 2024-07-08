@@ -55,7 +55,7 @@ Model/Feature Compatibility Matrix:
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">✔️</td>
-    <td nowrap="nowrap" align="center">❌</td>
+    <td nowrap="nowrap" align="center">✔️</td>
     <td nowrap="nowrap" align="center">❌</td>
   </tr>
   <tr>
