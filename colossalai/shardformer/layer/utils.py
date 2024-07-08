@@ -1,5 +1,9 @@
 from contextlib import contextmanager
+<<<<<<< HEAD
 from typing import List, Optional, Union
+=======
+from typing import Dict, List
+>>>>>>> add basic ring attn; debug cross entropy
 
 import torch
 import torch.distributed as dist

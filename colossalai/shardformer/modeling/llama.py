@@ -839,12 +839,16 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 labels, _, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group, labels, is_label=True)
 
         sp_mode = shard_config.sequence_parallelism_mode
-        sp_group = self.shard_config.sequence_parallel_process_group
-        assert not (
-            shard_config.sp_mode == "ring_attn" and use_cache
-        ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
-        if sp_mode == "ring_attn":
-            inputs_embeds = ring_attn_split_forward(inputs_embeds, sp_group)
+        sp_group = shard_config.sequence_parallel_process_group
+        is_sp = shard_config.enable_sequence_parallelism
+        # Split labels
+        if is_sp:
+            assert not (
+                sp_mode == "ring_attn" and use_cache
+            ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
+            if sp_mode == "ring_attn":
+                batch = ring_attn_split_forward({"labels": labels}, sp_group)
+                labels = batch["labels"]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(

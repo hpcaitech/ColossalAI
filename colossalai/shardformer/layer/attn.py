@@ -24,10 +24,7 @@ __all__ = [
 ]
 
 _flash_attn_forward = _flash_attn_backward = None
-<<<<<<< HEAD
 _unpad_input = _pad_input = None
-=======
->>>>>>> halfway
 
 
 class AttnMaskType(Enum):
@@ -369,6 +366,58 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
     # lse = (lse - F.logsigmoid(lse - block_lse))
     return out, lse
+
+
+@triton.jit
+def flash_attn_fwd_out_corr_triton(
+    out_ptr, out_per_step_ptr, seq_dim, softmax_lse_ptr, softmax_lse_per_step_ptr, BLOCK_SIZE: tl.constexpr
+):
+    # Calculate the global id
+    pid = tl.program_id(0)
+
+    # Offsets for the current row
+    offsets = tl.arange(0, BLOCK_SIZE)
+
+    # Pointers to the current row in out and out_per_step
+    row_start = pid * seq_dim
+    out_ptrs = out_ptr + row_start + offsets
+    out_per_step_ptrs = out_per_step_ptr + row_start + offsets
+
+    # Load softmax_lse and softmax_lse_per_step
+    softmax_lse = tl.load(softmax_lse_ptr + pid)
+    softmax_lse_per_step = tl.load(softmax_lse_per_step_ptr + pid)
+
+    # Compute the corrected exponentiation
+    softmax_lse_corrected_exp = tl.exp(softmax_lse_per_step - softmax_lse)
+
+    out_per_step_vals = tl.load(out_per_step_ptrs)
+
+    # Correct the out_per_step by the exponentiation
+    out_corrected = out_per_step_vals * softmax_lse_corrected_exp
+
+    # Load the current out values
+    out_vals = tl.load(out_ptrs)
+
+    # Add the corrected output to out
+    updated_out_vals = out_vals + out_corrected
+
+    # Store the updated out values
+    tl.store(out_ptrs, updated_out_vals)
+
+
+# Modified from Megatron-LM. TODO: try Triton
+def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
+    softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
+    softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
+    out_corrected = out_per_step * softmax_lse_corrected_exp
+    out.add_(out_corrected)
+
+
+def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+    max_scale = torch.max(softmax_lse, softmax_lse_per_step)
+    min_scale = torch.min(softmax_lse, softmax_lse_per_step)
+    new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    softmax_lse.copy_(new_scale)
 
 
 class RingAttention(torch.autograd.Function):

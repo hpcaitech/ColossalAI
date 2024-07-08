@@ -651,7 +651,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
                 # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
-                # all-reduce scheduled first and have GPU resources allocated
+                # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             grad_weight = total_input.t().matmul(grad_output)
             grad_bias = grad_output.sum(dim=0) if use_bias else None
