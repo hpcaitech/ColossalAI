@@ -4,6 +4,8 @@ from typing import Callable, Dict, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+import triton
+import triton.language as tl
 
 from colossalai.kernel.kernel_loader import (
     FlashAttentionForFloatAndCustomMaskLoader,
@@ -202,9 +204,9 @@ class ColoAttention:
         4. padded causal mask: recv attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, indices
 
         Args:
-            q (torch.Tensor): Query tensor. Shape should be [B, N, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, N, Skv, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, N, Skv, D]
+            q (torch.Tensor): Query tensor. Shape should be [B, Heads, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, Heads, Skv, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, Heads, Skv, D]
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
@@ -221,7 +223,7 @@ class ColoAttention:
             scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
 
         Returns:
-            torch.Tensor: Output tensor. Shape should be [B, N, Sq, D]
+            torch.Tensor: Output tensor. Shape should be [B, Heads, Sq, D]
         """
         # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
         # this case is usaul when padding mask is used and self attention is performed
@@ -280,9 +282,9 @@ def _load_flash_attn():
     from flash_attn.flash_attn_interface import _flash_attn_varlen_forward as _flash_attn_forward
 
 
-def ring_attn_p2p_comm(rank, send_tensor, recv_tensor, send_src, recv_src, sp_group):
+def ring_attn_p2p_comm(sp_rank, send_tensor, recv_tensor, send_src, recv_src, sp_group):
     """No metadata as K, V sizes are fixed"""
-    if rank % 2 == 0:
+    if sp_rank % 2 == 0:
         send_op = dist.P2POp(dist.isend, send_tensor, send_src, group=sp_group)
         recv_op = dist.P2POp(dist.irecv, recv_tensor, recv_src, group=sp_group)
         send_recv_ops = [send_op, recv_op]
@@ -295,11 +297,63 @@ def ring_attn_p2p_comm(rank, send_tensor, recv_tensor, send_src, recv_src, sp_gr
     return reqs
 
 
+@triton.jit
+def flash_attn_fwd_out_corr_triton(
+    out_ptr, out_per_step_ptr, seq_dim, softmax_lse_ptr, softmax_lse_per_step_ptr, BLOCK_SIZE: tl.constexpr
+):
+    # Calculate the global id
+    pid = tl.program_id(0)
+
+    # Offsets for the current row
+    offsets = tl.arange(0, BLOCK_SIZE)
+
+    # Pointers to the current row in out and out_per_step
+    row_start = pid * seq_dim
+    out_ptrs = out_ptr + row_start + offsets
+    out_per_step_ptrs = out_per_step_ptr + row_start + offsets
+
+    # Load softmax_lse and softmax_lse_per_step
+    softmax_lse = tl.load(softmax_lse_ptr + pid)
+    softmax_lse_per_step = tl.load(softmax_lse_per_step_ptr + pid)
+
+    # Compute the corrected exponentiation
+    softmax_lse_corrected_exp = tl.exp(softmax_lse_per_step - softmax_lse)
+
+    out_per_step_vals = tl.load(out_per_step_ptrs)
+
+    # Correct the out_per_step by the exponentiation
+    out_corrected = out_per_step_vals * softmax_lse_corrected_exp
+
+    # Load the current out values
+    out_vals = tl.load(out_ptrs)
+
+    # Add the corrected output to out
+    updated_out_vals = out_vals + out_corrected
+
+    # Store the updated out values
+    tl.store(out_ptrs, updated_out_vals)
+
+
+# Modified from Megatron-LM. TODO: try Triton
+def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
+    softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
+    softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
+    out_corrected = out_per_step * softmax_lse_corrected_exp
+    out.add_(out_corrected)
+
+
+def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+    max_scale = torch.max(softmax_lse, softmax_lse_per_step)
+    min_scale = torch.min(softmax_lse, softmax_lse_per_step)
+    new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    softmax_lse.copy_(new_scale)
+
+
 class RingAttention(torch.autograd.Function):
     """Implements the Ring Attention from `Ring Attention with Blockwise Transformers for Near-Infinite Context`
     (https://arxiv.org/abs/2310.01889).
     We referenced the context parallel in Megatron-LM, with several critical optimizations
-    such as removing the negative optimization of using two streams, torch.compile and reusing K, V buffers.
+    such as removing the negative optimization of using two streams for attn forward, torch.compile and reusing K, V buffers.
     For load-balancing we adopted the "zigzag" attention scheme from https://github.com/zhuzilin/ring-flash-attention/tree/main
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
@@ -307,13 +361,15 @@ class RingAttention(torch.autograd.Function):
 
     """
 
-    # TODO: pad to multiple of cp_size
+    # TODO: Support arbitary seq length by padding to multiple of cp_size
     @staticmethod
     def forward(
         ctx,
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
+        sp_group: dist.ProcessGroup,
+        sp_stream: torch.cuda.Stream,
         attention_mask: Optional[torch.Tensor] = None,
         attention_mask_type: AttnMaskType = AttnMaskType.CUSTOM,
         cu_seqlens_q: Optional[torch.Tensor] = None,
@@ -327,9 +383,11 @@ class RingAttention(torch.autograd.Function):
     ):
         """
         Args:
-            q (torch.Tensor): Query tensor. Shape should be [B, N, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, N, Skv, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, N, Skv, D]
+            q (torch.Tensor): Query tensor. Shape should be [B, Heads, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, Heads, Skv, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, Heads, Skv, D]
+            sp_group (Optional[dist.ProcessGroup]): Process group for sequence parallelism
+            sp_tream (torch.cuda.Stream): An different stream for output correction.
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
@@ -346,7 +404,7 @@ class RingAttention(torch.autograd.Function):
             scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
 
         Returns:
-            torch.Tensor: Output tensor. Shape should be [B, N, Sq, D]
+            torch.Tensor: Output tensor. Shape should be [B, Heads, Sq, D]
         """
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
@@ -368,3 +426,99 @@ class RingAttention(torch.autograd.Function):
             raise RuntimeError(
                 f"Ring attention requires Flash Attention, but import failed. You can re-install it via 'pip install flash-attn --no-build-isolation'"
             ) from e
+
+        # (B, Sq, H, D) -> (B, H, 2, Sq // 2, D)
+        q, k, v = [x.transpose(1, 2).view(*x.shape[:1], 2, x.shape[1] // 2, *x.shape[2:]) for x in (q, k, v)]
+
+        sp_size = dist.get_world_size(sp_group)
+        sp_rank = dist.get_rank(sp_group)
+        sp_global_ranks = dist.get_process_group_ranks(sp_group)
+        send_dst = sp_global_ranks[(sp_rank + 1) % sp_size]
+        recv_src = sp_global_ranks[(sp_rank - 1) % sp_size]
+
+        # Pre-allocate double buffer for overlapping and receiving next step's inputs
+        q_inputs = [q[:, 0], q[:, 1]]  # (B, 2, Sq // 2, H, D)
+        kv_inputs = [torch.stack(k, v)]  # (2, B, 2, Skv // 2, H, D)
+        kv_inputs.append(torch.empty_like(kv_inputs[0]))
+        del k, v
+
+        # outputs
+        out_per_step = [None, None]
+        softmax_lse_per_step = [None, None]
+        rng_states = [None, None]
+
+        # Overlap output correction with flash attn
+        [torch.cuda.current_stream(), sp_stream]
+        p2p_reqs = [[], []]
+        for i in range(sp_size + 1):
+            # Wait for current kv from prev rank
+            for req in p2p_reqs[(i + 1) % 2]:
+                req.wait()
+
+            if i < sp_size:
+                p2p_reqs[i % 2] = ring_attn_p2p_comm(
+                    sp_rank,
+                    kv_inputs[i % 2],  # send current kv to next rank
+                    kv_inputs[(i + 1) % 2],  # recv from prev rank
+                    send_dst,
+                    recv_src,
+                    sp_group,
+                )
+
+            if i == 0:
+                # Compute with local KV; no mask
+                q_input = torch.cat(q_inputs, dim=1).flatten(end_dim=2)  # (B * Sq, H, D)
+                kv_input = kv_inputs[i % 2].flatten(
+                    start_dim=1, end_dim=3
+                )  # (2, B, 2, Skv // 2, H, D) -> (2, B * Skv, H, D)
+                (
+                    _,
+                    _,
+                    _,
+                    _,
+                    out_per_step[i % 2],
+                    softmax_lse_per_step[i % 2],
+                    _,
+                    rng_states[i % 2],
+                ) = _flash_attn_forward(
+                    q_input,
+                    kv_input[0],
+                    kv_input[1],
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    max_seqlen_q,
+                    max_seqlen_kv,
+                    dropout_p,
+                    scale,
+                    causal=True,
+                    return_softmax=True,
+                )
+            elif i <= sp_rank:
+                q_input = torch.cat(q_inputs, dim=1)  # (B, Sq, H, D)
+                kv_input = kv_inputs[i % 2][0]  # (2, B, 2, Skv // 2, H, D)
+                # Drop the second half of received kv
+                kv_input = kv_input[:, :, 0].flatten(
+                    start_dim=1, end_dim=3
+                )  # (2, B, Skv / 2, H, D) -> (2, B * Skv / 2, H, D)
+                (
+                    _,
+                    _,
+                    _,
+                    _,
+                    out_per_step[i % 2],
+                    softmax_lse_per_step[i % 2],
+                    _,
+                    rng_states[i % 2],
+                ) = _flash_attn_forward(
+                    q_input,
+                    kv_input[0],
+                    kv_input[1],
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    max_seqlen_q,
+                    max_seqlen_kv,
+                    dropout_p,
+                    scale,
+                    causal=True,
+                    return_softmax=True,
+                )

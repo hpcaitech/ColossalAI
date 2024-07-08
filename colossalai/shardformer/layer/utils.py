@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List
+from typing import Dict, List
 
 import torch
 import torch.distributed as dist
@@ -291,7 +291,7 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def ring_attn_split_forward(hidden_states: torch.Tensor, sp_group):
+def ring_attn_split_forward(batch: Dict[str, torch.Tensor], sp_group):
     """
     Split the input along the sequence dimension. As naively spliting sequence
     in the causual setting will result in the first ranks having much less workload than the last ranks,
@@ -299,19 +299,23 @@ def ring_attn_split_forward(hidden_states: torch.Tensor, sp_group):
     For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
 
     Args:
-        hidden_states (torch.Tensor): The input tensor to split, with shape (bs, n_heads, seq_len, head_dim)
+        batch (Dict[torch.Tensor]): The input tensors to split.
         sp_group (ProcessGroup): The process group for sequence parallelism.
 
-    Returns:
-        torch.Tensor: The split tensor with shape (bs, n_heads, 2 * seq_len // sp_size, head_dim)
     """
-    assert hidden_states.dim() == 4, "The input tensor must have 4 dimensions (bs, n_heads, seq_len, head_dim)."
-    b, n, s, d = hidden_states.shape
     sp_size = dist.get_world_size(sp_group)
-
+    sp_rank = dist.get_rank(sp_group)
     if sp_size > 1:
-        sp_rank = dist.get_rank(sp_group)
-        hidden_states = hidden_states.view(b, n, s // (sp_size * 2), sp_size * 2, d)
-        indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=hidden_states.device)
-        return hidden_states.index_select(3, indices).view(b, n, 2 * s // sp_size, d)
-    return hidden_states
+        for key, tensor in batch.items():
+            seq_dim = 1 if key != "attention_mask" else 2
+            tensor = tensor.view(
+                *tensor.shape[:seq_dim],
+                2 * sp_size,
+                tensor.shape[seq_dim] // (2 * sp_size),
+                *tensor.shape[seq_dim + 1 :],
+            )  # (bs, )
+            indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
+            tensor = tensor.index_select(seq_dim, indices).contiguous()
+            batch[key] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
+
+    return batch
