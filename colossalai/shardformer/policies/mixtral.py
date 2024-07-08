@@ -8,6 +8,7 @@ from torch.nn import Module
 from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock, MixtralPipelineForwards
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -20,15 +21,15 @@ class MixtralPolicy(Policy):
 
     def preprocess(self):
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError
-    
-            # # Resize embedding
-            # vocab_size = self.model.config.vocab_size
-            # world_size = self.shard_config.tensor_parallel_size
+            # non-moe params tensor parallelism
 
-            # if vocab_size % world_size != 0:
-            #     new_vocab_size = vocab_size + world_size - vocab_size % world_size
-            #     self.model.resize_token_embeddings(new_vocab_size)
+            # Resize embedding
+            vocab_size = self.model.config.vocab_size
+            world_size = self.shard_config.tensor_parallel_size
+
+            if vocab_size % world_size != 0:
+                new_vocab_size = vocab_size + world_size - vocab_size % world_size
+                self.model.resize_token_embeddings(new_vocab_size)
 
         return self.model
 
@@ -42,74 +43,62 @@ class MixtralPolicy(Policy):
             )
 
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError
-            # assert (
-            #     self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
-            # ), f"The number of attention heads must be divisible by tensor parallel size."
-            # assert (
-            #     self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
-            # ), f"The number of key_value heads must be divisible by tensor parallel size."
-            # decoder_attribute_replacement = {
-            #     "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-            #     "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-            #     "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
-            #     // self.shard_config.tensor_parallel_size,
-            # }
+            # tensor parallelism for non-moe params
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
+            assert (
+                self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of key_value heads must be divisible by tensor parallel size."
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+                // self.shard_config.tensor_parallel_size,
+            }
 
-            # policy[MixtralDecoderLayer] = ModulePolicyDescription(
-            #     attribute_replacement=decoder_attribute_replacement,
-            #     sub_module_replacement=[
-            #         SubModuleReplacementDescription(
-            #             suffix="self_attn.q_proj",
-            #             target_module=Linear1D_Col,
-            #             kwargs={
-            #                 'process_group': self.shard_config.tensor_parallel_process_group,
-            #             }
-            #         ),
-            #         SubModuleReplacementDescription(
-            #             suffix="self_attn.k_proj",
-            #             target_module=Linear1D_Col,
-            #             kwargs={
-            #                 'process_group': self.shard_config.tensor_parallel_process_group,
-            #             }
-            #         ),
-            #         SubModuleReplacementDescription(
-            #             suffix="self_attn.v_proj",
-            #             target_module=Linear1D_Col,
-            #             kwargs={
-            #                 'process_group': self.shard_config.tensor_parallel_process_group,
-            #             }
-            #         ),
-            #         SubModuleReplacementDescription(
-            #             suffix="self_attn.o_proj",
-            #             target_module=Linear1D_Row,
-            #             kwargs={
-            #                 'process_group': self.shard_config.tensor_parallel_process_group,
-            #             }
-            #         ),
-            #         # SubModuleReplacementDescription(
-            #         #     suffix="mlp.gate_proj",
-            #         #     target_module=Linear1D_Col,
-            #         # ),
-            #         # SubModuleReplacementDescription(
-            #         #     suffix="mlp.up_proj",
-            #         #     target_module=Linear1D_Col,
-            #         # ),
-            #         # SubModuleReplacementDescription(
-            #         #     suffix="mlp.down_proj",
-            #         #     target_module=Linear1D_Row,
-            #         # ),
-            #     ],
-            # )
+            policy[MixtralDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=Linear1D_Row,
+                    ),
+                    # SubModuleReplacementDescription(  # TODO: enable moe tp parallel
+                    #     suffix="mlp.gate_proj",
+                    #     target_module=Linear1D_Col,
+                    # ),
+                    # SubModuleReplacementDescription(
+                    #     suffix="mlp.up_proj",
+                    #     target_module=Linear1D_Col,
+                    # ),
+                    # SubModuleReplacementDescription(
+                    #     suffix="mlp.down_proj",
+                    #     target_module=Linear1D_Row,
+                    # ),
+                ],
+            )
 
-        if getattr(self.shard_config, "ep_group", None) is None:
+        if self.shard_config.ep_group:
             # expert parallel
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
                         suffix="block_sparse_moe",
                         target_module=EPMixtralSparseMoeBlock,
-                        kwargs={"ep_group": self.shard_config.ep_group},
+                        kwargs={"ep_group": self.shard_config.ep_group, "tp_group": self.shard_config.tensor_parallel_process_group},
                     )
                 ],
                 policy=policy,

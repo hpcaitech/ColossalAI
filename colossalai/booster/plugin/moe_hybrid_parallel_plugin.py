@@ -30,8 +30,8 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         optimizer: Optimizer,
         model: Module,
         use_pipeline: bool,
-        dp_process_group: ProcessGroup,  # the dp pg for comm
-        moe_dp_group: ProcessGroup,  # the moe dp pg for gomm
+        dp_process_group: ProcessGroup,  # dp pg for comm
+        moe_dp_group: ProcessGroup,  # moe dp pg for comm
         param_info: OrderedDict,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
@@ -44,7 +44,7 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         verbose: bool = False,
         reduce_bucket_size: int = 1024 * 1024,  # communication
         communication_dtype: Optional[torch.dtype] = None,
-        overlap_communication: bool = True,
+        overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         forced_dtype: Optional[torch.dtype] = None,
@@ -88,7 +88,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     TODO: add docstring
     """
 
-    def __init__(self, ep_size: int, ep_tp_size: int = 1, *args, **kwargs) -> None:
+    def __init__(self, ep_size: int, moe_tp_size: int = 1, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
@@ -98,14 +98,14 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
             self.ddp_config["find_unused_parameters"] = True
 
-        if ep_tp_size != 1:
+        if moe_tp_size != 1:
             raise NotImplementedError
 
         world_size = dist.get_world_size()
 
-        self.moe_dp_size = world_size // (ep_size * ep_tp_size)
+        self.moe_dp_size = world_size // (ep_size * moe_tp_size)
         self.ep_size = ep_size
-        self.moe_tp_size = ep_tp_size
+        self.moe_tp_size = moe_tp_size
 
         self.moe_pg_mesh = ProcessGroupMesh(self.moe_dp_size, self.ep_size, self.moe_tp_size)
         self.moe_dp_axis, self.ep_axis, self.moe_tp_axis = 0, 1, 2
@@ -114,7 +114,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.ep_group = self.moe_pg_mesh.get_group_along_axis(self.ep_axis)
         self.moe_tp_group = self.moe_pg_mesh.get_group_along_axis(self.moe_tp_axis)
 
-        self.logger.info(f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=}")
+        self.logger.info(f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=}", ranks=[0])
 
         # set ep_group after super init
         # TODO do it in a better way
