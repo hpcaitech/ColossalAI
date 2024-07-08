@@ -2,6 +2,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
@@ -10,7 +11,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from .grad_ckpt_config import GradientCheckpointConfig
 
 __all__ = ["ShardConfig"]
-SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
+SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all", "ring_attn"]
 
 
 @dataclass
@@ -29,6 +30,9 @@ class ShardConfig:
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
+        parallel_output (bool): For TP: whether to use parallelize cross entropy computation along the feature dim.
+            For SP: set to True to NOT gather the output along the seq dim.
+        sp_stream: The stream for ring attention output correction. Defaults to None.
     """
 
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -50,7 +54,7 @@ class ShardConfig:
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
-
+    sp_stream: Optional[torch.cuda.Stream] = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

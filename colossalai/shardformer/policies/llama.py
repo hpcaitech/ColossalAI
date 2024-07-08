@@ -313,10 +313,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ],
                 )
             }
-            if self.shard_config.parallel_output:
-                new_item[LlamaForCausalLM].method_replacement = {
-                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
-                }
         else:
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
@@ -336,7 +332,11 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
             self.set_pipeline_forward(
                 model_cls=LlamaForCausalLM, new_forward=LlamaPipelineForwards.llama_for_causal_lm_forward, policy=policy
             )
-
+        elif self.shard_config.enable_tensor_parallelism or self.shard_config.enable_sequence_parallelism:
+            # Compute loss distributedly along the sequence dimension
+            new_item[LlamaForCausalLM].method_replacement = {
+                "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+            }
         return policy
 
     def get_held_layers(self) -> List[Module]:

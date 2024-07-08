@@ -1,9 +1,11 @@
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
 
+from colossalai.shardformer.layer._operation import reduce_forward
 from colossalai.shardformer.shard import ShardConfig
 
 __all__ = ["DistCrossEntropy", "cross_entropy_1d", "dist_cross_entropy"]
@@ -26,11 +28,12 @@ class DistCrossEntropy(Function):
         process_group: ProcessGroup,
         vocab_size: int,
         dtype=torch.float32,
+        mode="mean",
     ):
         r"""
         Calculate the cross entropy loss before gather, the origin loss function is as follows:
         loss = -log(exp(x[class])/sum(exp(x[i]))
-        and can be rewrite as:
+        and can be rewriten as:
         loss = log(sum(exp(x[i])) - x[class]
 
         To avoid the `nan` of log(sum(exp(x[i]))), we minus the max of x[i]
@@ -44,12 +47,10 @@ class DistCrossEntropy(Function):
         Returns:
             :class:`torch.Tensor`: The cross entropy loss
         """
+        assert mode in ["mean, sum"]
         # get the max
         logits_max = torch.max(vocab_logits, dim=-1)[0]
-        dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group)
-
-        # minus the max to avoid the result of sum of exp is too large and the log is nan
-        vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
+        handle = dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group, async_op=True)
 
         # mask the target in the local device
         rank = dist.get_rank(group=process_group)
@@ -71,23 +72,25 @@ class DistCrossEntropy(Function):
         masked_target = target.clone() - down_threshold
         masked_target[mask] = 0
 
+        # minus the max to avoid the result of sum of exp is too large and the log is nan
+        handle.wait()
+        vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
         # reshape the logits and target
         # reshape the vocab_logits to [bath_size * seq_len, vocab_size]
         # reshape the labels to [bath_size * seq_len]
         self_vocab_size = vocab_logits.size()[-1]
         logits_2d = vocab_logits.view(-1, self_vocab_size)
-        masked_target_1d = masked_target.view(-1)
+        masked_target_1d = masked_target.view(-1).contiguous()
 
         # extract the x[class] and set the x[other device] to zero
-        pred_logits_1d = logits_2d[
-            torch.arange(start=0, end=logits_2d.shape[0], device=logits_2d.device), masked_target_1d
-        ]
+        idx = torch.arange(start=0, end=logits_2d.shape[0], device=logits_2d.device)
+        pred_logits_1d = logits_2d[idx, masked_target_1d]
         pred_logits_1d = pred_logits_1d.clone().contiguous()
         pred_logits = pred_logits_1d.view_as(target)
         pred_logits[mask] = 0.0
-
+        print(f"rank {dist.get_rank()} mask: {mask}, target: {target}")
         # allreduce the get all x(i,y)
-        dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM, group=process_group)
+        handle = dist.all_reduce(pred_logits, op=dist.ReduceOp.SUM, group=process_group, async_op=True)
         exp_logits = vocab_logits
         torch.exp(vocab_logits, out=exp_logits)
         sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)
@@ -95,23 +98,27 @@ class DistCrossEntropy(Function):
 
         # calculate the loss
         # loss = log(sum(exp(x[i]))) - x[class]
+        handle.wait()
         loss = torch.where(target == ignore_index, 0.0, torch.log(sum_exp_logits) - pred_logits)
         num_non_zero = torch.sum(loss != 0.0)
         ctx.inv_num_non_zero = 1.0 / num_non_zero
-        loss = torch.sum(loss).div_(num_non_zero)
+        if mode == "mean":
+            loss = torch.sum(loss).div_(num_non_zero)
+        else:
+            loss = torch.sum(loss)
 
         # calculate the softmax
         exp_logits = exp_logits.div(sum_exp_logits.unsqueeze(dim=-1)).to(dtype)
         exp_logits[target == ignore_index] = 0.0
         ctx.save_for_backward(exp_logits, mask, masked_target_1d)
         ctx.dtype = dtype
-
-        return loss
+        return loss, num_non_zero
 
     @staticmethod
     def backward(ctx, grad_output):
         # retrieve the saved tensors
-        grad_output = grad_output * ctx.inv_num_non_zero
+        # TODO
+        # grad_output = grad_output * ctx.inv_num_non_zero
         exp_logits, mask, masked_target_1d = ctx.saved_tensors
 
         # use exp logits as the input grad
@@ -150,28 +157,63 @@ def dist_cross_entropy(
     compatible with PP, TP and SP.
     """
     if labels is not None:
-        # Shift so that tokens < n predict n
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
+        # Split labels if not gather output
+        sp_group = shard_config.sequence_parallel_process_group
+        sp_rank = dist.get_rank(sp_group)
+        sp_size = shard_config.sequence_parallel_size
+        parallel_output = shard_config.parallel_output
+
+        num_tokens = labels.size(-1)
+        # # Shift labels to the next token
+        if sp_size > 1 and parallel_output:
+            # Split labels when logits are split
+            labels = labels.split(num_tokens // sp_size, dim=-1)[sp_rank].contiguous()
+            if sp_rank == sp_size - 1:
+                labels = labels[..., 1:]
+                # Remove the tail of the sequence (usually <EOS>)
+                logits = logits[..., :-1, :]
+                # Pad to ensure the same shape across all ranks in all_reduce
+                pad_shape = [0] * logits.dim() * 2
+                pad_shape[-3] = 1  # Right side, dim = -2
+                logits = F.pad(logits, pad_shape, value=-100).contiguous()
+                labels = F.pad(labels, (0, 1, 0, 0), value=-100).contiguous()
+        else:
+            # Remove tail
+            logits = logits[..., :-1, :].contiguous()
+        assert (
+            labels.shape == logits.shape[:-1]
+        ), f"label shape {labels.shape} does not match logit shape {logits.shape}"
+        num_tokens -= 1
+        # TODO: debug masked out labels
+
         # Flatten the tokens
-        loss_fct = CrossEntropyLoss()
-        shift_labels = shift_labels.view(-1)
-        shift_labels = shift_labels.to(shift_logits.device)
+        loss_fct = CrossEntropyLoss(ignore_index=-100)
+        labels = labels.view(-1)
+
         if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
             # Cross entropy with all-reduce for TP
             new_vocab_size = logits.shape[-1]
-            shift_logits = shift_logits.view(-1, new_vocab_size)
-            loss = cross_entropy_1d(
-                shift_logits,
-                shift_labels,
+            logits = logits.view(-1, new_vocab_size)
+            loss, num_tokens = cross_entropy_1d(
+                logits,
+                labels,
                 process_group=shard_config.tensor_parallel_process_group,
                 vocab_size=out_features,
                 dtype=dtype,
             )
+
         else:
             # NOTE if use TP and not parallel_output, the output is gathered.
             # see VocabParallelLMHead1D
-            shift_logits = shift_logits.view(-1, vocab_size)
-            loss = loss_fct(shift_logits, shift_labels)
+            logits = logits.view(-1, vocab_size)
+            loss = loss_fct(logits, labels)
+
+        if sp_size > 1 and parallel_output:
+            # Reduce loss instead of gathering logits over seq dim to save compute
+            # grad_scale = 1 if shard_config.sequence_parallelism_mode == "all_to_all" else None
+            grad_scale = None
+            loss = reduce_forward(loss, sp_group, grad_scale=grad_scale)
+            # loss = loss / sp_size
+        loss = loss / num_tokens
 
         return loss

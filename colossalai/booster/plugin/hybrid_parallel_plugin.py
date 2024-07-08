@@ -1041,7 +1041,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     )
                 self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
-            elif self.sequence_parallelism_mode in ["all_to_all"]:
+            elif self.sequence_parallelism_mode in ["all_to_all", "ring_attn"]:
                 self.sp_size = 1 if sp_size is None else sp_size
                 self.dp_size = dist.get_world_size() // (self.sp_size * pp_size * tp_size)
         else:
@@ -1132,6 +1132,9 @@ class HybridParallelPlugin(PipelinePluginBase):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
+            sp_stream=torch.cuda.Stream()
+            if enable_sequence_parallelism and sequence_parallelism_mode == "ring_attn"
+            else None,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,

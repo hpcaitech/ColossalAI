@@ -32,6 +32,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
+        shard_config=None,
     ) -> None:
         """1F1B pipeline schedule.
 
@@ -39,6 +40,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             stage_manager (PipelineStageManager): Pipeline stage manager
             num_microbatches (Optional[int], optional): The number of microbatches. If not provided, it will be derived from microbatch size. Defaults to None.
             microbatch_size (Optional[int], optional): Microbatch size. If num_microbatches is provided, this will be ignored. Defaults to None.
+            shard_config: Shard configuration for gathering Sequence Parallel loss.
         """
         super().__init__(stage_manager)
         assert (
@@ -53,6 +55,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         self.batch_size: Optional[int] = None
         self.last_batch_size: Optional[int] = None
         self.microbatch_offset: Optional[int] = None
+        self.shard_config = shard_config
 
         # P2PMeta cache
         self.enable_metadata_cache = enable_metadata_cache
@@ -244,6 +247,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         output_obj = model_forward(model, micro_batch, input_obj)
         if self.stage_manager.is_last_stage():
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
+
             if accum_loss is not None:
                 accum_loss.add_(loss.detach())
             if outputs is not None:

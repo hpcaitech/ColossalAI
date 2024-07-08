@@ -93,7 +93,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
         if ctx.async_grad_allreduce:
             # Asynchronous all-reduce
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
-            # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+            # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
             # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
         grad_weight = total_input.t().matmul(grad_output)
@@ -143,7 +143,9 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         if ctx.async_grad_allreduce:
             # Asynchronous all-reduce
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
-            # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+            _ = torch.zeros(1, device=grad_input.device)
+
+            # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
             # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
         if _grad_accum_fusion_available and weight.grad is not None:
@@ -331,7 +333,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
                 # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             if _grad_accum_fusion_available and weight.grad is not None:
@@ -646,7 +648,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
                 # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             grad_weight = total_input.t().matmul(grad_output)
@@ -721,16 +723,20 @@ class _ReduceForward(torch.autograd.Function):
 
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: communication group.
+
     """
 
     @staticmethod
-    def forward(ctx, input_, process_group):
+    def forward(ctx, input_, process_group, grad_scale=None):
+        ctx.grad_scale = grad_scale
         return _reduce(input_, process_group)
 
     @staticmethod
     def backward(ctx, grad_output):
-        return grad_output, None
+        if ctx.grad_scale is not None:
+            grad_output = grad_output * ctx.grad_scale
+        return grad_output, None, None
 
 
 class _ReduceBackward(torch.autograd.Function):
@@ -983,8 +989,8 @@ def split_forward_gather_backward(input_, dim, process_group, grad_scale=None):
     return _SplitForwardGatherBackward.apply(input_, dim, process_group, grad_scale)
 
 
-def reduce_forward(input_, process_group):
-    return _ReduceForward.apply(input_, process_group)
+def reduce_forward(input_, process_group, grad_scale=None):
+    return _ReduceForward.apply(input_, process_group, grad_scale)
 
 
 def reduce_backward(input_, process_group):

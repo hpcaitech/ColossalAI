@@ -210,10 +210,11 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if sp_mode == "ring" or sp_mode == "split_gather":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
-            elif sp_mode == "all_to_all":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+            if not shard_config.parallel_output:
+                if sp_mode == "ring" or sp_mode == "split_gather":
+                    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+                elif sp_mode == "all_to_all":
+                    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -656,6 +657,15 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
         else:
             attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
+        if sp_mode == "ring_attn":
+            batch = {
+                "input": inputs_embeds,
+                "attention_mask": attention_mask["attention_mask"],
+                "position": position_ids,
+            }
+            batch = ring_attn_split_forward(batch, sp_group)
+            inputs_embeds, attention_mask["attention_mask"], position_ids = batch.values()
+
         if sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
@@ -702,11 +712,12 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
                 all_self_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-
-        if sp_mode == "ring" or sp_mode == "split_gather":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
-        elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+        # Compute Cross Entropy without gathering sequence
+        if not shard_config.parallel_output:
+            if sp_mode == "ring" or sp_mode == "split_gather":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+            elif sp_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -780,12 +791,16 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         sp_mode = shard_config.sequence_parallelism_mode
-        sp_group = self.shard_config.sequence_parallel_process_group
-        assert not (
-            shard_config.sp_mode == "ring_attn" and use_cache
-        ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
-        if sp_mode == "ring_attn":
-            inputs_embeds = ring_attn_split_forward(inputs_embeds, sp_group)
+        sp_group = shard_config.sequence_parallel_process_group
+        is_sp = shard_config.enable_sequence_parallelism
+        # Split labels
+        if is_sp:
+            assert not (
+                sp_mode == "ring_attn" and use_cache
+            ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
+            if sp_mode == "ring_attn":
+                batch = ring_attn_split_forward({"labels": labels}, sp_group)
+                labels = batch["labels"]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
@@ -809,7 +824,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         else:
             logits = self.lm_head(hidden_states)
         logits = logits.float()
-
         loss = dist_cross_entropy(
             labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
         )

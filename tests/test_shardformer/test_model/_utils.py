@@ -10,6 +10,7 @@ from torch.distributed import ProcessGroup
 from torch.nn import Module
 from torch.optim import Adam, Optimizer
 from torch.testing import assert_close
+from transformers.modeling_outputs import BaseModelOutputWithPast
 
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
@@ -302,11 +303,12 @@ def run_forward_backward_with_low_level_zero_plugin(
 
 
 def check_output_hidden_state(
-    org_output: Tensor,
-    sharded_output: Tensor,
+    org_output: BaseModelOutputWithPast,
+    sharded_output: BaseModelOutputWithPast,
     stage_manager: Optional[PipelineStageManager] = None,
     atol: float = 1e-5,
     rtol: float = 1e-3,
+    shard_config: Optional[ShardConfig] = None,
 ):
     org_hidden_state = org_output.last_hidden_state
 
@@ -314,6 +316,12 @@ def check_output_hidden_state(
         sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
+
+    if shard_config and shard_config.parallel_output and shard_config.enable_sequence_parallelism:
+        seq_dim = 1
+        sp_group = shard_config.sequence_parallel_process_group
+        sp_size = shard_config.sequence_parallel_size
+        org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
 
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
 
@@ -440,7 +448,7 @@ def check_all_grad_tensors(check_tensors):
     "org_grad": tensor to be compared from the original model
     "shard_grad": tensor to be compared from the sharded model
     """
-    for suffix, check_info in check_tensors.items():
+    for idx, (suffix, check_info) in enumerate(check_tensors.items()):
         org_grad = check_info["org_grad"]
         shard_grad = check_info["shard_grad"]
         rtol = check_info["rtol"]
