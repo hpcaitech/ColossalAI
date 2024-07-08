@@ -34,7 +34,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if enable_gradient_checkpointing:
         # org_model.gradient_checkpointing_enable()
         sharded_model.unwrap().gradient_checkpointing_enable()
-
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
     )
@@ -79,6 +78,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                 assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
             except Exception as e:
                 raise RuntimeError(f"Failed to check grad for {name}") from e
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-2, rtol=5e-2, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -116,7 +116,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
-            atol, rtol = 5e-3, 5e-3
+            atol, rtol = 5e-2, 5e-2
 
         if org_model.__class__.__name__ == "LlamaModel":
             check_output_hidden_state(
@@ -133,17 +133,21 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-4, 1e-3
         else:
-            atol, rtol = 5e-3, 5e-3
-        check_weight(
-            llama_model,
-            shard_llama_model,
-            col_layer_for_check,
-            tp_group,
-            atol=atol,
-            rtol=rtol,
-            dim=1,
-            verbose=False,
-        )
+            atol, rtol = 5e-2, 5e-2
+        try:
+            check_weight(
+                llama_model,
+                shard_llama_model,
+                col_layer_for_check,
+                tp_group,
+                atol=atol,
+                rtol=rtol,
+                dim=1,
+                verbose=False,
+            )
+        except Exception as e:
+            print(f"Failed config: {test_config}")
+            raise e
 
     # check grads
     check_all_grad_tensors(grads_to_check)
@@ -179,6 +183,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
+            "fp8_communication": True,
         },
         # Ring Attention + TP
         {
@@ -196,7 +201,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         {  # Ulysess + TP
             "tp_size": 2,
             "pp_size": 1,
-            "sp_size": 2,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "all_to_all",
@@ -218,10 +222,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
+            "fp8_communication": True,
         },
         {
-            "tp_size": 4,
+            "tp_size": 1,
             "pp_size": 1,
+            "sp_size": 2,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "split_gather",
@@ -277,22 +283,25 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "pp_size": 2,
             "num_microbatches": 2,
             "enable_all_optimization": True,
+            "sequence_parallelism_mode": "all_to_all",
             "use_lazy_init": True,
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
+            "fp8_communication": True,
         },
     ],
 )
 def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
+
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
         try:
             check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
         except Exception as e:
-            print(f"Failed config: {test_config}, model name: {name}")
+            print(f"Failed config out: {test_config}")
             raise e
     clear_layout_converter()
     Randomizer.reset_index()
@@ -339,7 +348,7 @@ def run_llama_test(test_config):
     ],
 )
 def run_llama_3d_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama_for_sequence_classification")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:

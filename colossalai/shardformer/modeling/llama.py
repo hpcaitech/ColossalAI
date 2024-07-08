@@ -482,7 +482,7 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -532,9 +532,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
+            query_states = all_to_all_comm(query_states, sp_group, fp8_comm=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_comm=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_comm=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -695,21 +695,12 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
         else:
             attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
-        # Ring Attention zigzag batch processing
-        if sp_mode == "ring_attn":
-            assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-            if attn_kwargs["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
-                inputs_embeds, attn_kwargs, position_ids = RingAttention.prepare_varlen_batch(
-                    attention_mask, sp_group, inputs_embeds, position_ids
-                )
-            else:
-                inputs_embeds, position_ids = split_batch_zigzag([inputs_embeds, position_ids], sp_group)
-                attn_kwargs = {"attention_mask_type": attn_kwargs["attention_mask_type"]}  # drop redundant tensors
-
-        elif is_share_sp_tp(sp_mode):
+        if sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, 1 / sp_size, fp8_comm=shard_config.fp8_communication
+            )
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -752,9 +743,11 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 all_self_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-        # Cases that don't support parallelizing cross entropy computation along sequence
-        if (not shard_config.parallel_output) or is_share_sp_tp(sp_mode) or force_sp_output_gather:
-            hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+
+        if sp_mode == "ring" or sp_mode == "split_gather":
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
