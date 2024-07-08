@@ -29,6 +29,7 @@ class ShardConfig:
         enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication in model parallelism. Defaults to False.
     """
 
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -47,6 +48,7 @@ class ShardConfig:
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
     ep_group: Optional[ProcessGroup] = None
+    fp8_communication: bool = False
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']
