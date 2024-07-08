@@ -57,11 +57,11 @@ class LLMEngine(BaseEngine):
 
     def __init__(
         self,
-        model_or_path: nn.Module | str,
-        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast = None,
+        model_or_path: Union[nn.Module, str],
+        tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast] = None,
         inference_config: InferenceConfig = None,
         verbose: bool = False,
-        model_policy: Policy | type[Policy] = None,
+        model_policy: Union[Policy, type[Policy]] = None,
     ) -> None:
         self.inference_config = inference_config
         self.dtype = inference_config.dtype
