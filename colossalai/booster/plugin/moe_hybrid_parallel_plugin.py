@@ -24,7 +24,6 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
-
 class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
     def __init__(
         self,
@@ -115,6 +114,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.ep_group = self.moe_pg_mesh.get_group_along_axis(self.ep_axis)
         self.moe_tp_group = self.moe_pg_mesh.get_group_along_axis(self.moe_tp_axis)
 
+        self.logger.info(f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=}")
+
         # set ep_group after super init
         # TODO do it in a better way
         self.shard_config.ep_group = self.ep_group
@@ -168,7 +169,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     )
             else:
                 assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
-                assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = MoeHybridParallelZeroOptimizer(
                     optimizer,
                     model,

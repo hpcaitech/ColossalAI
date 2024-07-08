@@ -35,6 +35,7 @@ from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
+from colossalai.logging import get_dist_logger
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -994,6 +995,9 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_p2p: bool = True,
     ) -> None:
         super().__init__()
+
+        self.logger = get_dist_logger(type(self).__name__)
+
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
@@ -1042,6 +1046,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
 
+        self.logger.info(f"{type(self).__name__}: {self.pp_size=} {self.dp_size=} {self.tp_size=} {self.sp_size=}")
+        
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
