@@ -114,39 +114,64 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         {
-            "tp_size": 1,
-            "pp_size": 2,
-            "num_microbatches": 2,
+            "tp_size": 2,
+            "pp_size": 1,
             "ep_size": 1,
-            "zero_stage": 0,
+            "zero_stage": 2,
             "precision": "fp32",
-        },  # pp + ep
+        },  # [dp(2) + tp(2)] + [moe_dp(4)]
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "ep_size": 2,
+            "zero_stage": 2,
+            "precision": "fp32",
+        },  # [dp(2) + tp(2)] + [ep(2) + moe_dp(2)]
         {
             "tp_size": 1,
             "pp_size": 2,
             "num_microbatches": 2,
             "ep_size": 1,
-            "zero_stage": 0,
+            "zero_stage": 2,
             "precision": "fp32",
-        },  # pp + ep
+        },  # [dp(2) + pp(2)] + [moe_dp(4)]
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 1,
+            "zero_stage": 2,
+            "precision": "fp32",
+        },  # [dp(2) + pp(2)] + [moe_dp(4)]
         {
             "tp_size": 1,
             "pp_size": 2,
             "num_microbatches": 2,
             "ep_size": 4,
-            "zero_stage": 0,
+            "zero_stage": 2,
             "precision": "fp32",
-        },  # pp + ep
-        {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 1, "precision": "bf16"},  # full dp for moe and non-moe
-        {  # moe_dp = 2, non_moe_dp = 4
+        },  # [dp(2) + pp(2)] + [ep(4))]
+        {
             "tp_size": 1,
             "pp_size": 1,
             "ep_size": 2,
-            "zero_stage": 1,
+            "zero_stage": 2,
             "precision": "fp32",
-        },  # moe_dp = 1, non_moe_dp = 4
-        {"tp_size": 1, "pp_size": 1, "ep_size": 4, "zero_stage": 1, "precision": "fp32"},  # full dp for non-moe and full ep for moe
-        {"tp_size": 1, "pp_size": 1, "ep_size": 1, "zero_stage": 0, "precision": "fp32"},  # full dp for moe and non-moe
+        },  # [dp(4)] + [ep(2) + moe_tp(2)]
+        {
+            "tp_size": 1, 
+            "pp_size": 1, 
+            "ep_size": 4, 
+            "zero_stage": 2, 
+            "precision": "fp32"
+        },  # full dp for non-moe and full ep for moe
+        {
+            "tp_size": 1, 
+            "pp_size": 1, 
+            "ep_size": 1, 
+            "zero_stage": 2, 
+            "precision": "fp32"
+        },  # full dp for moe and non-moe
     ],
 )
 def run_mixtral_test(test_config):

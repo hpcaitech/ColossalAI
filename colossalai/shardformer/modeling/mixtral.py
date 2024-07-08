@@ -14,21 +14,21 @@ from transformers.models.mixtral.modeling_mixtral import (
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
+from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven, drop_tokens, gather_tokens
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
 
 
 class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
-    def __init__(self, config, ep_group):
+    def __init__(self, config, ep_group: ProcessGroup, tp_group: Optional[ProcessGroup]=None, moe_tp_group: Optional[ProcessGroup]=None):
         super().__init__(config)
-        self.setup_ep(ep_group)
+        self.setup_process_groups(ep_group, tp_group, moe_tp_group)
 
-    def setup_ep(self, ep_group: ProcessGroup):
-        ep_group = ep_group
-        self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
-        self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
+    def setup_process_groups(self, ep_group: ProcessGroup, tp_group: Optional[ProcessGroup]=None, moe_tp_group: Optional[ProcessGroup]=None):
+        # setup ep group
+        self.ep_size = dist.get_world_size(ep_group)
+        self.ep_rank = dist.get_rank(ep_group)
         self.ep_group = ep_group
 
         if self.num_experts % self.ep_size != 0:
@@ -42,13 +42,19 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         for p in self.experts.parameters():
             p.ep_group = ep_group
 
+        # setup global tp group
+        self.tp_group = tp_group
+
+        # setup moe tp group
+        self.moe_tp_group = moe_tp_group
+
     @staticmethod
     def from_native_module(
-        module: MixtralSparseMoeBlock, ep_group: ProcessGroup, *args, **kwargs
+        module: MixtralSparseMoeBlock, ep_group: ProcessGroup, tp_group: Optional[ProcessGroup]=None, moe_tp_group: Optional[ProcessGroup]=None, *args, **kwargs
     ) -> "EPMixtralSparseMoeBlock":
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        module.setup_ep(ep_group)
+        module.setup_process_groups(ep_group)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -72,6 +78,10 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
+
+        if self.tp_group is not None and self.tp_group.size() > 1:
+            dispatch_states = drop_tokens(dispatch_states, -1, self.tp_group)
+
         output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
         # compute expert output
         output_states = MoeInGradScaler.apply(output_states, self.ep_size)
@@ -94,6 +104,10 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 output_states = torch.cat(output_states_list)
         output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
+
+        if self.tp_group is not None and self.tp_group.size() > 1:
+            dispatch_states = gather_tokens(dispatch_states, -1, self.tp_group)
+
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(
             selected_experts_idx.size(0), device=selected_experts_idx.device
