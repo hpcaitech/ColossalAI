@@ -23,29 +23,33 @@ class BaseEngine(ABC):
 
     @abstractmethod
     def generate(self, request_ids=None, prompts=None, generation_config=None, **kwargs):
-        pass
+        """
+        Generate ouptput for coming requests
+        """
 
     @abstractmethod
     def add_request(self, prompts, request_ids=None, **kwargs):
         """
-        add new request to Engine
+        Add new request to Engine
         """
 
     @abstractmethod
     def step(self):
         """
-        perform one new step forward
+        Perform one new step forward
         """
 
     @abstractmethod
     def _verify_args(self):
         """
-        verify the parameters and members of class
+        Verify the parameters and members of class
         """
 
     @torch.inference_mode()
     def capture_model(self):
-        "use cuda graph to capture model"
+        """
+        Use cuda graph to capture model
+        """
         return NotImplementedError("This method should be implemented by subclasses")
 
     def _shardformer(

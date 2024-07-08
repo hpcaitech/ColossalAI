@@ -11,7 +11,6 @@ from typing import Optional, Tuple, Union
 import torch
 from diffusers import DiffusionPipeline
 from torch import nn
-from transformers import AutoConfig
 
 from colossalai.logging import get_dist_logger
 from colossalai.testing import free_port
@@ -176,9 +175,23 @@ def get_model_type(model_or_path: Union[nn.Module, str, DiffusionPipeline]):
         return ModelType.LLM
     elif isinstance(model_or_path, str):
         try:
+            from transformers import AutoConfig
+
             hf_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
             return ModelType.LLM
         except:
-            pass
-    # TODO(lry89757) we need to support string input for diffusion model
-    return ModelType.UNKNOWN
+            """
+            model type is not `ModelType.LLM`
+            """
+
+        try:
+            from diffusers import DiffusionPipeline
+
+            DiffusionPipeline.load_config(model_or_path)
+            return ModelType.DIFFUSION_MODEL
+        except:
+            """
+            model type is not `ModelType.DIFFUSION_MODEL`
+            """
+    else:
+        return ModelType.UNKNOWN
