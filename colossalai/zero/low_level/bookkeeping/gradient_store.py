@@ -19,7 +19,6 @@ class GradientStore(BaseStore):
         """
         self._grads_of_params = dict()
         # stage 2
-        self._partition_grads = partition_grad
         self._working_index = 0 if partition_grad else self._local_rank
         # for zero2, it's `param_id: [grad_local_rank]`
         self.grad_to_param_mapping = dict()

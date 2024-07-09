@@ -648,7 +648,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
-                if param.requires_grad and param.grad is not None:
+                if param.requires_grad:
+                    if param.grad is None:
+                        # for moe params, all experts should have gradient
+                        # TODO better way of doing this
+                        param.grad = torch.zeros_like(param)
                     self._add_to_bucket(param, group_id)
 
         self._run_reduction()
