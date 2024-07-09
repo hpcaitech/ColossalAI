@@ -55,18 +55,6 @@ jobs:
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
-      - name: Download cub for CUDA 10.2
-        run: |
-          CUDA_VERSION=$(nvcc -V | awk -F ',| ' '/release/{print $6}')
-
-          # check if it is CUDA 10.2
-          # download cub
-          if [ "$CUDA_VERSION" = "10.2" ]; then
-            wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
-            unzip 1.8.0.zip
-            cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
-          fi
-
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
@@ -82,6 +70,6 @@ jobs:
           PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
-          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib
           LLAMA_PATH: /data/scratch/llama-tiny
           MOE_TENSOR_PATH: /data/scratch/moe_tensors
