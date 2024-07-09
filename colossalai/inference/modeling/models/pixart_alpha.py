@@ -14,7 +14,7 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import retri
 
 from colossalai.logging import get_dist_logger
 
-from .diffusion import DiffusionPipe
+from ..layers.diffusion import DiffusionPipe
 
 logger = get_dist_logger(__name__)
 

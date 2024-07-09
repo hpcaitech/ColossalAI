@@ -1,7 +1,9 @@
 import argparse
 
 from diffusers import PixArtAlphaPipeline, StableDiffusion3Pipeline
-from torch import bfloat16, float16, float32
+from torch import bfloat16
+from torch import distributed as dist
+from torch import float16, float32
 
 import colossalai
 from colossalai.cluster import DistCoordinator
@@ -43,6 +45,7 @@ def infer(args):
         max_batch_size=args.max_batch_size,
         tp_size=args.tp_size,
         use_cuda_kernel=args.use_cuda_kernel,
+        patched_parallelism_size=dist.get_world_size(),
     )
     engine = InferenceEngine(model, inference_config=inference_config, model_policy=POLICY_CLS(), verbose=True)
 
@@ -51,12 +54,17 @@ def infer(args):
     # ==============================
     coordinator.print_on_master(f"Generating...")
     out = engine.generate(prompts=[args.prompt], generation_config=DiffusionGenerationConfig())[0]
-    out.save("cat.jpg")
+    if dist.get_rank() == 0:
+        out.save(f"cat_parallel_size{dist.get_world_size()}.jpg")
     coordinator.print_on_master(out)
 
 
 # colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m MODEL_PATH
-# colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m "stabilityai/stable-diffusion-3-medium-diffusers" --tp_size 1
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1 && colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m "stabilityai/stable-diffusion-3-medium-diffusers" --tp_size 1
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 2 && colossalai run --nproc_per_node 2 examples/inference/stable_diffusion/sd3_generation.py -m "stabilityai/stable-diffusion-3-medium-diffusers" --tp_size 1
+
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1 && colossalai run --nproc_per_node 1 examples/inference/stable_diffusion/sd3_generation.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --tp_size 1
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 2 && colossalai run --nproc_per_node 2 examples/inference/stable_diffusion/sd3_generation.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --tp_size 1
 
 
 if __name__ == "__main__":
