@@ -30,6 +30,7 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         optimizer: Optimizer,
         model: Module,
         use_pipeline: bool,
+        force_overlap_comm: bool,  # force overlap comm
         dp_process_group: ProcessGroup,  # dp pg for comm
         moe_dp_group: ProcessGroup,  # moe dp pg for comm
         param_info: OrderedDict,
@@ -48,7 +49,16 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         forced_dtype: Optional[torch.dtype] = None,
-    ):
+    ):  
+
+        WARN_STR = "Note that you need to make sure every expert are routed (i.e.) every expert has backward, otherwise this might lead to program hang or inconsistent result"
+        if not force_overlap_comm and (overlap_communication or partition_grad):
+            raise RuntimeError(WARN_STR + " If you are not sure about this, set (overlap_communication=False and partition_grad=False) or force_overlap_comm=True")
+    
+        if force_overlap_comm:
+            overlap_communication = True
+            warnings.warn(WARN_STR + " Please make sure of this.")
+
         self.param_info = param_info
         self.stage_manager = model.stage_manager
         self.shared_params = model.shared_params
@@ -88,7 +98,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     TODO: add docstring
     """
 
-    def __init__(self, ep_size: int, moe_tp_size: int = 1, *args, **kwargs) -> None:
+    def __init__(self, ep_size: int, moe_tp_size: int = 1, force_overlap_comm=False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         self.use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
@@ -119,6 +129,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         # set ep_group after super init
         # TODO do it in a better way
         self.shard_config.ep_group = self.ep_group
+
+        self.force_overlap_comm = force_overlap_comm
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         return MoECheckpointIO(
@@ -168,11 +180,16 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
                     )
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                if not(self.dp_size > 1 or self.moe_dp_size > 1):
+                    warnings.warn(
+                        "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
+                    )
                 optimizer = MoeHybridParallelZeroOptimizer(
                     optimizer,
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
+                    force_overlap_comm=self.force_overlap_comm,
                     param_info=param_info,
                     dp_process_group=self.dp_group,
                     moe_dp_group=self.moe_dp_group,
