@@ -9,6 +9,7 @@ import colossalai.shardformer.layer as col_nn
 from colossalai.shardformer.modeling.chatglm2 import ChatGLMPipelineForwards
 
 from ..modeling.chatglm2 import (
+    get_chatglm_sequence_parallel_attention_forward,
     get_chatglm_sequence_parallel_forward_fn,
     get_flash_core_attention_forward,
     get_jit_fused_glm_block_forward,
@@ -58,14 +59,29 @@ class ChatGLMPolicy(Policy):
                 norm_cls = col_nn.LayerNorm
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
-        assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for ChatGLM2"
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
+
         if sp_mode == "ring":
             warnings.warn(
                 f"For ChatGLM2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
             )
             sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
-        sp_partial_derived = sp_mode == "split_gather"
+        sp_partial_derived = sp_mode in ["split_gather"]
+
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+                "hidden_size_per_partition": self.model.config.kv_channels
+                * self.model.config.num_attention_heads
+                // sp_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+            policy["CoreAttention"] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
@@ -179,12 +195,26 @@ class ChatGLMPolicy(Policy):
             )
 
         # use sequence parallel
-        if sp_mode == "split_gather":
+        if self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
-                description={"forward": get_chatglm_sequence_parallel_forward_fn(self.shard_config)},
+                description={
+                    "forward": get_chatglm_sequence_parallel_attention_forward(
+                        self.shard_config, sp_mode, sp_size, sp_group
+                    ),
+                },
                 policy=policy,
-                target_key="ChatGLMModel",
+                target_key="SelfAttention",
             )
+            if self.pipeline_stage_manager is None:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_chatglm_sequence_parallel_forward_fn(
+                            self.shard_config, sp_mode, sp_size, sp_group
+                        )
+                    },
+                    policy=policy,
+                    target_key="ChatGLMModel",
+                )
 
         # use jit fused operator
         if self.shard_config.enable_jit_fused:
