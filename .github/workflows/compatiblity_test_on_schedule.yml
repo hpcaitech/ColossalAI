@@ -47,18 +47,6 @@ jobs:
 
       - uses: actions/checkout@v2
         with:
-          repository: hpcaitech/TensorNVMe
-          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-          path: TensorNVMe
-
-      - name: Install tensornvme
-        run: |
-          cd TensorNVMe
-          apt update && apt install -y cmake
-          pip install -r requirements.txt
-          DISABLE_URING=1 pip install -v .
-      - uses: actions/checkout@v2
-        with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
       - name: Download cub for CUDA 10.2
@@ -77,6 +65,11 @@ jobs:
         run: |
           BUILD_EXT=1 pip install -v .
           pip install -r requirements/requirements-test.txt
+
+      - name: Install tensornvme
+        run: |
+          apt update && apt install -y cmake
+          DISABLE_URING=1 pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
 
       - name: Unit Testing
         run: |
