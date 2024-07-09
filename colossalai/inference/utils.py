@@ -186,8 +186,6 @@ def get_model_type(model_or_path: Union[nn.Module, str, DiffusionPipeline]):
             """
 
         try:
-            from diffusers import DiffusionPipeline
-
             DiffusionPipeline.load_config(model_or_path)
             return ModelType.DIFFUSION_MODEL
         except:
