@@ -49,7 +49,10 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          apt update && apt install -y cmake
           pip install -U pip setuptools==68.2.2 wheel --user
+          pip show torch
+          nvcc -V
 
       - uses: actions/checkout@v2
         with:
@@ -59,14 +62,22 @@ jobs:
         run: |
           BUILD_EXT=1 pip install -v .
           pip install -r requirements/requirements-test.txt
+          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
+          pip show torch
+          nvcc -V
 
       - name: Install tensornvme
         run: |
-          apt update && apt install -y cmake
           DISABLE_URING=1 pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
+          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
+          pip show torch
+          nvcc -V
 
       - name: Unit Testing
         run: |
+          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
+          pip show torch
+          nvcc -V
           PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
