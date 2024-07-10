@@ -17,8 +17,8 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
 PROJECT_NAME="dpo"
 PARENT_CONFIG_FILE="./benchmark_config" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local tokenizer path
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"

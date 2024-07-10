@@ -17,15 +17,13 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 4
 # export CUDA_VISIBLE_DEVICES=3,4
 PROJECT_NAME="sft"
 PARENT_CONFIG_FILE="./benchmark_config" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local tokenizer path
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
-echo $(which colossalai)
-echo $(which python)
 # the real batch size for gradient descent is number_of_node_in_hostfile * nproc_per_node * train_batch_size
 colossalai run --nproc_per_node 4 --master_port 31312 benchmark_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
