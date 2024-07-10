@@ -61,7 +61,7 @@ jobs:
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
-          pip install -r requirements/requirements-test.txt
+          FLASH_ATTENTION_FORCE_BUILD=TRUE pip install -r requirements/requirements-test.txt
           python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
           pip show torch
           nvcc -V
