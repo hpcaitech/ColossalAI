@@ -135,7 +135,7 @@ def train(args):
         # Note, for some models, lora may not be compatible with gradient checkpointing
         model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
-        
+
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)

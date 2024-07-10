@@ -6,10 +6,11 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForSupervisedDataset, StatefulDistributedSampler, load_tokenized_dataset
+from coati.dataset import DataCollatorForSupervisedDataset, StatefulDistributedSampler
 from coati.models import convert_to_lora_module
 from coati.trainer import SFTTrainer
 from coati.utils import load_checkpoint
+from dummy_dataset import DummyLLMDataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -19,7 +20,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from dummy_dataset import DummyLLMDataset
 
 logger = get_dist_logger()
 
@@ -127,7 +127,7 @@ def train(args):
         # Note, for some models, lora may not be compatible with gradient checkpointing
         model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
-    
+
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer_dir or args.pretrain, use_fast=False, trust_remote_code=True

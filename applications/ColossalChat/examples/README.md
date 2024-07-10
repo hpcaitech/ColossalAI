@@ -761,8 +761,8 @@ For SFT, we recommend using zero2 or zero2-cpu for 7B model and tp is your model
   - zero2_cpu, micro batch size=8, VRAM Usage=19412.77 MB
   - zero2, micro batch size=8, VRAM Usage=43446.31 MB
   - zero2, micro batch size=16, VRAM Usage=58082.30 MB
-  - zero2, micro batch size=8, lora_rank=8, VRAM Usage=21167.73 MB  
-  - zero2, micro batch size=8, lora_rank=32, VRAM Usage=21344.17 MB  
+  - zero2, micro batch size=8, lora_rank=8, VRAM Usage=21167.73 MB
+  - zero2, micro batch size=8, lora_rank=32, VRAM Usage=21344.17 MB
 
 For PPO, we suggest using Tensor Parallelism. The following table shows the VRAM consumption of training a 7B model (llama2-7B-hf) on a dummy dataset with a sequence length of 2048 and a layout length of 512 with different tp_size (equal to the number of GPUs).
 | PPO   | tp=8          | tp=4          |

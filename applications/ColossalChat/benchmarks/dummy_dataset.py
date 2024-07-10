@@ -1,5 +1,6 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
+
 
 class DummyLLMDataset(Dataset):
     def __init__(self, keys, seq_len, size=500):
@@ -11,7 +12,7 @@ class DummyLLMDataset(Dataset):
     def _generate_data(self):
         data = {}
         for key in self.keys:
-            data[key] = torch.ones(self.seq_len, dtype = torch.long)
+            data[key] = torch.ones(self.seq_len, dtype=torch.long)
         return data
 
     def __len__(self):

@@ -5,10 +5,11 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler, load_tokenized_dataset
+from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler
 from coati.models import convert_to_lora_module, disable_dropout
 from coati.trainer import DPOTrainer
 from coati.utils import load_checkpoint
+from dummy_dataset import DummyLLMDataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -18,7 +19,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from dummy_dataset import DummyLLMDataset
 
 logger = get_dist_logger()
 
@@ -136,7 +136,7 @@ def train(args):
         # Note, for some models, lora may not be compatible with gradient checkpointing
         model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
-        
+
     # configure tokenizer
     tokenizer_dir = args.tokenizer_dir if args.tokenizer_dir is not None else args.pretrain
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, use_fast=False, trust_remote_code=True)
@@ -165,9 +165,11 @@ def train(args):
 
     # configure dataset
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
-    train_dataset = DummyLLMDataset(["chosen_input_ids", "chosen_loss_mask", "rejected_input_ids",
-                                     "rejected_loss_mask"], 
-                                     args.max_length, args.dataset_size)
+    train_dataset = DummyLLMDataset(
+        ["chosen_input_ids", "chosen_loss_mask", "rejected_input_ids", "rejected_loss_mask"],
+        args.max_length,
+        args.dataset_size,
+    )
     data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
 
     train_dataloader = plugin.prepare_dataloader(
