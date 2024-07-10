@@ -329,6 +329,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         reduce_bucket_size_in_m: int = 12,
         communication_dtype: Optional[torch.dtype] = None,
         overlap_communication: bool = True,
+        overlap_allgather: bool = False,
         cpu_offload: bool = False,
         master_weights: bool = True,
         verbose: bool = False,
@@ -355,6 +356,7 @@ class LowLevelZeroPlugin(DPPluginBase):
             cpu_offload=cpu_offload,
             master_weights=master_weights,
         )
+        self.overlap_allgather = overlap_allgather
         self.lora_enabled = False
         self.verbose = verbose
 
@@ -470,13 +472,11 @@ class LowLevelZeroPlugin(DPPluginBase):
                 self.add_lora_params_to_optimizer(model, optimizer)
 
         if not isinstance(model, ModelWrapper):
-            model = LowLevelZeroModel(
-                model, self.precision, overlap_communication=self.zero_optim_kwargs["overlap_communication"]
-            )
+            model = LowLevelZeroModel(model, self.precision, overlap_communication=self.overlap_allgather)
 
         # TODO: Support Galore + ZeRO
         zero_stage = self.stage
-        zero_optim_kwargs = {**self.zero_optim_kwargs}
+        zero_optim_kwargs = {**self.zero_optim_kwargs, "overlap_allgather": self.overlap_allgather}
         dp_size = dist.get_world_size()
 
         # Replace with the distributed implementation if exists

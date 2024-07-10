@@ -84,6 +84,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         dp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
+        overlap_allgather: bool = False,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
 
@@ -122,6 +123,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # communication params
         self._overlap_communication = overlap_communication
+        self._overlap_allgather = overlap_allgather
         self._reduce_bucket_size = reduce_bucket_size
         self._communication_dtype = communication_dtype
 
@@ -554,7 +556,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 param_to_gather = master_param.to(device).to(self._dtype)
                 pg = self.param_to_pg[working_param]
                 padded_working_param = self._working_param_to_padded_working_param[working_param]
-                if self._overlap_communication:
+                if self._overlap_allgather:
                     handle = dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg, async_op=True)
                     set_all_gather_handle(working_param, handle)
                 else:
@@ -567,7 +569,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         self.pg_to_tensor_bucket[pg].all_gather(pg)
                         self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
-        if not self._overlap_communication:
+        if not self._overlap_allgather:
             for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
                 if not tensor_bucket.is_empty():
                     tensor_bucket.all_gather(pg)
