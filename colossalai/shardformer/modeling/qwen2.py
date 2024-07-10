@@ -32,7 +32,7 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 
 class Qwen2PipelineForwards:
@@ -168,13 +168,27 @@ class Qwen2PipelineForwards:
         next_decoder_cache = None
 
         start_idx, end_idx = stage_index[0], stage_index[1]
+        num_ckpt_layers = 0
+        if self.gradient_checkpointing and self.training:
+            num_ckpt_layers = end_idx - start_idx
+            # TODO: We can replace `gradient_checkpointing_enable` fn and initialize a gradient_checkpointing (List[bool]) for each layer
+            if shard_config.gradient_checkpoint_config is not None:
+                num_ckpt_layers = shard_config.gradient_checkpoint_config.get_num_ckpt_layers(
+                    stage=stage_manager.stage,
+                    num_stages=stage_manager.num_stages,
+                    num_layers=end_idx - start_idx,
+                    model_chunk_id=(stage_manager.model_chunk_id if stage_manager.is_interleave else 0),
+                    num_model_chunks=stage_manager.num_model_chunks,
+                )
+            assert num_ckpt_layers <= end_idx - start_idx
+
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
 
-            if self.gradient_checkpointing and self.training:
+            if idx - start_idx < num_ckpt_layers:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
@@ -198,7 +212,6 @@ class Qwen2PipelineForwards:
 
             if use_cache:
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
@@ -304,25 +317,9 @@ class Qwen2PipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.enable_tensor_parallelism:
-                    new_vocab_size = logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(
-                        shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-                    )
-                else:
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels)
+            loss = dist_cross_entropy(
+                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
+            )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -724,26 +721,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
         logits = logits.float()
-
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            if shard_config.enable_tensor_parallelism:
-                new_vocab_size = logits.shape[-1]
-                shift_logits = shift_logits.view(-1, new_vocab_size)
-                loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-                )
-            else:
-                shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                loss = loss_fct(shift_logits, shift_labels)
+        loss = dist_cross_entropy(
+            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
+        )
 
         if not return_dict:
             output = (logits,) + outputs[1:]

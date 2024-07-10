@@ -1,6 +1,7 @@
 """
 Utils for model inference
 """
+
 import os
 
 import torch

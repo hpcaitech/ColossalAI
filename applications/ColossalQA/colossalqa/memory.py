@@ -2,6 +2,7 @@
 Implement a memory class for storing conversation history
 Support long term and short term memory
 """
+
 from typing import Any, Dict, List
 
 from colossalqa.chain.memory.summary import ConversationSummaryMemory

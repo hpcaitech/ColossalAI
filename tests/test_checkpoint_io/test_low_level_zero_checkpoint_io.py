@@ -59,10 +59,10 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
         # check master weight
         assert isinstance(new_optimizer, LowLevelZeroOptimizer)
         working_param_id_set = set(id(p) for p in new_model.parameters())
-        for p_id, master_param in new_optimizer._param_store.working_to_master_param.items():
+        for p_id, master_param in new_optimizer.working_to_master_param.items():
             assert p_id in working_param_id_set
-            working_param = new_optimizer._param_store.master_to_working_param[id(master_param)]
-            padding = new_optimizer._param_store.get_param_padding_size(working_param)
+            working_param = new_optimizer.master_to_working_param[id(master_param)]
+            padding = new_optimizer.get_param_padding_size(working_param)
             padded_param = torch.nn.functional.pad(working_param.data.view(-1), (0, padding))
             working_shard = padded_param.chunk(dist.get_world_size())[dist.get_rank()]
             assert torch.equal(
@@ -115,10 +115,10 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
             # check master weight
             assert isinstance(new_optimizer, LowLevelZeroOptimizer)
             working_param_id_set = set(id(p) for p in new_model.parameters())
-            for p_id, master_param in new_optimizer._param_store.working_to_master_param.items():
+            for p_id, master_param in new_optimizer.working_to_master_param.items():
                 assert p_id in working_param_id_set
-                working_param = new_optimizer._param_store.master_to_working_param[id(master_param)]
-                padding = new_optimizer._param_store.get_param_padding_size(working_param)
+                working_param = new_optimizer.master_to_working_param[id(master_param)]
+                padding = new_optimizer.get_param_padding_size(working_param)
                 padded_param = torch.nn.functional.pad(working_param.data.view(-1), (0, padding))
                 working_shard = padded_param.chunk(dist.get_world_size())[dist.get_rank()]
                 assert torch.equal(

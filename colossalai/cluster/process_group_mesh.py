@@ -147,7 +147,7 @@ class ProcessGroupMesh:
             ProcessGroup: The process group with the given ranks.
         """
         ranks_in_group = sorted(ranks_in_group)
-        if tuple(ranks_in_group) not in self._group_to_ranks:
+        if tuple(ranks_in_group) not in self._ranks_to_group:
             group = dist.new_group(ranks_in_group, backend=backend)
             self._ranks_to_group[tuple(ranks_in_group)] = group
             self._group_to_ranks[group] = tuple(ranks_in_group)
@@ -244,19 +244,25 @@ class ProcessGroupMesh:
         return target_group
 
     def get_group_along_axis(
-        self, axis: int, indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
+        self, axis: Union[int, List[int]], indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None
     ) -> ProcessGroup:
         """Get the process group along the given axis which the current process belongs to. If the process group doesn't exist, it will be created.
 
         Args:
-            axis (int): Axis along which the process groups are created.
+            axis (int or list of int): Axes along which the process groups are created.
             indices_at_axis (Optional[List[int]], optional): Indices at the axis. Defaults to None.
             backend (Optional[str], optional): Backend of the process group. Defaults to None.
 
         Returns:
             ProcessGroup: The process group along the given axis which the current process belongs to.
         """
-        indices_at_axis = indices_at_axis or list(range(self._shape[axis]))
+        indices_at_axis = indices_at_axis
+        if indices_at_axis is None:
+            if isinstance(axis, (list, tuple)):
+                indices_at_axis = list(list(range(self._shape[ax])) for ax in axis)
+            else:
+                indices_at_axis = list(range(self._shape[axis]))
+
         coords_in_group = ProcessGroupMesh.get_coords_along_axis(self._coord, axis, indices_at_axis)
         ranks_in_group = tuple([ProcessGroupMesh.ravel(coord, self._shape) for coord in coords_in_group])
         if ranks_in_group not in self._ranks_to_group:

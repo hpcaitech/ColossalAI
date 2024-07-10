@@ -11,14 +11,13 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.bloom import (
     BloomPipelineForwards,
     build_bloom_alibi_tensor_fn,
-    get_bloom_flash_attention_forward,
     get_bloom_sequence_parallel_forward_fn,
     get_jit_fused_bloom_attention_forward,
     get_jit_fused_bloom_gelu_forward,
     get_jit_fused_bloom_mlp_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
-from ..modeling.jit import get_dropout_add_func, get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
+from ..modeling.jit import get_jit_fused_dropout_add_func, get_jit_fused_gelu_forward_func
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 
@@ -163,16 +162,6 @@ class BloomPolicy(Policy):
                 description={"forward": get_bloom_sequence_parallel_forward_fn(self.shard_config)},
                 policy=policy,
                 target_key=BloomModel,
-            )
-
-        if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_bloom_flash_attention_forward(),
-                    "dropout_add": get_dropout_add_func(),
-                },
-                policy=policy,
-                target_key=BloomAttention,
             )
 
         # enable jit fused operator

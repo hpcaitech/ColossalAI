@@ -242,6 +242,7 @@ def save_state_dict_shards(
     shard_filenames = []
     for idx, shard_pair in enumerate(sharded_state_dict):
         shard, current_size = shard_pair
+        # Just loop over the sharder and gather to other ranks if not master
         if not is_master:
             del shard
             continue

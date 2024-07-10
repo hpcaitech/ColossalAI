@@ -8,11 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from colossalai.moe._operation import AllGather, AllToAll, HierarchicalAllToAll, MoeCombine, MoeDispatch, ReduceScatter
-from colossalai.moe.experts import MLPExperts
 from colossalai.moe.load_balance import LoadBalancer
-from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.routers import MoeRouter, get_router_cls
 from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
+from colossalai.shardformer.layer.moe import MLPExperts
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_group_ranks, get_ep_size
 
 
@@ -23,6 +21,7 @@ class SparseMLP(nn.Module):
         dim_model (int): Hidden dimension of training model
         num_experts (int): The number experts
         top_k (int, optional): The number of experts for dispatchment of each token
+        parallel (str): parallel mode. Should be "EP", "TP" or None
         capacity_factor_train (float, optional): Capacity factor in routing during training
         capacity_factor_eval (float, optional): Capacity factor in routing during evaluation
         min_capacity (int, optional): The minimum number of the capacity of each expert
@@ -51,6 +50,7 @@ class SparseMLP(nn.Module):
         hidden_size: int,
         intermediate_size: int,
         router_top_k: int = 1,
+        parallel: str = "EP",
         router_loss: bool = True,
         router_norm: bool = False,
         router_capacity_factor_train: float = 1.25,
@@ -66,7 +66,7 @@ class SparseMLP(nn.Module):
         load_balance_group_swap_factor: float = 0.4,
         enable_kernel: bool = False,
         enable_comm_overlap: bool = False,
-        enable_hierarchical_comm: bool = False,
+        enable_hierarchical_comm: bool = True,
         return_gate_logits: bool = False,
     ):
         super().__init__()
@@ -77,7 +77,9 @@ class SparseMLP(nn.Module):
         self.return_gate_logits = return_gate_logits
         self.enable_kernel = enable_kernel
         self.enable_comm_overlap = enable_comm_overlap
-        self.expert_parallel = MOE_MANAGER.get_parallel()
+        # self.expert_parallel = MOE_MANAGER.get_parallel()
+        assert parallel in ["EP", "TP", None], "parallel mode must be EP, TP or None"
+        self.parallel = parallel
         self.router_loss = router_loss
         self.router_norm = router_norm
 
@@ -99,7 +101,7 @@ class SparseMLP(nn.Module):
         # moe experts
         self.experts = MLPExperts(
             num_experts=self.num_experts,
-            expert_parallel=self.expert_parallel,
+            expert_parallel=self.parallel,
             hidden_size=self.hidden_size,
             intermediate_size=self.intermediate_size,
             activation=mlp_activation,
@@ -108,11 +110,12 @@ class SparseMLP(nn.Module):
         )
 
         # get parallel settings
-        if self.expert_parallel is not None:
+        if self.parallel is not None:
             self.ep_group = get_ep_group(self.experts)
             self.ep_size = get_ep_size(self.experts)
             self.ep_hierarchical_group = None
             if enable_hierarchical_comm:
+                # TODO: move to plugin
                 self.ep_intra_src_rank, *self.ep_hierarchical_group = create_ep_hierarchical_group(
                     get_ep_group_ranks(self.experts)
                 )
@@ -186,11 +189,11 @@ class SparseMLP(nn.Module):
             dispatch_data = torch.matmul(sec_mask_f.permute(1, 2, 0), tokens)
 
         # expert_output: (num_groups, num_experts, capacity, hidden_size)
-        if self.expert_parallel == "EP":
+        if self.parallel == "EP":
             expert_output = self._ep_process(dispatch_data, used_capacity, overlap=self.enable_comm_overlap)
-        elif self.expert_parallel == "TP":
+        elif self.parallel == "TP":
             expert_output = self._tp_process(dispatch_data, used_capacity, overlap=self.enable_comm_overlap)
-        elif self.expert_parallel is None:
+        elif self.parallel is None:
             expert_output = self._local_process(dispatch_data)
         else:
             raise NotImplementedError(

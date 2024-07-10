@@ -1,6 +1,7 @@
 """
 loss functions
 """
+
 from typing import Optional, Tuple
 
 import torch

@@ -1,222 +1,108 @@
-from functools import partial
-from typing import Callable, Dict, List, Optional, Union
+from typing import List, Optional
 
 import torch
-import torch.nn as nn
-from torch import Tensor
-from torch.nn import CrossEntropyLoss, Module
+import torch.distributed as dist
+import torch.nn.functional as F
+from torch.distributed import ProcessGroup
+
+# from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
+from torch.nn import CrossEntropyLoss
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.models.mixtral.modeling_mixtral import (
-    MixtralDecoderLayer,
-    MixtralForCausalLM,
-    MixtralModel,
+    MixtralSparseMoeBlock,
     MoeCausalLMOutputWithPast,
-    _prepare_4d_causal_attention_mask,
     load_balancing_loss_func,
 )
-from transformers.utils import logging
+from transformers.utils import is_flash_attn_2_available, logging
 
+from colossalai.lazy import LazyInitContext
+from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
-from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 from colossalai.shardformer.shard import ShardConfig
-
-from .mixtral_layer import EPMixtralSparseMoeBlock
-
-__all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
+from colossalai.shardformer.shard.utils import set_tensors_to_none
 
 
-class MixtralPolicy(Policy):
-    def config_sanity_check(self):
-        pass
+class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
+    def __init__(self, config):
+        self.moe_info = None
+        super().__init__(config)
 
-    def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
+    def setup_ep(self, ep_group: ProcessGroup):
+        ep_group = ep_group
+        self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
+        self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
+        assert self.num_experts % self.ep_size == 0
+        self.ep_group = ep_group
+        self.num_experts_per_ep = self.num_experts // self.ep_size
+        self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
+        held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
+        set_tensors_to_none(self.experts, exclude=set(held_experts))
+        for p in self.experts.parameters():
+            p.ep_group = ep_group
 
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+    @staticmethod
+    def from_native_module(module: MixtralSparseMoeBlock, *args, **kwargs) -> "EPMixtralSparseMoeBlock":
+        LazyInitContext.materialize(module)
+        module.__class__ = EPMixtralSparseMoeBlock
+        # if "ep_group" in kwargs:
+        assert "ep_group" in kwargs, "You should pass ep_group in SubModuleReplacementDescription via shard_config!!"
+        module.setup_ep(kwargs["ep_group"])
+        return module
 
-        return self.model
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, sequence_length, hidden_dim = hidden_states.shape
+        hidden_states = hidden_states.view(-1, hidden_dim)
+        # router_logits: (batch * sequence_length, n_experts)
+        router_logits = self.gate(hidden_states)
 
-    def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        policy = {}
+        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        # we cast back to the input dtype
+        routing_weights = routing_weights.to(hidden_states.dtype)
 
-        if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
-            raise NotImplementedError(
-                "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
-            )
+        selected_experts = selected_experts.t().reshape(-1)
+        selected_experts_idx = selected_experts.argsort()
+        dispatch_states = hidden_states.repeat(self.top_k, 1)[selected_experts_idx]
+        input_split_sizes = selected_experts.bincount(minlength=self.num_experts)
+        output_split_sizes = torch.zeros_like(input_split_sizes)
+        dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
-        if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
-
-        # expert parallel
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="block_sparse_moe",
-                    target_module=EPMixtralSparseMoeBlock,
-                )
-            ],
-            policy=policy,
-            target_key=MixtralDecoderLayer,
-        )
-
-        # optimization configuration
-        if self.shard_config.enable_fused_normalization:
-            self.append_or_create_submodule_replacement(
-                description=[
-                    SubModuleReplacementDescription(
-                        suffix="input_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                    SubModuleReplacementDescription(
-                        suffix="post_attention_layernorm",
-                        target_module=FusedRMSNorm,
-                    ),
-                ],
-                policy=policy,
-                target_key=MixtralDecoderLayer,
-            )
-
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="norm",
-                    target_module=FusedRMSNorm,
-                ),
-                policy=policy,
-                target_key=MixtralModel,
-            )
-
-        if self.shard_config.enable_flash_attention:
-            raise NotImplementedError("Flash attention has already been replaced in mixtral.")
-
-        return policy
-
-    def postprocess(self):
-        return self.model
-
-    def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
-        """If under pipeline parallel setting, replacing the original forward method of huggingface
-        to customized forward method, and add this changing to policy."""
-        if self.pipeline_stage_manager:
-            stage_manager = self.pipeline_stage_manager
-            if self.model.__class__.__name__ == "MixtralModel":
-                module = self.model
+        input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
+        output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
+        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
+        # compute expert output
+        output_states = MoeInGradScaler.apply(output_states, self.ep_size)
+        if output_states.size(0) > 0:
+            if self.num_experts_per_ep == 1:
+                # no need to split
+                expert = self.experts[self.expert_start_idx]
+                output_states = expert.act_fn(expert.w1(output_states)) * expert.w3(output_states)
+                output_states = expert.w2(output_states)
             else:
-                module = self.model.model
-
-            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-            stage_index = stage_manager.get_stage_index(layers_per_stage)
-            method_replacement = {"forward": partial(new_forward, stage_manager=stage_manager, stage_index=stage_index)}
-            self.append_or_create_method_replacement(
-                description=method_replacement, policy=policy, target_key=model_cls
-            )
-
-        return
-
-    def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        assert self.pipeline_stage_manager is not None
-
-        if self.model.__class__.__name__ == "MixtralModel":
-            module = self.model
-        else:
-            module = self.model.model
-        stage_manager = self.pipeline_stage_manager
-
-        held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.norm)
-
-        return held_layers
-
-
-class MixtralModelPolicy(MixtralPolicy):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def module_policy(self):
-        policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            # set None as default
-            self.set_pipeline_forward(
-                model_cls=MixtralModel,
-                new_forward=MixtralPipelineForwards.mixtral_model_forward,
-                policy=policy,
-            )
-        return policy
-
-    def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        held_layers = super().get_held_layers()
-        return held_layers
-
-    def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
-        return []
-
-
-class MixtralForCausalLMPolicy(MixtralPolicy):
-    def module_policy(self):
-        policy = super().module_policy()
-
-        if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
-            new_item = {
-                MixtralForCausalLM: ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head",
-                            target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True),
-                        )
-                    ]
-                )
-            }
-            policy.update(new_item)
-
-        if self.pipeline_stage_manager:
-            # set None as default
-            self.set_pipeline_forward(
-                model_cls=MixtralForCausalLM,
-                new_forward=MixtralPipelineForwards.mixtral_for_causal_lm_forward,
-                policy=policy,
-            )
-
-        return policy
-
-    def get_held_layers(self) -> List[Module]:
-        """Get pipeline layers for current stage."""
-        stage_manager = self.pipeline_stage_manager
-        held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
-            held_layers.append(self.model.lm_head)
-        return held_layers
-
-    def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        llama_model = self.model.model
-        if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
-            if (
-                id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight)
-                and self.pipeline_stage_manager.num_stages > 1
-            ):
-                # tie weights
-                return [
-                    {
-                        0: llama_model.embed_tokens.weight,
-                        self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
-                    }
-                ]
-        return []
+                output_states_splits = output_states.split(output_split_sizes.tolist())
+                output_states_list = []
+                for i, split_states in enumerate(output_states_splits):
+                    if split_states.size(0) == 0:
+                        continue
+                    expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
+                    split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
+                    split_states = expert.w2(split_states)
+                    output_states_list.append(split_states)
+                output_states = torch.cat(output_states_list)
+        output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
+        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
+        recover_experts_idx = torch.empty_like(selected_experts_idx)
+        recover_experts_idx[selected_experts_idx] = torch.arange(
+            selected_experts_idx.size(0), device=selected_experts_idx.device
+        )
+        dispatch_states = dispatch_states[recover_experts_idx]
+        k_hidden_states = dispatch_states.chunk(self.top_k)
+        output_states = k_hidden_states[0] * routing_weights[:, 0, None]
+        for i in range(1, self.top_k):
+            output_states += k_hidden_states[i] * routing_weights[:, i, None]
+        output_states = output_states.reshape(batch_size, sequence_length, hidden_dim)
+        return output_states, router_logits
 
 
 class MixtralPipelineForwards:
@@ -332,7 +218,7 @@ class MixtralPipelineForwards:
 
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
-        if self._use_flash_attention_2:
+        if is_flash_attn_2_available():
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         else:

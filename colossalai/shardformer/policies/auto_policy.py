@@ -160,6 +160,13 @@ _POLICY_LIST = {
     "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    # Deepseek
+    "transformers_modules.modeling_deepseek.DeepSeekModel": PolicyLocation(
+        file_name="deepseek", class_name="DeepseekModelPolicy"
+    ),
+    "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
+        file_name="deepseek", class_name="DeepseekForCausalLMPolicy"
+    ),
     # Falcon
     "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
         file_name="falcon", class_name="FalconModelPolicy"
@@ -176,6 +183,7 @@ _POLICY_LIST = {
     "transformers.models.falcon.modeling_falcon.FalconForQuestionAnswering": PolicyLocation(
         file_name="falcon", class_name="FalconForQuestionAnsweringPolicy"
     ),
+    # mistral
     "transformers.models.mistral.modeling_mistral.MistralModel": PolicyLocation(
         file_name="mistral", class_name="MistralModelPolicy"
     ),
@@ -184,6 +192,13 @@ _POLICY_LIST = {
     ),
     "transformers.models.mistral.modeling_mistral.MistralForSequenceClassification": PolicyLocation(
         file_name="mistral", class_name="MistralForSequenceClassificationPolicy"
+    ),
+    # mixtral
+    "transformers.models.mixtral.modeling_mixtral.MixtralModel": PolicyLocation(
+        file_name="mixtral", class_name="MixtralModelPolicy"
+    ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
+        file_name="mixtral", class_name="MixtralForCausalLMPolicy"
     ),
     # Qwen2
     "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(
@@ -195,7 +210,7 @@ _POLICY_LIST = {
     "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
         file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
-    # Command-R
+    # command
     "transformers.models.cohere.modeling_cohere.CohereModel": PolicyLocation(
         file_name="command", class_name="CommandModelPolicy"
     ),
@@ -244,7 +259,6 @@ def get_autopolicy(model: nn.Module) -> Policy:
     """
     full_name = _fullname(model)
     policy_location = _POLICY_LIST.get(full_name, None)
-
     if policy_location is None:
         raise NotImplementedError(
             f"Auto policy for {model.__class__.__qualname__} ({full_name}) is not implemented\n. Supported models are {list(_POLICY_LIST.keys())}"

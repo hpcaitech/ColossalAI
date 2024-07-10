@@ -655,7 +655,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.param_info = param_info
         self.stage_manager = model.stage_manager
         self.shared_params = model.shared_params
-        self.dp_pg = dp_process_group
         self.tp_pg = tp_process_group
         self.pp_pg = pp_process_group
         if use_pipeline:
@@ -718,7 +717,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             """Retrieve all working gradients from different parameter groups."""
             all_working_grads = []
             for group_id in range(self.num_param_groups):
-                working_grads = self._grad_store.get_working_grads_by_group_id(group_id)
+                working_grads = self.get_working_grads_by_group_id(group_id)
                 all_working_grads.extend(working_grads)
             return all_working_grads
 
@@ -726,7 +725,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             """Identify gradients to be synchronized in the sequence parallelism."""
             grads_to_sync = []
             for grad in all_working_grads:
-                param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
+                param_id_for_grad = self.get_param_id_for_grad(grad)
                 param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
                 if SeqParallelUtils.is_sp_partial_derived_param(param_for_grad):
                     grads_to_sync.append(grad)
@@ -739,7 +738,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Get all working gradients and gradients to be synchronized.
         all_working_grads = _get_all_working_grads()
         grads_to_sync = _get_grads_to_sync(all_working_grads)
-        if self._grad_store.require_grad_sync and grads_to_sync is not None:
+        if self.require_grad_sync and grads_to_sync is not None:
             # Synchronize sequence parallelism gradients if required.
             SeqParallelUtils.allreduce_partial_data_grad(process_group=self.tp_pg, grads=grads_to_sync)
         else:
@@ -763,7 +762,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Call the superclass backward method to compute gradients.
         super().backward(loss, retain_graph)
 
-        if self._grad_store.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
             self._sync_sp_grads()
         else:
@@ -788,14 +787,14 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # Call the superclass backward_by_grad method to compute gradients.
         super().backward_by_grad(tensor, grad)
 
-        if self._grad_store.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
+        if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
             self._sync_sp_grads()
         else:
             # If gradient synchronization is is not required, return.
             return
 
-    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
+    def _compute_grad_norm(self, dp_pg, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""
         Compute and return the gradient norm for gradient clipping.
 
@@ -811,7 +810,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         if len(gradients) == 0:
             return 0.0
 
-        dp_size = get_world_size(self.dp_pg) if self.dp_pg is not None else 1
+        dp_size = get_world_size(dp_pg) if dp_pg is not None else 1
         tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
         pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
         norm_type = float(norm_type)
@@ -842,7 +841,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                 # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
                 # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
                 if tp_size > 1:
-                    param_id_for_grad = self._grad_store.get_param_id_for_grad(grad)
+                    param_id_for_grad = self.get_param_id_for_grad(grad)
                     param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
 
                     if not is_distributed_tensor(param_for_grad):
@@ -856,7 +855,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
                     for shared_param in self.shared_params:
                         if self.stage_manager.stage in shared_param:
                             stage_shared_param = shared_param[self.stage_manager.stage]
-                            working_grad = self._grad_store.get_working_grad_by_param_id(id(stage_shared_param))
+                            working_grad = self.get_working_grad_by_param_id(id(stage_shared_param))
                             if grad is working_grad:
                                 grad_norm_exponentiated /= len(shared_param)
 
@@ -867,7 +866,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             )
             if dp_size > 1:
                 # compute norm in dp process group
-                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.dp_pg)
+                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=dp_pg)
             if tp_size > 1:
                 # compute norm in tp process group
                 dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
@@ -1206,6 +1205,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 and self.enable_sequence_parallelism
                 and self.sequence_parallelism_mode == "all_to_all"
             )
+            # sync gradients across DP * SP ranks
             if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:
@@ -1309,7 +1309,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # run with gradients accumulation
         if model.require_grad_sync == False or (
-            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer._grad_store.require_grad_sync == False
+            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
         ):
             return outputs
 
