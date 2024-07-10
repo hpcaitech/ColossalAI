@@ -134,6 +134,21 @@ class CommandPipelineForwards:
                 )
                 use_cache = False
 
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=1 / shard_config.sequence_parallel_size,
+                )
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -189,6 +204,21 @@ class CommandPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
+
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=shard_config.sequence_parallel_size,
+                )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
