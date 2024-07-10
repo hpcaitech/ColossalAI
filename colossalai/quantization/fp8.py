@@ -4,7 +4,7 @@ import torch
 import torch.distributed as dist
 
 
-def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3") -> (torch.Tensor, torch.Tensor):
+def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""
     casting torch Tensor into specified fp8 tensor with per-channel scaling or per-tensor scaling.
     Args:
@@ -16,23 +16,26 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3") -> (torch.Tensor, torch.Te
     Returns:
         Tuples: A tuple (fp8_tensor, scale)
     """
-
     if inp.dtype not in [torch.float32, torch.float16, torch.bfloat16]:
         raise TypeError("Only float16, bfloat16, and float32 are allowed.")
 
     fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
     fp8_max = torch.finfo(fp8_type).max
 
-    if inp.dim() == 2:
-        per_channel_max = inp.abs().max(dim=-1).values.float()
-        per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
-        scale = fp8_max / per_channel_max[:, None]
+    if inp.numel() == 0:
+        return inp.to(fp8_type), torch.tensor([1.0], device=inp.device)
     else:
-        per_tensor_max = inp.abs().max().float()
-        per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
-        scale = fp8_max / per_tensor_max
+        if per_channel_scale:
+            per_channel_max = inp.abs().max(dim=-1).values.float()
+            per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
+            scale = fp8_max / per_channel_max[:, None]
+            scale_inv = per_channel_max / fp8_max
+        else:
+            per_tensor_max = inp.abs().max().float()
+            per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
+            scale = fp8_max / per_tensor_max
+            scale_inv = 1.0 / scale
 
-    scale_inv = 1.0 / scale
     ret = (scale * inp.float()).to(fp8_type)
     return ret, scale_inv
 
