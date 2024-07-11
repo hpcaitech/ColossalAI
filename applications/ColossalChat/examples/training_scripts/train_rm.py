@@ -173,6 +173,20 @@ def train(args):
         collate_fn=data_collator,
         distributed_sampler_cls=StatefulDistributedSampler,
     )
+
+    eval_dataloader = None
+    if args.eval_dataset:
+        eval_dataset = load_tokenized_dataset(dataset_paths=args.eval_dataset, mode="dev")
+        eval_data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
+        eval_dataloader = plugin.prepare_dataloader(
+            dataset=eval_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=eval_data_collator,
+            distributed_sampler_cls=StatefulDistributedSampler,
+        )
+
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
     math.ceil(args.max_epochs * num_update_steps_per_epoch)
 
@@ -297,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--dataset", nargs="+", default=[])
+    parser.add_argument("--eval_dataset", nargs="+", default=[])
     parser.add_argument(
         "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
     )

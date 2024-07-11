@@ -167,6 +167,7 @@ class SFTTrainer(SLTrainer):
             for tag in ["loss"]:
                 msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
             self.coordinator.print_on_master(msg)
+            os.makedirs(self.save_dir, exist_ok=True)
             with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
                 f.write(msg)
             step_bar.close()
