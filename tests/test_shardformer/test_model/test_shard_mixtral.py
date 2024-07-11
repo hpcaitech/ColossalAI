@@ -117,23 +117,35 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "tp_size": 1,
             "pp_size": 1,
             "ep_size": 1,
-            "zero_stage": 2,
+            "zero_stage": 1,
+            "overlap_communication": False,
             "precision": "fp32",
-        },  # [dp(2) + pp(2)] + [moe_dp(4)]
+        },  # [dp(4)] + [moe_dp(4)]
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 1,
+            "zero_stage": 1,
+            "overlap_communication": False,
+            "precision": "fp32",
+        },  # [dp(2) + pp(2)] + [moe_pp(2)]
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 1,
+            "zero_stage": 1,
+            "overlap_communication": False,
+            "precision": "fp32",
+        },  # [pp(2) + tp(2)] + [pp(2), replicate(2)] pass
         # {
         #     "tp_size": 1,
         #     "pp_size": 2,
         #     "num_microbatches": 2,
-        #     "ep_size": 1,
+        #     "ep_size": 2,
         #     "zero_stage": 1,
-        #     "precision": "fp32",
-        # },  # [dp(2) + pp(2)] + [moe_dp(4)]
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "num_microbatches": 2,
-        #     "ep_size": 4,
-        #     "zero_stage": 1,
+        #     "overlap_communication": False,
         #     "precision": "fp32",
         # },  # [dp(2) + pp(2)] + [ep(4))]
         # {
@@ -141,13 +153,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         #     "pp_size": 1,
         #     "ep_size": 2,
         #     "zero_stage": 0,
+        #     "overlap_communication": False,
         #     "precision": "fp32",
         # },  # [dp(4)] + [ep(2) + moe_tp(2)]
         # {
-        #     "tp_size": 1, 
-        #     "pp_size": 1, 
-        #     "ep_size": 4, 
-        #     "zero_stage": 0, 
+        #     "tp_size": 1,
+        #     "pp_size": 1,
+        #     "ep_size": 4,
+        #     "overlap_communication": False,
+        #     "zero_stage": 0,
         #     "precision": "fp32"
         # },  # full dp for non-moe and full ep for moe
     ],
