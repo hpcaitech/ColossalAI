@@ -529,7 +529,7 @@ Coati is developed by ColossalAI Team:
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO.
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
@@ -578,6 +578,36 @@ We also appreciate the valuable suggestions provided by [Jian Hu](https://github
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/XueFuzhao/InstructionWild}},
+}
+
+@misc{meng2024simposimplepreferenceoptimization,
+      title={SimPO: Simple Preference Optimization with a Reference-Free Reward},
+      author={Yu Meng and Mengzhou Xia and Danqi Chen},
+      year={2024},
+      eprint={2405.14734},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2405.14734},
+}
+
+@misc{rafailov2023directpreferenceoptimizationlanguage,
+      title={Direct Preference Optimization: Your Language Model is Secretly a Reward Model},
+      author={Rafael Rafailov and Archit Sharma and Eric Mitchell and Stefano Ermon and Christopher D. Manning and Chelsea Finn},
+      year={2023},
+      eprint={2305.18290},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2305.18290},
+}
+
+@misc{hong2024orpomonolithicpreferenceoptimization,
+      title={ORPO: Monolithic Preference Optimization without Reference Model},
+      author={Jiwoo Hong and Noah Lee and James Thorne},
+      year={2024},
+      eprint={2403.07691},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2403.07691},
 }
 ```
 
