@@ -43,6 +43,7 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
+          apt update && apt install -y cmake
           pip install -U pip setuptools==68.2.2 wheel --user
 
       - uses: actions/checkout@v2
@@ -52,11 +53,10 @@ jobs:
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
-          pip install -r requirements/requirements-test.txt
+          pip install --no-cache-dir -r requirements/requirements-test.txt
 
       - name: Install tensornvme
         run: |
-          apt update && apt install -y cmake
           DISABLE_URING=1 pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
 
       - name: Unit Testing

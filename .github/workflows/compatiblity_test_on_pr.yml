@@ -51,8 +51,6 @@ jobs:
         run: |
           apt update && apt install -y cmake
           pip install -U pip setuptools==68.2.2 wheel --user
-          pip show torch
-          nvcc -V
 
       - uses: actions/checkout@v2
         with:
@@ -61,23 +59,14 @@ jobs:
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
-          FLASH_ATTENTION_FORCE_BUILD=TRUE pip install --no-cache-dir -r requirements/requirements-test.txt
-          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
-          pip show torch
-          nvcc -V
+          pip install --no-cache-dir -r requirements/requirements-test.txt
 
       - name: Install tensornvme
         run: |
           DISABLE_URING=1 pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
-          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
-          pip show torch
-          nvcc -V
 
       - name: Unit Testing
         run: |
-          python -c "from flash_attn import flash_attn_func, flash_attn_varlen_func"
-          pip show torch
-          nvcc -V
           PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
