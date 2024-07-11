@@ -27,6 +27,7 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -35,7 +36,6 @@ from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.zero.low_level import LowLevelZeroOptimizer
-from colossalai.logging import get_dist_logger
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -651,6 +651,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
+        **kwargs,
     ):
         self.model = model
         self.param_info = param_info
@@ -678,6 +679,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
+            **kwargs,
         )
 
     def sync_dp_grads(self):
@@ -1046,8 +1048,10 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
 
-        self.logger.info(f"{type(self).__name__}: {self.pp_size=} {self.dp_size=} {self.tp_size=} {self.sp_size=}", ranks=[0])
-        
+        self.logger.info(
+            f"{type(self).__name__}: {self.pp_size=} {self.dp_size=} {self.tp_size=} {self.sp_size=}", ranks=[0]
+        )
+
         self.stage_manager = None
         self.schedule = None
         self.custom_policy = custom_policy
