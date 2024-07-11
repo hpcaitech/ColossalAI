@@ -62,7 +62,7 @@ class OptimizerParamCheckState(enum.Enum):
 
 
 class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
-    def __init__(self, module: nn.Module, precision: str, overlap_communication: bool = True) -> None:
+    def __init__(self, module: nn.Module, precision: str, overlap_communication: bool = False) -> None:
         super().__init__(module)
         self.dtype = None
         if precision == "fp16":
@@ -270,6 +270,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         from peft import PeftModel
 
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        model._force_wait_all_gather()
         peft_model = model.unwrap()
         assert isinstance(
             peft_model, PeftModel

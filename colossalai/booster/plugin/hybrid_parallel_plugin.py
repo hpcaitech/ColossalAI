@@ -677,6 +677,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
+            overlap_allgather=False,
         )
 
     def sync_dp_grads(self):
@@ -878,10 +879,6 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
 
         return total_norm
-
-    def step(self, closure=None):
-        super().step(closure)
-        self._force_wait_all_gather()
 
 
 class HybridParallelPlugin(PipelinePluginBase):
