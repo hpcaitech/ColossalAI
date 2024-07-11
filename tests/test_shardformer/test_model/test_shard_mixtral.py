@@ -29,10 +29,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config, pluggin_cls=MoeHybridParallelPlugin, optim_class=torch.optim.Adam
     )
-    with torch.autograd.set_detect_anomaly(True):
-        org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
-            org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
-        )
+
+    org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
+        org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
+    )
 
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
@@ -115,8 +115,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     [
         {
             "tp_size": 1,
-            "pp_size": 1,
-            "ep_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "ep_size": 2,
             "zero_stage": 1,
             "overlap_communication": False,
             "precision": "fp32",
@@ -125,7 +126,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "tp_size": 1,
             "pp_size": 2,
             "num_microbatches": 2,
-            "ep_size": 1,
+            "ep_size": 2,
             "zero_stage": 1,
             "overlap_communication": False,
             "precision": "fp32",
@@ -134,7 +135,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "tp_size": 2,
             "pp_size": 2,
             "num_microbatches": 2,
-            "ep_size": 1,
+            "ep_size": 2,
             "zero_stage": 1,
             "overlap_communication": False,
             "precision": "fp32",
