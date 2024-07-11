@@ -122,12 +122,10 @@ def train(args):
     #     LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
     # )
 
-    if args.grad_checkpoint and args.lora_rank == 0:
-        # lora layers are not supported by gradient checkpointing
+    if args.grad_checkpoint:
+        # Note, for some models, lora may not be compatible with gradient checkpointing
         model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
-    elif args.lora_rank > 0:
-        coordinator.print_on_master(msg="Gradient checkpointing will be disabled when LoRA is enabled")
 
     # configure tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -271,7 +269,7 @@ def train(args):
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final model checkpoint")
 
-    # booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
+    booster.save_model(model, os.path.join(args.save_path, "modeling"), shard=True)
     coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_path}")
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")

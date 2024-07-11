@@ -23,6 +23,8 @@
   - [Open QA](#open-qa)
   - [Limitation for LLaMA-finetuned models](#limitation)
   - [Limitation of dataset](#limitation)
+- [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
+- [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
@@ -262,9 +264,8 @@ experience buffer size
 = train_batch_size * accumulation_steps * num_tp_group
 ```
 
-## Alternative Option For RLHF: Direct Preference Optimization
-
-For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
+## Alternative Option For RLHF: Direct Preference Optimization (DPO)
+For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in this [paper](https://arxiv.org/abs/2305.18290), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO. Read this [README](./examples/README.md) for more information.
 
 ### DPO Training Stage1 - Supervised Instructs Tuning
 
@@ -276,6 +277,12 @@ For DPO training, you only need the preference dataset. Please follow the instru
 
 #### Step 2: Training
 You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [example guideline](./examples/README.md).
+
+## Alternative Option For RLHF: Simple Preference Optimization (SimPO)
+Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2405.14734) is similar to DPO but it abandons the use of the reference model, which makes the training more efficient. It also adds a reward shaping term called target reward margin to enhance training stability. It also use length normalization to better align with the inference process. Read this [README](./examples/README.md) for more information.
+
+## Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
+Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pdf/2403.07691) is a reference model free alignment method that use a mixture of SFT loss and a reinforcement leanring loss calculated based on odds-ratio-based implicit reward to makes the training more efficient and stable. Read this [README](./examples/README.md) for more information.
 
 ### Inference Quantization and Serving - After Training
 
@@ -522,7 +529,7 @@ Coati is developed by ColossalAI Team:
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored version with updated acceleration framework, LoRA, DPO and PPO.
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)

@@ -89,11 +89,22 @@ class DpoLoss(nn.Module):
     """
     Dpo loss
     Details: https://arxiv.org/pdf/2305.18290.pdf
+
+    SimPO loss:
+    Details: https://arxiv.org/pdf/2405.14734.pdf
     """
 
-    def __init__(self, beta: float = 0.1):
+    def __init__(self, beta: float = 0.1, gamma: float = 0.0):
+        """
+        Args:
+            beta: The temperature parameter in the DPO paper.
+            gamma: The margin parameter in the SimPO paper.
+            length_normalization: Whether to normalize the loss by the length of chosen and rejected responses.
+                Refer to the length normalization in the SimPO paper
+        """
         super().__init__()
         self.beta = beta
+        self.gamma = gamma
 
     def forward(
         self,
@@ -104,7 +115,7 @@ class DpoLoss(nn.Module):
         chosen_mask: torch.Tensor,
         reject_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Compute the DPO loss for a batch of policy and reference model log probabilities.
+        """Compute the DPO/SimPO loss for a batch of policy and reference model log probabilities.
 
         # adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/dpo_trainer.py#L328
 
@@ -113,6 +124,8 @@ class DpoLoss(nn.Module):
             logprob_actor_reject: Log probabilities of the policy model for the rejected responses. Shape: (batch_size,)
             logprob_ref_chosen: Log probabilities of the reference model for the chosen responses. Shape: (batch_size,)
             logprob_ref_reject: Log probabilities of the reference model for the rejected responses. Shape: (batch_size,)
+            chosen_mask: Mask tensor indicating which responses were chosen. Shape: (batch_size,)
+            reject_mask: Mask tensor indicating which responses were rejected. Shape: (batch_size,)
 
         Returns:
             A tuple of three tensors: (losses, chosen_rewards, rejected_rewards).
@@ -127,13 +140,12 @@ class DpoLoss(nn.Module):
             if len(logprob_ref_chosen.shape) == 2:
                 ref_logratios = logprob_ref_chosen.sum(-1) - logprob_ref_reject.sum(-1)
             else:
-                ref_logratios = logprob_ref_chosen.squeeze() - logprob_ref_reject.squeeze()
+                ref_logratios = logprob_ref_chosen - logprob_ref_reject
         else:
             # If no reference model is provided
             ref_logratios = 0.0
-
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
-        logits = pi_logratios - ref_logratios
+        logits = pi_logratios - ref_logratios - self.gamma / self.beta
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
 
         # Calculate rewards for logging
@@ -168,3 +180,28 @@ class LogExpLoss(nn.Module):
     def forward(self, chosen_reward: torch.Tensor, reject_reward: torch.Tensor) -> torch.Tensor:
         loss = torch.log(1 + torch.exp(reject_reward - chosen_reward)).mean()
         return loss
+
+
+class OddsRatioLoss(nn.Module):
+    """
+    Odds Ratio Loss in ORPO
+    Details: https://arxiv.org/pdf/2403.07691
+    """
+
+    def forward(
+        self,
+        chosen_logp: torch.Tensor,
+        reject_logp: torch.Tensor,
+        chosen_loss_mask: torch.Tensor,
+        reject_loss_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        chosen_logp = chosen_logp.to(dtype=torch.float32)
+        reject_logp = reject_logp.to(dtype=torch.float32)
+        chosen_odds = chosen_logp - torch.log(-torch.exp(chosen_logp) + 1.0001)
+        chosen_odds_masked = torch.sum(chosen_odds * chosen_loss_mask.float()) / torch.sum(chosen_loss_mask)
+        reject_odds = reject_logp - torch.log(-torch.exp(reject_logp) + 1.0001)
+        reject_odds_masked = torch.sum(reject_odds * reject_loss_mask.float()) / torch.sum(reject_loss_mask)
+        # print("chosen_odds_masked", chosen_odds_masked[0], "reject_odds_masked", reject_odds_masked[0])
+        log_odds_ratio = chosen_odds_masked - reject_odds_masked
+        ratio = torch.log(torch.nn.functional.sigmoid(log_odds_ratio))
+        return ratio.to(dtype=torch.bfloat16), log_odds_ratio

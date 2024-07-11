@@ -5,10 +5,11 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler, load_tokenized_dataset
+from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler
 from coati.models import convert_to_lora_module, disable_dropout
 from coati.trainer import DPOTrainer
 from coati.utils import load_checkpoint
+from dummy_dataset import DummyLLMDataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -163,9 +164,12 @@ def train(args):
     )
 
     # configure dataset
-    coordinator.print_on_master(f"Load dataset: {args.dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
-    train_dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train", mode_map=mode_map)
+    train_dataset = DummyLLMDataset(
+        ["chosen_input_ids", "chosen_loss_mask", "rejected_input_ids", "rejected_loss_mask"],
+        args.max_length,
+        args.dataset_size,
+    )
     data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
 
     train_dataloader = plugin.prepare_dataloader(
@@ -250,8 +254,8 @@ def train(args):
         max_epochs=args.max_epochs,
         accumulation_steps=args.accumulation_steps,
         start_epoch=start_epoch,
-        save_interval=args.save_interval,
-        save_dir=args.save_dir,
+        save_interval=None,
+        save_dir=None,
         coordinator=coordinator,
         beta=args.beta,
         gamma=args.gamma,
@@ -261,21 +265,9 @@ def train(args):
     trainer.fit(
         train_preference_dataloader=train_dataloader,
         eval_preference_dataloader=None,
-        log_dir=args.log_dir,
-        use_wandb=args.use_wandb,
+        log_dir=None,
+        use_wandb=False,
     )
-
-    if args.lora_rank > 0 and args.merge_lora_weights:
-        from coati.models.lora import LORA_MANAGER
-
-        # NOTE: set model to eval to merge LoRA weights
-        LORA_MANAGER.merge_weights = True
-        model.eval()
-    # save model checkpoint after fitting on only rank0
-    coordinator.print_on_master("Start saving final model checkpoint")
-    booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}")
-
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
 
@@ -308,15 +300,14 @@ if __name__ == "__main__":
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
-    parser.add_argument("--dataset", nargs="+", default=[])
     parser.add_argument(
         "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
     )
     parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
-    parser.add_argument("--save_dir", type=str, default="output")
     parser.add_argument("--max_length", type=int, default=2048, help="Model max length")
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--dataset_size", type=int, default=500)
     parser.add_argument(
         "--disable_reference_model",
         action="store_true",
@@ -331,12 +322,9 @@ if __name__ == "__main__":
         default="none",
         help="'none' means it doesn't train biases. 'all' means it trains all biases. 'lora_only' means it only trains biases of LoRA layers",
     )
-    parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--accumulation_steps", type=int, default=8)
-    parser.add_argument("--log_dir", default="logs", type=str)
-    parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
