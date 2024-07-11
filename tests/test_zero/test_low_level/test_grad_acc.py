@@ -64,8 +64,8 @@ def exam_zero_1_2_grad_acc():
     zero1_optimizer.step()
     zero2_optimizer.step()
 
-    zero1_optimizer._force_waite_all_gather()
-    zero2_optimizer._force_waite_all_gather()
+    zero1_optimizer._force_wait_all_gather()
+    zero2_optimizer._force_wait_all_gather()
 
     # check updated param
     for z1p, z2p in zip(zero1_model.parameters(), zero2_model.parameters()):

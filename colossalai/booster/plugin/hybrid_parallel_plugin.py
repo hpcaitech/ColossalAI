@@ -881,7 +881,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
 
     def step(self, closure=None):
         super().step(closure)
-        self._force_waite_all_gather()
+        self._force_wait_all_gather()
 
 
 class HybridParallelPlugin(PipelinePluginBase):

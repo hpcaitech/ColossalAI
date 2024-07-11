@@ -901,6 +901,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         grad_store = self.pid_to_grad_store[param_id]
         return grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)
 
-    def _force_waite_all_gather(self):
+    def _force_wait_all_gather(self):
         for param in self._working_param_to_padded_working_param.keys():
             wait_all_gather_handle(param)
