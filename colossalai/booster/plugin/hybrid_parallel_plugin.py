@@ -677,6 +677,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
+            overlap_allgather=False,
         )
 
     def sync_dp_grads(self):

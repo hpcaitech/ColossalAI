@@ -113,13 +113,13 @@ class PerformanceEvaluator:
         self.disable = self.ignore_steps > 0 and step < self.ignore_steps
         if self.disable:
             return
-        get_accelerator().synchronize()
+        # get_accelerator().synchronize()
         self.timer.start()
 
     def on_step_end(self, input_ids: Tensor, **kwargs) -> None:
         if self.disable:
             return
-        get_accelerator().synchronize()
+        # get_accelerator().synchronize()
         self.timer.end()
 
         batch_size, seq_len = input_ids.shape
