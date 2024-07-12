@@ -1,6 +1,6 @@
 # Code refer and adapted from:
-# https://github.com/PipeFusion/PipeFusion
 # https://github.com/huggingface/diffusers/blob/v0.29.0-release/src/diffusers
+# https://github.com/PipeFusion/PipeFusion
 
 import inspect
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -234,7 +234,7 @@ class DistrifusionPatchEmbed(ParallelModule):
         return (latent + pos_embed).to(latent.dtype)
 
 
-# Code adapted from: https://github.com/PipeFusion/PipeFusion
+# Code adapted from: https://github.com/PipeFusion/PipeFusion/blob/main/pipefuser/modules/dit/patch_parallel/conv2d.py
 class DistrifusionConv2D(ParallelModule):
 
     def __init__(
@@ -455,12 +455,14 @@ class Distrifusion_FusedAttention(ParallelModule):
         return output
 
 
+# Code adapted from: https://github.com/PipeFusion/PipeFusion/blob/main/pipefuser/modules/dit/patch_parallel/attn.py
 class DistriSelfAttention(ParallelModule):
     def __init__(
         self,
         module: Attention,
         process_group: Union[ProcessGroup, List[ProcessGroup]],
         model_shard_infer_config: ModelShardInferenceConfig = None,
+        async_nccl_stream: torch.cuda.Stream = None,
     ):
         super().__init__()
         self.counter = 0
@@ -470,6 +472,7 @@ class DistriSelfAttention(ParallelModule):
         self.patched_parallelism_size = model_shard_infer_config.patched_parallelism_size
         self.handle = None
         self.process_group = process_group
+        self.async_nccl_stream = async_nccl_stream
         self.warm_step = 5  # for warmup
 
     @staticmethod
@@ -477,8 +480,12 @@ class DistriSelfAttention(ParallelModule):
         module: Attention, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
     ) -> ParallelModule:
         model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
+        async_nccl_stream = kwargs.get("async_nccl_stream", None)
         return DistriSelfAttention(
-            module=module, process_group=process_group, model_shard_infer_config=model_shard_infer_config
+            module=module,
+            process_group=process_group,
+            model_shard_infer_config=model_shard_infer_config,
+            async_nccl_stream=async_nccl_stream,
         )
 
     def _forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0):
@@ -512,11 +519,15 @@ class DistriSelfAttention(ParallelModule):
                 full_kv = torch.cat(self.buffer_list, dim=1)
             else:
                 # logger.info(f"use old kv to infer: {self.counter}")
-                new_buffer_list = [buffer for buffer in self.buffer_list]
-                new_buffer_list[self.kv_buffer_idx] = kv
-                full_kv = torch.cat(new_buffer_list, dim=1)
+                self.buffer_list[self.kv_buffer_idx].copy_(kv)
+                full_kv = torch.cat(self.buffer_list, dim=1)
                 assert self.handle is None, "we should maintain the kv of last step"
-                self.handle = dist.all_gather(new_buffer_list, kv, group=self.process_group, async_op=True)
+                with torch.cuda.stream(
+                    self.async_nccl_stream
+                ):  # NOTE(@LRY89757) implementation async op of torch.distributed.all_gather  to ensure efficient overlap of comp and comm
+                    self.handle = dist.all_gather(self.buffer_list, kv, group=self.process_group, async_op=False)
+                    self.handle = torch.cuda.Event()
+                    self.handle.record(self.async_nccl_stream)
 
         if HAS_FLASH_ATTN:
             # flash attn
@@ -582,8 +593,6 @@ class DistriSelfAttention(ParallelModule):
                 torch.empty(kv_shape, dtype=hidden_states.dtype, device=get_current_device())
                 for _ in range(self.patched_parallelism_size)
             ]
-
-        # logger.info(f"{self.counter}th step")
 
         output = self._forward(hidden_states, scale=scale)
 

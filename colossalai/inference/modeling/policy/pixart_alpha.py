@@ -1,3 +1,4 @@
+import torch
 from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
 from torch import nn
@@ -47,7 +48,10 @@ class PixArtAlphaInferPolicy(Policy, RPC_PARAM):
                     SubModuleReplacementDescription(
                         suffix="attn1",
                         target_module=DistriSelfAttention,
-                        kwargs={"model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"]},
+                        kwargs={
+                            "model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"],
+                            "async_nccl_stream": torch.cuda.Stream(),
+                        },
                     )
                 ]
             )
