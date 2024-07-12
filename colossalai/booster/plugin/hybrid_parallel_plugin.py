@@ -1017,6 +1017,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         dp_outside: bool = True,
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
+        fp8_communication: bool = False,
     ) -> None:
         super().__init__()
 
@@ -1098,6 +1099,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
                     overlap_p2p=overlap_p2p,
+                    fp8_communication=fp8_communication,
                 )
             elif pp_style == "1f1b":
                 self.schedule = OneForwardOneBackwardSchedule(
@@ -1105,6 +1107,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatches=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
+                    fp8_communication=fp8_communication,
                 )
             else:
                 raise NotImplementedError()
