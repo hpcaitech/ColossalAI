@@ -46,6 +46,9 @@ class ShardConfig:
     make_vocab_size_divisible_by: int = 64
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    # for moe related
+    moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
     moe_tp_group: Optional[ProcessGroup] = None
 
