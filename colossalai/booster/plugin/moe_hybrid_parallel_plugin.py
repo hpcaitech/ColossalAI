@@ -65,14 +65,6 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             overlap_communication = True
             warnings.warn(WARN_STR + " Please make sure of this.")
 
-        self.param_info = param_info
-        self.stage_manager = model.stage_manager
-        self.shared_params = model.shared_params
-        self.dp_pg = dp_process_group
-    
-        if use_pipeline:
-            reinitialize_optimizer(optimizer, model)
-
         pg_param_list = {
             dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
             moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
