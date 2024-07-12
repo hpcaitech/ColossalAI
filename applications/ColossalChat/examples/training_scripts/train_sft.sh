@@ -14,9 +14,8 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
-PROJECT_NAME="sft"
+PROJECT_NAME="SFT"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
