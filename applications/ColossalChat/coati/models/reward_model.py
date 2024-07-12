@@ -1,6 +1,7 @@
 """
 reward model
 """
+
 from typing import Optional
 
 import torch

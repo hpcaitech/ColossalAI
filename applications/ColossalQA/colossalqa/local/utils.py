@@ -1,6 +1,7 @@
 """
 Generation utilities
 """
+
 import json
 from typing import List
 

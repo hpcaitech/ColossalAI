@@ -1,6 +1,7 @@
 """
 Multilingual retrieval based conversation system
 """
+
 from typing import List
 
 from colossalqa.data_loader.document_loader import DocumentLoader

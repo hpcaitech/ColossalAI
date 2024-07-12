@@ -83,15 +83,19 @@ class DataCollatorForSupervisedDataset(object):
 
         # `List[torch.Tensor]`
         batch_input_ids = [
-            torch.LongTensor(instance["input_ids"][: self.max_length])
-            if len(instance["input_ids"]) > self.max_length
-            else torch.LongTensor(instance["input_ids"])
+            (
+                torch.LongTensor(instance["input_ids"][: self.max_length])
+                if len(instance["input_ids"]) > self.max_length
+                else torch.LongTensor(instance["input_ids"])
+            )
             for instance in instances
         ]
         batch_labels = [
-            torch.LongTensor(instance["labels"][: self.max_length])
-            if len(instance["labels"]) > self.max_length
-            else torch.LongTensor(instance["labels"])
+            (
+                torch.LongTensor(instance["labels"][: self.max_length])
+                if len(instance["labels"]) > self.max_length
+                else torch.LongTensor(instance["labels"])
+            )
             for instance in instances
         ]
         if self.tokenizer.padding_side == "right":

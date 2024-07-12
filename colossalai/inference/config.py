@@ -1,6 +1,7 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
+
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
@@ -82,9 +83,9 @@ class InputMetaData(RPC_PARAM):
     dtype: torch.dtype = torch.float32
     use_spec_dec: bool = False
     num_tokens_to_verify: int = 0
-    batch_token_ids: Optional[
-        List[List[int]]
-    ] = None  # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
+    batch_token_ids: Optional[List[List[int]]] = (
+        None  # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
+    )
 
     def to_rpc_param(self) -> Dict[str, any]:
         return {
@@ -202,9 +203,9 @@ class InferenceConfig(RPC_PARAM):
     prompt_template: Optional[str] = None
     do_sample: bool = False
     beam_width: int = 1  # TODO: beam search is not support for now
-    prefill_ratio: Optional[
-        float
-    ] = 1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
+    prefill_ratio: Optional[float] = (
+        1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
+    )
     pad_input: bool = False
     early_stopping: Optional[bool] = False
     top_k: Optional[int] = 50
@@ -234,7 +235,9 @@ class InferenceConfig(RPC_PARAM):
     high_precision: Optional[bool] = False
 
     # cuda_graph
-    use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+    use_cuda_graph: bool = (
+        False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+    )
     max_context_len_to_capture: int = 512
 
     # StreamingLLM (sliding window attention with attention sinks)
