@@ -15,10 +15,9 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
-PROJECT_NAME="ppo"
+PROJECT_NAME="PPO"
 
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # local pretrained model path (from RLHF step 1: SFT)
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
