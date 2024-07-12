@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
-from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler
+from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_activation
 from colossalai.shardformer.layer.utils import Randomizer
@@ -118,7 +118,7 @@ class MLPExperts(nn.Module):
         Returns:
             torch.Tensor: The output tensor of shape (num_groups, num_experts, capacity, hidden_size)
         """
-        x = MoeInGradScaler.apply(x, self.ep_size)
+        x = EPGradScalerIn.apply(x, self.ep_size)
 
         e = x.size(1)
         h = x.size(-1)
@@ -157,5 +157,5 @@ class MLPExperts(nn.Module):
         x = torch.cat([x[i].unsqueeze(0) for i in range(e)], dim=0)
         x = x.reshape(inshape)
         x = x.transpose(0, 1).contiguous()
-        x = MoeOutGradScaler.apply(x, self.ep_size)
+        x = EPGradScalerOut.apply(x, self.ep_size)
         return x

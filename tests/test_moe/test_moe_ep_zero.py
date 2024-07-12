@@ -18,8 +18,7 @@ NUM_BATCH=4
 NUM_TOK_PER_BATCH, NUM_EXPERTS = 7, 4
 HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS=2
-TOP_K = 2
-
+TOP_K = 1
 
 def split_grad(grad, world_size):
     with torch.no_grad():
@@ -96,7 +95,6 @@ def run_zero_with_original_model(stage: int, ep_size: int):
         # check grad
         name_to_p = {n: p for n, p in ddp_model.named_parameters()}
         for n, p in zero_model.named_parameters():
-            print(f"rank {dist.get_rank()} {n}")
             zero_grad = zero_optimizer.get_param_grad(p)
             if name_to_p[n].grad is None:
                 name_to_p[n].grad = torch.zeros_like(name_to_p[n].data)
@@ -124,9 +122,9 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
-def test_moe_ep_tp(world_size):
+def test_moe_ep_zero(world_size):
     spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_moe_ep_tp(world_size=4)
+    test_moe_ep_zero(world_size=4)

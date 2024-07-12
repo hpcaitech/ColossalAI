@@ -141,6 +141,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         # set ep_group after super init
         # TODO do it in a better way
         self.shard_config.ep_group = self.ep_group
+        self.shard_config.moe_dp_group = self.moe_dp_group
+        self.shard_config.moe_tp_group = self.moe_tp_group
 
         self.force_overlap_comm = force_overlap_comm
 
@@ -159,7 +161,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
         # create groups from submesh
         for stage_idx, stage_rank in enumerate(ranks_by_pp_stage):
-            # axis 0 is dp, axis 1 is tp, axis 2 is sp
+            # axis 0 is moe_dp, axis 1 is ep, axis 2 is moe_tp
             submesh = np.array(stage_rank).reshape(self.moe_dp_size, self.ep_size, self.moe_tp_size)
 
             # hardcode here since we only have 3 axis
@@ -188,7 +190,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         assert self.moe_tp_group is None
                         self.moe_tp_group = group
 
-        self.logger.info(f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}")
+        self.logger.info(f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}", ranks=[0])
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         return MoECheckpointIO(
