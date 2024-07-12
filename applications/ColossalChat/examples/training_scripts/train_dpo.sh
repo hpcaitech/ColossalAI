@@ -38,7 +38,7 @@ declare -a dataset=(
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
-CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
+CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
 
 colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 31313 train_dpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
