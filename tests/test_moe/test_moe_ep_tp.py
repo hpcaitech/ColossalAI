@@ -34,7 +34,7 @@ def split_grad(grad, world_size):
 @parameterize("stage", [1])
 @parameterize("ep_size", [1, 2, 4])
 @parameterize("tp_size", [1, 2, 4])
-def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int = 1):
+def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int):
     dtype = torch.bfloat16
 
     rank = torch.distributed.get_rank()

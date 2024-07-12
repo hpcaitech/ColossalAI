@@ -14,7 +14,13 @@ from transformers.models.mixtral.modeling_mixtral import (
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import DPGradScalerIn, DPGradScalerOut, EPGradScalerIn, EPGradScalerOut, all_to_all_uneven, drop_tokens, gather_tokens
+from colossalai.moe._operation import (
+    DPGradScalerIn,
+    DPGradScalerOut,
+    EPGradScalerIn,
+    EPGradScalerOut,
+    all_to_all_uneven,
+)
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
@@ -25,7 +31,9 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def __init__(self, *args, **kwargs):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, moe_tp_group: ProcessGroup):
+    def setup_process_groups(
+        self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, moe_tp_group: ProcessGroup
+    ):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
@@ -59,7 +67,13 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
     @staticmethod
     def from_native_module(
-        module: MixtralSparseMoeBlock, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, moe_tp_group: ProcessGroup, *args, **kwargs
+        module: MixtralSparseMoeBlock,
+        tp_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
+        ep_group: ProcessGroup,
+        moe_tp_group: ProcessGroup,
+        *args,
+        **kwargs,
     ) -> "EPMixtralSparseMoeBlock":
         # TODO: better init
         LazyInitContext.materialize(module)
@@ -96,8 +110,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
 
-        if self.tp_group.size() > 1:
-            dispatch_states = drop_tokens(dispatch_states, -1, self.tp_group)
+        # TODO drop tokens to reduce tp group redundant communication
 
         output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
         # compute expert output
@@ -116,19 +129,20 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 for i, split_states in enumerate(output_states_splits):
                     if split_states.size(0) == 0:
                         continue
-                    split_states = DPGradScalerIn.apply(split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item())
+                    split_states = DPGradScalerIn.apply(
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item()
+                    )
                     expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
                     split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
                     split_states = expert.w2(split_states)
-                    split_states = DPGradScalerOut.apply(split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item())
+                    split_states = DPGradScalerOut.apply(
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item()
+                    )
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
 
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
-
-        if self.tp_group.size() > 1:
-            dispatch_states = gather_tokens(dispatch_states, -1, self.tp_group)
 
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(
