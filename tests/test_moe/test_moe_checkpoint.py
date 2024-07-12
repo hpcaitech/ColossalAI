@@ -13,7 +13,6 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.checkpoint_io import MoECheckpointIO
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, spawn
 from colossalai.testing.utils import spawn
@@ -115,7 +114,6 @@ def check_moe_checkpoint(test_config):
             pp_size=2,
             ep_size=2,
             tp_size=1,
-            checkpoint_io=MoECheckpointIO,
             microbatch_size=1,
             zero_stage=1,
         )

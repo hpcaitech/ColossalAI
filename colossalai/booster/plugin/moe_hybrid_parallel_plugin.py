@@ -1,8 +1,8 @@
 import warnings
 from types import MethodType
 from typing import Callable, Optional, OrderedDict, Tuple
-import numpy as np
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
@@ -21,7 +21,6 @@ from colossalai.booster.plugin.hybrid_parallel_plugin import (
     reinitialize_optimizer,
 )
 from colossalai.checkpoint_io import MoECheckpointIO
-from colossalai.cluster.process_group_mesh import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
@@ -89,11 +88,9 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             overlap_communication=overlap_communication,
             partition_grad=partition_grad,
             cpu_offload=cpu_offload,
-            # dp_process_group=dp_process_group,
             tp_process_group=tp_process_group,
             pp_process_group=pp_process_group,
             forced_dtype=forced_dtype,
-            ## moe args
             pg_to_param_list=pg_param_list,
         )
 
@@ -104,6 +101,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     """
 
     def __init__(self, ep_size: int, moe_tp_size: int = 1, force_overlap_comm=False, *args, **kwargs) -> None:
+        if "overlap_communication" not in kwargs:
+            kwargs["overlap_communication"] = False
+
         super().__init__(*args, **kwargs)
 
         self.use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
@@ -142,7 +142,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.moe_dp_group = None
         self.ep_group = None
         self.moe_tp_group = None
-        
+
         # create submesh for ep, moe_dp, moe_tp
         ranks_by_pp_stage = self.pg_mesh.get_group_along_axis(
             [self.dp_axis, self.tp_axis, self.sp_axis], return_ranks_by_group=True
@@ -182,7 +182,10 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         assert self.moe_tp_group is None
                         self.moe_tp_group = group
 
-        self.logger.info(f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}", ranks=[0])
+        self.logger.info(
+            f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}",
+            ranks=[0],
+        )
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         return MoECheckpointIO(
