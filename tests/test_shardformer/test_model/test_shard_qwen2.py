@@ -135,51 +135,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
-        {
-            "tp_size": 1,
-            "pp_size": 2,
-            "num_microbatches": 2,
-            "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "zero_stage": 1,
-            "precision": "fp16",
-            "initial_scale": 1,
-        },
-    ],
-)
-def run_qwen2_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen2")
-
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
-
-    clear_layout_converter()
-    Randomizer.reset_index()
-    torch.cuda.empty_cache()
-
-
-@parameterize(
-    "test_config",
-    [
-        {
-            "tp_size": 2,
-            "pp_size": 2,
-            "num_microbatches": 4,
-            "enable_all_optimization": False,
-            "use_lazy_init": False,
-            "precision": "fp32",
-            "initial_scale": 1,
-        },
-        {
-            "tp_size": 2,
-            "pp_size": 2,
-            "num_microbatches": 4,
-            "enable_all_optimization": False,
-            "use_lazy_init": False,
-            "precision": "fp16",
-            "zero_stage": 1,
-            "initial_scale": 1,
-        },
         {  # Ulysess + Flash attention
             "tp_size": 1,
             "pp_size": 2,
@@ -243,6 +198,54 @@ def run_qwen2_test(test_config):
             "initial_scale": 1,
         },
         {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+    ],
+)
+def run_qwen2_test(test_config):
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen2")
+
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        try:
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        except Exception as e:
+            print(f"Failed config: {test_config}")
+            raise e
+    clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+
+
+@parameterize(
+    "test_config",
+    [
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp32",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "use_lazy_init": False,
+            "precision": "fp16",
+            "zero_stage": 1,
+            "initial_scale": 1,
+        },
+        {
             "tp_size": 2,
             "pp_size": 2,
             "pp_style": "interleaved",
@@ -259,7 +262,11 @@ def run_qwen2_3d_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen2")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        try:
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        except Exception as e:
+            print(f"Failed config: {test_config}")
+            raise e
 
     clear_layout_converter()
     Randomizer.reset_index()
