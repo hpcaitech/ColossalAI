@@ -76,18 +76,6 @@ class MixtralPolicy(Policy):
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
                     ),
-                    # SubModuleReplacementDescription(  # TODO: enable moe tp parallel
-                    #     suffix="mlp.gate_proj",
-                    #     target_module=Linear1D_Col,
-                    # ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="mlp.up_proj",
-                    #     target_module=Linear1D_Col,
-                    # ),
-                    # SubModuleReplacementDescription(
-                    #     suffix="mlp.down_proj",
-                    #     target_module=Linear1D_Row,
-                    # ),
                 ],
             )
 
@@ -98,7 +86,7 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="block_sparse_moe",
                         target_module=EPMixtralSparseMoeBlock,
-                        kwargs={"ep_group": self.shard_config.ep_group, "tp_group": self.shard_config.tensor_parallel_process_group},
+                        kwargs={"ep_group": self.shard_config.ep_group, "tp_group": self.shard_config.tensor_parallel_process_group, "moe_dp_group": self.shard_config.moe_dp_group, "moe_tp_group": self.shard_config.moe_tp_group},
                     )
                 ],
                 policy=policy,
