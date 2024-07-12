@@ -48,7 +48,7 @@ class ProcessGroupMesh:
         self._shape = size
         self._rank = dist.get_rank()
         self._coord = ProcessGroupMesh.unravel(self._rank, self._shape)
-        self._ranks_to_group: Dict[Tuple[int, ...], Union[ProcessGroup, GroupMember]] = {}
+        self._ranks_to_group: Dict[Tuple[int, ...], Union[ProcessGroup, GroupMember.NON_GROUP_MEMBER]] = {}
         self._group_to_ranks: Dict[ProcessGroup, Tuple[int, ...]] = {}
 
     def destroy_mesh_process_groups(self):
