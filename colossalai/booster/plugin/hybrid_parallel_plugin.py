@@ -1019,6 +1019,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         make_vocab_size_divisible_by: int = 64,
         dp_outside: bool = True,
         overlap_p2p: bool = True,
+        fp8_communication: bool = False,
         overlap_allgather: bool = False,
         inner_ring_size: int = None,
     ) -> None:
@@ -1115,6 +1116,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
                     overlap_p2p=overlap_p2p,
+                    fp8_communication=fp8_communication,
                 )
             elif pp_style == "1f1b":
                 self.schedule = OneForwardOneBackwardSchedule(
@@ -1122,6 +1124,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatches=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
+                    fp8_communication=fp8_communication,
                 )
             else:
                 raise NotImplementedError()

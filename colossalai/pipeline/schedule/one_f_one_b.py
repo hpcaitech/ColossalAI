@@ -11,6 +11,7 @@ from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.utils import get_current_device
+from colossalai.quantization.fp8 import cast_to_fp8_pipeline, cast_from_fp8_pipeline
 
 from ._utils import (
     detach,
@@ -32,6 +33,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         enable_metadata_cache: bool = True,
+        fp8_communication: bool = False,
     ) -> None:
         """1F1B pipeline schedule.
 
@@ -60,6 +62,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         self.send_grad_metadata = True
         self.tensor_metadata_recv = None
         self.grad_metadata_recv = None
+
+        self.fp8_communication = fp8_communication
 
     def load_batch(self, data_iter: Iterable, device: Optional[torch.device] = None) -> None:
         """Load a batch from data iterator.
@@ -129,6 +133,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             if self.enable_metadata_cache and self.tensor_metadata_recv is None:
                 self.tensor_metadata_recv = create_send_metadata(input_tensor)
 
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(input_tensor)
             return input_tensor
 
     def recv_backward(self, next_rank: int = None) -> Any:
@@ -143,6 +149,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         """
         if not self.stage_manager.is_last_stage():
             output_tensor_grad, _ = self.comm.recv_backward(next_rank, metadata_recv=self.grad_metadata_recv)
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(output_tensor_grad)
             if self.enable_metadata_cache and self.grad_metadata_recv is None:
                 self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
 
@@ -157,9 +165,13 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             next_rank (int, optional): The rank of the recipient of the tensor.
         """
         if not self.stage_manager.is_last_stage():
+            if self.fp8_communication:
+                cast_to_fp8_pipeline(output_tensor)
             self.comm.send_forward(output_tensor, next_rank, send_metadata=self.send_tensor_metadata)
             self.send_tensor_metadata = not self.enable_metadata_cache
 
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(output_tensor, del_metadata=False)
     def send_backward(self, input_tensor_grad: Any, prev_rank: int = None) -> None:
         """Sends the gradient tensor to the previous stage in pipeline.
            For 1F1B.
@@ -169,8 +181,12 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             prev_rank (int, optional): The rank of the recipient of the tensor
         """
         if not self.stage_manager.is_first_stage():
+            if self.fp8_communication:
+                cast_to_fp8_pipeline(input_tensor_grad)
             self.comm.send_backward(input_tensor_grad, prev_rank, send_metadata=self.send_grad_metadata)
             self.send_grad_metadata = not self.enable_metadata_cache
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(input_tensor_grad, del_metadata=False)
 
     def send_forward_recv_backward(self, output_tensor: Any, send_first: Optional[bool] = None) -> Any:
         """Sends the input tensor to the next stage and copy the gradient tensor from the next stage in pipeline.
@@ -183,6 +199,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.stage_manager.is_last_stage():
             if not self.send_tensor_metadata and self.grad_metadata_recv is not None:
                 send_first = None
+            if self.fp8_communication:
+                cast_to_fp8_pipeline(output_tensor)
             output_tensor_grad, _ = self.comm.send_forward_recv_backward(
                 output_tensor,
                 send_metadata=self.send_tensor_metadata,
@@ -192,6 +210,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             self.send_tensor_metadata = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.grad_metadata_recv is None:
                 self.grad_metadata_recv = create_send_metadata(output_tensor_grad)
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(output_tensor, del_metadata=False)
+                cast_from_fp8_pipeline(output_tensor_grad)
 
             return output_tensor_grad
 
@@ -206,6 +227,8 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         if not self.stage_manager.is_first_stage():
             if not self.send_grad_metadata and self.tensor_metadata_recv is not None:
                 send_first = None  # must not fallback
+            if self.fp8_communication:
+                cast_to_fp8_pipeline(input_tensor_grad)
             input_tensor, _ = self.comm.send_backward_recv_forward(
                 input_tensor_grad,
                 send_metadata=self.send_grad_metadata,
@@ -215,6 +238,9 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             self.send_grad_metadata = not self.enable_metadata_cache
             if self.enable_metadata_cache and self.tensor_metadata_recv is None:
                 self.tensor_metadata_recv = create_send_metadata(input_tensor)
+            if self.fp8_communication:
+                cast_from_fp8_pipeline(input_tensor)
+                cast_from_fp8_pipeline(input_tensor_grad, del_metadata=False)
 
             return input_tensor
 
