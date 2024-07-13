@@ -99,6 +99,14 @@ if HAS_LLAMA:
         model_attribute=ModelAttribute(has_control_flow=True),
     )
     model_zoo.register(
+        name="transformers_llama",
+        model_fn=lambda: transformers.LlamaModel(config),
+        data_gen_fn=data_gen,
+        output_transform_fn=output_transform_fn,
+        loss_fn=loss_fn,
+        model_attribute=ModelAttribute(has_control_flow=True),
+    )
+    model_zoo.register(
         name="transformers_llama_for_sequence_classification",
         model_fn=lambda: transformers.LlamaForSequenceClassification(config),
         data_gen_fn=data_gen,

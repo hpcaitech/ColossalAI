@@ -847,7 +847,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 sp_mode == "ring_attn" and use_cache
             ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
             if sp_mode == "ring_attn":
-                batch = ring_attn_split_forward({"labels": labels}, sp_group)
+                batch = ring_attn_split_batch({"labels": labels}, sp_group)
                 labels = batch["labels"]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
