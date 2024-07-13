@@ -656,6 +656,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
             state_dict_list = [None for _ in range(self.pp_size)]
             dist.barrier(self.pp_group)
+            # torch.cuda.set_device(os.environ["LOCAL_RANK"])
             dist.all_gather_object(state_dict_list, state_dict, self.pp_group)
             # Only the master rank do the saving.
             if self.coordinator.is_master():

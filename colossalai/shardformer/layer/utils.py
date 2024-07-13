@@ -12,6 +12,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup, get_world_size
 
 from colossalai.accelerator import get_accelerator
+from colossalai.shardformer.layer.attn import get_pad_info
 
 
 class SeqParallelUtils:

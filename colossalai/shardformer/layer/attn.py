@@ -402,6 +402,17 @@ def flash_attn_fwd_out_corr_triton(
     tl.store(out_ptrs, updated_out_vals)
 
 
+def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
+    """
+    out: (B, Sq, H, D)
+    out_per_step: (B, Sq, H, D)
+    lse: (B, H, Sq, 1)
+    """
+    new_lse = lse + torch.log(1 + torch.exp(lse_step - lse))
+    out.copy_(torch.exp(lse - new_lse) * out + torch.exp(lse_step - new_lse) * out_per_step)
+    lse.copy_(new_lse)
+
+
 # Modified from Megatron-LM. TODO: try Triton
 def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
@@ -411,6 +422,10 @@ def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_l
 
 
 def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+    """
+    softmax_lse: (B, H, Sq)
+    softmax_lse_per_step: (B, H, Sq)
+    """
     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))

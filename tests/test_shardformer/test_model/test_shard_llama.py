@@ -1,5 +1,4 @@
 import os
-from copy import deepcopy
 
 import pytest
 import torch
@@ -76,8 +75,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             )
             grad = grads[grad_index]
             sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
-            if name == "embed_tokens.weight":
-                continue
             try:
                 assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
             except Exception as e:
@@ -156,19 +153,31 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+<<<<<<< HEAD
         # Double Ring Attention
+=======
+>>>>>>> fwd bwd logic complete
         {
             "tp_size": 1,
             "pp_size": 1,
             "sp_size": 4,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
+<<<<<<< HEAD
             "sequence_parallelism_mode": "ring_attn",
             "use_lazy_init": True,
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
             "inner_ring_size": 2,
+=======
+            "sequence_parallelism_mode": "all_to_all",
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+            "parallel_output": True,
+>>>>>>> fwd bwd logic complete
         },
         # Ring Attention + PP
         {
@@ -182,13 +191,30 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
-            "parallel_output": False,
+            "parallel_output": True,
         },
+<<<<<<< HEAD
         # Ring Attention + TP
         {
+=======
+        # {
+        #     "tp_size": 2,
+        #     "pp_size": 1,
+        #     "sp_size": 2,
+        #     "num_microbatches": 1,
+        #     "enable_sequence_parallelism": True,
+        #     "sequence_parallelism_mode": "ring_attn",
+        #     "use_lazy_init": True,
+        #     "zero_stage": 1,
+        #     "precision": "fp16",
+        #     "initial_scale": 1,
+        #     "parallel_output": True,
+        # },
+        {  # Test ring + Flash attention
+>>>>>>> fwd bwd logic complete
             "tp_size": 2,
             "pp_size": 1,
-            "sp_size": 2,
+            "sp_size": 1,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "ring_attn",
@@ -196,6 +222,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
+<<<<<<< HEAD
             "parallel_output": False,
         },
         {  # Ulysess + TP
@@ -224,6 +251,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
             "parallel_output": False,
+=======
+            "parallel_output": True,
+>>>>>>> fwd bwd logic complete
         },
         {
             "tp_size": 4,
@@ -235,6 +265,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
+<<<<<<< HEAD
         },
         {
             "tp_size": 2,
@@ -249,6 +280,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
             "parallel_output": False,
+=======
+            "parallel_output": True,
+>>>>>>> fwd bwd logic complete
         },
         {
             "tp_size": 2,
@@ -297,12 +331,7 @@ def run_llama_test(test_config):
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
         try:
-            config = test_config
-            if name == "transformers_llama_for_casual_lm":
-                # Test the cross entropy loss distributed along sequence
-                config = deepcopy(test_config)
-                config["parallel_output"] = True
-            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, config)
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
         except Exception as e:
             print(f"Failed config: {test_config}, model name: {name}")
             raise e
