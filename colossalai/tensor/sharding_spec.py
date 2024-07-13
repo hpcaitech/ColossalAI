@@ -82,7 +82,7 @@ class _DimSpec:
     def _build_difference_2d_dict(cls):
         """
         Build a difference mapping for 2D device mesh case. It will be used to
-        compute the difference between DimSpec pairs.
+        compute the difference between _DimSpec pairs.
         """
 
         source_spec_list = ["R", "S0", "S1", "S01"]

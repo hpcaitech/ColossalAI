@@ -55,18 +55,18 @@ class DimSpec:
 
     def dim_diff(self, other):
         """
-        The difference between two _DimSpec.
+        The difference between two DimSpec.
 
         Argument:
-            other(_DimSpec): the dim spec to compare with.
+            other(DimSpec): the dim spec to compare with.
 
         Return:
-            difference(int): the difference between two _DimSpec.
+            difference(int): the difference between two DimSpec.
 
         Example:
-            dim_spec = _DimSpec([0])
-            other_dim_spec = _DimSpec([0, 1])
-            print(dim_spec.difference(other_dim_spec))
+            dim_spec = DimSpec([0])
+            other_dim_spec = DimSpec([0, 1])
+            print(dim_spec.dim_diff(other_dim_spec))
 
         Output:
             5
