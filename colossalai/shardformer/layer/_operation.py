@@ -2,6 +2,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
+from .utils import is_share_sp_tp
+
 try:
     import fused_mix_prec_layer_norm_cuda
 except:
@@ -649,7 +651,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
                 # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
-                # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
+                # all-reduce scheduled first and have GPU resources allocated
 
             grad_weight = total_input.t().matmul(grad_output)
             grad_bias = grad_output.sum(dim=0) if use_bias else None
@@ -999,3 +1001,13 @@ def reduce_backward(input_, process_group):
 
 def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1):
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim)
+
+
+def gather_sp_output(hidden_states, sp_group, sp_mode):
+    """
+    Gather the output of the last layer for cross entropy computation
+    """
+    # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
+    scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
+    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=scale)
+    return hidden_states

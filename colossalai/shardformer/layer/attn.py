@@ -47,7 +47,7 @@ def get_pad_info(padding_mask: torch.Tensor) -> Tuple[int, torch.Tensor, torch.T
     """Get padding information from padding mask.
 
     Args:
-        padding_mask (torch.Tensor): Padding mask tensor. Shape should be [B, S]
+        padding_mask (torch.Tensor): Padding mask tensor. Shape should be [B, Sq]
 
     Returns:
         Tuple[int, torch.Tensor, torch.Tensor]: Tuple of (max_seq_len, cu_seqlens, indices)
@@ -129,7 +129,6 @@ class ColoAttention:
                 The shape should be [B, Skv]. ``1`` means valid token, and ``0`` means padding token.
                 If it's None and ``q_padding_mask`` is not None, it will be set to ``q_padding_mask``. Defaults to None.
             is_causal (bool, optional): Whether to use causal attention mask. Defaults to False.
-
         Returns:
             Dict[str, torch.Tensor]: Dictionary of keyword arguments for attention function.
         """
@@ -334,6 +333,17 @@ def flash_attn_fwd_out_corr_triton(
     tl.store(out_ptrs, updated_out_vals)
 
 
+def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
+    """
+    out: (B, Sq, H, D)
+    out_per_step: (B, Sq, H, D)
+    lse: (B, H, Sq, 1)
+    """
+    new_lse = lse + torch.log(1 + torch.exp(lse_step - lse))
+    out.copy_(torch.exp(lse - new_lse) * out + torch.exp(lse_step - new_lse) * out_per_step)
+    lse.copy_(new_lse)
+
+
 # Modified from Megatron-LM. TODO: try Triton
 def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
@@ -343,6 +353,10 @@ def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_l
 
 
 def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+    """
+    softmax_lse: (B, H, Sq)
+    softmax_lse_per_step: (B, H, Sq)
+    """
     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
@@ -353,7 +367,7 @@ class RingAttention(torch.autograd.Function):
     """Implements the Ring Attention from `Ring Attention with Blockwise Transformers for Near-Infinite Context`
     (https://arxiv.org/abs/2310.01889).
     We referenced the context parallel in Megatron-LM, with several critical optimizations
-    such as removing the negative optimization of using two streams for attn forward, torch.compile and reusing K, V buffers.
+    such as removing the negative optimization of torch.compile and reusing K, V buffers.
     For load-balancing we adopted the "zigzag" attention scheme from https://github.com/zhuzilin/ring-flash-attention/tree/main
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
@@ -379,7 +393,7 @@ class RingAttention(torch.autograd.Function):
         q_indices: Optional[torch.Tensor] = None,
         kv_indices: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
-        scale: Optional[float] = None,
+        softmax_scale: Optional[float] = None,
     ):
         """
         Args:
@@ -401,7 +415,7 @@ class RingAttention(torch.autograd.Function):
             indices (Optional[torch.Tensor], optional): The indices of non-masked tokens from the flattened input sequence.
                 Shape should be [NUM_TOKENS]. Defaults to None.
             dropout_p (float, optional): Dropout probability. Defaults to 0.0.
-            scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
+            softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
 
         Returns:
             torch.Tensor: Output tensor. Shape should be [B, Heads, Sq, D]
@@ -411,7 +425,7 @@ class RingAttention(torch.autograd.Function):
             assert attention_mask_type in (
                 AttnMaskType.PADDED_CAUSAL,
                 AttnMaskType.CAUSAL,
-            ), "Ring attention doesn't support non-causal attention"
+            ), "Non-causal attention is meaningless for zig-zag Ring attention"
             assert (
                 cu_seqlens_q is not None
                 and cu_seqlens_kv is not None
@@ -427,7 +441,8 @@ class RingAttention(torch.autograd.Function):
                 f"Ring attention requires Flash Attention, but import failed. You can re-install it via 'pip install flash-attn --no-build-isolation'"
             ) from e
 
-        # (B, Sq, H, D) -> (B, H, 2, Sq // 2, D)
+        # (B, Sq, H, D) -> (B, 2, Sq // 2, H, D)
+        b, sq, h, d = q.shape
         q, k, v = [x.transpose(1, 2).view(*x.shape[:1], 2, x.shape[1] // 2, *x.shape[2:]) for x in (q, k, v)]
 
         sp_size = dist.get_world_size(sp_group)
@@ -437,88 +452,340 @@ class RingAttention(torch.autograd.Function):
         recv_src = sp_global_ranks[(sp_rank - 1) % sp_size]
 
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
-        q_inputs = [q[:, 0], q[:, 1]]  # (B, 2, Sq // 2, H, D)
-        kv_inputs = [torch.stack(k, v)]  # (2, B, 2, Skv // 2, H, D)
-        kv_inputs.append(torch.empty_like(kv_inputs[0]))
-        del k, v
+        q_inputs = [q[:, 0], q[:, 1]]
+        kv_buffers = [torch.stack(k, v)]  # (2, B, 2, Skv // 2, H, D)
+        kv_buffers.append(torch.empty_like(kv_buffers[0]))
 
         # outputs
-        out_per_step = [None, None]
-        softmax_lse_per_step = [None, None]
-        rng_states = [None, None]
+        out = None
+        block_out = [None, None]
+        softmax_lse = [None, None]
+        block_softmax_lse = [None, None]  # log sum exp, the denominator of softmax in attention
+        rng_states = [None for _ in range(sp_size)]
+        sp_streams = [torch.cuda.current_stream(), sp_stream]
+        correction_done = torch.cuda.Event()
 
         # Overlap output correction with flash attn
-        [torch.cuda.current_stream(), sp_stream]
         p2p_reqs = [[], []]
-        for i in range(sp_size + 1):
+        for i in range(sp_size):
             # Wait for current kv from prev rank
             for req in p2p_reqs[(i + 1) % 2]:
                 req.wait()
 
-            if i < sp_size:
+            if i < sp_size - 1:
                 p2p_reqs[i % 2] = ring_attn_p2p_comm(
                     sp_rank,
-                    kv_inputs[i % 2],  # send current kv to next rank
-                    kv_inputs[(i + 1) % 2],  # recv from prev rank
+                    kv_buffers[i % 2],  # send current kv to next rank
+                    kv_buffers[(i + 1) % 2],  # recv from prev rank
                     send_dst,
                     recv_src,
                     sp_group,
                 )
 
+            with torch.cuda.stream(sp_streams[i % 2]):
+                if i == 0:
+                    # Compute with local KV; no mask
+                    q_block = torch.cat(q_inputs, dim=1).flatten(end_dim=2)  # (B * Sq, H, D)
+                    # clone to avoid getting overwritten by the next p2p comm
+                    kv_block = (
+                        kv_buffers[i % 2].flatten(start_dim=1, end_dim=3).clone()
+                    )  # (2, B, 2, Skv // 2, H, D) -> (2, B * Skv, H, D)
+                    (
+                        _,
+                        _,
+                        _,
+                        _,
+                        block_out[i % 2],
+                        block_softmax_lse[i % 2],
+                        _,
+                        rng_states[i],
+                    ) = _flash_attn_forward(
+                        q_block,
+                        kv_block[0],
+                        kv_block[1],
+                        cu_seqlens_q,
+                        cu_seqlens_kv,
+                        max_seqlen_q,
+                        max_seqlen_kv,
+                        dropout_p,
+                        softmax_scale,
+                        causal=True,
+                        return_softmax=True,
+                    )
+                elif i <= sp_rank:
+                    # Received the "surrounding" kv chunks
+                    # Drop the second half of received kv
+                    q_block = torch.cat(q_inputs, dim=1)  # (B, Sq, H, D)
+                    kv_block = kv_buffers[i % 2][0]  # (2, B, 2, Skv // 2, H, D)
+                    kv_block = (
+                        kv_block[:, :, 0].flatten(start_dim=1, end_dim=3).clone()
+                    )  # (2, B, Skv // 2, H, D) -> (2, B * Skv // 2, H, D)
+                    (
+                        _,
+                        _,
+                        _,
+                        _,
+                        block_out[i % 2],  # (B, Sq, H, D)
+                        block_softmax_lse[i % 2],  # (B, H, Sq)
+                        _,
+                        rng_states[i],
+                    ) = _flash_attn_forward(
+                        q_block,
+                        kv_block[0],
+                        kv_block[1],
+                        cu_seqlens_q,
+                        cu_seqlens_kv // 2,
+                        max_seqlen_q,
+                        max_seqlen_kv // 2,
+                        dropout_p,
+                        softmax_scale,
+                        causal=False,
+                        return_softmax=True,
+                    )
+                else:
+                    # Received the inner kv chunks
+                    # Drop the first half of q
+                    q_block = q_inputs[i % 2][1]  # (B, Sq // 2, H, D)
+                    kv_block = (
+                        kv_buffers[i % 2].flatten(start_dim=1, end_dim=3).clone()
+                    )  # (2, B, 2, Skv // 2, H, D) -> (2, B * Skv, H, D)
+                    (
+                        _,
+                        _,
+                        _,
+                        _,
+                        block_out[i % 2],  # (B, Sq // 2, H, D)
+                        block_softmax_lse[i % 2],  # (B, H, Sq // 2)
+                        _,
+                        rng_states[i],
+                    ) = _flash_attn_forward(
+                        q_block,
+                        kv_block[0],
+                        kv_block[1],
+                        cu_seqlens_q // 2,
+                        cu_seqlens_kv,
+                        max_seqlen_q // 2,
+                        max_seqlen_kv,
+                        dropout_p,
+                        softmax_scale,
+                        causal=False,
+                        return_softmax=True,
+                    )
+                # Output and log sum exp correction
+                if i > 1:
+                    sp_streams[i % 2].wait_event(correction_done)
+
+                block_out = block_out.view(b, sq, h, d)  # (B, Sq, H, D)
+                block_softmax_lse[i % 2] = (
+                    block_softmax_lse[i % 2].float().transpose(1, 2).contiguous().unsqueeze(-1)
+                )  # (B, Sq, H, 1)
+                if i == 0:
+                    softmax_lse = block_softmax_lse[0]
+                    out = block_out[0]
+                elif i < sp_rank:
+                    flash_attn_out_lse_rescale(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
+                else:
+                    # Dropped the first half of q sequence
+                    flash_attn_out_lse_rescale(out[1], block_out[i % 2], softmax_lse[:, 1], block_softmax_lse[i % 2])
+                sp_streams[i % 2].record_event(correction_done)
+
+        torch.cuda.current_stream().wait_event(correction_done)
+        ctx.save_for_backward(
+            q,
+            k,
+            v,
+            out,
+            softmax_lse,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            rng_states,
+        )
+        ctx.sp_group = sp_group
+        ctx.sp_global_ranks = sp_global_ranks
+        ctx.max_seqlen_q = max_seqlen_q
+        ctx.max_seqlen_kv = max_seqlen_kv
+        ctx.softmax_scale = softmax_scale
+        ctx.dropout_p = dropout_p
+        ctx.softmax_scale = softmax_scale
+
+    def backward(ctx, dout):
+        """
+        During backward, we accumulate q grads on each rank locally, but iterate kv and their grads
+        over all ranks for accumulation.
+        """
+        (
+            q,
+            k,
+            v,
+            out,
+            softmax_lse,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            rng_states,
+        ) = ctx.saved_tensors
+        max_seqlen_q = ctx.max_seqlen_q
+        max_seqlen_kv = ctx.max_seqlen_kv
+        dropout_p = ctx.dropout_p
+        softmax_scale = ctx.softmax_scale
+
+        # Sequence parallel args
+        sp_group = ctx.sp_group
+        sp_rank = dist.get_rank(sp_group)
+        sp_size = dist.get_world_size(sp_group)
+        sp_global_ranks = ctx.sp_global_ranks
+        send_dst = sp_global_ranks[(sp_rank + 1) % len(sp_global_ranks)]
+        recv_src = sp_global_ranks[(sp_rank - 1) % len(sp_global_ranks)]
+
+        # Double comm buffers for sending and receiving kv
+        kv_buffers = [torch.stack(k, v)]  # (2, B, 2, Sq // 2, H, D)
+        kv_buffers.append(torch.empty_like(kv_buffers[0]))
+        dkv_buffers = [torch.empty_like(kv_buffers[0]) for _ in range(2)]
+        dq = torch.empty_like(q)  # (B, 2, Sq // 2, H, D )
+
+        # Intermediate outputs
+        dq_block = torch.empty_like(dq)  # (B, 2, Sq // 2, H, D)
+        dk_block = torch.empty_like(k)  # (B, 2, Sq // 2, H, D)
+        dv_block = torch.empty_like(v)  # (B, 2, Sq // 2, H, D)
+
+        b, sq, h, d = (q.shape[0], q.shape[1] * q.shape[2], *q.shape[-2:])
+        del k, v
+
+        kv_reqs = []
+        dkv_reqs = []
+        # NOTE: We avoid using two streams in backward, which needs to double dkv and kv buffers
+        # plus that backward is more communication intensive than forward
+        for i in range(sp_size):
+            for req in kv_reqs:
+                req.wait()
+            if i < sp_size - 1:
+                # Send kv to next rank for backward
+                kv_reqs = ring_attn_p2p_comm(
+                    sp_rank,
+                    send_tensor=kv_buffers[i % 2],
+                    recv_tensor=kv_buffers[(i + 1) % 2],
+                    send_dst=send_dst,
+                    recv_src=recv_src,
+                    sp_group=sp_group,
+                )
             if i == 0:
-                # Compute with local KV; no mask
-                q_input = torch.cat(q_inputs, dim=1).flatten(end_dim=2)  # (B * Sq, H, D)
-                kv_input = kv_inputs[i % 2].flatten(
-                    start_dim=1, end_dim=3
-                )  # (2, B, 2, Skv // 2, H, D) -> (2, B * Skv, H, D)
-                (
-                    _,
-                    _,
-                    _,
-                    _,
-                    out_per_step[i % 2],
-                    softmax_lse_per_step[i % 2],
-                    _,
-                    rng_states[i % 2],
-                ) = _flash_attn_forward(
-                    q_input,
-                    kv_input[0],
-                    kv_input[1],
+                # Backward with local kv
+                k_, v_ = [x.view(b * sq, h, d) for x in kv_buffers[i % 2]]
+                q_, dout_, out_ = [x.view(b * sq, h, d) for x in (q, dout, out)]
+                dq_, dk_, dv_ = (x.view(b * sq, h, d) for x in (dq_block, dk_block, dv_block))
+
+                _flash_attn_backward(
+                    dout_,
+                    q_,
+                    k_,
+                    v_,
+                    out_,
+                    softmax_lse,
+                    dq_,
+                    dk_,
+                    dv_,
                     cu_seqlens_q,
                     cu_seqlens_kv,
                     max_seqlen_q,
                     max_seqlen_kv,
                     dropout_p,
-                    scale,
-                    causal=True,
-                    return_softmax=True,
+                    softmax_scale,
+                    casual=True,
+                    rng_state=rng_states[i],
                 )
             elif i <= sp_rank:
-                q_input = torch.cat(q_inputs, dim=1)  # (B, Sq, H, D)
-                kv_input = kv_inputs[i % 2][0]  # (2, B, 2, Skv // 2, H, D)
-                # Drop the second half of received kv
-                kv_input = kv_input[:, :, 0].flatten(
-                    start_dim=1, end_dim=3
-                )  # (2, B, Skv / 2, H, D) -> (2, B * Skv / 2, H, D)
-                (
-                    _,
-                    _,
-                    _,
-                    _,
-                    out_per_step[i % 2],
-                    softmax_lse_per_step[i % 2],
-                    _,
-                    rng_states[i % 2],
-                ) = _flash_attn_forward(
-                    q_input,
-                    kv_input[0],
-                    kv_input[1],
+                # Drop the first half of kv
+                # (B, 2, Sq // 2, H, D) -> (B * Sq // 2, H, D)
+                k_, v_ = [x[:, 1].view(b * sq // 2, h, d) for x in kv_buffers[i % 2]]
+                dk_, dv_ = (x[:, 1].view(b * sq // 2, h, d) for x in (dk_block, dv_block))
+                dq_, q_, out_, dout_ = [x.view(b * sq, h, d) for x in (dq_block, q, out, dout)]
+
+                _flash_attn_backward(
+                    dout_,
+                    q_,
+                    k_,
+                    v_,
+                    out_,
+                    softmax_lse,
+                    dq_,
+                    dk_,
+                    dv_,
                     cu_seqlens_q,
-                    cu_seqlens_kv,
+                    cu_seqlens_kv // 2,
                     max_seqlen_q,
+                    max_seqlen_kv // 2,
+                    dropout_p,
+                    softmax_scale,
+                    casual=False,
+                    rng_state=rng_states[i],
+                )
+
+            else:
+                # Drop the second half of q
+                k_, v_ = [x.view(b * sq, h, d) for x in kv_buffers[i % 2]]
+                dk_, dv_ = (x.view(b * sq, h, d) for x in (dk_block, dv_block))
+                dq_, q_, out_, dout_ = [x[:, 0].view(b * sq // 2, h, d) for x in (dq_block, q, out, dout)]
+
+                _flash_attn_backward(
+                    dout_,
+                    q_,
+                    k_,
+                    v_,
+                    out_,
+                    softmax_lse,
+                    dq_,
+                    dk_,
+                    dv_,
+                    cu_seqlens_q // 2,
+                    cu_seqlens_kv,
+                    max_seqlen_q // 2,
                     max_seqlen_kv,
                     dropout_p,
-                    scale,
-                    causal=True,
-                    return_softmax=True,
+                    softmax_scale,
+                    casual=False,
+                    rng_state=rng_states[i],
                 )
+
+            # Accumulate grads
+            if i == 0:
+                # NOTE float() should create a copy to avoid comm overwriting these blocks
+                dq = dq_block.view_as(q).float()
+                dk_recv = dkv_buffers[(i + 1) % 2][0] = dk_block.float()
+                dv_recv = dkv_buffers[(i + 1) % 2][1] = dv_block.float()
+            else:
+                if i <= sp_rank:
+                    dq_block = dq_block.view_as(q)  # (B, 2, Sq // 2, H, D)
+                    dq += dq_block
+                else:
+                    dq_block = dq_block.view_as(q[:, 1])  # (B, Sq // 2, H, D)
+                    dq[:, 1] += dq_block
+
+                # Wait for kv grad accumulators
+                for req in dkv_reqs:
+                    req.wait()
+
+                if i <= sp_rank:
+                    # q blocks "surrounded" by kv blocks
+                    dk_recv = dkv_buffers[(i + 1) % 2][0]
+                    dv_recv = dkv_buffers[(i + 1) % 2][1]
+                    dk_recv[:, 0] += dk_block[:, 0]  # (B, Sq // 2, H, D)
+                    dv_recv[:, 0] += dv_block[:, 0]
+                else:
+                    # q blocks "surrounding" kv blocks
+                    dk_recv = dkv_buffers[(i + 1) % 2][0]
+                    dv_recv = dkv_buffers[(i + 1) % 2][1]
+                    dk_recv += dk_block
+                    dv_recv += dv_block
+
+            if i < sp_size - 1:
+                dkv_reqs = ring_attn_p2p_comm(
+                    sp_rank,
+                    send_tensor=dkv_buffers[(i + 1) % 2],
+                    recv_tensor=dkv_buffers[i % 2],
+                    send_dst=send_dst,
+                    recv_src=recv_src,
+                    sp_group=sp_group,
+                )
+        dq = dq.to(q.dtype).view(b, sq, h, d)
+        dk = dk_recv.to(q.dtype).view(b, sq, h, d)
+        dv = dv_recv.to(q.dtype).view(b, sq, h, d)
+        return dq, dk, dv

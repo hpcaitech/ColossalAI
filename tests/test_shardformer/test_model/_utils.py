@@ -260,7 +260,6 @@ def run_forward_backward_with_hybrid_plugin(
     org_output = org_model(**unshard_test_data)
     org_loss = criterion(org_output)
     org_loss.backward()
-
     return org_loss, org_output, sharded_loss, sharded_output
 
 
@@ -317,10 +316,11 @@ def check_output_hidden_state(
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
-    if shard_config and shard_config.parallel_output and shard_config.enable_sequence_parallelism:
-        seq_dim = 1
-        sp_group = shard_config.sequence_parallel_process_group
-        sp_size = shard_config.sequence_parallel_size
+    # Check if the output sequence is gathered before cross entropy
+    seq_dim = 1
+    sp_group = shard_config.sequence_parallel_process_group
+    sp_size = shard_config.sequence_parallel_size
+    if org_hidden_state.shape[seq_dim] == sharded_hidden_state.shape[seq_dim] * sp_size:
         org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
 
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
@@ -412,9 +412,6 @@ def check_grad(
         org_grad = getattr_(org_model, suffix).weight.grad
         shard_grad = getattr_(sharded_model, suffix).weight.grad
         shard_weight = getattr_(sharded_model, suffix).weight
-        # if verbose and dist.get_rank() == 0:
-        #     print("shard_weight", shard_weight)
-        #     print("org_grad", org_grad)
         if is_distributed_tensor(shard_weight) or is_customized_distributed_tensor(shard_weight):
             shard_grad_list = [torch.zeros_like(shard_grad).to("cuda") for _ in range(dist.get_world_size(tp_group))]
             dist.all_gather(shard_grad_list, shard_grad, tp_group)
