@@ -70,23 +70,23 @@ if HAS_LLAMA:
         config.pad_token_id = config.eos_token_id
 
     # register the following models
-    # transformers.LlamaModel,
     # transformers.LlamaForCausalLM,
+    # transformers.LlamaModel,
     # transformers.LlamaForSequenceClassification,
-    model_zoo.register(
-        name="transformers_llama",
-        model_fn=lambda: transformers.LlamaModel(config),
-        data_gen_fn=data_gen,
-        output_transform_fn=output_transform_fn,
-        loss_fn=loss_fn,
-        model_attribute=ModelAttribute(has_control_flow=True),
-    )
     model_zoo.register(
         name="transformers_llama_for_casual_lm",
         model_fn=lambda: transformers.LlamaForCausalLM(config),
         data_gen_fn=data_gen_for_casual_lm,
         output_transform_fn=output_transform_fn,
         loss_fn=loss_fn_for_casual_lm,
+        model_attribute=ModelAttribute(has_control_flow=True),
+    )
+    model_zoo.register(
+        name="transformers_llama",
+        model_fn=lambda: transformers.LlamaModel(config),
+        data_gen_fn=data_gen,
+        output_transform_fn=output_transform_fn,
+        loss_fn=loss_fn,
         model_attribute=ModelAttribute(has_control_flow=True),
     )
     model_zoo.register(

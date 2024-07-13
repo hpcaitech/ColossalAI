@@ -8,6 +8,7 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup, get_world_size
 
 from colossalai.accelerator import get_accelerator
+from colossalai.shardformer.layer.attn import get_pad_info
 
 
 class SeqParallelUtils:
@@ -291,7 +292,7 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def ring_attn_split_forward(batch: Dict[str, torch.Tensor], sp_group):
+def ring_attn_split_batch(batch: Dict[str, torch.Tensor], sp_group):
     """
     Split the input along the sequence dimension. As naively spliting sequence
     in the causual setting will result in the first ranks having much less workload than the last ranks,
@@ -313,9 +314,19 @@ def ring_attn_split_forward(batch: Dict[str, torch.Tensor], sp_group):
                 2 * sp_size,
                 tensor.shape[seq_dim] // (2 * sp_size),
                 *tensor.shape[seq_dim + 1 :],
-            )  # (bs, )
+            )
+            if key == "attention_mask":
+                get_pad_info()
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             batch[key] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
 
     return batch
+
+
+def is_share_sp_tp(sp_mode: str):
+    """sp_mode "ring" and "split_gather" use the TP group as SP group
+    to split both the vocab and sequence, so we must gather the sequence
+    to correctly get logits at each positions.
+    """
+    return sp_mode in ["ring", "split_gather"]

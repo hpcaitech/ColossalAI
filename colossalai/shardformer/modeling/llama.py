@@ -3,6 +3,7 @@ import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.distributed
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
@@ -24,12 +25,8 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import (
-    all_to_all_comm,
-    gather_forward_split_backward,
-    split_forward_gather_backward,
-)
-from colossalai.shardformer.layer.utils import ring_attn_split_forward
+from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
+from colossalai.shardformer.layer.utils import is_share_sp_tp, ring_attn_split_batch
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, dist_cross_entropy
@@ -58,6 +55,7 @@ class LlamaPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
+        force_sp_output_gather: bool = True,  # Gather output when not using cross entropy loss
     ):
         logger = logging.get_logger(__name__)
 
@@ -98,7 +96,7 @@ class LlamaPipelineForwards:
         sp_group = shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
         if sp_mode == "all_to_all" and not stage_manager.is_first_stage():
-            # For correct positions ids. The states will be gather along the seq dim in the attention layer later.
+            # For generating full positions ids, as the states will be gather along the seq dim in the attention layer later.
             seq_length *= sp_size
 
         past_seen_tokens = 0
@@ -210,11 +208,8 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if not shard_config.parallel_output:
-                if sp_mode == "ring" or sp_mode == "split_gather":
-                    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
-                elif sp_mode == "all_to_all":
-                    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -317,6 +312,7 @@ class LlamaPipelineForwards:
             hidden_states=hidden_states,
             stage_index=stage_index,
             shard_config=shard_config,
+            force_sp_output_gather=False,
         )
         past_key_values = None
 
@@ -605,6 +601,7 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
+        force_sp_output_gather: bool = True,  # Gather output when not using cross entropy loss
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -663,7 +660,7 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
                 "attention_mask": attention_mask["attention_mask"],
                 "position": position_ids,
             }
-            batch = ring_attn_split_forward(batch, sp_group)
+            batch = ring_attn_split_batch(batch, sp_group)
             inputs_embeds, attention_mask["attention_mask"], position_ids = batch.values()
 
         if sp_mode in ["ring", "split_gather"]:
@@ -712,12 +709,9 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
                 all_self_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-        # Compute Cross Entropy without gathering sequence
-        if not shard_config.parallel_output:
-            if sp_mode == "ring" or sp_mode == "split_gather":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
-            elif sp_mode == "all_to_all":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+        # Cases that don't support parallelizing cross entropy computation along sequence
+        if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+            hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -799,7 +793,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 sp_mode == "ring_attn" and use_cache
             ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
             if sp_mode == "ring_attn":
-                batch = ring_attn_split_forward({"labels": labels}, sp_group)
+                batch = ring_attn_split_batch({"labels": labels}, sp_group)
                 labels = batch["labels"]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
@@ -814,6 +808,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
             cache_position=cache_position,
+            force_sp_output_gather=False,
         )
 
         hidden_states = outputs[0]

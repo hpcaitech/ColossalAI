@@ -96,7 +96,7 @@ def main():
     # Set booster
     booster = Booster(plugin=plugin, **booster_kwargs)
     model, optimizer, _, _, _ = booster.boost(model, optimizer)
-
+    booster.save_model(model, "model.pt")
     SEQ_LEN = 1024
     VOCAB_SIZE = 50257
 

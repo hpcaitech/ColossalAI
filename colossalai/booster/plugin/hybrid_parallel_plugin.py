@@ -31,7 +31,7 @@ from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
-from colossalai.shardformer.layer.utils import SeqParallelUtils
+from colossalai.shardformer.layer.utils import SeqParallelUtils, is_share_sp_tp
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
@@ -1231,8 +1231,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                 and self.enable_sequence_parallelism
                 and self.sequence_parallelism_mode == "all_to_all"
             )
-            # sync gradients across DP * SP ranks
-            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
+            # Sync gradients across DP * SP ranks
+            if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:
                 dp_group = self.dp_group

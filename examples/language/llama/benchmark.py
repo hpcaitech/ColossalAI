@@ -68,9 +68,6 @@ def main():
         default="gemini",
         help="Choose which plugin to use",
     )
-    parser.add_argument(
-        "--overlap", action="store_true", help="Overlap communication with computation in Pipeline Parallel."
-    )
     parser.add_argument("-b", "--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("-s", "--num_steps", type=int, default=5, help="Number of steps to run")
     parser.add_argument("-i", "--ignore_steps", type=int, default=2, help="Number of steps to ignore")
@@ -94,7 +91,7 @@ def main():
 
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
-    parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
+    parser.add_argument("--profile", action="store_true", help="Profile the code")
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--no_cache", action="store_true")
@@ -200,7 +197,7 @@ def main():
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
-            overlap_p2p=args.overlap,
+            dp_outside=False,
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
             **hybrid_kwargs,
@@ -218,7 +215,6 @@ def main():
             microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
-            overlap_p2p=args.overlap,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -326,7 +322,7 @@ def main():
 
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
-
+    booster.save_model(model, "model.pt")
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
