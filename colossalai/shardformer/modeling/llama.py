@@ -26,10 +26,12 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
-from colossalai.shardformer.layer.utils import is_share_sp_tp, ring_attn_split_batch
+from colossalai.shardformer.layer.utils import is_share_sp_tp, zigzag_split_batch
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, dist_cross_entropy
+from ..layer import ColoAttention, RingAttention, dist_cross_entropy, get_pad_info
+
+_SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
 
 class LlamaPipelineForwards:
@@ -141,7 +143,18 @@ class LlamaPipelineForwards:
 
         # Support SP + PP
         if stage_manager.is_first_stage():
-            if sp_mode in ["ring", "split_gather"]:
+            if sp_mode == "ring_attn":
+                # NOTE: This will throw an error in KV Cache inference without replicating q in all ranks.
+                # Also, I don't see get_llama_flash_attention_forward supporting
+                # query_states and key_states with different seq_len.
+                batch = {
+                    "input": inputs_embeds,
+                    "attention_mask": attention_mask["attention_mask"],
+                    "position": position_ids,
+                }
+                batch = zigzag_split_batch(batch, sp_group)
+                inputs_embeds, attention_mask["attention_mask"], position_ids = batch.values()
+            elif sp_mode in ["ring", "split_gather"]:
                 hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
             elif sp_mode == "all_to_all":
                 hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
@@ -455,7 +468,7 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -468,7 +481,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
         if sp_mode is not None:
-            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert sp_mode in _SUPPORTED_SP_MODE, f"SP mode {sp_mode} is not supported by {type(self)} yet"
             assert (sp_size is not None) and (
                 sp_group is not None
             ), "Must specify sp_size and sp_group for sequence parallel"
@@ -535,7 +548,22 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        if shard_config.enable_flash_attention:
+        if sp_mode == "ring_attn":
+            max_seqlen, cu_seqlens, _ = get_pad_info(attention_mask["attention_mask"], invert=True)
+            attn_output = RingAttention.attention(
+                query_states.transpose(1, 2),
+                key_states.transpose(1, 2),
+                value_states.transpose(1, 2),
+                sp_group,
+                shard_config.sp_stream,
+                attention_mask["attention_mask"],
+                attention_mask["attention_mask_type"],
+                cu_seqlens,
+                cu_seqlens,
+                max_seqlen,
+                max_seqlen,
+            )
+        elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
             attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
         else:
@@ -586,7 +614,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
     return forward
 
 
-def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -654,16 +682,20 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
         else:
             attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
+        # Ring Attention zigzag batch processing
         if sp_mode == "ring_attn":
+            # NOTE: This will throw an error in KV Cache inference without replicating q in all ranks.
+            # Also, I don't see get_llama_flash_attention_forward supporting
+            # query_states and key_states with different seq_len.
+            assert shard_config.enable_flash_attention, "Ring Attention requires Flash Attention to be enabled"
             batch = {
                 "input": inputs_embeds,
                 "attention_mask": attention_mask["attention_mask"],
                 "position": position_ids,
             }
-            batch = ring_attn_split_batch(batch, sp_group)
+            batch = zigzag_split_batch(batch, sp_group)
             inputs_embeds, attention_mask["attention_mask"], position_ids = batch.values()
-
-        if sp_mode in ["ring", "split_gather"]:
+        elif sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
@@ -783,18 +815,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        sp_mode = shard_config.sequence_parallelism_mode
-        sp_group = shard_config.sequence_parallel_process_group
-        is_sp = shard_config.enable_sequence_parallelism
-        # Split labels
-        if is_sp:
-            assert not (
-                sp_mode == "ring_attn" and use_cache
-            ), "Ring attention requires q, k, v to have the same length and doesn't work for inference"
-            if sp_mode == "ring_attn":
-                batch = ring_attn_split_batch({"labels": labels}, sp_group)
-                labels = batch["labels"]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(

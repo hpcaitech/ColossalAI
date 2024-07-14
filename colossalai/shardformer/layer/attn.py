@@ -43,7 +43,7 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
 
 
 # adapted from https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/bert_padding.py
-def get_pad_info(padding_mask: torch.Tensor) -> Tuple[int, torch.Tensor, torch.Tensor]:
+def get_pad_info(padding_mask: torch.Tensor, invert: Optional[bool] = False) -> Tuple[int, torch.Tensor, torch.Tensor]:
     """Get padding information from padding mask.
 
     Args:
@@ -52,6 +52,8 @@ def get_pad_info(padding_mask: torch.Tensor) -> Tuple[int, torch.Tensor, torch.T
     Returns:
         Tuple[int, torch.Tensor, torch.Tensor]: Tuple of (max_seq_len, cu_seqlens, indices)
     """
+    if invert:
+        padding_mask = padding_mask.logical_not()
     seqlens_in_batch = padding_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(padding_mask.flatten(), as_tuple=False).flatten()
     max_seqlen_in_batch = seqlens_in_batch.max().item()
@@ -297,43 +299,87 @@ def ring_attn_p2p_comm(sp_rank, send_tensor, recv_tensor, send_src, recv_src, sp
 
 
 @triton.jit
-def flash_attn_fwd_out_corr_triton(
-    out_ptr, out_per_step_ptr, seq_dim, softmax_lse_ptr, softmax_lse_per_step_ptr, BLOCK_SIZE: tl.constexpr
+def flash_attn_out_lse_rescale_kernel(
+    out_ptr,
+    out_per_step_ptr,
+    lse_ptr,
+    lse_step_ptr,
+    B,
+    Sq,
+    H,
+    D,
+    stride_out_0,
+    stride_out_1,
+    stride_out_2,
+    stride_out_3,
+    stride_out_per_step_0,
+    stride_out_per_step_1,
+    stride_out_per_step_2,
+    stride_out_per_step_3,
+    stride_lse_0,
+    stride_lse_1,
+    stride_lse_2,
+    stride_lse_3,
 ):
-    # Calculate the global id
-    pid = tl.program_id(0)
+    batch_id = tl.program_id(0)
+    sq_id = tl.program_id(1)
+    h_id = tl.program_id(2)
+    d_id = tl.arange(0, D)
 
-    # Offsets for the current row
-    offsets = tl.arange(0, BLOCK_SIZE)
+    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id * stride_out_3
+    out_per_step_idx = (
+        batch_id * stride_out_per_step_0
+        + sq_id * stride_out_per_step_1
+        + h_id * stride_out_per_step_2
+        + d_id * stride_out_per_step_3
+    )
+    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
+    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
 
-    # Pointers to the current row in out and out_per_step
-    row_start = pid * seq_dim
-    out_ptrs = out_ptr + row_start + offsets
-    out_per_step_ptrs = out_per_step_ptr + row_start + offsets
+    out = tl.load(out_ptr + out_idx)
+    out_per_step = tl.load(out_per_step_ptr + out_per_step_idx)
+    lse = tl.load(lse_ptr + lse_idx)
+    lse_step = tl.load(lse_step_ptr + lse_step_idx)
 
-    # Load softmax_lse and softmax_lse_per_step
-    softmax_lse = tl.load(softmax_lse_ptr + pid)
-    softmax_lse_per_step = tl.load(softmax_lse_per_step_ptr + pid)
+    new_lse = lse + tl.log(1 + tl.exp(lse_step - lse))
+    out = tl.exp(lse - new_lse) * out + tl.exp(lse_step - new_lse) * out_per_step
 
-    # Compute the corrected exponentiation
-    softmax_lse_corrected_exp = tl.exp(softmax_lse_per_step - softmax_lse)
-
-    out_per_step_vals = tl.load(out_per_step_ptrs)
-
-    # Correct the out_per_step by the exponentiation
-    out_corrected = out_per_step_vals * softmax_lse_corrected_exp
-
-    # Load the current out values
-    out_vals = tl.load(out_ptrs)
-
-    # Add the corrected output to out
-    updated_out_vals = out_vals + out_corrected
-
-    # Store the updated out values
-    tl.store(out_ptrs, updated_out_vals)
+    tl.store(out_ptr + out_idx, out)
+    tl.store(lse_ptr + lse_idx, new_lse)
 
 
-def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
+def rescale_out_lse_triton(out, out_per_step, lse, lse_step):
+    B, Sq, H, D = out.shape
+
+    assert out.is_contiguous() and out_per_step.is_contiguous() and lse.is_contiguous() and lse_step.is_contiguous()
+
+    grid = (B, Sq, H)
+
+    flash_attn_out_lse_rescale_kernel[grid](
+        out,
+        out_per_step,
+        lse,
+        lse_step,
+        B,
+        Sq,
+        H,
+        D,
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        out.stride(3),
+        out_per_step.stride(0),
+        out_per_step.stride(1),
+        out_per_step.stride(2),
+        out_per_step.stride(3),
+        lse.stride(0),
+        lse.stride(1),
+        lse.stride(2),
+        lse.stride(3),
+    )
+
+
+def rescale_out_lse(out, out_per_step, lse, lse_step):
     """
     out: (B, Sq, H, D)
     out_per_step: (B, Sq, H, D)
@@ -344,36 +390,66 @@ def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
     lse.copy_(new_lse)
 
 
-# Modified from Megatron-LM. TODO: try Triton
-def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
-    softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
-    softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
-    out_corrected = out_per_step * softmax_lse_corrected_exp
-    out.add_(out_corrected)
+#  From Megatron-LM. TODO: try Triton
+# def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
+#     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
+#     softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
+#     out_corrected = out_per_step * softmax_lse_corrected_exp
+#     out.add_(out_corrected)
 
 
-def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
-    """
-    softmax_lse: (B, H, Sq)
-    softmax_lse_per_step: (B, H, Sq)
-    """
-    max_scale = torch.max(softmax_lse, softmax_lse_per_step)
-    min_scale = torch.min(softmax_lse, softmax_lse_per_step)
-    new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-    softmax_lse.copy_(new_scale)
+# def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+#     """
+#     softmax_lse: (B, H, Sq)
+#     softmax_lse_per_step: (B, H, Sq)
+#     """
+#     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
+#     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
+#     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+#     softmax_lse.copy_(new_scale)
 
 
 class RingAttention(torch.autograd.Function):
     """Implements the Ring Attention from `Ring Attention with Blockwise Transformers for Near-Infinite Context`
     (https://arxiv.org/abs/2310.01889).
-    We referenced the context parallel in Megatron-LM, with several critical optimizations
-    such as removing the negative optimization of torch.compile and reusing K, V buffers.
     For load-balancing we adopted the "zigzag" attention scheme from https://github.com/zhuzilin/ring-flash-attention/tree/main
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
     implemented in Jax and not optimized).
 
     """
+
+    @staticmethod
+    def attention(
+        q,
+        k,
+        v,
+        sp_group,
+        sp_stream,
+        attention_mask=None,
+        attention_mask_type=AttnMaskType.CUSTOM,
+        cu_seqlens_q=None,
+        cu_seqlens_kv=None,
+        max_seqlen_q=None,
+        max_seqlen_kv=None,
+        dropout_p=0.0,
+        softmax_scale=None,
+    ):
+        return RingAttention.apply(
+            q,
+            k,
+            v,
+            sp_group,
+            sp_stream,
+            attention_mask,
+            attention_mask_type,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
+            dropout_p,
+            softmax_scale,
+        )
 
     # TODO: Support arbitary seq length by padding to multiple of cp_size
     @staticmethod
@@ -390,10 +466,9 @@ class RingAttention(torch.autograd.Function):
         cu_seqlens_kv: Optional[torch.Tensor] = None,
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
-        q_indices: Optional[torch.Tensor] = None,
-        kv_indices: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         softmax_scale: Optional[float] = None,
+        deterministic: bool = False,
     ):
         """
         Args:
@@ -412,11 +487,9 @@ class RingAttention(torch.autograd.Function):
                 Shape should be [B+1]. Defaults to None.
             max_seqlen_q (Optional[int], optional): Maximum query sequence length in the batch. Defaults to None.
             max_seqlen_kv (Optional[int], optional): Maximum key/value sequence length in the batch. Defaults to None.
-            indices (Optional[torch.Tensor], optional): The indices of non-masked tokens from the flattened input sequence.
-                Shape should be [NUM_TOKENS]. Defaults to None.
             dropout_p (float, optional): Dropout probability. Defaults to 0.0.
             softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
-
+            deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
         Returns:
             torch.Tensor: Output tensor. Shape should be [B, Heads, Sq, D]
         """
@@ -431,8 +504,6 @@ class RingAttention(torch.autograd.Function):
                 and cu_seqlens_kv is not None
                 and max_seqlen_q is not None
                 and max_seqlen_kv is not None
-                and q_indices is not None
-                and kv_indices is not None
             )
         try:
             _load_flash_attn()
@@ -441,6 +512,13 @@ class RingAttention(torch.autograd.Function):
                 f"Ring attention requires Flash Attention, but import failed. You can re-install it via 'pip install flash-attn --no-build-isolation'"
             ) from e
 
+        misc_kwargs = {
+            "window_size": (-1, -1),
+            "alibi_slopes": None,
+            "softmax_scale": softmax_scale,
+            "dropout_p": dropout_p,
+            "block_table": None,
+        }
         # (B, Sq, H, D) -> (B, 2, Sq // 2, H, D)
         b, sq, h, d = q.shape
         q, k, v = [x.transpose(1, 2).view(*x.shape[:1], 2, x.shape[1] // 2, *x.shape[2:]) for x in (q, k, v)]
@@ -453,7 +531,7 @@ class RingAttention(torch.autograd.Function):
 
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         q_inputs = [q[:, 0], q[:, 1]]
-        kv_buffers = [torch.stack(k, v)]  # (2, B, 2, Skv // 2, H, D)
+        kv_buffers = [torch.stack((k, v))]  # (2, B, 2, Skv // 2, H, D)
         kv_buffers.append(torch.empty_like(kv_buffers[0]))
 
         # outputs
@@ -485,10 +563,10 @@ class RingAttention(torch.autograd.Function):
             with torch.cuda.stream(sp_streams[i % 2]):
                 if i == 0:
                     # Compute with local KV; no mask
-                    q_block = torch.cat(q_inputs, dim=1).flatten(end_dim=2)  # (B * Sq, H, D)
-                    # clone to avoid getting overwritten by the next p2p comm
+                    q_block = torch.cat(q_inputs, dim=1).view(b * sq, h, d)
+                    # NOTE: clone to avoid getting overwritten by the next p2p comm
                     kv_block = (
-                        kv_buffers[i % 2].flatten(start_dim=1, end_dim=3).clone()
+                        kv_buffers[i % 2].view(2, b * sq, h, d).clone()
                     )  # (2, B, 2, Skv // 2, H, D) -> (2, B * Skv, H, D)
                     (
                         _,
@@ -507,11 +585,11 @@ class RingAttention(torch.autograd.Function):
                         cu_seqlens_kv,
                         max_seqlen_q,
                         max_seqlen_kv,
-                        dropout_p,
-                        softmax_scale,
                         causal=True,
                         return_softmax=True,
+                        **misc_kwargs,
                     )
+
                 elif i <= sp_rank:
                     # Received the "surrounding" kv chunks
                     # Drop the second half of received kv
@@ -537,10 +615,9 @@ class RingAttention(torch.autograd.Function):
                         cu_seqlens_kv // 2,
                         max_seqlen_q,
                         max_seqlen_kv // 2,
-                        dropout_p,
-                        softmax_scale,
                         causal=False,
                         return_softmax=True,
+                        **misc_kwargs,
                     )
                 else:
                     # Received the inner kv chunks
@@ -566,16 +643,15 @@ class RingAttention(torch.autograd.Function):
                         cu_seqlens_kv,
                         max_seqlen_q // 2,
                         max_seqlen_kv,
-                        dropout_p,
-                        softmax_scale,
                         causal=False,
                         return_softmax=True,
+                        **misc_kwargs,
                     )
                 # Output and log sum exp correction
                 if i > 1:
                     sp_streams[i % 2].wait_event(correction_done)
 
-                block_out = block_out.view(b, sq, h, d)  # (B, Sq, H, D)
+                block_out[i % 2] = block_out[i % 2].view(b, sq, h, d)  # (B, Sq, H, D)
                 block_softmax_lse[i % 2] = (
                     block_softmax_lse[i % 2].float().transpose(1, 2).contiguous().unsqueeze(-1)
                 )  # (B, Sq, H, 1)
@@ -583,10 +659,10 @@ class RingAttention(torch.autograd.Function):
                     softmax_lse = block_softmax_lse[0]
                     out = block_out[0]
                 elif i < sp_rank:
-                    flash_attn_out_lse_rescale(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
+                    rescale_out_lse(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
                 else:
                     # Dropped the first half of q sequence
-                    flash_attn_out_lse_rescale(out[1], block_out[i % 2], softmax_lse[:, 1], block_softmax_lse[i % 2])
+                    rescale_out_lse(out[1], block_out[i % 2], softmax_lse[:, 1], block_softmax_lse[i % 2])
                 sp_streams[i % 2].record_event(correction_done)
 
         torch.cuda.current_stream().wait_event(correction_done)
@@ -604,9 +680,10 @@ class RingAttention(torch.autograd.Function):
         ctx.sp_global_ranks = sp_global_ranks
         ctx.max_seqlen_q = max_seqlen_q
         ctx.max_seqlen_kv = max_seqlen_kv
-        ctx.softmax_scale = softmax_scale
-        ctx.dropout_p = dropout_p
-        ctx.softmax_scale = softmax_scale
+        misc_kwargs["deterministic"] = deterministic
+        ctx.misc_kwargs = misc_kwargs
+
+        return out
 
     def backward(ctx, dout):
         """
@@ -625,8 +702,7 @@ class RingAttention(torch.autograd.Function):
         ) = ctx.saved_tensors
         max_seqlen_q = ctx.max_seqlen_q
         max_seqlen_kv = ctx.max_seqlen_kv
-        dropout_p = ctx.dropout_p
-        softmax_scale = ctx.softmax_scale
+        misc_kwargs = ctx.misc_kwargs
 
         # Sequence parallel args
         sp_group = ctx.sp_group
@@ -637,7 +713,7 @@ class RingAttention(torch.autograd.Function):
         recv_src = sp_global_ranks[(sp_rank - 1) % len(sp_global_ranks)]
 
         # Double comm buffers for sending and receiving kv
-        kv_buffers = [torch.stack(k, v)]  # (2, B, 2, Sq // 2, H, D)
+        kv_buffers = [torch.stack((k, v))]  # (2, B, 2, Sq // 2, H, D)
         kv_buffers.append(torch.empty_like(kv_buffers[0]))
         dkv_buffers = [torch.empty_like(kv_buffers[0]) for _ in range(2)]
         dq = torch.empty_like(q)  # (B, 2, Sq // 2, H, D )
@@ -687,10 +763,9 @@ class RingAttention(torch.autograd.Function):
                     cu_seqlens_kv,
                     max_seqlen_q,
                     max_seqlen_kv,
-                    dropout_p,
-                    softmax_scale,
                     casual=True,
                     rng_state=rng_states[i],
+                    **misc_kwargs,
                 )
             elif i <= sp_rank:
                 # Drop the first half of kv
@@ -713,10 +788,9 @@ class RingAttention(torch.autograd.Function):
                     cu_seqlens_kv // 2,
                     max_seqlen_q,
                     max_seqlen_kv // 2,
-                    dropout_p,
-                    softmax_scale,
                     casual=False,
                     rng_state=rng_states[i],
+                    **misc_kwargs,
                 )
 
             else:
@@ -739,19 +813,19 @@ class RingAttention(torch.autograd.Function):
                     cu_seqlens_kv,
                     max_seqlen_q // 2,
                     max_seqlen_kv,
-                    dropout_p,
-                    softmax_scale,
                     casual=False,
                     rng_state=rng_states[i],
+                    **misc_kwargs,
                 )
 
             # Accumulate grads
             if i == 0:
-                # NOTE float() should create a copy to avoid comm overwriting these blocks
+                # float() should create a copy to avoid comm overwriting these blocks
                 dq = dq_block.view_as(q).float()
                 dk_recv = dkv_buffers[(i + 1) % 2][0] = dk_block.float()
                 dv_recv = dkv_buffers[(i + 1) % 2][1] = dv_block.float()
             else:
+                # Accumulate local dq
                 if i <= sp_rank:
                     dq_block = dq_block.view_as(q)  # (B, 2, Sq // 2, H, D)
                     dq += dq_block
@@ -759,7 +833,7 @@ class RingAttention(torch.autograd.Function):
                     dq_block = dq_block.view_as(q[:, 1])  # (B, Sq // 2, H, D)
                     dq[:, 1] += dq_block
 
-                # Wait for kv grad accumulators
+                # Wait for mobile kv grad accumulators
                 for req in dkv_reqs:
                     req.wait()
 
