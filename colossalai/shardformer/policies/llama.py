@@ -70,12 +70,17 @@ class LlamaPolicy(Policy):
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
 
+        tp_size = self.shard_config.tensor_parallel_size
+        # Modified by SP and TP
+        num_q_heads = self.model.config.num_attention_heads
+        num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
+
         if sp_mode == "all_to_all":
-            decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sp_size,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+            num_q_heads //= sp_size
+            decoder_attribute_replacement = {"num_heads": num_q_heads}
+            if num_kv_heads:
+                num_kv_heads //= sp_size
+                decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -104,21 +109,20 @@ class LlamaPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
-                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+                num_q_heads % tp_size == 0
             ), f"The number of attention heads must be divisible by tensor parallel size."
             if hasattr(self.model.config, "num_key_value_heads"):
                 assert (
-                    self.model.config.num_key_value_heads >= self.shard_config.tensor_parallel_size
-                    and self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+                    num_kv_heads >= tp_size and num_kv_heads % tp_size == 0
                 ), f"The number of key_value heads must be divisible by, and must not be less than tensor parallel size."
+            num_q_heads //= tp_size
             decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.hidden_size": self.model.config.hidden_size // tp_size,
+                "self_attn.num_heads": num_q_heads,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["self_attn.num_key_value_heads"] = (
-                    self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
-                )
+                num_kv_heads //= tp_size
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = num_kv_heads
 
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,

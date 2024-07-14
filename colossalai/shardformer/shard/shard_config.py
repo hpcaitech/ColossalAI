@@ -84,9 +84,9 @@ class ShardConfig:
                     self.enable_tensor_parallelism
                 ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is True"
             elif self.sequence_parallelism_mode in ["all_to_all"]:
-                assert (
-                    not self.enable_tensor_parallelism
-                ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
+                # assert (
+                #     not self.enable_tensor_parallelism
+                # ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
                 if self.enable_sequence_overlap:
                     self.enable_sequence_overlap = False
                     warnings.warn(

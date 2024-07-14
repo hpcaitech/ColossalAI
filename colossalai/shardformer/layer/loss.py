@@ -150,46 +150,6 @@ def cross_entropy_1d(
     return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size, dtype, reduction)
 
 
-# def dist_cross_entropy(
-#     labels: torch.Tensor,
-#     logits: torch.Tensor,
-#     shard_config: ShardConfig,
-#     out_features: int,
-#     vocab_size: int,
-#     dtype: torch.dtype,
-# ) -> torch.Tensor:
-#     """
-#     Helper to compute cross entropy loss for most shardformer models,
-#     compatible with PP, TP and SP.
-#     """
-#     if labels is not None:
-#         # Shift so that tokens < n predict n
-#         shift_logits = logits[..., :-1, :].contiguous()
-#         shift_labels = labels[..., 1:].contiguous()
-#         # Flatten the tokens
-#         loss_fct = CrossEntropyLoss()
-#         shift_labels = shift_labels.view(-1)
-#         shift_labels = shift_labels.to(shift_logits.device)
-#         if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
-#             # Cross entropy with all-reduce for TP
-#             new_vocab_size = logits.shape[-1]
-#             shift_logits = shift_logits.view(-1, new_vocab_size)
-#             loss = cross_entropy_1d(
-#                 shift_logits,
-#                 shift_labels,
-#                 process_group=shard_config.tensor_parallel_process_group,
-#                 vocab_size=out_features,
-#                 dtype=dtype,
-#             )
-#         else:
-#             # NOTE if use TP and not parallel_output, the output is gathered.
-#             # see VocabParallelLMHead1D
-#             shift_logits = shift_logits.view(-1, vocab_size)
-#             loss = loss_fct(shift_logits, shift_labels)
-
-#         return loss
-
-
 def dist_cross_entropy(
     labels: torch.Tensor,
     logits: torch.Tensor,
@@ -211,20 +171,20 @@ def dist_cross_entropy(
 
     num_tokens = labels.size(-1)
     labels = labels[..., 1:]
-    # Shift labels to predict the next token
-    if sp_size > 1 and parallel_output and (not is_share_sp_tp(sp_mode)):
+    # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
+    # TODO: The logic below seems too verbose...also ring attention doesn't split labels here
+    # if sp_size > 1 and parallel_output and (not is_share_sp_tp(sp_mode)):
+    if num_tokens // sp_size == logits.size(1):
         # Split labels when logits are split
         labels = labels.split(num_tokens // sp_size, dim=-1)[sp_rank]
         if sp_rank == sp_size - 1:
-            # Remove the tail token (usually <EOS>)
             logits = logits[..., :-1, :]
-            # Pad to the same shape across all ranks in TP all_-educe
+            # Pad to the same shape across all ranks in TP all_reduce
             pad_shape = [0] * logits.dim() * 2
             pad_shape[-3] = 1  # Right side, dim = -2
             logits = F.pad(logits, pad_shape, value=_IGNORE_IDX).contiguous()
             labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
     else:
-        # Remove the tail token
         logits = logits[..., :-1, :].contiguous()
     labels = labels.contiguous()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"

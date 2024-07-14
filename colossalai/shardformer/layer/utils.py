@@ -8,7 +8,6 @@ from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
 from torch.distributed import ProcessGroup, get_world_size
 
 from colossalai.accelerator import get_accelerator
-from colossalai.shardformer.layer.attn import get_pad_info
 
 
 class SeqParallelUtils:
@@ -292,9 +291,9 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def ring_attn_split_batch(batch: Dict[str, torch.Tensor], sp_group):
+def zigzag_split_batch(batch: Dict[str, torch.Tensor], sp_group):
     """
-    Split the input along the sequence dimension. As naively spliting sequence
+    Split the input along the sequence dimension for Ring Attention. As naively spliting sequence
     in the causual setting will result in the first ranks having much less workload than the last ranks,
     we split after "folding" the 2D attention mask in half (https://github.com/zhuzilin/ring-flash-attention/issues/2).
     For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
@@ -315,10 +314,9 @@ def ring_attn_split_batch(batch: Dict[str, torch.Tensor], sp_group):
                 tensor.shape[seq_dim] // (2 * sp_size),
                 *tensor.shape[seq_dim + 1 :],
             )
-            if key == "attention_mask":
-                get_pad_info()
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
+            # (B, 2, Sq // (2 * sp_size), H, D) -> (B, Sq // sp_size, H, D)
             batch[key] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
 
     return batch
