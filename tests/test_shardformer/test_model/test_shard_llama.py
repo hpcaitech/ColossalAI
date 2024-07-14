@@ -153,65 +153,55 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
-<<<<<<< HEAD
         # Double Ring Attention
-=======
->>>>>>> fwd bwd logic complete
+        # Zigzag Ring Attention
         {
-            "tp_size": 1,
+            "tp_size": 2,
             "pp_size": 1,
             "sp_size": 4,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
-<<<<<<< HEAD
             "sequence_parallelism_mode": "ring_attn",
             "use_lazy_init": True,
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
             "inner_ring_size": 2,
-=======
-            "sequence_parallelism_mode": "all_to_all",
-            "use_lazy_init": True,
-            "zero_stage": 1,
-            "precision": "fp16",
-            "initial_scale": 1,
-            "parallel_output": True,
->>>>>>> fwd bwd logic complete
         },
         # Ring Attention + PP
         {
+        {  # Ulysess + TP
+            "tp_size": 2,
+            "pp_size": 1,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 0,
+            "precision": "fp16",
+            "initial_scale": 1,
+            "parallel_output": True,
+        },
+        {  # Ulysess + PP
             "tp_size": 1,
             "pp_size": 2,
             "sp_size": 2,
             "num_microbatches": 2,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "ring_attn",
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_all_optimization": True,
             "use_lazy_init": True,
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
             "parallel_output": True,
         },
-<<<<<<< HEAD
         # Ring Attention + TP
         {
-=======
-        # {
-        #     "tp_size": 2,
-        #     "pp_size": 1,
-        #     "sp_size": 2,
-        #     "num_microbatches": 1,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "ring_attn",
-        #     "use_lazy_init": True,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        #     "parallel_output": True,
-        # },
-        {  # Test ring + Flash attention
->>>>>>> fwd bwd logic complete
+        {
             "tp_size": 2,
             "pp_size": 1,
             "sp_size": 1,
@@ -222,7 +212,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
-<<<<<<< HEAD
             "parallel_output": False,
         },
         {  # Ulysess + TP
@@ -251,9 +240,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
             "parallel_output": False,
-=======
-            "parallel_output": True,
->>>>>>> fwd bwd logic complete
         },
         {
             "tp_size": 4,
@@ -265,7 +251,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
-<<<<<<< HEAD
         },
         {
             "tp_size": 2,
@@ -280,9 +265,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
             "parallel_output": False,
-=======
-            "parallel_output": True,
->>>>>>> fwd bwd logic complete
         },
         {
             "tp_size": 2,

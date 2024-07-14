@@ -46,9 +46,13 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
 
 
 # adapted from https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/bert_padding.py
+<<<<<<< HEAD
 def get_pad_info(
     padding_mask: torch.Tensor, invert: Optional[bool] = False, return_indices: Optional[bool] = True
 ) -> Tuple[int, torch.Tensor, torch.Tensor]:
+=======
+def get_pad_info(padding_mask: torch.Tensor, invert: Optional[bool] = False) -> Tuple[int, torch.Tensor, torch.Tensor]:
+>>>>>>> fwd bwd logic complete; add experimental triton rescale
     """Get padding information from padding mask.
 
     Args:
@@ -366,43 +370,87 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
 
 @triton.jit
-def flash_attn_fwd_out_corr_triton(
-    out_ptr, out_per_step_ptr, seq_dim, softmax_lse_ptr, softmax_lse_per_step_ptr, BLOCK_SIZE: tl.constexpr
+def flash_attn_out_lse_rescale_kernel(
+    out_ptr,
+    out_per_step_ptr,
+    lse_ptr,
+    lse_step_ptr,
+    B,
+    Sq,
+    H,
+    D,
+    stride_out_0,
+    stride_out_1,
+    stride_out_2,
+    stride_out_3,
+    stride_out_per_step_0,
+    stride_out_per_step_1,
+    stride_out_per_step_2,
+    stride_out_per_step_3,
+    stride_lse_0,
+    stride_lse_1,
+    stride_lse_2,
+    stride_lse_3,
 ):
-    # Calculate the global id
-    pid = tl.program_id(0)
+    batch_id = tl.program_id(0)
+    sq_id = tl.program_id(1)
+    h_id = tl.program_id(2)
+    d_id = tl.arange(0, D)
 
-    # Offsets for the current row
-    offsets = tl.arange(0, BLOCK_SIZE)
+    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id * stride_out_3
+    out_per_step_idx = (
+        batch_id * stride_out_per_step_0
+        + sq_id * stride_out_per_step_1
+        + h_id * stride_out_per_step_2
+        + d_id * stride_out_per_step_3
+    )
+    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
+    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
 
-    # Pointers to the current row in out and out_per_step
-    row_start = pid * seq_dim
-    out_ptrs = out_ptr + row_start + offsets
-    out_per_step_ptrs = out_per_step_ptr + row_start + offsets
+    out = tl.load(out_ptr + out_idx)
+    out_per_step = tl.load(out_per_step_ptr + out_per_step_idx)
+    lse = tl.load(lse_ptr + lse_idx)
+    lse_step = tl.load(lse_step_ptr + lse_step_idx)
 
-    # Load softmax_lse and softmax_lse_per_step
-    softmax_lse = tl.load(softmax_lse_ptr + pid)
-    softmax_lse_per_step = tl.load(softmax_lse_per_step_ptr + pid)
+    new_lse = lse + tl.log(1 + tl.exp(lse_step - lse))
+    out = tl.exp(lse - new_lse) * out + tl.exp(lse_step - new_lse) * out_per_step
 
-    # Compute the corrected exponentiation
-    softmax_lse_corrected_exp = tl.exp(softmax_lse_per_step - softmax_lse)
-
-    out_per_step_vals = tl.load(out_per_step_ptrs)
-
-    # Correct the out_per_step by the exponentiation
-    out_corrected = out_per_step_vals * softmax_lse_corrected_exp
-
-    # Load the current out values
-    out_vals = tl.load(out_ptrs)
-
-    # Add the corrected output to out
-    updated_out_vals = out_vals + out_corrected
-
-    # Store the updated out values
-    tl.store(out_ptrs, updated_out_vals)
+    tl.store(out_ptr + out_idx, out)
+    tl.store(lse_ptr + lse_idx, new_lse)
 
 
-def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
+def rescale_out_lse_triton(out, out_per_step, lse, lse_step):
+    B, Sq, H, D = out.shape
+
+    assert out.is_contiguous() and out_per_step.is_contiguous() and lse.is_contiguous() and lse_step.is_contiguous()
+
+    grid = (B, Sq, H)
+
+    flash_attn_out_lse_rescale_kernel[grid](
+        out,
+        out_per_step,
+        lse,
+        lse_step,
+        B,
+        Sq,
+        H,
+        D,
+        out.stride(0),
+        out.stride(1),
+        out.stride(2),
+        out.stride(3),
+        out_per_step.stride(0),
+        out_per_step.stride(1),
+        out_per_step.stride(2),
+        out_per_step.stride(3),
+        lse.stride(0),
+        lse.stride(1),
+        lse.stride(2),
+        lse.stride(3),
+    )
+
+
+def rescale_out_lse(out, out_per_step, lse, lse_step):
     """
     out: (B, Sq, H, D)
     out_per_step: (B, Sq, H, D)
@@ -413,23 +461,23 @@ def flash_attn_out_lse_rescale(out, out_per_step, lse, lse_step):
     lse.copy_(new_lse)
 
 
-# Modified from Megatron-LM. TODO: try Triton
-def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
-    softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
-    softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
-    out_corrected = out_per_step * softmax_lse_corrected_exp
-    out.add_(out_corrected)
+#  From Megatron-LM. TODO: try Triton
+# def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
+#     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
+#     softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
+#     out_corrected = out_per_step * softmax_lse_corrected_exp
+#     out.add_(out_corrected)
 
 
-def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
-    """
-    softmax_lse: (B, H, Sq)
-    softmax_lse_per_step: (B, H, Sq)
-    """
-    max_scale = torch.max(softmax_lse, softmax_lse_per_step)
-    min_scale = torch.min(softmax_lse, softmax_lse_per_step)
-    new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-    softmax_lse.copy_(new_scale)
+# def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
+#     """
+#     softmax_lse: (B, H, Sq)
+#     softmax_lse_per_step: (B, H, Sq)
+#     """
+#     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
+#     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
+#     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+#     softmax_lse.copy_(new_scale)
 
 
 class RingAttention(torch.autograd.Function):

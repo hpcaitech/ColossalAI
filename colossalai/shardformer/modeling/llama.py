@@ -27,10 +27,17 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
+<<<<<<< HEAD
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, RingAttention, dist_cross_entropy
+=======
+from colossalai.shardformer.layer.utils import is_share_sp_tp, zigzag_split_batch
+from colossalai.shardformer.shard import ShardConfig
+
+from ..layer import ColoAttention, RingAttention, dist_cross_entropy, get_pad_info
+>>>>>>> fwd bwd logic complete; add experimental triton rescale
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
