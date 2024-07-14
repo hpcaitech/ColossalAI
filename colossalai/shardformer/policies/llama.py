@@ -85,6 +85,11 @@ class LlamaPolicy(Policy):
         num_q_heads = self.model.config.num_attention_heads
         num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
 
+        tp_size = self.shard_config.tensor_parallel_size
+        # Modified by SP and TP
+        num_q_heads = self.model.config.num_attention_heads
+        num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
+
         if sp_mode == "all_to_all":
             num_q_heads //= sp_size
             decoder_attribute_replacement = {"num_heads": num_q_heads}

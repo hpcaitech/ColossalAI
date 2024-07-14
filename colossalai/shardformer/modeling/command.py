@@ -25,6 +25,8 @@ from ..layer._operation import gather_sp_output, is_share_sp_tp
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring"]
 
+_SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
+
 
 class CommandPipelineForwards:
     """
