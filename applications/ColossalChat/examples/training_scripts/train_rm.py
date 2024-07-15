@@ -16,9 +16,12 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
+
+logger = get_dist_logger()
 
 
 def train(args):
@@ -186,6 +189,8 @@ def train(args):
             collate_fn=eval_data_collator,
             distributed_sampler_cls=StatefulDistributedSampler,
         )
+    else:
+        logger.warning("No evaluation dataset is provided, skip evaluation")
 
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
     math.ceil(args.max_epochs * num_update_steps_per_epoch)

@@ -187,6 +187,8 @@ def train(args):
             collate_fn=eval_data_collator,
             distributed_sampler_cls=StatefulDistributedSampler,
         )
+    else:
+        logger.warning("No evaluation dataset is provided, skip evaluation")
 
     coordinator.print_on_master(
         f"Max CUDA memory after data loader: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
