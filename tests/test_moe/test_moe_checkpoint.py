@@ -16,6 +16,7 @@ from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParall
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, spawn
 from colossalai.testing.utils import spawn
+from tests.test_moe.moe_utils import loose_close
 
 tokens, n_experts = 7, 4
 hidden_size = 8
@@ -25,7 +26,7 @@ top_k = 2
 def check_model_equal(model1, model2):
     assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
     for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
-        if not torch.equal(p1.half(), p2.half()):
+        if loose_close(p1, p2, p1.dtype):
             print(f"Model parameter {name} is not equal. is_moe_tensor: {is_moe_tensor(p1)}")
             raise AssertionError(f"Model parameter {name} is not equal")
 

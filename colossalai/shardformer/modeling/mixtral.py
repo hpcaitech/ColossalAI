@@ -116,8 +116,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
 
-        # TODO drop tokens to reduce tp group redundant communication
-
         output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
         # compute expert output
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
@@ -125,24 +123,24 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
             if self.num_experts_per_ep == 1:
                 # no need to split
                 expert = self.experts[self.expert_start_idx]
-                output_states = DPGradScalerIn.apply(output_states, self.moe_dp_size, activate_experts[0].item())
+                output_states = DPGradScalerIn.apply(output_states, self.moe_dp_size, activate_experts[0])
                 output_states = expert.act_fn(expert.w1(output_states)) * expert.w3(output_states)
                 output_states = expert.w2(output_states)
-                output_states = DPGradScalerOut.apply(output_states, self.moe_dp_size, activate_experts[0].item())
+                output_states = DPGradScalerOut.apply(output_states, self.moe_dp_size, activate_experts[0])
             else:
                 output_states_splits = output_states.split(output_split_sizes.tolist())
                 output_states_list = []
                 for i, split_states in enumerate(output_states_splits):
                     if split_states.size(0) == 0:
                         continue
-                    split_states = DPGradScalerIn.apply(
-                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item()
-                    )
                     expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
+                    split_states = DPGradScalerIn.apply(
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
+                    )
                     split_states = expert.act_fn(expert.w1(split_states)) * expert.w3(split_states)
                     split_states = expert.w2(split_states)
                     split_states = DPGradScalerOut.apply(
-                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep].item()
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
                     )
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)

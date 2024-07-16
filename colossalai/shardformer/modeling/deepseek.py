@@ -1,21 +1,27 @@
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-
-# from colossalai.tensor.moe_tensor.moe_info import MoeParallelInfo
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import MoeInGradScaler, MoeOutGradScaler, all_to_all_uneven
+from colossalai.moe._operation import (
+    DPGradScalerIn,
+    DPGradScalerOut,
+    EPGradScalerIn,
+    EPGradScalerOut,
+    all_to_all_uneven,
+)
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
+from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_group
 
 
 # copied from modeling_deepseek.py
@@ -42,30 +48,60 @@ class AddAuxiliaryLoss(torch.autograd.Function):
 
 class EPDeepseekMoE(nn.Module):
     def __init__(self):
-        super(EPDeepseekMoE, self).__init__()
+        raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_ep(self, ep_group: ProcessGroup):
-        ep_group = ep_group
-        self.ep_size = dist.get_world_size(ep_group) if ep_group is not None else 1
-        self.ep_rank = dist.get_rank(ep_group) if ep_group is not None else 0
+    def setup_process_groups(
+        self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, moe_tp_group: ProcessGroup
+    ):
+        assert tp_group is not None
+        assert moe_dp_group is not None
+        assert ep_group is not None
+        assert moe_tp_group is not None
+
+        self.ep_size = dist.get_world_size(ep_group)
+        self.ep_rank = dist.get_rank(ep_group)
         self.num_experts = self.config.n_routed_experts
         assert self.num_experts % self.ep_size == 0
+
         self.ep_group = ep_group
         self.num_experts_per_ep = self.num_experts // self.ep_size
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
+
         set_tensors_to_none(self.experts, exclude=set(held_experts))
         for p in self.experts.parameters():
-            p.ep_group = ep_group
+            set_moe_tensor_ep_group(p, ep_group)
+
+        # setup moe_dp group
+        self.moe_dp_group = moe_dp_group
+        self.moe_dp_size = moe_dp_group.size()
+
+        # setup global tp group
+        self.tp_group = tp_group
+
+        # setup moe tp group
+        self.moe_tp_group = moe_tp_group
+        if self.moe_tp_group.size() > 1:
+            for expert in held_experts:
+                expert.gate_proj = Linear1D_Col.from_native_module(expert.gate_proj, self.moe_tp_group)
+                expert.up_proj = Linear1D_Col.from_native_module(expert.up_proj, self.moe_tp_group)
+                expert.down_proj = Linear1D_Row.from_native_module(expert.down_proj, self.moe_tp_group)
 
     @staticmethod
-    def from_native_module(module: Union["DeepseekMoE", "DeepseekMLP"], *args, **kwargs) -> "EPDeepseekMoE":
+    def from_native_module(
+        module,
+        tp_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
+        ep_group: ProcessGroup,
+        moe_tp_group: ProcessGroup,
+        *args,
+        **kwargs,
+    ) -> "EPDeepseekMoE":
         LazyInitContext.materialize(module)
         if module.__class__.__name__ == "DeepseekMLP":
             return module
         module.__class__ = EPDeepseekMoE
-        assert "ep_group" in kwargs, "You should pass ep_group in SubModuleReplacementDescription via shard_config!!"
-        module.setup_ep(kwargs["ep_group"])
+        module.setup_process_groups(tp_group, moe_dp_group, ep_group, moe_tp_group)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -91,15 +127,24 @@ class EPDeepseekMoE(nn.Module):
         # [n0, n1, n2, n3] [m0, m1, m2, m3] -> [n0, n1, m0, m1] [n2, n3, m2, m3]
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
+        with torch.no_grad():
+            activate_experts = output_split_sizes[: self.num_experts_per_ep].clone()
+            for i in range(1, self.ep_size):
+                activate_experts += output_split_sizes[i * self.num_experts_per_ep : (i + 1) * self.num_experts_per_ep]
+            activate_experts = (activate_experts > 0).float()
+        dist.all_reduce(activate_experts, group=self.moe_dp_group)
+
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
-        output_states = MoeInGradScaler.apply(output_states, self.ep_size)
+        output_states = EPGradScalerIn.apply(output_states, self.ep_size)
 
         if output_states.size(0) > 0:
             if self.num_experts_per_ep == 1:
                 expert = self.experts[self.expert_start_idx]
+                output_states = DPGradScalerIn.apply(output_states, self.moe_dp_size, activate_experts[0])
                 output_states = expert(output_states)
+                output_states = DPGradScalerOut.apply(output_states, self.moe_dp_size, activate_experts[0])
             else:
                 output_states_splits = output_states.split(output_split_sizes.tolist())
                 output_states_list = []
@@ -107,10 +152,16 @@ class EPDeepseekMoE(nn.Module):
                     if split_states.size(0) == 0:  # no token routed to this experts
                         continue
                     expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
+                    split_states = DPGradScalerIn.apply(
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
+                    )
                     split_states = expert(split_states)
+                    split_states = DPGradScalerOut.apply(
+                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
+                    )
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
-        output_states = MoeOutGradScaler.apply(output_states, self.ep_size)
+        output_states = EPGradScalerOut.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
