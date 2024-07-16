@@ -469,6 +469,8 @@ def all_to_all_uneven(
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO: used when non-moe are tp but moe are not
+
 
 def _gather_tokens(input_, dim: int, tp_group: ProcessGroup):
     """Gather tensors and concatenate them along a dimension"""
