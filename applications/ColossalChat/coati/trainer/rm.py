@@ -237,6 +237,7 @@ class RewardModelTrainer(SLTrainer):
                 + f"distance: {self.accumulative_meter.get('chosen_rewards')-self.accumulative_meter.get('rejected_rewards')}\n"
             )
             self.coordinator.print_on_master(msg)
+            os.makedirs(self.save_dir, exist_ok=True)
             with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
                 f.write(msg)
             step_bar.close()

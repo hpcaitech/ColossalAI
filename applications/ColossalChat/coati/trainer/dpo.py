@@ -2,6 +2,7 @@
 Dpo trainer
 """
 
+import os
 from typing import Any, Optional
 
 import torch
@@ -324,7 +325,7 @@ class DPOTrainer(SLTrainer):
                     chosen_loss_mask[:, 1:],
                     reject_loss_mask[:, 1:],
                 )
-                reward_accuracies = (chosen_rewards > rejected_rewards).float()
+                reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
                 loss = losses.mean()
                 loss_mean = all_reduce_mean(tensor=loss)
                 chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards)
@@ -343,4 +344,7 @@ class DPOTrainer(SLTrainer):
         for tag in ["loss", "chosen_rewards", "rejected_rewards", "accuracy", "margin"]:
             msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
         self.coordinator.print_on_master(msg)
+        os.makedirs(self.save_dir, exist_ok=True)
+        with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
+            f.write(msg)
         step_bar.close()

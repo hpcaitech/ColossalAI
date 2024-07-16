@@ -28,6 +28,8 @@ def load_tokenized_dataset(
     Each instance of dataset is a dictionary with
     `{'input_ids': List[int], 'labels': List[int], sequence: str}` format.
     """
+    if not dataset_paths:
+        return None
     mode_map = kwargs.get("mode_map", {"train": "train", "dev": "validation", "test": "test"})
     assert mode in tuple(mode_map), f"Unsupported mode {mode}, it must be in {tuple(mode_map)}"
 

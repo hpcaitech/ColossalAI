@@ -16,9 +16,12 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
+
+logger = get_dist_logger()
 
 
 def train(args):
@@ -173,6 +176,22 @@ def train(args):
         collate_fn=data_collator,
         distributed_sampler_cls=StatefulDistributedSampler,
     )
+
+    eval_dataloader = None
+    if args.eval_dataset:
+        eval_dataset = load_tokenized_dataset(dataset_paths=args.eval_dataset, mode="dev")
+        eval_data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
+        eval_dataloader = plugin.prepare_dataloader(
+            dataset=eval_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=eval_data_collator,
+            distributed_sampler_cls=StatefulDistributedSampler,
+        )
+    else:
+        logger.warning("No evaluation dataset is provided, skip evaluation")
+
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
     math.ceil(args.max_epochs * num_update_steps_per_epoch)
 
@@ -297,6 +316,7 @@ if __name__ == "__main__":
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--dataset", nargs="+", default=[])
+    parser.add_argument("--eval_dataset", nargs="+", default=[])
     parser.add_argument(
         "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
     )
