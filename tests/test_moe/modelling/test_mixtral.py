@@ -1,6 +1,7 @@
 import os
 import shutil
 from copy import deepcopy
+from typing import Tuple
 
 import pytest
 import torch
@@ -19,7 +20,7 @@ from tests.test_moe.test_moe_checkpoint import check_model_equal
 NUM_BATCH = 4
 NUM_TOK_PER_BATCH, NUM_EXPERTS = 7, 4
 HIDDEN_SIZE_PER_HEAD = 4
-NUM_HEADS = 2
+NUM_HEADS = 4
 TOP_K = 1
 
 
@@ -33,9 +34,9 @@ def split_grad(grad, world_size):
     return splited_grad
 
 
-@parameterize("stage", [1])
-@parameterize("ep_size", [1, 2, 4])
-def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int):
+@parameterize("config", [(1, 1, 4), (1, 2, 2), (1, 4, 1)])
+def run_zero_with_original_model(config: Tuple[int, ...]):
+    stage, ep_size, tp_size = config
     dtype = torch.float32
 
     rank = torch.distributed.get_rank()
@@ -43,7 +44,8 @@ def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int):
 
     plugin = MoeHybridParallelPlugin(
         pp_size=1,
-        tp_size=1,
+        tp_size=tp_size,
+        moe_tp_size=tp_size,
         ep_size=ep_size,
         zero_stage=stage,
         overlap_communication=False,
@@ -77,17 +79,16 @@ def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int):
 
     torch_model.train()
     zero_model.train()
-    for _ in range(1):
-        # zero-dp forward
+    for _ in range(2):
         input_data = torch.rand(
             NUM_BATCH, NUM_TOK_PER_BATCH, HIDDEN_SIZE_PER_HEAD * NUM_HEADS, requires_grad=True
         ).cuda()
+        dist.all_reduce(input_data, group=plugin.tp_group)  # tp requires duplicate input
+
         zero_output = zero_model(inputs_embeds=input_data.to(dtype)).last_hidden_state.mean()
-        # zero-dp backward
-        print(zero_output.dtype)
         zero_optimizer.backward(zero_output)
         zero_optimizer.step()
-
+        zero_optimizer.zero_grad()
         dist.all_reduce(zero_output)
 
         all_inputs = [torch.empty_like(input_data) for _ in range(dist.get_world_size())]
@@ -98,28 +99,32 @@ def run_zero_with_original_model(stage: int, ep_size: int, tp_size: int):
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
             torch_output.backward()
             torch_output_sum += torch_output.detach()
-
         # avg dp grads
         for p in torch_model.parameters():
             if p.grad is not None:
                 p.grad /= dist.get_world_size()
+        torch_optimizer.step()
+        torch_optimizer.zero_grad()
 
         loose_close(zero_output, torch_output_sum, dtype=dtype)
-        torch_optimizer.step()
 
-        # use checkpoint to load sharded zero model
-        model_dir = "./test_mixtral"
-        if dist.get_rank() == 0:
-            os.makedirs(model_dir, exist_ok=True)
+    # use checkpoint to load sharded zero model
+    model_dir = "./test_mixtral"
+    if dist.get_rank() == 0:
+        os.makedirs(model_dir, exist_ok=True)
 
-        dist.barrier()
-        booster.save_model(zero_model, model_dir, shard=True)
-        dist.barrier()
+    dist.barrier()
 
-        if dist.get_rank() == 0:
-            saved_model = MixtralModel.from_pretrained(model_dir).cuda()
-            check_model_equal(torch_model, saved_model)
-            shutil.rmtree(model_dir)
+    booster.save_model(zero_model, model_dir, shard=True)
+
+    dist.barrier()
+
+    saved_model = MixtralModel.from_pretrained(model_dir).cuda()
+    check_model_equal(torch_model, saved_model)
+
+    dist.barrier()
+    if dist.get_rank() == 0:
+        shutil.rmtree(model_dir)
 
     print(f"{dist.get_rank()} test passed")
 
