@@ -90,9 +90,7 @@ class CEvalDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(
-        path: str, logger: DistributedLogger, few_shot: bool, *args, **kwargs
-    ) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, few_shot: bool, *args, **kwargs) -> List[Dict]:
         dataset = {"dev": {}, "test": {}}
         for split in ["dev", "test"]:
             files = os.listdir(os.path.join(path, split))

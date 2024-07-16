@@ -1,7 +1,8 @@
 from abc import abstractstaticmethod
 
-from torch.utils.data import Dataset
 from colossal_eval.utils import jdump
+from torch.utils.data import Dataset
+
 from colossalai.logging import DistributedLogger
 
 
@@ -25,12 +26,13 @@ class BaseDataset:
     def load(path, logger: DistributedLogger, *args, **kwargs):
         """Load the original dataset and convert it into the inference dataset"""
 
+
 class DistributedDataset(Dataset):
     def __init__(self, data):
         self.data = data
-                
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         return self.data[idx]

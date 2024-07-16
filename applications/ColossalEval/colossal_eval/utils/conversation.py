@@ -123,9 +123,7 @@ class Conversation:
         }
 
 
-def get_few_shot_prefix(
-    few_shot_data: List[str], tokenizer: Optional[AutoTokenizer], max_tokens: int
-) -> str:
+def get_few_shot_prefix(few_shot_data: List[str], tokenizer: Optional[AutoTokenizer], max_tokens: int) -> str:
     """
     Get few shot prefix.
 
