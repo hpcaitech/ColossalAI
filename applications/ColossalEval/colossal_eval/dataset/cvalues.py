@@ -28,7 +28,7 @@ class CValuesDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, *args, **kwargs) -> List[Dict]:
         dataset = {"test": {}}
         file_path = os.path.join(path, "cvalues_responsibility_mc.jsonl")
         data_list = []

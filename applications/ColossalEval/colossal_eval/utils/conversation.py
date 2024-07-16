@@ -124,7 +124,7 @@ class Conversation:
 
 
 def get_few_shot_prefix(
-    conv: Conversation, few_shot_data: List[str], tokenizer: Optional[AutoTokenizer], language: str, max_tokens: int
+    few_shot_data: List[str], tokenizer: Optional[AutoTokenizer], max_tokens: int
 ) -> str:
     """
     Get few shot prefix.
@@ -157,7 +157,6 @@ def get_batch_prompt(
     batch: List[Dict],
     few_shot_data: List[str],
     tokenizer: Optional[AutoTokenizer],
-    language: Optional[str],
     model_max_length: Optional[int],
 ) -> Tuple[List[Dict], List[Dict]]:
     """
@@ -192,7 +191,7 @@ def get_batch_prompt(
                 else:
                     raise Exception("When using few-shot, target answer should be a string.")
 
-                few_shot_prefix = get_few_shot_prefix(conv, few_shot_data, tokenizer, language, max_tokens)
+                few_shot_prefix = get_few_shot_prefix(few_shot_data, tokenizer, max_tokens)
 
                 conv.append_message(conv.roles[0], few_shot_prefix + query_text)
                 conv.append_message(conv.roles[1], None)

@@ -4,6 +4,8 @@ import os
 from typing import Dict, List
 
 import torch.distributed as dist
+from torch.utils.data import DataLoader, DistributedSampler
+from colossal_eval.dataset.base import DistributedDataset
 from colossal_eval import dataset, models, utils
 
 import colossalai
@@ -13,6 +15,7 @@ from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig
 
 logger = get_dist_logger()
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def rm_and_merge(
@@ -35,6 +38,8 @@ def rm_and_merge(
     """
 
     for model_name in model_names:
+        dataset_cat_num_mapping = utils.jload(os.path.join(save_path, model_name, "dataset_cat_num_mapping.json"))
+
         for dataset_name, categories in dataset_names.items():
             all_answers_with_dataset_class = {}
             all_answers_with_dataset_class["dataset_class"] = dataset_classes[dataset_name]
@@ -66,6 +71,8 @@ def rm_and_merge(
                     except Exception as e:
                         print(e)
 
+                total_num = dataset_cat_num_mapping[dataset_name][category]
+                answers["data"] = answers["data"][:total_num]
                 all_answers[category] = answers
 
             all_answers_with_dataset_class["inference_results"] = all_answers
@@ -75,6 +82,7 @@ def rm_and_merge(
                 all_answers_with_dataset_class,
                 os.path.join(save_path, model_name, f"{dataset_name}_inference_results.json"),
             )
+        os.remove(os.path.join(save_path, model_name, "dataset_cat_num_mapping.json"))
 
         logger.info(f"Save inference results of model {model_name} for all dataset.")
     logger.info(f"Save inference results of all models for all dataset.")
@@ -118,6 +126,7 @@ def main(args):
     debug_args = {}
     few_shot_args = {}
     multiturn_args = {}
+    dataset_cat_num_mapping = {}
 
     config = utils.jload(args.config)
 
@@ -183,6 +192,7 @@ def main(args):
         model_name = model_parameter["name"]
         model_class = eval(f"models.{model_parameter['model_class']}")
         paramerters = model_parameter["parameters"]
+        batch_size = paramerters["batch_size"]
         paramerters.update({"logger": logger})
         paramerters.update({"prompt_template": utils.prompt_templates[paramerters["prompt_template"]]})
         paramerters.update({"shard_config": shard_config})
@@ -192,35 +202,26 @@ def main(args):
             raise ValueError(f"Model class {model_parameter['model_class']} is not a subclass of BaseModel.")
 
         for dataset_name, split_data in inference_data.items():
-            start = 0
+            cat_num_mapping = {}
             prev_questions = None
             for category, category_data in split_data.items():
                 num_turn = category_data["inference_kwargs"].get("turns", 1)
+                cat_num_mapping[category] = len(category_data["data"])
 
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
                     raise Exception(f"Dataset {dataset_name} doesn't have few-shot data for category {category}!")
 
                 answers_to_dump = copy.deepcopy(category_data)
-                partition_size = len(category_data["data"]) // dp_size
-                redundant = len(category_data["data"]) % dp_size
-
-                # Ensure that the amount of data for inference is as consistent as possible across different processes.
-                lengths = [partition_size for _ in range(dp_size)]
-                for j in range(redundant):
-                    lengths[(j + start) % dp_size] += 1
-
-                start = (start + redundant) % dp_size
-
                 for turn in range(num_turn):
                     if turn == 0:
-                        questions = category_data["data"][
-                            sum(lengths[0:dp_rank]) : sum(lengths[0:dp_rank]) + lengths[dp_rank]
-                        ]
+                        dist_dataset = DistributedDataset(category_data["data"])
                     else:
-                        questions = prev_questions
-
+                        dist_dataset = DistributedDataset(prev_questions)
+                        
+                    sampler = DistributedSampler(dist_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+                    questions_loader = DataLoader(dist_dataset, batch_size=batch_size, sampler=sampler, num_workers=8, pin_memory=True, collate_fn=lambda x: x)
                     answers_per_rank = model_.inference(
-                        questions, inference_kwargs=category_data["inference_kwargs"], debug=debug_args[dataset_name]
+                        data_loader=questions_loader, inference_kwargs=category_data["inference_kwargs"], debug=debug_args[dataset_name]
                     )
                     prev_questions = answers_per_rank
 
@@ -236,10 +237,14 @@ def main(args):
                         ),
                     )
 
+            dataset_cat_num_mapping[dataset_name] = cat_num_mapping
+
         logger.info(f"Rank {rank} peak device mem: {accelerator.max_memory_allocated()/1024**3:.3f} GB")
 
         del model_
         accelerator.empty_cache()
+
+        utils.jdump(dataset_cat_num_mapping, os.path.join(args.inference_save_path, model_name, "dataset_cat_num_mapping.json"))
 
     dist.barrier()
     if rank == 0:
