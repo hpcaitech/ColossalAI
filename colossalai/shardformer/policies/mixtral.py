@@ -8,6 +8,7 @@ from torch.nn import Module
 from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
 from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock, MixtralPipelineForwards
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
@@ -41,6 +42,13 @@ class MixtralPolicy(Policy):
             raise NotImplementedError(
                 "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
             )
+
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
 
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
@@ -76,13 +84,22 @@ class MixtralPolicy(Policy):
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
                     ),
-                    SubModuleReplacementDescription(
+                    SubModuleReplacementDescription(  # or replicate?
                         suffix="block_sparse_moe.gate", target_module=Linear1D_Col, kwargs={"gather_output": True}
                     ),
                 ],
             )
 
-            # TODO shard vocab embedding
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=MixtralModel,
+            )
 
         if self.shard_config.ep_group:
             # expert parallel

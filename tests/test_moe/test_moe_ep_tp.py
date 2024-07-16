@@ -21,16 +21,6 @@ NUM_HEADS = 4
 TOP_K = 2
 
 
-def split_grad(grad, world_size):
-    with torch.no_grad():
-        grad = grad.clone().detach().flatten()
-        padding_size = (world_size - grad.numel() % world_size) % world_size
-        if padding_size > 0:
-            grad = torch.nn.functional.pad(grad, [0, padding_size])
-        splited_grad = grad.split(grad.numel() // world_size)
-    return splited_grad
-
-
 @parameterize("stage", [1])
 @parameterize("ep_size", [1, 2, 4])
 def run_zero_with_original_model(stage: int, ep_size: int):

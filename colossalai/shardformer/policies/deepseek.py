@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.deepseek import DeepseekPipelineForwards, EPDeepseekMoE
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -39,16 +40,55 @@ class DeepseekPolicy(Policy):
             )
 
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError("Tensor parallelism is not supported for Deepseek model now.")
+            # tensor parallelism for non-moe params
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
+            assert (
+                self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of key_value heads must be divisible by tensor parallel size."
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+                // self.shard_config.tensor_parallel_size,
+            }
 
-        if getattr(self.shard_config, "ep_group", None) is not None:
+            policy["DeepseekDecoderLayer"] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=Linear1D_Row,
+                    ),
+                ],
+            )
+
+        if self.shard_config.ep_group:
             # expert parallel
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
                         suffix="mlp",
                         target_module=EPDeepseekMoE,
-                        kwargs={"ep_group": self.shard_config.ep_group},
+                        kwargs={
+                            "ep_group": self.shard_config.ep_group,
+                            "tp_group": self.shard_config.tensor_parallel_process_group,
+                            "moe_dp_group": self.shard_config.moe_dp_group,
+                            "moe_tp_group": self.shard_config.moe_tp_group,
+                        },
                     )
                 ],
                 policy=policy,

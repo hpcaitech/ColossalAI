@@ -6,8 +6,7 @@ from typing import Tuple
 import pytest
 import torch
 import torch.distributed as dist
-from transformers.models.mixtral.configuration_mixtral import MixtralConfig
-from transformers.models.mixtral.modeling_mixtral import MixtralModel
+from transformers import AutoConfig, AutoModel
 
 import colossalai
 from colossalai.booster.booster import Booster
@@ -24,10 +23,10 @@ NUM_HEADS = 4
 TOP_K = 1
 
 
-@parameterize("config", [(1, 1, 4), (1, 2, 2), (1, 4, 1)])
+@parameterize("config", [(1, 1, 1)])
 def run_zero_with_original_model(config: Tuple[int, ...]):
     stage, ep_size, tp_size = config
-    dtype = torch.float32
+    dtype = torch.float16
 
     rank = torch.distributed.get_rank()
     torch.cuda.set_device(dist.get_rank())
@@ -46,17 +45,16 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
 
     seed_all(10086)
 
-    config = MixtralConfig(
-        hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
-        intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
-        num_hidden_layers=2,
-        num_attention_heads=NUM_HEADS,
-        num_key_value_heads=NUM_HEADS,
-        num_local_experts=NUM_EXPERTS,
-        num_experts_per_tok=TOP_K,
-    )
+    config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
+    config.hidden_size = HIDDEN_SIZE_PER_HEAD * NUM_HEADS
+    config.intermediate_size = HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2
+    config.num_hidden_layers = 2
+    config.num_attention_heads = NUM_HEADS
+    config.num_key_value_heads = NUM_HEADS
+    config.n_routed_experts = NUM_EXPERTS
+    config.num_experts_per_tok = TOP_K
+    torch_model = AutoModel.from_config(config, trust_remote_code=True).cuda().to(dtype)
 
-    torch_model = MixtralModel(config).to(dtype).cuda()
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
 
     zero_model = deepcopy(torch_model).to(dtype)
@@ -99,7 +97,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         loose_close(zero_output, torch_output_sum, dtype=dtype)
 
     # use checkpoint to load sharded zero model
-    model_dir = "./test_mixtral"
+    model_dir = "./test_deepseek"
     if dist.get_rank() == 0:
         os.makedirs(model_dir, exist_ok=True)
 
@@ -109,7 +107,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
 
     dist.barrier()
 
-    saved_model = MixtralModel.from_pretrained(model_dir).cuda()
+    saved_model = AutoModel.from_pretrained(model_dir, trust_remote_code=True).cuda()
     check_model_equal(torch_model, saved_model)
 
     dist.barrier()

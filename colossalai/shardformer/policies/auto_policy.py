@@ -161,7 +161,7 @@ _POLICY_LIST = {
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
     # Deepseek
-    "transformers_modules.modeling_deepseek.DeepSeekModel": PolicyLocation(
+    "transformers_modules.modeling_deepseek.DeepseekModel": PolicyLocation(
         file_name="deepseek", class_name="DeepseekModelPolicy"
     ),
     "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
