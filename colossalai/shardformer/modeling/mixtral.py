@@ -22,6 +22,7 @@ from colossalai.moe._operation import (
     all_to_all_uneven,
 )
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
 from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_group
@@ -64,6 +65,11 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
         # setup moe tp group
         self.moe_tp_group = moe_tp_group
+        if self.moe_tp_group.size() > 1:
+            for expert in held_experts:
+                expert.w1 = Linear1D_Col.from_native_module(expert.w1, self.moe_tp_group)
+                expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.moe_tp_group)
+                expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.moe_tp_group)
 
     @staticmethod
     def from_native_module(

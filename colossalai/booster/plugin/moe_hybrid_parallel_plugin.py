@@ -113,9 +113,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
             self.ddp_config["find_unused_parameters"] = True
 
-        if moe_tp_size != 1:
-            raise NotImplementedError
-
         world_size = dist.get_world_size()
         self.moe_dp_size = world_size // (self.pp_size * ep_size * moe_tp_size)
         self.ep_size = ep_size
@@ -181,6 +178,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     if pp_rank == stage_idx and global_rank in moe_tp_ranks:
                         assert self.moe_tp_group is None
                         self.moe_tp_group = group
+
+        if dist.get_process_group_ranks(self.tp_group) != dist.get_process_group_ranks(self.moe_tp_group):
+            # NOTE: different tp settings between moe and non moe param require complex comm logic, where all_to_all might not be suitable
+            # this assertion implies that dp_size == moe_dp_size * ep_size
+            raise NotImplementedError(
+                f"Only support shared tp group between moe and non moe params, but found non-moe tp {dist.get_process_group_ranks(self.tp_group)}, moe tp {dist.get_process_group_ranks(self.moe_tp_group)}, please make sure tp_size == moe_tp_size"
+            )
 
         self.logger.info(
             f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}",
