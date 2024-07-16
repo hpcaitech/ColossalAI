@@ -4,9 +4,9 @@ import os
 from typing import Dict, List
 
 import torch.distributed as dist
-from torch.utils.data import DataLoader, DistributedSampler
-from colossal_eval.dataset.base import DistributedDataset
 from colossal_eval import dataset, models, utils
+from colossal_eval.dataset.base import DistributedDataset
+from torch.utils.data import DataLoader, DistributedSampler
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -217,11 +217,20 @@ def main(args):
                         dist_dataset = DistributedDataset(category_data["data"])
                     else:
                         dist_dataset = DistributedDataset(prev_questions)
-                        
+
                     sampler = DistributedSampler(dist_dataset, num_replicas=world_size, rank=rank, shuffle=False)
-                    questions_loader = DataLoader(dist_dataset, batch_size=batch_size, sampler=sampler, num_workers=8, pin_memory=True, collate_fn=lambda x: x)
+                    questions_loader = DataLoader(
+                        dist_dataset,
+                        batch_size=batch_size,
+                        sampler=sampler,
+                        num_workers=8,
+                        pin_memory=True,
+                        collate_fn=lambda x: x,
+                    )
                     answers_per_rank = model_.inference(
-                        data_loader=questions_loader, inference_kwargs=category_data["inference_kwargs"], debug=debug_args[dataset_name]
+                        data_loader=questions_loader,
+                        inference_kwargs=category_data["inference_kwargs"],
+                        debug=debug_args[dataset_name],
                     )
                     prev_questions = answers_per_rank
 
@@ -244,7 +253,9 @@ def main(args):
         del model_
         accelerator.empty_cache()
 
-        utils.jdump(dataset_cat_num_mapping, os.path.join(args.inference_save_path, model_name, "dataset_cat_num_mapping.json"))
+        utils.jdump(
+            dataset_cat_num_mapping, os.path.join(args.inference_save_path, model_name, "dataset_cat_num_mapping.json")
+        )
 
     dist.barrier()
     if rank == 0:

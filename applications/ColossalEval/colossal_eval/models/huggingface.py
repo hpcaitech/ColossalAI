@@ -1,12 +1,11 @@
 import copy
-import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
 from colossal_eval.utils import Conversation, get_batch_prompt, is_rank_0
 from peft import PeftModel
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
