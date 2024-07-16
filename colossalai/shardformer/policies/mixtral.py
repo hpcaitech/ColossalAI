@@ -5,11 +5,16 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
+from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.linear import Linear1D_Row
-from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock, MixtralPipelineForwards
+from colossalai.shardformer.modeling.mixtral import (
+    EPMixtralSparseMoeBlock,
+    MixtralPipelineForwards,
+    get_llama_flash_attention_forward,
+    get_llama_flash_attention_model_forward,
+)
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
@@ -20,27 +25,72 @@ class MixtralPolicy(Policy):
         pass
 
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # non-moe params tensor parallelism
+        self.origin_attn_implement = self.model.config._attn_implementation
+        # if self.shard_config.enable_tensor_parallelism:
+        #     # non-moe params tensor parallelism
 
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
+        #     # Resize embedding
+        #     vocab_size = self.model.config.vocab_size
+        #     world_size = self.shard_config.tensor_parallel_size
 
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
+        #     if vocab_size % world_size != 0:
+        #         new_vocab_size = vocab_size + world_size - vocab_size % world_size
+        #         self.model.resize_token_embeddings(new_vocab_size)
 
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        policy = {}
+        from transformers.models.mixtral.modeling_mixtral import (
+            MixtralAttention,
+            MixtralDecoderLayer,
+            MixtralFlashAttention2,
+            MixtralModel,
+            MixtralSdpaAttention,
+        )
 
-        if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
-            raise NotImplementedError(
-                "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+        ATTN_IMPLEMENTATION = {
+            "eager": MixtralAttention,
+            "flash_attention_2": MixtralFlashAttention2,
+            "sdpa": MixtralSdpaAttention,
+        }
+        policy = {}
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+
+            policy[attn_cls] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
             )
+        if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=attn_cls,
+            )
+            if self.pipeline_stage_manager is None:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_llama_flash_attention_model_forward(
+                            self.shard_config,
+                            sp_mode=sp_mode,
+                            sp_size=sp_size,
+                            sp_group=sp_group,
+                        ),
+                    },
+                    policy=policy,
+                    target_key=MixtralModel,
+                )
 
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
@@ -110,10 +160,12 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="input_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                     SubModuleReplacementDescription(
                         suffix="post_attention_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                 ],
                 policy=policy,
@@ -124,6 +176,7 @@ class MixtralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="norm",
                     target_module=FusedRMSNorm,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 policy=policy,
                 target_key=MixtralModel,
