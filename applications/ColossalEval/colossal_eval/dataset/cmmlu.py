@@ -102,7 +102,7 @@ class CMMLUDataset(BaseDataset):
 
     @staticmethod
     def load(
-        path: str, logger: DistributedLogger, few_shot: bool, forward_only: bool, load_train: bool, load_reference: bool
+        path: str, logger: DistributedLogger, few_shot: bool, *args, **kwargs
     ) -> List[Dict]:
         dataset = {"dev": {}, "test": {}}
         for split in ["dev", "test"]:
