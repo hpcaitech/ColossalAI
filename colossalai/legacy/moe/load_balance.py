@@ -7,7 +7,7 @@ from torch import Tensor, nn
 from torch.distributed import ProcessGroup
 
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.manager import MOE_MANAGER
 from colossalai.shardformer.layer.moe import MLPExperts
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 

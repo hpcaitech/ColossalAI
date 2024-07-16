@@ -18,9 +18,9 @@ from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.legacy.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.utils import skip_init
 from colossalai.moe.layers import apply_load_balance
-from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import skip_init
 from colossalai.nn.optimizer import HybridAdam
 
 
