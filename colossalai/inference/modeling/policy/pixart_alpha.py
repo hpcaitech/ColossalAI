@@ -1,12 +1,13 @@
 import torch
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.transformers.transformer_2d import Transformer2DModel
+from diffusers.models.transformers.pixart_transformer_2d import PixArtTransformer2DModel
 from torch import nn
 
 from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.modeling.layers.diffusion import DiffusionPipe
 from colossalai.inference.modeling.layers.distrifusion import (
     DistrifusionConv2D,
+    DistrifusionPatchEmbed,
     DistriSelfAttention,
     PixArtAlphaTransformer2DModel_forward,
 )
@@ -27,11 +28,16 @@ class PixArtAlphaInferPolicy(Policy, RPC_PARAM):
             #     attribute_replacement={"patched_parallel_size": self.shard_config.extra_kwargs["model_shard_infer_config"].patched_parallelism_size}
             # )
 
-            policy[Transformer2DModel] = ModulePolicyDescription(
+            policy[PixArtTransformer2DModel] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
-                        suffix="pos_embed.conv",
+                        suffix="pos_embed.proj",
                         target_module=DistrifusionConv2D,
+                        kwargs={"model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"]},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="pos_embed",
+                        target_module=DistrifusionPatchEmbed,
                         kwargs={"model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"]},
                     ),
                 ],

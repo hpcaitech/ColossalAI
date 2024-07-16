@@ -22,6 +22,11 @@ _DTYPE_MAPPING = {
 }
 
 
+def log_generation_time(log_message, log_file):
+    with open(log_file, "a") as f:
+        f.write(log_message)
+
+
 def benchmark_colossalai(rank, world_size, port, args):
     if isinstance(args.width, int):
         width_list = [args.width]
@@ -80,9 +85,13 @@ def benchmark_colossalai(rank, world_size, port, args):
                     ),
                 )
             end = time.perf_counter()
-        coordinator.print_on_master(
-            f"[ColossalAI]avg generation time for h({h})xw({w}) is {(end - start) / args.n_repeat_times:.2f}s"
-        )
+        log_msg = f"[ColossalAI]avg generation time for h({h})xw({w}) is {(end - start) / args.n_repeat_times:.2f}s"
+        coordinator.print_on_master(log_msg)
+        if args.log:
+            log_file = f"examples/inference/stable_diffusion/benchmark_bs{args.batch_size}_pps{args.patched_parallel_size}_steps{args.num_inference_steps}_height{h}_width{w}_dtype{args.dtype}_profile{args.profile}_model{args.model.split('/')[-1]}_mode{args.mode}.log"
+            if dist.get_rank() == 0:
+                log_generation_time(log_message=log_msg, log_file=log_file)
+
         if args.profile:
             file = f"examples/inference/stable_diffusion/benchmark_bs{args.batch_size}_pps{args.patched_parallel_size}_steps{args.num_inference_steps}_height{h}_width{w}_dtype{args.dtype}_warmup{args.n_warm_up_steps}_repeat{args.n_repeat_times}_profile{args.profile}_model{args.model.split('/')[-1]}_mode{args.mode}_rank_{dist.get_rank()}.json"
             prof.export_chrome_trace(file)
@@ -127,7 +136,12 @@ def benchmark_diffusers(args):
             for i in range(args.n_repeat_times):
                 model(prompt="hello world", num_inference_steps=args.num_inference_steps, height=h, width=w)
             end = time.perf_counter()
-        print(f"[ColossalAI]avg generation time for h({h})xw({w}) is {(end - start) / args.n_repeat_times:.2f}s")
+        log_msg = f"[Diffusers]avg generation time for h({h})xw({w}) is {(end - start) / args.n_repeat_times:.2f}s"
+        print(log_msg)
+        if args.log:
+            log_file = f"examples/inference/stable_diffusion/benchmark_bs{args.batch_size}_pps{args.patched_parallel_size}_steps{args.num_inference_steps}_height{h}_width{w}_dtype{args.dtype}_profile{args.profile}_model{args.model.split('/')[-1]}_mode{args.mode}.log"
+            log_generation_time(log_message=log_msg, log_file=log_file)
+
         if args.profile:
             file = f"examples/inference/stable_diffusion/benchmark_bs{args.batch_size}_pps{args.patched_parallel_size}_steps{args.num_inference_steps}_height{h}_width{w}_dtype{args.dtype}_warmup{args.n_warm_up_steps}_repeat{args.n_repeat_times}_profile{args.profile}_model{args.model.split('/')[-1]}_mode{args.mode}.json"
             prof.export_chrome_trace(file)
@@ -142,8 +156,10 @@ def benchmark(args):
         benchmark_diffusers(args)
 
 
-# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 2 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" -p 2 --mode colossalai
-# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --mode diffusers
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 2 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" -p 2 --mode colossalai --log
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 4 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" -p 4 --mode colossalai --log
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 8 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" -p 8 --mode colossalai --log
+# CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 1 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" --mode diffusers --log
 
 # enable profiler
 # CUDA_VISIBLE_DEVICES_set_n_least_memory_usage 2 && python examples/inference/stable_diffusion/benchmark_sd3.py -m "PixArt-alpha/PixArt-XL-2-1024-MS" -p 2 --mode colossalai --n_warm_up_steps 3 --n_repeat_times 1 --profile --num_inference_steps 20
@@ -160,6 +176,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_warm_up_steps", type=int, default=3, help="warm up times")
     parser.add_argument("--n_repeat_times", type=int, default=5, help="repeat times")
     parser.add_argument("--profile", default=False, action="store_true", help="enable torch profiler")
+    parser.add_argument("--log", default=False, action="store_true", help="enable torch profiler")
     parser.add_argument(
         "-m",
         "--model",

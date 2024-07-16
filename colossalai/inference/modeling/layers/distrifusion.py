@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from diffusers.models import attention_processor
 from diffusers.models.attention import Attention
 from diffusers.models.embeddings import PatchEmbed, get_2d_sincos_pos_embed
-from diffusers.models.transformers.transformer_2d import Transformer2DModel
+from diffusers.models.transformers.pixart_transformer_2d import PixArtTransformer2DModel
 from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
 from torch import nn
 from torch.distributed import ProcessGroup
@@ -34,7 +34,7 @@ logger = get_dist_logger(__name__)
 
 # adapted from https://github.com/huggingface/diffusers/blob/v0.29.0-release/src/diffusers/models/transformers/transformer_2d.py
 def PixArtAlphaTransformer2DModel_forward(
-    self: Transformer2DModel,
+    self: PixArtTransformer2DModel,
     hidden_states: torch.Tensor,
     encoder_hidden_states: Optional[torch.Tensor] = None,
     timestep: Optional[torch.LongTensor] = None,
@@ -76,11 +76,20 @@ def PixArtAlphaTransformer2DModel_forward(
         encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
     # 1. Input
-    assert self.is_input_patches == True
-    height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-    hidden_states, encoder_hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
-        hidden_states, encoder_hidden_states, timestep, added_cond_kwargs
+    batch_size = hidden_states.shape[0]
+    height, width = (
+        hidden_states.shape[-2] // self.config.patch_size,
+        hidden_states.shape[-1] // self.config.patch_size,
     )
+    hidden_states = self.pos_embed(hidden_states)
+
+    timestep, embedded_timestep = self.adaln_single(
+        timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+    )
+
+    if self.caption_projection is not None:
+        encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 
     # 2. Blocks
     for block in self.transformer_blocks:
@@ -95,20 +104,41 @@ def PixArtAlphaTransformer2DModel_forward(
         )
 
     # 3. Output
-    output = self._get_output_for_patched_inputs(
-        hidden_states=hidden_states,
-        timestep=timestep,
-        class_labels=class_labels,
-        embedded_timestep=embedded_timestep,
-        height=height // self.patched_parallel_size,
-        width=width,
+    shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None].to(self.scale_shift_table.device)).chunk(
+        2, dim=1
+    )
+    hidden_states = self.norm_out(hidden_states)
+    # Modulation
+    hidden_states = hidden_states * (1 + scale.to(hidden_states.device)) + shift.to(hidden_states.device)
+    hidden_states = self.proj_out(hidden_states)
+    hidden_states = hidden_states.squeeze(1)
+
+    # unpatchify
+    hidden_states = hidden_states.reshape(
+        shape=(
+            -1,
+            height // self.patched_parallel_size,
+            width,
+            self.config.patch_size,
+            self.config.patch_size,
+            self.out_channels,
+        )
+    )
+    hidden_states = torch.einsum("nhwpqc->nchpwq", hidden_states)
+    output = hidden_states.reshape(
+        shape=(
+            -1,
+            self.out_channels,
+            height // self.patched_parallel_size * self.config.patch_size,
+            width * self.config.patch_size,
+        )
     )
 
     # enable Distrifusion Optimization
-    if hasattr(self, "patched_parallel_size") is None:
+    if hasattr(self, "patched_parallel_size"):
         from torch import distributed as dist
 
-        if getattr(self, "output_buffer", None):
+        if getattr(self, "output_buffer", None) is None:
             self.output_buffer = torch.empty_like(output)
         if getattr(self, "buffer_list", None) is None:
             self.buffer_list = [torch.empty_like(output) for _ in range(self.patched_parallel_size)]
@@ -473,7 +503,9 @@ class DistriSelfAttention(ParallelModule):
         self.handle = None
         self.process_group = process_group
         self.async_nccl_stream = async_nccl_stream
-        self.warm_step = 5  # for warmup
+        self.launch_event = torch.cuda.Event()
+        self.sync_event = torch.cuda.Event()
+        self.warm_step = 3  # for warmup
 
     @staticmethod
     def from_native_module(
@@ -481,9 +513,10 @@ class DistriSelfAttention(ParallelModule):
     ) -> ParallelModule:
         model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
         async_nccl_stream = kwargs.get("async_nccl_stream", None)
+        proc_group = kwargs.get("async_nccl_group", process_group)
         return DistriSelfAttention(
             module=module,
-            process_group=process_group,
+            process_group=proc_group,
             model_shard_infer_config=model_shard_infer_config,
             async_nccl_stream=async_nccl_stream,
         )
@@ -525,9 +558,15 @@ class DistriSelfAttention(ParallelModule):
                 with torch.cuda.stream(
                     self.async_nccl_stream
                 ):  # NOTE(@LRY89757) implementation async op of torch.distributed.all_gather  to ensure efficient overlap of comp and comm
-                    self.handle = dist.all_gather(self.buffer_list, kv, group=self.process_group, async_op=False)
-                    self.handle = torch.cuda.Event()
-                    self.handle.record(self.async_nccl_stream)
+                    self.handle = dist.all_gather(self.buffer_list, kv, group=self.process_group, async_op=True)
+                    self.launch_event.record(self.async_nccl_stream)
+                    if self.handle is not None:
+                        self.handle.wait()
+                        self.handle = None
+                    self.sync_event.record(self.async_nccl_stream)
+
+        if self.handle is not None:
+            self.launch_event.wait()
 
         if HAS_FLASH_ATTN:
             # flash attn
@@ -582,7 +621,8 @@ class DistriSelfAttention(ParallelModule):
 
         # async preallocates memo buffer
         if self.handle is not None:
-            self.handle.wait()
+            self.sync_event.wait()
+            # torch.cuda.default_stream().wait_stream(self.async_nccl_stream)
             self.handle = None
 
         b, l, c = hidden_states.shape
