@@ -74,12 +74,6 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.use_dpp = use_ddp
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
-        if overlap_allgather:
-            self.op_hook = ZeroOpHook()
-            for p in module.parameters():
-                if p.requires_grad and type(p) is not ColoParameter:
-                    p.__class__ = ColoParameter
-                    p.__init__(p, requires_grad=True)
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -117,6 +111,12 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             module = DDP(module, process_group=dp_group, **ddp_config)
 
         super().__init__(module)
+        if overlap_allgather:
+            self.op_hook = ZeroOpHook()
+            for p in module.parameters():
+                if p.requires_grad and type(p) is not ColoParameter:
+                    p.__class__ = ColoParameter
+                    p.__init__(p, requires_grad=True)
 
     def sync_shared_params(self):
         for shared_param, group in zip(self.shared_params, self.shared_param_process_groups):
@@ -208,7 +208,8 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         if self.convert_fn is not None:
             args = tree_map(self.convert_fn, args)
             kwargs = tree_map(self.convert_fn, kwargs)
-        return super().forward(*args, **kwargs)
+        with self._wait_all_gather():
+            return super().forward(*args, **kwargs)
 
     def unwrap(self):
         module = super().unwrap()

@@ -98,6 +98,7 @@ def main():
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--no_cache", action="store_true")
+    parser.add_argument("--overlap_allgather", action="store_true")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -199,9 +200,9 @@ def main():
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
-            dp_outside=False,
             overlap_p2p=args.overlap,
             enable_metadata_cache=not args.no_cache,
+            overlap_allgather=args.overlap_allgather,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
