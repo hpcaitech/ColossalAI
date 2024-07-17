@@ -460,7 +460,7 @@ class LlamaPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -592,7 +592,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
     return forward
 
 
-def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -659,18 +659,9 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
         if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(
-                inputs_embeds,
-                1,
-                sp_group,
-            )
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(
-                inputs_embeds,
-                1,
-                sp_group,
-                1 / sp_size,
-            )
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -715,18 +706,9 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
         hidden_states = self.norm(hidden_states)
 
         if sp_mode == "ring" or sp_mode == "split_gather":
-            hidden_states = gather_forward_split_backward(
-                hidden_states,
-                1,
-                sp_group,
-            )
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
         elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(
-                hidden_states,
-                1,
-                sp_group,
-                grad_scale=sp_size,
-            )
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
