@@ -24,10 +24,6 @@ class PixArtAlphaInferPolicy(Policy, RPC_PARAM):
 
         if self.shard_config.extra_kwargs["model_shard_infer_config"].patched_parallelism_size > 1:
 
-            # policy[DiffusionPipe] = ModulePolicyDescription(
-            #     attribute_replacement={"patched_parallel_size": self.shard_config.extra_kwargs["model_shard_infer_config"].patched_parallelism_size}
-            # )
-
             policy[PixArtTransformer2DModel] = ModulePolicyDescription(
                 sub_module_replacement=[
                     SubModuleReplacementDescription(

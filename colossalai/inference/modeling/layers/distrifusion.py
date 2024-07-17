@@ -325,6 +325,7 @@ class Distrifusion_FusedAttention(ParallelModule):
         module: attention_processor.Attention,
         process_group: Union[ProcessGroup, List[ProcessGroup]],
         model_shard_infer_config: ModelShardInferenceConfig = None,
+        async_nccl_stream: torch.cuda.Stream = None,
     ):
         super().__init__()
         self.counter = 0
@@ -334,6 +335,7 @@ class Distrifusion_FusedAttention(ParallelModule):
         self.patched_parallelism_size = model_shard_infer_config.patched_parallelism_size
         self.handle = None
         self.process_group = process_group
+        self.async_nccl_stream = async_nccl_stream
         self.warm_step = 5  # for warmup
 
     @staticmethod
@@ -341,8 +343,12 @@ class Distrifusion_FusedAttention(ParallelModule):
         module: attention_processor.Attention, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
     ) -> ParallelModule:
         model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
+        async_nccl_stream = kwargs.get("async_nccl_stream", None)
         return Distrifusion_FusedAttention(
-            module=module, process_group=process_group, model_shard_infer_config=model_shard_infer_config
+            module=module,
+            process_group=process_group,
+            model_shard_infer_config=model_shard_infer_config,
+            async_nccl_stream=async_nccl_stream,
         )
 
     def _forward(
@@ -390,11 +396,11 @@ class Distrifusion_FusedAttention(ParallelModule):
                 full_kv = torch.cat(self.buffer_list, dim=1)
             else:
                 # logger.info(f"use old kv to infer: {self.counter}")
-                new_buffer_list = [buffer for buffer in self.buffer_list]
-                new_buffer_list[self.kv_buffer_idx] = kv
-                full_kv = torch.cat(new_buffer_list, dim=1)
+                self.buffer_list[self.kv_buffer_idx].copy_(kv)
+                full_kv = torch.cat(self.buffer_list, dim=1)
                 assert self.handle is None, "we should maintain the kv of last step"
-                self.handle = dist.all_gather(new_buffer_list, kv, group=self.process_group, async_op=True)
+                with torch.cuda.stream(self.async_nccl_stream):  # NOTE(@lry89757) make nccl kernels' list more neat
+                    self.handle = dist.all_gather(self.buffer_list, kv, group=self.process_group, async_op=True)
 
         key, value = torch.split(full_kv, full_kv.shape[-1] // 2, dim=-1)
 
@@ -503,8 +509,6 @@ class DistriSelfAttention(ParallelModule):
         self.handle = None
         self.process_group = process_group
         self.async_nccl_stream = async_nccl_stream
-        self.launch_event = torch.cuda.Event()
-        self.sync_event = torch.cuda.Event()
         self.warm_step = 3  # for warmup
 
     @staticmethod
@@ -513,10 +517,9 @@ class DistriSelfAttention(ParallelModule):
     ) -> ParallelModule:
         model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
         async_nccl_stream = kwargs.get("async_nccl_stream", None)
-        proc_group = kwargs.get("async_nccl_group", process_group)
         return DistriSelfAttention(
             module=module,
-            process_group=proc_group,
+            process_group=process_group,
             model_shard_infer_config=model_shard_infer_config,
             async_nccl_stream=async_nccl_stream,
         )
@@ -555,18 +558,8 @@ class DistriSelfAttention(ParallelModule):
                 self.buffer_list[self.kv_buffer_idx].copy_(kv)
                 full_kv = torch.cat(self.buffer_list, dim=1)
                 assert self.handle is None, "we should maintain the kv of last step"
-                with torch.cuda.stream(
-                    self.async_nccl_stream
-                ):  # NOTE(@LRY89757) implementation async op of torch.distributed.all_gather  to ensure efficient overlap of comp and comm
+                with torch.cuda.stream(self.async_nccl_stream):  # NOTE(@lry89757) make nccl kernels' list more neat
                     self.handle = dist.all_gather(self.buffer_list, kv, group=self.process_group, async_op=True)
-                    self.launch_event.record(self.async_nccl_stream)
-                    if self.handle is not None:
-                        self.handle.wait()
-                        self.handle = None
-                    self.sync_event.record(self.async_nccl_stream)
-
-        if self.handle is not None:
-            self.launch_event.wait()
 
         if HAS_FLASH_ATTN:
             # flash attn
@@ -621,8 +614,7 @@ class DistriSelfAttention(ParallelModule):
 
         # async preallocates memo buffer
         if self.handle is not None:
-            self.sync_event.wait()
-            # torch.cuda.default_stream().wait_stream(self.async_nccl_stream)
+            self.handle.wait()
             self.handle = None
 
         b, l, c = hidden_states.shape

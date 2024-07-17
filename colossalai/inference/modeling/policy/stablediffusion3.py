@@ -1,3 +1,4 @@
+import torch
 from diffusers.models.attention import JointTransformerBlock
 from diffusers.models.transformers import SD3Transformer2DModel
 from torch import nn
@@ -22,10 +23,6 @@ class StableDiffusion3InferPolicy(Policy, RPC_PARAM):
         policy = {}
 
         if self.shard_config.extra_kwargs["model_shard_infer_config"].patched_parallelism_size > 1:
-
-            # policy[DiffusionPipe] = ModulePolicyDescription(
-            #     attribute_replacement={"patched_parallel_size": self.shard_config.extra_kwargs["model_shard_infer_config"].patched_parallelism_size}
-            # )
 
             policy[SD3Transformer2DModel] = ModulePolicyDescription(
                 sub_module_replacement=[
@@ -53,7 +50,10 @@ class StableDiffusion3InferPolicy(Policy, RPC_PARAM):
                 SubModuleReplacementDescription(
                     suffix="attn",
                     target_module=Distrifusion_FusedAttention,
-                    kwargs={"model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"]},
+                    kwargs={
+                        "model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"],
+                        "async_nccl_stream": torch.cuda.Stream(),
+                    },
                 )
             ]
         )

@@ -296,7 +296,7 @@ class InferenceConfig(RPC_PARAM):
         self.start_token_size = self.block_size
 
         # check Distrifusion
-        # (TODO@lry897575) need more detailed check
+        # TODO(@lry89757) need more detailed check
         if self.patched_parallelism_size > 1:
             # self.use_patched_parallelism = True
             self.tp_size = (
