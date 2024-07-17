@@ -246,11 +246,9 @@ class InferenceConfig(RPC_PARAM):
     generated_token_size: int = 512
 
     # Acceleration for Diffusion Model(PipeFusion or Distrifusion)
-    # use_patched_parallelism : bool = False
     patched_parallelism_size: int = 1  # for distrifusion
-    # use_pipefusion : bool = False
-    pipeFusion_m_size: int = 1  # for pipefusion
-    pipeFusion_n_size: int = 1  # for pipefusion
+    # pipeFusion_m_size: int = 1  # for pipefusion
+    # pipeFusion_n_size: int = 1  # for pipefusion
 
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len

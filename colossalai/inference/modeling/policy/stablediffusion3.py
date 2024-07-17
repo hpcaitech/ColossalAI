@@ -1,4 +1,3 @@
-import torch
 from diffusers.models.attention import JointTransformerBlock
 from diffusers.models.transformers import SD3Transformer2DModel
 from torch import nn
@@ -52,7 +51,6 @@ class StableDiffusion3InferPolicy(Policy, RPC_PARAM):
                     target_module=Distrifusion_FusedAttention,
                     kwargs={
                         "model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"],
-                        "async_nccl_stream": torch.cuda.Stream(),
                     },
                 )
             ]
