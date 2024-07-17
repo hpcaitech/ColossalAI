@@ -623,7 +623,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
     return forward
 
 
-def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -697,7 +697,9 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(
-                inputs_embeds, 1, sp_group, fp8_comm=shard_config.fp8_communication
+                inputs_embeds,
+                1,
+                sp_group,
             )
         elif sp_mode == "all_to_all":
             inputs_embeds = split_forward_gather_backward(
@@ -705,7 +707,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 1,
                 sp_group,
                 1 / sp_size,
-                fp8_comm=shard_config.fp8_communication
+                fp8_communication=shard_config.fp8_communication
             )
         hidden_states = inputs_embeds
 
@@ -752,11 +754,18 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if sp_mode == "ring" or sp_mode == "split_gather":
             hidden_states = gather_forward_split_backward(
-                hidden_states, 1, sp_group, fp8_comm=shard_config.fp8_communication
+                hidden_states,
+                1,
+                sp_group,
+                fp8_communication=shard_config.fp8_communication
             )
         elif sp_mode == "all_to_all":
             hidden_states = gather_forward_split_backward(
-                hidden_states, 1, sp_group, grad_scale=sp_size, fp8_comm=shard_config.fp8_communication
+                hidden_states,
+                1,
+                sp_group,
+                grad_scale=sp_size,
+                fp8_communication=shard_config.fp8_communication
             )
 
         # add hidden states from the last decoder layer
