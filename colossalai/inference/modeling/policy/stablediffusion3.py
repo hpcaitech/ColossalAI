@@ -5,8 +5,8 @@ from torch import nn
 from colossalai.inference.config import RPC_PARAM
 from colossalai.inference.modeling.layers.diffusion import DiffusionPipe
 from colossalai.inference.modeling.layers.distrifusion import (
-    Distrifusion_FusedAttention,
     DistrifusionConv2D,
+    DistrifusionFusedAttention,
     DistrifusionPatchEmbed,
     SD3Transformer2DModel_forward,
 )
@@ -48,7 +48,7 @@ class StableDiffusion3InferPolicy(Policy, RPC_PARAM):
             sub_module_replacement=[
                 SubModuleReplacementDescription(
                     suffix="attn",
-                    target_module=Distrifusion_FusedAttention,
+                    target_module=DistrifusionFusedAttention,
                     kwargs={
                         "model_shard_infer_config": self.shard_config.extra_kwargs["model_shard_infer_config"],
                     },

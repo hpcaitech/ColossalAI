@@ -318,7 +318,7 @@ class DistrifusionConv2D(ParallelModule):
 
 
 # Code adapted from: https://github.com/huggingface/diffusers/blob/v0.29.0-release/src/diffusers/models/attention_processor.py
-class Distrifusion_FusedAttention(ParallelModule):
+class DistrifusionFusedAttention(ParallelModule):
 
     def __init__(
         self,
@@ -341,7 +341,7 @@ class Distrifusion_FusedAttention(ParallelModule):
         module: attention_processor.Attention, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
     ) -> ParallelModule:
         model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
-        return Distrifusion_FusedAttention(
+        return DistrifusionFusedAttention(
             module=module,
             process_group=process_group,
             model_shard_infer_config=model_shard_infer_config,
