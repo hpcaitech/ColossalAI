@@ -224,10 +224,7 @@ def main():
         # modify the param accordingly for finetuning test cases
         plugin = HybridParallelPlugin(
             tp_size=1,
-            pp_size=1,
-            sp_size=2,
-            enable_sequence_parallelism=True,
-            sequence_parallelism_mode="all_to_all",
+            pp_size=2,
             num_microbatches=None,
             pp_style="interleaved",
             num_model_chunks=2,
