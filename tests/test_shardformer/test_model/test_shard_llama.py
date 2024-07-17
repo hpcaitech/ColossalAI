@@ -34,6 +34,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if enable_gradient_checkpointing:
         # org_model.gradient_checkpointing_enable()
         sharded_model.unwrap().gradient_checkpointing_enable()
+
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
     )
@@ -70,7 +71,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             )
             grad = grads[grad_index]
             sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
-            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-2, rtol=5e-2, check_dtype=False)
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -108,7 +109,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
-            atol, rtol = 5e-2, 5e-2
+            atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "LlamaModel":
             check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
@@ -120,7 +121,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-4, 1e-3
         else:
-            atol, rtol = 5e-2, 5e-2
+            atol, rtol = 5e-3, 5e-3
         try:
             check_weight(
                 llama_model,
@@ -145,117 +146,31 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
-        # {  # Test ring + Flash attention
-        #     "tp_size": 2,
-        #     "pp_size": 1,
-        #     "sp_size": 2,
-        #     "num_microbatches": 1,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "ring",
-        #     "enable_flash_attention": True,
-        #     "use_lazy_init": True,
-        #     "zero_stage": 2,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {  # Ulysess + Flash attention
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "sp_size": 2,
-        #     "num_microbatches": 2,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "all_to_all",
-        #     "enable_flash_attention": True,
-        #     "use_lazy_init": True,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 1,
-        #     "sp_size": 2,
-        #     "num_microbatches": 1,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "all_to_all",
-        #     "use_lazy_init": True,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {
-        #     "tp_size": 4,
-        #     "pp_size": 1,
-        #     "num_microbatches": 1,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "split_gather",
-        #     "enable_flash_attention": False,
-        #     "use_lazy_init": True,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {
-        #     "tp_size": 2,
-        #     "pp_size": 2,
-        #     "num_microbatches": 2,
-        #     "enable_all_optimization": True,
-        #     "use_lazy_init": True,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        #     "enable_gradient_checkpointing": True,
-        #     "gradient_checkpoint_config": PipelineGradientCheckpointConfig(gradient_checkpointing_ratio=0.5),
-        # },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "num_microbatches": 4,
-        #     "use_lazy_init": False,
-        #     "precision": "fp32",
-        #     "enable_gradient_checkpointing": True,
-        #     "gradient_checkpoint_config": PipelineGradientCheckpointConfig(num_ckpt_layers_per_stage=[4, 0]),
-        # },
-        # {
-        #     "tp_size": 2,
-        #     "pp_size": 1,
-        #     "enable_all_optimization": True,
-        #     "use_lazy_init": True,
-        #     "zero_stage": 2,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 2,
-        #     "num_microbatches": 2,
-        #     "enable_all_optimization": True,
-        #     "use_lazy_init": True,
-        #     "zero_stage": 1,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
-        {
+        {  # Test ring + Flash attention
             "tp_size": 2,
             "pp_size": 1,
             "sp_size": 2,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "split_gather",
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": True,
             "use_lazy_init": True,
-            "zero_stage": 1,
+            "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
-            "fp8_communication": True,
         },
-        {
-            "tp_size": 2,
-            "pp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": False,
+        {  # Ulysess + Flash attention
+            "tp_size": 1,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "enable_flash_attention": True,
             "use_lazy_init": True,
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
-            "fp8_communication": True,
         },
         {
             "tp_size": 1,
@@ -268,18 +183,67 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
-            "fp8_communication": True,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": False,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(gradient_checkpointing_ratio=0.5),
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 4,
+            "use_lazy_init": False,
+            "precision": "fp32",
+            "enable_gradient_checkpointing": True,
+            "gradient_checkpoint_config": PipelineGradientCheckpointConfig(num_ckpt_layers_per_stage=[4, 0]),
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 1,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 2,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
         },
     ],
 )
 def run_llama_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama_for_sequence_classification")
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
             check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
         except Exception as e:
-            print(f"Failed config out: {test_config}")
+            print(f"Failed config: {test_config}")
             raise e
 
     clear_layout_converter()
@@ -327,7 +291,7 @@ def run_llama_test(test_config):
     ],
 )
 def run_llama_3d_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama_for_sequence_classification")
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
@@ -369,4 +333,4 @@ def test_llama_3d():
 
 if __name__ == "__main__":
     test_llama()
-    # test_llama_3d()
+    test_llama_3d()

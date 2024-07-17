@@ -220,9 +220,9 @@ def main():
         plugin = HybridParallelPlugin(
             tp_size=2,
             pp_size=1,
-            sp_size=2,
-            sequence_parallelism_mode="split_gather",
-            enable_sequence_parallelism=True,
+            sp_size=1,
+            # sequence_parallelism_mode="split_gather",
+            # enable_sequence_parallelism=True,
             num_microbatches=None,
             microbatch_size=1,
             enable_all_optimization=True,
@@ -321,7 +321,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    if dist.get_rank() == 0:
-        import pdb
-
-        pdb.set_trace()
