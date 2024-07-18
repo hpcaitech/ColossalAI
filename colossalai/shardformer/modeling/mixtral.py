@@ -124,8 +124,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         selected_experts_idx = selected_experts.argsort()
         dispatch_states = hidden_states.repeat(self.top_k, 1)[selected_experts_idx]
         input_split_sizes = selected_experts.bincount(minlength=self.num_experts)
-        rank = dist.get_rank()
-        print(f"{rank=}, {input_split_sizes}")
+        dist.get_rank()
         output_split_sizes = torch.zeros_like(input_split_sizes)
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
@@ -188,7 +187,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
 class MixtralPipelineForwards:
     """
-    This class serves as a micro library for forward function substitution of Llama models
+    This class serves as a micro library for forward function substitution of Mixtral models
     under pipeline setting.
     """
 
@@ -524,7 +523,7 @@ class MixtralPipelineForwards:
             return out
 
 
-def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -566,8 +565,6 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
             key_states = all_to_all_comm(key_states, sp_group)
             value_states = all_to_all_comm(value_states, sp_group)
             bsz, q_len, _ = query_states.size()
-        dist.get_rank()
-        # print(f"{rank}, flash attn 1 {query_states}, {query_states.shape}")
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -588,7 +585,6 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
-        # print(f"{rank}, flash attn 2 {query_states[0][0]}, {query_states.shape}")
         use_sliding_windows = (
             _flash_supports_window_size
             and getattr(self.config, "sliding_window", None) is not None
@@ -659,9 +655,6 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        # print(f"{rank}, flash attn 3 q:{query_states[0][0].sum(dim=-2)}, {query_states.shape}")
-        # print(f"{rank}, flash attn 3 k:{key_states[0][0].sum(dim=-2)}, {key_states.shape}")
-        # print(f"{rank}, flash attn 3 v:{value_states[0][0].sum(dim=-2)}, {value_states.shape}")
         attn_output = self._flash_attention_forward(
             query_states,
             key_states,
@@ -672,13 +665,10 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
             use_sliding_windows=use_sliding_windows,
         )
 
-        # print(f"{rank}, flash attn 4 :{attn_output[0][0][:2]}, {attn_output.shape}") # (1, 8, 32, 4)
-        # attn_output = attn_output.transpose(1, 2).contiguous()  # (1, 32, 8, 4)
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim).contiguous()  # (1, 8, 128)
             attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)  # (1, 4, 256)
-            # print(f"{rank}, flash attn 5 :{attn_output[0][0]}, {attn_output.shape}")
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -691,7 +681,7 @@ def get_llama_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, 
     return forward
 
 
-def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(

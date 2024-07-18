@@ -12,8 +12,8 @@ from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.mixtral import (
     EPMixtralSparseMoeBlock,
     MixtralPipelineForwards,
-    get_llama_flash_attention_forward,
-    get_llama_flash_attention_model_forward,
+    get_mixtral_flash_attention_forward,
+    get_mixtral_flash_attention_model_forward,
 )
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -73,7 +73,7 @@ class MixtralPolicy(Policy):
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                    "forward": get_mixtral_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=attn_cls,
@@ -81,7 +81,7 @@ class MixtralPolicy(Policy):
             if self.pipeline_stage_manager is None:
                 self.append_or_create_method_replacement(
                     description={
-                        "forward": get_llama_flash_attention_model_forward(
+                        "forward": get_mixtral_flash_attention_model_forward(
                             self.shard_config,
                             sp_mode=sp_mode,
                             sp_size=sp_size,
@@ -295,16 +295,16 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        llama_model = self.model.model
+        mixtral_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(llama_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(mixtral_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: llama_model.embed_tokens.weight,
+                        0: mixtral_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
@@ -344,5 +344,5 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama for sequence classification model"""
+        """No shared params in mixtral for sequence classification model"""
         return []
