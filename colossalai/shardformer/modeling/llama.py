@@ -27,17 +27,10 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
-<<<<<<< HEAD
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, RingAttention, dist_cross_entropy
-=======
-from colossalai.shardformer.layer.utils import is_share_sp_tp, zigzag_split_batch
-from colossalai.shardformer.shard import ShardConfig
-
-from ..layer import ColoAttention, RingAttention, dist_cross_entropy, get_pad_info
->>>>>>> fwd bwd logic complete; add experimental triton rescale
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
@@ -833,6 +826,8 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if shard_config.sequence_parallelism_mode == "ring_attn":
+            labels = zigzag_split_batch([labels], shard_config.sequence_parallel_process_group)[0]
 
         if shard_config.sequence_parallelism_mode == "ring_attn" and shard_config.parallel_output:
             # Special processing: Split labels in a zigzag fashion too
