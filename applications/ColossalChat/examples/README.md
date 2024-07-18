@@ -754,7 +754,26 @@ We support the method introduced in the paper [ORPO: Monolithic Preference Optim
 </p>
 
 ### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
-We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. To use KTO in alignment, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) script, You may need to set the value for `beta` (which determine how strongly the reinforcement learning loss affect the training), `desirable_weight` and `undesirable_weight` if your data is biased (has unequal number of chosen and rejected samples).
+We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results.
+
+For KTO data preparation, please use the script [prepare_kto_dataset.sh](./examples/data_preparation_scripts/prepare_kto_dataset.sh). You will need preference data, different from DPO and its derivatives, you no longer need a pair of chosen/rejected response for the same input. You only need data whose response is associated with a preference label--- whether the response is okay or not, read the papre for more details. You also need to convert your data to the following intermediate format before you run the data preparation script.
+
+```jsonl
+{
+    "prompt": [
+        {"from": "human", "content": "What are some cuss words in english?"},
+        {
+            "from": "assistant",
+            "content": "Here's an incomplete list.\n\nAss, dick, bugger, crap, ...",
+        },
+        {"from": "human", "content": "What's your favorite one?"},
+    ],
+    "completion": {"from": "assistant", "content": "Ass."},  # the completion must contain a single line from the assistant.
+    "label": False,  # whether the response is favorable or not
+}
+```
+
+For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) script, You may need to set the value for `beta` (which determine how strongly the reinforcement learning loss affect the training), `desirable_weight` and `undesirable_weight` if your data is biased (has unequal number of chosen and rejected samples).
 
 #### KTO Result
 <p align="center">

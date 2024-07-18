@@ -16,23 +16,23 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
 PROJECT_NAME="kto"
-PARENT_SAVE_DIR="/home/nvme-share/home/yeanbang/data/experiments/kto/checkpoint" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="/home/nvme-share/home/yeanbang/data/experiments/kto/log" # Path to a folder to save logs
-PARENT_CONFIG_FILE="/home/nvme-share/home/yeanbang/data/experiments/kto/log" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/home/nvme-share/home/yeanbang/data/model/hh_rlhf_sheared_llamasft-2024-07-17-07-29-29/modeling" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/home/nvme-share/share/models/Sheared-LLaMA-1.3B" # huggingface or local tokenizer path
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 
 declare -a dataset=(
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00000
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00001
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00002
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00003
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00004
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00005
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00006
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00007
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00008
-    /home/nvme-share/home/yeanbang/data/experiments/kto/arrow/part-00009
+    /Your/KTO/Data/arrow/part-00000
+    /Your/KTO/Data/arrow/part-00001
+    /Your/KTO/Data/arrow/part-00002
+    /Your/KTO/Data/arrow/part-00003
+    /Your/KTO/Data/arrow/part-00004
+    /Your/KTO/Data/arrow/part-00005
+    /Your/KTO/Data/arrow/part-00006
+    /Your/KTO/Data/arrow/part-00007
+    /Your/KTO/Data/arrow/part-00008
+    /Your/KTO/Data/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)

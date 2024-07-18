@@ -180,7 +180,7 @@ class KTOTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.actor_scheduler.step()
 
-            # # sync
+            # sync
             loss_mean = all_reduce_mean(tensor=loss)
             chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards.mean())
             rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards.mean())
@@ -297,7 +297,7 @@ class KTOTrainer(SLTrainer):
                 chosen_logprob, rejected_logprob, kl_logprob, ref_chosen_logprob, ref_rejected_logprob, ref_kl_logprob
             )
 
-            # # sync
+            # sync
             loss_mean = all_reduce_mean(tensor=loss)
             chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards.mean())
             rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards.mean())
