@@ -26,18 +26,8 @@ class MixtralPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.tie_weight = self.tie_weight_check()
         self.origin_attn_implement = self.model.config._attn_implementation
-        # if self.shard_config.enable_tensor_parallelism:
-        #     # non-moe params tensor parallelism
-
-        #     # Resize embedding
-        #     vocab_size = self.model.config.vocab_size
-        #     world_size = self.shard_config.tensor_parallel_size
-
-        #     if vocab_size % world_size != 0:
-        #         new_vocab_size = vocab_size + world_size - vocab_size % world_size
-        #         self.model.resize_token_embeddings(new_vocab_size)
-
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
