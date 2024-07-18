@@ -37,6 +37,19 @@ preference_seed = {
     "chosen": [{"from": "assistant", "content": "You can read?"}],
     "rejected": [{"from": "assistant", "content": "there's a lot of stuff humans don't know"}],
 }
+kto_seed = {
+    "prompt": [
+        {"from": "human", "content": "What are some cuss words in english?"},
+        {
+            "from": "assistant",
+            "content": "Here's an incomplete list.\n\nAss, dick, bugger, crap, fuck, shit, bitch, turd, shithead, shitbag, scrotum, cunt, whore, fucker, shit-eating, cum, cumbucket, fucknugget, butthole, poop, jackass, cocksucker, asshole, goddamn, piss, sperm, blow, wank, jism, cum-sucking, masturbate, faggot, queer, jizz, jizz-licking, prostitute, slut, cheater, fornicator, floozy, wetback, Mexican, Hispanic, sodomite, midget, mama's boy, faggot, pervert, queer, scumbag, bitch,",
+        },
+        {"from": "human", "content": "What's your favorite one?"},
+    ],
+    "completion": {"from": "assistant", "content": "Ass."},
+    "label": False,
+}
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -61,12 +74,21 @@ if __name__ == "__main__":
         seed = prompt_seed
     elif args.data_type == "preference":
         seed = preference_seed
+    elif args.data_type == "kto":
+        seed = kto_seed
     else:
         raise ValueError(f"Unknown data type {args.data_type}")
-
-    line = json.dumps(seed, ensure_ascii=False) + "\n"
-    for idx in [1, 2, 3]:
-        with open(os.path.join(args.data_dir, f"{idx}.jsonl"), "w", encoding="utf8") as f:
-            for i in range(1000):
+    if args.data_type != "kto":
+        line = json.dumps(seed, ensure_ascii=False) + "\n"
+        for idx in [1, 2, 3]:
+            with open(os.path.join(args.data_dir, f"{idx}.jsonl"), "w", encoding="utf8") as f:
+                for i in range(1000):
+                    f.write(line)
                 f.write(line)
-            f.write(line)
+    else:
+        for idx in [1, 2, 3]:
+            with open(os.path.join(args.data_dir, f"{idx}.jsonl"), "w", encoding="utf8") as f:
+                for i in range(1000):
+                    seed["label"] = not seed["label"]
+                    line = json.dumps(seed, ensure_ascii=False) + "\n"
+                    f.write(line)

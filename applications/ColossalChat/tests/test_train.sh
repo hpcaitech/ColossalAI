@@ -193,8 +193,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
-                    rm -rf $MODEL_SAVE_PATH/*
-                    rm -rf $MODELS_DIR/*
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
                     break
                 fi
             done
@@ -264,8 +264,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
-                    rm -rf $MODEL_SAVE_PATH/*
-                    rm -rf $MODELS_DIR/*
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
                     break
                 fi
             done
@@ -363,8 +363,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     # --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
-                    rm -rf $MODEL_SAVE_PATH/*
-                    rm -rf $MODELS_DIR/*
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
                     break
                 fi
             done
@@ -440,8 +440,8 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
-                    rm -rf $MODEL_SAVE_PATH/*
-                    rm -rf $MODELS_DIR/*
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
                     break
                 fi
             done
@@ -518,8 +518,87 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --use_flash_attn
                 passed=$?
                 if [ $passed -eq 0 ]; then
-                    rm -rf $MODEL_SAVE_PATH/*
-                    rm -rf $MODELS_DIR/*
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
+                    break
+                fi
+            done
+            if [ $passed -ne 0 ]; then
+                echo "[Test]: Failed $model-$plugin-$lora_rank"
+                exit 1
+            fi
+        done
+    done
+done
+
+
+
+echo "[Test]: testing KTO ..."
+
+SKIPPED_TESTS=(
+    llama-3d-20 # 3d plugin doesn't support lora
+    llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
+    llama-gemini-20 # gemini doesn't support lora
+)
+GRAD_CKPTS=('--grad_checkpoint')
+for lora_rank in ${LORA_RANK[@]}; do
+    for model in ${MODELS[@]}; do
+        for plugin in ${PLUGINS[@]}; do
+            if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin-$lora_rank " ]]; then
+                echo "[Test]: Skipped $model-$plugin-$lora_rank"
+                continue
+            elif [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$plugin " ]]; then
+                echo "[Test]: Skipped $model-$plugin"
+                continue
+            fi
+            pretrain=$(get_pretrain $model)
+            tokenizer_dir=$(get_tokenizer_dirs $model)
+            grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
+            tp='1'
+            bs='2'
+            if [[ $plugin == "3d" ]]; then
+                tp='4'
+                bs='8'
+            fi
+            grad_accu='2'
+            # gemini_auto and gemini doesn't support gradient accumulation
+            if [[ $plugin == "gemini_auto" ]]; then
+                grad_accu='1'
+            fi
+            # gemini_auto doesn't support generation
+            # (need to calculate ref_model logits through forwarding in inference mode)
+            if [[ $plugin == "gemini_auto" ]]; then
+                echo "[Test]: Skipped $model-$plugin"
+                continue
+            fi
+            for i in $(seq $NUM_RETRY); do
+                echo "[Test]: $model-$plugin-$lora_rank, attempt $i"
+                declare -a dataset=()
+                for split in $(seq -f "%05g" 0 0); do
+                    dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_kto/arrow/part-$split")
+                done
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_kto.py \
+                    --pretrain $pretrain \
+                    --tokenizer_dir $tokenizer_dir \
+                    --dataset ${dataset[@]} \
+                    --eval_dataset ${dataset[@]} \
+                    --save_dir $MODEL_SAVE_PATH \
+                    --config_file $MODELS_DIR/config.jsonl \
+                    --lora_rank $lora_rank \
+                    --plugin $plugin \
+                    --batch_size $bs \
+                    --max_epochs 1 \
+                    --accumulation_steps $grad_accu \
+                    --tp $tp \
+                    --lr 2e-5 \
+                    --desirable_weight 1.2 \
+                    $grad_ckpt \
+                    --max_len 400 \
+                    --use_flash_attn
+                passed=$?
+                if [ $passed -eq 0 ]; then
+                    rm -rf ${MODEL_SAVE_PATH:?}/*
+                    rm -rf ${MODELS_DIR:?}/*
                     break
                 fi
             done

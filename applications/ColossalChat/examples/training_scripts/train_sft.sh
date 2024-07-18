@@ -15,22 +15,22 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="sft"
-PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
-PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+PARENT_SAVE_DIR="/home/nvme-share/home/yeanbang/data/model/hh_rlhf_sheared_llama" # Path to a folder to save checkpoints
+PARENT_TENSORBOARD_DIR="/home/nvme-share/home/yeanbang/data/experiments/sft/log" # Path to a folder to save logs
+PARENT_CONFIG_FILE="/home/nvme-share/home/yeanbang/data/experiments/kto/log" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="/home/nvme-share/share/models/Sheared-LLaMA-1.3B" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="/home/nvme-share/share/models/Sheared-LLaMA-1.3B" # huggingface or local tokenizer path
 declare -a dataset=(
-    /Your/SFT/Data/arrow/part-00000
-    /Your/SFT/Data/arrow/part-00001
-    /Your/SFT/Data/arrow/part-00002
-    /Your/SFT/Data/arrow/part-00003
-    /Your/SFT/Data/arrow/part-00004
-    /Your/SFT/Data/arrow/part-00005
-    /Your/SFT/Data/arrow/part-00006
-    /Your/SFT/Data/arrow/part-00007
-    /Your/SFT/Data/arrow/part-00008
-    /Your/SFT/Data/arrow/part-00009
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00000
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00001
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00002
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00003
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00004
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00005
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00006
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00007
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00008
+    /home/nvme-share/home/yeanbang/data/experiments/sft/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -44,17 +44,16 @@ echo $(which python)
 colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile train_sft.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --save_interval 4000 \
+    --save_interval 2000 \
     --dataset ${dataset[@]} \
     --save_path $SAVE_DIR \
     --config_file $CONFIG_FILE \
     --lora_rank 0 \
     --plugin zero2 \
-    --batch_size 4 \
+    --batch_size 8 \
     --max_epochs 1 \
-    --accumulation_steps 4 \
+    --accumulation_steps 2 \
     --lr 5e-5 \
     --max_len 4096 \
     --grad_checkpoint \
-    --use_wandb \
     --use_flash_attn

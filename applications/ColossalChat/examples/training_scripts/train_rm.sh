@@ -42,7 +42,6 @@ CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
 
 colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_rm.py \
     --pretrain $PRETRAINED_MODEL_PATH \
-    --checkpoint_path /home/yeanbang/data/experiments/rm/hhh_aligh/ckptllama2-rm-2024-01-17-14-43-24/epoch-1_step-1317/modeling \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --dataset ${dataset[@]} \
     --plugin "zero2" \

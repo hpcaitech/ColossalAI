@@ -40,7 +40,13 @@ import random
 import time
 from multiprocessing import cpu_count
 
-from coati.dataset import setup_conversation_template, supervised_tokenize_sft, tokenize_prompt_dataset, tokenize_rlhf
+from coati.dataset import (
+    setup_conversation_template,
+    supervised_tokenize_sft,
+    tokenize_kto,
+    tokenize_prompt_dataset,
+    tokenize_rlhf,
+)
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -56,8 +62,8 @@ def main():
         type=str,
         required=True,
         default=None,
-        choices=["sft", "prompt", "preference"],
-        help="Type of dataset, chose from 'sft', 'prompt', 'preference'.",
+        choices=["sft", "prompt", "preference", "kto"],
+        help="Type of dataset, chose from 'sft', 'prompt', 'preference'. 'kto'",
     )
     parser.add_argument(
         "--data_input_dirs",
@@ -204,6 +210,8 @@ def main():
         preparation_function = tokenize_prompt_dataset
     elif args.type == "preference":
         preparation_function = tokenize_rlhf
+    elif args.type == "kto":
+        preparation_function = tokenize_kto
     else:
         raise ValueError("Unknow dataset type. Please choose one from ['sft', 'prompt', 'preference']")
 
@@ -228,10 +236,13 @@ def main():
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
-
-        dataset = dataset.filter(
-            lambda data: data["chosen_input_ids" if args.type == "preference" else "input_ids"] is not None
-        )
+        if args.type == "kto":
+            filter_by = "completion"
+        elif args.type == "preference":
+            filter_by = "chosen_input_ids"
+        else:
+            filter_by = "input_ids"
+        dataset = dataset.filter(lambda data: data[filter_by] is not None)
 
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
