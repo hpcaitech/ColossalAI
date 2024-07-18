@@ -163,9 +163,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "ring_attn",
             "use_lazy_init": True,
             "zero_stage": 1,
-            "precision": "fp16",
+            "precision": "bf16",
             "initial_scale": 1,
-            "parallel_output": True,
         },
         {  # Ulysess + TP
             "tp_size": 2,
@@ -179,7 +178,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
-            "parallel_output": True,
         },
         {  # Ulysess + PP
             "tp_size": 1,
@@ -193,7 +191,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
-            "parallel_output": True,
+        },
+        {
+            "tp_size": 4,
+            "pp_size": 1,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
         },
         {
             "tp_size": 2,
@@ -207,19 +215,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
-            "parallel_output": True,
-        },
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
-            "precision": "fp16",
-            "initial_scale": 1,
-            "parallel_output": True,
         },
         {
             "tp_size": 2,
@@ -265,6 +260,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
+            continue
+
         try:
             check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
         except Exception as e:

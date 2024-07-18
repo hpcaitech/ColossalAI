@@ -69,6 +69,8 @@ class CommandPolicy(Policy):
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "ring_attn" and not self.is_causal:
+            raise ValueError("Ring attention is only meant for causal language modeling.")
 
         tp_size = self.shard_config.tensor_parallel_size or None
         num_q_heads = self.model.config.num_attention_heads
@@ -290,6 +292,7 @@ class CommandForCausalLMPolicy(CommandPolicy):
     def module_policy(self):
         from transformers import CohereForCausalLM
 
+        self.is_casual = True
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
