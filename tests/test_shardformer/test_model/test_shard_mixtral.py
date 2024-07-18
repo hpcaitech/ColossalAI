@@ -141,12 +141,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     [
         # {
         #     "tp_size": 1,
-        #     "pp_size": 2,
+        #     "pp_size": 1,
         #     "num_microbatches": 2,
         #     "ep_size": 2,
-        #     "zero_stage": 1,
+        #     "zero_stage": 0,
         #     "overlap_communication": False,
-        #     "precision": "fp32",
+        #     "precision": "fp16",
         # },  # [dp(4)] + [moe_dp(4)]
         # {
         #     "tp_size": 1,
@@ -169,7 +169,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         {  # Ulysess + Flash attention
             "tp_size": 1,
             "pp_size": 1,
-            "sp_size": 4,
+            "sp_size": 2,
             "ep_size": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "all_to_all",

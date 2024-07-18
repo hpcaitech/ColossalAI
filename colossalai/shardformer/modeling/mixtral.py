@@ -118,7 +118,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         selected_experts_idx = selected_experts.argsort()
         dispatch_states = hidden_states.repeat(self.top_k, 1)[selected_experts_idx]
         input_split_sizes = selected_experts.bincount(minlength=self.num_experts)
-        dist.get_rank()
+
         output_split_sizes = torch.zeros_like(input_split_sizes)
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 

@@ -10,13 +10,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import (
-    DPGradScalerIn,
-    DPGradScalerOut,
-    EPGradScalerIn,
-    EPGradScalerOut,
-    all_to_all_uneven,
-)
+from colossalai.moe.operators import DPGradScalerIn, DPGradScalerOut, EPGradScalerIn, EPGradScalerOut, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row
 from colossalai.shardformer.shard import ShardConfig

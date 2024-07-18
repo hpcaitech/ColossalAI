@@ -24,11 +24,10 @@ NUM_HEADS = 4
 TOP_K = 1
 
 
-@parameterize("config", [(1, 1, 4), (1, 2, 2), (1, 4, 1)])
+@parameterize("config", [(0, 1, 1), (0, 1, 2), (0, 1, 4), (1, 1, 4), (1, 2, 2), (1, 4, 1)])
 def run_zero_with_original_model(config: Tuple[int, ...]):
     stage, ep_size, tp_size = config
-    dtype = torch.float32
-
+    dtype, precision = torch.float16, "fp16"
     rank = torch.distributed.get_rank()
     torch.cuda.set_device(dist.get_rank())
 
@@ -40,7 +39,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         zero_stage=stage,
         overlap_communication=False,
         initial_scale=1,
-        precision="fp32",
+        precision=precision,
     )
     booster = Booster(plugin=plugin)
 
@@ -109,7 +108,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
 
     dist.barrier()
 
-    saved_model = MixtralModel.from_pretrained(model_dir).cuda()
+    saved_model = MixtralModel.from_pretrained(model_dir).cuda().to(dtype)
     check_model_equal(torch_model, saved_model)
 
     dist.barrier()
