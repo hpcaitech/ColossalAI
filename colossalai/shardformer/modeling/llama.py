@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed
@@ -25,6 +25,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
 from colossalai.shardformer.layer.utils import is_share_sp_tp, zigzag_split_batch
 from colossalai.shardformer.shard import ShardConfig
@@ -57,7 +58,10 @@ class LlamaPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-        force_sp_output_gather: bool = True,  # Gather output when not using cross entropy loss
+        # Split output only when computing cross entropy using llama_for_causal_lm_forward
+        # or get_lm_forward_with_dist_cross_entropy
+        # Default to True to avoid bug when calling classification forward from huggingface
+        force_sp_output_gather: bool = True,
     ):
         logger = logging.get_logger(__name__)
 
@@ -308,6 +312,10 @@ class LlamaPipelineForwards:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
+        if stage_manager.is_first_stage():
+            if shard_config.sequence_parallelism_mode == "ring_attn":
+                labels = zigzag_split_batch(labels, shard_config.sequence_parallel_process_group)
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = LlamaPipelineForwards.llama_model_forward(
             self.model,
@@ -472,7 +480,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask: Optional[Union[torch.Tensor, Dict]] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
@@ -549,26 +557,20 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if sp_mode == "ring_attn":
-            max_seqlen, cu_seqlens, _ = get_pad_info(attention_mask["attention_mask"], invert=True)
             attn_output = RingAttention.attention(
-                query_states.transpose(1, 2),
-                key_states.transpose(1, 2),
-                value_states.transpose(1, 2),
+                query_states,
+                key_states,
+                value_states,
                 sp_group,
                 shard_config.sp_stream,
                 attention_mask["attention_mask"],
                 attention_mask["attention_mask_type"],
-                cu_seqlens,
-                cu_seqlens,
-                max_seqlen,
-                max_seqlen,
             )
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
             attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
         else:
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
             if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
                 raise ValueError(
                     f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
@@ -629,7 +631,10 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        force_sp_output_gather: bool = True,  # Gather output when not using cross entropy loss
+        # Split output only when computing cross entropy using llama_for_causal_lm_forward
+        # or get_lm_forward_with_dist_cross_entropy
+        # Default to True to avoid bug when calling classification forward from huggingface
+        force_sp_output_gather: bool = True,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -656,6 +661,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         past_seen_tokens = 0
         seq_len = inputs_embeds.shape[1]
+        batch_size = inputs_embeds.shape[0]
         if use_cache:  # kept for BC (cache positions)
             if not isinstance(past_key_values, StaticCache):
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
@@ -665,36 +671,36 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             if isinstance(past_key_values, StaticCache):
                 raise ValueError("cache_position is a required argument when using StaticCache.")
             cache_position = torch.arange(past_seen_tokens, past_seen_tokens + seq_len, device=inputs_embeds.device)
-
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        # in this case, attention_mask is a dict rather than a tensor
         if shard_config.enable_flash_attention:
-            mask_shape = (inputs_embeds.shape[0], 1, seq_len, past_seen_tokens + seq_len)
-            attention_mask = ColoAttention.prepare_attn_kwargs(
+            mask_shape = (batch_size, 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
+            attn_mask: dict = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
                 inputs_embeds.device,
                 q_padding_mask=attention_mask,
                 is_causal=True,
             )
+
         else:
-            attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
+            attn_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
         # Ring Attention zigzag batch processing
         if sp_mode == "ring_attn":
-            # NOTE: This will throw an error in KV Cache inference without replicating q in all ranks.
-            # Also, I don't see get_llama_flash_attention_forward supporting
-            # query_states and key_states with different seq_len.
-            assert shard_config.enable_flash_attention, "Ring Attention requires Flash Attention to be enabled"
-            batch = {
-                "input": inputs_embeds,
-                "attention_mask": attention_mask["attention_mask"],
-                "position": position_ids,
-            }
-            batch = zigzag_split_batch(batch, sp_group)
-            inputs_embeds, attention_mask["attention_mask"], position_ids = batch.values()
+            assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
+            if attn_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                attn_mask["cu_seqlens"], attn_mask["max_seqlen"], attn_mask["indices"] = get_pad_info(
+                    attn_mask["attention_mask"].squeeze(1).any(dim=-1)
+                )  # [B, 1, Sq, Skv] -> [B, Sq]
+
+            else:
+                attn_mask["cu_seqlens"] = attn_mask["max_seqlen"] = attn_mask["indices"] = None
+            batch = [inputs_embeds, position_ids]
+            # inputs_embeds, attention_mask["attention_mask"], position_ids = zigzag_split_batch(batch, sp_group)
+            inputs_embeds, position_ids = zigzag_split_batch(batch, sp_group)
+
         elif sp_mode in ["ring", "split_gather"]:
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
         elif sp_mode == "all_to_all":
@@ -713,7 +719,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
-                    attention_mask,
+                    attn_mask,
                     position_ids,
                     past_key_values,
                     output_attentions,
@@ -724,7 +730,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attention_mask,
+                    attention_mask=attn_mask,
                     position_ids=position_ids,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
@@ -742,7 +748,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         hidden_states = self.norm(hidden_states)
         # Cases that don't support parallelizing cross entropy computation along sequence
-        if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+        if (not shard_config.parallel_output) or is_share_sp_tp(sp_mode) or force_sp_output_gather:
             hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
@@ -815,6 +821,8 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if shard_config.sequence_parallelism_mode == "ring_attn":
+            labels = zigzag_split_batch([labels], shard_config.sequence_parallel_process_group)[0]
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(

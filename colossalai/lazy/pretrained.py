@@ -62,7 +62,6 @@ def new_from_pretrained(
     config = kwargs.pop("config", None)
     cache_dir = kwargs.pop("cache_dir", None)
     force_download = kwargs.pop("force_download", False)
-    resume_download = kwargs.pop("resume_download", False)
     proxies = kwargs.pop("proxies", None)
     local_files_only = kwargs.pop("local_files_only", False)
     use_auth_token = kwargs.pop("use_auth_token", None)
@@ -116,7 +115,6 @@ def new_from_pretrained(
             cache_dir=cache_dir,
             return_unused_kwargs=True,
             force_download=force_download,
-            resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
@@ -195,7 +193,6 @@ def new_from_pretrained(
                     "cache_dir": cache_dir,
                     "force_download": force_download,
                     "proxies": proxies,
-                    "resume_download": resume_download,
                     "local_files_only": local_files_only,
                     "use_auth_token": use_auth_token,
                     "user_agent": user_agent,
@@ -312,7 +309,6 @@ def new_from_pretrained(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 force_download=force_download,
-                resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,

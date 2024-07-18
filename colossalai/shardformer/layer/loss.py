@@ -145,22 +145,22 @@ def cross_entropy_1d(
     process_group: ProcessGroup = None,
     vocab_size: int = None,
     dtype: torch.dtype = None,
-    reduction: str = "mean",
+    mode: str = "mean",
 ) -> torch.Tensor:
-    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size, dtype, reduction)
+    return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size, dtype, mode)
 
 
 def dist_cross_entropy(
-    labels: torch.Tensor,
-    logits: torch.Tensor,
+    labels: torch.Tensor,  # [B, S]
+    logits: torch.Tensor,  # [B, S, Vocab_size]
     shard_config: ShardConfig,
     out_features: int,
     vocab_size: int,
     dtype: torch.dtype,
+    seq_dim: int = 1,
 ) -> torch.Tensor:
     """
-    Helper to compute cross entropy loss for most shardformer models,
-    compatible with PP, TP and SP.
+    Helper to compute cross entropy loss for most shardformer models supporting PP, TP and SP.
     """
     # Split labels if not gather output
     sp_group = shard_config.sequence_parallel_process_group
@@ -169,14 +169,21 @@ def dist_cross_entropy(
     sp_mode = shard_config.sequence_parallelism_mode
     parallel_output = shard_config.parallel_output
 
-    num_tokens = labels.size(-1)
-    labels = labels[..., 1:]
+    bs, seq_len = labels.shape
+
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
-    # TODO: The logic below seems too verbose...also ring attention doesn't split labels here
-    # if sp_size > 1 and parallel_output and (not is_share_sp_tp(sp_mode)):
-    if num_tokens // sp_size == logits.size(1):
+    is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
+    split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
+    if is_sp:
+        # Just don't shift twice
+        if split_labels_here or sp_rank == sp_size - 1:
+            labels = labels[..., 1:]
+
         # Split labels when logits are split
-        labels = labels.split(num_tokens // sp_size, dim=-1)[sp_rank]
+        if split_labels_here:
+            labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
+
+        # The rank holding the last seq chunk
         if sp_rank == sp_size - 1:
             logits = logits[..., :-1, :]
             # Pad to the same shape across all ranks in TP all_reduce
@@ -185,8 +192,10 @@ def dist_cross_entropy(
             logits = F.pad(logits, pad_shape, value=_IGNORE_IDX).contiguous()
             labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
     else:
+        labels = labels[..., 1:]
         logits = logits[..., :-1, :].contiguous()
     labels = labels.contiguous()
+    num_nonzero = (labels != _IGNORE_IDX).sum()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 
     # Flatten the tokens
@@ -203,21 +212,19 @@ def dist_cross_entropy(
             process_group=shard_config.tensor_parallel_process_group,
             vocab_size=out_features,
             dtype=dtype,
-            reduction="sum",
+            mode="sum",
         )
-
     else:
         # NOTE if use TP and not parallel_output, the output is gathered in VocabParallelLMHead1D
         logits = logits.view(-1, vocab_size)
         loss = loss_fct(logits, labels)
 
     # Reduce loss instead of gathering logits over seq dim for savings
-    num_tokens = (labels != _IGNORE_IDX).sum(0, keepdim=True)
-    if sp_size > 1 and parallel_output and (not is_share_sp_tp(sp_mode)):
+    if split_labels_here or sp_mode == "ring_attn":
         # Get the global non-zero count
-        loss = torch.cat([loss.unsqueeze(0), num_tokens])
+        loss = torch.stack((loss, num_nonzero))
         # Rescale to offset the grad / (DP * SP) in HybridParallelPlugin
         loss = reduce_forward(loss, sp_group, grad_scale=sp_size)
-        loss, num_tokens = loss[0], loss[1]
-    loss = (loss / num_tokens).squeeze()
+        loss, num_nonzero = loss[0], loss[1].detach()
+    loss = (loss / num_nonzero).squeeze()
     return loss

@@ -812,11 +812,7 @@ class _AllToAll(torch.autograd.Function):
         process_group = ctx.process_group
         scatter_dim = ctx.gather_dim
         gather_dim = ctx.scatter_dim
-        if torch.distributed.get_rank() == 0:
-            print(f"shape before A2A: {grad_output[0].shape}")
         return_grad = _AllToAll.apply(*grad_output, process_group, scatter_dim, gather_dim)
-        if torch.distributed.get_rank() == 0:
-            print(f"shape after A2A: {return_grad.shape}")
         return (return_grad, None, None, None)
 
 
