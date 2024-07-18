@@ -48,11 +48,13 @@ loss_fn = lambda x: x.loss
 loss_fn_for_seq_classification = lambda output: output.logits.mean()
 
 config = MixtralConfig(
-    hidden_size=256,
-    intermediate_size=256,
-    num_attention_heads=64,
+    hidden_size=32,
+    intermediate_size=32,
+    num_attention_heads=8,
     num_hidden_layers=2,
     vocab_size=1000,
+    attn_implementation="flash_attention_2",
+    torch_dtype="float16",
     output_router_logits=True,
 )
 

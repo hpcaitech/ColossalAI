@@ -209,7 +209,7 @@ class ProcessGroupMesh:
         axis: Union[int, List[int]],
         indices_at_axis: Optional[Union[List[int], List[List[int]]]] = None,
         backend: Optional[str] = None,
-        return_ranks_by_group: bool = False
+        return_ranks_by_group: bool = False,
     ) -> Union[ProcessGroup, List[Tuple[int, ...]]]:
         """Create all process groups along the given axis, and return the one which the current process belongs to.
 
@@ -257,7 +257,11 @@ class ProcessGroupMesh:
             return target_group
 
     def get_group_along_axis(
-        self, axis: Union[int, List[int]], indices_at_axis: Optional[List[int]] = None, backend: Optional[str] = None, return_ranks_by_group: bool = False
+        self,
+        axis: Union[int, List[int]],
+        indices_at_axis: Optional[List[int]] = None,
+        backend: Optional[str] = None,
+        return_ranks_by_group: bool = False,
     ) -> Union[ProcessGroup, List[Tuple[int, ...]]]:
         """Get the process group along the given axis which the current process belongs to. If the process group doesn't exist, it will be created.
 
