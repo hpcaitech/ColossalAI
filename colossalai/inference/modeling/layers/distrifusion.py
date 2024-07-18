@@ -138,9 +138,9 @@ def PixArtAlphaTransformer2DModel_forward(
     if hasattr(self, "patched_parallel_size"):
         from torch import distributed as dist
 
-        if getattr(self, "output_buffer", None) is None:
+        if (getattr(self, "output_buffer", None) is None) or (self.output_buffer.shape != output.shape):
             self.output_buffer = torch.empty_like(output)
-        if getattr(self, "buffer_list", None) is None:
+        if (getattr(self, "buffer_list", None) is None) or (self.buffer_list[0].shape != output.shape):
             self.buffer_list = [torch.empty_like(output) for _ in range(self.patched_parallel_size)]
         output = output.contiguous()
         dist.all_gather(self.buffer_list, output, async_op=False)
@@ -196,9 +196,9 @@ def SD3Transformer2DModel_forward(
     if hasattr(self, "patched_parallel_size"):
         from torch import distributed as dist
 
-        if getattr(self, "output_buffer", None) is None:
+        if (getattr(self, "output_buffer", None) is None) or (self.output_buffer.shape != output.shape):
             self.output_buffer = torch.empty_like(output)
-        if getattr(self, "buffer_list", None) is None:
+        if (getattr(self, "buffer_list", None) is None) or (self.buffer_list[0].shape != output.shape):
             self.buffer_list = [torch.empty_like(output) for _ in range(self.patched_parallel_size)]
         output = output.contiguous()
         dist.all_gather(self.buffer_list, output, async_op=False)
@@ -454,13 +454,15 @@ class DistrifusionFusedAttention(ParallelModule):
             self.handle = None
 
         b, l, c = hidden_states.shape
-        if self.patched_parallelism_size > 1 and self.buffer_list is None:
+        kv_shape = (b, l, self.module.to_k.out_features * 2)
+        if self.patched_parallelism_size > 1 and (self.buffer_list is None or self.buffer_list[0].shape != kv_shape):
 
-            kv_shape = (b, l, self.module.to_k.out_features * 2)
             self.buffer_list = [
                 torch.empty(kv_shape, dtype=hidden_states.dtype, device=get_current_device())
                 for _ in range(self.patched_parallelism_size)
             ]
+
+            self.counter = 0
 
         attn_parameters = set(inspect.signature(self.module.processor.__call__).parameters.keys())
         quiet_attn_parameters = {"ip_adapter_masks"}
@@ -608,13 +610,15 @@ class DistriSelfAttention(ParallelModule):
             self.handle = None
 
         b, l, c = hidden_states.shape
-        if self.patched_parallelism_size > 1 and self.buffer_list is None:
+        kv_shape = (b, l, self.module.to_k.out_features * 2)
+        if self.patched_parallelism_size > 1 and (self.buffer_list is None or self.buffer_list[0].shape != kv_shape):
 
-            kv_shape = (b, l, self.module.to_k.out_features * 2)
             self.buffer_list = [
                 torch.empty(kv_shape, dtype=hidden_states.dtype, device=get_current_device())
                 for _ in range(self.patched_parallelism_size)
             ]
+
+            self.counter = 0
 
         output = self._forward(hidden_states, scale=scale)
 

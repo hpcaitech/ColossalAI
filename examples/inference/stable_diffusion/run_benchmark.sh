@@ -1,8 +1,7 @@
 #!/bin/bash
 
 models=("PixArt-alpha/PixArt-XL-2-1024-MS" "stabilityai/stable-diffusion-3-medium-diffusers")
-# parallelism=(1 2 4 8)
-parallelism=(1 2 4)
+parallelism=(1 2 4 8)
 resolutions=(1024 2048 3840)
 modes=("colossalai" "diffusers")
 

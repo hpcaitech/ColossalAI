@@ -33,7 +33,7 @@ def warmup(engine, args):
         engine.generate(
             prompts=["hello world"],
             generation_config=DiffusionGenerationConfig(
-                num_inference_steps=args.num_inference_steps, height=1024, width=1024
+                num_inference_steps=args.num_inference_steps, height=args.height[0], width=args.width[0]
             ),
         )
 
@@ -118,7 +118,12 @@ def benchmark_diffusers(args):
     model = DiffusionPipeline.from_pretrained(args.model, torch_dtype=_DTYPE_MAPPING[args.dtype]).to("cuda")
 
     for _ in range(args.n_warm_up_steps):
-        model(prompt="hello world", num_inference_steps=args.num_inference_steps, height=1024, width=1024)
+        model(
+            prompt="hello world",
+            num_inference_steps=args.num_inference_steps,
+            height=args.height[0],
+            width=args.width[0],
+        )
 
     for h, w in zip(args.height, args.width):
         with profile_context(args) as prof:
@@ -159,8 +164,8 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("-p", "--patched_parallel_size", type=int, default=1, help="Patched Parallelism size")
     parser.add_argument("-n", "--num_inference_steps", type=int, default=50, help="Number of inference steps")
-    parser.add_argument("-H", "--height", type=int, nargs="+", default=[1024], help="Height list")
-    parser.add_argument("-w", "--width", type=int, nargs="+", default=[1024], help="Width list")
+    parser.add_argument("-H", "--height", type=int, nargs="+", default=[1024, 2048], help="Height list")
+    parser.add_argument("-w", "--width", type=int, nargs="+", default=[1024, 2048], help="Width list")
     parser.add_argument("--dtype", type=str, default="fp16", choices=["fp16", "fp32", "bf16"], help="Data type")
     parser.add_argument("--n_warm_up_steps", type=int, default=3, help="Number of warm up steps")
     parser.add_argument("--n_repeat_times", type=int, default=5, help="Number of repeat times")

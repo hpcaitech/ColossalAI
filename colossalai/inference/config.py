@@ -186,6 +186,7 @@ class InferenceConfig(RPC_PARAM):
         enable_streamingllm(bool): Whether to use StreamingLLM, the relevant algorithms refer to the paper at https://arxiv.org/pdf/2309.17453 for implementation.
         start_token_size(int): The size of the start tokens, when using StreamingLLM.
         generated_token_size(int): The size of the generated tokens, When using StreamingLLM.
+        patched_parallelism_size(int): Patched Parallelism Size, When using Distrifusion
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
