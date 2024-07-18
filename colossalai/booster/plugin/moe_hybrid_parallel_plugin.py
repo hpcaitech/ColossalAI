@@ -1,6 +1,5 @@
 import warnings
 from collections import defaultdict
-from copy import deepcopy
 from types import MethodType
 from typing import Callable, Optional, OrderedDict, Tuple
 
@@ -106,37 +105,35 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     def __init__(self, ep_size: int, moe_tp_size: int = 1, force_overlap_comm=False, *args, **kwargs) -> None:
         if "overlap_communication" not in kwargs:
-            kwargs["overlap_communication"] = False
+            kwargs["overlap_communication"] = False  # default by true in super class
 
         super().__init__(*args, **kwargs)
 
-        self.use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+        self.ep_size = ep_size
+        self.moe_tp_size = moe_tp_size
+
+        self._init_moe_param_comm()
+
+        self.use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
+            self.dp_size == 1
+            and self.pp_size == 1
+            and self.enable_sequence_parallelism
+            and self.sequence_parallelism_mode == "all_to_all"
+        )
+
         if self.use_ddp:
             warnings.warn(
                 f"Will have to check all params are used in pytorch DDP since not all experts are always activated"
             )
             self.ddp_config["find_unused_parameters"] = True
 
-        world_size = dist.get_world_size()
-        self.moe_dp_size = world_size // (self.pp_size * ep_size * moe_tp_size * self.sp_size)
-        self.ep_size = ep_size
-        self.moe_tp_size = moe_tp_size
+            if dist.get_process_group_ranks(self.dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
+                raise ValueError(
+                    f"if ddp is used, dp_group and moe_dp_group are expected to be the same since DDP can only reduce grad across a single group, but found dp_group {dist.get_process_group_ranks(self.dp_group)} and moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)}, you might want to set ep_size=1 or zero_stage > 0"
+                )
 
-        if self.pp_size * self.moe_dp_size * self.ep_size * self.moe_tp_size * self.sp_size != world_size:
-            raise ValueError(
-                f"world_size={world_size} is not divisible by pp_size={self.pp_size} * moe_dp_size={self.moe_dp_size} * ep_size={self.ep_size} * moe_tp_size={self.moe_tp_size}"
-            )
-
-        # self._init_moe_param_comm()
-
-        self.logger.info(f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=}", ranks=[0])
-
-        # set ep_group after super init
+        # set ep_group after super().__init__()
         # TODO do it in a better way
-        self.moe_dp_group = self.pp_group
-        self.ep_group = self.pp_group
-        self.moe_tp_group = self.pp_group
-
         self.shard_config.ep_group = self.ep_group
         self.shard_config.moe_dp_group = self.moe_dp_group
         self.shard_config.moe_tp_group = self.moe_tp_group
@@ -144,48 +141,77 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.force_overlap_comm = force_overlap_comm
 
     def _init_moe_param_comm(self):
-        self.moe_dp_group = None
-        self.ep_group = None
-        self.moe_tp_group = None
+        world_size = dist.get_world_size()
 
-        # create submesh for ep, moe_dp, moe_tp
-        ranks_by_pp_stage = self.pg_mesh.get_group_along_axis(
-            [self.dp_axis, self.tp_axis, self.sp_axis], return_ranks_by_group=True
-        )
+        if self.enable_sequence_parallelism:
+            # if sequence parallelism is enabled, we reuse the same group for ep and sp
+            if self.sequence_parallelism_mode == "all_to_all":
+                # when sequence parallelism is enabled, ep_group reuses sp_group
+                if self.ep_size != self.sp_size:
+                    raise ValueError(
+                        f"ep_size={self.ep_size} should be equal to sp_size={self.sp_size} when sequence parallelism is enabled"
+                    )
 
-        global_rank = self.pg_mesh.rank
-        pp_rank = self.pg_mesh.coordinate(self.pp_axis)
+                self.moe_dp_size = self.dp_size
+                self.moe_dp_group = self.dp_group  # NOTE: sequence of value assignment matters
+                self.dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
+                self.ep_group = self.sp_group
+                self.moe_tp_group = self.tp_group
+            else:
+                raise NotImplementedError(
+                    f"sequence_parallelism_mode={self.sequence_parallelism_mode} is not supported"
+                )
 
-        # create groups from submesh
-        for stage_idx, stage_rank in enumerate(ranks_by_pp_stage):
-            # axis 0 is moe_dp, axis 1 is ep, axis 2 is moe_tp
-            submesh = np.array(stage_rank).reshape(self.moe_dp_size, self.ep_size, self.moe_tp_size)
+        else:
+            self.moe_dp_size = world_size // (self.pp_size * self.ep_size * self.moe_tp_size)
 
-            # hardcode here since we only have 3 axis
-            # moe_dp_group
-            for ep_idx in range(self.ep_size):
-                for moe_tp_idx in range(self.moe_tp_size):
-                    moe_dp_ranks = submesh[:, ep_idx, moe_tp_idx].flatten().tolist()
-                    group = dist.new_group(moe_dp_ranks)
-                    if pp_rank == stage_idx and global_rank in moe_dp_ranks:
-                        assert self.moe_dp_group is None
-                        self.moe_dp_group = group
-            # ep_group
-            for moe_dp_idx in range(self.moe_dp_size):
-                for moe_tp_idx in range(self.moe_tp_size):
-                    ep_ranks = submesh[moe_dp_idx, :, moe_tp_idx].flatten().tolist()
-                    group = dist.new_group(ep_ranks)
-                    if pp_rank == stage_idx and global_rank in ep_ranks:
-                        assert self.ep_group is None
-                        self.ep_group = group
-            # moe_tp_group
-            for moe_dp_idx in range(self.moe_dp_size):
+            if self.pp_size * self.moe_dp_size * self.ep_size * self.moe_tp_size * self.sp_size != world_size:
+                raise ValueError(
+                    f"world_size={world_size} is not divisible by pp_size={self.pp_size} * moe_dp_size={self.moe_dp_size} * ep_size={self.ep_size} * moe_tp_size={self.moe_tp_size}"
+                )
+
+            self.moe_dp_group = None
+            self.ep_group = None
+            self.moe_tp_group = None
+
+            # create submesh for ep, moe_dp, moe_tp
+            ranks_by_pp_stage = self.pg_mesh.get_group_along_axis(
+                [self.dp_axis, self.tp_axis, self.sp_axis], return_ranks_by_group=True
+            )
+
+            global_rank = self.pg_mesh.rank
+            pp_rank = self.pg_mesh.coordinate(self.pp_axis)
+
+            # create groups from submesh
+            for stage_idx, stage_rank in enumerate(ranks_by_pp_stage):
+                # axis 0 is moe_dp, axis 1 is ep, axis 2 is moe_tp
+                submesh = np.array(stage_rank).reshape(self.moe_dp_size, self.ep_size, self.moe_tp_size)
+
+                # hardcode here since we only have 3 axis
+                # moe_dp_group
                 for ep_idx in range(self.ep_size):
-                    moe_tp_ranks = submesh[moe_dp_idx, ep_idx, :].flatten().tolist()
-                    group = dist.new_group(moe_tp_ranks)
-                    if pp_rank == stage_idx and global_rank in moe_tp_ranks:
-                        assert self.moe_tp_group is None
-                        self.moe_tp_group = group
+                    for moe_tp_idx in range(self.moe_tp_size):
+                        moe_dp_ranks = submesh[:, ep_idx, moe_tp_idx].flatten().tolist()
+                        group = dist.new_group(moe_dp_ranks)
+                        if pp_rank == stage_idx and global_rank in moe_dp_ranks:
+                            assert self.moe_dp_group is None
+                            self.moe_dp_group = group
+                # ep_group
+                for moe_dp_idx in range(self.moe_dp_size):
+                    for moe_tp_idx in range(self.moe_tp_size):
+                        ep_ranks = submesh[moe_dp_idx, :, moe_tp_idx].flatten().tolist()
+                        group = dist.new_group(ep_ranks)
+                        if pp_rank == stage_idx and global_rank in ep_ranks:
+                            assert self.ep_group is None
+                            self.ep_group = group
+                # moe_tp_group
+                for moe_dp_idx in range(self.moe_dp_size):
+                    for ep_idx in range(self.ep_size):
+                        moe_tp_ranks = submesh[moe_dp_idx, ep_idx, :].flatten().tolist()
+                        group = dist.new_group(moe_tp_ranks)
+                        if pp_rank == stage_idx and global_rank in moe_tp_ranks:
+                            assert self.moe_tp_group is None
+                            self.moe_tp_group = group
 
         if dist.get_process_group_ranks(self.tp_group) != dist.get_process_group_ranks(self.moe_tp_group):
             # NOTE: different tp settings between moe and non moe param require complex comm logic, where all_to_all might not be suitable
@@ -195,7 +221,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
 
         self.logger.info(
-            f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}",
+            f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=} {self.sp_size}\n"
+            f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)} sp_group {dist.get_process_group_ranks(self.sp_group)}",
             ranks=[0],
         )
 
@@ -215,30 +242,18 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         param_info = get_param_info(optimizer)
 
         # TODO: Support Galore + ZeRO
-        self.zero_stage
-        deepcopy(self.zero_config)
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
 
         if not isinstance(model, ModelWrapper):
-            use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
-                self.dp_size == 1
-                and self.pp_size == 1
-                and self.enable_sequence_parallelism
-                and self.sequence_parallelism_mode == "all_to_all"
-            )
-            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
-            else:
-                dp_group = self.dp_group
             model = HybridParallelModule(
                 module=model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=dp_group,
+                dp_group=self.dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
-                use_ddp=use_ddp,
+                use_ddp=self.use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
             )
@@ -271,7 +286,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         tp_process_group=self.tp_group,
                     )
             else:
-                if not (self.dp_size > 1 or self.moe_dp_size > 1):
+                if self.dp_size <= 1:
                     warnings.warn(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
                         "If you do not intend to use cpu_offload, please consider set zero_stage=0."

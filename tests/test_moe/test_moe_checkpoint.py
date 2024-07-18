@@ -26,9 +26,7 @@ top_k = 2
 def check_model_equal(model1, model2):
     assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
     for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
-        if loose_close(p1, p2, p1.dtype):
-            print(f"Model parameter {name} is not equal. is_moe_tensor: {is_moe_tensor(p1)}")
-            raise AssertionError(f"Model parameter {name} is not equal")
+        loose_close(p1, p2, p1.dtype)
 
 
 def get_optimizer_snapshot(optim):

@@ -23,7 +23,7 @@ NUM_HEADS = 4
 TOP_K = 1
 
 
-@parameterize("config", [(1, 1, 1)])
+@parameterize("config", [(0, 1, 1), (0, 1, 2), (0, 1, 4), (1, 1, 4), (1, 2, 2), (1, 4, 1)])
 def run_zero_with_original_model(config: Tuple[int, ...]):
     stage, ep_size, tp_size = config
     dtype = torch.float16
