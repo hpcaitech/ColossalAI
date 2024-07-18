@@ -2,7 +2,7 @@ import ctypes
 import random
 import warnings
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from functools import partial
 from types import MethodType
@@ -33,8 +33,11 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
+from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
+from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -61,6 +64,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         use_ddp: bool,
         ddp_config: dict,
         custom_policy: Policy,
+        overlap_allgather: bool = False,
     ) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
         self.shard_config = shard_config
@@ -69,6 +73,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.sp_group = sp_group
         self.use_dpp = use_ddp
         self.require_grad_sync = True
+        self.overlap_allgather = overlap_allgather
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -106,6 +111,12 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             module = DDP(module, process_group=dp_group, **ddp_config)
 
         super().__init__(module)
+        if overlap_allgather:
+            self.op_hook = ZeroOpHook()
+            for p in module.parameters():
+                if p.requires_grad and type(p) is not ColoParameter:
+                    p.__class__ = ColoParameter
+                    p.__init__(p, requires_grad=True)
 
     def sync_shared_params(self):
         for shared_param, group in zip(self.shared_params, self.shared_param_process_groups):
@@ -197,13 +208,21 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         if self.convert_fn is not None:
             args = tree_map(self.convert_fn, args)
             kwargs = tree_map(self.convert_fn, kwargs)
-        return super().forward(*args, **kwargs)
+        with self._wait_all_gather():
+            return super().forward(*args, **kwargs)
 
     def unwrap(self):
         module = super().unwrap()
         if isinstance(module, DDP):
             module = module.module
         return module
+
+    def _force_wait_all_gather(self):
+        for p in self.module.parameters():
+            wait_all_gather_handle(p)
+
+    def _wait_all_gather(self):
+        return ColoParamOpHookManager.use_hooks(self.op_hook) if self.overlap_allgather else nullcontext()
 
 
 def get_param_info(optim: Optimizer):
@@ -650,6 +669,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
+        overlap_allgather: bool = False,
     ):
         self.model = model
         self.param_info = param_info
@@ -677,6 +697,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
             forced_dtype=forced_dtype,
+            overlap_allgather=overlap_allgather,
         )
 
     def sync_dp_grads(self):
@@ -992,6 +1013,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         make_vocab_size_divisible_by: int = 64,
         dp_outside: bool = True,
         overlap_p2p: bool = True,
+        overlap_allgather: bool = False,
     ) -> None:
         super().__init__()
         assert (
@@ -1143,6 +1165,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
             forced_dtype=PRECISION_TORCH_TYPE[precision],
+            overlap_allgather=overlap_allgather,
         )
 
         self.max_norm = max_norm
@@ -1220,6 +1243,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
+                overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if zero_stage == 0:
@@ -1302,7 +1326,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         # so we disable it, performing manual reduction instead.
         ctx = optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
 
-        with ctx:
+        with ctx, model._wait_all_gather():
             outputs = self.schedule.forward_backward_step(
                 model, data_iter, criterion, optimizer, return_loss, return_outputs
             )

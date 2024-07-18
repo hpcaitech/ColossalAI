@@ -1,3 +1,4 @@
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -513,7 +514,6 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
-
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             query_states = all_to_all_comm(query_states, sp_group)
@@ -698,9 +698,9 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         next_decoder_cache = None
 
         if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
 
         for decoder_layer in self.layers:
             if output_hidden_states:

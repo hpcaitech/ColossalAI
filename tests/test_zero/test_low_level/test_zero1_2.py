@@ -177,6 +177,8 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
         # torch ddp step
         torch_optimizer.step()
 
+        zero_optimizer._force_wait_all_gather()
+
         # check updated param
         for (n, p), z1p in zip(torch_model.named_parameters(), zero_model.parameters()):
             loose_close(p, z1p, dtype=dtype)
