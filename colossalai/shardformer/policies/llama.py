@@ -72,6 +72,7 @@ class LlamaPolicy(Policy):
         if sp_mode == "ring_attn" and not self.is_causal:
             raise ValueError("Ring attention is only meant for causal language modeling.")
 <<<<<<< HEAD
+<<<<<<< HEAD
 
         tp_size = self.shard_config.tensor_parallel_size
         # Modified by SP and TP
@@ -84,6 +85,8 @@ class LlamaPolicy(Policy):
         # Modified by SP and TP
         num_q_heads = self.model.config.num_attention_heads
         num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
+=======
+>>>>>>> precision tests passed
 
         tp_size = self.shard_config.tensor_parallel_size
         # Modified by SP and TP

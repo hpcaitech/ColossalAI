@@ -151,7 +151,11 @@ def cross_entropy_1d(
 
 
 def dist_cross_entropy(
+<<<<<<< HEAD
     labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
+=======
+    labels: torch.Tensor,  # [B, S]
+>>>>>>> precision tests passed
     logits: torch.Tensor,  # [B, S, Vocab_size]
     shard_config: ShardConfig,
     out_features: int,
@@ -178,6 +182,7 @@ def dist_cross_entropy(
         logits = logits.reshape(-1, *logits.shape[2:])
         seq_dim = 0
 
+<<<<<<< HEAD
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
@@ -195,6 +200,23 @@ def dist_cross_entropy(
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
 
+=======
+    bs, seq_len = labels.shape
+
+    # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
+    is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
+    split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
+    if is_sp:
+        # Just don't shift twice
+        if split_labels_here or sp_rank == sp_size - 1:
+            labels = labels[..., 1:]
+
+        # Split labels when logits are split
+        if split_labels_here:
+            labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
+
+        # The rank holding the last seq chunk
+>>>>>>> precision tests passed
         if sp_rank == sp_size - 1:
             logits = logits[..., :-1, :]
             # Pad logits and labels to the same shape across all ranks for TP all_reduce
@@ -209,6 +231,7 @@ def dist_cross_entropy(
                 labels = torch.cat([labels, padding], dim=seq_dim)
     else:
         labels = labels[..., 1:]
+<<<<<<< HEAD
         logits = logits[..., :-1, :]
     labels = labels.contiguous()
     logits = logits.contiguous()
@@ -219,6 +242,12 @@ def dist_cross_entropy(
         ), f"label shape {labels.shape} does not match logit shape {logits.shape}"
     except Exception as e:
         raise e
+=======
+        logits = logits[..., :-1, :].contiguous()
+    labels = labels.contiguous()
+    num_nonzero = (labels != _IGNORE_IDX).sum()
+    assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
+>>>>>>> precision tests passed
 
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(ignore_index=_IGNORE_IDX, reduction="sum")
