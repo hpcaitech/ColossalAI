@@ -15,10 +15,9 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
-PROJECT_NAME="ppo"
+PROJECT_NAME="PPO"
 
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # local pretrained model path (from RLHF step 1: SFT)
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
@@ -54,7 +53,7 @@ declare -a ptx_dataset=(
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
-CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
+CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
 
 colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_ppo.py \
     --pretrain $PRETRAINED_MODEL_PATH \

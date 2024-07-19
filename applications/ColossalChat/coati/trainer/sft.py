@@ -102,7 +102,6 @@ class SFTTrainer(SLTrainer):
             batch_size = batch["input_ids"].size(0)
             outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             loss = outputs.loss
-            step_bar.set_description(f"Epoch {epoch + 1}/{self.max_epochs} Loss: {loss.detach().cpu().item():.4f}")
 
             self.booster.backward(loss=loss, optimizer=self.optimizer)
 
@@ -115,6 +114,7 @@ class SFTTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.scheduler.step()
 
+                step_bar.set_postfix({"train/loss": self.accumulative_meter.get("loss")})
                 if self.writer:
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
                     self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
