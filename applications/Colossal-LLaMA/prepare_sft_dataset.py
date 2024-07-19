@@ -10,7 +10,7 @@ import math
 import os
 from multiprocessing import cpu_count
 
-from colossal_llama.dataset.conversation import (LLaMA2_Conv, LLaMA3_Conv)
+from colossal_llama.dataset.conversation import LLaMA2_Conv, LLaMA3_Conv
 from colossal_llama.dataset.spliced_and_tokenized_dataset import supervised_tokenize_sft
 from datasets import dataset_dict, load_dataset
 from transformers import AddedToken, AutoTokenizer
@@ -76,7 +76,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_dir)
 
     default_conversation = LLaMA3_Conv
-    
+
     # Fix </s> split issue: https://github.com/huggingface/transformers/issues/23833
     if args.llama_version == 2:
         tokenizer.add_tokens(AddedToken("</s>", normalized=False, special=True), special_tokens=True)
