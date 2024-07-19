@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
 import torch
 import torch.distributed as dist
@@ -58,7 +58,7 @@ def cast_from_fp8(inp: torch.Tensor, scale_inv: torch.Tensor, ret_type: torch.dt
     return ret.to(ret_type)
 
 
-def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
+def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", group=None) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_reduce but during communication the data is cast to fp8 format.
@@ -71,16 +71,16 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
         None
     """
 
-    world_size = dist.get_world_size()
+    world_size = dist.get_world_size(group=group)
     input_type = tensor.dtype
     input_shape = tensor.shape
     input_device = tensor.device
     input_size = tensor.numel()
-    tensor = tensor.flatten()
+    tensor_1d = tensor.flatten()
 
     fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
 
-    ret, scale = cast_to_fp8(tensor, fp8_format=fp8_format)
+    ret, scale = cast_to_fp8(tensor_1d, fp8_format=fp8_format)
 
     inp = ret.view(torch.uint8)
     input_chunks = list(torch.chunk(inp, world_size, dim=0))
@@ -88,23 +88,24 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3") -> None:
         output_chunks = [torch.empty_like(input_chunks[-1]) for _ in range(world_size)]
     else:
         output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
-    dist.all_to_all(output_chunks, input_chunks)
+    dist.all_to_all(output_chunks, input_chunks, group=group)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    dist.all_gather(scale_list, scale)
+    dist.all_gather(scale_list, scale, group=group)
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
     for scale, out in zip(scale_list, output_chunks):
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
+    summed_out.div_(world_size)
 
     summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
-    dist.all_gather(scale_list, scale)
+    dist.all_gather(scale_list, scale, group=group)
 
     tensor_list = list(torch.chunk(torch.empty(input_size, device=input_device, dtype=torch.uint8), world_size, dim=0))
-    dist.all_gather(tensor_list, summed_out_fp8.view(torch.uint8))
+    dist.all_gather(tensor_list, summed_out_fp8.view(torch.uint8), group=group)
     for i in range(world_size):
         tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
-    tensor_out = torch.cat(tensor_list, dim=0)
-    tensor.data = tensor_out.view(input_shape).to(input_type)
+    out = torch.cat(tensor_list, dim=0)
+    tensor.copy_(out.view(input_shape).to(input_type))
 
 
 
@@ -172,3 +173,229 @@ def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
 
     if del_metadata:
         del inp["fp8_scale"]
+
+
+def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2") -> None:
+    r"""
+    This is an in-place operation for compressed reduce_scatter using fp8.
+    It works like dist.reduce_scatter but during communication the data is cast to fp8 format.
+
+    Args:
+        tensor: torch.Tensor in fp32, fp16, bf16 datatype.
+        fp8_format: e4m3 or e5m2
+
+    Returns:
+        None
+    """
+
+    input_type = output.dtype
+
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+    scale_list = []
+    cast_input_list = []
+    output_chunks = []
+    output_scale_list = []
+    for input in input_list:
+        ret, scale = cast_to_fp8(input, fp8_format=fp8_format)
+        scale_list.append(scale)
+        ret = ret.view(torch.uint8)
+        cast_input_list.append(ret)
+        output_chunks.append(torch.empty_like(ret))
+        output_scale_list.append(torch.empty_like(scale))
+    dist.all_to_all(output_chunks, cast_input_list, group=group)
+    dist.all_to_all(output_scale_list, scale_list, group=group)
+
+    summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
+    for scale, out in zip(output_scale_list, output_chunks):
+        out = out.view(fp8_type)
+        summed_out += cast_from_fp8(out, scale, input_type)
+    output.data = summed_out
+
+
+def fp8_compress_ddp_grad_comm_hook_async(
+    process_group: dist.ProcessGroup,
+    bucket: dist.GradBucket,
+) -> torch.futures.Future[torch.Tensor]:
+    """
+    Compress by casting ``GradBucket`` to FP8 floating-point format divided by process group size.
+
+    This DDP communication hook implements a simple gradient compression approach that casts ``GradBucket`` tensor
+    to FP8 floating-point format (``torch.float8_e5m2`` or ``torch.bfloat16_e4m3``), and then divides it
+    by the process group size.
+    Once compressed gradient tensors are allreduced, the chained callback ``decompress`` casts it back
+    to the input data type (such as ``float32``).
+
+    Example::
+        >>> ddp_model.register_comm_hook(process_group, fp8_compress_ddp_grad_comm_hook_async)
+    """
+    group_to_use = process_group if process_group is not None else dist.group.WORLD
+
+    input_tensor = bucket.buffer()
+    fp8_format = "e4m3"
+
+    world_size = dist.get_world_size()
+    input_type = input_tensor.dtype
+    input_device = input_tensor.device
+    input_size = input_tensor.numel()
+    tensor_1d = input_tensor.flatten()
+
+    if input_size % world_size != 0:
+        padding_tensor = torch.zeros(world_size - input_size % world_size, dtype=input_tensor.dtype, device=input_device)
+        tensor_1d = torch.cat([padding_tensor, tensor_1d], dim=0)
+        input_size = tensor_1d.numel()
+
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+    ret, scale = cast_to_fp8(tensor_1d, fp8_format=fp8_format)
+
+    inp = ret.view(torch.uint8)
+    input_chunks = list(torch.chunk(inp, world_size, dim=0))
+    if dist.get_rank() == world_size - 1:
+        output_chunks = [torch.empty_like(input_chunks[-1]) for _ in range(world_size)]
+    else:
+        output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
+
+    scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
+    output_chunks_single = torch.cat(output_chunks, dim=0)
+    inp_split_sizes = [t.numel() for t in input_chunks]
+    out_split_sizes = [t.numel() for t in output_chunks]
+    fut0 = dist.all_to_all_single(output_chunks_single, inp,
+                                  output_split_sizes=out_split_sizes,
+                                  input_split_sizes=inp_split_sizes,
+                                  group=group_to_use,
+                                  async_op=True).get_future()
+
+    fut1 = dist.all_gather_into_tensor(torch.cat(scale_list, dim=0), scale,
+                                       group=group_to_use,
+                                       async_op=True).get_future()
+    all_to_all_fut = torch.futures.collect_all([fut0, fut1])
+
+    def sum_and_allgather(fut):
+        output_chunks_single = fut.value()[0].wait()[0]
+        scale_list_single = fut.value()[1].wait()[0]
+
+        output_chunks = list(torch.chunk(output_chunks_single, world_size, dim=0))
+        scale_list = scale_list_single.chunk(world_size, dim=0)
+
+        summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
+        for scale, out in zip(scale_list, output_chunks):
+            out = out.view(fp8_type)
+            summed_out += cast_from_fp8(out, scale, input_type)
+        summed_out.div_(world_size)
+
+        summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
+
+
+        tensor_list_single = torch.empty(input_size, device=input_device, dtype=torch.uint8)
+        fut2 = dist.all_gather_into_tensor(tensor_list_single, summed_out_fp8.view(torch.uint8), group=group_to_use,
+                                           async_op=True).get_future()
+
+        scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
+        fut3 = dist.all_gather_into_tensor(torch.cat(scale_list, dim=0), scale, group=group_to_use,
+                                           async_op=True).get_future()
+        fut_combined2 = torch.futures.collect_all([fut2, fut3])
+        return fut_combined2
+    def decompress(fut):
+        tensor_list_single = fut.value().wait()[0].value()[0]
+        scale_list_single = fut.value().wait()[1].value()[0]
+
+        tensor_list = list(torch.chunk(tensor_list_single, world_size, dim=0))
+        scale_list = scale_list_single.chunk(world_size, dim=0)
+
+        for i in range(world_size):
+            tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
+        out = torch.cat(tensor_list, dim=0)
+
+        input_tensor_size = input_tensor.numel()
+        input_shape = input_tensor.shape
+        out = out[:input_tensor_size]
+
+        input_tensor.copy_(out.view(input_shape).to(input_type))
+        return input_tensor
+
+    return all_to_all_fut.then(sum_and_allgather).then(decompress)
+
+
+
+
+def fp8_compress_ddp_grad_comm_hook_sync(
+    process_group: dist.ProcessGroup,
+    bucket: dist.GradBucket,
+) -> torch.futures.Future[torch.Tensor]:
+    """
+    Return a future that wraps the input, after the input is allreduced. However, the allreduce commnunication is synchronized.
+    This breaks the overlapping between allreduce communication and backward compuation.
+
+    This hook should **only** be used for debugging purposes, instead of the normal gradient synchronization.
+    For asynchronized implementation, use fp8_compress_ddp_grad_comm_hook_async instead.
+
+    Example::
+        >>> # xdoctest: +SKIP
+        >>> ddp_model.register_comm_hook(None, fp8_compress_ddp_grad_comm_hook_sync)
+    """
+
+    buffer = bucket.buffer()
+    all_reduce_fp8(buffer, fp8_format="e4m3")
+
+    fut: torch.futures.Future[torch.Tensor] = torch.futures.Future()
+    fut.set_result(bucket.buffer())
+
+    return fut
+
+
+def fp8_compress_fsdp_grad_comm_hook(state: object, unsharded_gradient_flattened: torch.Tensor,
+                                     sharded_gradient: torch.Tensor, group=None, fp8_format="e5m2") -> None:
+    """
+    This communication hook implements a simple gradient compression approach that casts unsharded_gradient_flattened tensor
+    to FP8 floating-point format (``torch.float8_e5m2`` or ``torch.bfloat16_e4m3``), and then perform scatter_allreduce logic
+    by using all_to_all and all_gather among the process group.
+
+    Example::
+        >>> fsdp_model.register_comm_hook(None, fp8_compress_fsdp_grad_comm_hook)
+    """
+    grad = unsharded_gradient_flattened
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+    input_type = grad.dtype
+    input_device = grad.device
+    world_size = dist.get_world_size(group=group)
+
+    grad_fp8, scale = cast_to_fp8(grad, fp8_format=fp8_format)
+    uint8_buffer = torch.empty_like(grad_fp8).view(torch.uint8)
+    dist.all_to_all_single(uint8_buffer, grad_fp8.view(torch.uint8), group=group)
+
+    scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
+    dist.all_gather(scale_list, scale, group=group)
+
+    buffer_list = list(torch.chunk(uint8_buffer.view(fp8_type), world_size, dim=0))
+    sharded_gradient.zero_()
+    for tensor, scale in zip(buffer_list, scale_list):
+        sharded_gradient += cast_from_fp8(tensor, scale, input_type)
+
+
+def fp8_compress_fsdp_params_comm_hook(state: object, padded_unsharded_flat_param: torch.Tensor,
+                                       sharded_flat_param: torch.Tensor, group=None, fp8_format="e5m2") -> None:
+    """
+        This hook is pending the official support for parameters communication hook in FSDP, e.g. register_params_comm_hook.
+
+    Example::
+        >>> fsdp_model.register_params_comm_hook(None, fp8_compress_fsdp_params_comm_hook)
+    """
+
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+    fp8_max = torch.finfo(fp8_type).max
+    inp = sharded_flat_param
+    out = padded_unsharded_flat_param
+
+    per_tensor_max = inp.abs().max().float()
+    per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
+    dist.all_reduce(per_tensor_max, op=torch.distributed.ReduceOp.MAX, group=group)
+
+    scale = fp8_max / per_tensor_max
+    fp8_sharded_flat_param = (scale * inp.float()).to(fp8_type).view(torch.uint8)
+
+    fp8_out = torch.empty(out.shape, dtype=torch.uint8, device=out.device)
+    dist.all_gather_into_tensor(
+        fp8_out,
+        fp8_sharded_flat_param,
+        group=group,
+    )
+    padded_unsharded_flat_param.copy_((fp8_out.view(fp8_type).float() / scale).to(out.dtype))
