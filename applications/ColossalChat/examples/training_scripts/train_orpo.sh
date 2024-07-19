@@ -13,11 +13,10 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
-set_n_least_used_CUDA_VISIBLE_DEVICES 8
+set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-PROJECT_NAME="dpo"
+PROJECT_NAME="ORPO"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
-PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
@@ -38,11 +37,10 @@ declare -a dataset=(
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
-CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
+CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
 
 colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31313 train_orpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
-    --checkpoint_path $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --dataset ${dataset[@]} \
     --plugin "zero2" \
