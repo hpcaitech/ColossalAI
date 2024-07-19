@@ -88,7 +88,13 @@ def find_first_occurrence_subsequence(seq: torch.Tensor, subseq: torch.Tensor, s
     return -1
 
 
-def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], require_loss: List[bool]):
+def tokenize_and_concatenate(
+    tokenizer: PreTrainedTokenizer,
+    text: List[str],
+    require_loss: List[bool],
+    max_length: int,
+    discard_non_loss_tokens_at_tail: bool = True,
+):
     """
     Tokenizes a list of texts using the provided tokenizer and concatenates the tokenized outputs.
 
@@ -96,6 +102,13 @@ def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], re
         tokenizer (PreTrainedTokenizer): The tokenizer to use for tokenization.
         text (List[str]): The list of texts to tokenize.
         require_loss (List[bool]): A list of boolean values indicating whether each text requires loss calculation.
+        max_length: used to truncate the input ids
+        discard_non_loss_tokens_at_tail: whether to discard the non-loss tokens at the tail
+
+    if the first round has already exeeded max length
+    - if the user query already exeeded max length, discard the sample
+    - if only the first assistant response exeeded max length, truncate the response to fit the max length
+    else keep the first several complete rounds of the conversations until max length is reached
 
     Returns:
         Tuple[List[int], List[int], List[int]]: A tuple containing the concatenated tokenized input ids,
@@ -106,10 +119,17 @@ def tokenize_and_concatenate(tokenizer: PreTrainedTokenizer, text: List[str], re
     loss_ends = []
     for s, r in zip(text, require_loss):
         tokenized = tokenizer(s, add_special_tokens=False)["input_ids"]
-        if r:
-            loss_starts.append(len(input_ids))
-            loss_ends.append(len(input_ids) + len(tokenized))
-        input_ids.extend(tokenized)
+        if len(input_ids) + len(tokenized) <= max_length or len(loss_ends) == 0:
+            if r:
+                loss_starts.append(len(input_ids))
+                loss_ends.append(len(input_ids) + len(tokenized))
+            input_ids.extend(tokenized)
+    if loss_starts[0] >= max_length:
+        return None, None, None
+    if discard_non_loss_tokens_at_tail:
+        input_ids = input_ids[: loss_ends[-1]]
+    input_ids = input_ids[:max_length]
+    loss_ends[-1] = min(max_length, loss_ends[-1])
     return input_ids, loss_starts, loss_ends
 
 
@@ -125,6 +145,12 @@ def split_templated_prompt_into_chunks(messages: List[Dict[str, str]], prompt: s
             content_length = (
                 prompt.find(end_of_assistant, first_occur + content_length) + len(end_of_assistant) - first_occur
             )
+        # if the tokenized content start with a leading space, we want to keep it in loss calculation
+        # e.g., Assistant: I am saying...
+        # if the tokenized content doesn't start with a leading space, we only need to keep the content in loss calculation
+        # e.g.,
+        # Assistant:   # '\n' as line breaker
+        # I am saying...
         if prompt[first_occur - 1] != " ":
             chunks.append(prompt[start_idx:first_occur])
             chunks.append(prompt[first_occur : first_occur + content_length])

@@ -448,7 +448,7 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         },
         {
@@ -529,7 +529,7 @@ Below shows the preference dataset format used in training the reward model.
 [
     {"context": [
         {
-          "from": "human",
+          "from": "user",
           "content": "Introduce butterflies species in Oregon."
         }
       ]
@@ -598,7 +598,7 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 
 
 #### Step 1: Data Collection
-PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
+PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "user" and thus the "assistant" needs to generate a response to answer to the "user". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
 
 ```json
@@ -606,7 +606,7 @@ PPO uses two kinds of training data--- the prompt data and the pretrain data (op
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         }
         ...
@@ -761,12 +761,12 @@ For KTO data preparation, please use the script [prepare_kto_dataset.sh](./examp
 ```jsonl
 {
     "prompt": [
-        {"from": "human", "content": "What are some cuss words in english?"},
+        {"from": "user", "content": "What are some cuss words in english?"},
         {
             "from": "assistant",
             "content": "Here's an incomplete list.\n\nAss, dick, bugger, crap, ...",
         },
-        {"from": "human", "content": "What's your favorite one?"},
+        {"from": "user", "content": "What's your favorite one?"},
     ],
     "completion": {"from": "assistant", "content": "Ass."},  # the completion must contain a single line from the assistant.
     "label": False,  # whether the response is favorable or not
