@@ -13,7 +13,6 @@ from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, spawn
 from colossalai.testing.utils import spawn
 from tests.test_moe.moe_utils import loose_close
