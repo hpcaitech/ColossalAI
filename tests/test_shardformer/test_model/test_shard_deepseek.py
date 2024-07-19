@@ -47,7 +47,6 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
     dtype, precision = torch.float16, "fp16"
     torch.cuda.set_device(dist.get_rank())
 
-    print(config)
     plugin = MoeHybridParallelPlugin(
         pp_size=pp_size,
         num_microbatches=pp_size,

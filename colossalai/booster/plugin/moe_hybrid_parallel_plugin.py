@@ -55,6 +55,7 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         forced_dtype: Optional[torch.dtype] = None,
+        overlap_allgather: bool = False,
     ):
         WARN_STR = "Note that you need to make sure every expert are routed (i.e.) every expert has backward, otherwise this might lead to program hang or inconsistent result"
         if not force_overlap_comm and (overlap_communication or partition_grad):
@@ -95,6 +96,7 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             pp_process_group=pp_process_group,
             forced_dtype=forced_dtype,
             pg_to_param_list=pg_param_list,
+            overlap_allgather=overlap_allgather,
         )
 
 
