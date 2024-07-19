@@ -23,7 +23,13 @@ from transformers.models.mixtral.modeling_mixtral import (
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe.operators import DPGradScalerIn, DPGradScalerOut, EPGradScalerIn, EPGradScalerOut, all_to_all_uneven
+from colossalai.moe._operation import (
+    DPGradScalerIn,
+    DPGradScalerOut,
+    EPGradScalerIn,
+    EPGradScalerOut,
+    all_to_all_uneven,
+)
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
@@ -245,6 +251,7 @@ class MixtralPipelineForwards:
             if input_ids is not None and inputs_embeds is not None:
                 raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
             elif input_ids is not None:
+                print("input_ids", input_ids.shape)
                 batch_size, seq_length = input_ids.shape
             elif inputs_embeds is not None:
                 batch_size, seq_length, _ = inputs_embeds.shape
@@ -372,16 +379,29 @@ class MixtralPipelineForwards:
         if output_router_logits and past_router_logits is not None:
             all_router_logits = past_router_logits + all_router_logits
         if stage_manager.is_last_stage():
-            return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
-                if v is not None
+            if not return_dict:
+                return tuple(
+                    v
+                    for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_router_logits]
+                    if v is not None
+                )
+            return MoeModelOutputWithPast(
+                last_hidden_state=hidden_states,
+                past_key_values=next_cache,
+                hidden_states=all_hidden_states,
+                attentions=all_self_attns,
+                router_logits=all_router_logits,
             )
-        # always return dict for imediate stage
-        return {
-            "hidden_states": hidden_states,
-            "past_router_logits": all_router_logits,
-        }
+        else:
+            if output_router_logits:
+                return {
+                    "hidden_states": hidden_states,
+                    "past_router_logits": all_router_logits,
+                }
+            else:
+                return {
+                    "hidden_states": hidden_states,
+                }
 
     @staticmethod
     def mixtral_for_causal_lm_forward(

@@ -147,9 +147,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         world_size = dist.get_world_size()
 
         if self.enable_sequence_parallelism:
-            # if sequence parallelism is enabled, we reuse the same group for ep and sp
             if self.sequence_parallelism_mode == "all_to_all":
-                # when sequence parallelism is enabled, ep_group reuses sp_group
+                # if sequence parallelism is enabled, ep_group reuses sp_group
                 if self.ep_size != self.sp_size:
                     raise ValueError(
                         f"ep_size={self.ep_size} should be equal to sp_size={self.sp_size} or turned off when sequence parallelism is enabled"
@@ -157,8 +156,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
                 # since we are reusing sp_group, moe_dp_group will be derived as dp_group
                 self.moe_dp_size = self.dp_size
-                self.moe_dp_group = self.dp_group  # NOTE: sequence of value assignment matters
-                self.dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
+                self.moe_dp_group = self.dp_group
+                self.dp_sp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
                 self.ep_group = self.sp_group
                 self.moe_tp_group = self.tp_group
             else:
@@ -177,6 +176,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.moe_dp_group = None
             self.ep_group = None
             self.moe_tp_group = None
+            self.dp_sp_group = self.dp_group
 
             # create submesh for ep, moe_dp, moe_tp
             ranks_by_pp_stage = self.pg_mesh.get_group_along_axis(
@@ -225,8 +225,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
 
         self.logger.info(
-            f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=} {self.sp_size=}\n"
-            f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)} sp_group {dist.get_process_group_ranks(self.sp_group)}",
+            f"{type(self).__name__}: {self.ep_size=} {self.moe_dp_size=} {self.moe_tp_size=}\n"
+            f"rank {dist.get_rank()} moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)} ep_group {dist.get_process_group_ranks(self.ep_group)} moe_tp_group {dist.get_process_group_ranks(self.moe_tp_group)}",
             ranks=[0],
         )
 
@@ -254,7 +254,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 module=model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=self.dp_group,
+                dp_group=self.dp_sp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
                 use_ddp=self.use_ddp,
@@ -302,7 +302,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     use_pipeline=self.enable_pipeline_parallelism,
                     force_overlap_comm=self.force_overlap_comm,
                     param_info=param_info,
-                    dp_process_group=self.dp_group,
+                    dp_process_group=self.dp_sp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     moe_dp_group=self.moe_dp_group,

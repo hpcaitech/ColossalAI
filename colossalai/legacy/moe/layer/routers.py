@@ -7,7 +7,7 @@ import torch.nn as nn
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
 from colossalai.legacy.moe.manager import MOE_MANAGER
 from colossalai.legacy.moe.utils import get_activation
-from colossalai.moe.operators import EPGradScalerIn, EPGradScalerOut
+from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.moe_tensor.api import get_ep_rank, get_ep_size
 

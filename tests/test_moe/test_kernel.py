@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from colossalai.accelerator import get_accelerator
-from colossalai.moe.operators import MoeCombine, MoeDispatch, moe_cumsum
+from colossalai.moe._operation import MoeCombine, MoeDispatch, moe_cumsum
 
 NUM_EXPERTS = 4
 BATCH_SIZE = 4

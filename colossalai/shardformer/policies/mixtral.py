@@ -62,6 +62,10 @@ class MixtralPolicy(Policy):
                 attribute_replacement=decoder_attribute_replacement,
             )
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
+            if self.pipeline_stage_manager is not None:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Sequence parallelism is not supported with pipeline parallelism.")
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_mixtral_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
@@ -69,19 +73,18 @@ class MixtralPolicy(Policy):
                 policy=policy,
                 target_key=attn_cls,
             )
-            if self.pipeline_stage_manager is None:
-                self.append_or_create_method_replacement(
-                    description={
-                        "forward": get_mixtral_flash_attention_model_forward(
-                            self.shard_config,
-                            sp_mode=sp_mode,
-                            sp_size=sp_size,
-                            sp_group=sp_group,
-                        ),
-                    },
-                    policy=policy,
-                    target_key=MixtralModel,
-                )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_mixtral_flash_attention_model_forward(
+                        self.shard_config,
+                        sp_mode=sp_mode,
+                        sp_size=sp_size,
+                        sp_group=sp_group,
+                    ),
+                },
+                policy=policy,
+                target_key=MixtralModel,
+            )
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -202,6 +205,10 @@ class MixtralPolicy(Policy):
         """If under pipeline parallel setting, replacing the original forward method of huggingface
         to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
+            if self.shard_config.enable_sequence_parallelism:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Pipeline parallelism is not supported with sequence parallelism.")
             stage_manager = self.pipeline_stage_manager
             if self.model.__class__.__name__ == "MixtralModel":
                 module = self.model
