@@ -39,7 +39,6 @@ from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
-from colossalai.logging import get_dist_logger
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -653,6 +652,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         model: HybridParallelModule,
         use_pipeline: bool,
         param_info: OrderedDict,
+        pg_to_param_list: Dict[ProcessGroup, List[torch.nn.Parameter]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -685,6 +685,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             optimizer=optimizer,
             initial_scale=initial_scale,
             min_scale=min_scale,
+            pg_to_param_list=pg_to_param_list,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
             growth_interval=growth_interval,
@@ -1124,7 +1125,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         self.logger.info(
             f"{type(self).__name__}: dp_group {dist.get_process_group_ranks(self.dp_group)} pp_group {dist.get_process_group_ranks(self.pp_group)}  tp_group {dist.get_process_group_ranks(self.tp_group)} sp_group {dist.get_process_group_ranks(self.sp_group)}",
-            ranks=[0, 1, 2, 3, 4, 5, 6, 7],
+            ranks=[0],
         )
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
