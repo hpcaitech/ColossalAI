@@ -303,7 +303,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for bucket_store in self.pg_to_bucket_store.values():
             bucket_store.build_grad_in_bucket()
 
-            flat_grads = bucket_store.get_flatten_grad(self._dtype)
+            flat_grads = bucket_store.get_flatten_grad()
             flat_grads /= bucket_store.world_size
 
             # ready to add other tensors to bucket

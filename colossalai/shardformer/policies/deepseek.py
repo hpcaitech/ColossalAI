@@ -34,7 +34,10 @@ class DeepseekPolicy(Policy):
         policy = {}
 
         if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
+            if self.pipeline_stage_manager is not None:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Sequence parallelism is not supported with pipeline parallelism.")
             raise NotImplementedError(
                 "Deepseek dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
             )
@@ -136,6 +139,10 @@ class DeepseekPolicy(Policy):
         """If under pipeline parallel setting, replacing the original forward method of huggingface
         to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
+            if self.shard_config.enable_sequence_parallelism:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Pipeline parallelism is not supported with sequence parallelism.")
             stage_manager = self.pipeline_stage_manager
             if self.model.__class__.__name__ == "DeepseekModel":
                 module = self.model

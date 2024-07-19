@@ -1122,6 +1122,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
+        self.logger.info(
+            f"{type(self).__name__}: dp_group {dist.get_process_group_ranks(self.dp_group)} pp_group {dist.get_process_group_ranks(self.pp_group)}  tp_group {dist.get_process_group_ranks(self.tp_group)} sp_group {dist.get_process_group_ranks(self.sp_group)}",
+            ranks=[0, 1, 2, 3, 4, 5, 6, 7],
+        )
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             sequence_parallel_process_group=self.sp_group,

@@ -100,7 +100,7 @@ class BucketStore(BaseStore):
 
         return self._grad_in_bucket
 
-    def get_flatten_grad(self, dtype=None) -> Tensor:
+    def get_flatten_grad(self) -> Tensor:
         """Return the flattened gradients slices in the bucket, the data organization of the flattened tensor:
         [grad0_rank0, grad1_rank0, ..., grad_0_rank1, grad1_rank1, ....]
 
