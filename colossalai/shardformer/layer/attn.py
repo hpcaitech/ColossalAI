@@ -18,6 +18,8 @@ from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
+from .utils import RingComm
+
 __all__ = [
     "AttnMaskType",
     "ColoAttention",
@@ -467,14 +469,14 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
     # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
     new_block_lse = torch.exp(block_lse - new_lse)
-    assert _not_nan(new_lse), new_lse
-    # dist.barrier()
-    assert _not_nan(new_block_lse), new_block_lse
-
     out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
     lse.copy_(new_lse)
+    assert _not_nan(new_lse), new_lse
+    assert _not_nan(new_block_lse), new_block_lse
+    assert _not_nan(out), out
 
     # block_out = block_out.float()
     # out.copy_(out - F.sigmoid(block_lse - lse) * (out - block_out))
@@ -483,23 +485,8 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # assert not out.isnan().any(), out
 
 
-#  From Megatron-LM. TODO: try Triton
-# def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
-#     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
-#     softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
-#     out_corrected = out_per_step * softmax_lse_corrected_exp
-#     out.add_(out_corrected)
-
-
-# def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
-#     """
-#     softmax_lse: (B, H, Sq)
-#     softmax_lse_per_step: (B, H, Sq)
-#     """
-#     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
-#     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
-#     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-#     softmax_lse.copy_(new_scale)
+def _not_nan(x):
+    return not (x.isnan().any() or x.isinf().any())
 
 
 class RingAttention(torch.autograd.Function):

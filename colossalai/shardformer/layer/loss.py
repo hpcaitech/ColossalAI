@@ -173,6 +173,7 @@ def dist_cross_entropy(
     sp_mode = shard_config.sequence_parallelism_mode
     parallel_output = shard_config.parallel_output
     is_tp = shard_config.enable_tensor_parallelism
+<<<<<<< HEAD
     is_packed = labels.dim() == 2
     if is_packed:
         bs, seq_len = labels.shape
@@ -199,6 +200,8 @@ def dist_cross_entropy(
             labels = labels[..., 1:]
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
+=======
+>>>>>>> precision tests passed
 
 =======
     bs, seq_len = labels.shape
@@ -207,14 +210,14 @@ def dist_cross_entropy(
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
     if is_sp:
-        # Just don't shift twice
-        if split_labels_here or sp_rank == sp_size - 1:
+        # shift only once
+        if split_labels_here or (sp_rank == sp_size - 1):
             labels = labels[..., 1:]
-
         # Split labels when logits are split
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
 
+<<<<<<< HEAD
         # The rank holding the last seq chunk
 >>>>>>> precision tests passed
         if sp_rank == sp_size - 1:
@@ -244,7 +247,21 @@ def dist_cross_entropy(
         raise e
 =======
         logits = logits[..., :-1, :].contiguous()
+=======
+        # Pad to the same shape across all ranks in TP all_reduce
+        if sp_rank == sp_size - 1:
+            logits = logits[..., :-1, :]
+            if is_tp and parallel_output:
+                pad_shape = [0] * logits.dim() * 2
+                pad_shape[-3] = 1  # Right side, dim = -2
+                logits = F.pad(logits, pad_shape, value=_IGNORE_IDX)
+                labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
+    else:
+        labels = labels[..., 1:]
+        logits = logits[..., :-1, :]
+>>>>>>> precision tests passed
     labels = labels.contiguous()
+    logits = logits.contiguous()
     num_nonzero = (labels != _IGNORE_IDX).sum()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 >>>>>>> precision tests passed
