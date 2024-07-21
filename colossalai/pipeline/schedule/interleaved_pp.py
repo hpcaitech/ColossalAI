@@ -283,10 +283,11 @@ class InterleavedSchedule(PipelineSchedule):
         # Load input ids, attention mask and labels
         micro_batch = self.load_micro_batch(model_chunk_id=model_chunk_id)
 
+        if input_obj is not None:
+            assert all(not x.isnan().any() for x in input_obj.values()), "NaN detected in input_obj"
         # for the first stage, input_obj is None
         # for other stages, input_obj is the output of the previous stage containing hidden_states etc.
         # Only attention_mask from micro_batch is used
-
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
             if isinstance(model_chunk, ModuleList):
                 output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)

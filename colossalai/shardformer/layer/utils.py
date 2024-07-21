@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import List
+from typing import List, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -291,7 +291,9 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def zigzag_split_batch(batch: List[torch.Tensor], sp_group: ProcessGroup, varlen: bool = False):
+def zigzag_split_batch(
+    batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
+):
     """
     Split the input along the sequence dimension for Ring Attention. As naively spliting sequence
     in the causual setting will result in the first ranks having much less workload than the last ranks,
@@ -299,20 +301,25 @@ def zigzag_split_batch(batch: List[torch.Tensor], sp_group: ProcessGroup, varlen
     For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
 
     Args:
-        batch (List[torch.Tensor]): The input tensors to split.
+        batch (List[torch.Tensor] or Tensor): The input tensor(s) to split.
         sp_group (ProcessGroup): The process group for sequence parallelism.
+        seq_dim (int): The sequence dimension to split.
         varlen (bool): If the input is padded (aka "packing" mode), such that
             sequences in a batch have different lengths, and we need to unpad and
             split each sequence evenly by sp_size.
     """
     sp_size = dist.get_world_size(sp_group)
     sp_rank = dist.get_rank(sp_group)
-    seq_dim = 1
+    if isinstance(batch, torch.Tensor):
+        batch = [batch]
+    seq_dim = seq_dim if seq_dim != -1 else batch[0].dim() - 1
+
     if sp_size > 1:
         for idx, tensor in enumerate(batch):
             assert (
                 tensor.numel() // (sp_size * 2) > 1
             ), f"Bro, the seq length for tensor {idx} in batch is too short to split!"
+
             tensor = tensor.view(
                 *tensor.shape[:seq_dim],
                 2 * sp_size,
@@ -322,9 +329,48 @@ def zigzag_split_batch(batch: List[torch.Tensor], sp_group: ProcessGroup, varlen
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             # (B, 2, Sq // (2 * sp_size), ...) -> (B, Sq // sp_size, ...)
-            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
+            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :]).contiguous()
 
+    if len(batch) == 1:
+        return batch[0]
     return batch
+
+
+class RingComm:
+    def __init__(self, process_group: dist.ProcessGroup):
+        self._process_group = process_group
+        self._ops = []
+        self.rank = dist.get_rank(self._process_group)
+        self.world_size = dist.get_world_size(self._process_group)
+        self._reqs = []
+
+        self.send_rank = (self.rank + 1) % self.world_size
+        self.recv_rank = (self.rank - 1) % self.world_size
+
+        if process_group is not None:
+            self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
+            self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
+
+    def send_recv(self, send_tensor: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
+        if recv_tensor is None:
+            res = torch.empty_like(send_tensor)
+        else:
+            res = recv_tensor
+
+        # NOTE: looks like batch_isend_irecv doesn't deadlock even
+        # when we never swap send recv ops across ranks
+        send_op = dist.P2POp(dist.isend, send_tensor, self.send_rank, group=self._process_group)
+        recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
+        self._ops.append(send_op)
+        self._ops.append(recv_op)
+        self._reqs = dist.batch_isend_irecv(self._ops)
+        return res
+
+    def wait(self):
+        for req in self._reqs:
+            req.wait()
+        self._reqs = []
+        self._ops = []
 
 
 def is_share_sp_tp(sp_mode: str):

@@ -188,7 +188,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         """
 
         if self.shard_config.enable_sequence_parallelism:
-            if self.shard_config.sequence_parallelism_mode == "all_to_all":
+            if self.shard_config.sequence_parallelism_mode in ["all_to_all", "ring_attn"]:
                 return
 
             if self.shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:

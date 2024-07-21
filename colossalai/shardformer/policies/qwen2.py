@@ -313,7 +313,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         setattr(self.shard_config, "causal_lm", True)
 
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 Qwen2ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[

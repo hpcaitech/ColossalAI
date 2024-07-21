@@ -192,6 +192,7 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             sp_size=args.sp,
+            sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
@@ -316,13 +317,14 @@ def main():
                 performance_evaluator.on_step_start(step)
                 outputs = model(**batch)
                 loss = outputs[0]
+                if dist.get_rank() == dist.get_world_size() - 1:
+                    print(f"Step {step} loss: {loss}")
                 booster.backward(loss, optimizer)
                 optimizer.step()
                 optimizer.zero_grad()
 
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
-    booster.save_model(model, "model.pt")
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 

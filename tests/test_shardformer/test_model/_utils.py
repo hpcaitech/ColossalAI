@@ -317,11 +317,12 @@ def check_output_hidden_state(
         sharded_hidden_state = sharded_output.last_hidden_state
 
     # Check if the output sequence is gathered before cross entropy
-    seq_dim = 1
-    sp_group = shard_config.sequence_parallel_process_group
-    sp_size = shard_config.sequence_parallel_size
-    if org_hidden_state.shape[seq_dim] == sharded_hidden_state.shape[seq_dim] * sp_size:
-        org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
+    if shard_config is not None:
+        seq_dim = 1
+        sp_group = shard_config.sequence_parallel_process_group
+        sp_size = shard_config.sequence_parallel_size
+        if org_hidden_state.shape[seq_dim] == sharded_hidden_state.shape[seq_dim] * sp_size:
+            org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
 
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
 
@@ -382,8 +383,11 @@ def get_grad_tensors_for_check(
             shard_grad = torch.cat(shard_grad_list, dim=dim)
 
         # embedding may be resized when using tensor parallel
-        if shard_grad.shape[0] > org_grad.shape[0]:
-            shard_grad = shard_grad[: org_grad.shape[0], :]
+        try:
+            if shard_grad.shape[0] > org_grad.shape[0]:
+                shard_grad = shard_grad[: org_grad.shape[0], :]
+        except:
+            pass
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
 
