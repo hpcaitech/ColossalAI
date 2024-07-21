@@ -168,6 +168,7 @@ def dist_cross_entropy(
     sp_size = shard_config.sequence_parallel_size
     sp_mode = shard_config.sequence_parallelism_mode
     parallel_output = shard_config.parallel_output
+    is_tp = shard_config.enable_tensor_parallelism
 
     bs, seq_len = labels.shape
 
@@ -175,26 +176,26 @@ def dist_cross_entropy(
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
     if is_sp:
-        # Just don't shift twice
-        if split_labels_here or sp_rank == sp_size - 1:
+        # shift only once
+        if split_labels_here or (sp_rank == sp_size - 1):
             labels = labels[..., 1:]
-
         # Split labels when logits are split
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
 
-        # The rank holding the last seq chunk
+        # Pad to the same shape across all ranks in TP all_reduce
         if sp_rank == sp_size - 1:
             logits = logits[..., :-1, :]
-            # Pad to the same shape across all ranks in TP all_reduce
-            pad_shape = [0] * logits.dim() * 2
-            pad_shape[-3] = 1  # Right side, dim = -2
-            logits = F.pad(logits, pad_shape, value=_IGNORE_IDX).contiguous()
-            labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
+            if is_tp and parallel_output:
+                pad_shape = [0] * logits.dim() * 2
+                pad_shape[-3] = 1  # Right side, dim = -2
+                logits = F.pad(logits, pad_shape, value=_IGNORE_IDX)
+                labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
     else:
         labels = labels[..., 1:]
-        logits = logits[..., :-1, :].contiguous()
+        logits = logits[..., :-1, :]
     labels = labels.contiguous()
+    logits = logits.contiguous()
     num_nonzero = (labels != _IGNORE_IDX).sum()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 
@@ -202,7 +203,7 @@ def dist_cross_entropy(
     loss_fct = CrossEntropyLoss(ignore_index=_IGNORE_IDX, reduction="sum")
     labels = labels.view(-1)
 
-    if shard_config.enable_tensor_parallelism and parallel_output:
+    if is_tp and parallel_output:
         # Cross entropy with all-reduce for TP
         new_vocab_size = logits.shape[-1]
         logits = logits.view(-1, new_vocab_size)

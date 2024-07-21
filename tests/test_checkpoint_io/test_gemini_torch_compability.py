@@ -20,7 +20,7 @@ from tests.kit.model_zoo import model_zoo
 
 @clear_cache_before_run()
 @parameterize("shard", [False, True])
-@parameterize("model_name", ["transformers_llama_for_casual_lm"])
+@parameterize("model_name", ["transformers_llama_for_causal_lm"])
 def exam_torch_load_from_gemini(shard: bool, model_name: str):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()

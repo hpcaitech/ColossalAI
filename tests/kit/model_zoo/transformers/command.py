@@ -32,8 +32,8 @@ if HAS_COMMAND:
 
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
-    # label is needed for casual lm
-    def data_gen_for_casual_lm():
+    # label is needed for causal lm
+    def data_gen_for_causal_lm():
         data = data_gen()
         labels = data["input_ids"].clone()
         data["labels"] = labels
@@ -44,7 +44,7 @@ if HAS_COMMAND:
 
     # function to get the loss
     loss_fn = lambda output: output["last_hidden_state"].mean()
-    loss_fn_for_casual_lm = lambda output: output["loss"]
+    loss_fn_for_causal_lm = lambda output: output["loss"]
     loss_fn_for_seq_classification = lambda output: output["logits"].mean()
 
     config = CohereConfig(
@@ -70,10 +70,10 @@ if HAS_COMMAND:
         model_attribute=ModelAttribute(has_control_flow=True),
     )
     model_zoo.register(
-        name="transformers_command_for_casual_lm",
+        name="transformers_command_for_causal_lm",
         model_fn=lambda: transformers.CohereForCausalLM(config),
-        data_gen_fn=data_gen_for_casual_lm,
+        data_gen_fn=data_gen_for_causal_lm,
         output_transform_fn=output_transform_fn,
-        loss_fn=loss_fn_for_casual_lm,
+        loss_fn=loss_fn_for_causal_lm,
         model_attribute=ModelAttribute(has_control_flow=True),
     )
