@@ -16,6 +16,8 @@ from colossalai.logging import get_dist_logger
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
+from .utils import RingComm
+
 __all__ = [
     "AttnMaskType",
     "ColoAttention",
@@ -363,140 +365,6 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
     # lse = (lse - F.logsigmoid(lse - block_lse))
     return out, lse
-
-
-def _not_nan(x):
-    return not (x.isnan().any() or x.isinf().any())
-
-
-@triton.jit
-def _rescale_out_lse_kernel(
-    out_ptr,
-    out_per_step_ptr,
-    lse_ptr,
-    lse_step_ptr,
-    D,  # Each thread handles D elements
-    stride_out_0,
-    stride_out_1,
-    stride_out_2,
-    stride_out_3,
-    stride_out_per_step_0,
-    stride_out_per_step_1,
-    stride_out_per_step_2,
-    stride_out_per_step_3,
-    stride_lse_0,
-    stride_lse_1,
-    stride_lse_2,
-    stride_lse_3,
-    BLOCK_M: tl.constexpr,
-):
-    batch_id = tl.program_id(0)
-    sq_id = tl.program_id(1)
-    h_id = tl.program_id(2)
-    d_id = tl.arange(0, D)
-
-    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id * stride_out_3
-    out_per_step_idx = (
-        batch_id * stride_out_per_step_0
-        + sq_id * stride_out_per_step_1
-        + h_id * stride_out_per_step_2
-        + d_id * stride_out_per_step_3
-    )
-    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
-    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
-
-    # Load inputs
-    out = tl.load(out_ptr + out_idx)
-    out_per_step = tl.load(out_per_step_ptr + out_per_step_idx)
-    lse = tl.load(lse_ptr + lse_idx)
-    lse_step = tl.load(lse_step_ptr + lse_step_idx)
-
-    # Element-wise rescale
-    new_lse = lse + tl.log(1 + tl.exp(lse_step - lse))
-    out = tl.exp(lse - new_lse) * out + tl.exp(lse_step - new_lse) * out_per_step
-
-    tl.store(out_ptr + out_idx, out)
-    tl.store(lse_ptr + lse_idx, new_lse)
-
-
-def _rescale_out_lse_triton(out, block_out, lse, block_lse):
-    B, Sq, H, D = out.shape
-
-    assert out.is_contiguous() and block_out.is_contiguous() and lse.is_contiguous() and block_lse.is_contiguous()
-
-    # TODO: use 1d kernel?
-    grid = lambda META: (triton.cdiv(Sq, META["BLOCK_M"]), B, H)
-    _rescale_out_lse_kernel[grid](
-        out,
-        block_out,
-        lse,
-        block_lse,
-        B,
-        Sq,
-        H,
-        D,
-        out.stride(0),
-        out.stride(1),
-        out.stride(2),
-        out.stride(3),
-        block_out.stride(0),
-        block_out.stride(1),
-        block_out.stride(2),
-        block_out.stride(3),
-        lse.stride(0),
-        lse.stride(1),
-        lse.stride(2),
-        lse.stride(3),
-    )
-
-
-def _rescale_out_lse(out, block_out, lse, block_lse):
-    """
-    Compute the new attention denominator:
-        exp(lse) + exp(block_lse) = exp(max_scale) * (exp(min_scale - max_scale) + 1)
-    Args:
-        out: (B, Sq, H, D)
-        block_out: (B, Sq, H, D)
-        lse: (B, H, Sq, 1)
-        block_lse: (B, H, Sq, 1)
-    """
-
-    # min_scale = torch.min(lse, block_lse)
-    # max_scale = torch.max(lse, block_lse)
-    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-    new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
-    new_block_lse = torch.exp(block_lse - new_lse)
-    assert _not_nan(new_lse), new_lse
-    # dist.barrier()
-    assert _not_nan(new_block_lse), new_block_lse
-
-    out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
-    lse.copy_(new_lse)
-
-    # block_out = block_out.float()
-    # out.copy_(out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse.copy_(lse - F.logsigmoid(lse - block_lse))
-    # assert not lse.isnan().any(), lse
-    # assert not out.isnan().any(), out
-
-
-#  From Megatron-LM. TODO: try Triton
-# def flash_attn_out_correction(out, out_per_step, seq_dim, softmax_lse, softmax_lse_per_step):
-#     softmax_lse_corrected_exp = torch.exp(softmax_lse_per_step - softmax_lse).movedim(2, seq_dim)
-#     softmax_lse_corrected_exp = softmax_lse_corrected_exp.unsqueeze(-1)
-#     out_corrected = out_per_step * softmax_lse_corrected_exp
-#     out.add_(out_corrected)
-
-
-# def flash_attn_softmax_lse_correction(softmax_lse, softmax_lse_per_step):
-#     """
-#     softmax_lse: (B, H, Sq)
-#     softmax_lse_per_step: (B, H, Sq)
-#     """
-#     max_scale = torch.max(softmax_lse, softmax_lse_per_step)
-#     min_scale = torch.min(softmax_lse, softmax_lse_per_step)
-#     new_scale = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-#     softmax_lse.copy_(new_scale)
 
 
 class RingAttention(torch.autograd.Function):

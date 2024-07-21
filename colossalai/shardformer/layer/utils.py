@@ -331,7 +331,7 @@ def split_batch_zigzag(
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             # (B, 2, Sq // (2 * sp_size), ...) -> (B, Sq // sp_size, ...)
-            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
+            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :]).contiguous()
 
     if len(batch) == 1:
         return batch[0]

@@ -153,8 +153,25 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+<<<<<<< HEAD
         # Double Ring Attention
         # Zigzag Ring Attention
+=======
+        # Zigzag Ring Attention + PP
+        {
+            "tp_size": 1,
+            "pp_size": 2,
+            "sp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring_attn",
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "bf16",
+            "initial_scale": 1,
+        },
+        # Ring Attention + TP
+>>>>>>> precision tests passed
         {
             "tp_size": 2,
             "pp_size": 1,
@@ -180,7 +197,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "tp_size": 2,
             "pp_size": 1,
             "sp_size": 2,
-            "num_microbatches": 2,
+            "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "all_to_all",
             "enable_all_optimization": True,
@@ -328,8 +345,11 @@ def run_llama_test(test_config):
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
+>>>>>>> precision tests passed
+=======
 >>>>>>> precision tests passed
         try:
             check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
@@ -423,4 +443,4 @@ def test_llama_3d():
 
 if __name__ == "__main__":
     test_llama()
-    test_llama_3d()
+    # test_llama_3d()
