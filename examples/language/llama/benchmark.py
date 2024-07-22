@@ -96,6 +96,12 @@ def main():
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument("--overlap_allgather", action="store_true")
+    parser.add_argument(
+        "--sp_mode",
+        default="all_to_all",
+        choices=["all_to_all", "ring_attn", "ring", "split_gather"],
+        help="Sequence parallelism mode",
+    )
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
