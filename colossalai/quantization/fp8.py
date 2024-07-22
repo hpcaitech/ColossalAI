@@ -66,7 +66,6 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e5m2", group=None) -> None:
     Returns:
         None
     """
-
     world_size = dist.get_world_size(group=group)
     input_type = tensor.dtype
     input_shape = tensor.shape
