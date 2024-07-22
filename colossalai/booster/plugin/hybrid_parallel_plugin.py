@@ -1134,9 +1134,11 @@ class HybridParallelPlugin(PipelinePluginBase):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
-            sp_stream=torch.cuda.Stream()
-            if enable_sequence_parallelism and sequence_parallelism_mode == "ring_attn"
-            else None,
+            sp_stream=(
+                torch.cuda.Stream()
+                if enable_sequence_parallelism and sequence_parallelism_mode == "ring_attn"
+                else None
+            ),
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
