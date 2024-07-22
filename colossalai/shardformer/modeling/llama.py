@@ -695,12 +695,9 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 attn_mask["cu_seqlens"], attn_mask["max_seqlen"], attn_mask["indices"] = get_pad_info(
                     attn_mask["attention_mask"].squeeze(1).any(dim=-1)
                 )  # [B, 1, Sq, Skv] -> [B, Sq]
-
             else:
                 attn_mask["cu_seqlens"] = attn_mask["max_seqlen"] = attn_mask["indices"] = None
-            batch = [inputs_embeds, position_ids]
-            # inputs_embeds, attention_mask["attention_mask"], position_ids = zigzag_split_batch(batch, sp_group)
-            inputs_embeds, position_ids = zigzag_split_batch(batch, sp_group)
+            inputs_embeds, position_ids = zigzag_split_batch([inputs_embeds, position_ids], sp_group)
 
         elif is_share_sp_tp(sp_mode):
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)

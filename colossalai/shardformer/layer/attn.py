@@ -211,9 +211,9 @@ class ColoAttention:
         4. padded causal mask: recv attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, indices
 
         Args:
-            q (torch.Tensor): Query tensor. Shape should be [B, Heads, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, Heads, Sq, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, Heads, Sq, D]
+            q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Sq, D]
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Sq]. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
@@ -230,7 +230,7 @@ class ColoAttention:
             scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
 
         Returns:
-            torch.Tensor: Output tensor. Shape should be [B, Heads, Sq, D]
+            torch.Tensor: Output tensor. Shape should be [B, nHeads, Sq, D]
         """
         # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
         # this case is usaul when padding mask is used and self attention is performed
@@ -447,9 +447,9 @@ class RingAttention(torch.autograd.Function):
     ):
         """
         Args:
-            q (torch.Tensor): Query tensor. Shape should be [B, Heads, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, Heads, Sq, Sq, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, Heads, Sq, Sq, D]
+            q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, Sq, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Sq, Sq, D]
             sp_group (Optional[dist.ProcessGroup]): Process group for sequence parallelism
             sp_tream (torch.cuda.Stream): An different stream for output correction.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
@@ -465,9 +465,9 @@ class RingAttention(torch.autograd.Function):
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
         Returns:
-            out: Output tensor. Shape should be [B, Heads, Sq, D] or [T, Heads, D]
+            out: Output tensor. Shape should be [B, nHeads, Sq, D] or [T, nHeads, D]
             softmax_lse: (if return_softmax is True) Softmax denominator (logsumexp).
-                Shape should be [B, Heads, Sq]
+                Shape should be [B, nHeads, Sq]
         """
         assert (
             q.shape[2] == k.shape[2]
@@ -592,8 +592,8 @@ class RingAttention(torch.autograd.Function):
                         _,
                         _,
                         _,
-                        block_out[i % 2],
-                        block_softmax_lse[i % 2],
+                        block_out[i % 2],  # (B, Sq, H, D)
+                        block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
                     ) = _flash_attn_forward(
@@ -624,7 +624,7 @@ class RingAttention(torch.autograd.Function):
                         _,
                         _,
                         block_out[i % 2],  # (B, Sq, H, D)
-                        block_softmax_lse[i % 2],  # (B, H, Sq)
+                        block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
                     ) = _flash_attn_forward(
@@ -651,7 +651,7 @@ class RingAttention(torch.autograd.Function):
                         _,
                         _,
                         block_out[i % 2],  # (B, Sq // 2, H, D)
-                        block_softmax_lse[i % 2],  # (B, H, Sq // 2)
+                        block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
                     ) = _flash_attn_forward(
@@ -669,11 +669,11 @@ class RingAttention(torch.autograd.Function):
                 # Output and log sum exp correction
                 if i > 0:
                     sp_streams[i % 2].wait_event(correction_done)
-
-                block_out[i % 2] = block_out[i % 2].view(b, block_out[i % 2].shape[0] // b, h, d).float()
+                sq_ = block_out[i % 2].shape[0] // b
+                block_out[i % 2] = block_out[i % 2].view(b, sq_, h, d)
                 block_softmax_lse[i % 2] = (
-                    block_softmax_lse[i % 2].transpose(1, 2).contiguous().unsqueeze(-1).float()
-                )  # (B, H, Sq) -> (B, Sq, H, 1)
+                    block_softmax_lse[i % 2].view(h, b, sq_).permute(1, 2, 0).contiguous().unsqueeze(-1).float()
+                )  # (H, total_q_seqlen) -> (B, Sq, H, 1)
                 assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
 
                 # Overlap output correction with next flash attn kernel
@@ -692,8 +692,8 @@ class RingAttention(torch.autograd.Function):
 
         out = out.view(b, sq, h, d).to(q.dtype)  # (B, Sq, H, D)
         q, k, v = [x.view(b, sq, h, d) for x in (q, k, v)]  # (B * Sq, H, D) -> (B, Sq, H, D)
-        # Required by flash attn backward: (B, Sq, H, 1) -> (B, H, Sq)
-        softmax_lse = softmax_lse.squeeze(-1).transpose(1, 2).contiguous()
+        # Required by flash attn backward: (B, Sq, H, 1) -> (H, total_q_seqlen)
+        softmax_lse = softmax_lse.squeeze(-1).permute(2, 0, 1).contiguous().flatten(start_dim=1)
         ctx.save_for_backward(
             q,
             k,
