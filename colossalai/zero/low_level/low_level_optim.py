@@ -20,6 +20,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
 from .bookkeeping import BucketStore, GradientStore, TensorBucket
@@ -66,7 +67,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def __init__(
         self,
         optimizer: Optimizer,
-        pg_to_param_list: Dict[ProcessGroup, List[nn.Parameter]] = None,
+        pg_to_param_list: Optional[Dict[ProcessGroup, List[nn.Parameter]]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -92,7 +93,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
         self._verbose = verbose
 
-        if dp_process_group is not None and pg_to_param_list is not None:
+        if (dp_process_group is not None) and (pg_to_param_list is not None):
             raise ValueError("dp_process_group and pg_to_param_list should not be provided at the same time.")
 
         if pg_to_param_list is None:
@@ -301,6 +302,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def _run_reduction(self):
         for bucket_store in self.pg_to_bucket_store.values():
+            if bucket_store.num_elements_in_bucket() <= 0:
+                continue
+
             bucket_store.build_grad_in_bucket()
 
             flat_grads = bucket_store.get_flatten_grad()
@@ -350,8 +354,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self, bucket_store: BucketStore, origin_grad_list: List, flat_grad_list: List, group_id: int
     ) -> None:
         for rank, grad_list in enumerate(origin_grad_list):
-            if len(grad_list) == 0:
-                continue
             sync_tensor(flat_grad_list[rank], grad_list)
             for grad in grad_list:
                 param_id = bucket_store.get_param_id_of_grad(grad)
@@ -648,11 +650,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
-                if param.requires_grad:
-                    if param.grad is None:
-                        # for moe params, all experts should have gradient
-                        # TODO better way of doing this
-                        param.grad = torch.zeros_like(param)
+                if is_moe_tensor(param) and param.requires_grad and param.grad is None:
+                    # TODO better of of doing this
+                    # assign zero grad to unrouted expert to avoid hang during grad reduction
+                    param.grad = torch.zeros_like(param)
+
+                if param.requires_grad and param.grad is not None:
                     self._add_to_bucket(param, group_id)
 
         self._run_reduction()

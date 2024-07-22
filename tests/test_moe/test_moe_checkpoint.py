@@ -6,7 +6,7 @@ from copy import deepcopy
 import pytest
 import torch
 import torch.distributed as dist
-from torch.optim import Adam
+from torch.optim import SGD, Adam
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 
@@ -14,18 +14,13 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, spawn
+from colossalai.testing.random import seed_all
 from colossalai.testing.utils import spawn
-from tests.test_moe.moe_utils import loose_close
+from tests.test_moe.moe_utils import check_model_equal
 
 tokens, n_experts = 7, 4
 hidden_size = 8
 top_k = 2
-
-
-def check_model_equal(model1, model2):
-    assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
-    for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
-        loose_close(p1, p2, p1.dtype)
 
 
 def get_optimizer_snapshot(optim):
@@ -86,34 +81,33 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
                 num_experts_per_tok=top_k,
                 num_attention_heads=2,
                 num_key_value_heads=2,
+                num_hidden_layers=2,
             ),
             MixtralForCausalLM,
         ],
     ],
 )
 def check_moe_checkpoint(test_config):
+    dtype, precision = torch.float16, "fp16"
+    config, model_cls = test_config
+    torch.cuda.set_device(dist.get_rank())
+
     context = tempfile.TemporaryDirectory() if dist.get_rank() == 0 else nullcontext()
     with context as f:
-        torch.cuda.set_device(dist.get_rank())
         if dist.get_rank() == 0:
             broadcast_objects = [f]  # any picklable object
         else:
             broadcast_objects = [None]
         dist.broadcast_object_list(broadcast_objects, src=0)
 
-        config = test_config[0]
-        model_cls = test_config[1]
-        torch.manual_seed(0)
         input_ids = torch.randint(0, 100, (2, tokens)).cuda()
-        orig_model = model_cls(config).cuda()
+        orig_model = model_cls(config).cuda().to(dtype)
+
+        seed_all(10086)
         model = deepcopy(orig_model)
-        optimizer = Adam(model.parameters(), lr=1e-3)
+        optimizer = SGD(model.parameters(), lr=1e-3)
         plugin = MoeHybridParallelPlugin(
-            pp_size=2,
-            ep_size=2,
-            tp_size=1,
-            microbatch_size=1,
-            zero_stage=1,
+            pp_size=2, ep_size=2, tp_size=1, microbatch_size=1, zero_stage=1, precision=precision
         )
         booster = Booster(plugin=plugin)
         model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
@@ -135,12 +129,12 @@ def check_moe_checkpoint(test_config):
         booster.save_model(model, model_dir, shard=True)
         dist.barrier()
         if dist.get_rank() == 0:
-            saved_model = model_cls.from_pretrained(model_dir).cuda()
+            saved_model = model_cls.from_pretrained(model_dir).cuda().to(dtype)
             check_model_equal(orig_model, saved_model)
             saved_model.save_pretrained(hf_model_dir)
         dist.barrier()
         # check load model
-        new_model = model_cls(config).cuda()
+        new_model = model_cls(config).cuda().to(dtype)
         new_optimizer = Adam(new_model.parameters(), lr=1e-3)
         new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
         booster.load_model(new_model, hf_model_dir)

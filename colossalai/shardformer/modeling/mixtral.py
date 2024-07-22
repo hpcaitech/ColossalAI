@@ -74,8 +74,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
 
         set_tensors_to_none(self.experts, exclude=set(held_experts))
-        for p in self.experts.parameters():
-            set_moe_tensor_ep_group(p, ep_group)
 
         # setup moe_dp group
         self.moe_dp_group = moe_dp_group
@@ -91,6 +89,9 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 expert.w1 = Linear1D_Col.from_native_module(expert.w1, self.moe_tp_group)
                 expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.moe_tp_group)
                 expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.moe_tp_group)
+
+        for p in self.experts.parameters():
+            set_moe_tensor_ep_group(p, ep_group)
 
     @staticmethod
     def from_native_module(

@@ -23,6 +23,7 @@ def check_mixtral_moe_layer():
         precision="bf16",
         tp_size=1,
         pp_size=1,
+        zero_stage=1,
         ep_size=dist.get_world_size(),
     )
     config = MixtralConfig(
@@ -63,7 +64,8 @@ def run_dist(rank: int, world_size: int, port: int):
     check_mixtral_moe_layer()
 
 
-@pytest.mark.parametrize("world_size", [2, 4])
+@pytest.mark.skip("tested in corresponding sharderformer")
+@pytest.mark.parametrize("world_size", [2])
 def test_mixtral_moe_layer(world_size: int):
     spawn(run_dist, world_size)
 
