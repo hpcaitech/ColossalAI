@@ -254,12 +254,7 @@ class ColoAttention:
         # sanity check
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
-            if attention_mask_type in (
-                AttnMaskType.CUSTOM,
-                AttnMaskType.CAUSAL,
-                AttnMaskType.PADDED,
-                AttnMaskType.PADDED_CAUSAL,
-            ):
+            if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
                 assert (
                     cu_seqlens_q is None
                     and cu_seqlens_kv is None
@@ -471,22 +466,14 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
+    assert not (new_lse.isnan().any() or new_lse.isinf().any()), f"lse is nan: {new_lse}"
     new_block_lse = torch.exp(block_lse - new_lse)
     out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
     lse.copy_(new_lse)
-    assert _not_nan(new_lse), new_lse
-    assert _not_nan(new_block_lse), new_block_lse
-    assert _not_nan(out), out
 
     # block_out = block_out.float()
-    # out.copy_(out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse.copy_(lse - F.logsigmoid(lse - block_lse))
     # assert not lse.isnan().any(), lse
     # assert not out.isnan().any(), out
-
-
-def _not_nan(x):
-    return not (x.isnan().any() or x.isinf().any())
 
 
 class RingAttention(torch.autograd.Function):
