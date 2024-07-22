@@ -179,9 +179,9 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
-def test_mistral(world_size):
+def test_deepseek(world_size):
     spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_mistral(world_size=8)
+    test_deepseek(world_size=4)
