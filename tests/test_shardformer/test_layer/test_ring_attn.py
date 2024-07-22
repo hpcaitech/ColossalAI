@@ -19,7 +19,13 @@ from colossalai.utils import get_current_device
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
+<<<<<<< HEAD
     device = get_current_device()
+=======
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    device = torch.device(f"cuda:{rank}")
+>>>>>>> update softmax_lse shape by new interface
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
     # Some outliers may seem large, but our errors are still lower than
@@ -36,6 +42,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     q.requires_grad = k.requires_grad = v.requires_grad = True
 
     # Ring attention vs single GPU
+<<<<<<< HEAD
     ring_out, ring_lse = RingAttention.attention(
         q,
         k,
@@ -47,6 +54,10 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
         # inner_ring_size=4
     )
     ring_out = ring_out.transpose(1, 2)
+=======
+    ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, sp_stream, AttnMaskType.CAUSAL, return_softmax=True)
+    ring_lse = ring_lse.transpose(0, 1).view(batch_size, seq_len // world_size, nheads).transpose(1, 2).contiguous()
+>>>>>>> update softmax_lse shape by new interface
     out, lse, _ = flash_attn_qkvpacked_func(
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
     )
