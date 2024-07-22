@@ -17,8 +17,8 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
 PROJECT_NAME="kto"
 PARENT_CONFIG_FILE="./benchmark_config" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local tokenizer path
+PRETRAINED_MODEL_PATH="" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 BENCHMARK_DATA_DIR="./temp/kto" # Path to benchmark data
 DATASET_SIZE=80
 
