@@ -54,10 +54,10 @@ def test_ring_attn(seq_len, batch_size, nheads, d, dtype):
     sp_group = dist.group.WORLD
     sp_stream = torch.cuda.Stream()
 
-    # Some outliers may seem large, but our errors are still much lower than
-    # than Megatron-LM's context parallel
+    # Some outliers may seem large, but our errors are still lower than
+    # than Megatron-LM's context parallel's
     # (https://github.com/NVIDIA/TransformerEngine/blob/33a3d02f81c56e6f7b542c09bfa86657078d57fb/tests/pytorch/fused_attn/run_fused_attn_with_cp.py#L215)
-    # and the original zigzag implementation: https://github.com/zhuzilin/ring-flash-attention/tree/main
+    # and the original zigzag implementation's (https://github.com/zhuzilin/ring-flash-attention/tree/main)
     atol = rtol = 7e-3
 
     # Setup inputs
