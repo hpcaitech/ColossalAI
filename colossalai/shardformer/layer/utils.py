@@ -295,9 +295,9 @@ def zigzag_split_batch(
     batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
 ):
     """
-    Split the input along the sequence dimension for Ring Attention. As naively spliting sequence
-    in the causual setting will result in the first ranks having much less workload than the last ranks,
-    we split after "folding" the 2D attention mask in half (https://github.com/zhuzilin/ring-flash-attention/issues/2).
+    Split the input along the sequence dimension for Ring Attention. Naively spliting the attention mask
+    in the causal setting will result in the preceding ranks having much less workload.
+    We split after "folding" the 2D attention mask in half (https://github.com/zhuzilin/ring-flash-attention/issues/2).
     For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
 
     Args:

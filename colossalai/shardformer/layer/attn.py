@@ -238,12 +238,7 @@ class ColoAttention:
         # sanity check
         if attention_mask is not None:
             assert torch.is_floating_point(attention_mask), "attention_mask should be a floating point tensor."
-            if attention_mask_type in (
-                AttnMaskType.CUSTOM,
-                AttnMaskType.CAUSAL,
-                AttnMaskType.PADDED,
-                AttnMaskType.PADDED_CAUSAL,
-            ):
+            if attention_mask_type in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
                 assert (
                     cu_seqlens_q is None
                     and cu_seqlens_kv is None
@@ -254,9 +249,18 @@ class ColoAttention:
                 )
                 if attention_mask_type == AttnMaskType.CUSTOM:
                     assert not torch.all(attention_mask != 0, dim=-1).any()
-        else:
-            # if attention_mask is None, attention_mask_type should be the default value
-            assert attention_mask_type == AttnMaskType.CUSTOM
+            elif attention_mask_type in (
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
+                assert (
+                    cu_seqlens_q is not None
+                    and cu_seqlens_kv is not None
+                    and max_seqlen_q is not None
+                    and max_seqlen_kv is not None
+                    and q_indices is not None
+                    and kv_indices is not None
+                )
         # kernel dispatch
         mask_type = attention_mask_type if attention_mask is not None else None
         attn_func = ColoAttention._dispatch_kernel(q.dtype, mask_type)
@@ -398,22 +402,14 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
+    assert not (new_lse.isnan().any() or new_lse.isinf().any()), f"lse is nan: {new_lse}"
     new_block_lse = torch.exp(block_lse - new_lse)
     out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
     lse.copy_(new_lse)
-    assert _not_nan(new_lse), new_lse
-    assert _not_nan(new_block_lse), new_block_lse
-    assert _not_nan(out), out
 
     # block_out = block_out.float()
-    # out.copy_(out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse.copy_(lse - F.logsigmoid(lse - block_lse))
     # assert not lse.isnan().any(), lse
     # assert not out.isnan().any(), out
-
-
-def _not_nan(x):
-    return not (x.isnan().any() or x.isinf().any())
 
 
 class RingAttention(torch.autograd.Function):
@@ -469,7 +465,7 @@ class RingAttention(torch.autograd.Function):
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
         Returns:
-            out: Output tensor. Shape should be [B, Heads, Sq, D]
+            out: Output tensor. Shape should be [B, Heads, Sq, D] or [T, Heads, D]
             softmax_lse: (if return_softmax is True) Softmax denominator (logsumexp).
                 Shape should be [B, Heads, Sq]
         """
@@ -495,23 +491,12 @@ class RingAttention(torch.autograd.Function):
         # (Ex: https://github.com/zhuzilin/ring-flash-attention/blob/49a50141bdce4e76418afe2051646c9a771fe867/test/test_zigzag_ring_flash_attn_varlen_func.py#L43)
         # Left some logics here; to be supported depending on demands.
         elif AttnMaskType.PADDED_CAUSAL:
-            # TODO: compute cu_seqlens locally using valid_positions
-            assert attention_mask is not None, "Padded attention requires inputing valid token positions!"
-            # Sequences are padded to the same length in a training round, so reuse the mask info.
-            if (
-                RingAttention.ATTENTION_MASK
-                and (RingAttention.ATTENTION_MASK.shape == attention_mask.shape)
-                and (RingAttention.ATTENTION_MASK == attention_mask).all()
-            ):
-                cu_seqlens_q = cu_seqlens_kv = RingAttention.CU_SEQLENS
-                max_seqlen_q = max_seqlen_kv = RingAttention.MAX_SEQLEN
-            else:
-                max_seqlen, cu_seqlens, valid_positions = get_pad_info(attention_mask)
-                RingAttention.CU_SEQLENS = cu_seqlens
-                RingAttention.MAX_SEQLEN = max_seqlen
-                RingAttention.ATTENTION_MASK = attention_mask
-                # To [T, H, D] where T is the number of non-zero tokens
-                q, k, v = [_unpad_input(x, valid_positions) for x in (q, k, v)]
+            assert (
+                cu_seq_lens_q is not None
+                and cu_seq_lens_kv is not None
+                and max_seq_len_q is not None
+                and max_seq_len_kv is not None
+            ), "Packed mode requires pre-computed cu_seqlens and max_seqlens."
 
         out, softmax_lse = RingAttention.apply(
             q,
@@ -529,11 +514,7 @@ class RingAttention(torch.autograd.Function):
             return_softmax,
         )
 
-        if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
-            # Pad and reshape back
-            # [T, N, D] -> [B, H, Sq, D]
-            out = _pad_input(out, valid_positions, b, sq)
-        else:
+        if not attention_mask_type == AttnMaskType.PADDED_CAUSAL:
             out = out.transpose(1, 2)  # [B, Sq, H, D] -> [B, H, Sq, D]
 
         if return_softmax:
@@ -575,8 +556,6 @@ class RingAttention(torch.autograd.Function):
         b, h, sq, d = q.shape
         # (B, H, Sq, D) -> (B, Sq, H, D)
         q, k, v = [x.transpose(1, 2) for x in (q, k, v)]
-        assert _not_nan(q), q
-        assert _not_nan(k), k
         kv_comms = [RingComm(sp_group) for _ in range(2)]
         sp_size = kv_comms[0].world_size
         sp_rank = kv_comms[0].rank
@@ -638,7 +617,6 @@ class RingAttention(torch.autograd.Function):
                     kv_block = kv_buffers[i % 2]
                     # (2, B * Sq // 2, H, D)
                     kv_block = kv_block.view(2, b * sq, h, d)[:, : b * sq // 2].clone()
-                    assert _not_nan(kv_block), f"rank {dist.get_rank()} step {i} kv_block {kv_block}"
                     (
                         _,
                         _,
@@ -665,7 +643,6 @@ class RingAttention(torch.autograd.Function):
                     # Drop the first half of q
                     q_block = q.view(b * sq, h, d)[b * sq // 2 :]
                     kv_block = kv_buffers[i % 2].view(2, b * sq, h, d).clone()
-                    assert _not_nan(kv_block), f"rank {dist.get_rank()} step {i} kv_block {kv_block}"
 
                     (
                         _,
@@ -696,11 +673,7 @@ class RingAttention(torch.autograd.Function):
                 block_softmax_lse[i % 2] = (
                     block_softmax_lse[i % 2].transpose(1, 2).contiguous().unsqueeze(-1).float()
                 )  # (B, H, Sq) -> (B, Sq, H, 1)
-
                 assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
-                assert _not_nan(
-                    block_softmax_lse[i % 2]
-                ), f"rank {sp_rank} step {i} softmax_lse is nan: {block_softmax_lse[i % 2]}"
 
                 # Overlap output correction with next flash attn kernel
                 if i == 0:
@@ -767,7 +740,6 @@ class RingAttention(torch.autograd.Function):
         assert (
             out.shape == dout.shape == (b, sq, h, d)
         ), f"out {out.shape} and dout {dout.shape} should have shape ({b}, {sq}, {h}, {d}) instead"
-        assert _not_nan(dout), f"dout is nan"
         # Sequence parallel args
         sp_group = ctx.sp_group
         sp_rank = dist.get_rank(sp_group)
@@ -887,10 +859,6 @@ class RingAttention(torch.autograd.Function):
 
                 # Wait for mobile kv grad accumulators
                 dkv_comm.wait()
-                assert _not_nan(dq_block), f"rank {dist.get_rank()} step {i} dq_block is nan"
-                assert _not_nan(dkv_recv), f"rank {dist.get_rank()} step {i} dkv_buffers is nan"
-                assert _not_nan(dq)
-
                 if i <= sp_rank:
                     # q blocks "surrounded" by kv blocks
                     dkv_recv[0][:, : sq // 2] += dk_block[:, : sq // 2]  # (B, Sq // 2, H, D)
@@ -899,14 +867,10 @@ class RingAttention(torch.autograd.Function):
                     # q blocks "surrounding" kv blocks
                     dkv_recv[0] += dk_block
                     dkv_recv[1] += dv_block
-            if dist.get_rank() == 0:
-                torch.save(dkv_recv, f"colo_step_{i}.pt")
+
             dkv_comm.send_recv(send_tensor=dkv_recv, recv_tensor=dkv_send)
         dkv_comm.wait()
         dkv_recv = dkv_send
 
         dq, dk, dv = [x.view(b, sq, h, d).transpose(1, 2).to(q.dtype) for x in (dq, *dkv_recv)]
-        assert _not_nan(dq), f"dq is nan"
-        assert _not_nan(dk), f"dk is nan"
-        assert _not_nan(dv), f"dv is nan"
         return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None)
