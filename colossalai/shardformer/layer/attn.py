@@ -551,6 +551,7 @@ class RingAttention(torch.autograd.Function):
             "softmax_scale": q.shape[-1] ** -0.5 if softmax_scale is None else softmax_scale,
             "dropout_p": dropout_p,
             "block_table": None,
+            "softcap": 0.0,
         }
 
         b, h, sq, d = q.shape

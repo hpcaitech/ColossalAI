@@ -824,7 +824,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if shard_config.sequence_parallelism_mode == "ring_attn":
             labels = zigzag_split_batch(labels, shard_config.sequence_parallel_process_group)
-
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,
