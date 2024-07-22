@@ -12,7 +12,7 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.moe_utils import loose_close
+from tests.test_moe.moe_utils import assert_loose_close
 
 NUM_BATCH = 4
 NUM_TOK_PER_BATCH, NUM_EXPERTS = 7, 4
@@ -22,7 +22,7 @@ TOP_K = 2
 
 
 @parameterize("stage", [1])
-@parameterize("ep_size", [1, 2, 4])
+@parameterize("ep_size", [2])
 def run_zero_with_original_model(stage: int, ep_size: int):
     tp_size = dist.get_world_size() // ep_size
     dtype = torch.bfloat16
@@ -85,7 +85,7 @@ def run_zero_with_original_model(stage: int, ep_size: int):
         zero_optimizer.backward(zero_output)
         # torch-ddp forward
         hybrid_output = hybrid_model(inputs_embeds=input_data.to(dtype)).last_hidden_state.mean()
-        loose_close(zero_output, hybrid_output, dtype=dtype)
+        assert_loose_close(zero_output, hybrid_output, dtype=dtype)
         # torch-ddp backward
         hybrid_optimizer.backward(hybrid_output)
 
@@ -98,7 +98,7 @@ def run_zero_with_original_model(stage: int, ep_size: int):
                 continue
             if zero_grad.shape != name_to_p[n].grad.shape:  # TODO check sharded and sliced moe
                 continue
-            loose_close(zero_grad, name_to_p[n].grad, dtype=dtype, name=n)
+            assert_loose_close(zero_grad, name_to_p[n].grad, dtype=dtype, name=n)
 
         # zero-dp step
         zero_optimizer.step()
@@ -110,7 +110,7 @@ def run_zero_with_original_model(stage: int, ep_size: int):
         for n, p in zero_model.named_parameters():
             if p.data.shape != name_to_p[n].data.shape:  # TODO check sharded and sliced moe
                 continue
-            loose_close(p.data, name_to_p[n].data, dtype=dtype, name=n)
+            assert_loose_close(p.data, name_to_p[n].data, dtype=dtype, name=n)
 
     print(f"{dist.get_rank()} test passed")
 
@@ -120,6 +120,7 @@ def run_dist(rank, world_size, port):
     run_zero_with_original_model()
 
 
+@pytest.mark.skip("tested in corresponding sharderformer")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()

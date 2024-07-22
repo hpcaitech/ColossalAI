@@ -15,8 +15,7 @@ from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.moe_utils import loose_close
-from tests.test_moe.test_moe_checkpoint import check_model_equal
+from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 
 NUM_BATCH = 8
 NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 4
@@ -25,20 +24,21 @@ HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS = 4
 TOP_K = 1
 
+CHECKED_CONFIG = [  # FOR WORLD=4
+    (2, 1, 2, 2, 1),
+    (2, 1, 1, 2, 1),
+    (2, 1, 4, 1, 1),
+    (4, 1, 1, 1, 1),
+    (4, 1, 1, 2, 1),
+    (4, 1, 2, 1, 1),
+    (2, 1, 2, 1, 1),
+]
 
-# TODO only need to keep one or two cases
+
 @parameterize(
     "config",
     [
-        (2, 1, 1, 4, 1),
-        (2, 1, 2, 1, 1),
-        (2, 1, 2, 2, 1),
         (2, 1, 1, 2, 1),
-        (2, 1, 1, 1, 2),
-        (2, 1, 4, 1, 1),
-        (4, 1, 1, 1, 1),
-        (4, 1, 1, 2, 1),
-        (4, 1, 2, 1, 1),
     ],
 )
 def run_zero_with_original_model(config: Tuple[int, ...]):
@@ -67,9 +67,6 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
 
     booster = Booster(plugin=plugin)
 
-    # init model with the same seed
-    seed_all(10086)
-
     assert pp_size <= NUM_LAYERS, "pp_size should be less than or equal to NUM_LAYERS"
     config = MixtralConfig(
         hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
@@ -81,6 +78,9 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         num_experts_per_tok=TOP_K,
         attn_implementation="flash_attention_2",
     )
+
+    # init model with the same seed
+    seed_all(10086)
 
     torch_model = MixtralModel(config).to(dtype).cuda()
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
@@ -151,7 +151,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
-        loose_close(parallel_output, torch_output_sum, dtype=dtype)
+        assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
 
     # use checkpoint to load sharded zero model
     model_dir = "./test_mixtral"
@@ -178,7 +178,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [8])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_mistral(world_size):
     spawn(run_dist, world_size)

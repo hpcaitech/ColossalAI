@@ -69,8 +69,6 @@ class EPDeepseekMoE(nn.Module):
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
 
         set_tensors_to_none(self.experts, exclude=set(held_experts))
-        for p in self.experts.parameters():
-            set_moe_tensor_ep_group(p, ep_group)
 
         # setup moe_dp group
         self.moe_dp_group = moe_dp_group
@@ -86,6 +84,9 @@ class EPDeepseekMoE(nn.Module):
                 expert.gate_proj = Linear1D_Col.from_native_module(expert.gate_proj, self.moe_tp_group)
                 expert.up_proj = Linear1D_Col.from_native_module(expert.up_proj, self.moe_tp_group)
                 expert.down_proj = Linear1D_Row.from_native_module(expert.down_proj, self.moe_tp_group)
+
+        for p in self.experts.parameters():
+            set_moe_tensor_ep_group(p, ep_group)
 
     @staticmethod
     def from_native_module(
