@@ -14,7 +14,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 @parameterize("nheads", [5])
 @parameterize("d", [128])
 @parameterize("dtype", [torch.bfloat16])
-def test_ring_attn(seq_len, batch_size, nheads, d, dtype):
+def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
     torch.cuda.manual_seed(2)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -59,13 +59,13 @@ def test_ring_attn(seq_len, batch_size, nheads, d, dtype):
 
 def launch(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
-    test_ring_attn()
+    check_ring_attn()
 
 
 @rerun_if_address_is_in_use()
-def run_ring_attn():
+def test_ring_attn():
     spawn(launch, nprocs=8)
 
 
 if __name__ == "__main__":
-    run_ring_attn()
+    test_ring_attn()
