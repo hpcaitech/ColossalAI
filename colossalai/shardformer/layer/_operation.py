@@ -812,7 +812,11 @@ class _AllToAll(torch.autograd.Function):
         process_group = ctx.process_group
         scatter_dim = ctx.gather_dim
         gather_dim = ctx.scatter_dim
+        if torch.distributed.get_rank() == 0:
+            print(f"shape before A2A: {grad_output[0].shape}")
         return_grad = _AllToAll.apply(*grad_output, process_group, scatter_dim, gather_dim)
+        if torch.distributed.get_rank() == 0:
+            print(f"shape after A2A: {return_grad.shape}")
         return (return_grad, None, None, None)
 
 
@@ -999,19 +1003,11 @@ def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1):
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim)
 
 
-<<<<<<< HEAD
 def gather_sp_output(hidden_states, sp_group, sp_mode, sp_dim=1):
-=======
-def gather_sp_output(hidden_states, sp_group, sp_mode):
->>>>>>> fwd bwd logic complete
     """
     Gather the output of the last layer for cross entropy computation
     """
     # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
     scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
-<<<<<<< HEAD
     hidden_states = gather_forward_split_backward(hidden_states, sp_dim, sp_group, grad_scale=scale)
-=======
-    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=scale)
->>>>>>> fwd bwd logic complete
     return hidden_states
