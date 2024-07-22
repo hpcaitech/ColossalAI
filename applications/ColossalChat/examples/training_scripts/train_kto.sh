@@ -19,6 +19,7 @@ PROJECT_NAME="kto"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
 PARENT_TENSORBOARD_DIR="" # Path to a folder to save logs
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PARENT_LOG_DIR="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 
@@ -39,6 +40,7 @@ TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
+LOG_DIR="${PARENT_LOG_DIR}${FULL_PROJECT_NAME}"
 
 colossalai run --nproc_per_node 4 --master_port 31313 train_kto.py \
     --pretrain $PRETRAINED_MODEL_PATH \
@@ -48,9 +50,11 @@ colossalai run --nproc_per_node 4 --master_port 31313 train_kto.py \
     --save_interval 1000 \
     --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
+    --log_dir $LOG_DIR \
     --max_epochs 1 \
     --accumulation_steps 1 \
     --batch_size 8 \
+    --auto_weight \
     --lr 1e-5 \
     --beta 0.1 \
     --mixed_precision "bf16" \

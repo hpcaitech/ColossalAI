@@ -284,9 +284,12 @@ def train(args):
         LORA_MANAGER.merge_weights = True
         model.eval()
     # save model checkpoint after fitting on only rank0
-    coordinator.print_on_master("Start saving final model checkpoint")
-    booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}")
+    if args.save_dir is not None:
+        coordinator.print_on_master("Start saving final model checkpoint")
+        booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
+        coordinator.print_on_master(
+            f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}"
+        )
 
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
@@ -320,8 +323,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
     )
-    parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
-    parser.add_argument("--save_dir", type=str, default="output")
+    parser.add_argument("--config_file", type=str, default=None, help="Config file")
+    parser.add_argument("--save_dir", type=str, default=None)
     parser.add_argument("--max_length", type=int, default=2048, help="Model max length")
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
@@ -338,12 +341,13 @@ if __name__ == "__main__":
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--accumulation_steps", type=int, default=8)
-    parser.add_argument("--log_dir", default="logs", type=str)
+    parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
-    os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
-    with open(args.config_file, "w") as f:
-        json.dump(args.__dict__, f, indent=4)
+    if args.config_file is not None:
+        os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
+        with open(args.config_file, "w") as f:
+            json.dump(args.__dict__, f, indent=4)
     train(args)

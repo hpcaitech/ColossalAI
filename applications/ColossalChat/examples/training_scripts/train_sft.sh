@@ -17,6 +17,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 4
 PROJECT_NAME="SFT"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PARENT_LOG_DIR="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 declare -a dataset=(
@@ -36,6 +37,7 @@ TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
+LOG_DIR="${PARENT_LOG_DIR}${FULL_PROJECT_NAME}"
 
 echo $(which colossalai)
 echo $(which python)
@@ -47,6 +49,7 @@ colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile trai
     --dataset ${dataset[@]} \
     --save_path $SAVE_DIR \
     --config_file $CONFIG_FILE \
+    --log_dir $LOG_DIR \
     --lora_rank 0 \
     --plugin zero2 \
     --batch_size 8 \

@@ -15,20 +15,28 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 2
 
-PROJECT_NAME="dpo"
+PROJECT_NAME="orpo"
 PARENT_CONFIG_FILE="./benchmark_config" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="" # huggingface or local model path
-PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+PRETRAINED_MODEL_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local model path
+PRETRAINED_TOKENIZER_PATH="/root/commonData/Llama-2-7b-hf" # huggingface or local tokenizer path
+BENCHMARK_DATA_DIR="./temp/orpo" # Path to benchmark data
+DATASET_SIZE=160
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
-CONFIG_FILE="${PARENT_CONFIG_FILE}-${FULL_PROJECT_NAME}.json"
+declare -a dataset=(
+    $BENCHMARK_DATA_DIR/arrow/part-0
+)
 
-colossalai run --nproc_per_node 2 --master_port 31313 benchmark_orpo.py \
+# Generate dummy test data
+python prepare_dummy_test_dataset.py --data_dir $BENCHMARK_DATA_DIR --dataset_size $DATASET_SIZE --max_length 2048 --data_type preference
+
+
+colossalai run --nproc_per_node 2 --master_port 31313 ../examples/training_scripts/train_orpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
     --plugin "zero2" \
-    --config_file $CONFIG_FILE \
     --max_epochs 1 \
     --accumulation_steps 1 \
     --batch_size 4 \
@@ -39,6 +47,5 @@ colossalai run --nproc_per_node 2 --master_port 31313 benchmark_orpo.py \
     --max_length 2048 \
     --weight_decay 0.01 \
     --warmup_steps 60 \
-    --dataset_size 160 \
     --grad_checkpoint \
     --use_flash_attn

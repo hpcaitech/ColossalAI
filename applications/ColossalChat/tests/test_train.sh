@@ -591,6 +591,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --accumulation_steps $grad_accu \
                     --tp $tp \
                     --lr 2e-5 \
+                    --auto_weight \
                     --desirable_weight 1.2 \
                     $grad_ckpt \
                     --max_len 400 \
