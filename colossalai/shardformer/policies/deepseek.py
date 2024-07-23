@@ -7,8 +7,14 @@ from torch import Tensor
 from torch.nn import Module
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
 from colossalai.shardformer.layer.linear import Linear1D_Row
-from colossalai.shardformer.modeling.deepseek import DeepseekPipelineForwards, EPDeepseekMoE
+from colossalai.shardformer.modeling.deepseek import (
+    DeepseekPipelineForwards,
+    EPDeepseekMoE,
+    get_deepseek_flash_attention_forward,
+    get_deepseek_flash_attention_model_forward,
+)
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["DeepseekPolicy", "DeepseekForCausalLMPolicy"]
@@ -19,6 +25,13 @@ class DeepseekPolicy(Policy):
         pass
 
     def preprocess(self):
+        self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
+        """
+        Because transformers library's bug for AutoModel/AutoConfig, who pop “attn_implement” twice from modeling_utils.py and configuration_utils.py.
+        This bug causes attn_cls to be set to sdpa. Here we assign it to "flash_attention_2".
+        """
+        # self.origin_attn_implement =  "flash_attention_2"
         if self.shard_config.enable_tensor_parallelism:
             # Resize embedding
             vocab_size = self.model.config.vocab_size
@@ -31,17 +44,61 @@ class DeepseekPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        policy = {}
 
+        ATTN_IMPLEMENTATION = {
+            "eager": "DeepseekAttention",
+            "flash_attention_2": "DeepseekFlashAttention2",
+            "sdpa": "DeepseekSdpaAttention",
+        }
+        policy = {}
+        print(f"{self.origin_attn_implement=}")
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+
+            policy[attn_cls] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
         if self.shard_config.enable_sequence_parallelism:
             if self.pipeline_stage_manager is not None:
                 # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
                 # if both are enabled, one of them will be ignored
                 raise NotImplementedError("Sequence parallelism is not supported with pipeline parallelism.")
-            raise NotImplementedError(
-                "Deepseek dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+            print(f"{attn_cls=}")
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_deepseek_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=attn_cls,
             )
-
+            if self.pipeline_stage_manager is None:
+                self.append_or_create_method_replacement(
+                    description={
+                        "forward": get_deepseek_flash_attention_model_forward(
+                            self.shard_config,
+                            sp_mode=sp_mode,
+                            sp_size=sp_size,
+                            sp_group=sp_group,
+                        ),
+                    },
+                    policy=policy,
+                    target_key="DeepseekModel",
+                )
+        embedding_cls = None
+        if self.shard_config.enable_tensor_parallelism:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
             assert (
@@ -78,6 +135,16 @@ class DeepseekPolicy(Policy):
                     ),
                 ],
             )
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key="DeepseekModel",
+            )
 
         if self.shard_config.ep_group:
             # expert parallel
@@ -105,10 +172,12 @@ class DeepseekPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="input_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                     SubModuleReplacementDescription(
                         suffix="post_attention_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                 ],
                 policy=policy,
@@ -119,6 +188,7 @@ class DeepseekPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="norm",
                     target_module=FusedRMSNorm,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 policy=policy,
                 target_key="DeepseekModel",

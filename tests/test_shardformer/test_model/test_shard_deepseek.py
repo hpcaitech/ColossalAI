@@ -36,8 +36,8 @@ CHECKED_CONFIG = [  # FOR_WORLD=8
     [
         # (2, 1, 2, 1, 1),  # TODO debug deepseek pp
         # (2, 1, 2, 2, 1),  # TODO debug deepseek pp
-        (2, 1, 1, 2, 1),
-        # (2, 1, 1, 1, 2),  # TODO support deepseek sp
+        # (2, 1, 1, 2, 1),
+        (2, 1, 1, 1, 2),
         # (2, 1, 4, 1, 1),  # TODO debug deepseek pp
         # (4, 1, 2, 1, 1),  # TODO debug deepseek pp
     ],
@@ -69,14 +69,22 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
     booster = Booster(plugin=plugin)
 
     assert pp_size <= NUM_LAYERS, "pp_size should be less than or equal to NUM_LAYERS"
-    config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
-    config.hidden_size = HIDDEN_SIZE_PER_HEAD * NUM_HEADS
-    config.intermediate_size = HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2
-    config.num_hidden_layers = 2
-    config.num_attention_heads = NUM_HEADS
-    config.num_key_value_heads = NUM_HEADS
-    config.n_routed_experts = NUM_EXPERTS
-    config.num_experts_per_tok = TOP_K
+    # config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
+    config = AutoConfig.from_pretrained(
+        "deepseek-ai/deepseek-moe-16b-base",
+        hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
+        intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
+        moe_intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
+        num_hidden_layers=2,
+        num_attention_heads=NUM_HEADS,
+        num_key_value_heads=NUM_HEADS,
+        first_k_dense_replace=1,
+        attn_implementation="flash_attention_2",
+        torch_dtype="float16",
+        n_routed_experts=NUM_EXPERTS,
+        num_experts_per_tok=TOP_K,
+        trust_remote_code=True,
+    )
 
     # init model with the same seed
     seed_all(10086)
