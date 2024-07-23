@@ -17,29 +17,27 @@ from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 
 NUM_BATCH = 8
-NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 4
+NUM_TOK_PER_BATCH, NUM_EXPERTS = 4000, 2
 NUM_LAYERS = 4
 HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS = 4
-TOP_K = 1
+TOP_K = 2
 
 
 CHECKED_CONFIG = [  # FOR_WORLD=8
     (2, 1, 1, 4, 1),
     (4, 1, 1, 2, 1),
     (4, 1, 1, 1, 1),
+    (2, 1, 2, 1, 1),
 ]
 
 
 @parameterize(
     "config",
     [
-        # (2, 1, 2, 1, 1),  # TODO debug deepseek pp
-        # (2, 1, 2, 2, 1),  # TODO debug deepseek pp
+        (2, 1, 2, 1, 1),
         # (2, 1, 1, 2, 1),
-        (2, 1, 1, 1, 2),
-        # (2, 1, 4, 1, 1),  # TODO debug deepseek pp
-        # (4, 1, 2, 1, 1),  # TODO debug deepseek pp
+        # (2, 1, 1, 1, 2),
     ],
 )
 def run_zero_with_original_model(config: Tuple[int, ...]):
@@ -69,13 +67,12 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
     booster = Booster(plugin=plugin)
 
     assert pp_size <= NUM_LAYERS, "pp_size should be less than or equal to NUM_LAYERS"
-    # config = AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True)
     config = AutoConfig.from_pretrained(
         "deepseek-ai/deepseek-moe-16b-base",
         hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
         intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
         moe_intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
-        num_hidden_layers=2,
+        num_hidden_layers=4,
         num_attention_heads=NUM_HEADS,
         num_key_value_heads=NUM_HEADS,
         first_k_dense_replace=1,
