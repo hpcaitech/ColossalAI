@@ -73,6 +73,9 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
         }
 
+        if len(pg_param_list[dp_process_group]) == 0 or len(pg_param_list[moe_dp_group]) == 0:
+            raise ValueError("No parameters found in dp_process_group or moe_dp_group")
+
         super().__init__(
             model=model,
             optimizer=optimizer,
