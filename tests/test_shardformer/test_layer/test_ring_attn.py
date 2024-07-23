@@ -17,7 +17,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
     torch.cuda.manual_seed(2)
     rank = dist.get_rank()
-    world_size = dist.get_world_size()
+    dist.get_world_size()
     device = torch.device(f"cuda:{rank}")
     sp_group = dist.group.WORLD
     sp_stream = torch.cuda.Stream()
@@ -37,13 +37,13 @@ def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
 
     # Ring attention vs single GPU
     ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, sp_stream, AttnMaskType.CAUSAL, return_softmax=True)
-    ring_lse = ring_lse.transpose(0, 1).view(batch_size, seq_len // world_size, nheads).transpose(1, 2).contiguous()
     out, lse, _ = flash_attn_qkvpacked_func(
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
     )
 
     local_out = zigzag_split_batch(out, sp_group)
     local_lse = zigzag_split_batch(lse, sp_group, seq_dim=-1)
+    local_lse = local_lse.transpose(1, 2).contiguous().view(-1, ring_lse.shape[-1])  # (B, nHeads, Sq) -> (T, nHeads)
     assert_close(ring_out, local_out, atol=atol, rtol=rtol)
     assert_close(ring_lse, local_lse, atol=atol, rtol=rtol)
 

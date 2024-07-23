@@ -146,6 +146,7 @@ class LlamaPipelineForwards:
             attn_mask = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
         # Support SP + PP
+        # TODO: support padded casual cu_seqlens across stages
         if stage_manager.is_first_stage():
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":
@@ -154,8 +155,7 @@ class LlamaPipelineForwards:
                     attn_mask["cu_seqlens"], attn_mask["max_seqlen"], attn_mask["indices"] = get_pad_info(
                         attn_mask["attention_mask"].squeeze(1).any(dim=-1)
                     )  # [B, 1, Sq, Skv] -> [B, Sq]
-                else:
-                    attn_mask["cu_seqlens"] = attn_mask["max_seqlen"] = attn_mask["indices"] = None
+
                 batch = [hidden_states, position_ids]
                 # inputs_embeds, attention_mask["attention_mask"], position_ids = zigzag_split_batch(batch, sp_group)
                 hidden_states, position_ids = zigzag_split_batch(batch, sp_group)
@@ -555,9 +555,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
-        assert not self.q_proj.weight.isnan().any(), self.q_proj.weight
 
-        assert not query_states.isnan().any(), query_states
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
                 query_states,
@@ -566,6 +564,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 sp_group,
                 shard_config.sp_stream,
                 attention_mask["attention_mask_type"],
+                cu_seq_lens_q=attention_mask.get("cu_seqlens", None),
+                max_seq_len_q=attention_mask.get("max_seqlen", None),
+                valid_indices=attention_mask.get("indices", None),
             )
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
