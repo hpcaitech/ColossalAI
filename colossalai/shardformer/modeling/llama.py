@@ -562,9 +562,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
-        assert not self.q_proj.weight.isnan().any(), self.q_proj.weight
 
-        assert not query_states.isnan().any(), query_states
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
                 query_states,

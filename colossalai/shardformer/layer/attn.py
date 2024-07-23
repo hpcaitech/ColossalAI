@@ -646,7 +646,7 @@ class RingAttention(torch.autograd.Function):
 
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
-        kv_buffers.append(torch.empty_like(kv_buffers[0]))
+        kv_buffers.append(None)
 
         # outputs
         out = None
@@ -859,6 +859,8 @@ class RingAttention(torch.autograd.Function):
         cu_seqlens_half = cu_seqlens_q // 2
         max_seqlen_half = max_seqlen_q // 2
         misc_kwargs = ctx.misc_kwargs
+        is_packed = ctx.is_packed
+        dout = dout.contiguous()
         del misc_kwargs["block_table"]
 
         assert (
