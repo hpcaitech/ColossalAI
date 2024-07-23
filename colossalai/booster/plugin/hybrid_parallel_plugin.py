@@ -27,7 +27,6 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
-from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -1020,8 +1019,6 @@ class HybridParallelPlugin(PipelinePluginBase):
     ) -> None:
         super().__init__()
 
-        self.logger = get_dist_logger(type(self).__name__)
-
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
@@ -1069,10 +1066,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         else:
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
-
-        self.logger.info(
-            f"{type(self).__name__}: {self.pp_size=} {self.dp_size=} {self.tp_size=} {self.sp_size=}", ranks=[0]
-        )
 
         self.stage_manager = None
         self.schedule = None
@@ -1123,10 +1116,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
-        self.logger.info(
-            f"{type(self).__name__}: dp_group {dist.get_process_group_ranks(self.dp_group)} pp_group {dist.get_process_group_ranks(self.pp_group)}  tp_group {dist.get_process_group_ranks(self.tp_group)} sp_group {dist.get_process_group_ranks(self.sp_group)}",
-            ranks=[0],
-        )
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             sequence_parallel_process_group=self.sp_group,
