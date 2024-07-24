@@ -59,7 +59,7 @@ def init_deepseek():
         num_attention_heads=8,
         num_key_value_heads=8,
         # vocab_size=2200,
-        first_k_dense_replace=2,
+        first_k_dense_replace=1,
         attn_implementation="flash_attention_2",
         torch_dtype="float16",
         n_routed_experts=8,
@@ -68,6 +68,7 @@ def init_deepseek():
 
     if hasattr(config, "pad_token_id"):
         config.pad_token_id = config.eos_token_id
+    print(config)
     model = transformers.AutoModel.from_config(config, trust_remote_code=True)
 
     return model
