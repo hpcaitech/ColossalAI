@@ -68,7 +68,6 @@ def init_deepseek():
 
     if hasattr(config, "pad_token_id"):
         config.pad_token_id = config.eos_token_id
-    print(config)
     model = transformers.AutoModel.from_config(config, trust_remote_code=True)
 
     return model
