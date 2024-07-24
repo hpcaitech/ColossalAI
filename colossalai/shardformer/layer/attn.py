@@ -18,7 +18,7 @@ from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
-from .utils import RingComm
+from .utils import RingComm, split_varlen_zigzag
 
 __all__ = [
     "AttnMaskType",
@@ -379,15 +379,11 @@ def _rescale_out_lse_kernel(
     stride_out_0,
     stride_out_1,
     stride_out_2,
-    stride_out_3,
     stride_out_per_step_0,
     stride_out_per_step_1,
     stride_out_per_step_2,
-    stride_out_per_step_3,
     stride_lse_0,
     stride_lse_1,
-    stride_lse_2,
-    stride_lse_3,
     BLOCK_M: tl.constexpr,
 ):
     batch_id = tl.program_id(0)
@@ -395,15 +391,10 @@ def _rescale_out_lse_kernel(
     h_id = tl.program_id(2)
     d_id = tl.arange(0, D)
 
-    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id * stride_out_3
-    out_per_step_idx = (
-        batch_id * stride_out_per_step_0
-        + sq_id * stride_out_per_step_1
-        + h_id * stride_out_per_step_2
-        + d_id * stride_out_per_step_3
-    )
-    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
-    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
+    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id
+    out_per_step_idx = batch_id * stride_out_per_step_0 + sq_id * stride_out_per_step_1 + h_id * stride_out_per_step_2
+    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
+    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
 
     # Load inputs
     out = tl.load(out_ptr + out_idx)
@@ -420,7 +411,7 @@ def _rescale_out_lse_kernel(
 
 
 def _rescale_out_lse_triton(out, block_out, lse, block_lse):
-    B, Sq, H, D = out.shape
+    T, H, D = out.shape
 
     assert out.is_contiguous() and block_out.is_contiguous() and lse.is_contiguous() and block_lse.is_contiguous()
 
@@ -431,22 +422,17 @@ def _rescale_out_lse_triton(out, block_out, lse, block_lse):
         block_out,
         lse,
         block_lse,
-        B,
-        Sq,
+        T,
         H,
         D,
         out.stride(0),
         out.stride(1),
         out.stride(2),
-        out.stride(3),
         block_out.stride(0),
         block_out.stride(1),
         block_out.stride(2),
-        block_out.stride(3),
         lse.stride(0),
         lse.stride(1),
-        lse.stride(2),
-        lse.stride(3),
     )
 
 

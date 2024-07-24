@@ -5,20 +5,37 @@ from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_fu
 from torch.testing import assert_close
 
 import colossalai
+<<<<<<< HEAD
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
 from colossalai.shardformer.layer.utils import split_batch_zigzag, split_varlen_zigzag
+=======
+from colossalai.shardformer.layer import AttnMaskType, ColoAttention
+from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
+from colossalai.shardformer.layer.utils import split_batch_zigzag
+>>>>>>> add varlen tests
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import get_current_device
 
 
 @parameterize("seq_len", [4096])
+<<<<<<< HEAD
 @parameterize("bs", [2])
 @parameterize("nheads", [5])
 @parameterize("d", [128])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
+=======
+@parameterize("bs", [1])
+@parameterize("nheads", [5])
+@parameterize("d", [128])
+@parameterize("dtype", [torch.bfloat16])
+def check_ring_attn(seq_len, bs, nheads, d, dtype):
+    torch.cuda.manual_seed(2)
+    dist.get_rank()
+    dist.get_world_size()
+>>>>>>> add varlen tests
     device = get_current_device()
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
@@ -64,7 +81,10 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     ring_dq, ring_dk, ring_dv = [x.transpose(1, 2) for x in (q.grad, k.grad, v.grad)]
     dqkv = qkv.grad
     local_dqkv = split_batch_zigzag(dqkv, sp_group)
+<<<<<<< HEAD
 
+=======
+>>>>>>> add varlen tests
     assert_close(ring_dq, local_dqkv[:, :, 0], atol=atol, rtol=rtol)
     assert_close(ring_dk, local_dqkv[:, :, 1], atol=atol, rtol=rtol)
     assert_close(ring_dv, local_dqkv[:, :, 2], atol=atol, rtol=rtol)
@@ -158,10 +178,56 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     assert_close(dv, dv_ring, atol=atol, rtol=rtol)
 
 
+<<<<<<< HEAD
 def launch_single_ring(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
     check_packed_seq()
     check_ring_attn()
+=======
+@parameterize("seq_len", [4096])
+@parameterize("bs", [2])
+@parameterize("nheads", [5])
+@parameterize("d", [128])
+@parameterize("dtype", [torch.bfloat16])
+def check_packed_seq(seq_len, bs, nheads, d, dtype):
+    device = get_current_device()
+    sp_group = dist.group.WORLD
+    sp_stream = torch.cuda.Stream()
+    atol = rtol = 5e-3
+
+    # Prepare varlen attention mask
+    padding_mask = torch.ones((bs, seq_len), dtype=torch.int, device=device)
+    padding_mask[bs // 2 :, seq_len // 2 :] = 0
+    padding_mask[: bs // 2, (seq_len // 4) * 3 :] = 0
+    attn_mask = ColoAttention.prepare_attn_kwargs(
+        (bs, 1, seq_len, seq_len), dtype, padding_mask.device, q_padding_mask=padding_mask, is_causal=True
+    )
+    input_embeds = torch.randn(bs, seq_len, nheads, d, device=device, dtype=dtype, requires_grad=True)
+
+    # Forward
+    q, k, v = [input_embeds.clone().transpose(1, 2) for _ in range(3)]
+    colo_out = ColoAttention.attention(q, k, v, **attn_mask)
+
+    input_embeds, _, attn_mask = RingAttention.prepare_varlen_batch(input_embeds, padding_mask, sp_group, bs)
+    q_ring, k_ring, v_ring = [input_embeds.clone().transpose(1, 2) for _ in range(3)]
+    ring_out = RingAttention.attention(q_ring, k_ring, v_ring, sp_group, sp_stream, **attn_mask)
+
+    # Check output
+    colo_out = split_batch_zigzag(colo_out, sp_group)
+    assert_close(colo_out, ring_out, atol=atol, rtol=rtol)
+    # Check grads
+    colo_out.backward()
+    ring_out.backward()
+    assert_close(q.grad, q_ring.grad, atol=atol, rtol=rtol)
+    assert_close(k.grad, k_ring.grad, atol=atol, rtol=rtol)
+    assert_close(v.grad, v_ring.grad, atol=atol, rtol=rtol)
+
+
+def launch(rank, world_size, port):
+    colossalai.launch(rank, world_size, "localhost", port)
+    # check_ring_attn()
+    check_packed_seq()
+>>>>>>> add varlen tests
 
 
 def launch_double_ring(rank, world_size, port):

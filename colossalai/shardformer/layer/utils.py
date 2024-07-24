@@ -305,6 +305,7 @@ def create_randomizer_with_offset(
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 def split_batch_zigzag(
     batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim: int = 1, is_label: bool = False
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
@@ -313,6 +314,9 @@ def zigzag_split_batch(batch: List[torch.Tensor], sp_group: ProcessGroup, varlen
 >>>>>>> precision tests passed
 =======
 def zigzag_split_batch(
+=======
+def split_batch_zigzag(
+>>>>>>> add varlen tests
     batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
 ):
 >>>>>>> precision tests passed
@@ -483,6 +487,65 @@ def split_varlen_zigzag(
     return batch
 
 
+def split_varlen_zigzag(
+    batch: Union[List[torch.Tensor], torch.Tensor],
+    cu_seqlens: torch.Tensor,
+    sp_group: ProcessGroup,
+    is_2d: bool = False,
+    max_seq_len: int = 0,
+) -> Union[List[torch.Tensor], torch.Tensor]:
+    """Split each sequence in a batch of packed sequences/indices in a zigzag fashion.
+
+    Args:
+        batch (List[torch.Tensor]): Packed sequences of shape (B * Sq), or (B, Sq) if is_2d
+        cu_seqlens (torch.Tensor): Cumulative sequence lengths of shape (B + 1)
+        sp_group (ProcessGroup): The process group for sequence parallelism.
+        is_2d (bool): Whether the input is 2D or 1D.
+        max_seq_len (int): The maximum sequence length in the batch before splitting.
+    Returns:
+        batch (List[torch.Tensor]): Unpacked sequences of shape (B * Sq // sp_size)
+    """
+    sp_size = dist.get_world_size(sp_group)
+    sp_rank = dist.get_rank(sp_group)
+
+    if isinstance(batch, torch.Tensor):
+        batch = [batch]
+    for i, packed_seq in enumerate(batch):
+        if is_2d:
+            assert max_seq_len % sp_size == 0
+            shape = (packed_seq.shape[0], max_seq_len // sp_size, *packed_seq.shape[2:])
+            local_seq = torch.zeros(shape, dtype=packed_seq.dtype, device=packed_seq.device)
+        else:
+            local_seq = []
+
+        for j in range(len(cu_seqlens) - 1):
+            start, end = cu_seqlens[j], cu_seqlens[j + 1]
+            seqlen = end - start
+            assert (
+                seqlen % (2 * sp_size) == 0
+            ), f"batch {i} seq {j}'s length ({seqlen}) must be divisible by 2 * sp_size = {2 * sp_size} for splitting"
+
+            if is_2d:
+                seq = packed_seq[j][:seqlen].chunk(2 * sp_size, dim=0)
+                local_seq[j][: seqlen // sp_size] = torch.cat([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]], dim=0)
+            else:
+                seq = packed_seq[start:end].chunk(2 * sp_size, dim=0)
+                seq.extend(
+                    [
+                        seq[sp_rank],
+                        seq[2 * sp_size - 1 - sp_rank],
+                    ]
+                )
+        if is_2d:
+            batch[i] = local_seq
+        else:
+            batch[i] = torch.cat(local_seq, dim=0).contiguous()
+
+    if len(batch) == 1:
+        batch = batch[0]
+    return batch
+
+
 class RingComm:
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
@@ -526,6 +589,7 @@ def is_share_sp_tp(sp_mode: str):
     to correctly get logits at each positions.
     """
     return sp_mode in ["ring", "split_gather"]
+<<<<<<< HEAD
 
 
 <<<<<<< HEAD
@@ -744,3 +808,5 @@ except:
             new_lse[i, : end - start] = lse[start:end]
         return new_lse.squeeze(dim=-1).transpose(1, 2).contiguous()
 >>>>>>> precision tests passed
+=======
+>>>>>>> add varlen tests
