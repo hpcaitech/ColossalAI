@@ -1,4 +1,3 @@
-import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
@@ -194,11 +193,11 @@ class DeepseekPolicy(Policy):
                 target_key="DeepseekModel",
             )
 
-        if self.shard_config.enable_flash_attention:
-            warnings.warn(
-                "Flash attention has already been replaced in deepseek, and now set enable_flash_attention = False."
-            )
-            self.shard_config.enable_flash_attention = False
+        # if self.shard_config.enable_flash_attention:
+        #     warnings.warn(
+        #         "Flash attention has already been replaced in deepseek, and now set enable_flash_attention = False."
+        #     )
+        #     self.shard_config.enable_flash_attention = False
 
         return policy
 

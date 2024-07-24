@@ -30,7 +30,12 @@ os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
     # TODO: SGD failed for full dp
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
-        model_fn, loss_fn, test_config, pluggin_cls=MoeHybridParallelPlugin, optim_class=torch.optim.SGD
+        # model_fn, loss_fn, test_config, pluggin_cls=MoeHybridParallelPlugin, optim_class=torch.optim.SGD
+        model_fn,
+        loss_fn,
+        test_config,
+        pluggin_cls=MoeHybridParallelPlugin,
+        optim_class=torch.optim.SGD,
     )
 
     org_model = org_model.to(torch.float16)
@@ -39,16 +44,15 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     )
     stage_manager = booster.plugin.stage_manager
     tp_group = booster.plugin.tp_group
-
+    rank = dist.get_rank()
     # check last hidden state & loss
     if stage_manager is None or stage_manager.is_last_stage():
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-
-        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
         check_output_hidden_state(org_output, sharded_output, stage_manager, atol, rtol)
+        check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
     # unwrap model
     mixtral_model = unwrap_model(org_model, "DeepseekModel", "model")
@@ -178,12 +182,13 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sp_size": 2,
             "ep_size": 2,
             "enable_sequence_parallelism": True,
+            "enable_flash_attention": True,
             "sequence_parallelism_mode": "all_to_all",
             "zero_stage": 1,
             "overlap_communication": False,
             "precision": "fp16",
             "initial_scale": 1,
-            "find_unused_parameters": True,
+            # "find_unused_parameters": True,
         },
         # {
         #     "tp_size": 1,
@@ -224,7 +229,7 @@ def check_deepseek(rank, world_size, port):
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
 def test_mixtral():
-    spawn(check_deepseek, 4)
+    spawn(check_deepseek, 2)
 
 
 if __name__ == "__main__":
