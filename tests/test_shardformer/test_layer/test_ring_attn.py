@@ -19,13 +19,7 @@ from colossalai.utils import get_current_device
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
-<<<<<<< HEAD
     device = get_current_device()
-=======
-    rank = dist.get_rank()
-    dist.get_world_size()
-    device = torch.device(f"cuda:{rank}")
->>>>>>> remove buffer clone; support packed seq layout
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
     # Some outliers may seem large, but our errors are still lower than
@@ -42,7 +36,6 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     q.requires_grad = k.requires_grad = v.requires_grad = True
 
     # Ring attention vs single GPU
-<<<<<<< HEAD
     ring_out, ring_lse = RingAttention.attention(
         q,
         k,
@@ -54,24 +47,14 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
         # inner_ring_size=4
     )
     ring_out = ring_out.transpose(1, 2)
-=======
-    ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, sp_stream, AttnMaskType.CAUSAL, return_softmax=True)
->>>>>>> remove buffer clone; support packed seq layout
     out, lse, _ = flash_attn_qkvpacked_func(
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
     )
 
-<<<<<<< HEAD
     # Checkout out and softmax denominator
     local_out = split_batch_zigzag(out, sp_group)
     local_lse = split_batch_zigzag(lse, sp_group, seq_dim=-1)
     local_lse = local_lse.transpose(1, 2).contiguous().view(-1, ring_lse.shape[-1])  # (B, nHeads, Sq) -> (T, nHeads)
-=======
-    local_out = zigzag_split_batch(out, sp_group)
-    local_lse = zigzag_split_batch(lse, sp_group, seq_dim=-1)
-    local_lse = local_lse.transpose(1, 2).contiguous().view(-1, ring_lse.shape[-1])  # (B, nHeads, Sq) -> (T, nHeads)
-    assert_close(ring_out, local_out, atol=atol, rtol=rtol)
->>>>>>> remove buffer clone; support packed seq layout
     assert_close(ring_lse, local_lse, atol=atol, rtol=rtol)
     assert_close(ring_out, local_out, atol=atol, rtol=rtol)
 
@@ -183,7 +166,8 @@ def launch_single_ring(rank, world_size, port):
 
 def launch_double_ring(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
-    check_ring_attn()
+    # check_ring_attn()
+    check_packed_seq()
 
 
 @rerun_if_address_is_in_use()

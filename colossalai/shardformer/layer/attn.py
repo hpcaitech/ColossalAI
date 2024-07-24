@@ -16,7 +16,7 @@ from colossalai.logging import get_dist_logger
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
-from .utils import RingComm
+from .utils import RingComm, split_varlen_zigzag
 
 __all__ = [
     "AttnMaskType",
@@ -468,7 +468,6 @@ class RingAttention(torch.autograd.Function):
         """
         Ring Attention forward pass supporting variable-length sequences. When using varlen mode,
         each sequence in the batch should have length divisible by sp_size * 2.
-
         Args:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
             k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, Sq, D]

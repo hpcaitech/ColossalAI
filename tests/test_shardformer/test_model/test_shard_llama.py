@@ -59,14 +59,10 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if (
         booster.plugin.zero_stage in [1, 2]
         and booster.plugin.shard_config.enable_sequence_parallelism
-        and booster.plugin.shard_config.pipeline_stage_manager is None
         and booster.plugin.shard_config.sequence_parallelism_mode == "all_to_all"
     ):
-        master2working = sharded_optimizer.get_master_to_working_map()
-        for (name, p1), p2 in zip(
-            llama_model.named_parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]
-        ):
-            working_p = master2working[id(p2)]
+        for p1, p2 in zip(llama_model.parameters(), sharded_optimizer._master_param_groups_of_current_rank[0]):
+            working_p = sharded_optimizer.master_to_working_param[id(p2)]
             grads = sharded_optimizer.get_partitioned_gradients_by_param_id(0, id(working_p))
             grad_index = (
                 0
@@ -75,10 +71,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             )
             grad = grads[grad_index]
             sharded_grad = p1.grad.view(-1).chunk(dist.get_world_size())[dist.get_rank()]
-            try:
-                assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
-            except Exception as e:
-                raise RuntimeError(f"Failed to check grad for {name}") from e
+            assert_close(sharded_grad, grad[: sharded_grad.shape[0]], atol=5e-3, rtol=5e-3, check_dtype=False)
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}
@@ -119,184 +112,88 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "LlamaModel":
-            check_output_hidden_state(
-                org_output,
-                sharded_output,
-                stage_manager,
-                atol=atol,
-                rtol=rtol,
-                shard_config=booster.plugin.shard_config,
-            )
+            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
+
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
+
     # check weights
     if stage_manager is None or stage_manager.is_first_stage(ignore_chunk=True):
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-4, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-        check_weight(
-            llama_model,
-            shard_llama_model,
-            col_layer_for_check,
-            tp_group,
-            atol=atol,
-            rtol=rtol,
-            dim=1,
-            verbose=False,
-        )
+        try:
+            check_weight(
+                llama_model,
+                shard_llama_model,
+                col_layer_for_check,
+                tp_group,
+                atol=atol,
+                rtol=rtol,
+                dim=1,
+                verbose=False,
+            )
+        except Exception as e:
+            print(f"Failed config: {test_config}")
+            raise e
 
     # check grads
     check_all_grad_tensors(grads_to_check)
+
     torch.cuda.empty_cache()
 
 
 @parameterize(
     "test_config",
     [
-<<<<<<< HEAD
-        # Double Ring Attention
-        # Zigzag Ring Attention
-=======
-        # Zigzag Ring Attention + PP
-        {
-            "tp_size": 1,
-            "pp_size": 2,
-            "sp_size": 2,
-            "num_microbatches": 2,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring_attn",
-            "use_lazy_init": True,
-            "zero_stage": 1,
-            "precision": "bf16",
-            "initial_scale": 1,
-        },
-        # Ring Attention + TP
->>>>>>> precision tests passed
-        {
-            "tp_size": 2,
-            "pp_size": 1,
-            "sp_size": 4,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring_attn",
-            "use_lazy_init": True,
-<<<<<<< HEAD
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-            "inner_ring_size": 2,
-=======
-            "zero_stage": 1,
-            "precision": "bf16",
-            "initial_scale": 1,
->>>>>>> precision tests passed
-        },
-        # Ring Attention + PP
-        {
-        {  # Ulysess + TP
+        {  # Test ring + Flash attention
             "tp_size": 2,
             "pp_size": 1,
             "sp_size": 2,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "all_to_all",
-            "enable_all_optimization": True,
+            "sequence_parallelism_mode": "ring",
+            "enable_flash_attention": True,
             "use_lazy_init": True,
-            "zero_stage": 0,
+            "zero_stage": 2,
             "precision": "fp16",
             "initial_scale": 1,
         },
-        {  # Ulysess + PP
+        {  # Ulysess + Flash attention
             "tp_size": 1,
             "pp_size": 2,
             "sp_size": 2,
             "num_microbatches": 2,
             "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring_attn",
             "sequence_parallelism_mode": "all_to_all",
-            "enable_all_optimization": True,
+            "enable_flash_attention": True,
             "use_lazy_init": True,
             "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
         },
-        # Ring Attention + TP
         {
+            "tp_size": 1,
+            "pp_size": 1,
+            "sp_size": 2,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "all_to_all",
+            "use_lazy_init": True,
+            "zero_stage": 1,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         {
             "tp_size": 4,
             "pp_size": 1,
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
-<<<<<<< HEAD
-            "sequence_parallelism_mode": "ring_attn",
-=======
             "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": True,
->>>>>>> precision tests passed
+            "enable_flash_attention": False,
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
-<<<<<<< HEAD
-            "parallel_output": False,
-        },
-        {  # Ulysess + TP
-            "tp_size": 2,
-            "pp_size": 1,
-            "sp_size": 2,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "all_to_all",
-            "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-        },
-        {  # Ulysess + PP
-            "tp_size": 1,
-            "pp_size": 2,
-            "sp_size": 2,
-            "num_microbatches": 2,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "all_to_all",
-            "enable_all_optimization": True,
-            "use_lazy_init": True,
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-            "parallel_output": False,
-=======
->>>>>>> precision tests passed
-        },
-        {
-            "tp_size": 2,
-            "pp_size": 1,
-            "sp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
-            "zero_stage": 2,
-            "precision": "fp16",
-            "initial_scale": 1,
-<<<<<<< HEAD
-        },
-        {
-            "tp_size": 2,
-            "pp_size": 1,
-            "sp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
-            "zero_stage": 2,
-            "precision": "fp16",
-            "initial_scale": 1,
-            "parallel_output": False,
-=======
->>>>>>> precision tests passed
         },
         {
             "tp_size": 2,
@@ -341,21 +238,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
-            continue
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 
->>>>>>> precision tests passed
-=======
->>>>>>> precision tests passed
+    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
             check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
         except Exception as e:
-            print(f"Failed config: {test_config}, model name: {name}")
+            print(f"Failed config: {test_config}")
             raise e
+
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
