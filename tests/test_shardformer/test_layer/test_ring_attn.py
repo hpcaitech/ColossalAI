@@ -4,21 +4,23 @@ from flash_attn import flash_attn_qkvpacked_func
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
-from colossalai.shardformer.layer.utils import zigzag_split_batch
+from colossalai.shardformer.layer.utils import split_batch_zigzag
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils import get_current_device
 
 
 @parameterize("seq_len", [4096])
-@parameterize("batch_size", [1])
+@parameterize("bs", [1])
 @parameterize("nheads", [5])
 @parameterize("d", [128])
 @parameterize("dtype", [torch.bfloat16])
-def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
+def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
-    rank = dist.get_rank()
+    dist.get_rank()
     dist.get_world_size()
-    device = torch.device(f"cuda:{rank}")
+    device = get_current_device()
     sp_group = dist.group.WORLD
     sp_stream = torch.cuda.Stream()
 
@@ -29,8 +31,8 @@ def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
     atol = rtol = 7e-3
 
     # Setup inputs
-    qkv = torch.randn(batch_size, seq_len, 3, nheads, d, device=device, dtype=dtype, requires_grad=True)
-    local_qkv = zigzag_split_batch(qkv, sp_group)
+    qkv = torch.randn(bs, seq_len, 3, nheads, d, device=device, dtype=dtype, requires_grad=True)
+    local_qkv = split_batch_zigzag(qkv, sp_group)
     q, k, v = local_qkv.unbind(dim=-3)
     q, k, v = [x.squeeze(2).detach().clone().transpose(1, 2) for x in (q, k, v)]  # (B, nHeads, Sq, D)
     q.requires_grad = k.requires_grad = v.requires_grad = True
@@ -41,25 +43,67 @@ def check_ring_attn(seq_len, batch_size, nheads, d, dtype):
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
     )
 
-    local_out = zigzag_split_batch(out, sp_group)
-    local_lse = zigzag_split_batch(lse, sp_group, seq_dim=-1)
+    # Checkout out and softmax denominator
+    local_out = split_batch_zigzag(out, sp_group)
+    local_lse = split_batch_zigzag(lse, sp_group, seq_dim=-1)
     local_lse = local_lse.transpose(1, 2).contiguous().view(-1, ring_lse.shape[-1])  # (B, nHeads, Sq) -> (T, nHeads)
     assert_close(ring_out, local_out, atol=atol, rtol=rtol)
     assert_close(ring_lse, local_lse, atol=atol, rtol=rtol)
 
+    # Check grads
     ring_out.sum().backward()
     out.sum().backward()
     ring_dq, ring_dk, ring_dv = [x.transpose(1, 2) for x in (q.grad, k.grad, v.grad)]
     dqkv = qkv.grad
-    local_dqkv = zigzag_split_batch(dqkv, sp_group)
+    local_dqkv = split_batch_zigzag(dqkv, sp_group)
     assert_close(ring_dq, local_dqkv[:, :, 0], atol=atol, rtol=rtol)
     assert_close(ring_dk, local_dqkv[:, :, 1], atol=atol, rtol=rtol)
     assert_close(ring_dv, local_dqkv[:, :, 2], atol=atol, rtol=rtol)
 
 
+@parameterize("seq_len", [4096])
+@parameterize("bs", [2])
+@parameterize("nheads", [5])
+@parameterize("d", [128])
+@parameterize("dtype", [torch.bfloat16])
+def check_packed_seq(seq_len, bs, nheads, d, dtype):
+    device = get_current_device()
+    sp_group = dist.group.WORLD
+    sp_stream = torch.cuda.Stream()
+    atol = rtol = 5e-3
+
+    # Prepare varlen attention mask
+    padding_mask = torch.ones((bs, seq_len), dtype=torch.int, device=device)
+    padding_mask[bs // 2 :, seq_len // 2 :] = 0
+    padding_mask[: bs // 2, (seq_len // 4) * 3 :] = 0
+    attn_mask = ColoAttention.prepare_attn_kwargs(
+        (bs, 1, seq_len, seq_len), dtype, padding_mask.device, q_padding_mask=padding_mask, is_causal=True
+    )
+    input_embeds = torch.randn(bs, seq_len, nheads, d, device=device, dtype=dtype, requires_grad=True)
+
+    # Forward
+    q, k, v = [input_embeds.clone().transpose(1, 2) for _ in range(3)]
+    colo_out = ColoAttention.attention(q, k, v, **attn_mask)
+
+    input_embeds, _, attn_mask = RingAttention.prepare_varlen_batch(input_embeds, padding_mask, sp_group, bs)
+    q_ring, k_ring, v_ring = [input_embeds.clone().transpose(1, 2) for _ in range(3)]
+    ring_out = RingAttention.attention(q_ring, k_ring, v_ring, sp_group, sp_stream, **attn_mask)
+
+    # Check output
+    colo_out = split_batch_zigzag(colo_out, sp_group)
+    assert_close(colo_out, ring_out, atol=atol, rtol=rtol)
+    # Check grads
+    colo_out.backward()
+    ring_out.backward()
+    assert_close(q.grad, q_ring.grad, atol=atol, rtol=rtol)
+    assert_close(k.grad, k_ring.grad, atol=atol, rtol=rtol)
+    assert_close(v.grad, v_ring.grad, atol=atol, rtol=rtol)
+
+
 def launch(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
-    check_ring_attn()
+    # check_ring_attn()
+    check_packed_seq()
 
 
 @rerun_if_address_is_in_use()

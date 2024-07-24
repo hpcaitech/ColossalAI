@@ -15,7 +15,7 @@ from colossalai.kernel.kernel_loader import (
     KernelLoader,
 )
 
-from .utils import RingComm
+from .utils import RingComm, split_varlen_zigzag
 
 __all__ = [
     "AttnMaskType",
@@ -47,24 +47,32 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
 
 
 # adapted from https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/bert_padding.py
-def get_pad_info(padding_mask: torch.Tensor, invert: Optional[bool] = False) -> Tuple[int, torch.Tensor, torch.Tensor]:
+def get_pad_info(
+    padding_mask: torch.Tensor, invert: Optional[bool] = False, return_indices: Optional[bool] = True
+) -> Tuple[int, torch.Tensor, torch.Tensor]:
     """Get padding information from padding mask.
 
     Args:
         padding_mask (torch.Tensor): Padding mask tensor. Shape should be [B, Sq]
         invert (Optional[bool], optional): Whether to reverse the padding mask.
+        return_indices (Optional[bool], optional): Whether to return the indices of non-masked tokens.
+
     Returns:
         max_seqlen_in_batch (int): Maximum sequence length in the batch.
         cu_seqlens (torch.Tensor): Shape [B+1]. Cumulative sequence lengths of the sequences in the batch.
-        indices (torch.Tensor): Shape [B * Sq]. The indices of non-masked tokens from the flattened input sequence.
+        indices (torch.Tensor): Shape [total_nonzero]. The indices of non-masked tokens from the flattened input sequence.
     """
     if invert:
         padding_mask = padding_mask.logical_not()
     seqlens_in_batch = padding_mask.sum(dim=-1, dtype=torch.int32)
-    indices = torch.nonzero(padding_mask.flatten(), as_tuple=False).flatten()
+    if return_indices:
+        indices = torch.nonzero(padding_mask.flatten(), as_tuple=False).flatten()
+
     max_seqlen_in_batch = seqlens_in_batch.max().item()
     cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.int32), (1, 0))
-    return max_seqlen_in_batch, cu_seqlens, indices
+    if return_indices:
+        return max_seqlen_in_batch, cu_seqlens, indices
+    return max_seqlen_in_batch, cu_seqlens
 
 
 class ColoAttention:
@@ -286,24 +294,43 @@ class ColoAttention:
         )
 
 
+def _load_varlen_helpers():
+    """Helper to load functions for padding and unpadding packed sequences.
+    Use only when flash attn is installed
+    """
+    global _pad_input, _unpad_input
+    # Flash attn claims this is more efficient than torch's bool indexing due to avoiding
+    # broadcast
+    if _pad_input is None or _unpad_input is None:
+        try:
+            from flash_attn.bert_padding import index_first_axis, pad_input
+
+            def unpad_input(hidden_states: torch.Tensor, indices: torch.Tensor):
+                return index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices)
+
+            _pad_input = pad_input
+            _unpad_input = unpad_input
+        except ImportError as e:
+            raise RuntimeError(
+                f"Flash Attention is not installed. You can install it via 'pip install flash-attn --no-build-isolation'"
+            ) from e
+
+
 def _load_flash_attn():
     """A light-weight loader to check whether flash-attn is installed.
     Can't use ColoAttention._dispatch_kernel because we mutate the backward pass
     """
-    global _flash_attn_forward, _flash_attn_backward, _pad_input, _unpad_input
-    if _flash_attn_forward is not None and _flash_attn_backward is not None:
-        return
-    from flash_attn.bert_padding import index_first_axis, pad_input
-    from flash_attn.flash_attn_interface import _flash_attn_varlen_backward as _flash_attn_backward
-    from flash_attn.flash_attn_interface import _flash_attn_varlen_forward as _flash_attn_forward
+    global _flash_attn_forward, _flash_attn_backward
+    if _flash_attn_forward is None or _flash_attn_backward is None:
+        try:
+            from flash_attn.flash_attn_interface import _flash_attn_varlen_backward as _flash_attn_backward
+            from flash_attn.flash_attn_interface import _flash_attn_varlen_forward as _flash_attn_forward
+        except ImportError as e:
+            raise RuntimeError(
+                f"Flash Attention is not installed. You can install it via 'pip install flash-attn --no-build-isolation'"
+            ) from e
 
-    # Flash attn claims this is more efficient than torch's bool indexing due to avoiding
-    # copying to other dims
-    def unpad_input(hidden_states: torch.Tensor, indices: torch.Tensor):
-        return index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices)
-
-    _pad_input = pad_input
-    _unpad_input = unpad_input
+    _load_varlen_helpers()
 
 
 @triton.jit
@@ -316,15 +343,11 @@ def _rescale_out_lse_kernel(
     stride_out_0,
     stride_out_1,
     stride_out_2,
-    stride_out_3,
     stride_out_per_step_0,
     stride_out_per_step_1,
     stride_out_per_step_2,
-    stride_out_per_step_3,
     stride_lse_0,
     stride_lse_1,
-    stride_lse_2,
-    stride_lse_3,
     BLOCK_M: tl.constexpr,
 ):
     batch_id = tl.program_id(0)
@@ -332,15 +355,10 @@ def _rescale_out_lse_kernel(
     h_id = tl.program_id(2)
     d_id = tl.arange(0, D)
 
-    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id * stride_out_3
-    out_per_step_idx = (
-        batch_id * stride_out_per_step_0
-        + sq_id * stride_out_per_step_1
-        + h_id * stride_out_per_step_2
-        + d_id * stride_out_per_step_3
-    )
-    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
-    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1 + sq_id * stride_lse_2 + tl.zeros(D) * stride_lse_3
+    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id
+    out_per_step_idx = batch_id * stride_out_per_step_0 + sq_id * stride_out_per_step_1 + h_id * stride_out_per_step_2
+    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
+    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
 
     # Load inputs
     out = tl.load(out_ptr + out_idx)
@@ -357,32 +375,27 @@ def _rescale_out_lse_kernel(
 
 
 def _rescale_out_lse_triton(out, block_out, lse, block_lse):
-    B, Sq, H, D = out.shape
+    T, H, D = out.shape
 
     assert out.is_contiguous() and block_out.is_contiguous() and lse.is_contiguous() and block_lse.is_contiguous()
 
-    grid = lambda META: (triton.cdiv(Sq, META["BLOCK_M"]), B, H)
+    grid = lambda META: (triton.cdiv(T, META["BLOCK_M"]), H)
     _rescale_out_lse_kernel[grid](
         out,
         block_out,
         lse,
         block_lse,
-        B,
-        Sq,
+        T,
         H,
         D,
         out.stride(0),
         out.stride(1),
         out.stride(2),
-        out.stride(3),
         block_out.stride(0),
         block_out.stride(1),
         block_out.stride(2),
-        block_out.stride(3),
         lse.stride(0),
         lse.stride(1),
-        lse.stride(2),
-        lse.stride(3),
     )
 
 
@@ -419,7 +432,6 @@ class RingAttention(torch.autograd.Function):
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
     implemented in Jax and not optimized).
-
     """
 
     # Globle cache to avoid recomputation for same-lengthed sequences
@@ -435,17 +447,21 @@ class RingAttention(torch.autograd.Function):
         sp_group,
         sp_stream,
         attention_mask_type,
-        cu_seq_lens_q=None,
-        cu_seq_lens_kv=None,
-        max_seq_len_q=None,
-        max_seq_len_kv=None,
+        cu_seqlens_q=None,
+        cu_seqlens_kv=None,
+        max_seqlen_q=None,
+        max_seqlen_kv=None,
         valid_indices=None,
         dropout_p=0,
         softmax_scale=None,
         deterministic=False,
         return_softmax=False,
+        **kwargs,
     ):
         """
+        Ring Attention forward pass supporting variable-length sequences. When using varlen mode,
+        each sequence in the batch should have length divisible by sp_size * 2.
+        TODO: implement padding for non-divisible lengths.
         Args:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
             k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, Sq, D]
@@ -471,6 +487,7 @@ class RingAttention(torch.autograd.Function):
             softmax_lse: (if return_softmax is True) Softmax denominator (logsumexp).
                 Shape should be [total_q_seqlen, nHeads]
         """
+        _load_flash_attn()
         assert (
             q.shape[2] == k.shape[2]
         ), "Q, K and V having different sequence lengths (inference or cross-attn)\
@@ -500,11 +517,11 @@ class RingAttention(torch.autograd.Function):
         # "Packed" mode where sequences of different lengths are packed into [total_q_seqlen, H, D]
         elif attention_mask_type == AttnMaskType.PADDED_CAUSAL:
             assert (
-                cu_seq_lens_q is not None and max_seq_len_q is not None and valid_indices is not None
+                cu_seqlens_q is not None and max_seqlen_q is not None and valid_indices is not None
             ), "Packed mode requires pre-computed cu_seqlens and max_seq_len."
             q, k, v = [_unpad_input(x, valid_indices) for x in (q, k, v)]
-            cu_seqlens_kv = cu_seq_lens_q
-            max_seqlen_kv = max_seq_len_q
+            cu_seqlens_kv = cu_seqlens_q
+            max_seqlen_kv = max_seqlen_q
 
         out, softmax_lse = RingAttention.apply(
             q,
@@ -548,13 +565,6 @@ class RingAttention(torch.autograd.Function):
         return_softmax: bool = False,
         is_packed: bool = False,
     ):
-        try:
-            _load_flash_attn()
-        except Exception as e:
-            raise RuntimeError(
-                f"Ring attention requires Flash Attention, but import failed. You can install it via 'pip install flash-attn --no-build-isolation'"
-            ) from e
-
         misc_kwargs = {
             "window_size": (-1, -1),
             "alibi_slopes": None,
@@ -587,12 +597,13 @@ class RingAttention(torch.autograd.Function):
         # Overlap output correction with next flash attn
         for i in range(sp_size):
             with torch.cuda.stream(sp_streams[i % 2]):
+                if i < sp_size - 1:
+                    # Avoid overwriting the kv block used by the last flash attn call
+                    kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
                 # Wait for current kv from prev rank
                 # NOTE: waiting outside the current stream will NOT correctly synchronize.
                 kv_comms[(i + 1) % 2].wait()
                 if i < sp_size - 1:
-                    # Avoid overwriting the kv block used by the last flash attn call
-                    kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
                     kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
 
                 if i == 0:
@@ -679,15 +690,15 @@ class RingAttention(torch.autograd.Function):
                         return_softmax=False,
                         **misc_kwargs,
                     )
-                # Output and log sum exp correction
-                if i > 0:
-                    sp_streams[i % 2].wait_event(correction_done)
-
                 block_out[i % 2] = block_out[i % 2].view(-1, h, d)
                 block_softmax_lse[i % 2] = (
                     block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
                 )  # (H, T) -> (T, H, 1)
                 assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
+
+                # Output and log sum exp correction
+                if i > 0:
+                    sp_streams[i % 2].wait_event(correction_done)
 
                 # Overlap output correction with next flash attn kernel
                 if i == 0:
@@ -902,3 +913,47 @@ class RingAttention(torch.autograd.Function):
         if not is_packed:
             dq, dk, dv = [x.view(b, sq, h, d) for x in (dq, dk, dv)]
         return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None, None)
+
+    @staticmethod
+    def prepare_varlen_batch(
+        inputs_embeds: torch.Tensor,
+        attn_mask: Dict[str, torch.Tensor],
+        sp_group: dist.ProcessGroup,
+        batch_size: int,
+        position_ids: Optional[torch.Tensor] = None,
+    ):
+        """
+        Preprocess padded sequence by spliting position ids and input sequence by sp_size
+        sequence-wise, and update the attention mask accordingly.
+        Args:
+            inputs_embeds (torch.Tensor): Input embeddings. Shape should be [B, Sq, ...]
+            attn_mask (torch.Tensor): Contains the mask [B, Sq]
+            position_ids (Optional[torch.Tensor], optional): Position ids of shape [Sq]. Defaults to None.
+        """
+        _load_varlen_helpers()
+        sp_size = dist.get_world_size(group=sp_group)
+        mask_info = {}
+        mask_info["max_seqlen_q"], mask_info["cu_seqlens_q"] = get_pad_info(attn_mask, return_indices=False)
+
+        # Unpad, split seq-wise, then pad back to (B, max_seqlen // sp_size)
+        # Split mask to compute local nonzero position indices
+        # (B, Sq) -> (B, max_seqlen // sp_size)
+        attn_mask, inputs_embeds = split_varlen_zigzag(
+            [attn_mask, inputs_embeds],
+            mask_info["cu_seqlens_q"],
+            sp_group,
+            is_2d=True,
+            max_seq_len=mask_info["max_seqlen_q"],
+        )
+        mask_info["valid_indices"] = torch.nonzero(attn_mask.flatten(), as_tuple=False).flatten()
+
+        # inputs_embeds = _unpad_input(inputs_embeds, mask_info["valid_indices"])
+        # inputs_embeds = split_varlen_zigzag(inputs_embeds, mask_info["cu_seqlens_q"], sp_group)
+
+        mask_info["max_seqlen_q"] //= sp_size
+        mask_info["cu_seqlens_q"] //= sp_size
+        mask_info["attention_mask_type"] = AttnMaskType.PADDED_CAUSAL
+        if position_ids is not None:
+            position_ids = position_ids[: mask_info["max_seqlen_q"]]
+        # inputs_embeds = _pad_input(inputs_embeds, mask_info["valid_indices"], batch_size, mask_info["max_seqlen_q"])
+        return inputs_embeds, position_ids, mask_info
