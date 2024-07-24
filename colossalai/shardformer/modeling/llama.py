@@ -27,7 +27,7 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
-from colossalai.shardformer.layer.utils import is_share_sp_tp, zigzag_split_batch
+from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, RingAttention, dist_cross_entropy, get_pad_info
@@ -158,7 +158,7 @@ class LlamaPipelineForwards:
 
                 batch = [hidden_states, position_ids]
                 # inputs_embeds, attention_mask["attention_mask"], position_ids = zigzag_split_batch(batch, sp_group)
-                hidden_states, position_ids = zigzag_split_batch(batch, sp_group)
+                hidden_states, position_ids = split_batch_zigzag(batch, sp_group)
 
             elif is_share_sp_tp(sp_mode):
                 hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
@@ -314,7 +314,7 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_first_stage():
             if shard_config.sequence_parallelism_mode == "ring_attn":
-                labels = zigzag_split_batch(labels, shard_config.sequence_parallel_process_group)
+                labels = split_batch_zigzag(labels, shard_config.sequence_parallel_process_group)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = LlamaPipelineForwards.llama_model_forward(
@@ -558,15 +558,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
 
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
-                query_states,
-                key_states,
-                value_states,
-                sp_group,
-                shard_config.sp_stream,
-                attention_mask["attention_mask_type"],
-                cu_seq_lens_q=attention_mask.get("cu_seqlens", None),
-                max_seq_len_q=attention_mask.get("max_seqlen", None),
-                valid_indices=attention_mask.get("indices", None),
+                query_states, key_states, value_states, sp_group, shard_config.sp_stream, **attention_mask
             )
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
@@ -693,12 +685,12 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
         if sp_mode == "ring_attn":
             assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
             if attn_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
-                attn_mask["cu_seqlens"], attn_mask["max_seqlen"], attn_mask["indices"] = get_pad_info(
-                    attn_mask["attention_mask"].squeeze(1).any(dim=-1)
-                )  # [B, 1, Sq, Skv] -> [B, Sq]
+                inputs_embeds, position_ids, attn_mask = RingAttention.prepare_varlen_batch(
+                    inputs_embeds, attn_mask["attention_mask"], sp_group, batch_size, position_ids
+                )
             else:
-                attn_mask["cu_seqlens"] = attn_mask["max_seqlen"] = attn_mask["indices"] = None
-            inputs_embeds, position_ids = zigzag_split_batch([inputs_embeds, position_ids], sp_group)
+                inputs_embeds, position_ids = split_batch_zigzag([inputs_embeds, position_ids], sp_group)
+                attn_mask = attn_mask["attention_mask_type"]  # drop redundant tensors
 
         elif is_share_sp_tp(sp_mode):
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
@@ -821,7 +813,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if shard_config.sequence_parallelism_mode == "ring_attn":
-            labels = zigzag_split_batch(labels, shard_config.sequence_parallel_process_group)
+            labels = split_batch_zigzag(labels, shard_config.sequence_parallel_process_group)
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,

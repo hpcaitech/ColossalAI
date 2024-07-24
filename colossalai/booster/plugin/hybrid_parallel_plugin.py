@@ -72,7 +72,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.dp_group = dp_group
         self.tp_group = tp_group
         self.sp_group = sp_group
-        self.use_dpp = use_ddp
+        self.use_ddp = use_ddp
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
 
@@ -139,8 +139,8 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         # Disable automatic gradient synchronization.
         self.require_grad_sync = False
         try:
-            if self.use_dpp:
-                # If using data parallel processing (use_dpp), disable synchronization too.
+            if self.use_ddp:
+                # If using data parallel processing (use_ddp), disable synchronization too.
                 with self.module.no_sync():
                     yield
             else:
@@ -1223,13 +1223,12 @@ class HybridParallelPlugin(PipelinePluginBase):
             zero_stage = 0
 
         if not isinstance(model, ModelWrapper):
+            # Can't use pp (frequent grad accumulation) with torch ddp
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
-                self.dp_size == 1
-                and self.pp_size == 1
-                and self.enable_sequence_parallelism
-                and self.sequence_parallelism_mode == "all_to_all"
+                self.dp_size == 1 and self.pp_size == 1
             )
-            # Sync gradients across DP * SP ranks
+
+            # Apply Hybrid ZeRO across DP * SP ranks
             if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
             else:

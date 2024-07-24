@@ -291,7 +291,7 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def zigzag_split_batch(
+def split_batch_zigzag(
     batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
 ):
     """
@@ -333,6 +333,65 @@ def zigzag_split_batch(
 
     if len(batch) == 1:
         return batch[0]
+    return batch
+
+
+def split_varlen_zigzag(
+    batch: Union[List[torch.Tensor], torch.Tensor],
+    cu_seqlens: torch.Tensor,
+    sp_group: ProcessGroup,
+    is_2d: bool = False,
+    max_seq_len: int = 0,
+) -> Union[List[torch.Tensor], torch.Tensor]:
+    """Split each sequence in a batch of packed sequences/indices in a zigzag fashion.
+
+    Args:
+        batch (List[torch.Tensor]): Packed sequences of shape (B * Sq), or (B, Sq) if is_2d
+        cu_seqlens (torch.Tensor): Cumulative sequence lengths of shape (B + 1)
+        sp_group (ProcessGroup): The process group for sequence parallelism.
+        is_2d (bool): Whether the input is 2D or 1D.
+        max_seq_len (int): The maximum sequence length in the batch before splitting.
+    Returns:
+        batch (List[torch.Tensor]): Unpacked sequences of shape (B * Sq // sp_size)
+    """
+    sp_size = dist.get_world_size(sp_group)
+    sp_rank = dist.get_rank(sp_group)
+
+    if isinstance(batch, torch.Tensor):
+        batch = [batch]
+    for i, packed_seq in enumerate(batch):
+        if is_2d:
+            assert max_seq_len % sp_size == 0
+            shape = (packed_seq.shape[0], max_seq_len // sp_size, *packed_seq.shape[2:])
+            local_seq = torch.zeros(shape, dtype=packed_seq.dtype, device=packed_seq.device)
+        else:
+            local_seq = []
+
+        for j in range(len(cu_seqlens) - 1):
+            start, end = cu_seqlens[j], cu_seqlens[j + 1]
+            seqlen = end - start
+            assert (
+                seqlen % (2 * sp_size) == 0
+            ), f"batch {i} seq {j}'s length ({seqlen}) must be divisible by 2 * sp_size = {2 * sp_size} for splitting"
+
+            if is_2d:
+                seq = packed_seq[j][:seqlen].chunk(2 * sp_size, dim=0)
+                local_seq[j][: seqlen // sp_size] = torch.cat([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]], dim=0)
+            else:
+                seq = packed_seq[start:end].chunk(2 * sp_size, dim=0)
+                seq.extend(
+                    [
+                        seq[sp_rank],
+                        seq[2 * sp_size - 1 - sp_rank],
+                    ]
+                )
+        if is_2d:
+            batch[i] = local_seq
+        else:
+            batch[i] = torch.cat(local_seq, dim=0).contiguous()
+
+    if len(batch) == 1:
+        batch = batch[0]
     return batch
 
 
@@ -379,160 +438,3 @@ def is_share_sp_tp(sp_mode: str):
     to correctly get logits at each positions.
     """
     return sp_mode in ["ring", "split_gather"]
-
-
-# Copied from https://github.com/zhuzilin/ring-flash-attention/tree/main/ring_flash_attn
-# Use Triton kernel if installed else use torch
-try:
-    import triton
-    import triton.language as tl
-
-    @triton.jit
-    def flatten_kernel(
-        # pointers to matrices
-        OUT,
-        LSE,
-        CU_SEQLENS,
-        # strides
-        stride_out_nheads,
-        stride_out_seqlen,
-        stride_lse_batch,
-        stride_lse_nheads,
-        stride_lse_seqlen,
-        # meta-parameters
-        BLOCK_M: tl.constexpr,
-    ):
-        pid_m = tl.program_id(axis=0)
-        pid_batch = tl.program_id(axis=1)
-        pid_head = tl.program_id(axis=2)
-
-        start_idx = tl.load(CU_SEQLENS + pid_batch)
-        seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
-        LSE = LSE + pid_batch * stride_lse_batch + pid_head * stride_lse_nheads
-        OUT = OUT + pid_head * stride_out_nheads + start_idx * stride_out_seqlen
-
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-        LSE = LSE + rm[:, None] * stride_lse_seqlen
-        x = tl.load(LSE, mask=rm[:, None] < seqlen, other=0.0)
-
-        OUT = OUT + rm[:, None] * stride_out_seqlen
-        tl.store(OUT, x, mask=rm[:, None] < seqlen)
-
-    def flatten_varlen_lse(lse, cu_seqlens):
-        """
-        Arguments:
-            lse: (batch_size, nheads, max_seqlen)
-            cu_seqlens: (batch_size + 1,)
-        Return:
-            flatten_lse: (nheads, total_seqlen)
-        """
-        total_seqlen = cu_seqlens[-1]
-        batch_size, nheads, max_seqlen = lse.shape
-        output = torch.empty((nheads, total_seqlen), dtype=lse.dtype, device=lse.device)
-
-        grid = lambda META: (triton.cdiv(max_seqlen, META["BLOCK_M"]), batch_size, nheads)
-        BLOCK_M = 4
-
-        with torch.cuda.device(lse.device.index):
-            flatten_kernel[grid](
-                output,
-                lse,
-                cu_seqlens,
-                # strides
-                output.stride(0),
-                output.stride(1),
-                lse.stride(0),
-                lse.stride(1),
-                lse.stride(2),
-                BLOCK_M,
-            )
-        return output
-
-    @triton.jit
-    def unflatten_kernel(
-        # pointers to matrices
-        OUT,
-        LSE,
-        CU_SEQLENS,
-        # strides
-        stride_out_batch,
-        stride_out_nheads,
-        stride_out_seqlen,
-        stride_lse_seqlen,
-        stride_lse_nheads,
-        # meta-parameters
-        BLOCK_M: tl.constexpr,
-    ):
-        pid_m = tl.program_id(axis=0)
-        pid_batch = tl.program_id(axis=1)
-        pid_head = tl.program_id(axis=2)
-
-        start_idx = tl.load(CU_SEQLENS + pid_batch)
-        seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
-        LSE = LSE + pid_head * stride_lse_nheads + start_idx * stride_lse_seqlen
-        OUT = OUT + pid_batch * stride_out_batch + pid_head * stride_out_nheads
-
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-        LSE = LSE + rm[:, None] * stride_lse_seqlen
-        x = tl.load(LSE, mask=rm[:, None] < seqlen, other=0.0)
-
-        OUT = OUT + rm[:, None] * stride_out_seqlen
-        tl.store(OUT, x, mask=rm[:, None] < seqlen)
-
-    def unflatten_varlen_lse(lse, cu_seqlens, max_seqlen: int):
-        """
-        Arguments:
-            lse: (total_seqlen, nheads, 1)
-            cu_seqlens: (batch_size + 1,)
-            max_seqlen: int
-        Return:
-            unflatten_lse: (batch_size, nheads, max_seqlen)
-        """
-        lse = lse.unsqueeze(dim=-1)
-        batch_size = len(cu_seqlens) - 1
-        nheads = lse.shape[1]
-        output = torch.empty(
-            (batch_size, nheads, max_seqlen),
-            dtype=lse.dtype,
-            device=lse.device,
-        )
-
-        grid = lambda META: (triton.cdiv(max_seqlen, META["BLOCK_M"]), batch_size, nheads)
-        BLOCK_M = 4
-
-        with torch.cuda.device(lse.device.index):
-            unflatten_kernel[grid](
-                output,
-                lse,
-                cu_seqlens,
-                # strides
-                output.stride(0),
-                output.stride(1),
-                output.stride(2),
-                lse.stride(0),
-                lse.stride(1),
-                BLOCK_M,
-            )
-        return output
-
-except:
-    # Triton not installed, use torch instead
-    @torch.jit.script
-    def flatten_varlen_lse(lse, cu_seqlens):
-        new_lse = []
-        for i in range(len(cu_seqlens) - 1):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            new_lse.append(lse[i, :, : end - start])
-        return torch.cat(new_lse, dim=1)
-
-    @torch.jit.script
-    def unflatten_varlen_lse(lse, cu_seqlens, max_seqlen: int):
-        num_seq = len(cu_seqlens) - 1
-        num_head = lse.shape[-2]
-        new_lse = torch.empty((num_seq, max_seqlen, num_head, 1), dtype=torch.float32, device=lse.device)
-        for i in range(num_seq):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            new_lse[i, : end - start] = lse[start:end]
-        return new_lse.squeeze(dim=-1).transpose(1, 2).contiguous()
