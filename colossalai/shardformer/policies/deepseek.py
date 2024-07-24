@@ -50,7 +50,6 @@ class DeepseekPolicy(Policy):
             "sdpa": "DeepseekSdpaAttention",
         }
         policy = {}
-        print(f"{self.origin_attn_implement=}")
         attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
@@ -71,7 +70,6 @@ class DeepseekPolicy(Policy):
                 # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
                 # if both are enabled, one of them will be ignored
                 raise NotImplementedError("Sequence parallelism is not supported with pipeline parallelism.")
-            print(f"{attn_cls=}")
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_deepseek_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
@@ -208,13 +206,8 @@ class DeepseekPolicy(Policy):
 
                 @staticmethod
                 def from_native_module(original_attn: nn.Module, *args, **kwargs) -> nn.Module:
-                    flash_attn_module = flash_attn_cls(original_attn.config, original_attn.layer_idx)
-                    flash_attn_module.q_proj = original_attn.q_proj
-                    flash_attn_module.k_proj = original_attn.k_proj
-                    flash_attn_module.v_proj = original_attn.v_proj
-                    flash_attn_module.o_proj = original_attn.o_proj
-                    flash_attn_module.rotary_emb = original_attn.rotary_emb
-                    return flash_attn_module
+                    original_attn.__class__ = flash_attn_cls
+                    return original_attn
 
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(

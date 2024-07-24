@@ -535,28 +535,22 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
         if sp_mode in ["split_gather", "ring"]:
             q_len *= sp_size
 
-        rank = dist.get_rank()
-        print(f"{rank=}, hidden states:{hidden_states.shape}")
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
 
-        rank = dist.get_rank()
-        print(f"{rank=}, before all to all q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}")
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             query_states = all_to_all_comm(query_states, sp_group)
             key_states = all_to_all_comm(key_states, sp_group)
             value_states = all_to_all_comm(value_states, sp_group)
             bsz, q_len, _ = query_states.size()
-        print(f"{rank=}, after all to all q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}")
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
         # therefore we just need to keep the original shape
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        print(f"{rank=}, after view to (b,s,h,d) q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}")
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -565,7 +559,6 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
         query_states, key_states = apply_rotary_pos_emb(
             query_states, key_states, cos, sin, position_ids, unsqueeze_dim=0
         )
-        print(f"{rank=}, after rope q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}")
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
@@ -576,9 +569,6 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        print(
-            f"{rank=}, after transpose to (b, nh, s, d) q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}"
-        )
         dropout_rate = self.attention_dropout if self.training else 0.0
 
         # In PEFT, usually we cast the layer norms in float32 for training stability reasons
@@ -606,7 +596,6 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
             query_states = query_states.to(target_dtype)
             key_states = key_states.to(target_dtype)
             value_states = value_states.to(target_dtype)
-        print(f"{rank=}, before flash attn  q:{query_states.shape}, k:{key_states.shape}, v:{value_states.shape}")
         attn_output = self._flash_attention_forward(
             query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
         )
