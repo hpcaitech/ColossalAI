@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
+from transformers.utils import is_flash_attn_greater_or_equal_2_10
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
@@ -206,6 +207,7 @@ class DeepseekPolicy(Policy):
                 @staticmethod
                 def from_native_module(original_attn: nn.Module, *args, **kwargs) -> nn.Module:
                     original_attn.__class__ = flash_attn_cls
+                    original_attn._flash_attn_uses_top_left_mask = not is_flash_attn_greater_or_equal_2_10()
                     return original_attn
 
             self.append_or_create_submodule_replacement(
