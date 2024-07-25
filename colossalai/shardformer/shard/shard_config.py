@@ -50,7 +50,6 @@ class ShardConfig:
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
-    moe_tp_group: Optional[ProcessGroup] = None
 
     # pipeline_parallel_size: int
     # data_parallel_size: int
