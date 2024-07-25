@@ -155,7 +155,6 @@ class MixtralPolicy(Policy):
                             "ep_group": self.shard_config.ep_group,
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
-                            "moe_tp_group": self.shard_config.moe_tp_group,
                         },
                     )
                 ],

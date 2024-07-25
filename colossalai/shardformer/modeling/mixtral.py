@@ -53,13 +53,10 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def __init__(self, *args, **kwargs):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(
-        self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, moe_tp_group: ProcessGroup
-    ):
+    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
-        assert moe_tp_group is not None
 
         # setup ep group
         self.ep_size = dist.get_world_size(ep_group)
@@ -81,14 +78,11 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
         # setup global tp group
         self.tp_group = tp_group
-
-        # setup moe tp group
-        self.moe_tp_group = moe_tp_group
-        if self.moe_tp_group.size() > 1:
+        if self.tp_group.size() > 1:
             for expert in held_experts:
-                expert.w1 = Linear1D_Col.from_native_module(expert.w1, self.moe_tp_group)
-                expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.moe_tp_group)
-                expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.moe_tp_group)
+                expert.w1 = Linear1D_Col.from_native_module(expert.w1, self.tp_group)
+                expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.tp_group)
+                expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.tp_group)
 
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
@@ -99,14 +93,13 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         tp_group: ProcessGroup,
         moe_dp_group: ProcessGroup,
         ep_group: ProcessGroup,
-        moe_tp_group: ProcessGroup,
         *args,
         **kwargs,
     ) -> "EPMixtralSparseMoeBlock":
         # TODO: better init
         LazyInitContext.materialize(module)
         module.__class__ = EPMixtralSparseMoeBlock
-        module.setup_process_groups(tp_group, moe_dp_group, ep_group, moe_tp_group)
+        module.setup_process_groups(tp_group, moe_dp_group, ep_group)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:

@@ -47,7 +47,6 @@ def check_deepseek_moe_layer():
         model,
         ep_group=plugin.ep_group,
         moe_dp_group=plugin.moe_dp_group,
-        moe_tp_group=plugin.moe_tp_group,
         tp_group=plugin.tp_group,
     )
     ep_output = model(x)
