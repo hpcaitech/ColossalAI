@@ -115,8 +115,10 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
     """
     Modified from colossalai.booster.plugin.hybrid_parallel_plugin.HybridParallelPlugin
     Extra Args:
-        ep_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
-        force_overlap_comm (bool): For LowLevelZeroOptimizer, it might causes program hang when some experts are routed and overlap_communication is True during training. This flag is used to force overlap_communication=True.
+        ep_size (int): The size of expert parallelism
+        force_overlap_comm (bool):
+            For LowLevelZeroOptimizer, it might causes program hang when some experts are routed and overlap_communication is True during training.
+            This flag is used to force overlap_communication=True. Make sure every expert are routed when you use this.
     """
 
     def __init__(
