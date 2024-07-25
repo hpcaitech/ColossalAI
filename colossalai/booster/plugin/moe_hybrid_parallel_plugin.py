@@ -154,7 +154,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         zero_bucket_size_in_m: int = 12,
         cpu_offload: bool = False,
         communication_dtype: Optional[torch.dtype] = None,
-        overlap_communication: bool = True,
+        overlap_communication: bool = False,
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
