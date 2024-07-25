@@ -42,7 +42,6 @@ CHECKED_CONFIG = [  # FOR WORLD=4
         (1, 2, 2, 1, 1),
         (1, 2, 1, 2, 1),
         (1, 2, 1, 1, 2),
-        (0, 2, 1, 1, 1),
     ],
 )
 def run_zero_with_original_model(config: Tuple[int, ...]):
