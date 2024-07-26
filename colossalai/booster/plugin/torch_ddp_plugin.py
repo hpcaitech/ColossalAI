@@ -230,6 +230,7 @@ class TorchDDPPlugin(DPPluginBase):
 
         if self.fp8_communication:
             from colossalai.quantization.fp8 import fp8_compress_ddp_grad_comm_hook_async
+
             model.module.register_comm_hook(None, fp8_compress_ddp_grad_comm_hook_async)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
