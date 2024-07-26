@@ -364,6 +364,7 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_overlap: bool = False,
         enable_async_reduce: bool = True,
         verbose: bool = False,
+        fp8_communication: bool = False,
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
@@ -395,6 +396,7 @@ class GeminiPlugin(DPPluginBase):
             master_weights=master_weights,
             max_prefetch=max_prefetch,
             enable_async_reduce=enable_async_reduce,
+            fp8_communication=fp8_communication,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,

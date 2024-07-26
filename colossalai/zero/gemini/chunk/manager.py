@@ -26,6 +26,7 @@ class ChunkManager:
         init_device: Optional[torch.device] = None,
         reuse_fp16_chunk: bool = True,
         max_prefetch: int = 0,
+        fp8_communication: bool = False,
     ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
@@ -44,6 +45,7 @@ class ChunkManager:
         self.accumulating_grads = False
         self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
         self._prefetch_stream = get_accelerator().Stream() if max_prefetch else None
+        self.fp8_communication = fp8_communication
 
     def register_tensor(
         self,
@@ -101,6 +103,8 @@ class ChunkManager:
                 extra_dp_group=extra_dp_group,
                 **chunk_kwargs,
             )
+            if self.fp8_communication:
+                chunk.fp8_communication = True
 
             chunk_group.append(chunk)
             chunk.append_tensor(tensor)
