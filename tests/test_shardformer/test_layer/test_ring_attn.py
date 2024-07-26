@@ -166,8 +166,8 @@ def launch_single_ring(rank, world_size, port):
 
 def launch_double_ring(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
-    # check_ring_attn()
-    check_packed_seq()
+    # check_packed_seq()
+    check_ring_attn()
 
 
 @rerun_if_address_is_in_use()

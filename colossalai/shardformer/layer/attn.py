@@ -16,7 +16,7 @@ from colossalai.logging import get_dist_logger
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
-from .utils import RingComm, split_varlen_zigzag
+from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 __all__ = [
     "AttnMaskType",
@@ -345,7 +345,7 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
-    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    # lse.data = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
     # NOTE: directly assigning to .data here is buggy
     # probably due to casting dtypes/strides
@@ -618,6 +618,9 @@ class RingAttention(torch.autograd.Function):
 
         if is_packed:
             t, h, d = q.shape
+            # half of each seq
+            half_idx_front = get_half_index(cu_seqlens, front=True)
+            half_idx_back = get_half_index(cu_seqlens, front=False)
         else:
             b, sq, h, d = q.shape
             t = b * sq
@@ -858,7 +861,6 @@ class RingAttention(torch.autograd.Function):
         cu_seqlens_half = cu_seqlens_q // 2
         max_seqlen_half = max_seqlen_q // 2
         misc_kwargs = ctx.misc_kwargs
-        is_packed = ctx.is_packed
         dout = dout.contiguous()
         del misc_kwargs["block_table"]
 
