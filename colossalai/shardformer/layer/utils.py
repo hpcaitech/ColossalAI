@@ -317,8 +317,8 @@ def split_batch_zigzag(
     if sp_size > 1:
         for idx, tensor in enumerate(batch):
             assert (
-                tensor.numel() // (sp_size * 2) > 1
-            ), f"Bro, the seq length for tensor {idx} in batch is too short to split!"
+                tensor.shape[seq_dim] // (sp_size * 2) > 1 and tensor.shape[seq_dim] % (sp_size * 2) == 0
+            ), f"Bro, the seq length {tensor.shape[seq_dim]} for tensor {idx} can't be split by {sp_size * 2}!"
 
             tensor = tensor.view(
                 *tensor.shape[:seq_dim],
@@ -340,31 +340,45 @@ def split_varlen_zigzag(
     batch: Union[List[torch.Tensor], torch.Tensor],
     cu_seqlens: torch.Tensor,
     sp_group: ProcessGroup,
+    max_seqlen: int = 0,
     is_2d: bool = False,
-    max_seq_len: int = 0,
 ) -> Union[List[torch.Tensor], torch.Tensor]:
-    """Split each sequence in a batch of packed sequences/indices in a zigzag fashion.
+    """Split each sequence in a batch of packed sequences in a zigzag fashion.
+        For each tensor in batch, return packed sequences if is_2d is False;
+        else return a padded batch of sequences.
 
     Args:
-        batch (List[torch.Tensor]): Packed sequences of shape (B * Sq), or (B, Sq) if is_2d
-        cu_seqlens (torch.Tensor): Cumulative sequence lengths of shape (B + 1)
+        batch (List[torch.Tensor]): Packed sequences of shape (B * Sq, ...), or (B, Sq, ...) if is_2d.
+        cu_seqlens (torch.Tensor): Cumulative sequence lengths of shape (B + 1) before splitting.
         sp_group (ProcessGroup): The process group for sequence parallelism.
-        is_2d (bool): Whether the input is 2D or 1D.
-        max_seq_len (int): The maximum sequence length in the batch before splitting.
+        max_seqlen (int): The maximum sequence length in the batch before splitting.
+        is_2d (bool): If True, then input has batch size and sequence length split into two dimensions.
+
     Returns:
-        batch (List[torch.Tensor]): Unpacked sequences of shape (B * Sq // sp_size)
+        batch (List[torch.Tensor]): Packed sequences of shape (B * max_seqlen // sp_size)
+            or (B, max_seqlen // sp_size, ...) if is_2d
     """
     sp_size = dist.get_world_size(sp_group)
     sp_rank = dist.get_rank(sp_group)
+    if is_2d:
+        assert max_seqlen > 0, "max_seqlen must be provided for 2D input"
 
     if isinstance(batch, torch.Tensor):
         batch = [batch]
     for i, packed_seq in enumerate(batch):
+        device = packed_seq.device
+        dtype = packed_seq.dtype
+
         if is_2d:
-            assert max_seq_len % sp_size == 0
-            shape = (packed_seq.shape[0], max_seq_len // sp_size, *packed_seq.shape[2:])
-            local_seq = torch.zeros(shape, dtype=packed_seq.dtype, device=packed_seq.device)
+            assert max_seqlen % (sp_size * 2) == 0
+            # Recreate a padded tensor with the new max seqlen
+            shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
+            local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
+            total_seqlen = cu_seqlens[-1]
+            assert (
+                total_seqlen % (2 * sp_size) == 0
+            ), f"total_seqlen {total_seqlen} must be divisible by 2 * sp_size = {2 * sp_size}"
             local_seq = []
 
         for j in range(len(cu_seqlens) - 1):
@@ -376,23 +390,29 @@ def split_varlen_zigzag(
 
             if is_2d:
                 seq = packed_seq[j][:seqlen].chunk(2 * sp_size, dim=0)
-                local_seq[j][: seqlen // sp_size] = torch.cat([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]], dim=0)
+                half = seqlen // sp_size // 2
+                local_seq[j][:half] = seq[sp_rank]
+                local_seq[j][half : seqlen // sp_size] = seq[2 * sp_size - 1 - sp_rank]
             else:
-                seq = packed_seq[start:end].chunk(2 * sp_size, dim=0)
-                seq.extend(
-                    [
-                        seq[sp_rank],
-                        seq[2 * sp_size - 1 - sp_rank],
-                    ]
-                )
+                seq = packed_seq[start:end].chunk(sp_size * 2)
+                local_seq.extend([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]])
+
         if is_2d:
-            batch[i] = local_seq
+            batch[i] = local_seq.contiguous()
         else:
-            batch[i] = torch.cat(local_seq, dim=0).contiguous()
+            batch[i] = torch.cat(local_seq, dim=0)
 
     if len(batch) == 1:
         batch = batch[0]
     return batch
+
+
+def is_share_sp_tp(sp_mode: str):
+    """sp_mode "ring" and "split_gather" use the TP group as SP group
+    to split both the vocab and sequence, so we must gather the sequence
+    to correctly get logits at each positions.
+    """
+    return sp_mode in ["ring", "split_gather"]
 
 
 class RingComm:
@@ -432,9 +452,14 @@ class RingComm:
         self._ops = []
 
 
-def is_share_sp_tp(sp_mode: str):
-    """sp_mode "ring" and "split_gather" use the TP group as SP group
-    to split both the vocab and sequence, so we must gather the sequence
-    to correctly get logits at each positions.
-    """
-    return sp_mode in ["ring", "split_gather"]
+@torch.jit.script
+def get_half_index(cu_seqlens, *, front: bool):
+    index = torch.zeros(cu_seqlens[-1], dtype=torch.bool, device=cu_seqlens.device)
+    for i in range(len(cu_seqlens) - 1):
+        start, end = cu_seqlens[i], cu_seqlens[i + 1]
+        if front:
+            end = (start + end) // 2
+        else:
+            start = (start + end) // 2
+        index[start:end] = True
+    return index

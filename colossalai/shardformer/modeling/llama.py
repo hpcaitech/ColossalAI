@@ -670,7 +670,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if shard_config.enable_flash_attention:
             mask_shape = (batch_size, 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
-            attn_mask: dict = ColoAttention.prepare_attn_kwargs(
+            mask_info: dict = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
                 inputs_embeds.device,
@@ -679,18 +679,18 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             )
 
         else:
-            attn_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
+            mask_info: torch.Tensor = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
         # Ring Attention zigzag batch processing
         if sp_mode == "ring_attn":
             assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-            if attn_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
-                inputs_embeds, position_ids, attn_mask = RingAttention.prepare_varlen_batch(
-                    inputs_embeds, attn_mask["attention_mask"], sp_group, batch_size, position_ids
+            if mask_info["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                inputs_embeds, position_ids, mask_info = RingAttention.prepare_varlen_batch(
+                    inputs_embeds, mask_info["attention_mask"], sp_group, position_ids
                 )
             else:
                 inputs_embeds, position_ids = split_batch_zigzag([inputs_embeds, position_ids], sp_group)
-                attn_mask = attn_mask["attention_mask_type"]  # drop redundant tensors
+                mask_info = {"attention_mask_type": mask_info["attention_mask_type"]}  # drop redundant tensors
 
         elif is_share_sp_tp(sp_mode):
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
@@ -710,7 +710,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
-                    attn_mask,
+                    mask_info,
                     position_ids,
                     past_key_values,
                     output_attentions,
@@ -721,7 +721,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attn_mask,
+                    attention_mask=mask_info,
                     position_ids=position_ids,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
