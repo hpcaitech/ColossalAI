@@ -46,8 +46,7 @@ def supervised_tokenize_sft(
         max_length: the maximum context length
     """
 
-    if ignore_index is None:
-        ignore_index = IGNORE_INDEX
+    ignore_index = IGNORE_INDEX
 
     messages = data_point["messages"]
     template = deepcopy(conversation_template)
@@ -146,8 +145,6 @@ def tokenize_prompt_dataset(
         ignore_index: the ignore index when calculate loss during training
         max_length: the maximum context length
     """
-    if ignore_index is None:
-        ignore_index = IGNORE_INDEX
 
     messages = data_point["messages"]
     template = deepcopy(conversation_template)
@@ -226,8 +223,6 @@ def tokenize_rlhf(
         {"context": [{"from": "user", "content": "xxx"}, {"from": "assistant", "content": "xxx"}],
         "chosen": {"from": "assistant", "content": "xxx"}, "rejected": {"from": "assistant", "content": "xxx"}}
     """
-    if ignore_index is None:
-        ignore_index = IGNORE_INDEX
 
     context = data_point["context"]
     template = deepcopy(conversation_template)

@@ -27,7 +27,7 @@ from .utils import is_rank_0, to_device
 
 class KTOTrainer(SLTrainer):
     """
-        Trainer for PPO algorithm.
+        Trainer for KTO algorithm.
 
     Args:
         actor (Actor): the actor model in ppo algorithm

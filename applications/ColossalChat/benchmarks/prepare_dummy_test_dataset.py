@@ -40,7 +40,7 @@ if __name__ == "__main__":
         type=str,
         required=True,
         default=None,
-        help="The type of data",
+        help="The type of data, choose one from ['sft', 'prompt', 'preference', 'kto']",
     )
     args = parser.parse_args()
     if args.data_type == "sft":
