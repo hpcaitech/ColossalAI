@@ -1375,15 +1375,15 @@ class HybridParallelPlugin(PipelinePluginBase):
             kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
                     `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
 
-        Returns:
+        Returns:`
             :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
         """
         _kwargs = kwargs.copy()
         distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
         sampler = distributed_sampler_cls(
             dataset,
-            num_replicas=self.pg_mesh.size(self.dp_axis),
-            rank=self.pg_mesh.coordinate(self.dp_axis),
+            num_replicas=self.dp_group.size(),
+            rank=dist.get_group_rank(self.dp_group, global_rank=dist.get_rank()),
             shuffle=shuffle,
         )
 
