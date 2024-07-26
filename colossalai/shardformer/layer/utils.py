@@ -1,17 +1,5 @@
 from contextlib import contextmanager
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 from typing import List, Optional, Union
-=======
-from typing import Dict, List
->>>>>>> add basic ring attn; debug cross entropy
-=======
-from typing import List
->>>>>>> precision tests passed
-=======
-from typing import List, Optional, Union
->>>>>>> precision tests passed
 
 import torch
 import torch.distributed as dist
@@ -303,23 +291,9 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
 def split_batch_zigzag(
     batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim: int = 1, is_label: bool = False
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
-=======
-def zigzag_split_batch(batch: List[torch.Tensor], sp_group: ProcessGroup, varlen: bool = False):
->>>>>>> precision tests passed
-=======
-def zigzag_split_batch(
-=======
-def split_batch_zigzag(
->>>>>>> add varlen tests
-    batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
-):
->>>>>>> precision tests passed
     """
     Split the input along the sequence dimension for Ring Attention. Naively spliting the attention mask
     in the causal setting will result in the preceding ranks having much less workload.
@@ -327,8 +301,6 @@ def split_batch_zigzag(
     For example, for sp_size = 4 and seq_len = 8, we get | s0, s7 | s1, s6 | s2, s5 | s3, s4 |.
 
     Args:
-<<<<<<< HEAD
-<<<<<<< HEAD
         batch (List[torch.Tensor] or Tensor): The input tensor(s) to split.
         sp_group (ProcessGroup): The process group for sequence parallelism.
         seq_dim (int): The sequence dimension to split.
@@ -350,33 +322,6 @@ def split_batch_zigzag(
                 assert tensor.dim() == 2, "Label shape should be (B, Seqlen)"
                 tensor = torch.cat([tensor[:, 1:], torch.full_like(tensor[:, :1], -100)], dim=1)
 
-=======
-        batch (List[torch.Tensor]): The input tensors to split.
-=======
-        batch (List[torch.Tensor] or Tensor): The input tensor(s) to split.
->>>>>>> precision tests passed
-        sp_group (ProcessGroup): The process group for sequence parallelism.
-        seq_dim (int): The sequence dimension to split.
-        varlen (bool): If the input is padded (aka "packing" mode), such that
-            sequences in a batch have different lengths, and we need to unpad and
-            split each sequence evenly by sp_size.
-    """
-    sp_size = dist.get_world_size(sp_group)
-    sp_rank = dist.get_rank(sp_group)
-    if isinstance(batch, torch.Tensor):
-        batch = [batch]
-    seq_dim = seq_dim if seq_dim != -1 else batch[0].dim() - 1
-
-    if sp_size > 1:
-        for idx, tensor in enumerate(batch):
-            assert (
-                tensor.numel() // (sp_size * 2) > 1
-            ), f"Bro, the seq length for tensor {idx} in batch is too short to split!"
-<<<<<<< HEAD
->>>>>>> precision tests passed
-=======
-
->>>>>>> precision tests passed
             tensor = tensor.view(
                 *tensor.shape[:seq_dim],
                 2 * sp_size,
@@ -386,9 +331,7 @@ def split_batch_zigzag(
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             # (B, 2, Sq // (2 * sp_size), ...) -> (B, Sq // sp_size, ...)
-<<<<<<< HEAD
             batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
-<<<<<<< HEAD
 
     if len(batch) == 1:
         return batch[0]
@@ -434,10 +377,7 @@ def split_varlen_zigzag(
             assert max_seqlen % (sp_size * 2) == 0
             # Recreate a padded tensor with the new max seqlen
             shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
-            if is_label:
-                local_seq = torch.full(shape, -100, dtype=dtype, device=device)
-            else:
-                local_seq = torch.zeros(shape, dtype=dtype, device=device)
+            local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
             total_seqlen = cu_seqlens[-1]
             assert (
@@ -473,114 +413,10 @@ def split_varlen_zigzag(
             batch[i] = local_seq.contiguous()
         else:
             batch[i] = torch.cat(local_seq, dim=0)
-=======
->>>>>>> precision tests passed
-
-    if len(batch) == 1:
-        batch = batch[0]
-=======
-            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :]).contiguous()
-
-    if len(batch) == 1:
-        return batch[0]
->>>>>>> precision tests passed
-    return batch
-
-
-def split_varlen_zigzag(
-    batch: Union[List[torch.Tensor], torch.Tensor],
-    cu_seqlens: torch.Tensor,
-    sp_group: ProcessGroup,
-    is_2d: bool = False,
-    max_seq_len: int = 0,
-) -> Union[List[torch.Tensor], torch.Tensor]:
-    """Split each sequence in a batch of packed sequences/indices in a zigzag fashion.
-
-    Args:
-        batch (List[torch.Tensor]): Packed sequences of shape (B * Sq), or (B, Sq) if is_2d
-        cu_seqlens (torch.Tensor): Cumulative sequence lengths of shape (B + 1)
-        sp_group (ProcessGroup): The process group for sequence parallelism.
-        is_2d (bool): Whether the input is 2D or 1D.
-        max_seq_len (int): The maximum sequence length in the batch before splitting.
-    Returns:
-        batch (List[torch.Tensor]): Unpacked sequences of shape (B * Sq // sp_size)
-    """
-    sp_size = dist.get_world_size(sp_group)
-    sp_rank = dist.get_rank(sp_group)
-
-    if isinstance(batch, torch.Tensor):
-        batch = [batch]
-    for i, packed_seq in enumerate(batch):
-        if is_2d:
-            assert max_seq_len % sp_size == 0
-            shape = (packed_seq.shape[0], max_seq_len // sp_size, *packed_seq.shape[2:])
-            local_seq = torch.zeros(shape, dtype=packed_seq.dtype, device=packed_seq.device)
-        else:
-            local_seq = []
-
-        for j in range(len(cu_seqlens) - 1):
-            start, end = cu_seqlens[j], cu_seqlens[j + 1]
-            seqlen = end - start
-            assert (
-                seqlen % (2 * sp_size) == 0
-            ), f"batch {i} seq {j}'s length ({seqlen}) must be divisible by 2 * sp_size = {2 * sp_size} for splitting"
-
-            if is_2d:
-                seq = packed_seq[j][:seqlen].chunk(2 * sp_size, dim=0)
-                local_seq[j][: seqlen // sp_size] = torch.cat([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]], dim=0)
-            else:
-                seq = packed_seq[start:end].chunk(2 * sp_size, dim=0)
-                seq.extend(
-                    [
-                        seq[sp_rank],
-                        seq[2 * sp_size - 1 - sp_rank],
-                    ]
-                )
-        if is_2d:
-            batch[i] = local_seq
-        else:
-            batch[i] = torch.cat(local_seq, dim=0).contiguous()
 
     if len(batch) == 1:
         batch = batch[0]
     return batch
-
-
-class RingComm:
-    def __init__(self, process_group: dist.ProcessGroup):
-        self._process_group = process_group
-        self._ops = []
-        self.rank = dist.get_rank(self._process_group)
-        self.world_size = dist.get_world_size(self._process_group)
-        self._reqs = []
-
-        self.send_rank = (self.rank + 1) % self.world_size
-        self.recv_rank = (self.rank - 1) % self.world_size
-
-        if process_group is not None:
-            self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
-            self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
-
-    def send_recv(self, send_tensor: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
-        if recv_tensor is None:
-            res = torch.empty_like(send_tensor)
-        else:
-            res = recv_tensor
-
-        # NOTE: looks like batch_isend_irecv doesn't deadlock even
-        # when we never swap send recv ops across ranks
-        send_op = dist.P2POp(dist.isend, send_tensor, self.send_rank, group=self._process_group)
-        recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
-        self._ops.append(send_op)
-        self._ops.append(recv_op)
-        self._reqs = dist.batch_isend_irecv(self._ops)
-        return res
-
-    def wait(self):
-        for req in self._reqs:
-            req.wait()
-        self._reqs = []
-        self._ops = []
 
 
 def is_share_sp_tp(sp_mode: str):
@@ -589,10 +425,8 @@ def is_share_sp_tp(sp_mode: str):
     to correctly get logits at each positions.
     """
     return sp_mode in ["ring", "split_gather"]
-<<<<<<< HEAD
 
 
-<<<<<<< HEAD
 class RingComm:
     def __init__(self, process_group: dist.ProcessGroup):
         self._process_group = process_group
@@ -651,162 +485,3 @@ def get_half_index(cu_seqlens, *, front: bool):
             start = (start + end) // 2
         index[start:end] = True
     return index
-=======
-# Copied from https://github.com/zhuzilin/ring-flash-attention/tree/main/ring_flash_attn
-# Use Triton kernel if installed else use torch
-try:
-    import triton
-    import triton.language as tl
-
-    @triton.jit
-    def flatten_kernel(
-        # pointers to matrices
-        OUT,
-        LSE,
-        CU_SEQLENS,
-        # strides
-        stride_out_nheads,
-        stride_out_seqlen,
-        stride_lse_batch,
-        stride_lse_nheads,
-        stride_lse_seqlen,
-        # meta-parameters
-        BLOCK_M: tl.constexpr,
-    ):
-        pid_m = tl.program_id(axis=0)
-        pid_batch = tl.program_id(axis=1)
-        pid_head = tl.program_id(axis=2)
-
-        start_idx = tl.load(CU_SEQLENS + pid_batch)
-        seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
-        LSE = LSE + pid_batch * stride_lse_batch + pid_head * stride_lse_nheads
-        OUT = OUT + pid_head * stride_out_nheads + start_idx * stride_out_seqlen
-
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-        LSE = LSE + rm[:, None] * stride_lse_seqlen
-        x = tl.load(LSE, mask=rm[:, None] < seqlen, other=0.0)
-
-        OUT = OUT + rm[:, None] * stride_out_seqlen
-        tl.store(OUT, x, mask=rm[:, None] < seqlen)
-
-    def flatten_varlen_lse(lse, cu_seqlens):
-        """
-        Arguments:
-            lse: (batch_size, nheads, max_seqlen)
-            cu_seqlens: (batch_size + 1,)
-        Return:
-            flatten_lse: (nheads, total_seqlen)
-        """
-        total_seqlen = cu_seqlens[-1]
-        batch_size, nheads, max_seqlen = lse.shape
-        output = torch.empty((nheads, total_seqlen), dtype=lse.dtype, device=lse.device)
-
-        grid = lambda META: (triton.cdiv(max_seqlen, META["BLOCK_M"]), batch_size, nheads)
-        BLOCK_M = 4
-
-        with torch.cuda.device(lse.device.index):
-            flatten_kernel[grid](
-                output,
-                lse,
-                cu_seqlens,
-                # strides
-                output.stride(0),
-                output.stride(1),
-                lse.stride(0),
-                lse.stride(1),
-                lse.stride(2),
-                BLOCK_M,
-            )
-        return output
-
-    @triton.jit
-    def unflatten_kernel(
-        # pointers to matrices
-        OUT,
-        LSE,
-        CU_SEQLENS,
-        # strides
-        stride_out_batch,
-        stride_out_nheads,
-        stride_out_seqlen,
-        stride_lse_seqlen,
-        stride_lse_nheads,
-        # meta-parameters
-        BLOCK_M: tl.constexpr,
-    ):
-        pid_m = tl.program_id(axis=0)
-        pid_batch = tl.program_id(axis=1)
-        pid_head = tl.program_id(axis=2)
-
-        start_idx = tl.load(CU_SEQLENS + pid_batch)
-        seqlen = tl.load(CU_SEQLENS + pid_batch + 1) - start_idx
-        LSE = LSE + pid_head * stride_lse_nheads + start_idx * stride_lse_seqlen
-        OUT = OUT + pid_batch * stride_out_batch + pid_head * stride_out_nheads
-
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-        LSE = LSE + rm[:, None] * stride_lse_seqlen
-        x = tl.load(LSE, mask=rm[:, None] < seqlen, other=0.0)
-
-        OUT = OUT + rm[:, None] * stride_out_seqlen
-        tl.store(OUT, x, mask=rm[:, None] < seqlen)
-
-    def unflatten_varlen_lse(lse, cu_seqlens, max_seqlen: int):
-        """
-        Arguments:
-            lse: (total_seqlen, nheads, 1)
-            cu_seqlens: (batch_size + 1,)
-            max_seqlen: int
-        Return:
-            unflatten_lse: (batch_size, nheads, max_seqlen)
-        """
-        lse = lse.unsqueeze(dim=-1)
-        batch_size = len(cu_seqlens) - 1
-        nheads = lse.shape[1]
-        output = torch.empty(
-            (batch_size, nheads, max_seqlen),
-            dtype=lse.dtype,
-            device=lse.device,
-        )
-
-        grid = lambda META: (triton.cdiv(max_seqlen, META["BLOCK_M"]), batch_size, nheads)
-        BLOCK_M = 4
-
-        with torch.cuda.device(lse.device.index):
-            unflatten_kernel[grid](
-                output,
-                lse,
-                cu_seqlens,
-                # strides
-                output.stride(0),
-                output.stride(1),
-                output.stride(2),
-                lse.stride(0),
-                lse.stride(1),
-                BLOCK_M,
-            )
-        return output
-
-except:
-    # Triton not installed, use torch instead
-    @torch.jit.script
-    def flatten_varlen_lse(lse, cu_seqlens):
-        new_lse = []
-        for i in range(len(cu_seqlens) - 1):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            new_lse.append(lse[i, :, : end - start])
-        return torch.cat(new_lse, dim=1)
-
-    @torch.jit.script
-    def unflatten_varlen_lse(lse, cu_seqlens, max_seqlen: int):
-        num_seq = len(cu_seqlens) - 1
-        num_head = lse.shape[-2]
-        new_lse = torch.empty((num_seq, max_seqlen, num_head, 1), dtype=torch.float32, device=lse.device)
-        for i in range(num_seq):
-            start, end = cu_seqlens[i], cu_seqlens[i + 1]
-            new_lse[i, : end - start] = lse[start:end]
-        return new_lse.squeeze(dim=-1).transpose(1, 2).contiguous()
->>>>>>> precision tests passed
-=======
->>>>>>> add varlen tests

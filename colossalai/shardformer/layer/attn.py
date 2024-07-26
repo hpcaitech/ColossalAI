@@ -18,7 +18,7 @@ from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
-from .utils import RingComm, split_varlen_zigzag
+from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 __all__ = [
     "AttnMaskType",
@@ -449,17 +449,19 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
-    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    # lse.data = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
-    assert not (new_lse.isnan().any() or new_lse.isinf().any()), f"lse is nan: {new_lse}"
-    new_block_lse = torch.exp(block_lse - new_lse)
+
+    new_block_lse = torch.exp(block_lse - lse)
     out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
     lse.copy_(new_lse)
 
-    # block_out = block_out.float()
-    # assert not lse.isnan().any(), lse
-    # assert not out.isnan().any(), out
+    # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
+    # out.data = (out - F.sigmoid(block_lse - lse) * (out - block_out))
+    # lse.data = (lse - F.logsigmoid(lse - block_lse))
+
+    assert not (lse.isnan().any() or lse.isinf().any()), f"lse is nan: {lse}"
 
 
 class RingAttention(torch.autograd.Function):
@@ -726,6 +728,9 @@ class RingAttention(torch.autograd.Function):
 
         if is_packed:
             t, h, d = q.shape
+            # half of each seq
+            half_idx_front = get_half_index(cu_seqlens, front=True)
+            half_idx_back = get_half_index(cu_seqlens, front=False)
         else:
             b, sq, h, d = q.shape
             t = b * sq
