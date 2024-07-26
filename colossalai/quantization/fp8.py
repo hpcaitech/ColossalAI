@@ -1,8 +1,8 @@
-from typing import Any, Callable, List, Optional, Tuple, Union, cast
+from typing import Any
 
 import torch
-import torch.nn.functional as F
 import torch.distributed as dist
+import torch.nn.functional as F
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3") -> (torch.Tensor, torch.Tensor):
@@ -110,7 +110,6 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", group=None) -> None:
     tensor.copy_(out[:input_size].view(input_shape).to(input_type))
 
 
-
 def cast_to_fp8_pipeline(inp: Any) -> None:
     """
     Cast the hidden_states tensor of inp object to fp8 format before p2p communication in pipeline.
@@ -124,8 +123,10 @@ def cast_to_fp8_pipeline(inp: Any) -> None:
     if type(inp) == torch.Tensor:
         return
 
-    assert 'hidden_states' in inp, 'required by pipeline parallelism.'
-    assert inp["hidden_states"].size(-1) % 2 == 0, 'tensor size(-1) must be divisible by 2 to view Float8_e4m3fn as BFloat16 or Float16'
+    assert "hidden_states" in inp, "required by pipeline parallelism."
+    assert (
+        inp["hidden_states"].size(-1) % 2 == 0
+    ), "tensor size(-1) must be divisible by 2 to view Float8_e4m3fn as BFloat16 or Float16"
     inp_tensor = inp["hidden_states"]
     inp_dtype = inp_tensor.dtype
 
@@ -142,14 +143,13 @@ def cast_to_fp8_pipeline(inp: Any) -> None:
 
     finfo = torch.finfo(fp8_type)
     scale = torch.tensor(1.0).to(inp_tensor.device) if amax == 0.0 else finfo.max / amax.float()
-    q_tensor = (inp_tensor.data.float() * scale)
+    q_tensor = inp_tensor.data.float() * scale
     # Todo: Currently we use fp8_view_type <float16, bfloat16> to indicate which fp8 format is used. This is a temporary workaround due to 'Only support tensor for fast send'.
     #  inp_tensor needs to be a float datatype to avoid error during gradient placement.
     inp_tensor.data = q_tensor.to(fp8_type).view(fp8_view_type)
 
     inp["fp8_scale"] = scale.float().reciprocal()
     inp["dtype"] = torch.zeros_like(scale).to(inp_dtype)
-
 
 
 def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
@@ -162,7 +162,7 @@ def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
     if type(inp) == torch.Tensor:
         return
 
-    assert 'hidden_states' in inp, 'required by pipeline parallelism.'
+    assert "hidden_states" in inp, "required by pipeline parallelism."
     inp_tensor = inp["hidden_states"]
     scale = inp["fp8_scale"]
 
@@ -253,16 +253,19 @@ def fp8_compress_ddp_grad_comm_hook_async(
     inp = ret.view(torch.uint8)
     output_chunks_single = torch.empty_like(inp)
     split_sizes = [inp.numel() // world_size for _ in range(world_size)]
-    fut0 = dist.all_to_all_single(output_chunks_single, inp,
-                                  output_split_sizes=split_sizes,
-                                  input_split_sizes=split_sizes,
-                                  group=group_to_use,
-                                  async_op=True).get_future()
+    fut0 = dist.all_to_all_single(
+        output_chunks_single,
+        inp,
+        output_split_sizes=split_sizes,
+        input_split_sizes=split_sizes,
+        group=group_to_use,
+        async_op=True,
+    ).get_future()
 
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    fut1 = dist.all_gather_into_tensor(torch.cat(scale_list, dim=0), scale,
-                                       group=group_to_use,
-                                       async_op=True).get_future()
+    fut1 = dist.all_gather_into_tensor(
+        torch.cat(scale_list, dim=0), scale, group=group_to_use, async_op=True
+    ).get_future()
     all_to_all_fut = torch.futures.collect_all([fut0, fut1])
 
     def sum_and_allgather(fut):
@@ -281,14 +284,17 @@ def fp8_compress_ddp_grad_comm_hook_async(
         summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
 
         tensor_list_single = torch.empty(summed_out_fp8.size(0) * world_size, device=input_device, dtype=torch.uint8)
-        fut2 = dist.all_gather_into_tensor(tensor_list_single, summed_out_fp8.view(torch.uint8), group=group_to_use,
-                                           async_op=True).get_future()
+        fut2 = dist.all_gather_into_tensor(
+            tensor_list_single, summed_out_fp8.view(torch.uint8), group=group_to_use, async_op=True
+        ).get_future()
 
         scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-        fut3 = dist.all_gather_into_tensor(torch.cat(scale_list, dim=0), scale, group=group_to_use,
-                                           async_op=True).get_future()
+        fut3 = dist.all_gather_into_tensor(
+            torch.cat(scale_list, dim=0), scale, group=group_to_use, async_op=True
+        ).get_future()
         fut_combined2 = torch.futures.collect_all([fut2, fut3])
         return fut_combined2
+
     def decompress(fut):
         tensor_list_single = fut.value().wait()[0].value()[0]
         scale_list_single = fut.value().wait()[1].value()[0]
@@ -308,8 +314,6 @@ def fp8_compress_ddp_grad_comm_hook_async(
         return input_tensor
 
     return all_to_all_fut.then(sum_and_allgather).then(decompress)
-
-
 
 
 def fp8_compress_ddp_grad_comm_hook_sync(
@@ -338,8 +342,13 @@ def fp8_compress_ddp_grad_comm_hook_sync(
     return fut
 
 
-def fp8_compress_fsdp_grad_comm_hook(state: object, unsharded_gradient_flattened: torch.Tensor,
-                                     sharded_gradient: torch.Tensor, group=None, fp8_format="e5m2") -> None:
+def fp8_compress_fsdp_grad_comm_hook(
+    state: object,
+    unsharded_gradient_flattened: torch.Tensor,
+    sharded_gradient: torch.Tensor,
+    group=None,
+    fp8_format="e5m2",
+) -> None:
     """
     This communication hook implements a simple gradient compression approach that casts unsharded_gradient_flattened tensor
     to FP8 floating-point format (``torch.float8_e5m2`` or ``torch.bfloat16_e4m3``), and then perform scatter_allreduce logic
@@ -367,8 +376,13 @@ def fp8_compress_fsdp_grad_comm_hook(state: object, unsharded_gradient_flattened
         sharded_gradient += cast_from_fp8(tensor, scale, input_type)
 
 
-def fp8_compress_fsdp_params_comm_hook(state: object, padded_unsharded_flat_param: torch.Tensor,
-                                       sharded_flat_param: torch.Tensor, group=None, fp8_format="e5m2") -> None:
+def fp8_compress_fsdp_params_comm_hook(
+    state: object,
+    padded_unsharded_flat_param: torch.Tensor,
+    sharded_flat_param: torch.Tensor,
+    group=None,
+    fp8_format="e5m2",
+) -> None:
     """
         This hook is pending the official support for parameters communication hook in FSDP, e.g. register_params_comm_hook.
 

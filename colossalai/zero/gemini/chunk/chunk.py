@@ -525,6 +525,7 @@ class Chunk:
             if self.fp8_communication:
                 assert async_op == False, "fp8 all-gather does not support async_op!"
                 from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8
+
                 work = all_gather_into_tensor_flat_fp8(
                     self.cuda_global_chunk, self.cuda_shard, self.cuda_global_chunk.shape, self.torch_pg
                 )

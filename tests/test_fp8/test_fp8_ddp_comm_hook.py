@@ -1,26 +1,27 @@
 import os
-import sys
-import tempfile
+
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.optim as optim
-import torch.multiprocessing as mp
-from torch.testing import assert_close
-
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.testing import assert_close
 
 # example modified from https://pytorch.org/tutorials/intermediate/ddp_tutorial.html
 
+
 def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
 
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
+
 def cleanup():
     dist.destroy_process_group()
+
 
 class ToyModel(nn.Module):
     def __init__(self):
@@ -63,8 +64,7 @@ def demo_basic(rank, world_size):
             grad_dict[name] = params.grad
         return grad_dict
 
-
-    from colossalai.quantization.fp8 import fp8_compress_ddp_grad_comm_hook_sync, fp8_compress_ddp_grad_comm_hook_async
+    from colossalai.quantization.fp8 import fp8_compress_ddp_grad_comm_hook_async, fp8_compress_ddp_grad_comm_hook_sync
 
     grad_dict = get_grads_after_one_iteration()
     for hook in [fp8_compress_ddp_grad_comm_hook_sync, fp8_compress_ddp_grad_comm_hook_async]:
@@ -75,11 +75,9 @@ def demo_basic(rank, world_size):
 
     cleanup()
 
+
 def run_demo(demo_fn, world_size):
-    mp.spawn(demo_fn,
-             args=(world_size,),
-             nprocs=world_size,
-             join=True)
+    mp.spawn(demo_fn, args=(world_size,), nprocs=world_size, join=True)
 
 
 if __name__ == "__main__":

@@ -351,9 +351,11 @@ class TorchFSDPPlugin(DPPluginBase):
 
         if self.fp8_communication:
             from colossalai.quantization.utils import patch_fsdp_params_comm_hook
+
             patch_fsdp_params_comm_hook()
 
             from colossalai.quantization.fp8 import fp8_compress_fsdp_params_comm_hook
+
             fsdp_model.module.register_params_comm_hook(None, fp8_compress_fsdp_params_comm_hook)
 
             from colossalai.quantization.fp8 import fp8_compress_fsdp_grad_comm_hook

@@ -236,8 +236,10 @@ def main():
             fp8_communication=args.use_fp8_comm,
         )
     elif args.plugin == "torch_fsdp":
+        from torch.distributed.fsdp.fully_sharded_data_parallel import MixedPrecision
+
         from colossalai.booster.plugin import TorchFSDPPlugin
-        from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
+
         plugin = TorchFSDPPlugin(
             mixed_precision=MixedPrecision(
                 param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16

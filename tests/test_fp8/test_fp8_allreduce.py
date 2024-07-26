@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.testing import assert_close
 
@@ -13,8 +12,8 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 @parameterize("shape", [(3, 7), (2, 1), (1, 2), (2, 2), (4, 2), (5,), (4,), (2,)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_4gpu(shape, dtype):
-    world_size = dist.get_world_size()
-    rank = dist.get_rank()
+    dist.get_world_size()
+    dist.get_rank()
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     flat_padded_x = x.view(-1)
 
