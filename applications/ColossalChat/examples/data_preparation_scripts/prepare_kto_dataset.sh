@@ -1,4 +1,4 @@
-SAVE_DIR="/home/nvme-share/home/yeanbang/data/experiments/kto"
+SAVE_DIR=""
 
 rm -rf $SAVE_DIR/cache
 rm -rf $SAVE_DIR/jsonl

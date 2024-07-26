@@ -23,11 +23,10 @@ IGNORE_INDEX = -100
 DSType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
 
 
-def supervised_tokenize_sft(
+def tokenize_sft(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
     conversation_template: Conversation = None,
-    ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
@@ -127,11 +126,10 @@ def supervised_tokenize_sft(
     )
 
 
-def tokenize_prompt_dataset(
+def tokenize_prompt(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
     conversation_template: Conversation = None,
-    ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
@@ -215,7 +213,6 @@ def tokenize_rlhf(
     data_point: Dict[str, str],
     tokenizer: PreTrainedTokenizer,
     conversation_template: Conversation = None,
-    ignore_index: int = None,
     max_length: int = 4096,
 ) -> Dict[str, Union[int, str, List[int]]]:
     """
