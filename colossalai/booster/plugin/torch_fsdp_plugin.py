@@ -351,8 +351,8 @@ class TorchFSDPPlugin(DPPluginBase):
 
         if self.fp8_communication:
             from colossalai.quantization.fp8 import fp8_compress_fsdp_grad_comm_hook
-            fsdp_model.module.register_comm_hook(None, fp8_compress_fsdp_grad_comm_hook)
 
+            fsdp_model.module.register_comm_hook(None, fp8_compress_fsdp_grad_comm_hook)
 
         if optimizer is not None:
             if len(optimizer.param_groups) > 1:

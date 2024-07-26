@@ -470,4 +470,3 @@ def all_gather_into_tensor_flat_fp8(
     valid_buffer = buffer[:numel].reshape(output_shape)
     valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type)
     output_tensor[:numel].copy_(valid_buffer.view(-1))
-
