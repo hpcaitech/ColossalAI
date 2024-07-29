@@ -962,6 +962,7 @@ def _gather(input_, dim=-1, process_group=None, fp8_communication=False, fp8_for
 
         cast_tensor_list = []
         for output, scale in zip(tensor_list, scale_list):
+            scale = torch.tensor(scale[0])
             output = output.view(fp8_type)
             output = cast_from_fp8(output, scale, input_type)
             cast_tensor_list.append(output)

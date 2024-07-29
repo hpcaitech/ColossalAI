@@ -65,7 +65,6 @@ class LlamaPolicy(Policy):
             norm_cls = FusedRMSNorm
         else:
             norm_cls = RMSNorm
-
         if self.pipeline_stage_manager is not None:
             self.shard_config.enable_sequence_parallelism = False
             self.shard_config.enable_sequence_overlap = False
