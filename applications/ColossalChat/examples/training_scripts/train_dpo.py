@@ -6,7 +6,7 @@ from contextlib import nullcontext
 
 import torch
 from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler, load_tokenized_dataset
-from coati.models import convert_to_lora_module, disable_dropout
+from coati.models import LoraConfig, convert_to_lora_module, disable_dropout
 from coati.trainer import DPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -23,8 +23,11 @@ logger = get_dist_logger()
 
 
 def train(args):
+    lora_config = None
+    if args.lora_config is not None:
+        lora_config = LoraConfig.from_file(args.lora_config)
     # check lora compatibility
-    if "gemini" in args.plugin and args.lora_rank > 0:
+    if "gemini" in args.plugin and lora_config is not None and lora_config.r > 0:
         raise ValueError("LoRA is not supported in GeminiPlugin. Please use other plugin")
     if args.plugin == "gemini_auto" and args.accumulation_steps > 1:
         raise ValueError("Gradient accumulation is not supported in GeminiPlugin. Please use other plugin")
@@ -115,7 +118,7 @@ def train(args):
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             model = AutoModelForCausalLM.from_pretrained(args.pretrain)
-        disable_dropout(model)
+
         if not args.disable_reference_model:
             if args.use_flash_attn:
                 ref_model = AutoModelForCausalLM.from_pretrained(
@@ -125,15 +128,19 @@ def train(args):
                 )
             else:
                 ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
-            disable_dropout(ref_model)
         else:
             ref_model = None
-        if args.lora_rank > 0:
-            model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
+        if args.lora_config is not None:
+            model = convert_to_lora_module(model, lora_config=lora_config)
+            for name, module in model.named_modules():
+                if "norm" in name or "gate" in name:
+                    module = module.to(torch.float32)
+        disable_dropout(model)
+        disable_dropout(ref_model)
 
     if args.grad_checkpoint:
         # Note, for some models, lora may not be compatible with gradient checkpointing
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
 
     # configure tokenizer
@@ -280,11 +287,8 @@ def train(args):
         use_wandb=args.use_wandb,
     )
 
-    if args.lora_rank > 0 and args.merge_lora_weights:
-        from coati.models.lora import LORA_MANAGER
-
+    if lora_config is not None and lora_config.r > 0:
         # NOTE: set model to eval to merge LoRA weights
-        LORA_MANAGER.merge_weights = True
         model.eval()
     # save model checkpoint after fitting on only rank0
     if args.save_dir is not None:
@@ -343,15 +347,8 @@ if __name__ == "__main__":
         help="Disable the reference model (enabled by default)",
     )
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
-    parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
-    parser.add_argument(
-        "--lora_train_bias",
-        type=str,
-        default="none",
-        help="'none' means it doesn't train biases. 'all' means it trains all biases. 'lora_only' means it only trains biases of LoRA layers",
-    )
+    parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")
-    parser.add_argument("--merge_lora_weights", type=bool, default=True)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--accumulation_steps", type=int, default=8)
     parser.add_argument("--log_dir", default=None, type=str)

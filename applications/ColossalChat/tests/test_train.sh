@@ -30,9 +30,10 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-ADVANCED_PLUGINS=('sp_split_gather' 'sp_ring' 'sp_all_to_all' 'tp_zero2' '3d' 'gemini' 'gemini_auto' 'zero2' 'zero2_cpu')  # pp is still buggy
-PLUGINS=('3d' 'gemini' 'gemini_auto' 'zero2' 'zero2_cpu')
+ADVANCED_PLUGINS=('zero2' 'sp_split_gather' 'sp_ring' 'sp_all_to_all' 'tp_zero2' '3d' 'gemini' 'gemini_auto' 'zero2_cpu')  # pp is still buggy
+PLUGINS=('zero2' '3d' 'gemini' 'gemini_auto' 'zero2_cpu')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
+LORA_CONFIG_ENABLE="--lora_config $BASE_DIR/examples/training_scripts/lora_config.json"
 
 export OMP_NUM_THREADS=8
 
@@ -112,6 +113,11 @@ for lora_rank in ${LORA_RANK[@]}; do
             sp='1'
             sp_mode='split_gather'
             enable_sequence_parallelism=''
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='8'
@@ -176,7 +182,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --eval_dataset ${dataset[@]} \
                     --save_path $MODEL_SAVE_PATH \
                     --config_file $MODELS_DIR/config.jsonl \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
@@ -230,6 +236,11 @@ for lora_rank in ${LORA_RANK[@]}; do
             grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
             tp='1'
             bs='2'
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='8'
@@ -252,7 +263,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --eval_dataset ${dataset[@]} \
                     --save_dir $MODEL_SAVE_PATH \
                     --config_file $MODELS_DIR/config.jsonl \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
@@ -308,6 +319,11 @@ for lora_rank in ${LORA_RANK[@]}; do
             bs='4'
             ebs='8'
             conversation_template=$(get_conversation_template_config $model)
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             if [[ $plugin == "3d" ]]; then
                 tp='4'
                 bs='16'
@@ -344,7 +360,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --ptx_batch_size 1 \
                     --ptx_coef 0.2 \
                     --save_path $MODEL_SAVE_PATH \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --num_episodes 5 \
                     --num_collect_steps 1 \
@@ -404,6 +420,11 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
             if [[ $plugin == "gemini_auto" ]]; then
@@ -428,7 +449,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --eval_dataset ${dataset[@]} \
                     --save_dir $MODEL_SAVE_PATH \
                     --config_file $MODELS_DIR/config.jsonl \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
@@ -482,6 +503,11 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
             if [[ $plugin == "gemini_auto" ]]; then
@@ -506,7 +532,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --eval_dataset ${dataset[@]} \
                     --save_dir $MODEL_SAVE_PATH \
                     --config_file $MODELS_DIR/config.jsonl \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
@@ -560,6 +586,11 @@ for lora_rank in ${LORA_RANK[@]}; do
                 tp='4'
                 bs='8'
             fi
+            if [[ $plugin == "zero2" ]]; then
+                lora_config=$LORA_CONFIG_ENABLE
+            else
+                lora_config=""
+            fi
             grad_accu='2'
             # gemini_auto and gemini doesn't support gradient accumulation
             if [[ $plugin == "gemini_auto" ]]; then
@@ -584,7 +615,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                     --eval_dataset ${dataset[@]} \
                     --save_dir $MODEL_SAVE_PATH \
                     --config_file $MODELS_DIR/config.jsonl \
-                    --lora_rank $lora_rank \
+                    $lora_config \
                     --plugin $plugin \
                     --batch_size $bs \
                     --max_epochs 1 \
