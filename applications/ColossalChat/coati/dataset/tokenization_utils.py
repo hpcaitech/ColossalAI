@@ -193,7 +193,7 @@ def apply_rlhf_data_format(template: Conversation, tokenizer: Any):
         template.messages[: 2 * target_turn], prompt, template.end_of_assistant
     )
     # no truncation applied
-    tokenized, starts, ends = tokenize_and_concatenate(tokenizer, chunks, require_loss, max_length=int(1e10))
+    tokenized, starts, ends = tokenize_and_concatenate(tokenizer, chunks, require_loss, max_length=None)
 
     loss_mask = [0] * len(tokenized)
     label_decode = []
