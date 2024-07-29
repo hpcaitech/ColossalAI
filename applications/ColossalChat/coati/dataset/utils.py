@@ -119,17 +119,18 @@ def tokenize_and_concatenate(
     loss_ends = []
     for s, r in zip(text, require_loss):
         tokenized = tokenizer(s, add_special_tokens=False)["input_ids"]
-        if len(input_ids) + len(tokenized) <= max_length or len(loss_ends) == 0:
+        if not max_length or len(input_ids) + len(tokenized) <= max_length or len(loss_ends) == 0:
             if r:
                 loss_starts.append(len(input_ids))
                 loss_ends.append(len(input_ids) + len(tokenized))
             input_ids.extend(tokenized)
-    if loss_starts[0] >= max_length:
+    if max_length and loss_starts[0] >= max_length:
         return None, None, None
     if discard_non_loss_tokens_at_tail:
         input_ids = input_ids[: loss_ends[-1]]
-    input_ids = input_ids[:max_length]
-    loss_ends[-1] = min(max_length, loss_ends[-1])
+    if max_length:
+        input_ids = input_ids[:max_length]
+        loss_ends[-1] = min(max_length, loss_ends[-1])
     return input_ids, loss_starts, loss_ends
 
 
