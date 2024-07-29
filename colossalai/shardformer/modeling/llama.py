@@ -643,7 +643,7 @@ def get_llama_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=
 
         # in this case, attention_mask is a dict rather than a tensor
         if shard_config.enable_flash_attention:
-            mask_shape = (inputs_embeds.shape[0], 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
+            mask_shape = (inputs_embeds.shape[0], 1, seq_len, past_seen_tokens + seq_len)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
