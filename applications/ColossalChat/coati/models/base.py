@@ -42,7 +42,6 @@ class BaseModel(nn.Module):
         out = self.model(dummy_input)
         self.last_hidden_state_size = out.last_hidden_state.shape[-1]
         self.model = self.model.cpu()
-        # print("self.last_hidden_state_size: ",self.last_hidden_state_size)
 
     def resize_token_embeddings(self, *args, **kwargs):
         """

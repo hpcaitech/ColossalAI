@@ -1,12 +1,13 @@
 """
-Orpo trainer
+KTO trainer
 """
 
 import os
 from typing import Any, Optional
 
 import torch
-from coati.models.loss import OddsRatioLoss
+import torch.distributed
+from coati.models.loss import KTOLoss
 from coati.models.utils import calc_masked_log_probs
 from coati.trainer.utils import all_reduce_mean
 from coati.utils import AccumulativeMeanMeter, save_checkpoint
@@ -24,34 +25,40 @@ from .base import SLTrainer
 from .utils import is_rank_0, to_device
 
 
-class ORPOTrainer(SLTrainer):
+class KTOTrainer(SLTrainer):
     """
-        Trainer for ORPO algorithm.
+        Trainer for KTO algorithm.
 
     Args:
         actor (Actor): the actor model in ppo algorithm
+        ref_model (Critic): the reference model in ppo algorithm
         booster (Strategy): the strategy to use for training
         actor_optim (Optimizer): the optimizer to use for actor model
         actor_lr_scheduler (_LRScheduler): the lr scheduler to use for actor model
         tokenizer (PreTrainedTokenizerBase): the tokenizer to use for encoding
         max_epochs (int, defaults to 1): the max number of epochs to train
-        lam (float, defaults to 0.1): the lambda parameter in ORPO loss
         accumulation_steps (int): the number of steps to accumulate gradients
         start_epoch (int, defaults to 0): the start epoch, non-zero if resumed from a checkpoint
         save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during trainning
         save_dir (str): the directory to save checkpoints
         coordinator (DistCoordinator): the coordinator to use for distributed logging
+        beta (float, defaults to 0.1): the beta parameter in kto loss
+        desirable_weight (float, defaults to 1.0): the weight for desirable reward
+        undesirable_weight (float, defaults to 1.0): the weight for undesirable reward
     """
 
     def __init__(
         self,
         actor: Any,
+        ref_model: Any,
         booster: Booster,
         actor_optim: Optimizer,
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
-        lam: float = 0.1,
+        beta: float = 0.1,
+        desirable_weight: float = 1.0,
+        undesirable_weight: float = 1.0,
         accumulation_steps: int = 1,
         start_epoch: int = 0,
         save_interval: int = 0,
@@ -59,17 +66,20 @@ class ORPOTrainer(SLTrainer):
         coordinator: DistCoordinator = None,
     ) -> None:
         super().__init__(booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, start_epoch=start_epoch)
+        self.ref_model = ref_model
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
-        self.odds_ratio_loss_fn = OddsRatioLoss()
+        self.kto_loss = KTOLoss(beta=beta, desirable_weight=desirable_weight, undesirable_weight=undesirable_weight)
         self.save_interval = save_interval
         self.coordinator = coordinator
         self.save_dir = save_dir
         self.num_train_step = 0
-        self.lam = lam
         self.accumulation_steps = accumulation_steps
         self.device = get_current_device()
         self.accumulative_meter = AccumulativeMeanMeter()
+        self.desirable_weight = desirable_weight
+        self.undesirable_weight = undesirable_weight
+        self.beta = beta
 
     def _before_fit(
         self,
@@ -90,14 +100,14 @@ class ORPOTrainer(SLTrainer):
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
 
-            self.wandb_run = wandb.init(project="Coati-orpo", sync_tensorboard=True)
+            self.wandb_run = wandb.init(project="Coati-kto", sync_tensorboard=True)
         if log_dir is not None and is_rank_0():
             import os
             import time
 
             from torch.utils.tensorboard import SummaryWriter
 
-            log_dir = os.path.join(log_dir, "orpo")
+            log_dir = os.path.join(log_dir, "kto")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
 
@@ -115,43 +125,54 @@ class ORPOTrainer(SLTrainer):
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, self.device)
-            (
-                chosen_input_ids,
-                chosen_attention_mask,
-                chosen_loss_mask,
-                reject_input_ids,
-                reject_attention_mask,
-                reject_loss_mask,
-            ) = (
-                batch["chosen_input_ids"],
-                batch["chosen_attention_mask"],
-                batch["chosen_loss_mask"],
-                batch["reject_input_ids"],
-                batch["reject_attention_mask"],
-                batch["reject_loss_mask"],
+            (input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask) = (
+                batch["input_ids"],
+                batch["attention_mask"],
+                batch["loss_mask"],
+                batch["label"],
+                batch["kl_input_ids"],
+                batch["kl_attention_mask"],
+                batch["kl_loss_mask"],
             )
-            batch_size = chosen_input_ids.size()[0]
-            actor_out = self.model(
-                input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
-                attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
-                labels=torch.cat(
-                    [chosen_input_ids, torch.ones_like(reject_input_ids, dtype=reject_input_ids.dtype) * -100]
-                ),
-            )
-            torch.autograd.set_detect_anomaly(True)
-            actor_all_logits = actor_out["logits"].to(torch.float32)
-            actor_chosen_logits = actor_all_logits[:batch_size]
-            actor_reject_logits = actor_all_logits[batch_size:]
-            logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
+            batch_size = input_ids.size()[0]
 
-            logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
-            # label_chosen[chosen_loss_mask[:, 1:] == 0] = -100
-            chosen_nll = actor_out["loss"]
-            odds_ratio_loss, log_odds_ratio = self.odds_ratio_loss_fn(
-                logprob_actor_chosen, logprob_actor_reject, chosen_loss_mask[:, 1:], reject_loss_mask[:, 1:]
+            # actor logits
+            with torch.no_grad():
+                # calculate KL term with KT data
+                kl_logits = self.model(
+                    input_ids=kl_input_ids,
+                    attention_mask=kl_attention_mask,
+                )["logits"]
+
+            logits = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+            )["logits"]
+
+            logprob = calc_masked_log_probs(logits, input_ids, loss_mask[:, 1:]).sum(-1)
+            kl_logprob = calc_masked_log_probs(kl_logits, kl_input_ids, kl_loss_mask[:, 1:]).sum(-1)
+            chosen_index = [i for i in range(batch_size) if label[i] == 1]
+            rejected_index = [i for i in range(batch_size) if label[i] == 0]
+            chosen_logprob = logprob[chosen_index]
+            rejected_logprob = logprob[rejected_index]
+            with torch.no_grad():
+                ref_kl_logits = self.ref_model(
+                    input_ids=kl_input_ids,
+                    attention_mask=kl_attention_mask,
+                )["logits"]
+                ref_logits = self.ref_model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )["logits"]
+
+            ref_logprob = calc_masked_log_probs(ref_logits, input_ids, loss_mask[:, 1:]).sum(-1)
+            ref_kl_logprob = calc_masked_log_probs(ref_kl_logits, kl_input_ids, kl_loss_mask[:, 1:]).sum(-1)
+            ref_chosen_logprob = ref_logprob[chosen_index]
+            ref_rejected_logprob = ref_logprob[rejected_index]
+
+            loss, chosen_rewards, rejected_rewards, kl = self.kto_loss(
+                chosen_logprob, rejected_logprob, kl_logprob, ref_chosen_logprob, ref_rejected_logprob, ref_kl_logprob
             )
-            loss = chosen_nll - odds_ratio_loss * self.lam
-            step_bar.set_description(f"Epoch {epoch + 1}/{self.max_epochs} Loss: {loss.detach().cpu().item():.4f}")
 
             self.booster.backward(loss=loss, optimizer=self.optimizer)
             if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
@@ -159,20 +180,13 @@ class ORPOTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.actor_scheduler.step()
 
-            chosen_rewards = torch.sum(logprob_actor_chosen) / torch.sum(chosen_loss_mask[:, 1:])
-            rejected_rewards = torch.sum(logprob_actor_reject) / torch.sum(reject_loss_mask[:, 1:])
-            reward_accuracies = torch.sum((log_odds_ratio > 0).float()) / torch.sum(log_odds_ratio != 0)
-
             # sync
             loss_mean = all_reduce_mean(tensor=loss)
-            chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards)
-            rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards)
-            reward_accuracies_mean = all_reduce_mean(tensor=reward_accuracies)
+            chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards.mean())
+            rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards.mean())
             self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
-            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
-            self.accumulative_meter.add("log_odds_ratio", log_odds_ratio.to(torch.float16).mean().item())
-            self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
+            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).detach().item())
 
             if i % self.accumulation_steps == self.accumulation_steps - 1:
                 self.num_train_step += 1
@@ -192,16 +206,6 @@ class ORPOTrainer(SLTrainer):
                     self.writer.add_scalar(
                         "train/margin",
                         self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
-                        self.num_train_step,
-                    )
-                    self.writer.add_scalar(
-                        "train/accuracy",
-                        self.accumulative_meter.get("accuracy"),
-                        self.num_train_step,
-                    )
-                    self.writer.add_scalar(
-                        "train/log_odds_ratio",
-                        self.accumulative_meter.get("log_odds_ratio"),
                         self.num_train_step,
                     )
                 self.accumulative_meter.reset()
@@ -235,77 +239,77 @@ class ORPOTrainer(SLTrainer):
             self.coordinator.print_on_master("No eval dataloader is provided, skip evaluation")
             return
         self.model.eval()
-        self.coordinator.print_on_master("\nStart evaluation...")
-
+        self.accumulative_meter.reset()
         step_bar = trange(
-            len(self.eval_dataloader),
+            len(self.train_dataloader) // self.accumulation_steps,
             desc=f"Epoch {epoch + 1}/{self.max_epochs}",
             disable=not is_rank_0(),
         )
+        for i, batch in enumerate(self.train_dataloader):
+            batch = to_device(batch, self.device)
+            (input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask) = (
+                batch["input_ids"],
+                batch["attention_mask"],
+                batch["loss_mask"],
+                batch["label"],
+                batch["kl_input_ids"],
+                batch["kl_attention_mask"],
+                batch["kl_loss_mask"],
+            )
+            batch_size = input_ids.size()[0]
 
-        self.accumulative_meter.reset()
+            # actor logits
+            with torch.no_grad():
+                # calculate KL term with KT data
+                kl_logits = self.model(
+                    input_ids=kl_input_ids,
+                    attention_mask=kl_attention_mask,
+                )["logits"]
 
-        with torch.no_grad():
-            for i, batch in enumerate(self.eval_dataloader):
-                batch = to_device(batch, self.device)
-                (
-                    chosen_input_ids,
-                    chosen_attention_mask,
-                    chosen_loss_mask,
-                    reject_input_ids,
-                    reject_attention_mask,
-                    reject_loss_mask,
-                ) = (
-                    batch["chosen_input_ids"],
-                    batch["chosen_attention_mask"],
-                    batch["chosen_loss_mask"],
-                    batch["reject_input_ids"],
-                    batch["reject_attention_mask"],
-                    batch["reject_loss_mask"],
-                )
-                batch_size = chosen_input_ids.size()[0]
-                actor_out = self.model(
-                    input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
-                    attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
-                    labels=torch.cat(
-                        [chosen_input_ids, torch.ones_like(reject_input_ids, dtype=reject_input_ids.dtype) * -100]
-                    ),
-                )
-                torch.autograd.set_detect_anomaly(True)
-                actor_all_logits = actor_out["logits"].to(torch.float32)
-                actor_chosen_logits = actor_all_logits[:batch_size]
-                actor_reject_logits = actor_all_logits[batch_size:]
-                logprob_actor_chosen = calc_masked_log_probs(
-                    actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:]
-                )
+                logits = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )["logits"]
 
-                logprob_actor_reject = calc_masked_log_probs(
-                    actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:]
-                )
-                chosen_nll = actor_out["loss"]
-                odds_ratio_loss, log_odds_ratio = self.odds_ratio_loss_fn(
-                    logprob_actor_chosen, logprob_actor_reject, chosen_loss_mask[:, 1:], reject_loss_mask[:, 1:]
-                )
-                loss = chosen_nll - odds_ratio_loss * self.lam
-                step_bar.set_description(f"Epoch {epoch + 1}/{self.max_epochs} Loss: {loss.detach().cpu().item():.4f}")
+            logprob = calc_masked_log_probs(logits, input_ids, loss_mask[:, 1:]).sum(-1)
+            kl_logprob = calc_masked_log_probs(kl_logits, kl_input_ids, kl_loss_mask[:, 1:]).sum(-1)
+            chosen_index = [i for i in range(batch_size) if label[i] == 1]
+            rejected_index = [i for i in range(batch_size) if label[i] == 0]
+            chosen_logprob = logprob[chosen_index]
+            rejected_logprob = logprob[rejected_index]
+            with torch.no_grad():
+                ref_kl_logits = self.ref_model(
+                    input_ids=kl_input_ids,
+                    attention_mask=kl_attention_mask,
+                )["logits"]
 
-                chosen_rewards = torch.sum(logprob_actor_chosen) / torch.sum(chosen_loss_mask[:, 1:])
-                rejected_rewards = torch.sum(logprob_actor_reject) / torch.sum(reject_loss_mask[:, 1:])
-                reward_accuracies = torch.sum((log_odds_ratio > 0).float()) / torch.sum(log_odds_ratio != 0)
+                ref_logits = self.ref_model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                )["logits"]
 
-                # sync
-                loss_mean = all_reduce_mean(tensor=loss)
-                chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards)
-                rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards)
-                reward_accuracies_mean = all_reduce_mean(tensor=reward_accuracies)
-                self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
-                self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
-                self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
-                self.accumulative_meter.add("log_odds_ratio", log_odds_ratio.to(torch.float16).mean().item())
-                self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
+            ref_logprob = calc_masked_log_probs(ref_logits, input_ids, loss_mask[:, 1:]).sum(-1)
+            ref_kl_logprob = calc_masked_log_probs(ref_kl_logits, kl_input_ids, kl_loss_mask[:, 1:]).sum(-1)
+            ref_chosen_logprob = ref_logprob[chosen_index]
+            ref_rejected_logprob = ref_logprob[rejected_index]
 
+            loss, chosen_rewards, rejected_rewards, kl = self.kto_loss(
+                chosen_logprob, rejected_logprob, kl_logprob, ref_chosen_logprob, ref_rejected_logprob, ref_kl_logprob
+            )
+
+            # sync
+            loss_mean = all_reduce_mean(tensor=loss)
+            chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards.mean())
+            rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards.mean())
+            self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
+            self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
+            self.accumulative_meter.add("loss", loss_mean.to(torch.float16).detach().item())
+            self.accumulative_meter.add(
+                "margin", (chosen_rewards_mean - rejected_rewards_mean).to(torch.float16).mean().item()
+            )
+            step_bar.update()
         msg = "Evaluation Result:\n"
-        for tag in ["loss", "chosen_rewards", "rejected_rewards", "log_odds_ratio", "accuracy"]:
+        for tag in ["loss", "chosen_rewards", "rejected_rewards", "margin"]:
             msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
         self.coordinator.print_on_master(msg)
         os.makedirs(self.save_dir, exist_ok=True)

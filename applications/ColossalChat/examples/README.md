@@ -30,6 +30,8 @@
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
   - [Alternative Option For RLHF: Simple Preference Optimization](#alternative-option-for-rlhf-simple-preference-optimization)
+  - [Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
+  - [Alternative Option For RLHF: Odds Ratio Preference Optimization](#alternative-option-for-rlhf-odds-ratio-preference-optimization)
   - [List of Supported Models](#list-of-supported-models)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
@@ -446,7 +448,7 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         },
         {
@@ -527,7 +529,7 @@ Below shows the preference dataset format used in training the reward model.
 [
     {"context": [
         {
-          "from": "human",
+          "from": "user",
           "content": "Introduce butterflies species in Oregon."
         }
       ]
@@ -596,7 +598,7 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 
 
 #### Step 1: Data Collection
-PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
+PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "user" and thus the "assistant" needs to generate a response to answer to the "user". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
 
 ```json
@@ -604,7 +606,7 @@ PPO uses two kinds of training data--- the prompt data and the pretrain data (op
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         }
         ...
@@ -744,11 +746,38 @@ with a Reference-Free Reward](https://arxiv.org/pdf/2405.14734) (SimPO). Which i
 
 
 ### Alternative Option For RLHF: Odds Ratio Preference Optimization
-We support the method introduced in the paper [ORPO: Monolithic Preference Optimization without Reference Model](https://arxiv.org/abs/2403.07691) (ORPO). Which is a reference model free aligment method that mixes the SFT loss with a reinforcement learning loss that uses odds ratio as the implicit reward to enhance training stability and efficiency. Simply set the flag to disable the use of the reference model, set the reward target margin and enable length normalization in the DPO training script. To use ORPO in alignment, use the [train_orpo.sh](./training_scripts/train_orpo.sh) script, You can set the value for `lambda` (which determine how strongly the reinforcement learning loss affect the training) but it is optional.
+We support the method introduced in the paper [ORPO: Monolithic Preference Optimization without Reference Model](https://arxiv.org/abs/2403.07691) (ORPO). Which is a reference model free aligment method that mixes the SFT loss with a reinforcement learning loss that uses odds ratio as the implicit reward to enhance training stability and efficiency. To use ORPO in alignment, use the [train_orpo.sh](./training_scripts/train_orpo.sh) script, You can set the value for `lambda` (which determine how strongly the reinforcement learning loss affect the training) but it is optional.
 
 #### ORPO Result
 <p align="center">
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ORPO_margin.png">
+</p>
+
+### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results.
+
+For KTO data preparation, please use the script [prepare_kto_dataset.sh](./examples/data_preparation_scripts/prepare_kto_dataset.sh). You will need preference data, different from DPO and its derivatives, you no longer need a pair of chosen/rejected response for the same input. You only need data whose response is associated with a preference label--- whether the response is okay or not, read the papre for more details. You also need to convert your data to the following intermediate format before you run the data preparation script.
+
+```jsonl
+{
+    "prompt": [
+        {"from": "user", "content": "What are some cuss words in english?"},
+        {
+            "from": "assistant",
+            "content": "Here's an incomplete list.\n\nAss, dick, bugger, crap, ...",
+        },
+        {"from": "user", "content": "What's your favorite one?"},
+    ],
+    "completion": {"from": "assistant", "content": "Ass."},  # the completion must contain a single line from the assistant.
+    "label": False,  # whether the response is favorable or not
+}
+```
+
+For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) script, You may need to set the value for `beta` (which determine how strongly the reinforcement learning loss affect the training), `desirable_weight` and `undesirable_weight` if your data is biased (has unequal number of chosen and rejected samples).
+
+#### KTO Result
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/KTO.png">
 </p>
 
 ## Hardware Requirements
@@ -800,6 +829,14 @@ For ORPO, we recommend using zero2 or zero2-cpu. We tested the VRAM consumption 
   - zero2_cpu, micro batch size=8, VRAM Usage=38709.73 MB
   - zero2, micro batch size=4, VRAM Usage=45309.52 MB
   - zero2, micro batch size=8, VRAM Usage=58086.37 MB
+
+For KTO, we recommend using zero2-cpu or zero2 plugin, We tested the VRAM consumption on a dummy dataset with 2048 sequence length.
+- 2 H800 GPU
+  - zero2-cpu, micro batch size=2, VRAM Usage=35241.98 MB
+  - zero2-cpu, micro batch size=4, VRAM Usage=38989.37 MB
+- 4 H800 GPUs
+  - zero2_cpu, micro batch size=2, VRAM_USAGE=32443.22 MB
+  - zero2, micro batch size=4, VRAM_USAGE=59307.97 MB
 
 ## List of Supported Models
 

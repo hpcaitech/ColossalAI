@@ -24,7 +24,9 @@
   - [Limitation for LLaMA-finetuned models](#limitation)
   - [Limitation of dataset](#limitation)
 - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
-- [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization)
+- [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
+- [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
+- [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
@@ -283,6 +285,9 @@ Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2
 
 ## Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
 Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pdf/2403.07691) is a reference model free alignment method that use a mixture of SFT loss and a reinforcement leanring loss calculated based on odds-ratio-based implicit reward to makes the training more efficient and stable. Read this [README](./examples/README.md) for more information.
+
+## Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
 
 ### Inference Quantization and Serving - After Training
 

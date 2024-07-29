@@ -18,6 +18,7 @@ class Conversation:
     chat_template: str
     stop_ids: List[int]
     end_of_assistant: str
+    roles = ["user", "assistant"]
 
     @classmethod
     def from_config(cls, tokenizer: PreTrainedTokenizer, config: Dict):
@@ -85,7 +86,7 @@ class Conversation:
         Raises:
             AssertionError: If the role is not 'user' or 'assistant'.
         """
-        assert role in ["user", "assistant"]
+        assert role in self.roles
         self.messages.append({"role": role, "content": message})
 
     def copy(self):

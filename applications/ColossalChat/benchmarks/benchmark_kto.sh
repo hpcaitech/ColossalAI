@@ -15,12 +15,12 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
 }
 set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
-PROJECT_NAME="dpo"
+PROJECT_NAME="kto"
 PARENT_CONFIG_FILE="./benchmark_config" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
-BENCHMARK_DATA_DIR="./temp/dpo" # Path to benchmark data
-DATASET_SIZE=320
+BENCHMARK_DATA_DIR="./temp/kto" # Path to benchmark data
+DATASET_SIZE=80
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
@@ -29,18 +29,18 @@ declare -a dataset=(
 )
 
 # Generate dummy test data
-python prepare_dummy_test_dataset.py --data_dir $BENCHMARK_DATA_DIR --dataset_size $DATASET_SIZE --max_length 2048 --data_type preference
+python prepare_dummy_test_dataset.py --data_dir $BENCHMARK_DATA_DIR --dataset_size $DATASET_SIZE --max_length 2048 --data_type kto
 
 
-colossalai run --nproc_per_node 4 --master_port 31313 ../examples/training_scripts/train_dpo.py \
+colossalai run --nproc_per_node 2 --master_port 31313 ../examples/training_scripts/train_kto.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --dataset ${dataset[@]} \
     --plugin "zero2_cpu" \
     --max_epochs 1 \
     --accumulation_steps 1 \
-    --batch_size 4 \
-    --lr 1e-6 \
+    --batch_size 2 \
+    --lr 1e-5 \
     --beta 0.1 \
     --mixed_precision "bf16" \
     --grad_clip 1.0 \

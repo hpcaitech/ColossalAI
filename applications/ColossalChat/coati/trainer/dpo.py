@@ -26,7 +26,7 @@ from .utils import is_rank_0, to_device
 
 class DPOTrainer(SLTrainer):
     """
-        Trainer for PPO algorithm.
+        Trainer for DPO algorithm.
 
     Args:
         actor (Actor): the actor model in ppo algorithm

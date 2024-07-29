@@ -5,11 +5,10 @@ import resource
 from contextlib import nullcontext
 
 import torch
-from coati.dataset import DataCollatorForPreferenceDataset, StatefulDistributedSampler
+from coati.dataset import DataCollatorForKTODataset, StatefulDistributedSampler, load_tokenized_dataset
 from coati.models import convert_to_lora_module, disable_dropout
-from coati.trainer import ORPOTrainer
+from coati.trainer import KTOTrainer
 from coati.utils import load_checkpoint
-from dummy_dataset import DummyLLMDataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -95,6 +94,7 @@ def train(args):
         raise ValueError(f"Unknown plugin {args.plugin}")
 
     booster = Booster(plugin=plugin)
+    ref_booster = Booster(plugin=plugin)
 
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
@@ -116,6 +116,15 @@ def train(args):
         else:
             model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         disable_dropout(model)
+        if args.use_flash_attn:
+            ref_model = AutoModelForCausalLM.from_pretrained(
+                args.pretrain,
+                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+                use_flash_attention_2=True,
+            )
+        else:
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
+        disable_dropout(ref_model)
         if args.lora_rank > 0:
             model = convert_to_lora_module(model, args.lora_rank, lora_train_bias=args.lora_train_bias)
 
@@ -153,12 +162,30 @@ def train(args):
     # configure dataset
     coordinator.print_on_master(f"Load dataset: {args.dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
-    train_dataset = DummyLLMDataset(
-        ["chosen_input_ids", "chosen_loss_mask", "rejected_input_ids", "rejected_loss_mask"],
-        args.max_length,
-        args.dataset_size,
-    )
-    data_collator = DataCollatorForPreferenceDataset(tokenizer=tokenizer, max_length=args.max_length)
+    train_dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train", mode_map=mode_map)
+    num_desirable = 0
+    num_undesirable = 0
+    for i in range(len(train_dataset)):
+        if train_dataset[i]["label"]:
+            num_desirable += 1
+        else:
+            num_undesirable += 1
+    logger.info(f"Dataset Statistics:\nDesirable: {num_desirable}\nUndesirable: {num_undesirable}")
+
+    # Check if the user specified weights fit into the theoratical lower and upper bounds from Eq. (8) of https://arxiv.org/abs/2402.01306
+    actual_ratio = (args.desirable_weight * num_desirable) / (args.undesirable_weight * num_undesirable)
+    if actual_ratio < 1 or actual_ratio > 4 / 3:
+        if not args.auto_weight:
+            raise AssertionError(
+                f"Desirable weight and undesirable weight are not within the theoratical bounds, [1, 4/3]. Actual ratio: {actual_ratio}, please increase/decrease desirable weight or decrease/increase undesirable weight."
+            )
+        else:
+            args.desirable_weight = args.desirable_weight / actual_ratio
+            coordinator.print_on_master(
+                f"Desirable weight and undesirable weight are not within the theoratical bounds, [1, 4/3]. Actual ratio: {actual_ratio}, auto weight is enabled, set desirable weight to {args.desirable_weight} and undesirable weight to {args.undesirable_weight}"
+            )
+
+    data_collator = DataCollatorForKTODataset(tokenizer=tokenizer, max_length=args.max_length)
 
     train_dataloader = plugin.prepare_dataloader(
         dataset=train_dataset,
@@ -168,6 +195,21 @@ def train(args):
         collate_fn=data_collator,
         distributed_sampler_cls=StatefulDistributedSampler,
     )
+    eval_dataloader = None
+    if args.eval_dataset:
+        eval_dataset = load_tokenized_dataset(dataset_paths=args.eval_dataset, mode="dev")
+        eval_data_collator = DataCollatorForKTODataset(tokenizer=tokenizer, max_length=args.max_length)
+
+        eval_dataloader = plugin.prepare_dataloader(
+            dataset=eval_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=eval_data_collator,
+            distributed_sampler_cls=StatefulDistributedSampler,
+        )
+    else:
+        logger.warning("No evaluation dataset is provided, skip evaluation")
 
     num_update_steps_per_epoch = len(train_dataloader) // args.accumulation_steps
     if args.warmup_steps is None:
@@ -189,6 +231,8 @@ def train(args):
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
+    if ref_model is not None:
+        ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -230,8 +274,9 @@ def train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    trainer = ORPOTrainer(
+    trainer = KTOTrainer(
         actor=model,
+        ref_model=ref_model,
         booster=booster,
         actor_optim=optim,
         actor_lr_scheduler=lr_scheduler,
@@ -239,18 +284,35 @@ def train(args):
         max_epochs=args.max_epochs,
         accumulation_steps=args.accumulation_steps,
         start_epoch=start_epoch,
-        save_interval=None,
-        save_dir=None,
+        save_interval=args.save_interval,
+        save_dir=args.save_dir,
         coordinator=coordinator,
-        lam=args.lam,
+        beta=args.beta,
+        desirable_weight=args.desirable_weight,
+        undesirable_weight=args.undesirable_weight,
     )
 
     trainer.fit(
         train_preference_dataloader=train_dataloader,
-        eval_preference_dataloader=None,
-        log_dir=None,
-        use_wandb=False,
+        eval_preference_dataloader=eval_dataloader,
+        log_dir=args.log_dir,
+        use_wandb=args.use_wandb,
     )
+
+    if args.lora_rank > 0 and args.merge_lora_weights:
+        from coati.models.lora import LORA_MANAGER
+
+        # NOTE: set model to eval to merge LoRA weights
+        LORA_MANAGER.merge_weights = True
+        model.eval()
+    # save model checkpoint after fitting on only rank0
+    if args.save_dir is not None:
+        coordinator.print_on_master("Start saving final model checkpoint")
+        booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
+        coordinator.print_on_master(
+            f"Saved final model checkpoint at epoch {args.max_epochs} at folder {args.save_dir}"
+        )
+
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
 
@@ -272,29 +334,26 @@ if __name__ == "__main__":
     parser.add_argument("--tp", type=int, default=1)
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--sp", type=int, default=1)
-    parser.add_argument("--lam", type=float, default=0.1, help="lambda in ORPO loss")
+    parser.add_argument("--beta", type=float, default=0.1, help="beta in KTO loss")
+    parser.add_argument("--desirable_weight", type=float, default=1.0, help="desirable_weight in KTO loss")
+    parser.add_argument("--undesirable_weight", type=float, default=1.0, help="undesirable_weight in KTO loss")
     parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
     parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
     parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--model_type", type=str, default=None)
     parser.add_argument("--tokenizer_dir", type=str, default=None)
     parser.add_argument("--dataset", nargs="+", default=[])
+    parser.add_argument("--eval_dataset", nargs="+", default=[])
     parser.add_argument(
         "--checkpoint_path", type=str, default=None, help="Checkpoint path if need to resume training form a checkpoint"
     )
-    parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
+    parser.add_argument("--config_file", type=str, default=None, help="Config file")
+    parser.add_argument("--save_dir", type=str, default=None)
     parser.add_argument("--max_length", type=int, default=2048, help="Model max length")
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument(
-        "--disable_reference_model",
-        action="store_true",
-        default=False,
-        help="Disable the reference model (enabled by default)",
-    )
-    parser.add_argument("--dataset_size", type=int, default=500)
+
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--lora_rank", type=int, default=0, help="low-rank adaptation matrices rank")
     parser.add_argument(
@@ -303,13 +362,18 @@ if __name__ == "__main__":
         default="none",
         help="'none' means it doesn't train biases. 'all' means it trains all biases. 'lora_only' means it only trains biases of LoRA layers",
     )
+    parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")
     parser.add_argument("--merge_lora_weights", type=bool, default=True)
+    parser.add_argument("--auto_weight", default=False, action="store_true")
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--accumulation_steps", type=int, default=8)
+    parser.add_argument("--log_dir", default=None, type=str)
+    parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
     args = parser.parse_args()
-    os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
-    with open(args.config_file, "w") as f:
-        json.dump(args.__dict__, f, indent=4)
+    if args.config_file is not None:
+        os.makedirs(os.path.dirname(args.config_file), exist_ok=True)
+        with open(args.config_file, "w") as f:
+            json.dump(args.__dict__, f, indent=4)
     train(args)
