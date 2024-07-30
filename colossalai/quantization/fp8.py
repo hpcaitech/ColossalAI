@@ -136,7 +136,9 @@ def all_to_all_single_fp8(output, input, output_tensor_list, input_tensor_list, 
         out = cast_from_fp8(out, scale, input_type)
 
     tensor_out = torch.cat(output_chunks, dim=0)
-    output.data = tensor_out.to(input_type)
+    outputs_shape = list(input_shape)
+    outputs_shape[0] = sum(output_tensor_list)
+    output.data = tensor_out.view(outputs_shape).to(input_type)
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
