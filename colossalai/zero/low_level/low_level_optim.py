@@ -807,8 +807,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """
         for p in model.parameters():
             p_id = id(p)
-            pg = self.param_to_pg[p]
             if p_id in self.working_to_master_param:
+                pg = self.param_to_pg[p]
                 master_param = self.working_to_master_param[p_id]
                 padding_size = self.get_param_padding_size(p)
                 working_param = p.data.view(-1)
