@@ -102,7 +102,10 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e5m2", group=None) -> None:
     tensor_out = torch.cat(tensor_list, dim=0)
     tensor.data = tensor_out.view(input_shape).to(input_type)
 
-def all_to_all_single_fp8(output, input, output_tensor_list, input_tensor_list, fp8_format="e5m2", group=None, async_op=False) -> None:
+
+def all_to_all_single_fp8(
+    output, input, output_tensor_list, input_tensor_list, fp8_format="e5m2", group=None, async_op=False
+) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_to_all_single but during communication the data is cast to fp8 format.
@@ -126,7 +129,10 @@ def all_to_all_single_fp8(output, input, output_tensor_list, input_tensor_list, 
     inp = ret.view(torch.uint8)
     input_chunks = torch.split(inp, input_tensor_list)
 
-    output_chunks = [torch.empty((output_tensor_list[i]*np.prod(input_shape[1:]),), device=input_device, dtype=input_type) for i in range(world_size)]
+    output_chunks = [
+        torch.empty((output_tensor_list[i] * np.prod(input_shape[1:]),), device=input_device, dtype=input_type)
+        for i in range(world_size)
+    ]
 
     dist.all_to_all(output_chunks, input_chunks, group=group)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
