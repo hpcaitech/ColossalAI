@@ -359,14 +359,9 @@ class HuggingFaceModel(BaseModel):
 
             self.str_label_map = {choice: idx for idx, choice in enumerate(self.choices)}
 
-        for sample_data in data_loader:
-            break
-        turn = 0 if not isinstance(sample_data[0]["output"], list) else len(sample_data[0]["output"]) + 1
-        turn_desc = "" if turn == 0 else f"-turn{turn}"
-
         bar = tqdm(
             range(len(data_loader)),
-            desc=f"{sample_data[0]['dataset']}-{sample_data[0]['category']}{turn_desc} Inference steps",
+            desc=f"{inference_kwargs['dataset']}-{inference_kwargs['category']} Inference steps",
             disable=not is_rank_0(),
         )
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")

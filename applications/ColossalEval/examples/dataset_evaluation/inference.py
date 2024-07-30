@@ -238,6 +238,9 @@ def main(args):
                         pin_memory=True,
                         collate_fn=lambda x: x,
                     )
+                    category_data["inference_kwargs"]["dataset"] = dataset_name
+                    category_data["inference_kwargs"]["category"] = category
+
                     answers_per_rank = model_.inference(
                         data_loader=questions_loader,
                         inference_kwargs=category_data["inference_kwargs"],
