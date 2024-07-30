@@ -2,6 +2,7 @@
 Dpo trainer
 """
 
+import os
 from typing import Any, Optional
 
 import torch
@@ -25,7 +26,7 @@ from .utils import is_rank_0, to_device
 
 class DPOTrainer(SLTrainer):
     """
-        Trainer for PPO algorithm.
+        Trainer for DPO algorithm.
 
     Args:
         actor (Actor): the actor model in ppo algorithm
@@ -53,6 +54,8 @@ class DPOTrainer(SLTrainer):
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
         beta: float = 0.1,
+        gamma: float = 0.0,
+        length_normalization: bool = False,
         accumulation_steps: int = 1,
         start_epoch: int = 0,
         save_interval: int = 0,
@@ -63,7 +66,7 @@ class DPOTrainer(SLTrainer):
         self.ref_model = ref_model
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
-        self.actor_loss_fn = DpoLoss(beta)
+        self.actor_loss_fn = DpoLoss(beta, gamma)
         self.save_interval = save_interval
         self.coordinator = coordinator
         self.save_dir = save_dir
@@ -71,6 +74,7 @@ class DPOTrainer(SLTrainer):
         self.accumulation_steps = accumulation_steps
         self.device = get_current_device()
         self.accumulative_meter = AccumulativeMeanMeter()
+        self.length_normalization = length_normalization
 
     def _before_fit(
         self,
@@ -131,18 +135,21 @@ class DPOTrainer(SLTrainer):
                 batch["reject_attention_mask"],
                 batch["reject_loss_mask"],
             )
-            reject_loss_mask[:, -1] = False
             batch_size = chosen_input_ids.size()[0]
 
             actor_all_logits = self.model(
                 input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
                 attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
-            )["logits"].to(torch.float32)
+            )["logits"]
             actor_chosen_logits = actor_all_logits[:batch_size]
             actor_reject_logits = actor_all_logits[batch_size:]
-            logprob_actor_chosen = calc_masked_log_probs(actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
+            logprob_actor_chosen = calc_masked_log_probs(
+                actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:], self.length_normalization
+            )
 
-            logprob_actor_reject = calc_masked_log_probs(actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
+            logprob_actor_reject = calc_masked_log_probs(
+                actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:], self.length_normalization
+            )
 
             if self.ref_model is not None:
                 self.ref_model.eval()
@@ -150,14 +157,14 @@ class DPOTrainer(SLTrainer):
                     ref_all_logits = self.ref_model(
                         input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
                         attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask]),
-                    )["logits"].to(torch.float32)
+                    )["logits"]
                     ref_chosen_logits = ref_all_logits[:batch_size]
                     ref_reject_logits = ref_all_logits[batch_size:]
                     logprob_ref_chosen = calc_masked_log_probs(
-                        ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:]
+                        ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:], self.length_normalization
                     )
                     logprob_ref_reject = calc_masked_log_probs(
-                        ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:]
+                        ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:], self.length_normalization
                     )
             else:
                 logprob_ref_chosen = None
@@ -219,7 +226,7 @@ class DPOTrainer(SLTrainer):
                     )
                 self.accumulative_meter.reset()
 
-                if (self.num_train_step + 1) % self.save_interval == 0:
+                if self.save_dir is not None and (self.num_train_step + 1) % self.save_interval == 0:
                     # save checkpoint
                     self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
                     save_checkpoint(
@@ -283,16 +290,16 @@ class DPOTrainer(SLTrainer):
                 actor_all_logits = self.model(
                     torch.cat([chosen_input_ids, reject_input_ids]),
                     torch.cat([chosen_attention_mask, reject_attention_mask]),
-                )["logits"].to(torch.float32)
+                )["logits"]
                 actor_chosen_logits = actor_all_logits[:batch_size]
                 actor_reject_logits = actor_all_logits[batch_size:]
 
                 logprob_actor_chosen = calc_masked_log_probs(
-                    actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:]
+                    actor_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:], self.length_normalization
                 )
 
                 logprob_actor_reject = calc_masked_log_probs(
-                    actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:]
+                    actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:], self.length_normalization
                 )
 
                 self.ref_model.eval()
@@ -300,11 +307,15 @@ class DPOTrainer(SLTrainer):
                 ref_all_logits = self.ref_model(
                     torch.cat([chosen_input_ids, reject_input_ids]),
                     torch.cat([chosen_attention_mask, reject_attention_mask]),
-                )["logits"].to(torch.float32)
+                )["logits"]
                 ref_chosen_logits = ref_all_logits[:batch_size]
                 ref_reject_logits = ref_all_logits[batch_size:]
-                logprob_ref_chosen = calc_masked_log_probs(ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:])
-                logprob_ref_reject = calc_masked_log_probs(ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:])
+                logprob_ref_chosen = calc_masked_log_probs(
+                    ref_chosen_logits, chosen_input_ids, chosen_loss_mask[:, 1:], self.length_normalization
+                )
+                logprob_ref_reject = calc_masked_log_probs(
+                    ref_reject_logits, reject_input_ids, reject_loss_mask[:, 1:], self.length_normalization
+                )
 
                 losses, chosen_rewards, rejected_rewards = self.actor_loss_fn(
                     logprob_actor_chosen,
@@ -314,7 +325,7 @@ class DPOTrainer(SLTrainer):
                     chosen_loss_mask[:, 1:],
                     reject_loss_mask[:, 1:],
                 )
-                reward_accuracies = (chosen_rewards > rejected_rewards).float()
+                reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
                 loss = losses.mean()
                 loss_mean = all_reduce_mean(tensor=loss)
                 chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards)
@@ -333,4 +344,7 @@ class DPOTrainer(SLTrainer):
         for tag in ["loss", "chosen_rewards", "rejected_rewards", "accuracy", "margin"]:
             msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
         self.coordinator.print_on_master(msg)
+        os.makedirs(self.save_dir, exist_ok=True)
+        with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
+            f.write(msg)
         step_bar.close()

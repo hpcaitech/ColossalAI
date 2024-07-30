@@ -146,6 +146,9 @@ docs/.build
 examples/wandb/
 examples/logs/
 examples/output/
+examples/training_scripts/logs
+examples/training_scripts/wandb
+examples/training_scripts/output
 
 examples/awesome-chatgpt-prompts/
 temp/

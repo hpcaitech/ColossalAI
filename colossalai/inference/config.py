@@ -1,15 +1,17 @@
 """
 Our config contains various options for inference optimization, it is a unified API that wraps all the configurations for inference.
 """
+
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers.generation import GenerationConfig
 
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.utils import can_use_flash_attn2
 
 GibiByte = 1024**3
 
@@ -81,9 +83,9 @@ class InputMetaData(RPC_PARAM):
     dtype: torch.dtype = torch.float32
     use_spec_dec: bool = False
     num_tokens_to_verify: int = 0
-    batch_token_ids: Optional[
-        List[List[int]]
-    ] = None  # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
+    batch_token_ids: Optional[List[List[int]]] = (
+        None  # for `repetition_penalty`, `no_repeat_ngram_size` in sampler process
+    )
 
     def to_rpc_param(self) -> Dict[str, any]:
         return {
@@ -118,12 +120,16 @@ class InputMetaData(RPC_PARAM):
         dtype = getattr(torch, rpc_dict["dtype"])
         device = get_accelerator().get_current_device()
         return InputMetaData(
-            block_tables=torch.tensor(rpc_dict["block_tables"], dtype=torch.int, device=device)
-            if isinstance(rpc_dict["block_tables"], list)
-            else rpc_dict["block_tables"].to(device),
-            sequence_lengths=torch.tensor(rpc_dict["sequence_lengths"], dtype=torch.int, device=device)
-            if isinstance(rpc_dict["sequence_lengths"], list)
-            else rpc_dict["sequence_lengths"].to(device),
+            block_tables=(
+                torch.tensor(rpc_dict["block_tables"], dtype=torch.int, device=device)
+                if isinstance(rpc_dict["block_tables"], list)
+                else rpc_dict["block_tables"].to(device)
+            ),
+            sequence_lengths=(
+                torch.tensor(rpc_dict["sequence_lengths"], dtype=torch.int, device=device)
+                if isinstance(rpc_dict["sequence_lengths"], list)
+                else rpc_dict["sequence_lengths"].to(device)
+            ),
             batch_size=rpc_dict["batch_size"],
             is_prompts=rpc_dict["is_prompts"],
             use_cuda_kernel=rpc_dict["use_cuda_kernel"],
@@ -176,7 +182,8 @@ class InferenceConfig(RPC_PARAM):
         no_repeat_ngram_size (Optional[int]): If no_repeat_ngram_size > 0, the consecutive tokens of ngram size can only appear once in inference sentences.
         repetition_penalty (Optional[float]): The parameter that influences the model's treatment of new tokens in relation to their appearance in the prompt and the generated text. Values greater than 1 incentivize the model to introduce new tokens, whereas values less than 1 incentivize token repetition., defaults to 1.0.
         ignore_eos(bool): Whether to ignore the EOS token and continue generating tokens when encountering the EOS token.
-        n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
+        use_spec_dec (bool): Indicate whether to use speculative decoding, defaults to False.
+        max_n_spec_tokens (int): The maximum number of speculating tokens, defaults to None.
         glimpse_large_kv (bool): Whether to use large KV in drafter model, defaults to False.
         block_size (int): The number of blocks in a logical block, defaults to 16.
         tp_size (int): Tensor parallel size, defaults to 1.
@@ -190,6 +197,7 @@ class InferenceConfig(RPC_PARAM):
         enable_streamingllm(bool): Whether to use StreamingLLM, the relevant algorithms refer to the paper at https://arxiv.org/pdf/2309.17453 for implementation.
         start_token_size(int): The size of the start tokens, when using StreamingLLM.
         generated_token_size(int): The size of the generated tokens, When using StreamingLLM.
+        patched_parallelism_size(int): Patched Parallelism Size, When using Distrifusion
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -207,9 +215,9 @@ class InferenceConfig(RPC_PARAM):
     prompt_template: Optional[str] = None
     do_sample: bool = False
     beam_width: int = 1  # TODO: beam search is not support for now
-    prefill_ratio: Optional[
-        float
-    ] = 1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
+    prefill_ratio: Optional[float] = (
+        1.2  # the ratio of prefill sequences to decoding sequences, we do prefill step once the actual value exceeds ratio
+    )
     pad_input: bool = False
     early_stopping: Optional[bool] = False
     top_k: Optional[int] = 50
@@ -221,6 +229,7 @@ class InferenceConfig(RPC_PARAM):
     ignore_eos: bool = False
 
     # speculative decoding configs
+    use_spec_dec: bool = False
     max_n_spec_tokens: int = 5
     glimpse_large_kv: bool = False
 
@@ -238,13 +247,20 @@ class InferenceConfig(RPC_PARAM):
     high_precision: Optional[bool] = False
 
     # cuda_graph
-    use_cuda_graph: bool = False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+    use_cuda_graph: bool = (
+        False  # NOTE only when we have the graph for specific decoding batch size can we use the cuda graph for inference
+    )
     max_context_len_to_capture: int = 512
 
     # StreamingLLM (sliding window attention with attention sinks)
     enable_streamingllm: bool = False
     start_token_size: int = 4
     generated_token_size: int = 512
+
+    # Acceleration for Diffusion Model(PipeFusion or Distrifusion)
+    patched_parallelism_size: int = 1  # for distrifusion
+    # pipeFusion_m_size: int = 1  # for pipefusion
+    # pipeFusion_n_size: int = 1  # for pipefusion
 
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len
@@ -289,6 +305,14 @@ class InferenceConfig(RPC_PARAM):
         # Thereafter, we swap out tokens in units of blocks, and always swapping out the second block when the generated tokens exceeded the limit.
         self.start_token_size = self.block_size
 
+        # check Distrifusion
+        # TODO(@lry89757) need more detailed check
+        if self.patched_parallelism_size > 1:
+            # self.use_patched_parallelism = True
+            self.tp_size = (
+                self.patched_parallelism_size
+            )  # this is not a real tp, because some annoying check, so we have to set this to patched_parallelism_size
+
         # check prompt template
         if self.prompt_template is None:
             return
@@ -317,6 +341,17 @@ class InferenceConfig(RPC_PARAM):
                 meta_config[type] = getattr(model_config, type)
 
         return GenerationConfig.from_dict(meta_config)
+
+    def to_model_shard_inference_config(self) -> "ModelShardInferenceConfig":
+        use_flash_attn = can_use_flash_attn2(self.dtype)
+        model_inference_config = ModelShardInferenceConfig(
+            dtype=self.dtype,
+            use_cuda_kernel=self.use_cuda_kernel,
+            use_spec_dec=self.use_spec_dec,
+            use_flash_attn=use_flash_attn,
+            patched_parallelism_size=self.patched_parallelism_size,
+        )
+        return model_inference_config
 
     def to_rpc_param(self) -> dict:
         kwargs = {
@@ -369,3 +404,68 @@ class InferenceConfig(RPC_PARAM):
         # Set the attributes from the parsed arguments.
         inference_config = cls(**inference_config_args)
         return inference_config
+
+
+@dataclass
+class ModelShardInferenceConfig:
+    """
+    Configurations used during init of module for inference modeling.
+
+    Args:
+        dtype (torch.dtype): The data type for weights and activations.
+        use_cuda_kernel (bool): Whether to use cuda kernel, faster but lose some precision occasionally
+        use_spec_dec (bool): Indicate whether to use speculative decoding.
+        use_flash_attn (bool): Indicate whether to use flash attention.
+    """
+
+    dtype: torch.dtype = None
+    use_cuda_kernel: bool = False
+    use_spec_dec: bool = False
+    use_flash_attn: bool = False
+    patched_parallelism_size: int = 1  # for diffusion model, Distrifusion Technique
+
+
+@dataclass
+class DiffusionGenerationConfig:
+    """
+    Param for diffusion model forward
+    """
+
+    prompt_2: Optional[Union[str, List[str]]] = None
+    prompt_3: Optional[Union[str, List[str]]] = None
+    height: Optional[int] = None
+    width: Optional[int] = None
+    num_inference_steps: int = None
+    timesteps: List[int] = None
+    guidance_scale: float = None
+    negative_prompt: Optional[Union[str, List[str]]] = (
+        None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
+    )
+    negative_prompt_2: Optional[Union[str, List[str]]] = None
+    negative_prompt_3: Optional[Union[str, List[str]]] = None
+    num_images_per_prompt: Optional[int] = None
+    generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None
+    latents: Optional[torch.FloatTensor] = None
+    prompt_embeds: Optional[torch.FloatTensor] = None
+    negative_prompt_embeds: Optional[torch.FloatTensor] = None
+    pooled_prompt_embeds: Optional[torch.FloatTensor] = None
+    negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None
+    output_type: Optional[str] = None  # "pil"
+    return_dict: bool = None
+    joint_attention_kwargs: Optional[Dict[str, Any]] = None
+    clip_skip: Optional[int] = None
+    callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None
+    callback_on_step_end_tensor_inputs: List[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        # NOTE(@lry89757) Only return the dict that not the default value None
+        result = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if value is not None:
+                result[field.name] = value
+        return result
+
+    @classmethod
+    def from_kwargs(cls, **kwargs) -> "DiffusionGenerationConfig":
+        return cls(**kwargs)

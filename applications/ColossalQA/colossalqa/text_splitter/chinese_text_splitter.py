@@ -1,6 +1,7 @@
 """
 Code for Chinese text splitter
 """
+
 from typing import Any, List, Optional
 
 from colossalqa.text_splitter.utils import get_cleaned_paragraph

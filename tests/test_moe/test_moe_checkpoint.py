@@ -1,201 +1,186 @@
-import importlib
 import os
-import shutil
-import sys
+import tempfile
+from contextlib import nullcontext
+from copy import deepcopy
 
 import pytest
 import torch
 import torch.distributed as dist
-from transformers.models.llama import LlamaConfig
+from torch.optim import Adam
+from transformers.models.mixtral.configuration_mixtral import MixtralConfig
+from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM
 
 import colossalai
-from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.testing import DummyDataloader, check_state_dict_equal, rerun_if_address_is_in_use, spawn
+from colossalai.checkpoint_io import MoECheckpointIO
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.testing import parameterize, spawn
+from colossalai.testing.utils import spawn
 
-sys.path.append(
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "examples/language/openmoe",
-    )
-)
-
-OpenMoeForCausalLM = importlib.import_module("model.modeling_openmoe").OpenMoeForCausalLM
-set_openmoe_args = importlib.import_module("model.modeling_openmoe").set_openmoe_args
-OpenMoeForCausalLMPolicy = importlib.import_module("model.openmoe_policy").OpenMoeForCausalLMPolicy
+tokens, n_experts = 7, 4
+hidden_size = 8
+top_k = 2
 
 
-def data_gen_fn(batch_size: int = 2, max_length: int = 4, vocab_size: int = 20):
-    input_ids = torch.randint(0, vocab_size, (batch_size, max_length), device=get_accelerator().get_current_device())
-    attention_mask = torch.ones_like(input_ids)
+def check_model_equal(model1, model2):
+    assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
+    for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
+        if not torch.equal(p1.half(), p2.half()):
+            print(f"Model parameter {name} is not equal. is_moe_tensor: {is_moe_tensor(p1)}")
+            raise AssertionError(f"Model parameter {name} is not equal")
+
+
+def get_optimizer_snapshot(optim):
+    state = {id(k): deepcopy(v) for k, v in optim.state.items()}
+    param_groups = []
+    for group in optim.param_groups:
+        params = [id(p) for p in group["params"]]
+        new_group = {"params": params}
+        for k, v in group.items():
+            if k != "params":
+                new_group[k] = v
+        param_groups.append(new_group)
     return {
-        "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": input_ids,
+        "state": state,
+        "param_groups": param_groups,
     }
 
 
-def run_fwd_bwd(
-    model, data, label, criterion, optimizer, enable_autocast=False, pipeline=False, booster=None, plugin=None
-):
-    model.train()
-    if pipeline:
-        train_dataloader_iter = DummyDataloader(data_gen_fn, length=1)
-        is_pp_last_stage = booster.plugin.stage_manager.is_last_stage()
-        y = booster.execute_pipeline(
-            train_dataloader_iter,
-            model,
-            lambda x, y: x.loss,
-            optimizer,
-            return_loss=True,
-        )
-        # Backward and optimize
-        if is_pp_last_stage:
-            loss = y["loss"]
-    else:
-        if criterion:
-            y = model(data).logits
-            loss = criterion(y)
+def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_group=None):
+    assert len(snapshot1["param_groups"]) == len(snapshot2["param_groups"])
+    for group1, group2 in zip(snapshot1["param_groups"], snapshot2["param_groups"]):
+        assert set(group1.keys()) == set(group2.keys())
+        for k in group1.keys():
+            assert group1[k] == group2[k]
+    # check state
+    assert set(snapshot1["state"].keys()) == set(
+        snapshot2["state"].keys()
+    ), f"{snapshot1['state'].keys()}, {snapshot2['state'].keys()}"
+
+    passed = True
+    count = 0
+    for pid in snapshot1["state"].keys():
+        state1, state2 = snapshot1["state"][pid], snapshot2["state"][pid]
+        assert set(state1.keys()) == set(state2.keys())
+        bug = False
+        for k in state1.keys():
+            if isinstance(state1[k], torch.Tensor):
+                if not torch.equal(state1[k], state2[k]):
+                    bug = True
+                    count += 1
+            else:
+                assert state1[k] == state2[k]
+        if bug:
+            passed = False
+
+    if not passed:
+        raise AssertionError(f"A total of {count} optim states are not equal")
+
+
+@parameterize(
+    "test_config",
+    [
+        [
+            MixtralConfig(
+                hidden_size=hidden_size,
+                intermediate_size=hidden_size * 2,
+                num_local_experts=n_experts,
+                num_experts_per_tok=top_k,
+                num_attention_heads=2,
+                num_key_value_heads=2,
+            ),
+            MixtralForCausalLM,
+        ],
+    ],
+)
+def check_moe_checkpoint(test_config):
+    context = tempfile.TemporaryDirectory() if dist.get_rank() == 0 else nullcontext()
+    with context as f:
+        torch.cuda.set_device(dist.get_rank())
+        if dist.get_rank() == 0:
+            broadcast_objects = [f]  # any picklable object
         else:
-            loss = model(data, label)
-        loss = loss.float()
+            broadcast_objects = [None]
+        dist.broadcast_object_list(broadcast_objects, src=0)
 
-        if optimizer is not None:
-            optimizer.backward(loss)
-        else:
-            loss.backward()
-    return y
-
-
-def get_config():
-    config = LlamaConfig(
-        vocab_size=300,
-        hidden_size=16,
-        intermediate_size=32,
-        num_hidden_layers=2,
-        num_attention_heads=2,
-        head_dim=4,
-        dropout_rate=0.0,
-        hidden_act="swiglu",
-    )
-    set_openmoe_args(config, num_experts=8, moe_layer_interval=1)
-    return config
-
-
-def get_model(parallel):
-    config = get_config()
-    model = OpenMoeForCausalLM(config)
-    optim = torch.optim.Adam(model.parameters())
-
-    if parallel == None:
+        config = test_config[0]
+        model_cls = test_config[1]
+        torch.manual_seed(0)
+        input_ids = torch.randint(0, 100, (2, tokens)).cuda()
+        orig_model = model_cls(config).cuda()
+        model = deepcopy(orig_model)
+        optimizer = Adam(model.parameters(), lr=1e-3)
         plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
-            pp_size=1,
-            ep_size=1,
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-        )
-    elif parallel == "ep":
-        plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
-            pp_size=1,
-            ep_size=dist.get_world_size(),
-            zero_stage=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-        )
-    elif parallel == "ep_zero":
-        plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
-            pp_size=1,
-            ep_size=2,
-            zero_stage=2,
-            extra_dp_size=2,
-            custom_policy=OpenMoeForCausalLMPolicy(),
-        )
-    elif parallel == "hybrid":
-        plugin = MoeHybridParallelPlugin(
-            precision="bf16",
-            tp_size=1,
             pp_size=2,
             ep_size=2,
-            zero_stage=1,
+            tp_size=1,
+            checkpoint_io=MoECheckpointIO,
             microbatch_size=1,
-            custom_policy=OpenMoeForCausalLMPolicy(),
+            zero_stage=1,
         )
-    booster = Booster(plugin=plugin)
-    model, optim, _, _, _ = booster.boost(model=model, optimizer=optim)
-    return model, booster, optim
+        booster = Booster(plugin=plugin)
+        model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
+        # initialize grads
+        data_iter = iter(
+            [{"input_ids": input_ids, "attention_mask": torch.ones_like(input_ids), "labels": input_ids.clone()}]
+        )
+        booster.execute_pipeline(
+            data_iter,
+            model,
+            lambda outputs, inputs: outputs.loss,
+            optimizer,
+        )
+        tmpdirname = broadcast_objects[0]
+        model_dir = os.path.join(tmpdirname, "mixtral_model")
+        hf_model_dir = os.path.join(tmpdirname, "mixtral_hf_model")
+        optim_dir = os.path.join(tmpdirname, "mixtral_optim")
+
+        booster.save_model(model, model_dir, shard=True)
+        dist.barrier()
+        if dist.get_rank() == 0:
+            saved_model = model_cls.from_pretrained(model_dir).cuda()
+            check_model_equal(orig_model, saved_model)
+            # check_model_equal(model, saved_model)
+            saved_model.save_pretrained(hf_model_dir)
+        dist.barrier()
+        # check load model
+        new_model = model_cls(config).cuda()
+        new_optimizer = Adam(new_model.parameters(), lr=1e-3)
+        new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
+        booster.load_model(new_model, hf_model_dir)
+        check_model_equal(model, new_model)
+
+        # check save optimizer
+        optimizer.step()
+        for group in optimizer.param_groups:
+            group["lr"] = 0.1
+        snapshot = get_optimizer_snapshot(optimizer.unwrap())
+        booster.save_optimizer(optimizer, optim_dir, shard=True)
+        dist.barrier()
+
+        # reset optimizer state
+        for state in optimizer.unwrap().state.values():
+            for v in state.values():
+                if isinstance(v, torch.Tensor):
+                    v.zero_()
+        booster.load_optimizer(optimizer, optim_dir)
+        loaded_snapshot = get_optimizer_snapshot(optimizer.unwrap())
+        check_optimizer_snapshot_equal(snapshot, loaded_snapshot, None, model)
+        # Ensure rank 0 waits for all other ranks to finish
+        dist.barrier()
 
 
-def _test_moe_checkpoint(rank, parallel):
-    model1, booster1, optim1 = get_model(parallel)
-    model2, booster2, optim2 = get_model(parallel)
-    model3, booster3, optim3 = get_model(parallel)
-
-    # param ckpt
-    # shard
-    booster1.save_model(model1, "./tmp_ckpt1", shard=True, size_per_shard=1)
-    booster2.load_model(model2, "./tmp_ckpt1")
-    # unshard
-    booster1.save_model(model1, "./tmp_ckpt1.pth")
-    booster3.load_model(model3, "./tmp_ckpt1.pth")
-    # check
-    check_state_dict_equal(model1.state_dict(), model2.state_dict(), False)
-    check_state_dict_equal(model1.state_dict(), model3.state_dict(), False)
-
-    # optim ckpt
-    criterion = lambda x: x.mean()
-    data = torch.randint(0, 4, (2, 4)).cuda()
-    label = torch.randint(0, 4, (2,)).cuda()
-    if parallel == "hybrid":
-        kwargs = {"pipeline": True, "booster": booster1, "plugin": booster1.plugin}
-    else:
-        kwargs = {}
-    run_fwd_bwd(model1, data, label, criterion, optim1, **kwargs)
-    optim1.step()
-    optim1.zero_grad()
-    # shard
-    booster1.save_optimizer(optim1, "./tmp_ckpt2", shard=True, size_per_shard=1)
-    dist.barrier()
-    booster2.load_optimizer(optim2, "./tmp_ckpt2")
-    # unshard
-    booster1.save_optimizer(optim1, "./tmp_ckpt2.pth")
-    booster3.load_optimizer(optim3, "./tmp_ckpt2.pth")
-    # check
-    check_state_dict_equal(optim1.optim.state_dict(), optim2.optim.state_dict(), False)
-    check_state_dict_equal(optim1.optim.state_dict(), optim3.optim.state_dict(), False)
-
-    if dist.get_rank() == 0:
-        shutil.rmtree("./tmp_ckpt1")
-        shutil.rmtree("./tmp_ckpt2")
-        os.remove("./tmp_ckpt1.pth")
-        os.remove("./tmp_ckpt2.pth")
+def run_dist(rank: int, world_size: int, port: int):
+    colossalai.launch(rank, world_size, "localhost", port)
+    check_moe_checkpoint()
 
 
-def _run_dist(rank, world_size, port, parallel):
-    colossalai.launch(
-        config=dict(),
-        rank=rank,
-        world_size=world_size,
-        host="localhost",
-        port=port,
-        backend="nccl",
-    )
-    _test_moe_checkpoint(rank, parallel)
-
-
-@pytest.mark.skip(reason="This is tested in ColossalMOE")
-@pytest.mark.dist
+# Test EP + ZeRO + PP
 @pytest.mark.parametrize("world_size", [4])
-@pytest.mark.parametrize("parallel", [None, "ep", "ep_zero", "hybrid"])
-@rerun_if_address_is_in_use()
-def test_moe_checkpoint(world_size, parallel):
-    spawn(_run_dist, world_size, parallel=parallel)
+def test_mixtral_moe_layer(world_size: int):
+    spawn(run_dist, world_size)
 
 
 if __name__ == "__main__":
-    test_moe_checkpoint(world_size=4, parallel="hybrid")
+    test_mixtral_moe_layer(4)

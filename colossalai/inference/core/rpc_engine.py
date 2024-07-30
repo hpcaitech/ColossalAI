@@ -37,7 +37,6 @@ def run_server(host, port, event: mp.Event = None):
 
 
 class RPCInferenceEngine(InferenceEngine):
-
     """
     InferenceEngine which manages the inference process..
 
@@ -76,7 +75,9 @@ class RPCInferenceEngine(InferenceEngine):
 
         try:
             if isinstance(model_or_path, str):
-                self.model_config = AutoConfig.from_pretrained(model_or_path, trust_remote_code=True)
+                self.model_config = AutoConfig.from_pretrained(
+                    model_or_path, trust_remote_code=True, torch_dtype=self.dtype
+                )
             elif isinstance(model_or_path, nn.Module):
                 self.logger.error(
                     f"An exception occurred during loading model Config: For {__class__.__name__}, we don't support param like nn.Module currently\n"

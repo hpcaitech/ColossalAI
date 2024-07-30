@@ -4,22 +4,16 @@
 Dataloader for sft, dpo, ppo
 """
 
-import math
 import os
-import random
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterator, List, Optional, Sequence, Union
+from typing import Dict, Iterator, List, Optional, Sequence, Union
 
-import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from coati.dataset.utils import chuncate_sequence, pad_to_max_len
 from datasets import Dataset as HFDataset
 from datasets import dataset_dict, load_from_disk
-from torch.distributed import ProcessGroup
-from torch.distributed.distributed_c10d import _get_default_group
-from torch.utils.data import ConcatDataset, DataLoader, Dataset, DistributedSampler
+from torch.utils.data import ConcatDataset, Dataset, DistributedSampler
 from transformers.tokenization_utils import PreTrainedTokenizer
 
 DatasetType = Union[Dataset, ConcatDataset, dataset_dict.Dataset]
@@ -34,6 +28,8 @@ def load_tokenized_dataset(
     Each instance of dataset is a dictionary with
     `{'input_ids': List[int], 'labels': List[int], sequence: str}` format.
     """
+    if not dataset_paths:
+        return None
     mode_map = kwargs.get("mode_map", {"train": "train", "dev": "validation", "test": "test"})
     assert mode in tuple(mode_map), f"Unsupported mode {mode}, it must be in {tuple(mode_map)}"
 
@@ -89,15 +85,19 @@ class DataCollatorForSupervisedDataset(object):
 
         # `List[torch.Tensor]`
         batch_input_ids = [
-            torch.LongTensor(instance["input_ids"][: self.max_length])
-            if len(instance["input_ids"]) > self.max_length
-            else torch.LongTensor(instance["input_ids"])
+            (
+                torch.LongTensor(instance["input_ids"][: self.max_length])
+                if len(instance["input_ids"]) > self.max_length
+                else torch.LongTensor(instance["input_ids"])
+            )
             for instance in instances
         ]
         batch_labels = [
-            torch.LongTensor(instance["labels"][: self.max_length])
-            if len(instance["labels"]) > self.max_length
-            else torch.LongTensor(instance["labels"])
+            (
+                torch.LongTensor(instance["labels"][: self.max_length])
+                if len(instance["labels"]) > self.max_length
+                else torch.LongTensor(instance["labels"])
+            )
             for instance in instances
         ]
         if self.tokenizer.padding_side == "right":
@@ -235,149 +235,112 @@ class DataCollatorForPreferenceDataset(object):
         )
 
 
-class StatefulDistributedSampler(DistributedSampler):
+@dataclass
+class DataCollatorForKTODataset(object):
     """
-    Stateful distributed sampler for multi-stage training.
+    Collate instances for kto dataset.
+    Each input instance is a tokenized dictionary with fields
+    `prompt`(List[int]), `completion`(List[int]) and `label`(bool).
+    Each output instance is a tokenized dictionary with fields
+    `kl_input_ids`(List[int]), `kl_attention_mask`(List[int]) and `kl_loss_mask`(List[int]).
+    `input_ids`(List[int]), `attention_mask`(List[int]), `loss_mask`(List[int]) and `label`(bool).
     """
 
+    tokenizer: PreTrainedTokenizer
+    max_length: int = 4096
+    ignore_index: int = -100
+
+    def __call__(self, instances: Sequence[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
+        """
+
+        Args:
+            instances (`Sequence[Dict[str, List[int]]]`):
+                Mini-batch samples, each sample is stored in an individual dictionary contains the following fields:
+                `prompt`(List[int]), `completion`(List[int]) and `label`(bool, if the sample is desirable or not).
+
+        Returns:
+            (`Dict[str, torch.Tensor]`): Contains the following `torch.Tensor`:
+                `input_ids`: `torch.Tensor` of shape (bsz, max_len);
+                `attention_mask`: `torch.BoolTensor` of shape (bsz, max_len);
+                `labels`: `torch.Tensor` of shape (bsz, max_len), which contains `IGNORE_INDEX`.
+        """
+        assert isinstance(self.tokenizer.pad_token_id, int) and self.tokenizer.pad_token_id >= 0, (
+            f"`{self.tokenizer.__class__.__name__}.pad_token_id` must be a valid non-negative integer index value, "
+            f"but now `{self.tokenizer.pad_token_id}`"
+        )
+        # prepare the preference data
+        prompt = [torch.LongTensor(instance["prompt"]) for instance in instances]
+        prompt_zeros = [torch.zeros_like(t) for t in prompt]
+        completion = [torch.LongTensor(instance["completion"]) for instance in instances]
+        completion_ones = [torch.ones_like(t) for t in completion]
+        label = [torch.tensor(instance["label"], dtype=torch.bool) for instance in instances]
+        input_ids = [torch.cat([prompt[i], completion[i]], dim=-1) for i in range(len(instances))]
+        loss_mask = [torch.cat([prompt_zeros[i], completion_ones[i]], dim=-1) for i in range(len(instances))]
+        # right padding
+        input_ids = torch.nn.utils.rnn.pad_sequence(
+            sequences=input_ids,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
+        )  # (bsz, max_len)
+        loss_mask = torch.nn.utils.rnn.pad_sequence(
+            sequences=loss_mask, batch_first=True, padding_value=0
+        )  # (bsz, max_len)
+        to_pad = self.max_length - input_ids.size(1)
+        input_ids = F.pad(input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
+        loss_mask = F.pad(loss_mask, (0, to_pad), value=0)
+        attention_mask = input_ids.ne(self.tokenizer.pad_token_id)  # `torch.BoolTensor`, (bsz, max_len)
+
+        # prepare kt data
+        kl_completion = completion[::-1]  # y'
+        kl_completion_ones = [torch.ones_like(t) for t in kl_completion]
+        kl_input_ids = [torch.cat([prompt[i], kl_completion[i]], dim=-1) for i in range(len(instances))]
+        kl_loss_mask = [torch.cat([prompt_zeros[i], kl_completion_ones[i]], dim=-1) for i in range(len(instances))]
+        # right padding
+        kl_input_ids = torch.nn.utils.rnn.pad_sequence(
+            sequences=kl_input_ids,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
+        )  # (bsz, max_len)
+        kl_loss_mask = torch.nn.utils.rnn.pad_sequence(
+            sequences=kl_loss_mask, batch_first=True, padding_value=0
+        )  # (bsz, max_len)
+        to_pad = self.max_length - kl_input_ids.size(1)
+        kl_input_ids = F.pad(kl_input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
+        kl_loss_mask = F.pad(kl_loss_mask, (0, to_pad), value=0)
+        kl_attention_mask = kl_input_ids.ne(self.tokenizer.pad_token_id)  # `torch.BoolTensor`, (bsz, max_len)
+        data_dict = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "loss_mask": loss_mask,
+            "label": torch.stack(label),
+            "kl_input_ids": kl_input_ids,
+            "kl_attention_mask": kl_attention_mask,
+            "kl_loss_mask": kl_loss_mask,
+        }
+        return data_dict
+
+
+class StatefulDistributedSampler(DistributedSampler):
     def __init__(
         self,
-        dataset: DatasetType,
+        dataset: Dataset,
         num_replicas: Optional[int] = None,
         rank: Optional[int] = None,
         shuffle: bool = True,
         seed: int = 0,
         drop_last: bool = False,
-        use_tp: Optional[bool] = False,
     ) -> None:
-        if not use_tp:
-            super().__init__(
-                dataset=dataset,
-                num_replicas=num_replicas,
-                rank=rank,
-                shuffle=shuffle,
-                seed=seed,
-                drop_last=drop_last,
-            )
-        else:
-            # adapted from https://github.com/pytorch/pytorch/blob/4979f9c0d72490970e2019bb1d2284f83d93f76b/torch/utils/data/distributed.py#L62
-            # TODO: support tp_group>1. will fix it later
-            num_replicas = 1
-            if rank is None:
-                rank = dist.get_rank()
-            if rank < 0:
-                raise ValueError(f"Invalid rank {rank}, rank should be in the interval [0, 0]")
-            self.dataset = dataset
-            self.num_replicas = num_replicas
-            self.rank = rank
-            self.epoch = 0
-            self.drop_last = drop_last
-            # If the dataset length is evenly divisible by # of replicas, then there
-            # is no need to drop any data, since the dataset will be split equally.
-            if self.drop_last and len(self.dataset) % self.num_replicas != 0:  # type: ignore[arg-type]
-                # Split to nearest available length that is evenly divisible.
-                # This is to ensure each rank receives the same amount of data when
-                # using this Sampler.
-                self.num_samples = math.ceil(
-                    (len(self.dataset) - self.num_replicas) / self.num_replicas  # type: ignore[arg-type]
-                )
-            else:
-                self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)  # type: ignore[arg-type]
-            self.total_size = self.num_samples * self.num_replicas
-            self.shuffle = shuffle
-            self.seed = seed
-        self.start_index = 0
-        self.use_tp = use_tp
+        super().__init__(dataset, num_replicas, rank, shuffle, seed, drop_last)
+        self.start_index: int = 0
 
     def __iter__(self) -> Iterator:
-        if self.use_tp:
-            # TODO Add support for tp_group not equal to 1
-            pass
-            # adpated from https://github.com/pytorch/pytorch/blob/4979f9c0d72490970e2019bb1d2284f83d93f76b/torch/utils/data/distributed.py#L96
-            if self.shuffle:
-                # deterministically shuffle based on epoch and seed
-                g = torch.Generator()
-                g.manual_seed(self.seed + self.epoch)
-                indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore[arg-type]
-            else:
-                indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
-
-            if not self.drop_last:
-                # add extra samples to make it evenly divisible
-                padding_size = self.total_size - len(indices)
-                if padding_size <= len(indices):
-                    indices += indices[:padding_size]
-                else:
-                    indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
-            else:
-                # remove tail of data to make it evenly divisible.
-                indices = indices[: self.total_size]
-            assert len(indices) == self.total_size
-
-            # subsample
-            indices = indices[
-                : self.total_size : self.num_replicas
-            ]  # num_replicas=tp_group=1, we only support tp_group==1 for now
-            assert len(indices) == self.num_samples
-
-            return iter(indices)
-
-        else:
-            iterator = super().__iter__()
-            indices = list(iterator)
-            indices = indices[self.start_index :]
-            return iter(indices)
+        iterator = super().__iter__()
+        indices = list(iterator)
+        indices = indices[self.start_index :]
+        return iter(indices)
 
     def __len__(self) -> int:
         return self.num_samples - self.start_index
 
     def set_start_index(self, start_index: int) -> None:
         self.start_index = start_index
-
-
-def setup_distributed_dataloader(
-    dataset: DatasetType,
-    batch_size: int = 1,
-    shuffle: bool = False,
-    seed: int = 1024,
-    drop_last: bool = False,
-    pin_memory: bool = False,
-    num_workers: int = 0,
-    collate_fn: Callable[[Sequence[Dict[str, Union[str, List[int]]]]], Dict[str, torch.Tensor]] = None,
-    process_group: Optional[ProcessGroup] = None,
-    use_tp: Optional[bool] = False,
-    **kwargs,
-) -> DataLoader:
-    """
-    Setup dataloader for distributed training.
-    """
-    _kwargs = kwargs.copy()
-    process_group = process_group or _get_default_group()
-    sampler = StatefulDistributedSampler(
-        dataset=dataset,
-        num_replicas=process_group.size() if not use_tp else 1,
-        rank=process_group.rank(),
-        shuffle=shuffle,
-        seed=seed,
-        drop_last=drop_last,
-        use_tp=use_tp,
-    )
-
-    # Deterministic dataloader
-    def seed_worker(worker_id: int) -> None:
-        worker_seed = seed
-        np.random.seed(worker_seed)
-        torch.manual_seed(worker_seed)
-        random.seed(worker_seed)
-
-    return DataLoader(
-        dataset=dataset,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=num_workers,
-        collate_fn=collate_fn,
-        pin_memory=pin_memory,
-        drop_last=drop_last,
-        worker_init_fn=seed_worker,
-        **_kwargs,
-    )

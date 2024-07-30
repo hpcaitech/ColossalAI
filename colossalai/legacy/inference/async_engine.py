@@ -54,7 +54,6 @@ class RequestTracker:
 
 
 class Async_Engine:
-
     """
     Use an engine to launch RAY Driver --> RAY Worker --> Async_Manager
     Background loop: inference reqs in waiting list (Listen)

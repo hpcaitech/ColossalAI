@@ -25,6 +25,7 @@ class ChunkManager:
         chunk_configuration,
         init_device: Optional[torch.device] = None,
         reuse_fp16_chunk: bool = True,
+        max_prefetch: int = 0,
     ) -> None:
         self.device = init_device or get_accelerator().get_current_device()
         self.dp_degree_chunk_size_dict: Dict[int, int] = dict()
@@ -42,6 +43,7 @@ class ChunkManager:
         # Whether model is accumulating gradients,
         self.accumulating_grads = False
         self.overflow_counter = torch.tensor([0], dtype=torch.int, device=get_accelerator().get_current_device())
+        self._prefetch_stream = get_accelerator().Stream() if max_prefetch else None
 
     def register_tensor(
         self,
@@ -131,12 +133,12 @@ class ChunkManager:
             self.__sub_accessed_chunk(chunk)
             self.__add_memory_usage(chunk.memory_usage)
 
-    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False) -> None:
+    def move_chunk(self, chunk: Chunk, device: torch.device, force_copy: bool = False, async_move=False) -> None:
         """Move the shard of the chunk to the target device."""
         if not chunk.can_move or chunk.device_type == device.type:
             return
         self.__sub_memory_usage(chunk.memory_usage)
-        chunk.shard_move(device, force_copy)
+        chunk.shard_move(device, force_copy, non_blocking=async_move)
         self.__add_memory_usage(chunk.memory_usage)
 
     def trans_tensor_state(self, tensor: torch.Tensor, state: TensorState) -> None:

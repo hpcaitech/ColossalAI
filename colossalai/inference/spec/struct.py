@@ -46,6 +46,7 @@ class GlideInput:
     large_k_cache: torch.Tensor = None
     large_v_cache: torch.Tensor = None
     sequence_lengths: torch.Tensor = None
+    n_spec_tokens: int = 5
 
     @property
     def glimpse_ready(self):

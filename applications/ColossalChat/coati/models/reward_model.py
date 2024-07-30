@@ -1,6 +1,7 @@
 """
 reward model
 """
+
 from typing import Optional
 
 import torch
@@ -36,3 +37,9 @@ class RewardModel(BaseModel):
         )
         values = self.value_head(sequence_hidden_states).squeeze(-1)  # Ensure shape is (B,)
         return values
+
+    def get_input_embeddings(self):
+        return self.model.get_input_embeddings()
+
+    def get_output_embeddings(self):
+        return self.model.get_output_embeddings()

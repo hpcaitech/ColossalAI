@@ -1,0 +1,104 @@
+
+
+==========
+round 1:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] Great, let’s hear a story. </s>
+
+==========
+
+
+==========
+round 2:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] Great, let’s hear a story. </s><s>[INST] calculate 1+1 [/INST] 1+1=2 </s>
+
+==========
+
+
+==========
+round 3:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] Great, let’s hear a story. </s><s>[INST] calculate 1+1 [/INST] 1+1=2 </s><s>[INST] who is the first president of the USA [/INST] The first president of the United States was George Washington. </s>
+
+==========
+
+
+==========
+round 1:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+who is the first president of the USA? [/INST] The first president of the United States was George Washington. </s>
+
+==========
+
+
+==========
+round 2:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+who is the first president of the USA? [/INST] The first president of the United States was George Washington. </s><s>[INST] tell me a story [/INST] One story that might be interesting is the story of how the United States was founded.  In 1776, the Thirteen Colonies united together to form the new nation of America.  The first president of the new nation was George Washington.  The first state was Pennsylvania.  The first capital was Philadelphia.  The first presidential election was held in 1787, and was between George Read, a Federalist, and John Adams, a Republican.  The Federalists wanted to keep the power of the federal government limited, while the Republicans wanted the power to be spread around to the states.  The Federalists won, and George Washington was elected president. </s>
+
+==========
+
+
+==========
+round 1:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] I do enjoy telling stories. Is there a particular story you’d like to hear? </s>
+
+==========
+
+
+==========
+round 2:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] I do enjoy telling stories. Is there a particular story you’d like to hear? </s><s>[INST] about Donald Trump [/INST] I’d be happy to listen to a story about Donald Trump. I have no idea what a “story” is, but I do know a lot about human life and human behavior. I can try.  Do you have a theme or a question you’d like to ask about Donald Trump? </s>
+
+==========
+
+
+==========
+round 3:
+<s>[INST] <<SYS>>
+A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.
+
+
+<</SYS>>
+
+tell me a story [/INST] I do enjoy telling stories. Is there a particular story you’d like to hear? </s><s>[INST] about Donald Trump [/INST] I’d be happy to listen to a story about Donald Trump. I have no idea what a “story” is, but I do know a lot about human life and human behavior. I can try.  Do you have a theme or a question you’d like to ask about Donald Trump? </s><s>[INST] Is Donald Trump the president of the United States [/INST] Yes, Donald Trump became the 45th president of the United States in January of 2016. </s>
+
+==========

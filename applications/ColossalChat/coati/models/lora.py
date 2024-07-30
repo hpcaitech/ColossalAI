@@ -50,7 +50,7 @@ class LoraLinear(lora.LoRALayer, nn.Module):
         self.fan_in_fan_out = fan_in_fan_out
         # Actual trainable parameters
         if r > 0:
-            self.lora_A = nn.Parameter(self.weight.new_zeros((r, in_features)))
+            self.lora_A = nn.Parameter(self.weight.new_zeros((r, in_features)), requires_grad=False)
             self.lora_B = nn.Parameter(self.weight.new_zeros((out_features, r)))
             self.scaling = self.lora_alpha / self.r
             # Freezing the pre-trained weight matrix

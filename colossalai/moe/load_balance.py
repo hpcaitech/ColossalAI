@@ -7,8 +7,8 @@ from torch import Tensor, nn
 from torch.distributed import ProcessGroup
 
 from colossalai.cluster import ProcessGroupMesh
-from colossalai.moe.experts import MLPExperts
 from colossalai.moe.manager import MOE_MANAGER
+from colossalai.shardformer.layer.moe import MLPExperts
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
@@ -292,7 +292,7 @@ class LoadBalancer:
             exp_avg_ptr = optim.optim.state[working_weight_ptr]["exp_avg"]
             exp_avg_sq_ptr = optim.optim.state[working_weight_ptr]["exp_avg_sq"]
         else:
-            master_weight_ptr = optim._param_store.working_to_master_param[id(weight)]
+            master_weight_ptr = optim.working_to_master_param[id(weight)]
             working_weight_ptr = weight
             exp_avg_ptr = optim.optim.state[master_weight_ptr]["exp_avg"]
             exp_avg_sq_ptr = optim.optim.state[master_weight_ptr]["exp_avg_sq"]
@@ -344,7 +344,7 @@ class LoadBalancer:
         # gate optim should be obtained first
         gate_shape = self.gate.shape
         # get master weight and optim
-        master_gate_weight = optim._param_store.working_to_master_param[id(self.gate)]
+        master_gate_weight = optim.working_to_master_param[id(self.gate)]
         gate_exp_avg = optim.optim.state[master_gate_weight]["exp_avg"]
         gate_exp_avg_sq = optim.optim.state[master_gate_weight]["exp_avg_sq"]
         # gather

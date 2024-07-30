@@ -17,10 +17,10 @@ def is_moe_tensor(tensor: torch.Tensor) -> bool:
     Returns:
         bool: Whether the given tensor is a moe tensor.
     """
-    return hasattr(tensor, "moe_info")
+    return hasattr(tensor, "ep_group")
 
 
-def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None:
+def set_moe_tensor_ep_group(tensor: torch.Tensor, ep_group: ProcessGroup) -> None:
     """
     Set moe info for the given tensor.
 
@@ -29,7 +29,7 @@ def set_moe_tensor_info(tensor: torch.Tensor, moe_info: MoeParallelInfo) -> None
         moe_info (dict): The moe info to be set.
 
     """
-    tensor.__setattr__("moe_info", moe_info)
+    tensor.__setattr__("ep_group", ep_group)
 
 
 def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> MoeParallelInfo:
@@ -58,7 +58,7 @@ def get_ep_group(tensor: torch.Tensor) -> ProcessGroup:
     Returns:
         torch.distributed.ProcessGroup: The expert parallel group of the given tensor.
     """
-    return tensor.moe_info.ep_group
+    return tensor.ep_group
 
 
 def get_ep_size(tensor: torch.Tensor) -> int:
@@ -71,7 +71,8 @@ def get_ep_size(tensor: torch.Tensor) -> int:
     Returns:
         int: The expert parallel size of the given tensor.
     """
-    return tensor.moe_info.ep_size
+    assert getattr(tensor, "ep_group") is not None, "The tensor does not have expert parallel group."
+    return dist.get_world_size(tensor.ep_group)
 
 
 def get_dp_size(tensor: torch.Tensor) -> int:

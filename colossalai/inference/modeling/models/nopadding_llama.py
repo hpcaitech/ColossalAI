@@ -16,18 +16,13 @@ from transformers.models.llama.modeling_llama import (
     LlamaRMSNorm,
 )
 
-from colossalai.inference.config import InputMetaData
+from colossalai.inference.config import InputMetaData, ModelShardInferenceConfig
 from colossalai.inference.flash_decoding_utils import FDIntermTensors
+from colossalai.inference.modeling.backends.attention_backend import AttentionMetaData, get_attention_backend
+from colossalai.inference.modeling.backends.pre_attention_backend import get_pre_attention_backend
+from colossalai.inference.utils import can_use_flash_attn2
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
-from colossalai.kernel.triton import (
-    context_attention_unpadded,
-    copy_k_to_blocked_cache,
-    decoding_fused_rotary_embedding,
-    flash_decoding_attention,
-    get_xine_cache,
-    rms_layernorm,
-    rotary_embedding,
-)
+from colossalai.kernel.triton import get_xine_cache, rms_layernorm
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer.layer.parallel_module import ParallelModule
 from colossalai.tensor.d_tensor import distribute_tensor, is_distributed_tensor
@@ -35,14 +30,6 @@ from colossalai.tensor.d_tensor import distribute_tensor, is_distributed_tensor
 inference_ops = InferenceOpsLoader().load()
 
 logger = get_dist_logger(__name__)
-
-try:
-    from flash_attn import flash_attn_varlen_func
-
-    use_flash_attn2 = True
-except ImportError:
-    use_flash_attn2 = False
-    logger.warning(f"flash_attn2 has not been installed yet, we will use triton flash attn instead.")
 
 
 def llama_causal_lm_forward(
@@ -126,8 +113,8 @@ def llama_model_forward(
         cos_sin = (self._cos_cached[rotary_indexes], self._sin_cached[rotary_indexes])
 
     elif use_cuda_kernel:
-        if inputmetadata.dtype != torch.float32 and use_flash_attn2:
-            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.torch.int32), (1, 0))
+        if can_use_flash_attn2(inputmetadata.dtype):
+            cu_seqlens = F.pad(torch.cumsum(sequence_lengths, dim=0, dtype=torch.int32), (1, 0))
 
         hidden_dim = self._cos_cached.size(-1)
         total_length = hidden_states.size(0)
@@ -238,7 +225,6 @@ def llama_decoder_layer_forward(
         kv_seq_len=kv_seq_len,
         output_tensor=output_tensor,
         sm_scale=sm_scale,
-        use_cuda_kernel=use_cuda_kernel,
         cu_seqlens=cu_seqlens,
         high_precision=high_precision,
     )
@@ -279,7 +265,7 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
         mlp_dproj: ParallelModule = None,
         process_group: ProcessGroup = None,
     ):
-        """A Unified Layer for
+        """Replacement of LlamaMLP layer.
 
         Args:
             config (LlamaConfig): Holding the Llama model config.
@@ -298,6 +284,10 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
         self.gate_up_weight = nn.Parameter(
             torch.stack([mlp_gproj_w.transpose(0, 1), mlp_uproj_w.transpose(0, 1)], dim=0)
         )
+        self.gate_up_dict = {
+            "gate_proj.weight": None,
+            "up_proj.weight": None,
+        }  # used and delattr in load/shard of gate/up weight
         self.down_proj = mlp_dproj
         self.process_group = process_group
 
@@ -335,44 +325,47 @@ class NopadLlamaMLP(LlamaMLP, ParallelModule):
     ):
         # NOTE This is a hack to ensure we could load the right weight from LlamaMLP checkpoint due to the use of torch.stack(gate_weight, up_weight)
 
-        for hook in self._load_state_dict_pre_hooks.values():
-            hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+        if hasattr(self, "gate_up_dict"):
+            for hook in self._load_state_dict_pre_hooks.values():
+                hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
-        persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
-        local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
-        local_state = {k: v for k, v in local_name_params if v is not None}
+            persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
+            local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
+            local_state = {k: v for k, v in local_name_params if v is not None}
 
-        key = "gate_up_weight"
-        k1 = "gate_proj.weight"
-        k2 = "up_proj.weight"
+            device_mesh = self.helper_layout.device_mesh
+            sharding_spec = self.helper_layout.sharding_spec
+            for weight_name in self.gate_up_dict:
+                prefix_weight_name = prefix + weight_name
+                if prefix_weight_name in state_dict.keys():
+                    w = distribute_tensor(state_dict[prefix_weight_name], device_mesh, sharding_spec)
+                    self.gate_up_dict[weight_name] = w.T
 
-        gate_w = state_dict[prefix + k1]
-        up_w = state_dict[prefix + k2]
+            if None not in self.gate_up_dict.values():
+                # we've got all the weights of gate/up
+                gate_up_w = torch.stack(list(self.gate_up_dict.values()), dim=0)
 
-        device_mesh = self.helper_layout.device_mesh
-        sharding_spec = self.helper_layout.sharding_spec
-        gate_w = distribute_tensor(gate_w, device_mesh, sharding_spec)
-        up_w = distribute_tensor(up_w, device_mesh, sharding_spec)
+                input_param = nn.Parameter(
+                    gate_up_w
+                )  # NOTE gate_up_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
 
-        gate_up_w = torch.stack([gate_w.T, up_w.T], dim=0)
+                key = "gate_up_weight"
+                param = local_state.get(key, None)
 
-        input_param = nn.Parameter(
-            gate_up_w
-        )  # NOTE gate_up_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
-        param = local_state[key]
+                try:
+                    with torch.no_grad():
+                        param.copy_(input_param)
+                except Exception as ex:
+                    error_msgs.append(
+                        'While copying the parameter named "{}", '
+                        "whose dimensions in the model are {} and "
+                        "whose dimensions in the checkpoint are {}, "
+                        "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
+                    )
 
-        try:
-            with torch.no_grad():
-                param.copy_(input_param)
-        except Exception as ex:
-            error_msgs.append(
-                'While copying the parameter named "{}", '
-                "whose dimensions in the model are {} and "
-                "whose dimensions in the checkpoint are {}, "
-                "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
-            )
+                del self.gate_up_dict
 
-        strict = False  # to avoid unexpected_keys
+            strict = False  # to avoid unexpected_keys
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
@@ -402,6 +395,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         attn_vproj_w: torch.Tensor = None,
         attn_oproj: ParallelModule = None,
         process_group: ProcessGroup = None,
+        model_shard_infer_config: ModelShardInferenceConfig = None,
         num_heads: int = None,
         hidden_size: int = None,
         num_key_value_heads: int = None,
@@ -433,13 +427,24 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         self.rope_theta = config.rope_theta
         self.is_causal = True
 
+        self.attention_backend = get_attention_backend(model_shard_infer_config)
+        self.pre_attention_backend = get_pre_attention_backend(model_shard_infer_config)
+
         if self.num_heads == self.num_key_value_heads:
             qkv_weight_list = [attn_qproj_w.transpose(0, 1), attn_kproj_w.transpose(0, 1), attn_vproj_w.transpose(0, 1)]
             self.qkv_weight = nn.Parameter(torch.stack(qkv_weight_list, dim=0))
             self.helper_layout = (
                 attn_qproj_w.dist_layout
             )  # NOTE this is a hack for the right load/shard of qkv_weight(used in _load_from_state_dict)
+            self.qkv_dict = {
+                "q_proj.weight": None,
+                "k_proj.weight": None,
+                "v_proj.weight": None,
+            }  # used and delattr in load/shard of qkv weight
         else:
+            self.helper_layout = (
+                attn_qproj_w.dist_layout
+            )  # NOTE this is a hack for the right load/shard of qkv_weight(used in _load_from_state_dict)
             self.q_proj_weight = nn.Parameter(attn_qproj_w.transpose(0, 1).contiguous())
             self.k_proj_weight = nn.Parameter(attn_kproj_w.transpose(0, 1).contiguous())
             self.v_proj_weight = nn.Parameter(attn_vproj_w.transpose(0, 1).contiguous())
@@ -462,6 +467,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
         attn_vproj_w = module.v_proj.weight
         assert is_distributed_tensor(attn_qproj_w), "attn_qproj_w must be dist tensor"
         attn_oproj = module.o_proj
+        model_shard_infer_config = kwargs.get("model_shard_infer_config", None)
 
         attn_layer = NopadLlamaAttention(
             config=config,
@@ -471,6 +477,7 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
             attn_vproj_w=attn_vproj_w,
             attn_oproj=attn_oproj,
             process_group=process_group,
+            model_shard_infer_config=model_shard_infer_config,
             num_heads=module.num_heads,
             hidden_size=module.hidden_size,
             num_key_value_heads=module.num_key_value_heads,
@@ -533,111 +540,50 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
 
         block_size = k_cache.size(-2)
 
-        if is_prompts:
-            if not is_verifier and use_cuda_kernel and query_states.dtype != torch.float32 and use_flash_attn2:
-                # flash attn 2 currently only supports FP16/BF16.
-                inference_ops.rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1], high_precision)
-                inference_ops.context_kv_cache_memcpy(
-                    key_states, value_states, k_cache, v_cache, sequence_lengths, cu_seqlens, block_tables, kv_seq_len
-                )
+        attn_metadata = AttentionMetaData(
+            query_states=query_states,
+            key_states=key_states,
+            value_states=value_states,
+            k_cache=k_cache,
+            v_cache=v_cache,
+            block_tables=block_tables,
+            block_size=block_size,
+            kv_seq_len=kv_seq_len,
+            sequence_lengths=sequence_lengths,
+            sm_scale=sm_scale,
+            alibi_slopes=None,
+            cu_seqlens=cu_seqlens,
+            output_tensor=output_tensor,
+            use_spec_dec=is_verifier,
+            use_alibi_attn=False,
+        )
 
-                attn_output = flash_attn_varlen_func(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cu_seqlens_q=cu_seqlens,
-                    cu_seqlens_k=cu_seqlens,
-                    max_seqlen_q=kv_seq_len,
-                    max_seqlen_k=kv_seq_len,
-                    dropout_p=0.0,
-                    softmax_scale=sm_scale,
-                    causal=True,
-                )
-                attn_output = attn_output.view(token_nums, -1)
-            else:
-                rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                attn_output = context_attention_unpadded(
-                    q=query_states,
-                    k=key_states,
-                    v=value_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    context_lengths=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    output=output_tensor,
-                    max_seq_len=kv_seq_len,
-                    sm_scale=sm_scale,
-                    use_new_kcache_layout=use_cuda_kernel,
-                )
-        else:
+        if is_prompts:  # prefilling stage
+            self.pre_attention_backend.prefill(
+                attn_metadata,
+                cos=cos_sin[0],
+                sin=cos_sin[1],
+                high_precision=high_precision,
+            )
+            attn_output = self.attention_backend.prefill(
+                attn_metadata,
+                token_nums=token_nums,
+            )
+        else:  # decoding stage
             q_len = tokens_to_verify + 1 if is_verifier else 1
 
-            if use_cuda_kernel:
-                inference_ops.rotary_embedding_and_cache_copy(
-                    query_states,
-                    key_states,
-                    value_states,
-                    cos_sin[0],
-                    cos_sin[1],
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    high_precision,
-                )
-                inference_ops.flash_decoding_attention(
-                    output_tensor,
-                    query_states,
-                    k_cache,
-                    v_cache,
-                    sequence_lengths,
-                    block_tables,
-                    block_size,
-                    kv_seq_len,
-                    fd_inter_tensor.mid_output,
-                    fd_inter_tensor.exp_sums,
-                    fd_inter_tensor.max_logits,
-                    None,
-                    sm_scale,
-                )
-                attn_output = output_tensor
-            else:
-                if is_verifier:
-                    rotary_embedding(query_states, key_states, cos_sin[0], cos_sin[1])
-                    copy_k_to_blocked_cache(
-                        key_states, k_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
-                    )
-                    copy_k_to_blocked_cache(
-                        value_states, v_cache, kv_lengths=sequence_lengths, block_tables=block_tables, n=q_len
-                    )
-                else:
-                    decoding_fused_rotary_embedding(
-                        query_states,
-                        key_states,
-                        value_states,
-                        cos_sin[0],
-                        cos_sin[1],
-                        k_cache,
-                        v_cache,
-                        block_tables,
-                        sequence_lengths,
-                    )
-                attn_output = flash_decoding_attention(
-                    q=query_states,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    kv_seq_len=sequence_lengths,
-                    block_tables=block_tables,
-                    block_size=block_size,
-                    max_seq_len_in_batch=kv_seq_len,
-                    output=output_tensor,
-                    mid_output=fd_inter_tensor.mid_output,
-                    mid_output_lse=fd_inter_tensor.mid_output_lse,
-                    sm_scale=sm_scale,
-                    kv_group_num=self.num_key_value_groups,
-                    q_len=q_len,
-                )
+            self.pre_attention_backend.decode(
+                attn_metadata,
+                cos=cos_sin[0],
+                sin=cos_sin[1],
+                q_len=q_len,
+            )
+            attn_output = self.attention_backend.decode(
+                attn_metadata,
+                fd_inter_tensor=fd_inter_tensor,
+                num_key_value_groups=self.num_key_value_groups,
+                q_len=q_len,
+            )
 
         attn_output = attn_output.view(-1, self.hidden_size)
         attn_output = self.o_proj(attn_output)
@@ -646,49 +592,83 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
     def _load_from_state_dict(
         self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
     ):
-        if self.num_heads == self.num_key_value_heads:
+        for hook in self._load_state_dict_pre_hooks.values():
+            hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
+
+        persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
+        local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
+        local_state = {k: v for k, v in local_name_params if v is not None}
+
+        device_mesh = self.helper_layout.device_mesh
+        sharding_spec = self.helper_layout.sharding_spec
+
+        if self.num_heads == self.num_key_value_heads and hasattr(self, "qkv_dict"):
             # NOTE This is a hack to ensure we could load the right weight from LlamaAttention checkpoint due to the use of torch.stack(q_weight, k_weight, v_weight)
-            for hook in self._load_state_dict_pre_hooks.values():
-                hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
-
-            persistent_buffers = {k: v for k, v in self._buffers.items() if k not in self._non_persistent_buffers_set}
-            local_name_params = itertools.chain(self._parameters.items(), persistent_buffers.items())
-            local_state = {k: v for k, v in local_name_params if v is not None}
-
             key = "qkv_weight"
-            k1 = "q_proj.weight"
-            k2 = "k_proj.weight"
-            k3 = "v_proj.weight"
-            q_w = state_dict[prefix + k1]
-            k_w = state_dict[prefix + k2]
-            v_w = state_dict[prefix + k3]
 
-            device_mesh = self.helper_layout.device_mesh
-            sharding_spec = self.helper_layout.sharding_spec
-            q_w = distribute_tensor(q_w, device_mesh, sharding_spec)
-            k_w = distribute_tensor(k_w, device_mesh, sharding_spec)
-            v_w = distribute_tensor(v_w, device_mesh, sharding_spec)
+            # NOTE(@lry89757) We will load the sharded checkpoint file according to the weight map from *.index.json
+            # Here we need the weight of q,k,v to stack the weights of q,k,v into one qkv weight.
+            # Unfortunately, it is highly like that all weights of q,k,v are not in the same sharded checkpoint file(like meta-llama/llama3-70B)
+            # so here we will stack them when we really collect all the three weights.
+            for weight_name in self.qkv_dict:
+                prefix_weight_name = prefix + weight_name
+                if prefix_weight_name in state_dict.keys():
+                    w = distribute_tensor(state_dict[prefix_weight_name], device_mesh, sharding_spec)
+                    self.qkv_dict[weight_name] = w.T
 
-            qkv_w = torch.stack([q_w.T, k_w.T, v_w.T], dim=0)
+            if None not in self.qkv_dict.values():
+                # we've got all the weights of q, k, v
+                qkv_w = torch.stack(list(self.qkv_dict.values()), dim=0)
 
-            input_param = nn.Parameter(
-                qkv_w
-            )  # NOTE qkv_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
+                input_param = nn.Parameter(
+                    qkv_w
+                )  # NOTE qkv_weight doesn't have to be a distensor, Like input_param = sharded_tensor_to_param(input_param)
 
-            param = local_state[key]
+                param = local_state[key]
 
-            try:
-                with torch.no_grad():
-                    param.copy_(input_param)
-            except Exception as ex:
-                error_msgs.append(
-                    'While copying the parameter named "{}", '
-                    "whose dimensions in the model are {} and "
-                    "whose dimensions in the checkpoint are {}, "
-                    "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
-                )
+                try:
+                    with torch.no_grad():
+                        param.copy_(input_param)
+                except Exception as ex:
+                    error_msgs.append(
+                        'While copying the parameter named "{}", '
+                        "whose dimensions in the model are {} and "
+                        "whose dimensions in the checkpoint are {}, "
+                        "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
+                    )
 
-            strict = False  # to avoid unexpected_keys
+                del self.qkv_dict
+
+        else:
+
+            def _load(origin_weight_name="q_proj.weight", local_weight_name="q_proj_weight"):
+                if prefix + origin_weight_name in state_dict.keys():
+                    attn_qproj_w = state_dict[prefix + origin_weight_name]
+                    w = distribute_tensor(attn_qproj_w, device_mesh, sharding_spec)
+                    input_param = nn.Parameter(w.T)
+                    param = local_state[local_weight_name]
+                    try:
+                        with torch.no_grad():
+                            param.copy_(input_param)
+                    except Exception as ex:
+                        key = local_weight_name
+                        error_msgs.append(
+                            'While copying the parameter named "{}", '
+                            "whose dimensions in the model are {} and "
+                            "whose dimensions in the checkpoint are {}, "
+                            "an exception occurred : {}.".format(key, param.size(), input_param.size(), ex.args)
+                        )
+
+            if prefix + "q_proj.weight" in state_dict.keys():
+                _load(origin_weight_name="q_proj.weight", local_weight_name="q_proj_weight")
+
+            if prefix + "k_proj.weight" in state_dict.keys():
+                _load(origin_weight_name="k_proj.weight", local_weight_name="k_proj_weight")
+
+            if prefix + "v_proj.weight" in state_dict.keys():
+                _load(origin_weight_name="v_proj.weight", local_weight_name="v_proj_weight")
+
+        strict = False  # to avoid unexpected_keys
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )

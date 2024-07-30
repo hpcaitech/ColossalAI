@@ -4,10 +4,11 @@ on:
   pull_request:
     types: [synchronize, opened, reopened]
     paths:
-      - "applications/Chat/coati/**"
-      - "applications/Chat/requirements.txt"
-      - "applications/Chat/setup.py"
-      - "applications/Chat/examples/**"
+      - "applications/ColossalChat/coati/**"
+      - "applications/ColossalChat/requirements.txt"
+      - "applications/ColossalChat/setup.py"
+      - "applications/ColossalChat/examples/**"
+      - "applications/ColossalChat/tests/**"
 
 jobs:
   tests:
@@ -41,7 +42,7 @@ jobs:
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.34.1
+          pip install transformers==4.36.2
 
       - name: Execute Examples
         run: |
@@ -51,6 +52,7 @@ jobs:
           mkdir sft_data
           mkdir prompt_data
           mkdir preference_data
+          mkdir kto_data
           ./tests/test_data_preparation.sh
           ./tests/test_train.sh
         env:
@@ -60,3 +62,4 @@ jobs:
           SFT_DATASET: ./sft_data
           PROMPT_DATASET: ./prompt_data
           PREFERENCE_DATASET: ./preference_data
+          KTO_DATASET: ./kto_data

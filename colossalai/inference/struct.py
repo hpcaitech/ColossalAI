@@ -2,6 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Any, List
 
+from colossalai.inference.config import DiffusionGenerationConfig
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger(__name__)
@@ -44,6 +45,17 @@ class RequestStatus(enum.Enum):
     @staticmethod
     def is_waiting(status: "RequestStatus") -> bool:
         return status == RequestStatus.WAITING
+
+
+@dataclass
+class DiffusionSequence:
+    """
+    parameters for diffusion
+    """
+
+    request_id: int
+    prompt: str
+    generation_config: DiffusionGenerationConfig
 
 
 @dataclass

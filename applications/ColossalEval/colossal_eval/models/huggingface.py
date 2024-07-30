@@ -77,7 +77,9 @@ class HuggingFaceModel(BaseModel):
             self.indices_for_choices[0].append(
                 self.tokenizer(f"Answer: {choice}", add_special_tokens=False).input_ids[-1]
             )
-            self.indices_for_choices[1].append(self.tokenizer(f"答案：{choice}", add_special_tokens=False).input_ids[-1])
+            self.indices_for_choices[1].append(
+                self.tokenizer(f"答案：{choice}", add_special_tokens=False).input_ids[-1]
+            )
 
     def _load_tokenizer(self, path: str, tokenizer_path: Optional[str], tokenizer_kwargs: dict):
         """

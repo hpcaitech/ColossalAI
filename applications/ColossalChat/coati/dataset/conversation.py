@@ -17,6 +17,8 @@ class Conversation:
     system_message: str
     chat_template: str
     stop_ids: List[int]
+    end_of_assistant: str
+    roles = ["user", "assistant"]
 
     @classmethod
     def from_config(cls, tokenizer: PreTrainedTokenizer, config: Dict):
@@ -24,7 +26,9 @@ class Conversation:
         Setup the conversation template from config
         """
         tokenizer.chat_template = config["chat_template"]
-        conv = cls(tokenizer, config["system_message"], config["chat_template"], config["stop_ids"])
+        conv = cls(
+            tokenizer, config["system_message"], config["chat_template"], config["stop_ids"], config["end_of_assistant"]
+        )
         conv.clear()
         return conv
 
@@ -82,7 +86,7 @@ class Conversation:
         Raises:
             AssertionError: If the role is not 'user' or 'assistant'.
         """
-        assert role in ["user", "assistant"]
+        assert role in self.roles
         self.messages.append({"role": role, "content": message})
 
     def copy(self):
@@ -109,6 +113,8 @@ def setup_conversation_template(
     """
     if any([s not in chat_template_config.keys() for s in Conversation.get_conversation_template_keys()]):
         # Try to automatically set up conversation template, if fail, it throws an error that you need to do it manually
+        if "end_of_assistant" not in chat_template_config:
+            raise ValueError("Please set the end of assistant token.")
         if "system_message" not in chat_template_config:
             logger.warning("No system message is provided, will not use system message.")
         if "chat_template" not in chat_template_config:

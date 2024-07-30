@@ -102,6 +102,7 @@ class SFTTrainer(SLTrainer):
             batch_size = batch["input_ids"].size(0)
             outputs = self.model(batch["input_ids"], attention_mask=batch["attention_mask"], labels=batch["labels"])
             loss = outputs.loss
+
             self.booster.backward(loss=loss, optimizer=self.optimizer)
 
             loss_mean = all_reduce_mean(tensor=loss)
@@ -113,6 +114,7 @@ class SFTTrainer(SLTrainer):
                 self.optimizer.zero_grad()
                 self.scheduler.step()
 
+                step_bar.set_postfix({"train/loss": self.accumulative_meter.get("loss")})
                 if self.writer:
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
                     self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
@@ -165,6 +167,7 @@ class SFTTrainer(SLTrainer):
             for tag in ["loss"]:
                 msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
             self.coordinator.print_on_master(msg)
+            os.makedirs(self.save_dir, exist_ok=True)
             with open(os.path.join(self.save_dir, f"eval_result_epoch{epoch}.txt"), "w") as f:
                 f.write(msg)
             step_bar.close()

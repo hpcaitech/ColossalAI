@@ -11,7 +11,6 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.bert import (
     BertPipelineForwards,
     bert_sequence_parallel_forward_fn,
-    get_bert_flash_attention_forward,
     get_jit_fused_bert_intermediate_forward,
     get_jit_fused_bert_output_forward,
     get_jit_fused_bert_self_output_forward,
@@ -49,7 +48,6 @@ class BertPolicy(Policy):
             BertLayer,
             BertModel,
             BertOutput,
-            BertSelfAttention,
             BertSelfOutput,
         )
 
@@ -67,7 +65,7 @@ class BertPolicy(Policy):
         else:
             norm_cls = col_nn.LayerNorm
 
-        sp_mode = self.shard_config.sequence_parallelism_mode if self.shard_config.enable_sequence_parallelism else None
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
         assert sp_mode != "all_to_all", "all_to_all sequence parallelism is not supported for Bert"
         if sp_mode == "ring":
             warnings.warn(
@@ -217,16 +215,6 @@ class BertPolicy(Policy):
             policy=policy,
             target_key=BertEmbeddings,
         )
-
-        # use flash attention
-        if self.shard_config.enable_flash_attention:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_bert_flash_attention_forward(),
-                },
-                policy=policy,
-                target_key=BertSelfAttention,
-            )
 
         # use jit operator
         if self.shard_config.enable_jit_fused:

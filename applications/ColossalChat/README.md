@@ -23,6 +23,10 @@
   - [Open QA](#open-qa)
   - [Limitation for LLaMA-finetuned models](#limitation)
   - [Limitation of dataset](#limitation)
+- [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
+- [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
+- [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
+- [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
@@ -262,9 +266,8 @@ experience buffer size
 = train_batch_size * accumulation_steps * num_tp_group
 ```
 
-## Alternative Option For RLHF: Direct Preference Optimization
-
-For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
+## Alternative Option For RLHF: Direct Preference Optimization (DPO)
+For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in this [paper](https://arxiv.org/abs/2305.18290), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO. Read this [README](./examples/README.md) for more information.
 
 ### DPO Training Stage1 - Supervised Instructs Tuning
 
@@ -276,6 +279,15 @@ For DPO training, you only need the preference dataset. Please follow the instru
 
 #### Step 2: Training
 You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [example guideline](./examples/README.md).
+
+## Alternative Option For RLHF: Simple Preference Optimization (SimPO)
+Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2405.14734) is similar to DPO but it abandons the use of the reference model, which makes the training more efficient. It also adds a reward shaping term called target reward margin to enhance training stability. It also use length normalization to better align with the inference process. Read this [README](./examples/README.md) for more information.
+
+## Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
+Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pdf/2403.07691) is a reference model free alignment method that use a mixture of SFT loss and a reinforcement leanring loss calculated based on odds-ratio-based implicit reward to makes the training more efficient and stable. Read this [README](./examples/README.md) for more information.
+
+## Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
 
 ### Inference Quantization and Serving - After Training
 
@@ -522,7 +534,7 @@ Coati is developed by ColossalAI Team:
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored version with updated acceleration framework, LoRA, DPO and PPO.
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
@@ -571,6 +583,36 @@ We also appreciate the valuable suggestions provided by [Jian Hu](https://github
   publisher = {GitHub},
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/XueFuzhao/InstructionWild}},
+}
+
+@misc{meng2024simposimplepreferenceoptimization,
+      title={SimPO: Simple Preference Optimization with a Reference-Free Reward},
+      author={Yu Meng and Mengzhou Xia and Danqi Chen},
+      year={2024},
+      eprint={2405.14734},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2405.14734},
+}
+
+@misc{rafailov2023directpreferenceoptimizationlanguage,
+      title={Direct Preference Optimization: Your Language Model is Secretly a Reward Model},
+      author={Rafael Rafailov and Archit Sharma and Eric Mitchell and Stefano Ermon and Christopher D. Manning and Chelsea Finn},
+      year={2023},
+      eprint={2305.18290},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2305.18290},
+}
+
+@misc{hong2024orpomonolithicpreferenceoptimization,
+      title={ORPO: Monolithic Preference Optimization without Reference Model},
+      author={Jiwoo Hong and Noah Lee and James Thorne},
+      year={2024},
+      eprint={2403.07691},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2403.07691},
 }
 ```
 

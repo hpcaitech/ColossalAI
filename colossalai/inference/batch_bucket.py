@@ -247,16 +247,16 @@ class BatchBucket:
                 self._sequences_dict[seq.request_id] = seq
                 self._sequences_indexes[seq.request_id] = self._current_batch_size + i
             # TODO external (rename): modify Sequence.sentence_len to seq_len
-            self._sequence_lengths[
-                self._current_batch_size : self._current_batch_size + num_seqs_to_add
-            ] = torch.tensor([seq.sentence_len for seq in seqs[:num_seqs_to_add]], dtype=torch.int32)
+            self._sequence_lengths[self._current_batch_size : self._current_batch_size + num_seqs_to_add] = (
+                torch.tensor([seq.sentence_len for seq in seqs[:num_seqs_to_add]], dtype=torch.int32)
+            )
             # NOTE block tables to be updated by kvcache manager
             block_tables = self._block_tables[self._current_batch_size : self._current_batch_size + num_seqs_to_add]
             if alloc_block_tables is not None:
                 # copy block ids from provided block tables
-                self._block_tables[
-                    self._current_batch_size : self._current_batch_size + num_seqs_to_add
-                ] = alloc_block_tables
+                self._block_tables[self._current_batch_size : self._current_batch_size + num_seqs_to_add] = (
+                    alloc_block_tables
+                )
             elif alloc_block_tables_fn:
                 alloc_block_tables_fn(
                     block_tables,

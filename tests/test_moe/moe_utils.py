@@ -1,48 +1,37 @@
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.distributed import ProcessGroup
 from torch.testing import assert_close
 
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
 from colossalai.legacy.engine.gradient_handler._base_gradient_handler import BaseGradientHandler
 from colossalai.legacy.engine.gradient_handler.utils import bucket_allreduce
 from colossalai.legacy.registry import GRADIENT_HANDLER
-from colossalai.moe import SparseMLP
 from colossalai.moe.manager import MOE_MANAGER
 from colossalai.moe.utils import get_moe_epsize_param_dict
-from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size
+
+# from colossalai.shardformer.layer.moe import SparseMLP
+from colossalai.tensor.moe_tensor.api import get_ep_group, get_ep_size, set_moe_tensor_ep_group
 
 
 def delete_moe_info(model):
     for _, param in model.named_parameters():
-        if hasattr(param, "moe_info"):
-            delattr(param, "moe_info")
+        if hasattr(param, "ep_group"):
+            delattr(param, "ep_group")
 
 
 class MoeModel(nn.Module):
-    def __init__(self, enable_load_balance: bool = False):
-        class TestSubModule(nn.Module):
-            def __init__(self):
-                super().__init__()
-                self.moe = SparseMLP(
-                    num_experts=8, hidden_size=16, intermediate_size=32, enable_load_balance=enable_load_balance
-                )
-                self.proj = nn.Linear(16, 4)
-
-            def forward(self, x):
-                x = self.moe(x)
-                x = self.proj(x)
-                return x
-
+    def __init__(self, ep_group: ProcessGroup = None):
         super().__init__()
-        self.test_embed = nn.Linear(4, 16)
-        self.test_transform = TestSubModule()
+        self.test_embed = nn.Linear(4, 16, bias=False)
+        self.w1 = torch.nn.Parameter(torch.randn(16, 8))
+        if ep_group:
+            set_moe_tensor_ep_group(self.w1, ep_group)
 
     def forward(self, x):
-        MOE_MANAGER.reset_loss()
-
         x = self.test_embed(x)
-        x = self.test_transform(x)
+        x = torch.matmul(x, self.w1)
 
         return x
 
@@ -116,7 +105,7 @@ def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False)
     return y
 
 
-def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_flag: bool = False) -> None:
+def sync_local_from_ep(local_model, ep_model, assert_grad_flag: bool = False) -> None:
     """Sync the parameters of tp model from ep model
 
     Args:
@@ -126,7 +115,6 @@ def sync_local_from_ep(local_model: SparseMLP, ep_model: SparseMLP, assert_grad_
     for (local_name, local_param), (ep_name, ep_param) in zip(
         local_model.named_parameters(), ep_model.named_parameters()
     ):
-        assert local_name in ep_name, print(f"{local_name} != {ep_name}")
         if "experts" not in local_name:
             if assert_grad_flag:
                 assert torch.allclose(local_param, ep_param), f"local_param: {local_param}, ep_param: {ep_param}"

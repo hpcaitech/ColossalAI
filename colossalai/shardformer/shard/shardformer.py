@@ -1,4 +1,3 @@
-import os
 from typing import Dict, List, Tuple
 
 import torch.distributed as dist
@@ -10,9 +9,6 @@ from colossalai.cluster import DistCoordinator
 from ..policies.base_policy import Policy
 from .shard_config import ShardConfig
 from .sharder import ModelSharder
-
-# set CUDA_DEVICE_MAX_CONNECTIONS=1 to ensure that when communication and computation overlap, the order of core scheduling is correct
-os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
 
 class ShardFormer:

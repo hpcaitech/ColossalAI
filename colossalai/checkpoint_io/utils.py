@@ -242,6 +242,7 @@ def save_state_dict_shards(
     shard_filenames = []
     for idx, shard_pair in enumerate(sharded_state_dict):
         shard, current_size = shard_pair
+        # Just loop over the sharder and gather to other ranks if not master
         if not is_master:
             del shard
             continue
@@ -314,7 +315,7 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
         use_safetensors (bool): whether to use safetensors to save the checkpoint.
     """
     # Move all tensors in the state_dict to CPU before saving to avoid serialization issues
-    state_dict_cpu = tree_map(lambda x: x.cpu() if torch.is_tensor(x) else x, state_dict)
+    state_dict_cpu = tree_map(lambda x: x.data.cpu() if torch.is_tensor(x) else x, state_dict)
 
     if use_safetensors:
         assert is_safetensors_available(), "safetensors is not available."

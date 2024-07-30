@@ -5,6 +5,7 @@ from typing import List
 
 import torch
 
+from colossalai.accelerator import get_accelerator
 from colossalai.tensor.param_op_hook import ColoParamOpHook
 from colossalai.utils import is_ddp_ignored
 from colossalai.zero.gemini import TensorState
@@ -54,10 +55,20 @@ class GeminiZeROHook(ColoParamOpHook):
         )
 
         # prefetch
-        for chunk in chunks_fetch_async:
-            maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
-            if maybe_work is not None:
-                self._gemini_manager.add_work(chunk, maybe_work)
+        if self._gemini_manager.chunk_manager._prefetch_stream is not None:
+            # This is when prefetch happens the first time and there is no dist.Work to sync,
+            # there is possibility that the optimizer haven't finish computation on default stream,
+            # thus we might prefetch outdated chunks there.
+            #
+            # Other than that, self._gemini_manager.wait_chunks will have synced with default stream
+            # by calling dist.Work.wait() and this line makes no diff.
+            self._gemini_manager.chunk_manager._prefetch_stream.wait_stream(torch.cuda.current_stream())
+
+        with get_accelerator().stream(self._gemini_manager.chunk_manager._prefetch_stream):
+            for chunk in chunks_fetch_async:
+                maybe_work = self._chunk_manager.access_chunk(chunk, async_access=True)
+                if maybe_work is not None:
+                    self._gemini_manager.add_work(chunk, maybe_work)
 
         # record cuda model data of the current OP, including memory for prefetched chunks
         self._gemini_manager.record_model_data_volume()
