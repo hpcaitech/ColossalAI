@@ -11,7 +11,11 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 @parameterize(
     "shape",
     [
-        # (3, 7), (2, 1), (1, 2), (2, 2), (4, 2),
+        (3, 7),
+        (2, 1),
+        (1, 2),
+        (2, 2),
+        (4, 2),
         (5,),
         (4,),
         (2,),
