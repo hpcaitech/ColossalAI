@@ -110,7 +110,6 @@ def main(args):
 
     pg_mesh = ProcessGroupMesh(dp_size, args.tp_size)
     tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
-    pg_mesh.get_group_along_axis(DP_AXIS)
 
     coordinates = pg_mesh._coord
     dp_rank = coordinates[DP_AXIS]
