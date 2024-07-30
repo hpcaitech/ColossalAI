@@ -110,13 +110,19 @@ def main(args):
 
     pg_mesh = ProcessGroupMesh(dp_size, args.tp_size)
     tp_group = pg_mesh.get_group_along_axis(TP_AXIS)
+    pg_mesh.get_group_along_axis(DP_AXIS)
 
     coordinates = pg_mesh._coord
     dp_rank = coordinates[DP_AXIS]
     tp_rank = coordinates[TP_AXIS]
 
     shard_config = (
-        ShardConfig(tensor_parallel_process_group=tp_group, enable_tensor_parallelism=args.tp_size > 1)
+        ShardConfig(
+            tensor_parallel_process_group=tp_group,
+            enable_tensor_parallelism=args.tp_size > 1,
+            parallel_output=False,
+            enable_all_optimization=True,
+        )
         if args.tp_size > 1
         else None
     )
@@ -218,7 +224,12 @@ def main(args):
                     else:
                         dist_dataset = DistributedDataset(prev_questions)
 
-                    sampler = DistributedSampler(dist_dataset, num_replicas=world_size, rank=rank, shuffle=False)
+                    sampler = DistributedSampler(
+                        dist_dataset,
+                        num_replicas=pg_mesh.size(DP_AXIS),
+                        rank=pg_mesh.coordinate(DP_AXIS),
+                        shuffle=False,
+                    )
                     questions_loader = DataLoader(
                         dist_dataset,
                         batch_size=batch_size,
