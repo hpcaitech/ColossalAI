@@ -55,13 +55,6 @@ class rpcWorkerService(rpyc.Service):
         colossalai.launch(rank=rank, world_size=world_size, port=master_port, host=master_address)
         self.rank = rank
 
-        # profiling only, remove later
-        self.timing = False
-
-        self.t_prepare = Timer("[Timer] prepare the data 1") if self.timing else nullcontext()
-        self.t_exe = Timer("[Timer] execute the model forward") if self.timing else nullcontext()
-        self.t_sampler = Timer("[Timer] sampler time") if self.timing else nullcontext()
-
         self.profiling = False
         self.profiler = (
             torch.profiler.profile(
@@ -133,12 +126,11 @@ class rpcWorkerService(rpyc.Service):
     ):
         with self.profiler:
             # prepare the data for model forward
-            with self.t_prepare:
-                input_token_ids, input_meta_data, generation_config = self._broadcast_param_to_all_workers(
-                    input_token_ids_param=input_token_ids_param,
-                    input_meta_data_param=input_meta_data_param,
-                    generation_config_param=generation_config_param,
-                )
+            input_token_ids, input_meta_data, generation_config = self._broadcast_param_to_all_workers(
+                input_token_ids_param=input_token_ids_param,
+                input_meta_data_param=input_meta_data_param,
+                generation_config_param=generation_config_param,
+            )
 
             if input_meta_data.is_prompts:
                 n_tokens = input_meta_data.sequence_lengths.sum().item()
@@ -146,14 +138,13 @@ class rpcWorkerService(rpyc.Service):
                 n_tokens = input_meta_data.batch_size
 
             # execute the model
-            with self.t_exe:
-                logits = self.model(
-                    input_token_ids,
-                    self.output_tensor[:n_tokens],
-                    input_meta_data,
-                    self.k_cache,
-                    self.v_cache,
-                )
+            logits = self.model(
+                input_token_ids,
+                self.output_tensor[:n_tokens],
+                input_meta_data,
+                self.k_cache,
+                self.v_cache,
+            )
 
             if self.profiling:
                 self.profiler.step()
@@ -161,16 +152,15 @@ class rpcWorkerService(rpyc.Service):
         self.record()
 
         if self.rank == 0:
-            with self.t_sampler:
-                # sampler
-                if self.inference_config.pad_input:
-                    logits = logits[:, -1, :]
-                next_tokens = search_tokens(
-                    generation_config,
-                    logits,
-                    input_meta_data.is_prompts,
-                    input_meta_data.batch_token_ids,
-                )
+            # sampler
+            if self.inference_config.pad_input:
+                logits = logits[:, -1, :]
+            next_tokens = search_tokens(
+                generation_config,
+                logits,
+                input_meta_data.is_prompts,
+                input_meta_data.batch_token_ids,
+            )
 
             # return the tokens generated to scheduler
             # only rank 0 need to pass the data back
@@ -431,14 +421,6 @@ class rpcWorkerService(rpyc.Service):
         logger.info(f"Worker rank {dist_rank}: Sum after all_reduce: {data.item()}")
 
         return data.item()
-
-    def __del__(self):
-        """
-        profiling only, remove later
-        """
-        del self.t_prepare
-        del self.t_exe
-        del self.t_sampler
 
     def record(self):
         if self.profiling:
