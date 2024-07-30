@@ -329,6 +329,7 @@ class GeminiPlugin(DPPluginBase):
         chunk_init_device: Optional[torch.device] = None,
         placement_policy: str = "static",
         enable_gradient_accumulation: bool = False,
+        max_prefetch: int = 0,
         shard_param_frac: float = 1.0,  # only for static placement
         offload_optim_frac: float = 0.0,  # only for static placement
         offload_param_frac: float = 0.0,  # only for static placement
@@ -361,12 +362,18 @@ class GeminiPlugin(DPPluginBase):
         enable_sequence_parallelism: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_overlap: bool = False,
+        enable_async_reduce: bool = True,
         verbose: bool = False,
     ) -> None:
         super().__init__()
         assert precision in SUPPORTED_PRECISION, f"precision {precision} is not supported"
         if get_accelerator().name == "npu":
             assert placement_policy == "static", "NPU only supports static placement policy"
+        if placement_policy == "auto" and enable_async_reduce:
+            logging.warning(
+                f"enable_async_reduce requires pin_memory to achieve best performance, which is not implicitly set."
+            )
+            pin_memory = True
         self.gemini_config = dict(
             chunk_config_dict=chunk_config_dict,
             chunk_init_device=(chunk_init_device or get_accelerator().get_current_device()),
@@ -386,6 +393,8 @@ class GeminiPlugin(DPPluginBase):
             memstats=memstats,
             mixed_precision=PRECISION_STR_TO_DTYPE[precision],
             master_weights=master_weights,
+            max_prefetch=max_prefetch,
+            enable_async_reduce=enable_async_reduce,
         )
         self.zero_optim_config = dict(
             gpu_margin_mem_ratio=gpu_margin_mem_ratio,

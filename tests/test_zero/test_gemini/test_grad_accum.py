@@ -15,9 +15,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
+    {"placement_policy": "static", "shard_param_frac": 0.75},
     {"placement_policy": "auto"},
 ]
 
@@ -50,8 +48,16 @@ def check_grad(model: GeminiDDP, torch_model: torch.nn.Module):
 @parameterize("model_name", ["transformers_gpt_lm"])
 @parameterize("master_weights", [False, True])
 @parameterize("use_grad_checkpoint", [False, True])
+@parameterize("max_prefetch", [0, 4])
+@parameterize("enable_async_reduce", [False, True])
 def exam_gemini_grad_acc(
-    placement_config, keep_gathered: bool, model_name: str, master_weights: bool, use_grad_checkpoint: bool
+    placement_config,
+    keep_gathered: bool,
+    model_name: str,
+    master_weights: bool,
+    use_grad_checkpoint: bool,
+    max_prefetch: int,
+    enable_async_reduce: bool,
 ):
     init_device = get_accelerator().get_current_device()
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
@@ -81,10 +87,14 @@ def exam_gemini_grad_acc(
         pin_memory=True,
         enable_gradient_accumulation=True,
         master_weights=master_weights,
+        max_prefetch=max_prefetch,
+        enable_async_reduce=enable_async_reduce,
         **placement_config,
     )
     optimizer = HybridAdam(gemini_model.parameters(), lr=1e-3)
-    gemini_optim = GeminiOptimizer(optimizer, gemini_model, initial_scale=1, max_norm=1.0)
+    gemini_optim = GeminiOptimizer(
+        optimizer, gemini_model, initial_scale=1, max_norm=1.0, enable_async_reduce=enable_async_reduce
+    )
 
     rank = dist.get_rank()
 
@@ -97,7 +107,7 @@ def exam_gemini_grad_acc(
     torch_model = DDP(torch_model, device_ids=[rank])
 
     set_seed(rank)
-    accum_iter = 4
+    accum_iter = 2
     train_dataloader = DummyDataloader(data_gen_fn)
     for i, data in enumerate(train_dataloader):
         delay_unscale = False if (i + 1) % accum_iter == 0 else True

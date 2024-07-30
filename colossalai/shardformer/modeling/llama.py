@@ -8,6 +8,10 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.cache_utils import Cache
+from transformers.modeling_attn_mask_utils import (
+    _prepare_4d_causal_attention_mask,
+    _prepare_4d_causal_attention_mask_for_sdpa,
+)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -17,8 +21,6 @@ from transformers.models.llama.modeling_llama import (
     LlamaForCausalLM,
     LlamaForSequenceClassification,
     LlamaModel,
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
     apply_rotary_pos_emb,
     repeat_kv,
 )
@@ -332,6 +334,7 @@ class LlamaPipelineForwards:
                         shift_labels,
                         process_group=shard_config.tensor_parallel_process_group,
                         vocab_size=self.lm_head.out_features,
+                        dtype=self.model.dtype,
                     )
                 else:
                     shift_logits = shift_logits.view(-1, self.config.vocab_size)
@@ -493,7 +496,6 @@ def get_llama_flash_attention_forward(shard_config, sp_mode, sp_group, sp_size):
 
         if sp_mode in ["split_gather", "ring"]:
             q_len *= sp_size
-        assert q_len % 4 == 0, "Flash Attention Error: The sequence length should be a multiple of 4."
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
@@ -768,6 +770,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 shift_labels,
                 process_group=shard_config.tensor_parallel_process_group,
                 vocab_size=self.lm_head.out_features,
+                dtype=self.model.dtype,
             )
 
         if not return_dict:

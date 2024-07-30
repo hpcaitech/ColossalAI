@@ -25,6 +25,7 @@
 </div>
 
 ## Latest News
+* [2024/05] [Large AI Models Inference Speed Doubled, Colossal-Inference Open Source Release](https://hpc-ai.com/blog/colossal-inference)
 * [2024/04] [Open-Sora Unveils Major Upgrade: Embracing Open Source with Single-Shot 16-Second Video Generation and 720p Resolution](https://hpc-ai.com/blog/open-soras-comprehensive-upgrade-unveiled-embracing-16-second-video-generation-and-720p-resolution-in-open-source)
 * [2024/04] [Most cost-effective solutions for inference, fine-tuning and pretraining, tailored to LLaMA3 series](https://hpc-ai.com/blog/most-cost-effective-solutions-for-inference-fine-tuning-and-pretraining-tailored-to-llama3-series)
 * [2024/03] [314 Billion Parameter Grok-1 Inference Accelerated by 3.8x, Efficient and Easy-to-Use PyTorch+HuggingFace version is Here](https://hpc-ai.com/blog/314-billion-parameter-grok-1-inference-accelerated-by-3.8x-efficient-and-easy-to-use-pytorchhuggingface-version-is-here)
@@ -75,11 +76,9 @@
  <li>
    <a href="#Inference">Inference</a>
    <ul>
+     <li><a href="#Colossal-Inference">Colossal-Inference: Large AI  Models Inference Speed Doubled</a></li>
      <li><a href="#Grok-1">Grok-1: 314B model of PyTorch + HuggingFace Inference</a></li>
      <li><a href="#SwiftInfer">SwiftInfer:Breaks the Length Limit of LLM for Multi-Round Conversations with 46% Acceleration</a></li>
-     <li><a href="#GPT-3-Inference">GPT-3</a></li>
-     <li><a href="#OPT-Serving">OPT-175B Online Serving for Text Generation</a></li>
-     <li><a href="#BLOOM-Inference">176B BLOOM</a></li>
    </ul>
  </li>
  <li>
@@ -377,6 +376,19 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 
 
 ## Inference
+### Colossal-Inference
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-1.png" width=1000/>
+</p>
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference/colossal-inference-v1-2.png" width=1000/>
+</p>
+
+ - Large AI models inference speed doubled, compared to the offline inference performance of vLLM in some cases.
+[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/colossalai/inference)
+[[blog]](https://hpc-ai.com/blog/colossal-inference)
+
 ### Grok-1
 <p id="Grok-1" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/examples/images/grok-1-inference.jpg" width=600/>
@@ -389,29 +401,12 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 [[HuggingFace Grok-1 PyTorch model weights]](https://huggingface.co/hpcai-tech/grok-1)
 [[ModelScope Grok-1 PyTorch model weights]](https://www.modelscope.cn/models/colossalai/grok-1-pytorch/summary)
 
+### SwiftInfer
 <p id="SwiftInfer" align="center">
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/SwiftInfer.jpg" width=800/>
 </p>
 
 - [SwiftInfer](https://github.com/hpcaitech/SwiftInfer): Inference performance improved by 46%, open source solution breaks the length limit of LLM for multi-round conversations
-
-<p id="GPT-3-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/inference_GPT-3.jpg" width=800/>
-</p>
-
-- [Energon-AI](https://github.com/hpcaitech/EnergonAI): 50% inference acceleration on the same hardware
-
-<p id="OPT-Serving" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20serving.png" width=600/>
-</p>
-
-- [OPT Serving](https://colossalai.org/docs/advanced_tutorials/opt_service): Try 175-billion-parameter OPT online services
-
-<p id="BLOOM-Inference" align="center">
-<img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/BLOOM%20Inference.PNG" width=800/>
-</p>
-
-- [BLOOM](https://github.com/hpcaitech/EnergonAI/tree/main/examples/bloom): Reduce hardware deployment costs of 176-billion-parameter BLOOM by more than 10 times.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 

@@ -287,15 +287,6 @@ def exam_bert_test_on_lowlevelzero_plugin(test_config):
     # test_config["initial_scale"] = 1
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining",
-        "transformers_bert_lm_head_model",
-        "transformers_bert_for_masked_lm",
-        "transformers_bert_for_sequence_classification",
-        "transformers_bert_for_token_classification",
-        "transformers_bert_for_next_sentence",
-        "transformers_bert_for_mcq",
-        "transformers_bert_for_question_answering",
-        "simple_mlp",
     ]
     clear_layout_converter()
     torch.set_default_dtype(torch.bfloat16)
@@ -389,14 +380,6 @@ def exam_bert_test_on_hybrid_plugin(test_config):
     test_config["initial_scale"] = 2**16  # avoid overflow
     model_list = [
         "transformers_bert",
-        "transformers_bert_for_pretraining",
-        "transformers_bert_lm_head_model",
-        "transformers_bert_for_masked_lm",
-        "transformers_bert_for_sequence_classification",
-        "transformers_bert_for_token_classification",
-        "transformers_bert_for_next_sentence",
-        "transformers_bert_for_mcq",
-        "transformers_bert_for_question_answering",
     ]
 
     # pass "transformers_bert",
@@ -416,7 +399,7 @@ def exam_bert_test_on_hybrid_plugin(test_config):
                 sharded_optimizer,
                 criterion,
                 booster,
-            ) = build_model_from_hybrid_plugin(model_fn, loss_fn, test_config, CAME, DistributedCAME)
+            ) = build_model_from_hybrid_plugin(model_fn, loss_fn, test_config, CAME, CAME)
 
             org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
                 org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster

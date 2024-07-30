@@ -348,6 +348,7 @@ class OPTPipelineForwards:
                         shift_labels,
                         process_group=shard_config.tensor_parallel_process_group,
                         vocab_size=self.lm_head.out_features,
+                        dtype=self.model.decoder.dtype,
                     )
                 else:
                     loss_fct = CrossEntropyLoss()
@@ -988,6 +989,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
                 shift_labels,
                 process_group=shard_config.tensor_parallel_process_group,
                 vocab_size=self.lm_head.out_features,
+                dtype=self.model.decoder.dtype,
             )
 
         if not return_dict:

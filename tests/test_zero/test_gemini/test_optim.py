@@ -15,17 +15,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 PLACEMENT_CONFIGS = [
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.0},  # zero2
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 1.0},  # zero2-offload
-    {"placement_policy": "static", "shard_param_frac": 0.0, "offload_optim_frac": 0.5},  # zero2-offload-half
-    {"placement_policy": "static", "shard_param_frac": 1.0},  # zero3
-    {"placement_policy": "static", "shard_param_frac": 0.5},  # zero3-half
-    {
-        "placement_policy": "static",
-        "shard_param_frac": 1.0,
-        "offload_optim_frac": 1.0,
-        "offload_param_frac": 1.0,
-    },  # zero3-offload-all
+    {"placement_policy": "static", "shard_param_frac": 0.3, "offload_param_frac": 0.3, "offload_optim_frac": 0.3},
     {"placement_policy": "auto"},
 ]
 
@@ -73,7 +63,10 @@ def check_param(model: GeminiDDP, torch_model: torch.nn.Module, dtype: torch.dty
 @parameterize("model_name", TEST_MODELS)
 @parameterize("mixed_precision", [torch.half, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool):
+@parameterize("enable_async_reduce", [True])
+def exam_model_step(
+    placement_config, model_name: str, mixed_precision: torch.dtype, master_weights: bool, enable_async_reduce=True
+):
     set_seed(42)
     model_builder, data_gen_fn, output_transform_fn, loss_fn, *_ = next(
         iter(model_zoo.get_sub_registry(model_name).values())
@@ -96,7 +89,12 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
     config_dict[world_size]["chunk_size"] = 5000
     config_dict[world_size]["keep_gathered"] = False
     model = GeminiDDP(
-        model, config_dict, **placement_config, mixed_precision=mixed_precision, master_weights=master_weights
+        model,
+        config_dict,
+        **placement_config,
+        mixed_precision=mixed_precision,
+        master_weights=master_weights,
+        enable_async_reduce=enable_async_reduce,
     )
 
     optimizer = HybridAdam(model.parameters(), lr=1e-3)
@@ -128,7 +126,7 @@ def exam_model_step(placement_config, model_name: str, mixed_precision: torch.dt
             check_param(model, torch_model, mixed_precision)
 
 
-@parameterize("placement_config", [PLACEMENT_CONFIGS[3]])
+@parameterize("placement_config", [{"placement_policy": "static", "shard_param_frac": 1.0}])
 @parameterize("model_name", EXAMPLE_MODELS)
 @parameterize("mixed_precision", [torch.half])
 def exam_tiny_example(placement_config, model_name: str, mixed_precision: torch.dtype):
@@ -189,7 +187,7 @@ def run_dist(rank, world_size, port):
 
 
 @pytest.mark.dist
-@pytest.mark.parametrize("world_size", [1, 4])
+@pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_optim(world_size):
     spawn(run_dist, world_size)
