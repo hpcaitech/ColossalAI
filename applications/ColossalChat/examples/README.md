@@ -418,15 +418,24 @@ To use LoRA/PiSSA in training, please create a config file as in the following e
 
 ```json
 {
-    "r": 128, // lora rank
-    "embedding_lora_dropout": 0.0,  // dropout probability for embedding layer
-    "linear_lora_dropout": 0.1, //dropout probability for linear layer
-    "lora_alpha": 32, // lora alpha
-    "lora_train_bias": "all", // whether to add trainable bias to lora layers
-    "lora_initialization_method": "PiSSA",  // how to initialize lora weights, choose one from ["kaiming_uniform", "PiSSA"], default to "kaiming_uniform". Use "kaiming_uniform" for standard LoRA and "PiSSA" for PiSSA.
-    "target_modules": ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens"] // which module(s) should be converted to lora layers, if the module's name contain the keywords in target modules and the module is a linear or embedding layer, the module will be converted. Otherwise, the module will be frozen. Setting this field to None will automatically convert all linear and embedding layer to their LoRA counterparts. Note that this example only works for LLaMA, for other models, you need to modify it.
+    "r": 128,
+    "embedding_lora_dropout": 0.0,
+    "linear_lora_dropout": 0.1,
+    "lora_alpha": 32,
+    "lora_train_bias": "all",
+    "lora_initialization_method": "PiSSA",
+    "target_modules": ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens"]
 }
 ```
+#### Lora Parameters
+- r: lora rank
+- embedding_lora_dropout: dropout probability for embedding layer
+- linear_lora_dropout: dropout probability for linear layer
+- lora_alpha: lora alpha, controls how much the adaptor can deviate from the pretrained model.
+- lora_train_bias: whether to add trainable bias to lora layers, choose from "all" (all layers (including but not limited to lora layers) will have trainable biases), "none" (no trainable biases), "lora" (only lora layers will have trainable biases)
+- lora_initialization_method: how to initialize lora weights, choose one from ["kaiming_uniform", "PiSSA"], default to "kaiming_uniform". Use "kaiming_uniform" for standard LoRA and "PiSSA" for PiSSA.
+- target_modules: which module(s) should be converted to lora layers, if the module's name contain the keywords in target modules and the module is a linear or embedding layer, the module will be converted. Otherwise, the module will be frozen. Setting this field to None will automatically convert all linear and embedding layer to their LoRA counterparts. Note that this example only works for LLaMA, for other models, you need to modify it.
+
 
 ```
 colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \

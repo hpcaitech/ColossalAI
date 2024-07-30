@@ -16,7 +16,6 @@ import torch.nn.functional as F
 from colossalai.logging import get_dist_logger
 
 logger = get_dist_logger()
-import dataclasses
 
 
 @dataclasses.dataclass
@@ -137,34 +136,31 @@ class LoraLinear(LoraBase):
         super().__init__(
             r=r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, lora_initialization_method=lora_initialization_method
         )
+        self.weight = weight
+        self.bias = bias
+        if bias is True:
+            self.bias = nn.Parameter(torch.zeros(weight.shape[0]))
+        if bias is not None:
+            self.bias.requires_grad = True
 
-        if weight is not None:
-            self.weight = weight
-            self.bias = bias
-            if bias is True:
-                self.bias = nn.Parameter(torch.zeros(weight.shape[0]))
-            if bias is not None:
-                self.bias.requires_grad = True
-
-            out_features, in_features = weight.shape
-            self.in_features = in_features
-            self.out_features = out_features
-            assert lora_initialization_method in ["kaiming_uniform", "PiSSA"]
-            self.lora_initialization_method = lora_initialization_method
-            # Actual trainable parameters
-            if r > 0:
-                self.lora_A = nn.Parameter(torch.randn((r, in_features)))
-                self.lora_B = nn.Parameter(torch.randn((out_features, r)))
-                self.scaling = self.lora_alpha / self.r
-                # Freezing the pre-trained weight matrix
-                self.weight.requires_grad = False
-            self.reset_parameters()
+        out_features, in_features = weight.shape
+        self.in_features = in_features
+        self.out_features = out_features
+        assert lora_initialization_method in ["kaiming_uniform", "PiSSA"]
+        self.lora_initialization_method = lora_initialization_method
+        # Actual trainable parameters
+        if r > 0:
+            self.lora_A = nn.Parameter(torch.randn((r, in_features)))
+            self.lora_B = nn.Parameter(torch.randn((out_features, r)))
+            self.scaling = self.lora_alpha / self.r
+            # Freezing the pre-trained weight matrix
+            self.weight.requires_grad = False
+        self.reset_parameters()
 
     def forward(self, x: torch.Tensor):
         if self.r > 0 and not self.merged:
             result = F.linear(x, self.weight, bias=self.bias)
-            if self.r > 0:
-                result = result + (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
+            result = result + (self.lora_dropout(x) @ self.lora_A.t() @ self.lora_B.t()) * self.scaling
             return result
         else:
             return F.linear(x, self.weight, bias=self.bias)
@@ -234,11 +230,9 @@ class LoraEmbedding(LoraBase):
         base_embedding = self._embed(x, self.weight)
         # base_embedding.requires_grad = True   # force the embedding layer to be trainable for gradient checkpointing
         if self.r > 0 and not self.merged:
-            if self.r > 0:
-                lora_A_embedding = self._embed(x, self.lora_A.t())
-                embedding = base_embedding + (lora_A_embedding @ self.lora_B.t()) * self.scaling
+            lora_A_embedding = self._embed(x, self.lora_A.t())
+            embedding = base_embedding + (lora_A_embedding @ self.lora_B.t()) * self.scaling
             return embedding
-
         else:
             return base_embedding
 
@@ -355,15 +349,19 @@ def convert_to_lora_module(module: nn.Module, lora_config: LoraConfig) -> nn.Mod
     if lora_config.r <= 0:
         return module
     # make all parameter not trainable, if lora_train_bias is "all", set bias to trainable
+    total_parameter_size = 0
     for name, p in module.named_parameters():
         p.requires_grad = False
         if "bias" in name and lora_config.lora_train_bias == "all":
             p.requires_grad = True
+        total_parameter_size += p.numel()
     _convert_to_lora_recursively(module, "", lora_config)
     trainable_parameter_size = 0
     for name, p in module.named_parameters():
         if p.requires_grad == True:
             trainable_parameter_size += p.numel()
     if dist.is_initialized() and dist.get_rank() == 0:
-        logger.info(f"Trainable parameter size: {trainable_parameter_size/1024/1024}M")
+        logger.info(
+            f"Trainable parameter size: {trainable_parameter_size/1024/1024:.2f}M\nOriginal trainable parameter size: {total_parameter_size/1024/1024:.2f}M\nPercentage: {trainable_parameter_size/total_parameter_size*100:.2f}%"
+        )
     return module
