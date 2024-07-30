@@ -105,7 +105,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e5m2", group=None) -> None:
 def all_to_all_single_fp8(output, input, output_tensor_list, input_tensor_list, fp8_format="e5m2", group=None, async_op=False) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
-    It works like dist.all_reduce but during communication the data is cast to fp8 format.
+    It works like dist.all_to_all_single but during communication the data is cast to fp8 format.
     Args:
         tensor: torch.Tensor in fp32, fp16, bf16 datatype.
         fp8_format: e4m3 or e5m2
