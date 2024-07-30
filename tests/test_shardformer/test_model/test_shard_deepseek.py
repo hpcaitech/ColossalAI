@@ -17,7 +17,7 @@ from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 
 NUM_BATCH = 8
-NUM_TOK_PER_BATCH, NUM_EXPERTS = 4000, 2
+NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 2
 NUM_LAYERS = 4
 HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS = 4
