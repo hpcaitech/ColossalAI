@@ -130,7 +130,7 @@ class HuggingFaceModel(BaseModel):
         if shard_config is not None:
             self.model = AutoModel.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
-            self.model, sharded_parameters = shard_former.optimize(self.model)
+            self.model, _ = shard_former.optimize(self.model)
             self.model.to(get_current_device())
 
             if peft_path is not None:
@@ -598,7 +598,7 @@ class HuggingFaceCausalLM(HuggingFaceModel):
         if shard_config is not None:
             self.model = AutoModelForCausalLM.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
-            self.model, sharded_parameters = shard_former.optimize(self.model)
+            self.model, _ = shard_former.optimize(self.model)
             self.model.to(get_current_device())
 
             if peft_path is not None:
