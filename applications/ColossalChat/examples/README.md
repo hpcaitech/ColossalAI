@@ -9,6 +9,7 @@
   - [Install Requirements](#install-requirements)
   - [Get Start with ColossalRun](#get-start-with-colossalrun)
   - [Training Configuration](#training-configuration)
+  - [Parameter Efficient Finetuning (PEFT)](#parameter-efficient-finetuning-peft)
   - [RLHF Stage 1: Supervised Instruction Tuning](#rlhf-training-stage1---supervised-instructs-tuning)
     - [Step 1: Data Collection](#step-1-data-collection)
     - [Step 2: Preprocessing](#step-2-preprocessing)
@@ -377,35 +378,6 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 </details>
 
 
-<details><summary><b>Low Rank Adaption</b></summary>
-
-
-Details about Low Rank Adaption (LoRA) can be found in the paper: [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685). It dramatically reduces the VRAM consumption at the cost of sacrifice model capability. It is suitable for training LLM with constrained resources.
-
-
-To enable LoRA, set --lora_rank to a positive value (usually between 20 and 64).
-```
-colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
-    --pretrain $PRETRAINED_MODEL_PATH \
-    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --dataset ${dataset[@]} \
-    --save_interval 5000 \
-    --save_path $SAVE_DIR \
-    --config_file $CONFIG_FILE \
-    --plugin zero2_cpu \
-    --batch_size 4 \
-    --max_epochs 1 \
-    --accumulation_steps 4 \
-    --lr 2e-5 \
-    --max_len 2048 \
-    --lora_rank 32 \ # This enables LoRA
-    --use_wandb
-```
-
-
-</details>
-
-
 <details><summary><b>Other Training Arguments</b></summary>
 
 
@@ -428,6 +400,60 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - accumulation_steps: accumulate gradient every accumulation_steps.
 - log_dir: path to store the log.
 - use_wandb: if this flag is up, you can view logs on wandb.
+
+
+</details>
+
+### Parameter Efficient Finetuning (PEFT)
+
+Currently, we have support LoRA (low-rank adaptation) and PiSSA (principal singular values and singular vectors adaptation). Both help to reduce the running-time VRAM consumption as well as timing at the cost of overall model performance.
+
+
+<details><summary><b>Low Rank Adaption and PiSSA</b></summary>
+
+
+Details about Low Rank Adaption (LoRA) can be found in the paper: [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685). Details about Principal Singular Values and Singular Vectors Adaptation (PiSSA) can be found in the paper: [PiSSA: Principal Singular Values and Singular Vectors Adaptation of Large Language Models](https://arxiv.org/abs/2404.02948). Both help to reduce the running-time VRAM consumption as well as timing at the cost of overall model performance. It is suitable for training LLM with constrained resources.
+
+To use LoRA/PiSSA in training, please create a config file as in the following example and set the `--lora_config` to that configuration file.
+
+```json
+{
+    "r": 128,
+    "embedding_lora_dropout": 0.0,
+    "linear_lora_dropout": 0.1,
+    "lora_alpha": 32,
+    "lora_train_bias": "all",
+    "lora_initialization_method": "PiSSA",
+    "target_modules": ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens"]
+}
+```
+#### Lora Parameters
+- r: lora rank
+- embedding_lora_dropout: dropout probability for embedding layer
+- linear_lora_dropout: dropout probability for linear layer
+- lora_alpha: lora alpha, controls how much the adaptor can deviate from the pretrained model.
+- lora_train_bias: whether to add trainable bias to lora layers, choose from "all" (all layers (including but not limited to lora layers) will have trainable biases), "none" (no trainable biases), "lora" (only lora layers will have trainable biases)
+- lora_initialization_method: how to initialize lora weights, choose one from ["kaiming_uniform", "PiSSA"], default to "kaiming_uniform". Use "kaiming_uniform" for standard LoRA and "PiSSA" for PiSSA.
+- target_modules: which module(s) should be converted to lora layers, if the module's name contain the keywords in target modules and the module is a linear or embedding layer, the module will be converted. Otherwise, the module will be frozen. Setting this field to None will automatically convert all linear and embedding layer to their LoRA counterparts. Note that this example only works for LLaMA, for other models, you need to modify it.
+
+
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --lora_config /PATH/TO/THE/LORA/CONFIG/FILE.json \ # Setting this enables LoRA
+    --use_wandb
+```
 
 
 </details>

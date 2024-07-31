@@ -1,0 +1,9 @@
+{
+    "r": 128,
+    "embedding_lora_dropout": 0.0,
+    "linear_lora_dropout": 0.1,
+    "lora_alpha": 32,
+    "lora_train_bias": "all",
+    "lora_initialization_method": "PiSSA",
+    "target_modules": ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens"]
+}

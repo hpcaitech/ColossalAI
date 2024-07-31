@@ -21,16 +21,16 @@ PARENT_LOG_DIR="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 declare -a dataset=(
-    /Your/SFT/Data/arrow/part-00000
-    /Your/SFT/Data/arrow/part-00001
-    /Your/SFT/Data/arrow/part-00002
-    /Your/SFT/Data/arrow/part-00003
-    /Your/SFT/Data/arrow/part-00004
-    /Your/SFT/Data/arrow/part-00005
-    /Your/SFT/Data/arrow/part-00006
-    /Your/SFT/Data/arrow/part-00007
-    /Your/SFT/Data/arrow/part-00008
-    /Your/SFT/Data/arrow/part-00009
+    YOUR/SFT/DATA/DIR/arrow/part-00000
+    YOUR/SFT/DATA/DIR/arrow/part-00001
+    YOUR/SFT/DATA/DIR/arrow/part-00002
+    YOUR/SFT/DATA/DIR/arrow/part-00003
+    YOUR/SFT/DATA/DIR/arrow/part-00004
+    YOUR/SFT/DATA/DIR/arrow/part-00005
+    YOUR/SFT/DATA/DIR/arrow/part-00006
+    YOUR/SFT/DATA/DIR/arrow/part-00007
+    YOUR/SFT/DATA/DIR/arrow/part-00008
+    YOUR/SFT/DATA/DIR/arrow/part-00009
 )
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
@@ -47,15 +47,14 @@ colossalai run --nproc_per_node 4 --master_port 31312 --hostfile ./hostfile trai
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --save_interval 2000 \
     --dataset ${dataset[@]} \
-    --save_path $SAVE_DIR \
-    --config_file $CONFIG_FILE \
-    --log_dir $LOG_DIR \
-    --lora_rank 0 \
     --plugin zero2 \
     --batch_size 8 \
     --max_epochs 1 \
-    --accumulation_steps 2 \
+    --accumulation_steps 1 \
     --lr 5e-5 \
     --max_len 4096 \
+    --use_flash_attn \
     --grad_checkpoint \
-    --use_flash_attn
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --log_dir $LOG_DIR \
