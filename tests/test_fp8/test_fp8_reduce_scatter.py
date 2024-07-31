@@ -13,7 +13,6 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 @parameterize("scatter_dim", [0, 1, 2])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_4gpu(shape, scatter_dim, dtype):
-    print(shape, scatter_dim, dtype)
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     input_list = list(torch.chunk(x, dim=scatter_dim, chunks=4))
     input_list = [t.contiguous() for t in input_list]

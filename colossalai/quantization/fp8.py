@@ -211,7 +211,6 @@ def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2
 
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
     for scale, out in zip(output_scale_list, output_chunks):
-        scale = scale[0]
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
     output.data = summed_out

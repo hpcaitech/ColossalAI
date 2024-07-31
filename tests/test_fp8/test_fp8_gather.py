@@ -26,8 +26,6 @@ def check_4gpu(shape, dtype):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     output_origin = _gather(x, 0, _get_default_group(), False)
     output_fp8 = _gather(x, 0, _get_default_group(), True)
-    print(output_origin.shape)
-    print(output_fp8.shape)
     assert_close(output_origin, output_fp8, rtol=0.1, atol=0.1)
 
 
