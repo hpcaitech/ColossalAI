@@ -20,7 +20,7 @@ def check_fwd_bwd(model_fn, data_gen_fn, output_transform_fn, loss_fn, task_type
     model = model_fn()
     lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
 
-    test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin(), HybridParallelPlugin()]
+    test_plugins = [TorchDDPPlugin(), LowLevelZeroPlugin(), HybridParallelPlugin(tp_size=1, pp_size=1)]
     test_configs = [
         {
             "lora_config": lora_config,
