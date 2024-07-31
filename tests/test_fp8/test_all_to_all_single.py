@@ -19,6 +19,7 @@ def check_all2all(shape, dtype):
     all_to_all_single_fp8(output_fp8, x, group=_get_default_group(), async_op=False)
     assert_close(output, output_fp8, rtol=0.1, atol=0.1)
 
+
 @parameterize("shape", [(8, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_all2all_uneven(shape, dtype):
@@ -32,8 +33,22 @@ def check_all2all_uneven(shape, dtype):
     output_shape[0] = sum(output_split_sizes)
     output = torch.empty(output_shape, device=x.device, dtype=x.dtype)
     output_fp8 = torch.empty(output_shape, device=x.device, dtype=x.dtype)
-    dist.all_to_all_single(output, x, output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes, group=_get_default_group(), async_op=False)
-    all_to_all_single_fp8(output_fp8, x, output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes, group=_get_default_group(), async_op=False)
+    dist.all_to_all_single(
+        output,
+        x,
+        output_split_sizes=output_split_sizes,
+        input_split_sizes=input_split_sizes,
+        group=_get_default_group(),
+        async_op=False,
+    )
+    all_to_all_single_fp8(
+        output_fp8,
+        x,
+        output_split_sizes=output_split_sizes,
+        input_split_sizes=input_split_sizes,
+        group=_get_default_group(),
+        async_op=False,
+    )
     assert_close(output, output_fp8, rtol=0.1, atol=0.1)
 
 

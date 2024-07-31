@@ -147,8 +147,7 @@ def all_to_all_single_fp8(
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
     dist.all_gather(scale_list, scale, group=group)
     cast_output_chunk = [
-        cast_from_fp8(out.view(fp8_type), scale, input_type)
-        for scale, out in zip(scale_list, output_chunks)
+        cast_from_fp8(out.view(fp8_type), scale, input_type) for scale, out in zip(scale_list, output_chunks)
     ]
 
     tensor_out = torch.cat(cast_output_chunk, dim=0)
