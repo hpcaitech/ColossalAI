@@ -139,17 +139,15 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         },
         {
           "from": "assistant",
           "content": "Are you looking for practical joke ideas?"
         },
-        ...
       ]
     },
-    ...
 ]
 ```
 
@@ -175,23 +173,20 @@ Below shows the preference dataset format used in training the reward model.
           "from": "human",
           "content": "Introduce butterflies species in Oregon."
         }
-      ]
+      ],
       "chosen": [
         {
           "from": "assistant",
           "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
         },
-        ...
       ],
       "rejected": [
         {
           "from": "assistant",
           "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
         },
-        ...
       ]
     },
-    ...
 ]
 ```
 
@@ -220,7 +215,6 @@ PPO uses two kind of training data--- the prompt data and the sft data (optional
           "from": "human",
           "content": "what are some pranks with a pen i can do?"
         }
-        ...
       ]
     },
 ]
