@@ -3,6 +3,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
@@ -37,7 +38,9 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
     return ret, scale_inv
 
 
-def cast_from_fp8(inp: torch.Tensor, scale_inv: torch.Tensor, ret_type: torch.dtype) -> torch.Tensor:
+def cast_from_fp8(
+    inp: torch.Tensor, scale_inv: torch.Tensor, ret_type: torch.dtype, per_channel_scale=False
+) -> torch.Tensor:
     r"""
     Args:
         inp: should be a fp8 torch tensor in one of the types: [torch.float8_e4m3fn, torch.float8_e5m2].
@@ -49,40 +52,46 @@ def cast_from_fp8(inp: torch.Tensor, scale_inv: torch.Tensor, ret_type: torch.dt
     if inp.dtype not in [torch.float8_e4m3fn, torch.float8_e5m2]:
         raise TypeError("Only float8_e4m3fn and float8_e5m2 are allowed.")
 
-    if scale_inv.dim() >= 1:
+    if per_channel_scale:
         ret = scale_inv[:, None] * inp.float()
     else:
         ret = scale_inv * inp.float()
     return ret.to(ret_type)
 
 
-def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e5m2", group=None) -> None:
+def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op="sum", group=None) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_reduce but during communication the data is cast to fp8 format.
+
     Args:
         tensor: torch.Tensor in fp32, fp16, bf16 datatype.
         fp8_format: e4m3 or e5m2
+        op: sum or mean
+
     Returns:
         None
     """
+
     world_size = dist.get_world_size(group=group)
     input_type = tensor.dtype
     input_shape = tensor.shape
     input_device = tensor.device
     input_size = tensor.numel()
-    tensor = tensor.flatten()
+    flat_padded_x = tensor.flatten()
+
+    assert op in ["sum", "mean"], "op can only be sum or mean"
+
+    if flat_padded_x.size(0) % world_size != 0:
+        pad_size = world_size - flat_padded_x.size(0) % world_size
+        flat_padded_x = F.pad(flat_padded_x, (0, pad_size))
 
     fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
-
-    ret, scale = cast_to_fp8(tensor, fp8_format=fp8_format)
+    ret, scale = cast_to_fp8(flat_padded_x, fp8_format=fp8_format)
 
     inp = ret.view(torch.uint8)
     input_chunks = list(torch.chunk(inp, world_size, dim=0))
-    if dist.get_rank() == world_size - 1:
-        output_chunks = [torch.empty_like(input_chunks[-1]) for _ in range(world_size)]
-    else:
-        output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
+    output_chunks = list(torch.chunk(torch.empty_like(inp), world_size, dim=0))
     dist.all_to_all(output_chunks, input_chunks, group=group)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
     dist.all_gather(scale_list, scale, group=group)
@@ -91,15 +100,18 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e5m2", group=None) -> None:
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
 
+    if op == "mean":
+        summed_out.div_(world_size)
+
     summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
     dist.all_gather(scale_list, scale, group=group)
 
-    tensor_list = list(torch.chunk(torch.empty(input_size, device=input_device, dtype=torch.uint8), world_size, dim=0))
+    tensor_list = [torch.empty_like(summed_out_fp8.view(torch.uint8)) for _ in range(world_size)]
     dist.all_gather(tensor_list, summed_out_fp8.view(torch.uint8), group=group)
     for i in range(world_size):
         tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
-    tensor_out = torch.cat(tensor_list, dim=0)
-    tensor.data = tensor_out.view(input_shape).to(input_type)
+    out = torch.cat(tensor_list, dim=0)
+    tensor.copy_(out[:input_size].view(input_shape).to(input_type))
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
@@ -199,6 +211,7 @@ def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2
 
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
     for scale, out in zip(output_scale_list, output_chunks):
+        scale = scale[0]
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
     output.data = summed_out
@@ -275,5 +288,5 @@ def all_gather_into_tensor_flat_fp8(
     dist.all_gather_into_tensor(buffer.view(torch.uint8), fp8_input.view(torch.uint8), group=group)
     numel = np.prod(output_shape)
     valid_buffer = buffer[:numel].reshape(output_shape)
-    valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type)
+    valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type, per_channel_scale=(len(output_shape) == 2))
     output_tensor[:numel].copy_(valid_buffer.view(-1))
