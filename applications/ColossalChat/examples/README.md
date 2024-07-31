@@ -786,17 +786,27 @@ For KTO data preparation, please use the script [prepare_kto_dataset.sh](./examp
 
 ```jsonl
 {
-    "prompt": [
-        {"from": "user", "content": "What are some cuss words in english?"},
-        {
-            "from": "assistant",
-            "content": "Here's an incomplete list.\n\nAss, dick, bugger, crap, ...",
-        },
-        {"from": "user", "content": "What's your favorite one?"},
-    ],
-    "completion": {"from": "assistant", "content": "Ass."},  # the completion must contain a single line from the assistant.
-    "label": False,  # whether the response is favorable or not
+  "prompt": [
+    {
+      "from": "user",
+      "content": "What are some praise words in english?"
+    },
+    {
+      "from": "assistant",
+      "content": "Here's an incomplete list.\n\nexcellent, fantastic, impressive  ..."
+    },
+    {
+      "from": "user",
+      "content": "What's your favorite one?"
+    }
+  ],
+  "completion": {
+    "from": "assistant",
+    "content": "impressive."
+  },
+  "label": true
 }
+
 ```
 
 For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) script, You may need to set the value for `beta` (which determine how strongly the reinforcement learning loss affect the training), `desirable_weight` and `undesirable_weight` if your data is biased (has unequal number of chosen and rejected samples).
