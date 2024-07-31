@@ -453,20 +453,6 @@ If you only have a single 24G GPU. Generally, using lora and "zero2-cpu" will be
 If you have multiple GPUs each has very limited VRAM, say 8GB. You can try the `3d` for the plugin option, which supports tensor parellelism, set `--tp` to the number of GPUs that you have.
 </details>
 
-## The Plan
-
-- [x] implement PPO fine-tuning
-- [x] implement training reward model
-- [x] support LoRA
-- [x] support inference
-- [x] support llama from [facebook](https://github.com/facebookresearch/llama)
-- [x] implement PPO-ptx fine-tuning
-- [x] support flash-attention
-- [x] implement DPO fine-tuning
-- [ ] integrate with Ray
-- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
-- [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
-
 ### Real-time progress
 
 You will find our progress in github [project broad](https://github.com/orgs/hpcaitech/projects/17/views/1).
