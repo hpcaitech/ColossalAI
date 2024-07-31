@@ -49,9 +49,6 @@
 pip install -r requirements.txt
 ```
 
-
-
-
 ## Get Start with ColossalRun
 
 
@@ -83,8 +80,6 @@ Make sure the master node can access all nodes (including itself) by ssh without
 
 
 This section gives a simple introduction on different training strategies that you can use and how to use them with our boosters and plugins to reduce training time and VRAM consumption. For more details regarding training strategies, please refer to [here](https://colossalai.org/docs/concepts/paradigms_of_parallelism). For details regarding boosters and plugins, please refer to [here](https://colossalai.org/docs/basics/booster_plugins).
-
-
 
 
 <details><summary><b>Gemini (Zero3)</b></summary>
@@ -499,9 +494,15 @@ In this code we provide a flexible way for users to set the conversation templat
 - Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the ./config/conversation_template directory. This config should include the following fields.
   ```json
   {
-      "chat_template": (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. If a path to a huggingface model or local model is provided, will use the chat_template of that model. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
-      "system_message": A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added,
-      "end_of_assistant": The token(s) in string that denotes the end of assistance's response. For example, in the ChatGLM2 prompt format,
+      "chat_template": "A string of chat_template used for formatting chat data",
+      "system_message": "A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added",
+      "end_of_assistant": "The token(s) in string that denotes the end of assistance's response",
+      "stop_ids": "A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training"
+  }
+  ```
+  * `chat_template`: (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. If a path to a huggingface model or local model is provided, will use the chat_template of that model. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating.
+  * `system_message`: A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added.
+  * `end_of_assistant`: The token(s) in string that denotes the end of assistance's response". For example, in the ChatGLM2 prompt format,
       ```
       <|im_start|>system
       system messages
@@ -510,13 +511,11 @@ In this code we provide a flexible way for users to set the conversation templat
       <|im_start|>user
        How far is the moon? <|im_end|>
       <|im_start|>assistant\n The moon is about 384,400 kilometers away from Earth.<|im_end|>...
-       ```
-       the end_of_assistant tokens are "<|im_end|>"
-      "stop_ids": (Optional), A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically
-  }
-  ```
-  On your first run of the data preparation script, you only need to define the "chat_template" (if you want to use custom chat template) and the "system message" (if you want to use a custom system message),
+      ```
+      the `end_of_assistant` tokens are "<|im_end|>"
+  * `stop_ids`: (Optional), A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically.
 
+  On your first run of the data preparation script, you only need to define the `chat_template` (if you want to use custom chat template) and the `system message` (if you want to use a custom system message)
 
 - Step 2: Run the data preparation script--- [prepare_sft_dataset.sh](./data_preparation_scripts/prepare_sft_dataset.sh). Note that whether or not you have skipped the first step, you need to provide the path to the conversation template config file (via the conversation_template_config arg). If you skipped the first step, an auto-generated conversation template will be stored at the designated file path.
 

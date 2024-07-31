@@ -139,17 +139,15 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         },
         {
           "from": "assistant",
           "content": "Are you looking for practical joke ideas?"
         },
-        ...
       ]
     },
-    ...
 ]
 ```
 
@@ -175,23 +173,20 @@ Below shows the preference dataset format used in training the reward model.
           "from": "human",
           "content": "Introduce butterflies species in Oregon."
         }
-      ]
+      ],
       "chosen": [
         {
           "from": "assistant",
           "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
         },
-        ...
       ],
       "rejected": [
         {
           "from": "assistant",
           "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
         },
-        ...
       ]
     },
-    ...
 ]
 ```
 
@@ -220,7 +215,6 @@ PPO uses two kind of training data--- the prompt data and the sft data (optional
           "from": "human",
           "content": "what are some pranks with a pen i can do?"
         }
-        ...
       ]
     },
 ]
@@ -452,20 +446,6 @@ If you only have a single 24G GPU. Generally, using lora and "zero2-cpu" will be
 
 If you have multiple GPUs each has very limited VRAM, say 8GB. You can try the `3d` for the plugin option, which supports tensor parellelism, set `--tp` to the number of GPUs that you have.
 </details>
-
-## The Plan
-
-- [x] implement PPO fine-tuning
-- [x] implement training reward model
-- [x] support LoRA
-- [x] support inference
-- [x] support llama from [facebook](https://github.com/facebookresearch/llama)
-- [x] implement PPO-ptx fine-tuning
-- [x] support flash-attention
-- [x] implement DPO fine-tuning
-- [ ] integrate with Ray
-- [ ] support more RL paradigms, like Implicit Language Q-Learning (ILQL),
-- [ ] support chain-of-thought by [langchain](https://github.com/hwchase17/langchain)
 
 ### Real-time progress
 
