@@ -38,8 +38,6 @@ def rm_and_merge(
     """
 
     for model_name in model_names:
-        dataset_cat_num_mapping = utils.jload(os.path.join(save_path, model_name, "dataset_cat_num_mapping.json"))
-
         for dataset_name, categories in dataset_names.items():
             all_answers_with_dataset_class = {}
             all_answers_with_dataset_class["dataset_class"] = dataset_classes[dataset_name]
@@ -59,7 +57,8 @@ def rm_and_merge(
                         )
                     else:
                         rank_answers = utils.jload(directory)
-                        answers["data"].extend(rank_answers["data"])
+                        deduplidate_answers = [x for x in rank_answers["data"] if x not in answers["data"]]
+                        answers["data"].extend(deduplidate_answers)
                         answers["inference_kwargs"] = rank_answers["inference_kwargs"]
 
                 for r in range(dp_size):
@@ -70,9 +69,7 @@ def rm_and_merge(
                         os.remove(directory)
                     except Exception as e:
                         print(e)
-
-                total_num = dataset_cat_num_mapping[dataset_name][category]
-                answers["data"] = answers["data"][:total_num]
+                print(len(answers["data"]))
                 all_answers[category] = answers
 
             all_answers_with_dataset_class["inference_results"] = all_answers
@@ -82,7 +79,6 @@ def rm_and_merge(
                 all_answers_with_dataset_class,
                 os.path.join(save_path, model_name, f"{dataset_name}_inference_results.json"),
             )
-        os.remove(os.path.join(save_path, model_name, "dataset_cat_num_mapping.json"))
 
         logger.info(f"Save inference results of model {model_name} for all dataset.")
     logger.info(f"Save inference results of all models for all dataset.")
@@ -131,7 +127,6 @@ def main(args):
     debug_args = {}
     few_shot_args = {}
     multiturn_args = {}
-    dataset_cat_num_mapping = {}
 
     config = utils.jload(args.config)
 
@@ -207,11 +202,9 @@ def main(args):
             raise ValueError(f"Model class {model_parameter['model_class']} is not a subclass of BaseModel.")
 
         for dataset_name, split_data in inference_data.items():
-            cat_num_mapping = {}
             prev_questions = None
             for category, category_data in split_data.items():
                 num_turn = category_data["inference_kwargs"].get("turns", 1)
-                cat_num_mapping[category] = len(category_data["data"])
 
                 if few_shot_args[dataset_name] and category_data["inference_kwargs"].get("few_shot_data", None) is None:
                     raise Exception(f"Dataset {dataset_name} doesn't have few-shot data for category {category}!")
@@ -259,16 +252,10 @@ def main(args):
                         ),
                     )
 
-            dataset_cat_num_mapping[dataset_name] = cat_num_mapping
-
         logger.info(f"Rank {rank} peak device mem: {accelerator.max_memory_allocated()/1024**3:.3f} GB")
 
         del model_
         accelerator.empty_cache()
-
-        utils.jdump(
-            dataset_cat_num_mapping, os.path.join(args.inference_save_path, model_name, "dataset_cat_num_mapping.json")
-        )
 
     dist.barrier()
     if rank == 0:
