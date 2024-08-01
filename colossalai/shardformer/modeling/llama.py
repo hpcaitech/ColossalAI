@@ -553,10 +553,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
         cos, sin = self.rotary_emb(value_states, position_ids)
-        try:
-            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
-        except:
-            pass
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
