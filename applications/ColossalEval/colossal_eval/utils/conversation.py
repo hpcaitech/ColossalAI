@@ -128,8 +128,8 @@ def get_few_shot_prefix(few_shot_data: List[str], tokenizer: Optional[AutoTokeni
     Get few shot prefix.
 
     Args:
-        conv: Conversation template.
-        few_shot_examples: Few shot examples to generate few shot prompt prefix.
+        few_shot_data: Few shot examples to generate few shot prompt prefix.
+        tokenizer: tokenizer used to tokenize data.
 
     Returns:
         Few shot prompt prefix.
@@ -164,6 +164,7 @@ def get_batch_prompt(
         conv: Conversation template.
         batch: Batch data to generate prompt from.
         few_shot_data: Few shot data to generate few shot prompt prefix.
+        tokenizer: tokenizer used to tokenize data.
 
     Returns:
         Tuple containg batch prompt and target.
