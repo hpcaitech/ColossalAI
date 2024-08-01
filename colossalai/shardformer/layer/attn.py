@@ -172,10 +172,9 @@ class ColoAttention:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
-                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
-                attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
+            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
@@ -833,6 +832,7 @@ class RingAttention(torch.autograd.Function):
         del misc_kwargs["return_softmax"]
         ctx.misc_kwargs = misc_kwargs
         ctx.is_packed = is_packed
+        ctx.dkv_group = dkv_group
 
         ctx.kv_group = inner_ring_group
         ctx.inter_kv_group = inter_ring_group
