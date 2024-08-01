@@ -175,10 +175,9 @@ class ColoAttention:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
-                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
-                attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
+            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
@@ -229,8 +228,8 @@ class ColoAttention:
 
         Args:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Sq, D]
+            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Skv, D]
+            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D]
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Sq]. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
@@ -278,6 +277,10 @@ class ColoAttention:
                     and q_indices is not None
                     and kv_indices is not None
                 )
+            else:
+                # if attention_mask is None, attention_mask_type should be the default value
+                assert attention_mask_type == AttnMaskType.CUSTOM
+
         # kernel dispatch
         mask_type = attention_mask_type if attention_mask is not None else None
         attn_func = ColoAttention._dispatch_kernel(q.dtype, mask_type)
@@ -470,6 +473,7 @@ class RingAttention(torch.autograd.Function):
         softmax_scale=None,
         deterministic=False,
         return_softmax=False,
+        dkv_group=None,
         **kwargs,
     ):
         """
@@ -492,6 +496,7 @@ class RingAttention(torch.autograd.Function):
             softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax.
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
+            dkv_group (Optional[dist.ProcessGroup]): Process group for using a new NCCL stream in ring attention backward.
 
         Returns:
             out: Output tensor of shape [B, nHeads, Sq, D] or [T, nHeads, D] if pad_output is False.
@@ -545,6 +550,7 @@ class RingAttention(torch.autograd.Function):
             deterministic,
             return_softmax,
             attention_mask_type == AttnMaskType.PADDED_CAUSAL,
+            dkv_group,
         )
 
         if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
@@ -566,13 +572,14 @@ class RingAttention(torch.autograd.Function):
         v: torch.Tensor,
         sp_group: dist.ProcessGroup,
         sp_stream: torch.cuda.Stream,
-        cu_seqlens: Optional[torch.Tensor],
-        max_seqlen: Optional[int],
+        cu_seqlens: torch.Tensor,
+        max_seqlen: int,
         dropout_p: float = 0.0,
         softmax_scale: Optional[float] = None,
-        deterministic: bool = False,
-        return_softmax: bool = False,
-        is_packed: bool = False,
+        deterministic: Optional[bool] = False,
+        return_softmax: Optional[bool] = False,
+        is_packed: Optional[bool] = False,
+        dkv_group: Optional[dist.ProcessGroup] = None,
     ):
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens
         max_seqlen_q = max_seqlen_kv = max_seqlen
@@ -754,6 +761,7 @@ class RingAttention(torch.autograd.Function):
         del misc_kwargs["return_softmax"]
         ctx.misc_kwargs = misc_kwargs
         ctx.is_packed = is_packed
+        ctx.dkv_group = dkv_group
 
         ctx.save_for_backward(
             q,
@@ -778,11 +786,12 @@ class RingAttention(torch.autograd.Function):
         over all ranks for accumulation.
         """
         (q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_kv, half_idx_front, half_idx_back) = ctx.saved_tensors[:9]
-        is_packed = ctx.is_packed
         rng_states = ctx.saved_tensors[9:]
 
+        is_packed = ctx.is_packed
         max_seqlen_q = ctx.max_seqlen_q
         max_seqlen_kv = ctx.max_seqlen_kv
+        dkv_group = ctx.dkv_group
         misc_kwargs = ctx.misc_kwargs
         dout = dout.contiguous()
         del misc_kwargs["block_table"]
@@ -803,7 +812,11 @@ class RingAttention(torch.autograd.Function):
         sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
         kv_comm = RingComm(sp_group)
-        dkv_comm = RingComm(sp_group)
+        # Put kv and dkv comms on different streams
+        if dkv_group is not None:
+            dkv_comm = RingComm(dkv_group)
+        else:
+            dkv_comm = RingComm(sp_group)
 
         # Double comm buffers for sending and receiving kv
         kv_buffers = [torch.stack((k, v))]  # (2, T, H, D)
@@ -933,20 +946,8 @@ class RingAttention(torch.autograd.Function):
         dq, dk, dv = [x.to(q.dtype) for x in (dq, *dkv_recv)]
         if not is_packed:
             dq, dk, dv = [x.view(b, sq, h, d) for x in (dq, dk, dv)]
-        return (
-            dq,
-            dk,
-            dv,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+
+        return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None)
 
     @staticmethod
     def prepare_varlen_batch(
@@ -1002,15 +1003,20 @@ class RingAttention(torch.autograd.Function):
 
         if position_ids is not None:
             indices = torch.tensor([sp_rank, 2 * sp_size - sp_rank - 1], device=inputs_embeds.device)
-            position_ids = (
-                position_ids[..., : mask_info["max_seqlen"]]
-                .view(-1, sp_size * 2, mask_info["max_seqlen"] // (sp_size * 2))
-                .index_select(-1, indices)
-                .view(-1, mask_info["max_seqlen"] // sp_size)
-            )
-        mask_info["valid_indices"] = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
+            try:
+                position_ids = (
+                    position_ids[..., : mask_info["max_seqlen"]]  # unpad
+                    .view(-1, sp_size * 2, mask_info["max_seqlen"] // (sp_size * 2))
+                    .index_select(-2, indices)
+                    .view(-1, mask_info["max_seqlen"] // sp_size)
+                )
+            except Exception as e:
+                print(mask_info["max_seqlen"])
+                print(position_ids.shape)
+                raise e
+
         mask_info["max_seqlen"] //= sp_size
+        mask_info["valid_indices"] = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
         mask_info["cu_seqlens"] //= sp_size
         mask_info["attention_mask_type"] = AttnMaskType.PADDED_CAUSAL
-
         return inputs_embeds, mask_info, position_ids

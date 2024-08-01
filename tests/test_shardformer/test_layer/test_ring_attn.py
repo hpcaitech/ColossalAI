@@ -118,7 +118,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
         return_softmax=True,
         # deterministic=True
     )
-
+    ring_out = ring_out.transpose(1, 2).reshape(-1, nheads, d)
     # Check output
     lse = lse.transpose(0, 1)
     out, lse = split_varlen_zigzag(
