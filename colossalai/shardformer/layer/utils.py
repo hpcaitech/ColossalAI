@@ -291,9 +291,7 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def split_batch_zigzag(
-    batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1, varlen: bool = False
-):
+def split_batch_zigzag(batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1):
     """
     Split the input along the sequence dimension for Ring Attention. Naively spliting the attention mask
     in the causal setting will result in the preceding ranks having much less workload.
@@ -304,9 +302,7 @@ def split_batch_zigzag(
         batch (List[torch.Tensor] or Tensor): The input tensor(s) to split.
         sp_group (ProcessGroup): The process group for sequence parallelism.
         seq_dim (int): The sequence dimension to split.
-        varlen (bool): If the input is padded (aka "packing" mode), such that
-            sequences in a batch have different lengths, and we need to unpad and
-            split each sequence evenly by sp_size.
+
     """
     sp_size = dist.get_world_size(sp_group)
     sp_rank = dist.get_rank(sp_group)
@@ -329,7 +325,7 @@ def split_batch_zigzag(
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             # (B, 2, Sq // (2 * sp_size), ...) -> (B, Sq // sp_size, ...)
-            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :]).contiguous()
+            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
 
     if len(batch) == 1:
         return batch[0]
@@ -342,6 +338,7 @@ def split_varlen_zigzag(
     sp_group: ProcessGroup,
     max_seqlen: int = 0,
     is_2d: bool = False,
+    is_label: bool = False,
 ) -> Union[List[torch.Tensor], torch.Tensor]:
     """Split each sequence in a batch of packed sequences in a zigzag fashion.
         For each tensor in batch, return packed sequences if is_2d is False;
@@ -353,6 +350,7 @@ def split_varlen_zigzag(
         sp_group (ProcessGroup): The process group for sequence parallelism.
         max_seqlen (int): The maximum sequence length in the batch before splitting.
         is_2d (bool): If True, then input has batch size and sequence length split into two dimensions.
+        is_label (bool): If True, mask out the first token in each sequence (<Start of Sentence>).
 
     Returns:
         batch (List[torch.Tensor]): Packed sequences of shape (B * max_seqlen // sp_size)
@@ -373,7 +371,10 @@ def split_varlen_zigzag(
             assert max_seqlen % (sp_size * 2) == 0
             # Recreate a padded tensor with the new max seqlen
             shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
-            local_seq = torch.zeros(shape, dtype=dtype, device=device)
+            if is_label:
+                local_seq = torch.full(shape, -100, dtype=dtype, device=device)
+            else:
+                local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
             total_seqlen = cu_seqlens[-1]
             assert (
@@ -389,12 +390,18 @@ def split_varlen_zigzag(
             ), f"batch {i} seq {j}'s length ({seqlen}) must be divisible by 2 * sp_size = {2 * sp_size} for splitting"
 
             if is_2d:
-                seq = packed_seq[j][:seqlen].chunk(2 * sp_size, dim=0)
+                seq = packed_seq[j][:seqlen]
+                if is_label:
+                    seq[0] = -100
+                seq = seq.chunk(2 * sp_size, dim=0)
                 half = seqlen // sp_size // 2
                 local_seq[j][:half] = seq[sp_rank]
                 local_seq[j][half : seqlen // sp_size] = seq[2 * sp_size - 1 - sp_rank]
             else:
-                seq = packed_seq[start:end].chunk(sp_size * 2)
+                seq = packed_seq[start:end]
+                if is_label:
+                    seq[0] = -100
+                seq = seq.chunk(sp_size * 2)
                 local_seq.extend([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]])
 
         if is_2d:

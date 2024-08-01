@@ -1223,7 +1223,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             zero_stage = 0
 
         if not isinstance(model, ModelWrapper):
-            # Can't use pp (frequent grad accumulation) with torch ddp
+            # Shouldn't use pp (frequent grad accumulation) with torch ddp
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
                 self.dp_size == 1 and self.pp_size == 1
             )

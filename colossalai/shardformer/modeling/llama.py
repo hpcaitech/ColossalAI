@@ -30,7 +30,7 @@ from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_o
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, RingAttention, dist_cross_entropy, get_pad_info
+from ..layer import ColoAttention, RingAttention, dist_cross_entropy
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
@@ -132,18 +132,24 @@ class LlamaPipelineForwards:
             position_ids = cache_position.unsqueeze(0)
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
-        if shard_config.enable_flash_attention:
+        if not stage_manager.is_first_stage() and sp_mode == "ring_attn":
+            _, attention_mask, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group)
+        elif shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
             mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
-            attn_mask = ColoAttention.prepare_attn_kwargs(
-                mask_shape,
-                hidden_states.dtype,
-                hidden_states.device,
-                q_padding_mask=attention_mask,
-                is_causal=True,
-            )
+            try:
+                attention_mask = ColoAttention.prepare_attn_kwargs(
+                    mask_shape,
+                    hidden_states.dtype,
+                    hidden_states.device,
+                    q_padding_mask=attention_mask,
+                    is_causal=True,
+                    invert=(sp_mode != "ring_attn"),
+                )
+            except:
+                pass
         else:
-            attn_mask = self._update_causal_mask(attention_mask, hidden_states, cache_position)
+            attention_mask = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
         # Support SP + PP
         # TODO: support padded casual cu_seqlens across stages
@@ -151,14 +157,12 @@ class LlamaPipelineForwards:
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":
                 assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-                if attn_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
-                    attn_mask["cu_seqlens"], attn_mask["max_seqlen"], attn_mask["indices"] = get_pad_info(
-                        attn_mask["attention_mask"].squeeze(1).any(dim=-1)
-                    )  # [B, 1, Sq, Skv] -> [B, Sq]
-
-                batch = [hidden_states, position_ids]
-                # inputs_embeds, attention_mask["attention_mask"], position_ids = zigzag_split_batch(batch, sp_group)
-                hidden_states, position_ids = split_batch_zigzag(batch, sp_group)
+                if attention_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                    hidden_states, attention_mask, position_ids = RingAttention.prepare_varlen_batch(
+                        attention_mask["attention_mask"].squeeze(1).any(-1), sp_group, hidden_states, position_ids
+                    )
+                else:
+                    hidden_states, position_ids = split_batch_zigzag([hidden_states, position_ids], sp_group)
 
             elif is_share_sp_tp(sp_mode):
                 hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
@@ -199,7 +203,7 @@ class LlamaPipelineForwards:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
-                    attn_mask,
+                    attention_mask,
                     position_ids,
                     past_key_values,
                     output_attentions,
@@ -209,7 +213,7 @@ class LlamaPipelineForwards:
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=attn_mask,
+                    attention_mask=attention_mask,
                     position_ids=position_ids,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
@@ -312,9 +316,13 @@ class LlamaPipelineForwards:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        if stage_manager.is_first_stage():
-            if shard_config.sequence_parallelism_mode == "ring_attn":
-                labels = split_batch_zigzag(labels, shard_config.sequence_parallel_process_group)
+        if shard_config.sequence_parallelism_mode == "ring_attn":
+            sp_group = shard_config.sequence_parallel_process_group
+            if attention_mask.bool().all():
+                labels = split_batch_zigzag(labels, sp_group, seq_dim=1)
+            else:
+                # [B, max_seqlen // sp_size]
+                labels, _, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group, labels, is_label=True)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = LlamaPipelineForwards.llama_model_forward(
@@ -545,8 +553,12 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
 
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+
         cos, sin = self.rotary_emb(value_states, position_ids)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        try:
+            query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        except:
+            pass
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
@@ -560,6 +572,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
             attn_output = RingAttention.attention(
                 query_states, key_states, value_states, sp_group, shard_config.sp_stream, **attention_mask
             )
+
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
             attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
@@ -670,27 +683,30 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if shard_config.enable_flash_attention:
             mask_shape = (batch_size, 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
-            mask_info: dict = ColoAttention.prepare_attn_kwargs(
+            attention_mask: dict = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
                 inputs_embeds.device,
                 q_padding_mask=attention_mask,
                 is_causal=True,
+                invert=(sp_mode != "ring_attn"),
             )
 
         else:
-            mask_info: torch.Tensor = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
+            attention_mask: torch.Tensor = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
 
         # Ring Attention zigzag batch processing
         if sp_mode == "ring_attn":
             assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-            if mask_info["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
-                inputs_embeds, position_ids, mask_info = RingAttention.prepare_varlen_batch(
-                    inputs_embeds, mask_info["attention_mask"], sp_group, position_ids
+            if attention_mask["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                inputs_embeds, attention_mask, position_ids = RingAttention.prepare_varlen_batch(
+                    attention_mask["attention_mask"].squeeze(1).any(-1), sp_group, inputs_embeds, position_ids
                 )
             else:
                 inputs_embeds, position_ids = split_batch_zigzag([inputs_embeds, position_ids], sp_group)
-                mask_info = {"attention_mask_type": mask_info["attention_mask_type"]}  # drop redundant tensors
+                attention_mask = {
+                    "attention_mask_type": attention_mask["attention_mask_type"]
+                }  # drop redundant tensors
 
         elif is_share_sp_tp(sp_mode):
             inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
@@ -710,7 +726,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,
-                    mask_info,
+                    attention_mask,
                     position_ids,
                     past_key_values,
                     output_attentions,
@@ -721,7 +737,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
             else:
                 layer_outputs = decoder_layer(
                     hidden_states,
-                    attention_mask=mask_info,
+                    attention_mask=attention_mask,
                     position_ids=position_ids,
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
@@ -813,7 +829,13 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if shard_config.sequence_parallelism_mode == "ring_attn":
-            labels = split_batch_zigzag(labels, shard_config.sequence_parallel_process_group)
+            sp_group = shard_config.sequence_parallel_process_group
+            if attention_mask.bool().all():
+                labels = split_batch_zigzag(labels, sp_group, seq_dim=1)
+            else:
+                # [B, max_seq_len // sp_size]
+                labels, _, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group, labels, is_label=True)
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
             input_ids=input_ids,

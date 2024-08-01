@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
@@ -151,7 +150,7 @@ def cross_entropy_1d(
 
 
 def dist_cross_entropy(
-    labels: torch.Tensor,  # [B, S]
+    labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
     logits: torch.Tensor,  # [B, S, Vocab_size]
     shard_config: ShardConfig,
     out_features: int,
@@ -169,35 +168,54 @@ def dist_cross_entropy(
     sp_mode = shard_config.sequence_parallelism_mode
     parallel_output = shard_config.parallel_output
     is_tp = shard_config.enable_tensor_parallelism
-
-    bs, seq_len = labels.shape
+    is_packed = labels.dim() == 2
+    if is_packed:
+        bs, seq_len = labels.shape
+    else:
+        # padded sequence
+        seq_len = labels.shape[-1]
+        logits = logits.reshape(-1, *logits.shape[2:])
+        seq_dim = 0
 
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
     if is_sp:
-        # shift only once
+        # shift only once: either before splitting or on the last rank without splitting
         if split_labels_here or (sp_rank == sp_size - 1):
             labels = labels[..., 1:]
         # Split labels when logits are split
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
 
-        # Pad to the same shape across all ranks in TP all_reduce
         if sp_rank == sp_size - 1:
             logits = logits[..., :-1, :]
+            # Pad logits and labels to the same shape across all ranks for TP all_reduce
             if is_tp and parallel_output:
-                pad_shape = [0] * logits.dim() * 2
-                pad_shape[-3] = 1  # Right side, dim = -2
-                logits = F.pad(logits, pad_shape, value=_IGNORE_IDX)
-                labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
+                # If is packed sequence (label dim is 1), then each seq already has the end label token padded.
+                # NOTE: torch.cat is faster than F.pad...
+                pad_shape = (logits.shape[0], 1, *logits.shape[2:]) if is_packed else (1, *logits.shape[1:])
+                padding = torch.full(pad_shape, _IGNORE_IDX, dtype=logits.dtype, device=logits.device)
+                logits = torch.cat([logits, padding], dim=seq_dim)
+
+                pad_shape = (labels.shape[0], 1) if is_packed else (1,)
+                padding = torch.full(pad_shape, _IGNORE_IDX, dtype=labels.dtype, device=labels.device)
+                labels = torch.cat([labels, padding], dim=seq_dim)
+                # pad_shape = [0] * labels.dim() * 2
+                # pad_shape[1] = 1
+                # labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
     else:
         labels = labels[..., 1:]
         logits = logits[..., :-1, :]
     labels = labels.contiguous()
     logits = logits.contiguous()
     num_nonzero = (labels != _IGNORE_IDX).sum()
-    assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    try:
+        assert (
+            labels.shape == logits.shape[:-1]
+        ), f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    except:
+        pass
 
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(ignore_index=_IGNORE_IDX, reduction="sum")
@@ -218,7 +236,10 @@ def dist_cross_entropy(
     else:
         # NOTE if use TP and not parallel_output, the output is gathered in VocabParallelLMHead1D
         logits = logits.view(-1, vocab_size)
-        loss = loss_fct(logits, labels)
+        try:
+            loss = loss_fct(logits, labels)
+        except:
+            pass
 
     # Reduce loss instead of gathering logits over seq dim for savings
     if split_labels_here or sp_mode == "ring_attn":

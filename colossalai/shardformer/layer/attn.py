@@ -128,6 +128,7 @@ class ColoAttention:
         q_padding_mask: Optional[torch.Tensor] = None,
         kv_padding_mask: Optional[torch.Tensor] = None,
         is_causal: bool = False,
+        invert: bool = True,
     ) -> Dict[str, torch.Tensor]:
         """Return a dictionary of keyword arguments for attention function. It supports 4 mask type.
         1. custom mask: no padding mask and is_causal=False, return {}, users should handle attention mask by themselves.
@@ -145,6 +146,7 @@ class ColoAttention:
                 The shape should be [B, Skv]. ``1`` means valid token, and ``0`` means padding token.
                 If it's None and ``q_padding_mask`` is not None, it will be set to ``q_padding_mask``. Defaults to None.
             is_causal (bool, optional): Whether to use causal attention mask. Defaults to False.
+            invert_mask (bool, optional): Whether to invert the mask. Defaults to True.
         Returns:
             Dict[str, torch.Tensor]: Dictionary of keyword arguments for attention function.
         """
@@ -164,18 +166,23 @@ class ColoAttention:
                 attention_mask = attention_mask.tril(diagonal=0)
             attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
+            assert q_padding_mask.shape == (
+                b,
+                s_q,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_q}."
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
+                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
+                attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
             ), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
-            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,
@@ -192,7 +199,8 @@ class ColoAttention:
                     attention_mask = attention_mask * attention_mask.new_ones(s_q, s_kv).tril(diagonal=0)
             else:
                 outputs["attention_mask_type"] = AttnMaskType.PADDED
-        attention_mask = invert_mask(attention_mask).unsqueeze(1)
+        if invert:
+            attention_mask = invert_mask(attention_mask).unsqueeze(1)
         outputs["attention_mask"] = attention_mask
         return outputs
 
@@ -412,19 +420,22 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
-    # lse.data = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
+    # NOTE: directly assigning to .data here is buggy
+    # probably due to casting dtypes/strides
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
 
-    new_block_lse = torch.exp(block_lse - lse)
-    out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
-    lse.copy_(new_lse)
+    new_block_lse = torch.exp(block_lse - new_lse)
+    out = (torch.exp(lse - new_lse) * out + new_block_lse * block_out).to(out)
+    lse = new_lse
 
+    # Equivalent to the above
     # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
-    # out.data = (out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse.data = (lse - F.logsigmoid(lse - block_lse))
-
+    # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
+    # lse = (lse - F.logsigmoid(lse - block_lse))
     assert not (lse.isnan().any() or lse.isinf().any()), f"lse is nan: {lse}"
+    return out, lse
 
 
 class RingAttention(torch.autograd.Function):
@@ -439,7 +450,10 @@ class RingAttention(torch.autograd.Function):
     # Globle cache to avoid recomputation for same-lengthed sequences
     CU_SEQLENS: torch.Tensor = None  # [B+1]
     TOTAL_SEQLEN: int = None
+    HALF_INDICES: Tuple = None
     SUPPORTED_MASK_TYPES = (AttnMaskType.CAUSAL, AttnMaskType.PADDED_CAUSAL)
+    CORRECTION_DONE = torch.cuda.Event()
+    ATTN_DONE = torch.cuda.Event()
 
     @staticmethod
     def attention(
@@ -452,11 +466,10 @@ class RingAttention(torch.autograd.Function):
         cu_seqlens=None,
         max_seqlen=None,
         valid_indices=None,
-        dropout_p=0,
+        dropout_p=0.0,
         softmax_scale=None,
         deterministic=False,
         return_softmax=False,
-        pad_output=True,
         **kwargs,
     ):
         """
@@ -479,8 +492,6 @@ class RingAttention(torch.autograd.Function):
             softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax.
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
-            pad_output: (bool, optional): If True, return a batch of sequences in the casual padded mode. Else,
-                return a packed sequence.
 
         Returns:
             out: Output tensor of shape [B, nHeads, Sq, D] or [T, nHeads, D] if pad_output is False.
@@ -498,27 +509,28 @@ class RingAttention(torch.autograd.Function):
 
         # (B, H, Sq, D) -> (B, Sq, H, D)
         q, k, v = [x.transpose(1, 2).contiguous() for x in (q, k, v)]
-        b, sq, h, d = q.shape
+        pad_output = q.dim() == 4
 
         # Get sequence length info for varlen forward
         if attention_mask_type == AttnMaskType.CAUSAL:
             # All sequences share the same length
+            b, sq, h, d = q.shape
+            max_seqlen = sq
             # Cache to avoid recreation for a single sequence
-            if b * sq == RingAttention.TOTAL_SEQLEN:
+            if sq * b == RingAttention.TOTAL_SEQLEN:
                 cu_seqlens = RingAttention.CU_SEQLENS
-                max_seqlen = RingAttention.TOTAL_SEQLEN
             else:
-                RingAttention.CU_SEQLENS = cu_seqlens = torch.arange(
-                    0, b * sq + 1, sq, device=q.device, dtype=torch.int32
-                )
-                RingAttention.TOTAL_SEQLEN = max_seqlen = b * sq
+                cu_seqlens = torch.arange(0, b * sq + 1, sq, device=q.device, dtype=torch.int32)
+                RingAttention.TOTAL_SEQLEN = b * sq
 
         # "Packed" mode where sequences of different lengths are packed into [total_q_seqlen, H, D]
         elif attention_mask_type == AttnMaskType.PADDED_CAUSAL:
             assert (
                 cu_seqlens is not None and max_seqlen is not None and valid_indices is not None
             ), "Packed mode requires pre-computed cu_seqlens and max_seq_len."
-            q, k, v = [_unpad_input(x, valid_indices) for x in (q, k, v)]
+            if pad_output:
+                b, sq, h, d = q.shape
+                q, k, v = [_unpad_input(x, valid_indices) for x in (q, k, v)]
 
         out, softmax_lse = RingAttention.apply(
             q,
@@ -573,17 +585,29 @@ class RingAttention(torch.autograd.Function):
             "softcap": 0.0,
             "return_softmax": False,
         }
-        if is_packed:
-            t, h, d = q.shape
-            # half of each seq
+
+        # For Flash Attn, indexing blocks of contiguous mem has the same perf
+        # as indexing one big contiguous block.
+        # Also the former avoids frequent mem copies, e.g. when indexing
+        # half of the seq dim and reshaping
+        if (
+            RingAttention.HALF_INDICES is not None
+            and cu_seqlens.shape == RingAttention.CU_SEQLENS.shape
+            and (cu_seqlens == RingAttention.CU_SEQLENS).all()
+        ):
+            half_idx_front, half_idx_back = RingAttention.HALF_INDICES
+        else:
             half_idx_front = get_half_index(cu_seqlens, front=True)
             half_idx_back = get_half_index(cu_seqlens, front=False)
+            RingAttention.HALF_INDICES = (half_idx_front, half_idx_back)
+            RingAttention.CU_SEQLENS = cu_seqlens
+
+        if is_packed:
+            t, h, d = q.shape
         else:
             b, sq, h, d = q.shape
             t = b * sq
             q, k, v = [x.view(t, h, d) for x in (q, k, v)]
-        half_cu_seqlens = cu_seqlens // 2
-        half_max_seqlen = max_seqlen // 2
 
         kv_comms = [RingComm(sp_group) for _ in range(2)]
         sp_size = kv_comms[0].world_size
@@ -591,7 +615,7 @@ class RingAttention(torch.autograd.Function):
 
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
-        kv_buffers.append(None)
+        kv_buffers.append(torch.empty_like(kv_buffers[0]))
 
         # outputs
         out = None
@@ -600,30 +624,30 @@ class RingAttention(torch.autograd.Function):
         block_softmax_lse = [None, None]  # log sum exp, the denominator of softmax in attention
         rng_states = [None for _ in range(sp_size)]
         sp_streams = [torch.cuda.current_stream(), sp_stream]
-        correction_done = torch.cuda.Event()
 
         # Overlap output correction with next flash attn
         for i in range(sp_size):
             with torch.cuda.stream(sp_streams[i % 2]):
-                if i < sp_size - 1:
-                    # Avoid overwriting the kv block used by the last flash attn call
-                    kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
                 # Wait for current kv from prev rank
                 # NOTE: waiting outside the current stream will NOT correctly synchronize.
                 kv_comms[(i + 1) % 2].wait()
+                # Avoid overwriting attn input when it shares mem with buffer
+                if not RingAttention.ATTN_DONE.query():
+                    kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
+
                 if i < sp_size - 1:
                     kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
 
                 if i == 0:
                     # Compute with local KV; no mask
+                    kv_block = kv_buffers[0]
                     q_block = q
-                    kv_block = kv_buffers[i % 2]
                     (
                         _,
                         _,
                         _,
                         _,
-                        block_out[i % 2],  # (B, Sq, H, D)
+                        block_out[i % 2],  # (B * Sq, H, D)
                         block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
@@ -641,20 +665,15 @@ class RingAttention(torch.autograd.Function):
                 elif i <= sp_rank:
                     # Received the "surrounding" kv chunks
                     # Drop the second half of received kv
-                    q_block = q
                     # (2, t // 2, H, D)
-                    kv_block = kv_buffers[i % 2]
-                    if is_packed:
-                        kv_block = kv_block[:, half_idx_front]
-                    else:
-                        kv_block = kv_block[:, : t // 2]
-
+                    kv_block = kv_buffers[i % 2][:, half_idx_front]
+                    q_block = q
                     (
                         _,
                         _,
                         _,
                         _,
-                        block_out[i % 2],  # (B, Sq, H, D)
+                        block_out[i % 2],  # (B * Sq, H, D)
                         block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
@@ -663,9 +682,9 @@ class RingAttention(torch.autograd.Function):
                         kv_block[0],
                         kv_block[1],
                         cu_seqlens_q,
-                        half_cu_seqlens,
+                        cu_seqlens_kv // 2,
                         max_seqlen_q,
-                        half_max_seqlen,
+                        max_seqlen_kv // 2,
                         causal=False,
                         **misc_kwargs,
                     )
@@ -673,18 +692,16 @@ class RingAttention(torch.autograd.Function):
                 else:
                     # Received the inner kv chunks
                     # Drop the first half of q
-                    if is_packed:
-                        q_block = q[half_idx_back]
-                    else:
-                        q_block = q[t // 2 :]
-
                     kv_block = kv_buffers[i % 2]
+                    q_block = q[half_idx_back]
+
+                    # dist.barrier()
                     (
                         _,
                         _,
                         _,
                         _,
-                        block_out[i % 2],  # (B, Sq // 2, H, D)
+                        block_out[i % 2],  # (B * Sq // 2, H, D)
                         block_softmax_lse[i % 2],  # (H, total_q_seqlen)
                         _,
                         rng_states[i],
@@ -692,41 +709,38 @@ class RingAttention(torch.autograd.Function):
                         q_block,
                         kv_block[0],
                         kv_block[1],
-                        half_cu_seqlens,
+                        cu_seqlens_q // 2,
                         cu_seqlens_kv,
-                        half_max_seqlen,
+                        max_seqlen_q // 2,
                         max_seqlen_kv,
                         causal=False,
                         **misc_kwargs,
                     )
+                RingAttention.ATTN_DONE.record(sp_streams[i % 2])
 
-                block_out[i % 2] = block_out[i % 2].view(-1, h, d)
                 block_softmax_lse[i % 2] = (
                     block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
                 )  # (H, T) -> (T, H, 1)
                 assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
-                if i == 1:
-                    pass
                 # Output and log sum exp correction
                 if i > 0:
-                    sp_streams[i % 2].wait_event(correction_done)
+                    sp_streams[i % 2].wait_event(RingAttention.CORRECTION_DONE)
 
+                if sp_rank == 0:
+                    pass
                 # Overlap output correction with next flash attn kernel
                 if i == 0:
                     out = block_out[0]
                     softmax_lse = block_softmax_lse[0]
                 elif i <= sp_rank:
-                    _rescale_out_lse(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
+                    out, softmax_lse = _rescale_out_lse(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
                 else:
-                    # Dropped the first half of q sequence
-                    if is_packed:
-                        _out, _lse = out[half_idx_back], softmax_lse[half_idx_back]
-                    else:
-                        _out, _lse = out[t // 2 :], softmax_lse[t // 2 :]
-                    _rescale_out_lse(_out, block_out[i % 2], _lse, block_softmax_lse[i % 2])
+                    out[half_idx_back], softmax_lse[half_idx_back] = _rescale_out_lse(
+                        out[half_idx_back], block_out[i % 2], softmax_lse[half_idx_back], block_softmax_lse[i % 2]
+                    )
 
-                sp_streams[i % 2].record_event(correction_done)
-        torch.cuda.current_stream().wait_event(correction_done)
+                RingAttention.CORRECTION_DONE.record(sp_streams[i % 2])
+        torch.cuda.current_stream().wait_event(RingAttention.CORRECTION_DONE)
 
         out = out.to(q.dtype)
         if not is_packed:
@@ -735,13 +749,12 @@ class RingAttention(torch.autograd.Function):
         softmax_lse = softmax_lse.squeeze(-1)
 
         ctx.sp_group = sp_group
-        ctx.max_seqlen_q = max_seqlen
-        ctx.max_seqlen_kv = max_seqlen_kv
+        ctx.max_seqlen_q = ctx.max_seqlen_kv = max_seqlen
         misc_kwargs["deterministic"] = deterministic
         del misc_kwargs["return_softmax"]
         ctx.misc_kwargs = misc_kwargs
         ctx.is_packed = is_packed
-        indices = (half_idx_front, half_idx_back) if is_packed else tuple()
+
         ctx.save_for_backward(
             q,
             k,
@@ -750,7 +763,8 @@ class RingAttention(torch.autograd.Function):
             softmax_lse.transpose(0, 1).contiguous(),  # (T, H) -> (H, T)
             cu_seqlens_q,
             cu_seqlens_kv,
-            *indices,
+            half_idx_front,
+            half_idx_back,
             *rng_states,
         )
 
@@ -763,23 +777,9 @@ class RingAttention(torch.autograd.Function):
         During backward, we accumulate q grads on each rank locally, but iterate kv and their grads
         over all ranks for accumulation.
         """
-        (
-            q,
-            k,
-            v,
-            out,
-            softmax_lse,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-        ) = ctx.saved_tensors[:7]
+        (q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_kv, half_idx_front, half_idx_back) = ctx.saved_tensors[:9]
         is_packed = ctx.is_packed
-        if is_packed:
-            half_idx_front, half_idx_back = ctx.saved_tensors[7:9]
-            rng_states = ctx.saved_tensors[9:]
-            softmax_lse1 = softmax_lse[:, half_idx_back].contiguous()
-        else:
-            rng_states = ctx.saved_tensors[7:]
-            softmax_lse1 = softmax_lse.chunk(2, dim=-1)[1].contiguous()  # Second half of seq
+        rng_states = ctx.saved_tensors[9:]
 
         max_seqlen_q = ctx.max_seqlen_q
         max_seqlen_kv = ctx.max_seqlen_kv
@@ -796,7 +796,7 @@ class RingAttention(torch.autograd.Function):
         else:
             b, sq, h, d = q.shape
             t = b * sq
-            q, k, v, out, dout = [x.view(t, h, d) for x in (q, k, v, out, dout)]
+        q, k, v, out, dout = [x.view(t, h, d) for x in (q, k, v, out, dout)]
 
         # Sequence parallel args
         sp_group = ctx.sp_group
@@ -849,13 +849,12 @@ class RingAttention(torch.autograd.Function):
                     rng_state=rng_states[i],
                     **misc_kwargs,
                 )
+
             elif i <= sp_rank:
                 # Drop the second half of kv
                 # (T, H, D) -> (T // 2, H, D)
-                if is_packed:
-                    k_, v_, dk_, dv_ = [x[half_idx_front] for x in (*kv_buffers[i % 2], dk_block, dv_block)]
-                else:
-                    k_, v_, dk_, dv_ = [x[: t // 2] for x in (*kv_buffers[i % 2], dk_block, dv_block)]
+                k_, v_ = [x[half_idx_front] for x in kv_buffers[i % 2]]
+                dk_, dv_ = [x[: t // 2] for x in (dk_block, dv_block)]
                 dq_, q_, out_, dout_ = (dq_block, q, out, dout)
 
                 _flash_attn_backward(
@@ -881,17 +880,16 @@ class RingAttention(torch.autograd.Function):
                 # Drop the first half of q
                 k_, v_ = kv_buffers[i % 2]
                 dk_, dv_ = dk_block, dv_block
-                if is_packed:
-                    q_, dq_, out_, dout_ = [x[half_idx_back] for x in (q, dq_block, out, dout)]
-                else:
-                    q_, dq_, out_, dout_ = [x[t // 2 :] for x in (q, dq_block, out, dout)]
+                q_, out_, dout_ = [x[half_idx_back] for x in (q, out, dout)]
+                dq_ = dq_block[: t // 2]
+
                 _flash_attn_backward(
                     dout_,
                     q_,
                     k_,
                     v_,
                     out_,
-                    softmax_lse1,
+                    softmax_lse[:, half_idx_back],
                     dq_,
                     dk_,
                     dv_,
@@ -909,37 +907,29 @@ class RingAttention(torch.autograd.Function):
             dkv_recv = dkv_buffers[(i + 1) % 2]
             if i == 0:
                 dq = dq_block.float()
-                dkv_recv[0].copy_(dk_block)
-                dkv_recv[1].copy_(dv_block)
+                dkv_recv[0] = dk_block.float()
+                dkv_recv[1] = dv_block.float()
             else:
                 # Accumulate local dq
                 if i <= sp_rank:
-                    dq += dq_block  # (T, H, D)
+                    dq += dq_  # (T, H, D)
                 else:
-                    if is_packed:
-                        dq[half_idx_back] += dq_block[half_idx_back]
-                    else:
-                        dq[t // 2 :] += dq_block[t // 2 :]  # (T // 2, H, D)
+                    dq[half_idx_back] += dq_
 
                 # Wait for mobile kv grad accumulators
                 dkv_comm.wait()
                 if i <= sp_rank:
                     # q blocks "surrounded" by kv blocks
-                    if is_packed:
-                        dkv_recv[0][half_idx_front] += dk_block[half_idx_front]
-                        dkv_recv[1][half_idx_front] += dv_block[half_idx_front]
-                    else:
-                        dkv_recv[0][: t // 2] += dk_block[: t // 2]  # (T // 2, H, D)
-                        dkv_recv[1][: t // 2] += dv_block[: t // 2]
+                    dkv_recv[0][half_idx_front] += dk_
+                    dkv_recv[1][half_idx_front] += dv_
                 else:
                     # q blocks "surrounding" kv blocks
-                    dkv_recv[0] += dk_block
-                    dkv_recv[1] += dv_block
+                    dkv_recv[0] += dk_
+                    dkv_recv[1] += dv_
 
             dkv_comm.send_recv(send_tensor=dkv_recv, recv_tensor=dkv_send)
         dkv_comm.wait()
         dkv_recv = dkv_send
-
         dq, dk, dv = [x.to(q.dtype) for x in (dq, *dkv_recv)]
         if not is_packed:
             dq, dk, dv = [x.view(b, sq, h, d) for x in (dq, dk, dv)]
@@ -960,18 +950,31 @@ class RingAttention(torch.autograd.Function):
 
     @staticmethod
     def prepare_varlen_batch(
-        inputs_embeds: torch.Tensor,
         attention_mask: torch.Tensor,
         sp_group: dist.ProcessGroup,
+        inputs_embeds: torch.Tensor = None,
         position_ids: Optional[torch.Tensor] = None,
+        is_label: bool = False,
+        is_2d: bool = True,
     ):
         """
         Preprocess a batch of padded sequence by splitting input sequence by sp_size
         sequence-wise and packing them into one sequence. Updates the mask info accordingly.
         Args:
+            attention_mask (torch.Tensor): Contains the mask [B, Sq], where True means the token is NOT masked.
+            sp_group (dist.ProcessGroup): Process group for sequence parallelism
             inputs_embeds (torch.Tensor): Input embeddings. Shape should be [B, Sq, ...]
-            attention_mask (torch.Tensor): Contains the mask [B, Sq]
-            position_ids (Optional[torch.Tensor], optional): Position ids of shape [Sq]. Defaults to None.
+            position_ids (Optional[torch.Tensor], optional): Position ids of shape [Sq] or [1, Sq]. Defaults to None.
+            is_label (bool, optional): Whether the input is a label tensor. If True, mask out the first
+                token of each sequence.
+            is_2d (bool, optional): Whether to return 2D outputs padded to max_seqlen // sp_size or flatten
+                the batch dim to a packed 1d sequence. Contingent on model forward shape definitions.
+
+        Returns:
+            inputs_embeds: Packed input embeddings of shape [B, Sq // sp_size, ...].
+            mask_info: A dictionary of mask info.
+            position_ids: Packed position ids of shape [..., Sq // sp_size].
+
         """
         _load_varlen_helpers()
         sp_size = dist.get_world_size(group=sp_group)
@@ -982,21 +985,32 @@ class RingAttention(torch.autograd.Function):
         # Unpad, split seq-wise, then pad back to (B, max_seqlen // sp_size)
         # Split mask to compute local nonzero position indices
         # (B, Sq) -> (B, max_seqlen // sp_size)
-        attention_mask, inputs_embeds = split_varlen_zigzag(
-            [attention_mask, inputs_embeds],
-            mask_info["cu_seqlens"],
-            sp_group,
-            mask_info["max_seqlen"],
-            is_2d=True,
+        attention_mask = attention_mask[:, : mask_info["max_seqlen"]]
+        if inputs_embeds is not None:
+            inputs_embeds = inputs_embeds[:, : mask_info["max_seqlen"]]
+            inputs_embeds = split_varlen_zigzag(
+                inputs_embeds,
+                mask_info["cu_seqlens"],
+                sp_group,
+                mask_info["max_seqlen"],
+                is_2d=is_2d,
+                is_label=is_label,
+            )
+        attention_mask = split_varlen_zigzag(
+            attention_mask, mask_info["cu_seqlens"], sp_group, mask_info["max_seqlen"], is_2d=is_2d
         )
+
+        if position_ids is not None:
+            indices = torch.tensor([sp_rank, 2 * sp_size - sp_rank - 1], device=inputs_embeds.device)
+            position_ids = (
+                position_ids[..., : mask_info["max_seqlen"]]
+                .view(-1, sp_size * 2, mask_info["max_seqlen"] // (sp_size * 2))
+                .index_select(-1, indices)
+                .view(-1, mask_info["max_seqlen"] // sp_size)
+            )
         mask_info["valid_indices"] = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
         mask_info["max_seqlen"] //= sp_size
         mask_info["cu_seqlens"] //= sp_size
         mask_info["attention_mask_type"] = AttnMaskType.PADDED_CAUSAL
 
-        if position_ids is not None:
-            indices = torch.tensor([sp_rank, 2 * sp_size - sp_rank - 1], device=inputs_embeds.device)
-            position_ids = (
-                position_ids[: mask_info["max_seqlen"]].view(sp_size * 2, -1).index_select(0, indices).view(-1)
-            )
-        return inputs_embeds, position_ids, mask_info
+        return inputs_embeds, mask_info, position_ids
