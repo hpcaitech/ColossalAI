@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.utils import logging
 
@@ -13,9 +12,12 @@ from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
-    gather_forward_split_backward,
+    gather_sp_output,
+    is_share_sp_tp,
     split_forward_gather_backward,
 )
+
+from ..layer import dist_cross_entropy
 
 
 def get_flash_core_attention_forward():
@@ -138,6 +140,7 @@ class ChatGLMPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
+        force_sp_output_gather: Optional[bool] = True,
     ):
         logger = logging.get_logger(__name__)
         output_hidden_states = (
@@ -239,20 +242,10 @@ class ChatGLMPipelineForwards:
             if use_cache:
                 presents = presents + (kv_cache,)
 
-        if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "split_gather":
-                hidden_states = gather_forward_split_backward(
-                    hidden_states,
-                    dim=0,
-                    process_group=shard_config.tensor_parallel_process_group,
-                )
-            elif shard_config.sequence_parallelism_mode == "all_to_all":
-                hidden_states = gather_forward_split_backward(
-                    hidden_states,
-                    dim=0,
-                    process_group=shard_config.sequence_parallel_process_group,
-                    grad_scale=shard_config.sequence_parallel_size,
-                )
+        if shard_config:
+            sp_mode = shard_config.sequence_parallelism_mode
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
         if stage_manager.is_last_stage():
@@ -315,6 +308,7 @@ class ChatGLMPipelineForwards:
             hidden_states=hidden_states,
             stage_index=stage_index,
             shard_config=shard_config,
+            force_sp_output_gather=False,
         )
         if stage_manager.is_last_stage():
             hidden_states = transformer_outputs[0]
@@ -322,17 +316,9 @@ class ChatGLMPipelineForwards:
                 hidden_states = hidden_states[-1:]
             lm_logits = self.transformer.output_layer(hidden_states)
             lm_logits = lm_logits.transpose(0, 1).contiguous()
-            loss = None
-            if labels is not None:
-                lm_logits = lm_logits.to(torch.float32)
-                # Shift so that tokens < n predict n
-                shift_logits = lm_logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss(ignore_index=-100)
-                loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-                lm_logits = lm_logits.to(hidden_states.dtype)
-                loss = loss.to(hidden_states.dtype)
+            loss = dist_cross_entropy(
+                labels, lm_logits, shard_config, self.lm_head.out_features, self.config.vocab_size, lm_logits.dtype
+            )
             if not return_dict:
                 output = (lm_logits,) + transformer_outputs[1:]
                 return ((loss,) + output) if loss is not None else output
@@ -361,6 +347,7 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
         use_cache: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        force_sp_output_gather: Optional[bool] = True,
     ):
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -431,19 +418,8 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
             output_hidden_states=output_hidden_states,
         )
 
-        if sp_mode in ["split_gather"]:
-            hidden_states = gather_forward_split_backward(
-                hidden_states,
-                dim=0,
-                process_group=shard_config.tensor_parallel_process_group,
-            )
-        elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(
-                hidden_states,
-                dim=0,
-                process_group=sp_group,
-                grad_scale=sp_size,
-            )
+        if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+            hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
 
         if not return_dict:
             return tuple(
