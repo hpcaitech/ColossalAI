@@ -6,11 +6,15 @@ from torch.testing import assert_close
 
 import colossalai
 <<<<<<< HEAD
+<<<<<<< HEAD
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
 from colossalai.shardformer.layer.utils import split_batch_zigzag, split_varlen_zigzag
 =======
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention
+=======
+from colossalai.shardformer.layer import AttnMaskType
+>>>>>>> all tests passed
 from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
 <<<<<<< HEAD
 from colossalai.shardformer.layer.utils import split_batch_zigzag
@@ -24,6 +28,7 @@ from colossalai.utils import get_current_device
 
 @parameterize("seq_len", [4096])
 <<<<<<< HEAD
+<<<<<<< HEAD
 @parameterize("bs", [2])
 @parameterize("nheads", [5])
 @parameterize("d", [128])
@@ -32,9 +37,12 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
 =======
 @parameterize("bs", [1])
+=======
+@parameterize("bs", [2])
+>>>>>>> all tests passed
 @parameterize("nheads", [5])
 @parameterize("d", [128])
-@parameterize("dtype", [torch.float16, torch.bfloat16])
+@parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
 <<<<<<< HEAD
@@ -170,6 +178,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     assert_close(lse, ring_lse, atol=atol, rtol=rtol)
     assert_close(out, ring_out, atol=atol, rtol=rtol)
 
+<<<<<<< HEAD
     # Check grads
     labels = torch.ones(out.shape[0], dtype=dtype, device=device)
     F.mse_loss(out.sum((-2, -1)), labels).backward()
@@ -200,43 +209,42 @@ def launch_single_ring(rank, world_size, port):
 =======
 @parameterize("seqlen", [16])
 >>>>>>> fix typo
+=======
+@parameterize("seqlen", [4096])
+>>>>>>> all tests passed
 @parameterize("bs", [2])
 @parameterize("nheads", [5])
 @parameterize("d", [128])
-@parameterize("dtype", [torch.float16, torch.bfloat16])
+@parameterize("dtype", [torch.bfloat16, torch.float16])
 def check_packed_seq(seqlen, bs, nheads, d, dtype):
     device = get_current_device()
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
     sp_stream = torch.cuda.Stream()
     atol = rtol = 7e-3
-
+    torch.cuda.manual_seed(2)
     # Prepare varlen attention mask
     padding_mask = torch.ones((bs, seqlen), dtype=torch.int, device=device)
-    # padding_mask[: bs // 2, (seqlen // 4) * 3 :] = 0
+    padding_mask[: bs // 2, (seqlen // 4) * 3 :] = 0
     padding_mask[:, seqlen // 2 :] = 0
-    mask_info = ColoAttention.prepare_attn_kwargs(
-        (bs, 1, seqlen, seqlen), dtype, padding_mask.device, q_padding_mask=padding_mask, is_causal=True
-    )
-    # input_embeds = torch.randn(bs, seqlen, nheads, d, device=device, dtype=dtype, requires_grad=True)
-    input_embeds = (
-        torch.arange(seqlen, device=device, dtype=dtype, requires_grad=True)
-        .repeat(bs, nheads, d, 1)
-        .permute(0, 3, 1, 2)
-        .contiguous()
-    )
-    q, k, v = [input_embeds.clone().transpose(1, 2) for _ in range(3)]
+
+    input_embeds = torch.randn(bs, seqlen, nheads, d, device=device, dtype=dtype, requires_grad=True)
 
     # Forward
     # out = ColoAttention.attention(q, k, v, **mask_info)
     flat_input = input_embeds.view(-1, nheads, d)[padding_mask.flatten().nonzero().squeeze()]
     qkv = torch.stack([flat_input] * 3, dim=1)
     qkv.retain_grad()
-    out, lse, _ = flash_attn_varlen_qkvpacked_func(
-        qkv, mask_info["cu_seqlens_q"], mask_info["max_seqlen_q"], return_attn_probs=True, causal=True
-    )
 
-    input_embeds, _, mask_info = RingAttention.prepare_varlen_batch(input_embeds, padding_mask, sp_group)
+    input_embeds, mask_info, _ = RingAttention.prepare_varlen_batch(padding_mask, sp_group, input_embeds)
+    out, lse, _ = flash_attn_varlen_qkvpacked_func(
+        qkv,
+        mask_info["cu_seqlens"] * sp_size,
+        mask_info["max_seqlen"] * sp_size,
+        return_attn_probs=True,
+        causal=True,
+        # deterministic=True
+    )
     # Test the splitting function
     local_input = split_varlen_zigzag(
         flat_input, mask_info["cu_seqlens"] * sp_size, sp_group, mask_info["max_seqlen"] * sp_size
@@ -248,23 +256,31 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     q_ring.retain_grad()
     k_ring.retain_grad()
     v_ring.retain_grad()
+
     ring_out, ring_lse = RingAttention.attention(
-        q_ring, k_ring, v_ring, sp_group, sp_stream, **mask_info, pad_output=False, return_softmax=True
+        q_ring,
+        k_ring,
+        v_ring,
+        sp_group,
+        sp_stream,
+        **mask_info,
+        pad_output=False,
+        return_softmax=True,
+        # deterministic=True
     )
 
     # Check output
-    # ring_out, out = [x.transpose(1, 2) for x in (ring_out, out)] # to (B, Sq, nHeads, D)
-    # out = split_varlen_zigzag(out, mask_info["cu_seqlens"] * sp_size, sp_group, mask_info["max_seqlen"] * sp_size, is_2d=True)
     lse = lse.transpose(0, 1)
     out, lse = split_varlen_zigzag(
         [out, lse], mask_info["cu_seqlens"] * sp_size, sp_group, mask_info["max_seqlen"] * sp_size
     )
-    # assert_close(lse, ring_lse, atol=atol, rtol=rtol)
+    assert_close(lse, ring_lse, atol=atol, rtol=rtol)
     assert_close(out, ring_out, atol=atol, rtol=rtol)
 
     # Check grads
-    out.sum().backward()
-    ring_out.sum().backward()
+    labels = torch.ones(out.shape[0], dtype=dtype, device=device)
+    F.mse_loss(out.sum((-2, -1)), labels).backward()
+    F.mse_loss(ring_out.sum((-2, -1)), labels[: ring_out.shape[0]]).backward()
     dq, dk, dv = [
         split_varlen_zigzag(
             qkv.grad[:, i], mask_info["cu_seqlens"] * sp_size, sp_group, mask_info["max_seqlen"] * sp_size
@@ -275,6 +291,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
         x.transpose(1, 2).reshape(-1, nheads, d)[mask_info["valid_indices"]]
         for x in (q_ring.grad, k_ring.grad, v_ring.grad)
     ]
+
     assert_close(dq, dq_ring, atol=atol, rtol=rtol)
     assert_close(dk, dk_ring, atol=atol, rtol=rtol)
     assert_close(dv, dv_ring, atol=atol, rtol=rtol)
@@ -282,6 +299,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
 
 def launch(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
+<<<<<<< HEAD
 <<<<<<< HEAD
     # check_ring_attn()
     check_packed_seq()
@@ -300,14 +318,22 @@ def test_ring_attn(world_size):
     spawn(launch_single_ring, nprocs=world_size)
 =======
     # check_packed_seq()
+=======
+    check_packed_seq()
+>>>>>>> all tests passed
     check_ring_attn()
 >>>>>>> fix typo
 
 
 @rerun_if_address_is_in_use()
+<<<<<<< HEAD
 @parameterize("world_size", [4])
 def test_double_ring(world_size):
     spawn(launch_double_ring, nprocs=world_size)
+=======
+def test_ring_attn():
+    spawn(launch, nprocs=2)
+>>>>>>> all tests passed
 
 
 if __name__ == "__main__":

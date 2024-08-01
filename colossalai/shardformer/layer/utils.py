@@ -377,7 +377,10 @@ def split_varlen_zigzag(
             assert max_seqlen % (sp_size * 2) == 0
             # Recreate a padded tensor with the new max seqlen
             shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
-            local_seq = torch.zeros(shape, dtype=dtype, device=device)
+            if is_label:
+                local_seq = torch.full(shape, -100, dtype=dtype, device=device)
+            else:
+                local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
             total_seqlen = cu_seqlens[-1]
             assert (

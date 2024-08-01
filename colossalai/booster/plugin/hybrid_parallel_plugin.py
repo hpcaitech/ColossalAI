@@ -1245,10 +1245,14 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         if not isinstance(model, ModelWrapper):
 <<<<<<< HEAD
+<<<<<<< HEAD
             # Shouldn't use pp (frequent grad accumulation) with torch ddp
 =======
             # Can't use pp (frequent grad accumulation) with torch ddp
 >>>>>>> add varlen tests
+=======
+            # Shouldn't use pp (frequent grad accumulation) with torch ddp
+>>>>>>> all tests passed
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
                 self.dp_size == 1 and self.pp_size == 1
             )

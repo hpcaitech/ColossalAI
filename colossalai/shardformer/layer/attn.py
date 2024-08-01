@@ -169,11 +169,16 @@ class ColoAttention:
                 attention_mask = attention_mask.tril(diagonal=0)
             attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
+            assert q_padding_mask.shape == (
+                b,
+                s_q,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_q}."
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
+                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
             attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
@@ -449,19 +454,22 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
-    # lse.data = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
+    # NOTE: directly assigning to .data here is buggy
+    # probably due to casting dtypes/strides
     new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
 
-    new_block_lse = torch.exp(block_lse - lse)
-    out.copy_(torch.exp(lse - new_lse) * out + new_block_lse * block_out)
-    lse.copy_(new_lse)
+    new_block_lse = torch.exp(block_lse - new_lse)
+    out = (torch.exp(lse - new_lse) * out + new_block_lse * block_out).to(out)
+    lse = new_lse
 
+    # Equivalent to the above
     # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
-    # out.data = (out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse.data = (lse - F.logsigmoid(lse - block_lse))
-
+    # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
+    # lse = (lse - F.logsigmoid(lse - block_lse))
     assert not (lse.isnan().any() or lse.isinf().any()), f"lse is nan: {lse}"
+    return out, lse
 
 
 class RingAttention(torch.autograd.Function):
@@ -731,6 +739,11 @@ class RingAttention(torch.autograd.Function):
             # half of each seq
             half_idx_front = get_half_index(cu_seqlens, front=True)
             half_idx_back = get_half_index(cu_seqlens, front=False)
+            RingAttention.HALF_INDICES = (half_idx_front, half_idx_back)
+            RingAttention.CU_SEQLENS = cu_seqlens
+
+        if is_packed:
+            t, h, d = q.shape
         else:
             b, sq, h, d = q.shape
             t = b * sq
