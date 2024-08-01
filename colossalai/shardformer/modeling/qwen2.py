@@ -136,7 +136,7 @@ class Qwen2PipelineForwards:
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 hidden_states.dtype,
@@ -651,6 +651,10 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
+        if past_key_values is not None:
+            past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
+
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
@@ -668,7 +672,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
 
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 hidden_states.dtype,

@@ -446,7 +446,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                 group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
                 if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
                     warnings.warn(
-                        "Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
+                        f"Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
                     )
                 elif (
                     check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED

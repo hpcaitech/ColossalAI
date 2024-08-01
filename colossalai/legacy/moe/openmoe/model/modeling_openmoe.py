@@ -50,8 +50,8 @@ try:
 except:
     HAS_FLASH_ATTN = False
 from colossalai.kernel.triton.llama_act_combine_kernel import HAS_TRITON
-from colossalai.moe.manager import MOE_MANAGER
-from colossalai.moe.utils import get_activation, set_moe_args
+from colossalai.legacy.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.utils import get_activation, set_moe_args
 from colossalai.shardformer.layer.moe import SparseMLP
 
 if HAS_TRITON:

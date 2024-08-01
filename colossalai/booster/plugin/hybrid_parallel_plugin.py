@@ -254,7 +254,7 @@ def get_param_info(optim: Optimizer):
     return param_info
 
 
-def init_pipeline_optimizer(optim: Optimizer, model: Module):
+def reinitialize_optimizer(optim: Optimizer, model: Module):
     model_params = set(model.parameters())
     new_param_groups = []
     for group in optim.param_groups:
@@ -276,7 +276,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
     ):
         self.param_info = param_info
         if use_pipeline:
-            init_pipeline_optimizer(optim, model)
+            reinitialize_optimizer(optim, model)
         self.model = model
         self.stage_manager = model.stage_manager
         self.shared_params = model.shared_params
@@ -497,7 +497,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         self.tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
         self.pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
         if use_pipeline:
-            init_pipeline_optimizer(optim, model)
+            reinitialize_optimizer(optim, model)
         super().__init__(
             optim,
             precision=precision,
@@ -651,6 +651,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         model: HybridParallelModule,
         use_pipeline: bool,
         param_info: OrderedDict,
+        pg_to_param_list: Dict[ProcessGroup, List[torch.nn.Parameter]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -678,11 +679,12 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         self.tp_pg = tp_process_group
         self.pp_pg = pp_process_group
         if use_pipeline:
-            init_pipeline_optimizer(optimizer, model)
+            reinitialize_optimizer(optimizer, model)
         super().__init__(
             optimizer=optimizer,
             initial_scale=initial_scale,
             min_scale=min_scale,
+            pg_to_param_list=pg_to_param_list,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
             growth_interval=growth_interval,
@@ -1016,6 +1018,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_allgather: bool = False,
     ) -> None:
         super().__init__()
+
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
@@ -1060,17 +1063,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         if dp_outside:
-            (
-                self.dp_axis,
-                self.pp_axis,
-                self.tp_axis,
-                self.sp_axis,
-            ) = (
-                0,
-                1,
-                2,
-                3,
-            )
+            self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
         else:
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
@@ -1388,15 +1381,15 @@ class HybridParallelPlugin(PipelinePluginBase):
             kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
                     `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
 
-        Returns:
+        Returns:`
             :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
         """
         _kwargs = kwargs.copy()
         distributed_sampler_cls = distributed_sampler_cls or DistributedSampler
         sampler = distributed_sampler_cls(
             dataset,
-            num_replicas=self.pg_mesh.size(self.dp_axis),
-            rank=self.pg_mesh.coordinate(self.dp_axis),
+            num_replicas=self.dp_group.size(),
+            rank=dist.get_group_rank(self.dp_group, global_rank=dist.get_rank()),
             shuffle=shuffle,
         )
 

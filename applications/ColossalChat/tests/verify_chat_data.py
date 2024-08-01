@@ -62,3 +62,11 @@ if __name__ == "__main__":
         assert any(
             [rejected_lable in s for s in to_verify_lable_rejected]
         ), f"Rejected label {rejected_lable} not in target rejected label {to_verify_lable_chosen}"
+    elif args.data_type == "kto":
+        sample = data[0]
+        to_verify_data = to_verify_data[0]
+        for line in sample["prompt"]:
+            assert line["content"] in to_verify_data["input_id_decode"]
+        assert sample["completion"]["content"] in to_verify_data["input_id_decode"]
+        assert sample["completion"]["content"] in to_verify_data["completion_decode"]
+        assert sample["label"] == to_verify_data["label"]

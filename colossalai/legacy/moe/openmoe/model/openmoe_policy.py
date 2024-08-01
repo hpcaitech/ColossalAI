@@ -9,7 +9,7 @@ from torch.nn import Module
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.utils import logging
 
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.manager import MOE_MANAGER
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription

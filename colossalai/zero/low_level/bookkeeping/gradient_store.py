@@ -19,7 +19,6 @@ class GradientStore(BaseStore):
         """
         self._grads_of_params = dict()
         # stage 2
-        self._partition_grads = partition_grad
         self._working_index = 0 if partition_grad else self._local_rank
         # for zero2, it's `param_id: [grad_local_rank]`
         self.grad_to_param_mapping = dict()
@@ -91,7 +90,7 @@ class GradientStore(BaseStore):
 
         return grad_list
 
-    def get_working_grad_by_param_id(self, param_id) -> Tensor:
+    def get_working_grad_by_param_id(self, param_id) -> Optional[Tensor]:
         """
         Return the working gradient for the specified parameter.
 
@@ -112,6 +111,7 @@ class GradientStore(BaseStore):
 
     def reset_all_gradients(self):
         self._grads_of_params = dict()
+        self.grad_to_param_mapping = dict()
 
     def get_param_id_for_grad(self, grad: Tensor) -> Optional[int]:
         """Return the id of a parameter which the gradient slice belongs to

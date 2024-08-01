@@ -18,6 +18,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 8
 PROJECT_NAME="RM"
 PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
 PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PARENT_LOG_DIR="" # Path to a folder to save training config logs
 PRETRAINED_MODEL_PATH="" # huggingface or local model path
 PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
 
@@ -38,6 +39,7 @@ TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
+LOG_DIR="${PARENT_LOG_DIR}${FULL_PROJECT_NAME}"
 
 colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_rm.py \
     --pretrain $PRETRAINED_MODEL_PATH \
@@ -47,6 +49,7 @@ colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_
     --save_interval 1000 \
     --save_dir $SAVE_DIR \
     --config_file $CONFIG_FILE \
+    --log_dir $LOG_DIR \
     --max_epochs 3 \
     --accumulation_steps 1 \
     --batch_size 8 \

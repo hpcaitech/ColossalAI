@@ -161,7 +161,7 @@ _POLICY_LIST = {
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
     # Deepseek
-    "transformers_modules.modeling_deepseek.DeepSeekModel": PolicyLocation(
+    "transformers_modules.modeling_deepseek.DeepseekModel": PolicyLocation(
         file_name="deepseek", class_name="DeepseekModelPolicy"
     ),
     "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
@@ -199,6 +199,9 @@ _POLICY_LIST = {
     ),
     "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
         file_name="mixtral", class_name="MixtralForCausalLMPolicy"
+    ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralForSequenceClassification": PolicyLocation(
+        file_name="mixtral", class_name="MixtralForSequenceClassificationPolicy"
     ),
     # Qwen2
     "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(

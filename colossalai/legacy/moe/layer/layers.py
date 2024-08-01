@@ -7,9 +7,9 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
+from colossalai.legacy.moe.load_balance import LoadBalancer
+from colossalai.legacy.moe.utils import create_ep_hierarchical_group, get_noise_generator
 from colossalai.moe._operation import AllGather, AllToAll, HierarchicalAllToAll, MoeCombine, MoeDispatch, ReduceScatter
-from colossalai.moe.load_balance import LoadBalancer
-from colossalai.moe.utils import create_ep_hierarchical_group, get_noise_generator
 from colossalai.shardformer.layer.moe import MLPExperts
 from colossalai.tensor.moe_tensor.api import get_dp_group, get_ep_group, get_ep_group_ranks, get_ep_size
 

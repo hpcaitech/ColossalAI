@@ -6,7 +6,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.booster.plugin.low_level_zero_plugin import LowLevelZeroModel
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.manager import MOE_MANAGER
 
 # from colossalai.shardformer.layer.moe import apply_load_balance
 from colossalai.tensor.moe_tensor.api import is_moe_tensor

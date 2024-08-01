@@ -11,7 +11,7 @@ from torch import distributed as dist
 from colossalai.accelerator import get_accelerator
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.inference.config import DiffusionGenerationConfig, InferenceConfig, ModelShardInferenceConfig
-from colossalai.inference.modeling.models.diffusion import DiffusionPipe
+from colossalai.inference.modeling.layers.diffusion import DiffusionPipe
 from colossalai.inference.modeling.policy import model_policy_map
 from colossalai.inference.struct import DiffusionSequence
 from colossalai.inference.utils import get_model_size, get_model_type

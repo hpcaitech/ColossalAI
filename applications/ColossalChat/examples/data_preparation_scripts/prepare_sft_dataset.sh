@@ -11,3 +11,4 @@ python prepare_dataset.py --type sft \
     --data_cache_dir $SAVE_DIR/cache \
     --data_jsonl_output_dir $SAVE_DIR/jsonl \
     --data_arrow_output_dir $SAVE_DIR/arrow \
+    --max_length 4096

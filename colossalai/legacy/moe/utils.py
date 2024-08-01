@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.distributed.distributed_c10d import get_process_group_ranks
 
 from colossalai.accelerator import get_accelerator
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.manager import MOE_MANAGER
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 

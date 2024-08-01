@@ -161,7 +161,10 @@ class ColoAttention:
             # no padding
             assert is_causal
             outputs["attention_mask_type"] = AttnMaskType.CAUSAL
-            attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device).tril(diagonal=0).expand(b, s_q, s_kv)
+            attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device)
+            if s_q != 1:
+                attention_mask = attention_mask.tril(diagonal=0)
+            attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
             assert q_padding_mask.shape == (
                 b,
@@ -180,7 +183,6 @@ class ColoAttention:
                 b,
                 s_kv,
             ), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
-
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,
@@ -193,7 +195,8 @@ class ColoAttention:
             )
             if is_causal:
                 outputs["attention_mask_type"] = AttnMaskType.PADDED_CAUSAL
-                attention_mask = attention_mask * attention_mask.new_ones(s_q, s_kv).tril(diagonal=0)
+                if s_q != 1:
+                    attention_mask = attention_mask * attention_mask.new_ones(s_q, s_kv).tril(diagonal=0)
             else:
                 outputs["attention_mask_type"] = AttnMaskType.PADDED
         if invert:

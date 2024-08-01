@@ -1,13 +1,21 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
+from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
-from colossalai.shardformer.modeling.mixtral import EPMixtralSparseMoeBlock, MixtralPipelineForwards
+from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
+from colossalai.shardformer.layer.linear import Linear1D_Row
+from colossalai.shardformer.modeling.mixtral import (
+    EPMixtralSparseMoeBlock,
+    MixtralPipelineForwards,
+    get_mixtral_flash_attention_forward,
+    get_mixtral_flash_attention_model_forward,
+)
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
@@ -18,36 +26,136 @@ class MixtralPolicy(Policy):
         pass
 
     def preprocess(self):
-        if self.shard_config.enable_tensor_parallelism:
-            # Resize embedding
-            vocab_size = self.model.config.vocab_size
-            world_size = self.shard_config.tensor_parallel_size
-
-            if vocab_size % world_size != 0:
-                new_vocab_size = vocab_size + world_size - vocab_size % world_size
-                self.model.resize_token_embeddings(new_vocab_size)
-
+        self.tie_weight = self.tie_weight_check()
+        self.origin_attn_implement = self.model.config._attn_implementation
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        policy = {}
+        from transformers.models.mixtral.modeling_mixtral import (
+            MixtralAttention,
+            MixtralDecoderLayer,
+            MixtralFlashAttention2,
+            MixtralModel,
+            MixtralSdpaAttention,
+        )
 
+        ATTN_IMPLEMENTATION = {
+            "eager": MixtralAttention,
+            "flash_attention_2": MixtralFlashAttention2,
+            "sdpa": MixtralSdpaAttention,
+        }
+        policy = {}
+        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+
+        sp_mode = self.shard_config.sequence_parallelism_mode or None
+        sp_size = self.shard_config.sequence_parallel_size or None
+        sp_group = self.shard_config.sequence_parallel_process_group or None
+        sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "all_to_all":
+            decoder_attribute_replacement = {
+                "num_heads": self.model.config.num_attention_heads // sp_size,
+            }
+            if getattr(self.model.config, "num_key_value_heads", False):
+                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+
+            policy[attn_cls] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+            )
         if self.shard_config.enable_sequence_parallelism:
-            self.shard_config.enable_sequence_parallelism = False
-            raise NotImplementedError(
-                "Mixtral dosen't support sequence parallelism now, will ignore the sequence parallelism flag."
+            if self.pipeline_stage_manager is not None:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Sequence parallelism is not supported with pipeline parallelism.")
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_mixtral_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                },
+                policy=policy,
+                target_key=attn_cls,
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_mixtral_flash_attention_model_forward(
+                        self.shard_config,
+                        sp_mode=sp_mode,
+                        sp_size=sp_size,
+                        sp_group=sp_group,
+                    ),
+                },
+                policy=policy,
+                target_key=MixtralModel,
             )
 
+        embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
-            raise NotImplementedError("Tensor parallelism is not supported for Mixtral model now.")
-        if getattr(self.shard_config, "ep_group", None) is not None:
+            embedding_cls = VocabParallelEmbedding1D
+        else:
+            if self.tie_weight:
+                embedding_cls = PaddingEmbedding
+
+        if self.shard_config.enable_tensor_parallelism:
+            # tensor parallelism for non-moe params
+            assert (
+                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of attention heads must be divisible by tensor parallel size."
+            assert (
+                self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+            ), f"The number of key_value heads must be divisible by tensor parallel size."
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
+                // self.shard_config.tensor_parallel_size,
+            }
+
+            policy[MixtralDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=Linear1D_Col,
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=Linear1D_Row,
+                    ),
+                    SubModuleReplacementDescription(  # or replicate?
+                        suffix="block_sparse_moe.gate", target_module=Linear1D_Col, kwargs={"gather_output": True}
+                    ),
+                ],
+            )
+
+        if embedding_cls is not None:
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="embed_tokens",
+                    target_module=embedding_cls,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=policy,
+                target_key=MixtralModel,
+            )
+
+        if self.shard_config.ep_group:
             # expert parallel
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
                         suffix="block_sparse_moe",
                         target_module=EPMixtralSparseMoeBlock,
-                        kwargs={"ep_group": self.shard_config.ep_group},
+                        kwargs={
+                            "ep_group": self.shard_config.ep_group,
+                            "tp_group": self.shard_config.tensor_parallel_process_group,
+                            "moe_dp_group": self.shard_config.moe_dp_group,
+                        },
                     )
                 ],
                 policy=policy,
@@ -61,10 +169,12 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="input_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                     SubModuleReplacementDescription(
                         suffix="post_attention_layernorm",
                         target_module=FusedRMSNorm,
+                        kwargs={"sp_partial_derived": sp_partial_derived},
                     ),
                 ],
                 policy=policy,
@@ -75,13 +185,15 @@ class MixtralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="norm",
                     target_module=FusedRMSNorm,
+                    kwargs={"sp_partial_derived": sp_partial_derived},
                 ),
                 policy=policy,
                 target_key=MixtralModel,
             )
 
         if self.shard_config.enable_flash_attention:
-            raise NotImplementedError("Flash attention has already been replaced in mixtral.")
+            warnings.warn("Flash attention is natively supported in transformers, will ignore the flag.")
+            self.shard_config.enable_flash_attention = False
 
         return policy
 
@@ -92,6 +204,10 @@ class MixtralPolicy(Policy):
         """If under pipeline parallel setting, replacing the original forward method of huggingface
         to customized forward method, and add this changing to policy."""
         if self.pipeline_stage_manager:
+            if self.shard_config.enable_sequence_parallelism:
+                # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
+                # if both are enabled, one of them will be ignored
+                raise NotImplementedError("Pipeline parallelism is not supported with sequence parallelism.")
             stage_manager = self.pipeline_stage_manager
             if self.model.__class__.__name__ == "MixtralModel":
                 module = self.model
@@ -150,7 +266,7 @@ class MixtralModelPolicy(MixtralPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in llama model"""
+        """No shared params in mixtral model"""
         return []
 
 
@@ -205,4 +321,41 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
+        return []
+
+
+class MixtralForSequenceClassificationPolicy(MixtralPolicy):
+    def module_policy(self):
+        from transformers import MixtralForSequenceClassification
+
+        policy = super().module_policy()
+
+        if self.shard_config.enable_tensor_parallelism:
+            # add a new item for sequence classification
+            new_item = {
+                MixtralForSequenceClassification: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                        )
+                    ]
+                )
+            }
+            policy.update(new_item)
+
+        if self.pipeline_stage_manager:
+            raise NotImplementedError
+
+        return policy
+
+    def get_held_layers(self) -> List[Module]:
+        """Get pipeline layers for current stage."""
+        stage_manager = self.pipeline_stage_manager
+        held_layers = super().get_held_layers()
+        if stage_manager.is_last_stage(ignore_chunk=True):
+            held_layers.append(self.model.score)
+        return held_layers
+
+    def get_shared_params(self) -> List[Dict[int, Tensor]]:
+        """No shared params in mixtral for sequence classification model"""
         return []

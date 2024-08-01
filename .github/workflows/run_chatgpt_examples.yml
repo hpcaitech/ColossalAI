@@ -52,6 +52,7 @@ jobs:
           mkdir sft_data
           mkdir prompt_data
           mkdir preference_data
+          mkdir kto_data
           ./tests/test_data_preparation.sh
           ./tests/test_train.sh
         env:
@@ -61,3 +62,4 @@ jobs:
           SFT_DATASET: ./sft_data
           PROMPT_DATASET: ./prompt_data
           PREFERENCE_DATASET: ./preference_data
+          KTO_DATASET: ./kto_data
