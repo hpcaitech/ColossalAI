@@ -702,7 +702,6 @@ class RingAttention(torch.autograd.Function):
                     kv_block = kv_buffers[i % 2]
                     q_block = q[half_idx_back]
 
-                    # dist.barrier()
                     (
                         _,
                         _,
@@ -733,8 +732,6 @@ class RingAttention(torch.autograd.Function):
                 if i > 0:
                     sp_streams[i % 2].wait_event(RingAttention.CORRECTION_DONE)
 
-                if sp_rank == 0:
-                    pass
                 # Overlap output correction with next flash attn kernel
                 if i == 0:
                     out = block_out[0]
@@ -1003,17 +1000,12 @@ class RingAttention(torch.autograd.Function):
 
         if position_ids is not None:
             indices = torch.tensor([sp_rank, 2 * sp_size - sp_rank - 1], device=inputs_embeds.device)
-            try:
-                position_ids = (
-                    position_ids[..., : mask_info["max_seqlen"]]  # unpad
-                    .view(-1, sp_size * 2, mask_info["max_seqlen"] // (sp_size * 2))
-                    .index_select(-2, indices)
-                    .view(-1, mask_info["max_seqlen"] // sp_size)
-                )
-            except Exception as e:
-                print(mask_info["max_seqlen"])
-                print(position_ids.shape)
-                raise e
+            position_ids = (
+                position_ids[..., : mask_info["max_seqlen"]]  # unpad
+                .view(-1, sp_size * 2, mask_info["max_seqlen"] // (sp_size * 2))
+                .index_select(-2, indices)
+                .view(-1, mask_info["max_seqlen"] // sp_size)
+            )
 
         mask_info["max_seqlen"] //= sp_size
         mask_info["valid_indices"] = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
