@@ -178,7 +178,6 @@ class ColoAttention:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
-                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
             attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
