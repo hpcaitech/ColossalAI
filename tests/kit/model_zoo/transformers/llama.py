@@ -33,20 +33,21 @@ if HAS_LLAMA:
                 [1, 15043, 29892, 590, 11203, 338, 274, 1082, 1, 15043, 29892, 590, 11203, 338, 274, 1082],
             ]
         ).long()
-
-        attention_mask = torch.Tensor(
-            [
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            ]
-        ).long()
-
+        attention_mask = torch.ones_like(input_ids)
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
     # label is needed for causal lm
     def data_gen_for_causal_lm():
         data = data_gen()
+
+        # Test padded sequence
+        padding = torch.zeros(2, data["input_ids"].shape[1] // 2, dtype=torch.long)
+        data["input_ids"] = torch.cat([data["input_ids"], padding], dim=1)
+        data["attention_mask"] = torch.cat([data["attention_mask"], padding], dim=1)
+
+        ignore_idx = -100
         labels = data["input_ids"].clone()
+        labels[~data["attention_mask"].bool()] = ignore_idx
         data["labels"] = labels
         return data
 
