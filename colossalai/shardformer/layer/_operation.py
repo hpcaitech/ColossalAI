@@ -999,11 +999,11 @@ def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1):
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim)
 
 
-def gather_sp_output(hidden_states, sp_group, sp_mode):
+def gather_sp_output(hidden_states, sp_group, sp_mode, sp_dim=1):
     """
     Gather the output of the last layer for cross entropy computation
     """
     # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
     scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
-    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=scale)
+    hidden_states = gather_forward_split_backward(hidden_states, sp_dim, sp_group, grad_scale=scale)
     return hidden_states
