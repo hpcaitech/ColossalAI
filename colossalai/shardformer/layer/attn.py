@@ -172,8 +172,10 @@ class ColoAttention:
                 # self attention
                 kv_padding_mask = q_padding_mask
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
+                attention_mask = q_padding_mask[:, :, None].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
+                attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
@@ -345,7 +347,7 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
 
     # min_scale = torch.min(lse, block_lse)
     # max_scale = torch.max(lse, block_lse)
-    # lse.data = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
+    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
 
     # NOTE: directly assigning to .data here is buggy
     # probably due to casting dtypes/strides
@@ -621,6 +623,11 @@ class RingAttention(torch.autograd.Function):
             # half of each seq
             half_idx_front = get_half_index(cu_seqlens, front=True)
             half_idx_back = get_half_index(cu_seqlens, front=False)
+            RingAttention.HALF_INDICES = (half_idx_front, half_idx_back)
+            RingAttention.CU_SEQLENS = cu_seqlens
+
+        if is_packed:
+            t, h, d = q.shape
         else:
             b, sq, h, d = q.shape
             t = b * sq
@@ -648,7 +655,7 @@ class RingAttention(torch.autograd.Function):
 
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
-        kv_buffers.append(None)
+        kv_buffers.append(torch.empty_like(kv_buffers[0]))
 
         # outputs
         out = None

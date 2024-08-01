@@ -331,7 +331,7 @@ def split_batch_zigzag(
             indices = torch.tensor([sp_rank, 2 * sp_size - 1 - sp_rank], device=tensor.device)
             tensor = tensor.index_select(seq_dim, indices).contiguous()
             # (B, 2, Sq // (2 * sp_size), ...) -> (B, Sq // sp_size, ...)
-            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :]).contiguous()
+            batch[idx] = tensor.view(*tensor.shape[:seq_dim], -1, *tensor.shape[seq_dim + 2 :])
 
     if len(batch) == 1:
         return batch[0]
@@ -377,7 +377,10 @@ def split_varlen_zigzag(
             assert max_seqlen % (sp_size * 2) == 0
             # Recreate a padded tensor with the new max seqlen
             shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
-            local_seq = torch.zeros(shape, dtype=dtype, device=device)
+            if is_label:
+                local_seq = torch.full(shape, -100, dtype=dtype, device=device)
+            else:
+                local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
             total_seqlen = cu_seqlens[-1]
             assert (

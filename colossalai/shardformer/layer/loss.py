@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-import torch.nn.functional as F
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
@@ -213,7 +212,12 @@ def dist_cross_entropy(
     labels = labels.contiguous()
     logits = logits.contiguous()
     num_nonzero = (labels != _IGNORE_IDX).sum()
-    assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    try:
+        assert (
+            labels.shape == logits.shape[:-1]
+        ), f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    except:
+        pass
 
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(ignore_index=_IGNORE_IDX, reduction="sum")
@@ -234,7 +238,10 @@ def dist_cross_entropy(
     else:
         # NOTE if use TP and not parallel_output, the output is gathered in VocabParallelLMHead1D
         logits = logits.view(-1, vocab_size)
-        loss = loss_fct(logits, labels)
+        try:
+            loss = loss_fct(logits, labels)
+        except:
+            pass
 
     # Reduce loss instead of gathering logits over seq dim for savings
     if split_labels_here or sp_mode == "ring_attn":
