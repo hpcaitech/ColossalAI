@@ -30,6 +30,7 @@ from colossalai.interface.optimizer import DistributedOptim
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils
 from colossalai.shardformer.policies.base_policy import Policy
@@ -1187,7 +1188,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         return True
 
     def support_lora(self) -> bool:
-        return False
+        return True
 
     def control_checkpoint_io(self) -> bool:
         return True
@@ -1415,6 +1416,24 @@ class HybridParallelPlugin(PipelinePluginBase):
         return optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
 
     def enable_lora(
-        self, model: Module, pretrained_dir: Optional[str] = None, lora_config: Optional[Dict] = None
+        self,
+        model: Module,
+        pretrained_dir: Optional[str] = None,
+        lora_config: Optional[Dict] = None,
+        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
     ) -> Module:
-        raise NotImplementedError
+        from peft import PeftModel, get_peft_model
+
+        assert not isinstance(model, HybridParallelModule), "Lora should be enabled before boosting the model."
+        assert self.pp_size == 1 and self.tp_size == 1
+        self.lora_enabled = True
+        warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
+
+        if bnb_quantization_config is not None:
+            model = quantize_model(model, bnb_quantization_config)
+
+        if pretrained_dir is None:
+            peft_model = get_peft_model(model, lora_config)
+        else:
+            peft_model = PeftModel.from_pretrained(model, pretrained_dir, is_trainable=True)
+        return peft_model
