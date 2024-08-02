@@ -53,8 +53,8 @@ def load_model_and_tokenizer(model_path, tokenizer_path, device="cuda", **kwargs
         tuple: A tuple containing the loaded model and tokenizer.
     """
 
-    model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs, trust_remote_code=True).to(torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
     model.to(device)
 
