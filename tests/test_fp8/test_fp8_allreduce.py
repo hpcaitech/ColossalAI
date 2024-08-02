@@ -1,5 +1,5 @@
 import torch
-import torch.distributed
+import torch.distributed as dist
 from torch.testing import assert_close
 
 from colossalai import launch
@@ -20,12 +20,17 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
         (8,),
     ],
 )
-@parameterize("dtype", [torch.float16])
-def check_4gpu(shape, dtype):
+@parameterize("dtype", [torch.float16, torch.bfloat16])
+@parameterize("fp8_format", ["e4m3", "e5m2"])
+def check_4gpu(shape, dtype, fp8_format):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     x_fp8 = x.clone()
-    torch.distributed.all_reduce(x)
-    all_reduce_fp8(x_fp8)
+    dist.all_reduce(x)
+    all_reduce_fp8(x_fp8, fp8_format=fp8_format)
+    assert_close(x, x_fp8, rtol=0.1, atol=0.1)
+
+    dist.all_reduce(x, op=dist.ReduceOp.AVG)
+    all_reduce_fp8(x_fp8, op=dist.ReduceOp.AVG, fp8_format=fp8_format)
     assert_close(x, x_fp8, rtol=0.1, atol=0.1)
 
 

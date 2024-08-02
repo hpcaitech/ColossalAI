@@ -5,19 +5,22 @@ from torch.testing import assert_close
 
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
-from colossalai.shardformer.layer._operation import _all_to_all_single
+from colossalai.quantization.fp8 import all_to_all_single_fp8
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
+dist.all_to_all_single
 
-@parameterize("shape", [(1, 8, 16)])
-@parameterize("scatter_dim", [1, 2])
+
+@parameterize("shape", [(4), (8, 7), (4, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
-def check_4gpu(shape, scatter_dim, dtype):
-    world_size = dist.get_world_size()
+@parameterize("fp8_format", ["e4m3", "e5m2"])
+def check_4gpu(shape, dtype, fp8_format):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
-    output_origin = _all_to_all_single(x, world_size, _get_default_group(), scatter_dim, 0, False)
-    output_fp8 = _all_to_all_single(x, world_size, _get_default_group(), scatter_dim, 0, True)
-    assert_close(output_origin, output_fp8, rtol=0.1, atol=0.1)
+    output = torch.empty_like(x)
+    output_fp8 = torch.empty_like(x)
+    all_to_all_single_fp8(output_fp8, x, group=_get_default_group(), fp8_format=fp8_format)
+    dist.all_to_all_single(output, x, group=_get_default_group())
+    assert_close(output, output_fp8, rtol=0.1, atol=0.1)
 
 
 def run_dist(rank, world_size, port):

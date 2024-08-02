@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from torch.distributed import ReduceOp
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
@@ -59,7 +60,7 @@ def cast_from_fp8(
     return ret.to(ret_type)
 
 
-def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op="sum", group=None) -> None:
+def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, group=None) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_reduce but during communication the data is cast to fp8 format.
@@ -80,7 +81,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op="sum", group=None
     input_size = tensor.numel()
     flat_padded_x = tensor.flatten()
 
-    assert op in ["sum", "mean"], "op can only be sum or mean"
+    assert op in [ReduceOp.SUM, ReduceOp.AVG], "op can only be ReduceOp.SUM or ReduceOp.AVG"
 
     if flat_padded_x.size(0) % world_size != 0:
         pad_size = world_size - flat_padded_x.size(0) % world_size
@@ -100,7 +101,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op="sum", group=None
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
 
-    if op == "mean":
+    if op == ReduceOp.AVG:
         summed_out.div_(world_size)
 
     summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
@@ -289,3 +290,72 @@ def all_gather_into_tensor_flat_fp8(
     valid_buffer = buffer[:numel].reshape(output_shape)
     valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type, per_channel_scale=(len(output_shape) == 2))
     output_tensor[:numel].copy_(valid_buffer.view(-1))
+
+
+def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2"):
+
+    world_size = dist.get_world_size(group)
+
+    input_type = input_list[0].dtype
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+    scale_list = []
+    tensor_list = []
+
+    for i in range(world_size):
+        input_tensor = input_list[i]
+        ret, scale = cast_to_fp8(input_tensor, fp8_format=fp8_format)
+        scale_list.append(scale)
+        ret = ret.view(torch.uint8)
+        tensor_list.append(ret)
+
+    output_scale_list = [torch.empty_like(x) for x in scale_list]
+    output_tensor_list = [torch.empty_like(x) for x in tensor_list]
+    dist.all_to_all(output_tensor_list, tensor_list, group=group)
+    dist.all_to_all(output_scale_list, scale_list, group=group)
+
+    for i in range(world_size):
+        scale = output_scale_list[i]
+        tensor = output_tensor_list[i]
+        tensor = tensor.view(fp8_type)
+        output_list[i].copy_(cast_from_fp8(tensor, scale, input_type))
+
+
+def all_to_all_single_fp8(output_tensor, input_tensor, group=None, fp8_format="e5m2"):
+
+    world_size = dist.get_world_size(group)
+
+    per_slice_len = input_tensor.size(0) // world_size
+    input_type = input_tensor.dtype
+    ret, scale = cast_to_fp8(input_tensor, fp8_format=fp8_format)
+    fp8_type = ret.dtype
+    input_tensor = ret.view(torch.uint8)
+    tensor = torch.empty_like(input_tensor)
+    scale_list = [torch.empty_like(scale) for _ in range(world_size)]
+    dist.all_to_all_single(tensor, input_tensor, group=group)
+    dist.all_gather(scale_list, scale, group=group)
+    cast_tensor_list = []
+
+    for i in range(world_size):
+        output_part = tensor[per_slice_len * i : per_slice_len * (i + 1)].view(fp8_type)
+        output_part = cast_from_fp8(output_part, scale_list[i], input_type)
+        cast_tensor_list.append(output_part)
+    output_tensor.copy_(torch.concatenate(cast_tensor_list, dim=0))
+
+
+def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
+
+    world_size = dist.get_world_size(group)
+
+    input_type = input_.dtype
+    ret, scale = cast_to_fp8(input_, fp8_format=fp8_format)
+    fp8_type = ret.dtype
+    input_ = ret.view(torch.uint8)
+    tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
+    scale_list = [torch.ones(1, dtype=scale.dtype, device=input_.device) for _ in range(world_size)]
+    torch.distributed.all_gather(tensor_list, input_, group=group)
+    torch.distributed.all_gather(scale_list, scale, group=group)
+
+    for i in range(world_size):
+        output = tensor_list[i].view(fp8_type)
+        scale = scale_list[i]
+        output_list[i].copy_(cast_from_fp8(output, scale, input_type))

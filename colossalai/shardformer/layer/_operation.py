@@ -14,7 +14,13 @@ try:
 except ImportError:
     _grad_accum_fusion_available = False
 
-from colossalai.quantization.fp8 import all_reduce_fp8, cast_from_fp8, cast_to_fp8, reduce_scatter_fp8
+from colossalai.quantization.fp8 import (
+    all_reduce_fp8,
+    all_to_all_fp8,
+    all_to_all_single_fp8,
+    gather_fp8,
+    reduce_scatter_fp8,
+)
 
 
 class FusedLayerNormAffineFunction1D(torch.autograd.Function):
@@ -946,34 +952,14 @@ def _gather(input_, dim=-1, process_group=None, fp8_communication=False, fp8_for
     if world_size == 1:
         return input_
 
+    input_ = input_.contiguous()
+    tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     if fp8_communication:
-        input_type = input_.dtype
-        ret, scale = cast_to_fp8(input_, fp8_format=fp8_format)
-        fp8_type = ret.dtype
-        input_ = ret.view(torch.uint8)
-        input_ = input_.contiguous()
-        tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-        scale = torch.tensor(scale, dtype=torch.float32).to(input_.device)
-        scale_list = [torch.ones(1, dtype=torch.float32, device=input_.device) for _ in range(world_size)]
-
-        scale = torch.tensor(scale).to(input_.device)
         torch.distributed.all_gather(tensor_list, input_, group=process_group)
-        torch.distributed.all_gather(scale_list, scale, group=process_group)
-
-        cast_tensor_list = []
-        for output, scale in zip(tensor_list, scale_list):
-            scale = torch.tensor(scale[0])
-            output = output.view(fp8_type)
-            output = cast_from_fp8(output, scale, input_type)
-            cast_tensor_list.append(output)
-
-        output = torch.cat(cast_tensor_list, dim=dim).contiguous()
-
     else:
-        input_ = input_.contiguous()
-        tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
-        torch.distributed.all_gather(tensor_list, input_, group=process_group)
-        output = torch.cat(tensor_list, dim=dim).contiguous()
+        gather_fp8(tensor_list, input_, fp8_format=fp8_format, group=process_group)
+
+    output = torch.cat(tensor_list, dim=dim).contiguous()
 
     return output
 
@@ -1003,25 +989,11 @@ def _reduce_scatter(input_, dim=1, process_group=None):
 
 
 def _all_to_all(input_, world_size, group, scatter_dim, gather_dim, fp8_communication=False, fp8_format="e5m2"):
+    input_list = [t.contiguous() for t in torch.tensor_split(input_, world_size, scatter_dim)]
+    output_list = [torch.empty_like(input_list[0]) for _ in range(world_size)]
     if fp8_communication:
-        input_type = input_.dtype
-        ret, scale = cast_to_fp8(input_, fp8_format=fp8_format)
-        fp8_type = ret.dtype
-        input_ = ret.view(torch.uint8)
-        input_list = [t.contiguous() for t in torch.tensor_split(input_, world_size, scatter_dim)]
-        output_list = [torch.empty_like(input_list[0]) for _ in range(world_size)]
-        scale_list = [torch.ones(1, dtype=scale.dtype, device=input_.device) for _ in range(world_size)]
-        dist.all_to_all(output_list, input_list, group=group)
-        dist.all_gather(scale_list, scale, group=group)
-        cast_tensor_list = []
-        for output, scale in zip(output_list, scale_list):
-            output = output.view(fp8_type)
-            output = cast_from_fp8(output, scale, input_type)
-            cast_tensor_list.append(output)
-        output_list = cast_tensor_list
+        all_to_all_fp8(output_list, input_list, group=group, fp8_format=fp8_format)
     else:
-        input_list = [t.contiguous() for t in torch.tensor_split(input_, world_size, scatter_dim)]
-        output_list = [torch.empty_like(input_list[0]) for _ in range(world_size)]
         dist.all_to_all(output_list, input_list, group=group)
     return torch.cat(output_list, dim=gather_dim).contiguous()
 
@@ -1040,23 +1012,11 @@ def _all_to_all_single(
             .contiguous()
         )
 
+    output = torch.empty_like(input_t)
     if fp8_communication:
-        input_type = input_t.dtype
-        ret, scale = cast_to_fp8(input_t, fp8_format=fp8_format)
-        fp8_type = ret.dtype
-        input_t = ret.view(torch.uint8)
-        output = torch.empty_like(input_t)
-        scale_list = [torch.ones(1, dtype=scale.dtype, device=input_.device) for _ in range(seq_world_size)]
-        dist.all_to_all_single(output, input_t, group=group)
-        dist.all_gather(scale_list, scale, group=group)
-        cast_tensor_list = []
-        for output_part, scale in zip(output, scale_list):
-            output_part = output_part.view(fp8_type)
-            output_part = cast_from_fp8(output_part, scale, input_type)
-            cast_tensor_list.append(output_part)
-        output = torch.stack(cast_tensor_list, dim=0)
+        all_to_all_single_fp8(output, input_t, group=group, fp8_format=fp8_format)
     else:
-        output = torch.empty_like(input_t)
+
         dist.all_to_all_single(output, input_t, group=group)
 
     if scatter_dim < 2:
