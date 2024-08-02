@@ -68,7 +68,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, gro
     Args:
         tensor: torch.Tensor in fp32, fp16, bf16 datatype.
         fp8_format: e4m3 or e5m2
-        op: sum or mean
+        op: ReduceOp.SUM or ReduceOp.AVG
 
     Returns:
         None
@@ -352,8 +352,8 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
     input_ = ret.view(torch.uint8)
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_.device) for _ in range(world_size)]
-    torch.distributed.all_gather(tensor_list, input_, group=group)
-    torch.distributed.all_gather(scale_list, scale, group=group)
+    dist.all_gather(tensor_list, input_, group=group)
+    dist.all_gather(scale_list, scale, group=group)
 
     for i in range(world_size):
         output = tensor_list[i].view(fp8_type)

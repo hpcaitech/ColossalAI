@@ -955,9 +955,9 @@ def _gather(input_, dim=-1, process_group=None, fp8_communication=False, fp8_for
     input_ = input_.contiguous()
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     if fp8_communication:
-        torch.distributed.all_gather(tensor_list, input_, group=process_group)
-    else:
         gather_fp8(tensor_list, input_, fp8_format=fp8_format, group=process_group)
+    else:
+        dist.all_gather(tensor_list, input_, group=process_group)
 
     output = torch.cat(tensor_list, dim=dim).contiguous()
 
