@@ -415,10 +415,10 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     Compute the new attention denominator:
         exp(lse) + exp(block_lse) = exp(max_scale) * (exp(min_scale - max_scale) + 1)
     Args:
-        out: (B, Sq, H, D)
-        block_out: (B, Sq, H, D)
-        lse: (B, H, Sq, 1)
-        block_lse: (B, H, Sq, 1)
+        out: (T, H, D)
+        block_out: (T, H, D)
+        lse: (H, T, 1)
+        block_lse: (H, T, 1)
     """
 
     # min_scale = torch.min(lse, block_lse)
@@ -790,7 +790,6 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_kv = ctx.max_seqlen_kv
         dkv_group = ctx.dkv_group
         misc_kwargs = ctx.misc_kwargs
-        dout = dout.contiguous()
         del misc_kwargs["block_table"]
 
         assert (
@@ -814,6 +813,12 @@ class RingAttention(torch.autograd.Function):
             dkv_comm = RingComm(dkv_group)
         else:
             dkv_comm = RingComm(sp_group)
+
+        # Non-contiguous indexing creates a new contiguous tensor,
+        # so only do it once
+        if sp_rank != sp_size - 1:
+            softmax_lse1 = softmax_lse[:, half_idx_back]
+        dout = dout.contiguous()
 
         # Double comm buffers for sending and receiving kv
         kv_buffers = [torch.stack((k, v))]  # (2, T, H, D)
@@ -899,7 +904,7 @@ class RingAttention(torch.autograd.Function):
                     k_,
                     v_,
                     out_,
-                    softmax_lse[:, half_idx_back],
+                    softmax_lse1,
                     dq_,
                     dk_,
                     dv_,
