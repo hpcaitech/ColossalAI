@@ -49,6 +49,10 @@ def tokenize_sft(
 
     messages = data_point["messages"]
     template = deepcopy(conversation_template)
+
+    if messages[0]["from"] == "system":
+        template.system_message = str(messages[0]["content"])
+        messages.pop(0)
     template.messages = []
     for idx, mess in enumerate(messages):
         if mess["from"] != template.roles[idx % 2]:
@@ -148,11 +152,14 @@ def tokenize_prompt(
     template = deepcopy(conversation_template)
     template.messages = []
 
+    if messages[0]["from"] == "system":
+        template.system_message = str(messages[0]["content"])
+        messages.pop(0)
+
     for idx, mess in enumerate(messages):
         if mess["from"] != template.roles[idx % 2]:
             raise ValueError(
-                f"Message should iterate between user and assistant and starts with a \
-                             line from the user. Got the following data:\n{messages}"
+                f"Message should iterate between user and assistant and starts with a line from the user. Got the following data:\n{messages}"
             )
         template.append_message(mess["from"], mess["content"])
 
@@ -224,6 +231,10 @@ def tokenize_rlhf(
     context = data_point["context"]
     template = deepcopy(conversation_template)
     template.clear()
+
+    if context[0]["from"] == "system":
+        template.system_message = str(context[0]["content"])
+        context.pop(0)
 
     for idx, mess in enumerate(context):
         if mess["from"] != template.roles[idx % 2]:
@@ -344,6 +355,10 @@ def tokenize_kto(
     completion = data_point["completion"]
     template = deepcopy(conversation_template)
     template.clear()
+
+    if prompt[0]["from"] == "system":
+        template.system_message = str(prompt[0]["content"])
+        prompt.pop(0)
 
     if prompt[0].get("from", None) != "user":
         raise ValueError("conversation should start with user")

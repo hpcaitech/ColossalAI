@@ -387,6 +387,7 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - save_dir: path to store the model checkpoints.
 - max_length: input will be padded/truncated to max_length before feeding to the model.
 - max_epochs: number of epochs to train.
+- disable_loss_mask: whether to use the loss mask to mask the loss or not. For example, in SFT, if the loss mask is disabled, the model will compute the loss across all tokens in the sequence, if the loss mask is applied, only tokens correspond to the assistant responses will contribute to the final loss.
 - batch_size: training batch size.
 - mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some devices may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatibility.
 - save_interval: save the model weights as well as optimizer/scheduler states every save_interval steps/episodes.
