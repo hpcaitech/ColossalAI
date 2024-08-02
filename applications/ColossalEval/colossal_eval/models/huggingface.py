@@ -1,11 +1,11 @@
 import copy
-import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 from colossal_eval.utils import Conversation, get_batch_prompt, is_rank_0
 from peft import PeftModel
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 
@@ -130,7 +130,7 @@ class HuggingFaceModel(BaseModel):
         if shard_config is not None:
             self.model = AutoModel.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
-            self.model, sharded_parameters = shard_former.optimize(self.model)
+            self.model, _ = shard_former.optimize(self.model)
             self.model.to(get_current_device())
 
             if peft_path is not None:
@@ -325,7 +325,7 @@ class HuggingFaceModel(BaseModel):
 
         return input_ids_list, labels_list, None
 
-    def inference(self, data: List[Dict], inference_kwargs: Dict[str, Any], debug: bool = False) -> List[Dict]:
+    def inference(self, data_loader: DataLoader, inference_kwargs: Dict[str, Any], debug: bool = False) -> List[Dict]:
         """
         Infer the given data.
         This function will call self.generate() to get model outputs and also self.model() to get logits.
@@ -359,26 +359,23 @@ class HuggingFaceModel(BaseModel):
 
             self.str_label_map = {choice: idx for idx, choice in enumerate(self.choices)}
 
-        turn = 0 if not isinstance(data[0]["output"], list) else len(data[0]["output"]) + 1
-        turn_desc = "" if turn == 0 else f"-turn{turn}"
-
         bar = tqdm(
-            range(math.ceil(len(data) / self.batch_size)),
-            desc=f"{data[0]['dataset']}-{data[0]['category']}{turn_desc} Inference steps",
+            range(len(data_loader)),
+            desc=f"{inference_kwargs['dataset']}-{inference_kwargs['category']} Inference steps",
             disable=not is_rank_0(),
         )
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
 
-        answers = copy.deepcopy(data)
-        for i in range(0, len(data), self.batch_size):
-            batch = data[i : i + self.batch_size]
+        answers = []
+
+        for i, batch in enumerate(data_loader):
             batch_prompt, batch_target = get_batch_prompt(
-                self.prompt_template, batch, few_shot_data, self.tokenizer, language, self.model_max_length
+                self.prompt_template, batch, few_shot_data, self.tokenizer, self.model_max_length
             )
 
             if is_rank_0() and debug and i == 0:
                 self.logger.info(
-                    f"Inference arguments for dataset {data[0]['dataset']} category {data[0]['category']} is:\n{inference_kwargs}"
+                    f"Inference arguments for dataset {batch[0]['dataset']} category {batch[0]['category']} is:\n{inference_kwargs}"
                 )
                 self.logger.info("-" * 120)
                 self.logger.info("An example prompt and prompt with target is:")
@@ -402,7 +399,7 @@ class HuggingFaceModel(BaseModel):
                 # Otherwise this will violate the single-choice setting.
 
                 if calculate_loss:
-                    labels = [self.str_label_map[answers[i + j]["target"]] for j in range(len(batch_decodes))]
+                    labels = [self.str_label_map[batch[j]["target"]] for j in range(len(batch))]
 
                     loss_over_choices = loss_fct(scores, torch.tensor(labels, dtype=torch.long)).numpy().tolist()
 
@@ -411,29 +408,30 @@ class HuggingFaceModel(BaseModel):
                     {choice: probs[i][self.str_label_map[choice]] for choice in self.choices} for i in range(len(probs))
                 ]
 
-            for j in range(len(batch_prompt)):
+            for j in range(len(batch)):
                 if not pretrain:
-                    if isinstance(answers[i + j]["output"], list):
-                        answers[i + j]["output"].append(batch_decodes[j].strip())
+                    if isinstance(batch[j]["output"], list):
+                        batch[j]["output"].append(batch_decodes[j].strip())
                     else:
-                        answers[i + j]["output"] = batch_decodes[j].strip()
+                        batch[j]["output"] = batch_decodes[j].strip()
 
                     if isinstance(scores, torch.Tensor):
-                        answers[i + j]["logits_over_choices"] = probs[j]
+                        batch[j]["logits_over_choices"] = probs[j]
 
                         if calculate_loss:
-                            answers[i + j]["loss_over_choices"] = loss_over_choices[j]
+                            batch[j]["loss_over_choices"] = loss_over_choices[j]
 
                 if calculate_loss:
-                    answers[i + j]["loss"] = (np.array(batch_losses[j]) / np.array(batch_target_token_nums[j])).tolist()
+                    batch[j]["loss"] = (np.array(batch_losses[j]) / np.array(batch_target_token_nums[j])).tolist()
 
                     # loss_sum is specially used for pertrain dataset for calculating per-byte-perplexity.
                     # However, loss (which is per sample loss) suffices for most cases.
-                    answers[i + j]["loss_sum"] = batch_losses[j]
-                    answers[i + j]["token_num"] = batch_target_token_nums[j]
+                    batch[j]["loss_sum"] = batch_losses[j]
+                    batch[j]["token_num"] = batch_target_token_nums[j]
 
                     if batch_bytes_nums:
-                        answers[i + j]["byte_num"] = batch_bytes_nums[j]
+                        batch[j]["byte_num"] = batch_bytes_nums[j]
+            answers.extend(batch)
 
             bar.update()
 
@@ -600,7 +598,7 @@ class HuggingFaceCausalLM(HuggingFaceModel):
         if shard_config is not None:
             self.model = AutoModelForCausalLM.from_pretrained(path, **model_kwargs)
             shard_former = ShardFormer(shard_config)
-            self.model, sharded_parameters = shard_former.optimize(self.model)
+            self.model, _ = shard_former.optimize(self.model)
             self.model.to(get_current_device())
 
             if peft_path is not None:
