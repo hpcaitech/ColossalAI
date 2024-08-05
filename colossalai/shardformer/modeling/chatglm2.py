@@ -203,20 +203,23 @@ class ChatGLMPipelineForwards:
         all_hidden_states = () if output_hidden_states else None
         start_idx, end_idx = stage_index[0], stage_index[1]
 
-        if shard_config and shard_config.enable_sequence_parallelism:
-            if shard_config.sequence_parallelism_mode == "split_gather":
-                hidden_states = split_forward_gather_backward(
-                    hidden_states,
-                    dim=0,
-                    process_group=shard_config.tensor_parallel_process_group,
-                )
-            elif shard_config.sequence_parallelism_mode == "all_to_all":
-                hidden_states = split_forward_gather_backward(
-                    hidden_states,
-                    dim=0,
-                    process_group=shard_config.sequence_parallel_process_group,
-                    grad_scale=1 / shard_config.sequence_parallel_size,
-                )
+        # Keep the input split across all PP stages
+        if stage_manager.is_first_stage():
+            if shard_config.enable_sequence_parallelism:
+                if shard_config.sequence_parallelism_mode == "split_gather":
+                    hidden_states = split_forward_gather_backward(
+                        hidden_states,
+                        dim=0,
+                        process_group=shard_config.tensor_parallel_process_group,
+                    )
+                elif shard_config.sequence_parallelism_mode == "all_to_all":
+                    hidden_states = split_forward_gather_backward(
+                        hidden_states,
+                        dim=0,
+                        process_group=shard_config.sequence_parallel_process_group,
+                        grad_scale=1 / shard_config.sequence_parallel_size,
+                    )
+
         for idx in range(start_idx, end_idx):
             layer = self.encoder._get_layer(idx)
             if output_hidden_states:
@@ -242,16 +245,18 @@ class ChatGLMPipelineForwards:
             if use_cache:
                 presents = presents + (kv_cache,)
 
-        if shard_config:
-            sp_mode = shard_config.sequence_parallelism_mode
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
         if stage_manager.is_last_stage():
             # final layer_norm
             if self.encoder.post_layer_norm:
                 hidden_states = self.encoder.final_layernorm(hidden_states)
+
+            # Gather seq-wise in the final output stage
+            sp_mode = shard_config.sequence_parallelism_mode
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+
             if not return_dict:
                 return tuple(
                     v

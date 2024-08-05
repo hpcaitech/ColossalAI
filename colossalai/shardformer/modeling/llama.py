@@ -101,8 +101,8 @@ class LlamaPipelineForwards:
         sp_mode = shard_config.sequence_parallelism_mode
         sp_group = shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
-        if sp_mode == "all_to_all" and not stage_manager.is_first_stage():
-            # For generating full positions ids, as the states will be gather along the seq dim in the attention layer later.
+        # For generating full positions ids (the states will be gathered along the seq dim before attention fwd).
+        if sp_mode != "ring_attn" and not stage_manager.is_first_stage():
             seq_length *= sp_size
 
         past_seen_tokens = 0
