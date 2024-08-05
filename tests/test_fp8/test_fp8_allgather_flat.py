@@ -32,9 +32,9 @@ def run_dist(rank, world_size, port):
 
 
 @rerun_if_address_is_in_use()
-def test_all_gather():
+def test_all_gather_flat():
     spawn(run_dist, 4)
 
 
 if __name__ == "__main__":
-    test_all_gather()
+    test_all_gather_flat()
