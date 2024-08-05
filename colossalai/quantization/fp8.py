@@ -3,7 +3,6 @@ from typing import Any
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-
 from torch.distributed import ReduceOp
 
 
@@ -62,7 +61,6 @@ def cast_from_fp8(
     else:
         ret = scale_inv * inp.float()
     return ret.to(ret_type)
-
 
 
 def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, group=None) -> None:

@@ -1,9 +1,5 @@
 import torch
-
-import torch.distributed as dist
-import torch.nn.functional as F
 from torch.distributed import reduce_scatter
-
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.testing import assert_close
 
@@ -11,7 +7,6 @@ from colossalai import launch
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import reduce_scatter_fp8
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-
 
 
 @parameterize("shape", [(16, 8, 4)])

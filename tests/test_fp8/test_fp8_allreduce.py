@@ -1,7 +1,5 @@
 import torch
 import torch.distributed as dist
-
-from torch.distributed.distributed_c10d import _get_default_group
 from torch.testing import assert_close
 
 from colossalai import launch
@@ -34,7 +32,6 @@ def check_4gpu(shape, dtype, fp8_format):
     dist.all_reduce(x, op=dist.ReduceOp.AVG)
     all_reduce_fp8(x_fp8, op=dist.ReduceOp.AVG, fp8_format=fp8_format)
     assert_close(x, x_fp8, rtol=0.1, atol=0.1)
-
 
 
 def run_dist(rank, world_size, port):
