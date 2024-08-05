@@ -212,7 +212,12 @@ def dist_cross_entropy(
     labels = labels.contiguous()
     logits = logits.contiguous()
     num_nonzero = (labels != _IGNORE_IDX).sum()
-    assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    try:
+        assert (
+            labels.shape == logits.shape[:-1]
+        ), f"label shape {labels.shape} does not match logit shape {logits.shape}"
+    except Exception as e:
+        raise e
 
     # Flatten the tokens
     loss_fct = CrossEntropyLoss(ignore_index=_IGNORE_IDX, reduction="sum")

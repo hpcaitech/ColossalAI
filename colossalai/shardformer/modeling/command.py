@@ -23,7 +23,7 @@ from colossalai.shardformer.shard import ShardConfig
 from ..layer import ColoAttention, dist_cross_entropy
 from ..layer._operation import gather_sp_output, is_share_sp_tp
 
-_SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
+_SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring"]
 
 
 class CommandPipelineForwards:
@@ -134,7 +134,7 @@ class CommandPipelineForwards:
                 )
                 use_cache = False
 
-        if shard_config and shard_config.enable_sequence_parallelism:
+        if shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
                 hidden_states = split_forward_gather_backward(
                     hidden_states,
@@ -204,8 +204,6 @@ class CommandPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-
-        if shard_config:
             sp_mode = shard_config.sequence_parallelism_mode
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
                 hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
