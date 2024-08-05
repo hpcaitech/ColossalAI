@@ -768,6 +768,11 @@ class RingAttention(torch.autograd.Function):
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
 
+        # Non-contiguous indexing creates a new contiguous tensor,
+        # so only do it once
+        if sp_rank != sp_size - 1:
+            q1 = q[half_idx_back]
+
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
         kv_buffers.append(torch.empty_like(kv_buffers[0]))
@@ -1024,8 +1029,6 @@ class RingAttention(torch.autograd.Function):
             softmax_lse1 = softmax_lse[:, half_idx_back]
         dout = dout.contiguous()
 
-        # Non-contiguous indexing creates a new contiguous tensor,
-        # so only do it once
         if sp_rank != sp_size - 1:
             softmax_lse1 = softmax_lse[:, half_idx_back]
         dout = dout.contiguous()
