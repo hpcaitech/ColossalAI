@@ -213,6 +213,8 @@ def main():
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
+            dp_outside=False,
+            overlap_p2p=args.overlap,
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
             **hybrid_kwargs,

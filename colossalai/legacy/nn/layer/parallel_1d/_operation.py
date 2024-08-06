@@ -83,8 +83,6 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             # all-reduce scheduled first and have GPU resources allocated
             # TODO: This seems to only work if you add torch.cuda.Event.wait()
 
-            # _ = torch.zeros(1, device=grad_output.device)
-
         grad_weight = grad_output.t().matmul(total_input)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 

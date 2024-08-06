@@ -22,6 +22,7 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8, all_reduce_fp8, reduce_scatter_fp8
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
 from .bookkeeping import BucketStore, GradientStore, TensorBucket
@@ -569,25 +570,29 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 working_param = real_working_params[group_id][idx]
                 param_to_gather = master_param.to(device).to(self._dtype)
                 pg = self.param_to_pg[working_param]
-                if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
-                    buffer_tensor = torch.empty_like(
-                        torch.cat([param_to_gather for _ in range(dist.get_world_size(pg))])
-                    )
-                    if self._fp8_communication:
-                        all_gather_into_tensor_flat_fp8(buffer_tensor, param_to_gather, pg, fp8_format="e4m3")
-                    else:
-                        dist.all_gather_into_tensor(buffer_tensor, param_to_gather, pg)
-                    working_param.data.copy_(buffer_tensor[: working_param.numel()].reshape_as(working_param))
-                    continue
-                try:
-                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
-                except RuntimeError:
-                    self.pg_to_tensor_bucket[pg].all_gather(pg, fp8_communication=self._fp8_communication)
-                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
+                padded_working_param = self._working_param_to_padded_working_param[working_param]
+                if self._overlap_allgather:
+                    handle = dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg, async_op=True)
+                    set_all_gather_handle(working_param, handle)
+                else:
+                    if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
+                        if self._fp8_communication:
+                            all_gather_into_tensor_flat_fp8(
+                                padded_working_param, param_to_gather, pg, fp8_format="e4m3"
+                            )
+                        else:
+                            dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
+                        continue
+                    try:
+                        self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
+                    except RuntimeError:
+                        self.pg_to_tensor_bucket[pg].all_gather(pg, fp8_communication=self._fp8_communication)
+                        self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
-        for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
-            if not tensor_bucket.is_empty():
-                tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
+        if not self._overlap_allgather:
+            for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
+                if not tensor_bucket.is_empty():
+                    tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
     def _compute_grad_norm(self, dp_pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""

@@ -30,10 +30,8 @@ from colossalai.shardformer.layer._operation import all_to_all_comm, gather_forw
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, RingAttention, dist_cross_entropy
-
+from ..layer import ColoAttention, cross_entropy_1d, RingAttention, dist_cross_entropy
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
-
 
 class LlamaPipelineForwards:
     """
@@ -102,7 +100,7 @@ class LlamaPipelineForwards:
         sp_group = shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
         if sp_mode == "all_to_all" and not stage_manager.is_first_stage():
-            # For generating full positions ids, as the states will be gather along the seq dim in the attention layer later.
+            # For correct positions ids. The states will be gather along the seq dim in the attention layer later.
             seq_length *= sp_size
 
         past_seen_tokens = 0
@@ -226,8 +224,10 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+            if sp_mode == "ring" or sp_mode == "split_gather":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+            elif sp_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -551,7 +551,6 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
 
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -683,7 +682,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if shard_config.enable_flash_attention:
             mask_shape = (batch_size, 1, seq_len, past_seen_tokens + seq_len)
-            attn_kwargs: dict = ColoAttention.prepare_attn_kwargs(
+            attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
                 inputs_embeds.device,
@@ -850,9 +849,25 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         else:
             logits = self.lm_head(hidden_states)
         logits = logits.float()
-        loss = dist_cross_entropy(
-            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
-        )
+
+        loss = None
+        if labels is not None:
+            # Shift so that tokens < n predict n
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+            new_vocab_size = logits.shape[-1]
+            shift_logits = shift_logits.view(-1, new_vocab_size)
+            loss = cross_entropy_1d(
+                shift_logits,
+                shift_labels,
+                process_group=shard_config.tensor_parallel_process_group,
+                vocab_size=self.lm_head.out_features,
+                dtype=self.model.dtype,
+            )
+
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
