@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 import torch
+import torch.distributed
 import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
@@ -13,10 +14,6 @@ from colossalai.kernel.kernel_loader import (
     KernelLoader,
 )
 from colossalai.logging import get_dist_logger
-
-from .utils import RingComm, get_half_index, split_varlen_zigzag
-
-from .utils import RingComm, get_half_index, split_varlen_zigzag
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
@@ -40,7 +37,7 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
     """Invert the mask tensor.
 
     Args:
-        mask (torch.Tensor): Mask tensor. Shape should be [B, 1, Sq, Sq]
+        mask (torch.Tensor): Mask tensor. Shape should be [B, 1, Sq, Skv]
 
     Returns:
         torch.Tensor: Inverted mask tensor.
@@ -169,10 +166,6 @@ class ColoAttention:
                 attention_mask = attention_mask.tril(diagonal=0)
             attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
-            assert q_padding_mask.shape == (
-                b,
-                s_q,
-            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_q}."
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
@@ -180,7 +173,6 @@ class ColoAttention:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
-            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
@@ -269,6 +261,18 @@ class ColoAttention:
                 )
                 if attention_mask_type == AttnMaskType.CUSTOM:
                     assert not torch.all(attention_mask != 0, dim=-1).any()
+            elif attention_mask_type in (
+                AttnMaskType.PADDED,
+                AttnMaskType.PADDED_CAUSAL,
+            ):
+                assert (
+                    cu_seqlens_q is not None
+                    and cu_seqlens_kv is not None
+                    and max_seqlen_q is not None
+                    and max_seqlen_kv is not None
+                    and q_indices is not None
+                    and kv_indices is not None
+                )
         else:
             # if attention_mask is None, attention_mask_type should be the default value
             assert attention_mask_type == AttnMaskType.CUSTOM
@@ -366,108 +370,6 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
     # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
     # lse = (lse - F.logsigmoid(lse - block_lse))
-    return out, lse
-
-
-def _not_nan(x):
-    return not (x.isnan().any() or x.isinf().any())
-
-
-@triton.jit
-def _rescale_out_lse_kernel(
-    out_ptr,
-    out_per_step_ptr,
-    lse_ptr,
-    lse_step_ptr,
-    D,  # Each thread handles D elements
-    stride_out_0,
-    stride_out_1,
-    stride_out_2,
-    stride_out_per_step_0,
-    stride_out_per_step_1,
-    stride_out_per_step_2,
-    stride_lse_0,
-    stride_lse_1,
-    BLOCK_M: tl.constexpr,
-):
-    batch_id = tl.program_id(0)
-    sq_id = tl.program_id(1)
-    h_id = tl.program_id(2)
-    d_id = tl.arange(0, D)
-
-    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id
-    out_per_step_idx = batch_id * stride_out_per_step_0 + sq_id * stride_out_per_step_1 + h_id * stride_out_per_step_2
-    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
-    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
-
-    # Load inputs
-    out = tl.load(out_ptr + out_idx)
-    out_per_step = tl.load(out_per_step_ptr + out_per_step_idx)
-    lse = tl.load(lse_ptr + lse_idx)
-    lse_step = tl.load(lse_step_ptr + lse_step_idx)
-
-    # Element-wise rescale
-    new_lse = lse + tl.log(1 + tl.exp(lse_step - lse))
-    out = tl.exp(lse - new_lse) * out + tl.exp(lse_step - new_lse) * out_per_step
-
-    tl.store(out_ptr + out_idx, out)
-    tl.store(lse_ptr + lse_idx, new_lse)
-
-
-def _rescale_out_lse_triton(out, block_out, lse, block_lse):
-    T, H, D = out.shape
-
-    assert out.is_contiguous() and block_out.is_contiguous() and lse.is_contiguous() and block_lse.is_contiguous()
-
-    # TODO: use 1d kernel?
-    grid = lambda META: (triton.cdiv(Sq, META["BLOCK_M"]), B, H)
-    _rescale_out_lse_kernel[grid](
-        out,
-        block_out,
-        lse,
-        block_lse,
-        T,
-        H,
-        D,
-        out.stride(0),
-        out.stride(1),
-        out.stride(2),
-        block_out.stride(0),
-        block_out.stride(1),
-        block_out.stride(2),
-        lse.stride(0),
-        lse.stride(1),
-    )
-
-
-def _rescale_out_lse(out, block_out, lse, block_lse):
-    """
-    Compute the new attention denominator:
-        exp(lse) + exp(block_lse) = exp(max_scale) * (exp(min_scale - max_scale) + 1)
-    Args:
-        out: (T, H, D)
-        block_out: (T, H, D)
-        lse: (H, T, 1)
-        block_lse: (H, T, 1)
-    """
-
-    # min_scale = torch.min(lse, block_lse)
-    # max_scale = torch.max(lse, block_lse)
-    # new_lse = max_scale + torch.log(1 + torch.exp(min_scale - max_scale))
-
-    # NOTE: directly assigning to .data here is buggy
-    # probably due to casting dtypes/strides
-    new_lse = lse + torch.log(1 + torch.exp(block_lse - lse))
-
-    new_block_lse = torch.exp(block_lse - new_lse)
-    out = (torch.exp(lse - new_lse) * out + new_block_lse * block_out).to(out)
-    lse = new_lse
-
-    # Equivalent to the above
-    # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
-    # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
-    # lse = (lse - F.logsigmoid(lse - block_lse))
-    assert not (lse.isnan().any() or lse.isinf().any()), f"lse is nan: {lse}"
     return out, lse
 
 
@@ -577,6 +479,7 @@ class RingAttention(torch.autograd.Function):
         """
         Ring Attention forward pass supporting variable-length sequences. When using varlen mode,
         each sequence in the batch should have length divisible by sp_size * 2.
+
         Args:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
             k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Sq, Sq, D]
@@ -727,22 +630,6 @@ class RingAttention(torch.autograd.Function):
 
         if is_packed:
             t, h, d = q.shape
-            # half of each seq
-            half_idx_front = get_half_index(cu_seqlens, front=True)
-            half_idx_back = get_half_index(cu_seqlens, front=False)
-            RingAttention.HALF_INDICES = (half_idx_front, half_idx_back)
-            RingAttention.CU_SEQLENS = cu_seqlens
-
-        if is_packed:
-            t, h, d = q.shape
-            # half of each seq
-            half_idx_front = get_half_index(cu_seqlens, front=True)
-            half_idx_back = get_half_index(cu_seqlens, front=False)
-            RingAttention.HALF_INDICES = (half_idx_front, half_idx_back)
-            RingAttention.CU_SEQLENS = cu_seqlens
-
-        if is_packed:
-            t, h, d = q.shape
         else:
             b, sq, h, d = q.shape
             t = b * sq
@@ -764,11 +651,6 @@ class RingAttention(torch.autograd.Function):
         num_rings = dist.get_world_size(inter_ring_group) if inter_ring_group is not sp_group else 1
 
         # Non-contiguous indexing copies to a new contiguous tensor,
-        # so only do it once
-        if sp_rank != sp_size - 1:
-            q1 = q[half_idx_back]
-
-        # Non-contiguous indexing creates a new contiguous tensor,
         # so only do it once
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
@@ -953,7 +835,6 @@ class RingAttention(torch.autograd.Function):
         del misc_kwargs["return_softmax"]
         ctx.misc_kwargs = misc_kwargs
         ctx.is_packed = is_packed
-        ctx.dkv_group = dkv_group
 
         ctx.kv_group = inner_ring_group
         ctx.inter_kv_group = inter_ring_group
@@ -1026,10 +907,6 @@ class RingAttention(torch.autograd.Function):
             inter_ring_rank = 0
 
         if local_sp_rank != sp_size - 1:
-            softmax_lse1 = softmax_lse[:, half_idx_back]
-        dout = dout.contiguous()
-
-        if sp_rank != sp_size - 1:
             softmax_lse1 = softmax_lse[:, half_idx_back]
         dout = dout.contiguous()
 
