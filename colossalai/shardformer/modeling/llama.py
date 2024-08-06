@@ -1193,5 +1193,152 @@ try:
                     ].data[:]
             return all_layer_prefixes
 
+    class TELlamaForSequenceClassification(LlamaForSequenceClassification):
+        """
+        Model created with `LlamaModel`. The underlying `LlamaDecoderLayer`
+        class is monkey-patched with `TELlamaDecoderLayer` class before
+        initializing with `LlamaModel`.
+
+        Args:
+            config: LlamaConfig
+        """
+
+        def __init__(self, config: LlamaConfig):
+            check_config(config)
+            with init_with_te_decoder_layer():
+                super().__init__(config)
+
+        @staticmethod
+        def from_pretrained_local(
+            pretrained_model_name_or_path: os.PathLike, config: LlamaConfig, torch_dtype: torch.dtype
+        ):
+            """
+            Custom method adapted from `from_pretrained` method in HuggingFace
+            Transformers repo: https://github.com/huggingface/transformers/blob/f497f564bb76697edab09184a252fc1b1a326d1e/src/transformers/modeling_utils.py#L2579
+            """
+            vanilla_model = TELlamaForSequenceClassification(config).to(torch_dtype)
+            subfolder = ""
+            variant = None
+            if os.path.isfile(
+                os.path.join(
+                    pretrained_model_name_or_path,
+                    subfolder,
+                    _add_variant("model.safetensors.index.json", variant),
+                )
+            ):
+                # Load from a sharded PyTorch checkpoint
+                archive_file = os.path.join(
+                    pretrained_model_name_or_path,
+                    subfolder,
+                    _add_variant("model.safetensors.index.json", variant),
+                )
+                is_sharded = True
+            elif os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant))
+            ):
+                # Load from a sharded PyTorch checkpoint
+                archive_file = os.path.join(
+                    pretrained_model_name_or_path, subfolder, _add_variant(WEIGHTS_INDEX_NAME, variant)
+                )
+                is_sharded = True
+            else:
+                raise AssertionError("Only sharded PyTorch ckpt format supported at the moment")
+
+            resolved_archive_file, _ = get_checkpoint_shard_files(
+                pretrained_model_name_or_path,
+                archive_file,
+            )
+
+            # If the checkpoint is not sharded, it's a trivial sharding case
+            if not is_sharded:
+                assert not isinstance(resolved_archive_file, list)
+                resolved_archive_file = [resolved_archive_file]
+
+            for shard_file in resolved_archive_file:
+                state_dict = load_state_dict(shard_file)
+                # replace_params copies parameters relevant only to TransformerEngine
+                # reuse the same method as LlamaModelForCausalLM
+                TELlamaModelForCausalLM.replace_params(state_dict, vanilla_model.state_dict(), config)
+                # _load_state_dict_into_model copies parameters other than those in TransformerEngine
+                _load_state_dict_into_model(vanilla_model, state_dict, start_prefix="")
+
+                # Force mem release. Taken from huggingface code
+                del state_dict
+                gc.collect()
+
+            return vanilla_model
+
+        @staticmethod
+        def from_hf_model(hf_model: LlamaForCausalLM):
+            te_model = TELlamaForSequenceClassification(hf_model.config)
+            state_dict = hf_model.state_dict()
+            # reuse the same method as LlamaModelForCausalLM
+            TELlamaModelForCausalLM.replace_params(state_dict, te_model.state_dict(), hf_model.config)
+            _load_state_dict_into_model(te_model, hf_model.state_dict(), start_prefix="")
+            del hf_model
+            gc.collect()
+            return te_model.cuda()
+
+        @staticmethod
+        def replace_params(hf_state_dict, te_state_dict, config):
+            # collect all layer prefixes to update
+            all_layer_prefixes = set()
+            for param_key in hf_state_dict.keys():
+                layer_prefix_pat = "model.layers.\d+."
+                m = re.match(layer_prefix_pat, param_key)
+                if m is not None:
+                    all_layer_prefixes.add(m.group())
+
+            for layer_prefix in all_layer_prefixes:
+                # When loading weights into models with less number of layers, skip the
+                # copy if the corresponding layer doesn't exist in HF model
+                if layer_prefix + "input_layernorm.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "self_attention.layernorm_qkv.layer_norm_weight"].data[:] = (
+                        hf_state_dict[layer_prefix + "input_layernorm.weight"].data[:]
+                    )
+
+                if layer_prefix + "self_attn.q_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "self_attention.layernorm_qkv.query_weight"].data[:] = hf_state_dict[
+                        layer_prefix + "self_attn.q_proj.weight"
+                    ].data[:]
+
+                if layer_prefix + "self_attn.k_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "self_attention.layernorm_qkv.key_weight"].data[:] = hf_state_dict[
+                        layer_prefix + "self_attn.k_proj.weight"
+                    ].data[:]
+
+                if layer_prefix + "self_attn.v_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "self_attention.layernorm_qkv.value_weight"].data[:] = hf_state_dict[
+                        layer_prefix + "self_attn.v_proj.weight"
+                    ].data[:]
+
+                if layer_prefix + "self_attn.o_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "self_attention.proj.weight"].data[:] = hf_state_dict[
+                        layer_prefix + "self_attn.o_proj.weight"
+                    ].data[:]
+
+                if layer_prefix + "post_attention_layernorm.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "layernorm_mlp.layer_norm_weight"].data[:] = hf_state_dict[
+                        layer_prefix + "post_attention_layernorm.weight"
+                    ].data[:]
+
+                # It may happen that gate_proj.weight and up_proj.weight will be in the different files, so we need to
+                # load them separately.
+                if layer_prefix + "mlp.gate_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "layernorm_mlp.fc1_weight"].data[: config.intermediate_size] = (
+                        hf_state_dict[layer_prefix + "mlp.gate_proj.weight"].data
+                    )
+
+                if layer_prefix + "mlp.up_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "layernorm_mlp.fc1_weight"].data[config.intermediate_size :] = (
+                        hf_state_dict[layer_prefix + "mlp.up_proj.weight"].data
+                    )
+
+                if layer_prefix + "mlp.down_proj.weight" in hf_state_dict:
+                    te_state_dict[layer_prefix + "layernorm_mlp.fc2_weight"].data[:] = hf_state_dict[
+                        layer_prefix + "mlp.down_proj.weight"
+                    ].data[:]
+            return all_layer_prefixes
+
 except ImportError as e:
     warnings.warn(f"transformer_engine is required to use fp8 quantization {e}")
