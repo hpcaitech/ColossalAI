@@ -5,7 +5,7 @@ Our config contains various options for inference optimization, it is a unified 
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from transformers.generation import GenerationConfig
@@ -186,6 +186,7 @@ class InferenceConfig(RPC_PARAM):
         enable_streamingllm(bool): Whether to use StreamingLLM, the relevant algorithms refer to the paper at https://arxiv.org/pdf/2309.17453 for implementation.
         start_token_size(int): The size of the start tokens, when using StreamingLLM.
         generated_token_size(int): The size of the generated tokens, When using StreamingLLM.
+        patched_parallelism_size(int): Patched Parallelism Size, When using Distrifusion
     """
 
     # NOTE: arrange configs according to their importance and frequency of usage
@@ -245,6 +246,11 @@ class InferenceConfig(RPC_PARAM):
     start_token_size: int = 4
     generated_token_size: int = 512
 
+    # Acceleration for Diffusion Model(PipeFusion or Distrifusion)
+    patched_parallelism_size: int = 1  # for distrifusion
+    # pipeFusion_m_size: int = 1  # for pipefusion
+    # pipeFusion_n_size: int = 1  # for pipefusion
+
     def __post_init__(self):
         self.max_context_len_to_capture = self.max_input_len + self.max_output_len
         self._verify_config()
@@ -288,6 +294,14 @@ class InferenceConfig(RPC_PARAM):
         # Thereafter, we swap out tokens in units of blocks, and always swapping out the second block when the generated tokens exceeded the limit.
         self.start_token_size = self.block_size
 
+        # check Distrifusion
+        # TODO(@lry89757) need more detailed check
+        if self.patched_parallelism_size > 1:
+            # self.use_patched_parallelism = True
+            self.tp_size = (
+                self.patched_parallelism_size
+            )  # this is not a real tp, because some annoying check, so we have to set this to patched_parallelism_size
+
         # check prompt template
         if self.prompt_template is None:
             return
@@ -324,6 +338,7 @@ class InferenceConfig(RPC_PARAM):
             use_cuda_kernel=self.use_cuda_kernel,
             use_spec_dec=self.use_spec_dec,
             use_flash_attn=use_flash_attn,
+            patched_parallelism_size=self.patched_parallelism_size,
         )
         return model_inference_config
 
@@ -396,3 +411,50 @@ class ModelShardInferenceConfig:
     use_cuda_kernel: bool = False
     use_spec_dec: bool = False
     use_flash_attn: bool = False
+    patched_parallelism_size: int = 1  # for diffusion model, Distrifusion Technique
+
+
+@dataclass
+class DiffusionGenerationConfig:
+    """
+    Param for diffusion model forward
+    """
+
+    prompt_2: Optional[Union[str, List[str]]] = None
+    prompt_3: Optional[Union[str, List[str]]] = None
+    height: Optional[int] = None
+    width: Optional[int] = None
+    num_inference_steps: int = None
+    timesteps: List[int] = None
+    guidance_scale: float = None
+    negative_prompt: Optional[Union[str, List[str]]] = (
+        None  # NOTE(@lry89757) in pixart default to "", in sd3 default to None
+    )
+    negative_prompt_2: Optional[Union[str, List[str]]] = None
+    negative_prompt_3: Optional[Union[str, List[str]]] = None
+    num_images_per_prompt: Optional[int] = None
+    generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None
+    latents: Optional[torch.FloatTensor] = None
+    prompt_embeds: Optional[torch.FloatTensor] = None
+    negative_prompt_embeds: Optional[torch.FloatTensor] = None
+    pooled_prompt_embeds: Optional[torch.FloatTensor] = None
+    negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None
+    output_type: Optional[str] = None  # "pil"
+    return_dict: bool = None
+    joint_attention_kwargs: Optional[Dict[str, Any]] = None
+    clip_skip: Optional[int] = None
+    callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None
+    callback_on_step_end_tensor_inputs: List[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        # NOTE(@lry89757) Only return the dict that not the default value None
+        result = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if value is not None:
+                result[field.name] = value
+        return result
+
+    @classmethod
+    def from_kwargs(cls, **kwargs) -> "DiffusionGenerationConfig":
+        return cls(**kwargs)

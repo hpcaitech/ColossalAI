@@ -49,42 +49,27 @@ jobs:
     steps:
       - name: Install dependencies
         run: |
-          pip install -U pip setuptools==68.2.2 wheel --user
-      - uses: actions/checkout@v2
-        with:
-          repository: hpcaitech/TensorNVMe
-          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-          path: TensorNVMe
-      - name: Install tensornvme
-        run: |
-          cd TensorNVMe
           apt update && apt install -y cmake
-          pip install -r requirements.txt
-          DISABLE_URING=1 pip install -v .
+          pip install -U pip setuptools==68.2.2 wheel --user
+
       - uses: actions/checkout@v2
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-      - name: Download cub for CUDA 10.2
-        run: |
-          CUDA_VERSION=$(nvcc -V | awk -F ',| ' '/release/{print $6}')
-
-          # check if it is CUDA 10.2
-          # download cub
-          if [ "$CUDA_VERSION" = "10.2" ]; then
-            wget https://github.com/NVIDIA/cub/archive/refs/tags/1.8.0.zip
-            unzip 1.8.0.zip
-            cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
-          fi
 
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
-          pip install -r requirements/requirements-test.txt
+          pip install --no-cache-dir -r requirements/requirements-test.txt
+
+      - name: Install tensornvme
+        run: |
+          DISABLE_URING=1 pip install -v git+https://github.com/hpcaitech/TensorNVMe.git
+
       - name: Unit Testing
         run: |
           PYTHONPATH=$PWD pytest --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
-          LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
+          LD_LIBRARY_PATH: /github/home/.tensornvme/lib
           LLAMA_PATH: /data/scratch/llama-tiny
           MOE_TENSOR_PATH: /data/scratch/moe_tensors

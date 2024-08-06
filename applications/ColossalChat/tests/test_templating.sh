@@ -94,7 +94,7 @@ done
 
 # Test DPO/PPO data Preparation
 for model in ${MODELS[@]}; do
-    echo "Testing DPO/PPO data templating for $model"
+    echo "Testing DPO/RM data templating for $model"
     SAVE_DIR=$DATA_SAVE_PATH/dpo/$model
     rm -rf $SAVE_DIR/cache
     rm -rf $SAVE_DIR/jsonl
@@ -109,14 +109,44 @@ for model in ${MODELS[@]}; do
         --data_arrow_output_dir $SAVE_DIR/arrow
     passed=$?
     if [ $passed -ne 0 ]; then
-        echo "[Test]: Failed in the DPO data templating for $model"
+        echo "[Test]: Failed in the DPO/RM data templating for $model"
         exit 1
     fi
     python $BASE_DIR/tests/verify_chat_data.py --data_source $TEST_DATA_DIR/dpo/test_dpo_data.jsonl \
         --to_verify_file $SAVE_DIR/jsonl/part-00005.jsonl --data_type dpo
     passed=$?
     if [ $passed -ne 0 ]; then
-        echo "[Test]: Failed in the DPO data templating test for $model"
+        echo "[Test]: Failed in the DPO/RM data templating test for $model"
+        exit 1
+    fi
+done
+
+
+# Test KTO data Preparation
+for model in ${MODELS[@]}; do
+    echo "Testing KTO data templating for $model"
+    SAVE_DIR=$DATA_SAVE_PATH/kto/$model
+    rm -rf $SAVE_DIR/cache
+    rm -rf $SAVE_DIR/jsonl
+    rm -rf $SAVE_DIR/arrow
+    pretrain=$(get_pretrain $model)
+    conversation_template_config=$(get_conversation_template_config $model)
+    python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py --type kto --data_input_dirs $TEST_DATA_DIR/kto \
+        --tokenizer_dir  $pretrain \
+        --conversation_template_config $conversation_template_config \
+        --data_cache_dir $SAVE_DIR/cache \
+        --data_jsonl_output_dir $SAVE_DIR/jsonl \
+        --data_arrow_output_dir $SAVE_DIR/arrow
+    passed=$?
+    if [ $passed -ne 0 ]; then
+        echo "[Test]: Failed in the KTO data templating for $model"
+        exit 1
+    fi
+    python $BASE_DIR/tests/verify_chat_data.py --data_source $TEST_DATA_DIR/kto/test_kto_data.jsonl \
+        --to_verify_file $SAVE_DIR/jsonl/part-00005.jsonl --data_type kto
+    passed=$?
+    if [ $passed -ne 0 ]; then
+        echo "[Test]: Failed in the KTO data templating test for $model"
         exit 1
     fi
 done

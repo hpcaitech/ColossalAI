@@ -1,4 +1,5 @@
 import argparse
+from contextlib import nullcontext
 from typing import Callable, List, Union
 
 import evaluate
@@ -17,6 +18,7 @@ from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
+from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 
 # ==============================
@@ -252,10 +254,16 @@ def main():
         pad_token_id=data_builder.tokenizer.pad_token_id,
     )
 
-    if model_name == "gpt2":
-        model = GPT2ForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
-    else:
-        raise RuntimeError
+    init_ctx = (
+        LazyInitContext(default_device=get_accelerator().get_current_device())
+        if isinstance(plugin, (GeminiPlugin))
+        else nullcontext()
+    )
+    with init_ctx:
+        if model_name == "gpt2":
+            model = GPT2ForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
+        else:
+            raise RuntimeError
 
     # optimizer
     no_decay = ["bias", "LayerNorm.weight"]

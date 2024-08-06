@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.cohere.modeling_cohere import (
@@ -25,7 +24,7 @@ from colossalai.shardformer.layer._operation import (
 )
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 
 class CommandPipelineForwards:
@@ -117,7 +116,7 @@ class CommandPipelineForwards:
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 hidden_states.dtype,
@@ -134,6 +133,21 @@ class CommandPipelineForwards:
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                 )
                 use_cache = False
+
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=1 / shard_config.sequence_parallel_size,
+                )
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -190,6 +204,21 @@ class CommandPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
+
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=shard_config.sequence_parallel_size,
+                )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -300,29 +329,9 @@ class CommandPipelineForwards:
             logits = self.lm_head(hidden_states)
             logits = logits * self.logit_scale
             logits = logits.float()
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
-                    new_vocab_size = logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(
-                        shift_logits,
-                        shift_labels,
-                        process_group=shard_config.tensor_parallel_process_group,
-                        vocab_size=self.lm_head.out_features,
-                        dtype=self.model.dtype,
-                    )
-                else:
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels)
+            loss = dist_cross_entropy(
+                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
+            )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -658,24 +667,14 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         logits = self.lm_head(hidden_states)
         logits = logits * self.logit_scale
         logits = logits.float()
-
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            new_vocab_size = logits.shape[-1]
-            shift_logits = shift_logits.view(-1, new_vocab_size)
-            loss = cross_entropy_1d(
-                shift_logits,
-                shift_labels,
-                process_group=shard_config.tensor_parallel_process_group,
-                vocab_size=self.lm_head.out_features,
-                dtype=self.model.dtype,
-            )
+        loss = dist_cross_entropy(
+            labels,
+            logits,
+            shard_config,
+            self.lm_head.out_features,
+            self.config.vocab_size,
+            self.model.dtype,
+        )
 
         if not return_dict:
             output = (logits,) + outputs[1:]
