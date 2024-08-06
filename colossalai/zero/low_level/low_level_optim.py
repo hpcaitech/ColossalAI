@@ -345,15 +345,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     self._update_unpartitoned_grad(bucket_store, grad_in_bucket.values(), flat_grads_per_rank, group_id)
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
-                    recieved_grad = torch.zeros_like(flat_grads_list[0])
+                    received_grad = torch.zeros_like(flat_grads_list[0])
                     if self._fp8_communication:
                         reduce_scatter_fp8(
-                            recieved_grad,
+                            received_grad,
                             flat_grads_list,
                             group=bucket_store.torch_pg,
                         )
                     else:
-                        dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
+                        dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
 
                     if received_grad.dtype != grad_dtype:
                         received_grad = received_grad.to(grad_dtype)
