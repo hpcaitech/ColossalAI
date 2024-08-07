@@ -14,7 +14,7 @@ from torch.utils.data.distributed import DistributedSampler
 from transformers.models.llama import LlamaConfig
 from utils import PerformanceEvaluator, get_model_numel
 
-from colossalai.moe.manager import MOE_MANAGER
+from colossalai.legacy.moe.manager import MOE_MANAGER
 
 
 class RandomDataset(Dataset):

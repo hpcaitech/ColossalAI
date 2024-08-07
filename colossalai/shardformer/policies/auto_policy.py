@@ -161,7 +161,7 @@ _POLICY_LIST = {
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
     # Deepseek
-    "transformers_modules.modeling_deepseek.DeepSeekModel": PolicyLocation(
+    "transformers_modules.modeling_deepseek.DeepseekModel": PolicyLocation(
         file_name="deepseek", class_name="DeepseekModelPolicy"
     ),
     "transformers_modules.modeling_deepseek.DeepseekForCausalLM": PolicyLocation(
@@ -199,6 +199,9 @@ _POLICY_LIST = {
     ),
     "transformers.models.mixtral.modeling_mixtral.MixtralForCausalLM": PolicyLocation(
         file_name="mixtral", class_name="MixtralForCausalLMPolicy"
+    ),
+    "transformers.models.mixtral.modeling_mixtral.MixtralForSequenceClassification": PolicyLocation(
+        file_name="mixtral", class_name="MixtralForSequenceClassificationPolicy"
     ),
     # Qwen2
     "transformers.models.qwen2.modeling_qwen2.Qwen2Model": PolicyLocation(
@@ -240,6 +243,9 @@ def _fullname(obj):
     # patch custom models which are not in transformers
     # it can be like 'transformers_modules.THUDM.chatglm3-6b.103caa40027ebfd8450289ca2f278eac4ff26405.modeling_chatglm' (from huggingface hub)
     # or like 'transformers_modules.chatglm.modeling_chatglm' (from local directory)
+    if module.startswith("peft"):
+        klass = obj.base_model.model.__class__
+        module = klass.__module__
     if module.startswith("transformers_modules"):
         split_module = module.split(".")
         if len(split_module) >= 2:

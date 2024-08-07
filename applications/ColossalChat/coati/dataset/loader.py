@@ -235,6 +235,91 @@ class DataCollatorForPreferenceDataset(object):
         )
 
 
+@dataclass
+class DataCollatorForKTODataset(object):
+    """
+    Collate instances for kto dataset.
+    Each input instance is a tokenized dictionary with fields
+    `prompt`(List[int]), `completion`(List[int]) and `label`(bool).
+    Each output instance is a tokenized dictionary with fields
+    `kl_input_ids`(List[int]), `kl_attention_mask`(List[int]) and `kl_loss_mask`(List[int]).
+    `input_ids`(List[int]), `attention_mask`(List[int]), `loss_mask`(List[int]) and `label`(bool).
+    """
+
+    tokenizer: PreTrainedTokenizer
+    max_length: int = 4096
+    ignore_index: int = -100
+
+    def __call__(self, instances: Sequence[Dict[str, List[int]]]) -> Dict[str, torch.Tensor]:
+        """
+
+        Args:
+            instances (`Sequence[Dict[str, List[int]]]`):
+                Mini-batch samples, each sample is stored in an individual dictionary contains the following fields:
+                `prompt`(List[int]), `completion`(List[int]) and `label`(bool, if the sample is desirable or not).
+
+        Returns:
+            (`Dict[str, torch.Tensor]`): Contains the following `torch.Tensor`:
+                `input_ids`: `torch.Tensor` of shape (bsz, max_len);
+                `attention_mask`: `torch.BoolTensor` of shape (bsz, max_len);
+                `labels`: `torch.Tensor` of shape (bsz, max_len), which contains `IGNORE_INDEX`.
+        """
+        assert isinstance(self.tokenizer.pad_token_id, int) and self.tokenizer.pad_token_id >= 0, (
+            f"`{self.tokenizer.__class__.__name__}.pad_token_id` must be a valid non-negative integer index value, "
+            f"but now `{self.tokenizer.pad_token_id}`"
+        )
+        # prepare the preference data
+        prompt = [torch.LongTensor(instance["prompt"]) for instance in instances]
+        prompt_zeros = [torch.zeros_like(t) for t in prompt]
+        completion = [torch.LongTensor(instance["completion"]) for instance in instances]
+        completion_ones = [torch.ones_like(t) for t in completion]
+        label = [torch.tensor(instance["label"], dtype=torch.bool) for instance in instances]
+        input_ids = [torch.cat([prompt[i], completion[i]], dim=-1) for i in range(len(instances))]
+        loss_mask = [torch.cat([prompt_zeros[i], completion_ones[i]], dim=-1) for i in range(len(instances))]
+        # right padding
+        input_ids = torch.nn.utils.rnn.pad_sequence(
+            sequences=input_ids,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
+        )  # (bsz, max_len)
+        loss_mask = torch.nn.utils.rnn.pad_sequence(
+            sequences=loss_mask, batch_first=True, padding_value=0
+        )  # (bsz, max_len)
+        to_pad = self.max_length - input_ids.size(1)
+        input_ids = F.pad(input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
+        loss_mask = F.pad(loss_mask, (0, to_pad), value=0)
+        attention_mask = input_ids.ne(self.tokenizer.pad_token_id)  # `torch.BoolTensor`, (bsz, max_len)
+
+        # prepare kt data
+        kl_completion = completion[::-1]  # y'
+        kl_completion_ones = [torch.ones_like(t) for t in kl_completion]
+        kl_input_ids = [torch.cat([prompt[i], kl_completion[i]], dim=-1) for i in range(len(instances))]
+        kl_loss_mask = [torch.cat([prompt_zeros[i], kl_completion_ones[i]], dim=-1) for i in range(len(instances))]
+        # right padding
+        kl_input_ids = torch.nn.utils.rnn.pad_sequence(
+            sequences=kl_input_ids,
+            batch_first=True,
+            padding_value=self.tokenizer.pad_token_id,
+        )  # (bsz, max_len)
+        kl_loss_mask = torch.nn.utils.rnn.pad_sequence(
+            sequences=kl_loss_mask, batch_first=True, padding_value=0
+        )  # (bsz, max_len)
+        to_pad = self.max_length - kl_input_ids.size(1)
+        kl_input_ids = F.pad(kl_input_ids, (0, to_pad), value=self.tokenizer.pad_token_id)
+        kl_loss_mask = F.pad(kl_loss_mask, (0, to_pad), value=0)
+        kl_attention_mask = kl_input_ids.ne(self.tokenizer.pad_token_id)  # `torch.BoolTensor`, (bsz, max_len)
+        data_dict = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "loss_mask": loss_mask,
+            "label": torch.stack(label),
+            "kl_input_ids": kl_input_ids,
+            "kl_attention_mask": kl_attention_mask,
+            "kl_loss_mask": kl_loss_mask,
+        }
+        return data_dict
+
+
 class StatefulDistributedSampler(DistributedSampler):
     def __init__(
         self,

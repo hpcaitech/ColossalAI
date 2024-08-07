@@ -695,6 +695,7 @@ class FusedLinear1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
+            n_fused=n_fused,
             *args,
             **kwargs,
         )

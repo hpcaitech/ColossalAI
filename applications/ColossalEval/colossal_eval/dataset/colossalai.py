@@ -37,7 +37,7 @@ class ColossalDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, *args, **kwargs) -> List[Dict]:
         dataset = {"test": {}}
         data = jload(path)
         data_per_category = get_data_per_category(data)

@@ -20,6 +20,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
 from .bookkeeping import BucketStore, GradientStore, TensorBucket
@@ -66,7 +67,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def __init__(
         self,
         optimizer: Optimizer,
-        pg_to_param_list: Dict[ProcessGroup, List[nn.Parameter]] = None,
+        pg_to_param_list: Optional[Dict[ProcessGroup, List[nn.Parameter]]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -92,7 +93,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
         self._verbose = verbose
 
-        if dp_process_group is not None and pg_to_param_list is not None:
+        if (dp_process_group is not None) and (pg_to_param_list is not None):
             raise ValueError("dp_process_group and pg_to_param_list should not be provided at the same time.")
 
         if pg_to_param_list is None:
@@ -338,14 +339,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     self._update_unpartitoned_grad(bucket_store, grad_in_bucket.values(), flat_grads_per_rank, group_id)
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
-                    recieved_grad = torch.zeros_like(flat_grads_list[0])
-                    dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
+                    received_grad = torch.zeros_like(flat_grads_list[0])
+                    dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
 
-                    if recieved_grad.dtype != grad_dtype:
-                        recieved_grad = recieved_grad.to(grad_dtype)
+                    if received_grad.dtype != grad_dtype:
+                        received_grad = received_grad.to(grad_dtype)
 
                     grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.local_rank]
-                    self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, recieved_grad, group_id, 1)
+                    self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, received_grad, group_id, 1)
 
                 bucket_store.reset()
 
@@ -649,6 +650,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
+                if is_moe_tensor(param) and param.requires_grad and param.grad is None:
+                    # TODO better of of doing this
+                    # assign zero grad to unrouted expert to avoid hang during grad reduction
+                    param.grad = torch.zeros_like(param)
+
                 if param.requires_grad and param.grad is not None:
                     self._add_to_bucket(param, group_id)
 
@@ -807,8 +813,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """
         for p in model.parameters():
             p_id = id(p)
-            pg = self.param_to_pg[p]
             if p_id in self.working_to_master_param:
+                pg = self.param_to_pg[p]
                 master_param = self.working_to_master_param[p_id]
                 padding_size = self.get_param_padding_size(p)
                 working_param = p.data.view(-1)
@@ -869,13 +875,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def get_param_grad(self, working_param: nn.Parameter) -> Tensor:
         grad_store = self.pid_to_grad_store[id(working_param)]
-        partial_grad = grad_store.get_working_grad_by_param_id(id(working_param))
-        if partial_grad is None:
+        grad = grad_store.get_working_grad_by_param_id(id(working_param))
+        if grad is None:
             return None
-        tensor_list = [torch.empty_like(partial_grad) for _ in range(grad_store.world_size)]
-        dist.all_gather(tensor_list, partial_grad, group=grad_store.torch_pg)
-        grad_flat = torch.cat(tensor_list, dim=0)
-        return grad_flat[: working_param.numel()].reshape_as(working_param)
+        grad_flat = torch.empty((grad_store.world_size, *grad.shape), dtype=grad.dtype, device=grad.device)
+        dist.all_gather_into_tensor(grad_flat, grad, group=grad_store.torch_pg)
+        return grad_flat.view(-1)[: working_param.numel()].view_as(working_param)
 
     def get_working_grads_by_group_id(self, group_id: int) -> List[Tensor]:
         working_grads = []

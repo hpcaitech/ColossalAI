@@ -44,7 +44,7 @@ class DistCoordinator(metaclass=SingletonMeta):
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
         # this is often passed by launchers such as torchrun
-        self._local_rank = os.environ.get("LOCAL_RANK", -1)
+        self._local_rank = int(os.environ.get("LOCAL_RANK", -1))
 
     @property
     def rank(self) -> int:

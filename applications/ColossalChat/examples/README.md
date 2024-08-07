@@ -9,6 +9,7 @@
   - [Install Requirements](#install-requirements)
   - [Get Start with ColossalRun](#get-start-with-colossalrun)
   - [Training Configuration](#training-configuration)
+  - [Parameter Efficient Finetuning (PEFT)](#parameter-efficient-finetuning-peft)
   - [RLHF Stage 1: Supervised Instruction Tuning](#rlhf-training-stage1---supervised-instructs-tuning)
     - [Step 1: Data Collection](#step-1-data-collection)
     - [Step 2: Preprocessing](#step-2-preprocessing)
@@ -30,6 +31,8 @@
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
   - [Alternative Option For RLHF: Simple Preference Optimization](#alternative-option-for-rlhf-simple-preference-optimization)
+  - [Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
+  - [Alternative Option For RLHF: Odds Ratio Preference Optimization](#alternative-option-for-rlhf-odds-ratio-preference-optimization)
   - [List of Supported Models](#list-of-supported-models)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
@@ -45,9 +48,6 @@
 ```shell
 pip install -r requirements.txt
 ```
-
-
-
 
 ## Get Start with ColossalRun
 
@@ -80,8 +80,6 @@ Make sure the master node can access all nodes (including itself) by ssh without
 
 
 This section gives a simple introduction on different training strategies that you can use and how to use them with our boosters and plugins to reduce training time and VRAM consumption. For more details regarding training strategies, please refer to [here](https://colossalai.org/docs/concepts/paradigms_of_parallelism). For details regarding boosters and plugins, please refer to [here](https://colossalai.org/docs/basics/booster_plugins).
-
-
 
 
 <details><summary><b>Gemini (Zero3)</b></summary>
@@ -375,35 +373,6 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 </details>
 
 
-<details><summary><b>Low Rank Adaption</b></summary>
-
-
-Details about Low Rank Adaption (LoRA) can be found in the paper: [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685). It dramatically reduces the VRAM consumption at the cost of sacrifice model capability. It is suitable for training LLM with constrained resources.
-
-
-To enable LoRA, set --lora_rank to a positive value (usually between 20 and 64).
-```
-colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
-    --pretrain $PRETRAINED_MODEL_PATH \
-    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
-    --dataset ${dataset[@]} \
-    --save_interval 5000 \
-    --save_path $SAVE_DIR \
-    --config_file $CONFIG_FILE \
-    --plugin zero2_cpu \
-    --batch_size 4 \
-    --max_epochs 1 \
-    --accumulation_steps 4 \
-    --lr 2e-5 \
-    --max_len 2048 \
-    --lora_rank 32 \ # This enables LoRA
-    --use_wandb
-```
-
-
-</details>
-
-
 <details><summary><b>Other Training Arguments</b></summary>
 
 
@@ -418,6 +387,7 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - save_dir: path to store the model checkpoints.
 - max_length: input will be padded/truncated to max_length before feeding to the model.
 - max_epochs: number of epochs to train.
+- disable_loss_mask: whether to use the loss mask to mask the loss or not. For example, in SFT, if the loss mask is disabled, the model will compute the loss across all tokens in the sequence, if the loss mask is applied, only tokens correspond to the assistant responses will contribute to the final loss.
 - batch_size: training batch size.
 - mixed_precision: precision to use in training. Support 'fp16' and 'bf16'. Note that some devices may not support the 'bf16' option, please refer to [Nvidia](https://developer.nvidia.com/) to check compatibility.
 - save_interval: save the model weights as well as optimizer/scheduler states every save_interval steps/episodes.
@@ -426,6 +396,60 @@ colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile trai
 - accumulation_steps: accumulate gradient every accumulation_steps.
 - log_dir: path to store the log.
 - use_wandb: if this flag is up, you can view logs on wandb.
+
+
+</details>
+
+### Parameter Efficient Finetuning (PEFT)
+
+Currently, we have support LoRA (low-rank adaptation) and PiSSA (principal singular values and singular vectors adaptation). Both help to reduce the running-time VRAM consumption as well as timing at the cost of overall model performance.
+
+
+<details><summary><b>Low Rank Adaption and PiSSA</b></summary>
+
+
+Details about Low Rank Adaption (LoRA) can be found in the paper: [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685). Details about Principal Singular Values and Singular Vectors Adaptation (PiSSA) can be found in the paper: [PiSSA: Principal Singular Values and Singular Vectors Adaptation of Large Language Models](https://arxiv.org/abs/2404.02948). Both help to reduce the running-time VRAM consumption as well as timing at the cost of overall model performance. It is suitable for training LLM with constrained resources.
+
+To use LoRA/PiSSA in training, please create a config file as in the following example and set the `--lora_config` to that configuration file.
+
+```json
+{
+    "r": 128,
+    "embedding_lora_dropout": 0.0,
+    "linear_lora_dropout": 0.1,
+    "lora_alpha": 32,
+    "lora_train_bias": "all",
+    "lora_initialization_method": "PiSSA",
+    "target_modules": ["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj", "embed_tokens"]
+}
+```
+#### Lora Parameters
+- r: lora rank
+- embedding_lora_dropout: dropout probability for embedding layer
+- linear_lora_dropout: dropout probability for linear layer
+- lora_alpha: lora alpha, controls how much the adaptor can deviate from the pretrained model.
+- lora_train_bias: whether to add trainable bias to lora layers, choose from "all" (all layers (including but not limited to lora layers) will have trainable biases), "none" (no trainable biases), "lora" (only lora layers will have trainable biases)
+- lora_initialization_method: how to initialize lora weights, choose one from ["kaiming_uniform", "PiSSA"], default to "kaiming_uniform". Use "kaiming_uniform" for standard LoRA and "PiSSA" for PiSSA.
+- target_modules: which module(s) should be converted to lora layers, if the module's name contain the keywords in target modules and the module is a linear or embedding layer, the module will be converted. Otherwise, the module will be frozen. Setting this field to None will automatically convert all linear and embedding layer to their LoRA counterparts. Note that this example only works for LLaMA, for other models, you need to modify it.
+
+
+```
+colossalai run --nproc_per_node 4 --master_port 28534 --hostfile ./hostfile train_sft.py \
+    --pretrain $PRETRAINED_MODEL_PATH \
+    --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
+    --dataset ${dataset[@]} \
+    --save_interval 5000 \
+    --save_path $SAVE_DIR \
+    --config_file $CONFIG_FILE \
+    --plugin zero2_cpu \
+    --batch_size 4 \
+    --max_epochs 1 \
+    --accumulation_steps 4 \
+    --lr 2e-5 \
+    --max_len 2048 \
+    --lora_config /PATH/TO/THE/LORA/CONFIG/FILE.json \ # Setting this enables LoRA
+    --use_wandb
+```
 
 
 </details>
@@ -446,7 +470,7 @@ The first step in Stage 1 is to collect a dataset of human demonstrations of the
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         },
         {
@@ -471,9 +495,15 @@ In this code we provide a flexible way for users to set the conversation templat
 - Step 1: (Optional). Define your conversation template. You need to provide a conversation template config file similar to the config files under the ./config/conversation_template directory. This config should include the following fields.
   ```json
   {
-      "chat_template": (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. If a path to a huggingface model or local model is provided, will use the chat_template of that model. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating,
-      "system_message": A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added,
-      "end_of_assistant": The token(s) in string that denotes the end of assistance's response. For example, in the ChatGLM2 prompt format,
+      "chat_template": "A string of chat_template used for formatting chat data",
+      "system_message": "A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added",
+      "end_of_assistant": "The token(s) in string that denotes the end of assistance's response",
+      "stop_ids": "A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training"
+  }
+  ```
+  * `chat_template`: (Optional), A string of chat_template used for formatting chat data. If not set (None), will use the default chat template of the provided tokenizer. If a path to a huggingface model or local model is provided, will use the chat_template of that model. To use a custom chat template, you need to manually set this field. For more details on how to write a chat template in Jinja format, please read https://huggingface.co/docs/transformers/main/chat_templating.
+  * `system_message`: A string of system message to be added at the beginning of the prompt. If no is provided (None), no system message will be added.
+  * `end_of_assistant`: The token(s) in string that denotes the end of assistance's response". For example, in the ChatGLM2 prompt format,
       ```
       <|im_start|>system
       system messages
@@ -482,15 +512,13 @@ In this code we provide a flexible way for users to set the conversation templat
       <|im_start|>user
        How far is the moon? <|im_end|>
       <|im_start|>assistant\n The moon is about 384,400 kilometers away from Earth.<|im_end|>...
-       ```
-       the end_of_assistant tokens are "<|im_end|>"
-      "stop_ids": (Optional), A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically
-  }
-  ```
-  On your first run of the data preparation script, you only need to define the "chat_template" (if you want to use custom chat template) and the "system message" (if you want to use a custom system message),
+      ```
+      the `end_of_assistant` tokens are "<|im_end|>"
+  * `stop_ids`: (Optional), A list of integers corresponds to the `end_of_assistant` tokens that indicate the end of assistance's response during the rollout stage of PPO training. It's recommended to set this manually for PPO training. If not set, will set to tokenizer.eos_token_ids automatically.
 
+  On your first run of the data preparation script, you only need to define the `chat_template` (if you want to use custom chat template) and the `system message` (if you want to use a custom system message)
 
-- Step 2: Run the data preparation script--- [prepare_sft_dataset.sh](./examples/data_preparation_scripts/prepare_sft_dataset.sh). Note that whether or not you have skipped the first step, you need to provide the path to the conversation template config file (via the conversation_template_config arg). If you skipped the first step, an auto-generated conversation template will be stored at the designated file path.
+- Step 2: Run the data preparation script--- [prepare_sft_dataset.sh](./data_preparation_scripts/prepare_sft_dataset.sh). Note that whether or not you have skipped the first step, you need to provide the path to the conversation template config file (via the conversation_template_config arg). If you skipped the first step, an auto-generated conversation template will be stored at the designated file path.
 
 
 - Step 3: (Optional) Check the correctness of the processed data. We provided an easy way for you to do a manual checking on the processed data by checking the "$SAVE_DIR/jsonl/part-XXXX.jsonl" files.
@@ -510,7 +538,7 @@ Human: <s> what are some pranks with a pen i can do?</s> Assistant: <s> Are you 
 
 
 #### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
 
 
 ### RLHF Training Stage2 - Training Reward Model
@@ -527,7 +555,7 @@ Below shows the preference dataset format used in training the reward model.
 [
     {"context": [
         {
-          "from": "human",
+          "from": "user",
           "content": "Introduce butterflies species in Oregon."
         }
       ]
@@ -552,11 +580,11 @@ Below shows the preference dataset format used in training the reward model.
 
 
 #### Step 2: Preprocessing
-Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
+Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
 
 
 #### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+You can run [train_rm.sh](./training_scripts/train_rm.sh) to start the reward model training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
 
 
 #### Features and Tricks in RM Training
@@ -596,7 +624,7 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 
 
 #### Step 1: Data Collection
-PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
+PPO uses two kinds of training data--- the prompt data and the pretrain data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "user" and thus the "assistant" needs to generate a response to answer to the "user". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
 
 ```json
@@ -604,7 +632,7 @@ PPO uses two kinds of training data--- the prompt data and the pretrain data (op
     {"messages":
       [
         {
-          "from": "human",
+          "from": "user",
           "content": "what are some pranks with a pen i can do?"
         }
         ...
@@ -627,14 +655,14 @@ The second dataset--- pretrained dataset is optional, provide it if you want to 
   ]
   ```
 #### Step 2: Preprocessing
-To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
+To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./data_preparation_scripts/prepare_prompt_dataset.sh)
 
 
 You can use the SFT dataset you prepared in the SFT stage or prepare a new one from different source for the ptx dataset. The ptx data is used to calculate ptx loss, which stabilizes the training according to the [InstructGPT paper](https://arxiv.org/pdf/2203.02155.pdf).
 
 
 #### Step 3: Training
-You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
+You can run the [train_ppo.sh](./training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options.
 
 
 ```bash
@@ -718,7 +746,7 @@ For DPO training, you only need the preference dataset. Please follow the instru
 
 
 #### Step 2: Training
-You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options. Following the trend of recent research on DPO-like alignment methods, we added option for the user to choose from, including whether to do length normalization , reward shaping and whether to use a reference model in calculating implicit reward. Here are those options,
+You can run the [train_dpo.sh](./training_scripts/train_dpo.sh) to start DPO training. Please refer to the [training configuration](#training-configuration) section for details regarding supported training options. Following the trend of recent research on DPO-like alignment methods, we added option for the user to choose from, including whether to do length normalization , reward shaping and whether to use a reference model in calculating implicit reward. Here are those options,
 
 ```
 --beta 0.1 \     # the temperature in DPO loss, Default to 0.1
@@ -735,7 +763,7 @@ You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to star
 ### Alternative Option For RLHF: Simple Preference Optimization
 
 We support the method introduced in the paper [SimPO: Simple Preference Optimization
-with a Reference-Free Reward](https://arxiv.org/pdf/2405.14734) (SimPO). Which is a reference model free aligment method that add length normalization and reward shaping to the DPO loss to enhance training stability and efficiency. As the method doesn't deviate too much from DPO, we add support for length normalization and SimPO reward shaping in our DPO implementation. To use SimPO in alignment, use the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) script, set the `loss_type` to `simpo_loss`, you can also set the value for temperature (`beta`) and reward target margin (`gamma`) but it is optional.
+with a Reference-Free Reward](https://arxiv.org/pdf/2405.14734) (SimPO). Which is a reference model free aligment method that add length normalization and reward shaping to the DPO loss to enhance training stability and efficiency. As the method doesn't deviate too much from DPO, we add support for length normalization and SimPO reward shaping in our DPO implementation. To use SimPO in alignment, use the [train_dpo.sh](./training_scripts/train_dpo.sh) script, set the `loss_type` to `simpo_loss`, you can also set the value for temperature (`beta`) and reward target margin (`gamma`) but it is optional.
 
 #### SimPO Result
 <p align="center">
@@ -744,11 +772,48 @@ with a Reference-Free Reward](https://arxiv.org/pdf/2405.14734) (SimPO). Which i
 
 
 ### Alternative Option For RLHF: Odds Ratio Preference Optimization
-We support the method introduced in the paper [ORPO: Monolithic Preference Optimization without Reference Model](https://arxiv.org/abs/2403.07691) (ORPO). Which is a reference model free aligment method that mixes the SFT loss with a reinforcement learning loss that uses odds ratio as the implicit reward to enhance training stability and efficiency. Simply set the flag to disable the use of the reference model, set the reward target margin and enable length normalization in the DPO training script. To use ORPO in alignment, use the [train_orpo.sh](./examples/training_scripts/train_orpo.sh) script, You can set the value for `lambda` (which determine how strongly the reinforcement learning loss affect the training) but it is optional.
+We support the method introduced in the paper [ORPO: Monolithic Preference Optimization without Reference Model](https://arxiv.org/abs/2403.07691) (ORPO). Which is a reference model free aligment method that mixes the SFT loss with a reinforcement learning loss that uses odds ratio as the implicit reward to enhance training stability and efficiency. To use ORPO in alignment, use the [train_orpo.sh](./training_scripts/train_orpo.sh) script, You can set the value for `lambda` (which determine how strongly the reinforcement learning loss affect the training) but it is optional.
 
 #### ORPO Result
 <p align="center">
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/ORPO_margin.png">
+</p>
+
+### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results.
+
+For KTO data preparation, please use the script [prepare_kto_dataset.sh](./examples/data_preparation_scripts/prepare_kto_dataset.sh). You will need preference data, different from DPO and its derivatives, you no longer need a pair of chosen/rejected response for the same input. You only need data whose response is associated with a preference label--- whether the response is okay or not, read the papre for more details. You also need to convert your data to the following intermediate format before you run the data preparation script.
+
+```jsonl
+{
+  "prompt": [
+    {
+      "from": "user",
+      "content": "What are some praise words in english?"
+    },
+    {
+      "from": "assistant",
+      "content": "Here's an incomplete list.\n\nexcellent, fantastic, impressive  ..."
+    },
+    {
+      "from": "user",
+      "content": "What's your favorite one?"
+    }
+  ],
+  "completion": {
+    "from": "assistant",
+    "content": "impressive."
+  },
+  "label": true
+}
+
+```
+
+For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) script, You may need to set the value for `beta` (which determine how strongly the reinforcement learning loss affect the training), `desirable_weight` and `undesirable_weight` if your data is biased (has unequal number of chosen and rejected samples).
+
+#### KTO Result
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/KTO.png">
 </p>
 
 ## Hardware Requirements
@@ -800,6 +865,14 @@ For ORPO, we recommend using zero2 or zero2-cpu. We tested the VRAM consumption 
   - zero2_cpu, micro batch size=8, VRAM Usage=38709.73 MB
   - zero2, micro batch size=4, VRAM Usage=45309.52 MB
   - zero2, micro batch size=8, VRAM Usage=58086.37 MB
+
+For KTO, we recommend using zero2-cpu or zero2 plugin, We tested the VRAM consumption on a dummy dataset with 2048 sequence length.
+- 2 H800 GPU
+  - zero2-cpu, micro batch size=2, VRAM Usage=35241.98 MB
+  - zero2-cpu, micro batch size=4, VRAM Usage=38989.37 MB
+- 4 H800 GPUs
+  - zero2_cpu, micro batch size=2, VRAM_USAGE=32443.22 MB
+  - zero2, micro batch size=4, VRAM_USAGE=59307.97 MB
 
 ## List of Supported Models
 

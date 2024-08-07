@@ -131,17 +131,18 @@ with one simple command. There are two ways you can launch multi-node jobs.
 
 This is suitable when you only have a few nodes. Let's say I have two nodes, namely `host1` and `host2`,  I can start
 multi-node training with the following command. Compared to single-node training, you must specify the `master_addr`
-option, which is auto-set to localhost if running on a single node only.
+option, which is auto-set to localhost if running on a single node only. \
+Additionally, you must also ensure that all nodes share the same open ssh port, which can be specified using --ssh-port.
 
 :::caution
 
-`master_addr` cannot be localhost when running on multiple nodes, it should be the hostname or IP address of a node.
+`master_addr` cannot be localhost when running on multiple nodes, it should be the **hostname or IP address** of a node.
 
 :::
 
 ```shell
 # run on these two nodes
-colossalai run --nproc_per_node 4 --host host1,host2 --master_addr host1 test.py
+colossalai run --nproc_per_node 4 --host host1,host2 --master_addr host1 test.py --ssh-port 22
 ```
 - Run with `--hostfile`
 
