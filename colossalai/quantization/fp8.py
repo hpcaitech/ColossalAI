@@ -1,11 +1,10 @@
 from typing import Any, Optional
 
+import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from torch.distributed import ReduceOp
-
-import numpy as np
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
@@ -576,7 +575,6 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2"):
         tensor = output_tensor_list[i]
         tensor = tensor.view(fp8_type)
         output_list[i].copy_(cast_from_fp8(tensor, scale, input_type))
-
 
 
 def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
