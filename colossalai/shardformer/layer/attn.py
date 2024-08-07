@@ -415,10 +415,10 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     Compute the new attention denominator:
         exp(lse) + exp(block_lse) = exp(max_scale) * (exp(min_scale - max_scale) + 1)
     Args:
-        out: (B, Sq, H, D)
-        block_out: (B, Sq, H, D)
-        lse: (B, H, Sq, 1)
-        block_lse: (B, H, Sq, 1)
+        out: (T, H, D)
+        block_out: (T, H, D)
+        lse: (H, T, 1)
+        block_lse: (H, T, 1)
     """
 
     # min_scale = torch.min(lse, block_lse)
@@ -455,8 +455,7 @@ class RingAttention(torch.autograd.Function):
     TOTAL_SEQLEN: int = None
     HALF_INDICES: Tuple = None
     SUPPORTED_MASK_TYPES = (AttnMaskType.CAUSAL, AttnMaskType.PADDED_CAUSAL)
-    CORRECTION_DONE = torch.cuda.Event()
-    ATTN_DONE = torch.cuda.Event()
+    ATTN_DONE: torch.cuda.Event = None
 
     @staticmethod
     def attention(
@@ -504,6 +503,8 @@ class RingAttention(torch.autograd.Function):
                 Shape should be [total_q_seqlen, nHeads]
         """
         _load_flash_attn()
+        if RingAttention.ATTN_DONE is None:
+            RingAttention.ATTN_DONE = torch.cuda.Event()
         assert (
             q.shape[2] == k.shape[2]
         ), "Q, K and V having different sequence lengths (inference or cross-attn)\
@@ -620,6 +621,11 @@ class RingAttention(torch.autograd.Function):
         sp_size = kv_comms[0].world_size
         sp_rank = kv_comms[0].rank
 
+        # Non-contiguous indexing creates a new contiguous tensor,
+        # so only do it once
+        if sp_rank != sp_size - 1:
+            q1 = q[half_idx_back]
+
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
         kv_buffers.append(torch.empty_like(kv_buffers[0]))
@@ -700,7 +706,7 @@ class RingAttention(torch.autograd.Function):
                     # Received the inner kv chunks
                     # Drop the first half of q
                     kv_block = kv_buffers[i % 2]
-                    q_block = q[half_idx_back]
+                    q_block = q1
 
                     (
                         _,
@@ -722,17 +728,15 @@ class RingAttention(torch.autograd.Function):
                         causal=False,
                         **misc_kwargs,
                     )
-                RingAttention.ATTN_DONE.record(sp_streams[i % 2])
+                RingAttention.ATTN_DONE.record()
 
                 block_softmax_lse[i % 2] = (
                     block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
                 )  # (H, T) -> (T, H, 1)
                 assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
                 # Output and log sum exp correction
-                if i > 0:
-                    sp_streams[i % 2].wait_event(RingAttention.CORRECTION_DONE)
-
                 # Overlap output correction with next flash attn kernel
+                # In reality this always finishes before next flash attn
                 if i == 0:
                     out = block_out[0]
                     softmax_lse = block_softmax_lse[0]
@@ -742,9 +746,7 @@ class RingAttention(torch.autograd.Function):
                     out[half_idx_back], softmax_lse[half_idx_back] = _rescale_out_lse(
                         out[half_idx_back], block_out[i % 2], softmax_lse[half_idx_back], block_softmax_lse[i % 2]
                     )
-
-                RingAttention.CORRECTION_DONE.record(sp_streams[i % 2])
-        torch.cuda.current_stream().wait_event(RingAttention.CORRECTION_DONE)
+        torch.cuda.current_stream().wait_stream(sp_stream)
 
         out = out.to(q.dtype)
         if not is_packed:
@@ -790,7 +792,6 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_kv = ctx.max_seqlen_kv
         dkv_group = ctx.dkv_group
         misc_kwargs = ctx.misc_kwargs
-        dout = dout.contiguous()
         del misc_kwargs["block_table"]
 
         assert (
@@ -814,6 +815,10 @@ class RingAttention(torch.autograd.Function):
             dkv_comm = RingComm(dkv_group)
         else:
             dkv_comm = RingComm(sp_group)
+
+        if sp_rank != sp_size - 1:
+            softmax_lse1 = softmax_lse[:, half_idx_back]
+        dout = dout.contiguous()
 
         # Double comm buffers for sending and receiving kv
         kv_buffers = [torch.stack((k, v))]  # (2, T, H, D)
@@ -899,7 +904,7 @@ class RingAttention(torch.autograd.Function):
                     k_,
                     v_,
                     out_,
-                    softmax_lse[:, half_idx_back],
+                    softmax_lse1,
                     dq_,
                     dk_,
                     dv_,

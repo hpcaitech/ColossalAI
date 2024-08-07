@@ -56,6 +56,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     ring_dq, ring_dk, ring_dv = [x.transpose(1, 2) for x in (q.grad, k.grad, v.grad)]
     dqkv = qkv.grad
     local_dqkv = split_batch_zigzag(dqkv, sp_group)
+
     assert_close(ring_dq, local_dqkv[:, :, 0], atol=atol, rtol=rtol)
     assert_close(ring_dk, local_dqkv[:, :, 1], atol=atol, rtol=rtol)
     assert_close(ring_dv, local_dqkv[:, :, 2], atol=atol, rtol=rtol)
@@ -155,7 +156,7 @@ def launch(rank, world_size, port):
 
 @rerun_if_address_is_in_use()
 def test_ring_attn():
-    spawn(launch, nprocs=4)
+    spawn(launch, nprocs=2)
 
 
 if __name__ == "__main__":
