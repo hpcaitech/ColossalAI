@@ -605,9 +605,8 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
             attn_output = all_to_all_comm(
-                attn_output, sp_group, scatter_dim=1, gather_dim=2,
-                                          fp8_communication=shard_config.fp8_communication
-                )
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -750,11 +749,11 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         if sp_mode == "ring" or sp_mode == "split_gather":
             hidden_states = gather_forward_split_backward(
                 hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
-                )
+            )
         elif sp_mode == "all_to_all":
             hidden_states = gather_forward_split_backward(
                 hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication
-                )
+            )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
