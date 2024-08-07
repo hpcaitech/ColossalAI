@@ -95,8 +95,8 @@ def demo_basic(rank, world_size, port):
     cleanup()
 
 
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("2.4.0"), reason="torch version < 2.2.0.")
 @rerun_if_address_is_in_use()
-@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("2.2.0"), reason="torch version < 2.2.0.")
 def test_fsdp():
     n_gpus = torch.cuda.device_count()
     assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
