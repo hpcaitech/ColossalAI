@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import (
     Linear1D_Col,
     Linear1D_Row,
     PaddingEmbedding,
+    PaddingLMHead,
     RMSNorm,
     VocabParallelEmbedding1D,
 )
@@ -159,7 +160,10 @@ class Qwen2Policy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs={
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication": self.shard_config.fp8_communication,
+                    },
                 ),
                 policy=policy,
                 target_key=Qwen2Model,
@@ -317,12 +321,39 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
             new_item = {
                 Qwen2ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=VocabParallelLMHead1D,
+                            kwargs={
+                                "gather_output": not self.shard_config.parallel_output,
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            },
+                        )
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
             }
-            policy.update(new_item)
+            if self.shard_config.parallel_output:
+                new_item[Qwen2ForCausalLM].method_replacement = {
+                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                }
+        else:
+            new_item = {
+                Qwen2ForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=PaddingLMHead,
+                            kwargs={
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            },
+                        )
+                    ],
+                )
+            }
+        policy.update(new_item)
 
         if self.pipeline_stage_manager:
             # set None as default
@@ -366,7 +397,12 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
                 Qwen2ForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="score",
+                            target_module=Linear1D_Col,
+                            kwargs={
+                                "gather_output": not self.shard_config.parallel_output,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            },
                         )
                     ]
                 )

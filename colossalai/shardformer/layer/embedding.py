@@ -155,7 +155,9 @@ class Embedding1D(ParallelModule):
     def forward(self, input_: Tensor) -> Tensor:
         output_parallel = F.embedding(input_, self.weight, self.padding_idx, *self.embed_args, **self.embed_kwargs)
         if self.gather_output:
-            output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
+            output = gather_forward_split_backward(
+                output_parallel, dim=-1, process_group=self.process_group, fp8_communication=self.fp8_communication
+            )
             return output
         else:
             return output_parallel
@@ -390,5 +392,5 @@ class VocabParallelEmbedding1D(PaddingParallelModule):
         embedding_output = output_parallel.clone()
         embedding_output[input_mask, :] = 0.0
         # Reduce across all the model parallel GPUs.
-        output = reduce_forward(embedding_output, self.process_group)
+        output = reduce_forward(embedding_output, self.process_group, fp8_communication=self.fp8_communication)
         return output
