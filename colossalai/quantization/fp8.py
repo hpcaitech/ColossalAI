@@ -431,7 +431,8 @@ class _LinearFp8(torch.autograd.Function):
         if bias is not None:
             assert bias.dtype == x.dtype, "Bias should have the same dtype as input."
         # ensure x and w are row-major
-        assert x.is_contiguous() and w.is_contiguous(), "Input and weight should be contiguous."
+        x = x.contiguous()
+        w = w.contiguous()
         ctx.x_shape = x.shape
         ctx.has_bias = bias is not None
         ctx.out_dtype = x.dtype
