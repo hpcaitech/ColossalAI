@@ -57,14 +57,14 @@ class FlashAttentionDaoCudaExtension(_Extension):
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
         ):
-            # [B, N, S, D] -> [B, S, N, D]
+            # [B, H, S, D] -> [B, S, H, D]
             q = q.transpose(1, 2)
             k = k.transpose(1, 2)
             v = v.transpose(1, 2)
             b, s_q = q.shape[:2]
             if cu_seqlens_q is not None:
                 # padded / padded causal
-                # unpad input: [B, S, N, D] -> [T, N, D]
+                # unpad input: [B, S, H, D] -> [T, H, D]
                 q = _unpad_input(q, q_indices)
                 kv = _unpad_input(torch.stack(tensors=(k, v), dim=2), kv_indices)
                 attn_output = flash_attn_varlen_kvpacked_func(
@@ -78,7 +78,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
                     softmax_scale=scale,
                     causal=is_causal,
                 )
-                # pad output: [T, N, D] -> [B, S, N, D]
+                # pad output: [T, H, D] -> [B, S, H, D]
                 attn_output = pad_input(attn_output, q_indices, b, s_q)
             else:
                 # causal / no attn mask
@@ -90,7 +90,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
                     softmax_scale=scale,
                     causal=is_causal,
                 )
-            # [B, S, N, D] -> [B, N, S, D]
+            # [B, S, H, D] -> [B, H, S, D]
             return attn_output.transpose(1, 2)
 
         return flash_attention

@@ -75,6 +75,7 @@ class Policy(ABC):
     def __init__(self) -> None:
         self.shard_config: Optional[ShardConfig] = None
         self.model: Optional[Module] = None
+        self.is_causal = None  # Whether we're doing causal lm, i.e. using cross entropy
 
     def set_model(self, model: nn.Module) -> None:
         r"""

@@ -203,7 +203,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             return
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
-
         # Devices along the same dp_group share the same copies of model.
         # So only let the device with dp_rank == 0 save the model.
         if self.dp_rank != 0:
@@ -643,14 +642,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         model._force_wait_all_gather()
         model = model.unwrap()
-
         if self.dp_rank != 0:
             return
 
         # The logic of collecting parameter shards along tp degree
         # has been implemented by _save_to_state_dict method of ParallelModule in Shardformer.
         state_dict = model.state_dict()
-
         if self.pp_size == 1:
             # When pipeline is not used, let master rank directly save the collected state_dict.
             if self.tp_rank == 0:
@@ -660,7 +657,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             state_dict_list = [None for _ in range(self.pp_size)]
             dist.barrier(self.pp_group)
             dist.all_gather_object(state_dict_list, state_dict, self.pp_group)
-
             # Only the master rank do the saving.
             if self.coordinator.is_master():
                 complete_state_dict = dict()

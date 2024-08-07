@@ -244,6 +244,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
         output_obj = model_forward(model, micro_batch, input_obj)
         if self.stage_manager.is_last_stage():
             loss = criterion(output_obj, micro_batch) / self.num_microbatches
+
             if accum_loss is not None:
                 accum_loss.add_(loss.detach())
             if outputs is not None:

@@ -68,9 +68,6 @@ def main():
         default="gemini",
         help="Choose which plugin to use",
     )
-    parser.add_argument(
-        "--overlap", action="store_true", help="Overlap communication with computation in Pipeline Parallel."
-    )
     parser.add_argument("-b", "--batch_size", type=int, default=2, help="Batch size")
     parser.add_argument("-s", "--num_steps", type=int, default=5, help="Number of steps to run")
     parser.add_argument("-i", "--ignore_steps", type=int, default=2, help="Number of steps to ignore")
@@ -94,11 +91,17 @@ def main():
 
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
-    parser.add_argument("--profile", action="store_true", help="Profile the code", default=False)
+    parser.add_argument("--profile", action="store_true", help="Profile the code")
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--no_cache", action="store_true")
     parser.add_argument("--overlap_allgather", action="store_true")
+    parser.add_argument(
+        "--sp_mode",
+        default="all_to_all",
+        choices=["all_to_all", "ring_attn", "ring", "split_gather"],
+        help="Sequence parallelism mode",
+    )
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -195,12 +198,13 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             sp_size=args.sp,
+            sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
-            overlap_p2p=args.overlap,
+            dp_outside=False,
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
             **hybrid_kwargs,
@@ -218,7 +222,6 @@ def main():
             microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
-            overlap_p2p=args.overlap,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -320,13 +323,14 @@ def main():
                 performance_evaluator.on_step_start(step)
                 outputs = model(**batch)
                 loss = outputs[0]
+                if dist.get_rank() == dist.get_world_size() - 1:
+                    print(f"Step {step} loss: {loss}")
                 booster.backward(loss, optimizer)
                 optimizer.step()
                 optimizer.zero_grad()
 
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
-
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
