@@ -95,7 +95,7 @@ def demo_basic(rank, world_size, port):
     cleanup()
 
 
-@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("2.4.0"), reason="torch version < 2.2.0.")
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("2.2.0"), reason="torch version < 2.2.0.")
 @rerun_if_address_is_in_use()
 def test_fsdp():
     n_gpus = torch.cuda.device_count()
