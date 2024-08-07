@@ -1,15 +1,14 @@
-from packaging import version
-
 import torch
 import torch.distributed as dist
+from packaging import version
 from torch import Tensor
 from torch.distributed.fsdp._common_utils import _no_dispatch_record_stream
 from torch.distributed.utils import _p_assert
 
 
 def _all_gather_flat_param(
-        self,
-        padded_unsharded_flat_param: Tensor,
+    self,
+    padded_unsharded_flat_param: Tensor,
 ) -> Tensor:
     """
     All-gather the handle's flat parameter to the destination ``padded_unsharded_flat_param``.
@@ -27,17 +26,11 @@ def _all_gather_flat_param(
         f"Expects {expected_numel} numel but got {padded_unsharded_flat_param.numel()}",
     )
 
-    pg = (
-        self._fake_process_group
-        if self._use_fake_all_gather
-        else self.process_group
-    )
+    pg = self._fake_process_group if self._use_fake_all_gather else self.process_group
 
     # HACK this should be handled by C10D
     if sharded_flat_param.is_cpu:  # type: ignore[attr-defined]
-        tensor_list = list(
-            torch.chunk(padded_unsharded_flat_param, dist.get_world_size(pg))
-        )
+        tensor_list = list(torch.chunk(padded_unsharded_flat_param, dist.get_world_size(pg)))
         work = dist.all_gather(tensor_list, sharded_flat_param, group=pg)
     else:
         if self._comm_hook is None:
@@ -47,9 +40,7 @@ def _all_gather_flat_param(
                 pg,
             )
         else:
-            self._comm_hook(
-                None, padded_unsharded_flat_param, sharded_flat_param, pg
-            )
+            self._comm_hook(None, padded_unsharded_flat_param, sharded_flat_param, pg)
 
     if self._offload_params:
         # In case of offloading, `flat_param.data` (i.e. sharded param) is
@@ -94,9 +85,7 @@ def register_params_comm_hook(self, state: object, hook: callable):
 
     """
     if not self.check_is_root():
-        raise AssertionError(
-            "register_comm_hook can only be called on a root instance."
-        )
+        raise AssertionError("register_comm_hook can only be called on a root instance.")
 
     # if fsdp_state.sharding_strategy in HYBRID_SHARDING_STRATEGIES:
     #     raise AssertionError(
@@ -105,21 +94,19 @@ def register_params_comm_hook(self, state: object, hook: callable):
     if self._handle._comm_hook is not None:
         raise AssertionError("A communication hook is already registered")
     if not callable(hook):
-        raise ValueError(
-            f"The communication hook must be callable but got {hook}"
-        )
+        raise ValueError(f"The communication hook must be callable but got {hook}")
     self._handle._comm_hook = hook
     self._handle._comm_hook_state = state
 
 
 def patch_fsdp_params_comm_hook():
     if version.parse(torch.__version__) >= version.parse("2.2.0"):
-        from torch.distributed.fsdp._flat_param import FlatParamHandle
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+        from torch.distributed.fsdp._flat_param import FlatParamHandle
+
         FlatParamHandle._comm_hook = None
         FlatParamHandle._comm_hook_state = None
         FlatParamHandle._all_gather_flat_param = _all_gather_flat_param
         FSDP.register_params_comm_hook = register_params_comm_hook
     else:
         raise RuntimeError("This fsdp_params_comm_hook patch is not supported while torch version under 2.2.0.")
-
