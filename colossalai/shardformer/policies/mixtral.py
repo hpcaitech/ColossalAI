@@ -114,21 +114,25 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication}
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication}
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication}
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication}
                     ),
                     SubModuleReplacementDescription(  # or replicate?
-                        suffix="block_sparse_moe.gate", target_module=Linear1D_Col, kwargs={"gather_output": True}
+                        suffix="block_sparse_moe.gate", target_module=Linear1D_Col, kwargs={"gather_output": True, "fp8_communication": self.shard_config.fp8_communication}
                     ),
                 ],
             )
@@ -155,6 +159,7 @@ class MixtralPolicy(Policy):
                             "ep_group": self.shard_config.ep_group,
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
+                            "fp8_communication": self.shard_config.fp8_communication
                         },
                     )
                 ],

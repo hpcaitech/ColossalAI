@@ -42,6 +42,7 @@ def check_mixtral_moe_layer():
         ep_group=plugin.ep_group,
         tp_group=plugin.tp_group,
         moe_dp_group=plugin.moe_dp_group,
+        fp8_communication=True
     )
     ep_output, ep_logits = model(x)
     assert_close(orig_logits, ep_logits)
@@ -63,7 +64,7 @@ def run_dist(rank: int, world_size: int, port: int):
     check_mixtral_moe_layer()
 
 
-@pytest.mark.skip("tested in corresponding sharderformer")
+# @pytest.mark.skip("tested in corresponding sharderformer")
 @pytest.mark.parametrize("world_size", [2])
 def test_mixtral_moe_layer(world_size: int):
     spawn(run_dist, world_size)
