@@ -197,9 +197,7 @@ class AGIEvalDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(
-        path: str, logger: DistributedLogger, few_shot: bool, forward_only: bool, load_train: bool, load_reference: bool
-    ) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, few_shot: bool, *args, **kwargs) -> List[Dict]:
         dataset = {"test": {}}
 
         files = glob.glob(os.path.join(path, "*.jsonl"))

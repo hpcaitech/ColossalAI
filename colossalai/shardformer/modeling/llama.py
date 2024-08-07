@@ -31,7 +31,7 @@ from colossalai.shardformer.layer._operation import (
 )
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 
 class LlamaPipelineForwards:
@@ -86,12 +86,19 @@ class LlamaPipelineForwards:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
-
             hidden_states = inputs_embeds
         else:
             input_shape = hidden_states.shape[:-1]
             batch_size, seq_length = input_shape
             device = hidden_states.device
+
+        # Support SP + PP
+        sp_mode = shard_config.sequence_parallelism_mode
+        sp_group = shard_config.sequence_parallel_process_group
+        sp_size = shard_config.sequence_parallel_size
+        if sp_mode == "all_to_all" and not stage_manager.is_first_stage():
+            # For correct positions ids. The states will be gather along the seq dim in the attention layer later.
+            seq_length *= sp_size
 
         past_seen_tokens = 0
         if use_cache:  # kept for BC (cache positions)
@@ -101,7 +108,7 @@ class LlamaPipelineForwards:
         if cache_position is None:
             if isinstance(past_key_values, StaticCache):
                 raise ValueError("cache_position is a required argument when using StaticCache.")
-            cache_position = torch.arange(past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=device)
+            cache_position = torch.arange(past_seen_tokens, past_seen_tokens + seq_length, device=device)
 
         seq_length_with_past = seq_length + past_seen_tokens
 
@@ -118,7 +125,6 @@ class LlamaPipelineForwards:
 
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
-
         # embed positions, for the first stage, hidden_states is the input embeddings,
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
@@ -133,6 +139,13 @@ class LlamaPipelineForwards:
             )
         else:
             attention_mask = self._update_causal_mask(attention_mask, hidden_states, cache_position)
+
+        # Support SP + PP
+        if stage_manager.is_first_stage():
+            if sp_mode in ["ring", "split_gather"]:
+                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
+            elif sp_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
 
         if self.gradient_checkpointing and self.training and use_cache:
             if use_cache:
@@ -196,6 +209,10 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
+            if sp_mode == "ring" or sp_mode == "split_gather":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+            elif sp_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -304,29 +321,9 @@ class LlamaPipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.enable_tensor_parallelism and shard_config.parallel_output:
-                    new_vocab_size = logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(
-                        shift_logits,
-                        shift_labels,
-                        process_group=shard_config.tensor_parallel_process_group,
-                        vocab_size=self.lm_head.out_features,
-                        dtype=self.model.dtype,
-                    )
-                else:
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels)
+            loss = dist_cross_entropy(
+                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
+            )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -529,7 +526,6 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
 
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
-
         cos, sin = self.rotary_emb(value_states, position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -649,7 +645,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         # in this case, attention_mask is a dict rather than a tensor
         if shard_config.enable_flash_attention:
-            mask_shape = (inputs_embeds.shape[0], 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
+            mask_shape = (inputs_embeds.shape[0], 1, seq_len, past_seen_tokens + seq_len)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
@@ -814,24 +810,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             logits = self.lm_head(hidden_states)
         logits = logits.float()
 
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            new_vocab_size = logits.shape[-1]
-            shift_logits = shift_logits.view(-1, new_vocab_size)
-            loss = cross_entropy_1d(
-                shift_logits,
-                shift_labels,
-                process_group=shard_config.tensor_parallel_process_group,
-                vocab_size=self.lm_head.out_features,
-                dtype=self.model.dtype,
-            )
-
+        loss = dist_cross_entropy(
+            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
+        )
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output

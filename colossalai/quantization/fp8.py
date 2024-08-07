@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.distributed as dist
@@ -117,6 +117,62 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, gro
         tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
     out = torch.cat(tensor_list, dim=0)
     tensor.copy_(out[:input_size].view(input_shape).to(input_type))
+
+
+def all_to_all_single_fp8(
+    output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
+) -> None:
+    r"""
+    This is an in-place operation for compressed all_reduce using fp8.
+    It works like dist.all_to_all_single but during communication the data is cast to fp8 format.
+    Args:
+        tensor: torch.Tensor in fp32, fp16, bf16 datatype.
+        fp8_format: e4m3 or e5m2
+    Returns:
+        None
+    """
+    world_size = dist.get_world_size(group=group)
+    input_type = input.dtype
+    input_shape = input.shape
+    input_device = input.device
+    input = input.flatten()
+
+    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
+
+    ret, scale = cast_to_fp8(input, fp8_format=fp8_format)
+
+    inp = ret.view(torch.uint8)
+    if input_split_sizes is not None:
+        input_split_sizes = [input_split_sizes[i] * np.prod(input_shape[1:]) for i in range(world_size)]
+        input_chunks = list(torch.split(inp, input_split_sizes))
+    else:
+        input_chunks = list(torch.chunk(inp, world_size, dim=0))
+
+    if output_split_sizes is not None:
+        output_chunks = [
+            torch.empty((output_split_sizes[i] * np.prod(input_shape[1:]),), device=input_device, dtype=inp.dtype)
+            for i in range(world_size)
+        ]
+    else:
+        if dist.get_rank() == world_size - 1:
+            output_chunks = [torch.empty_like(input_chunks[-1]) for _ in range(world_size)]
+        else:
+            output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
+
+    dist.all_to_all(output_chunks, input_chunks, group=group)
+    scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
+    dist.all_gather(scale_list, scale, group=group)
+    cast_output_chunk = [
+        cast_from_fp8(out.view(fp8_type), scale, input_type) for scale, out in zip(scale_list, output_chunks)
+    ]
+
+    tensor_out = torch.cat(cast_output_chunk, dim=0)
+    outputs_shape = list(input_shape)
+    if output_split_sizes is not None:
+        outputs_shape[0] = sum(output_split_sizes)
+    else:
+        outputs_shape = input_shape
+    output.data = tensor_out.view(outputs_shape).to(input_type)
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
@@ -562,3 +618,62 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
         output = tensor_list[i].view(fp8_type)
         scale = scale_list[i]
         output_list[i].copy_(cast_from_fp8(output, scale, input_type))
+
+
+class _LinearFp8(torch.autograd.Function):
+    @staticmethod
+    def forward(
+        ctx: Any,
+        x: torch.Tensor,
+        w: torch.Tensor,
+        bias: Optional[torch.Tensor],
+    ) -> Any:
+        assert (
+            x.dtype in (torch.bfloat16, torch.float16) and x.dtype == w.dtype
+        ), "Only float16 and bfloat16 are allowed."
+        if bias is not None:
+            assert bias.dtype == x.dtype, "Bias should have the same dtype as input."
+        # ensure x and w are row-major
+        assert x.is_contiguous() and w.is_contiguous(), "Input and weight should be contiguous."
+        ctx.x_shape = x.shape
+        ctx.has_bias = bias is not None
+        ctx.out_dtype = x.dtype
+        x = x.reshape(-1, x.shape[-1])
+
+        x_fp8, inv_scale_x = cast_to_fp8(x, fp8_format="e4m3")
+        w_fp8, inv_scale_w = cast_to_fp8(w, fp8_format="e4m3")
+        ctx.x_fp8 = x_fp8
+        ctx.w_fp8_t = w_fp8.t()
+        ctx.inv_scale_x = inv_scale_x
+        ctx.inv_scale_w = inv_scale_w
+        out = torch._scaled_mm(
+            x_fp8, ctx.w_fp8_t, bias=bias, out_dtype=ctx.out_dtype, scale_a=inv_scale_x, scale_b=inv_scale_w
+        )[0]
+        return out.reshape(*ctx.x_shape[:-1], w.shape[0])
+
+    @staticmethod
+    def backward(ctx: Any, out_grad) -> Any:
+        out_grad = out_grad.reshape(-1, out_grad.shape[-1])
+        out_grad_fp8, out_grad_scale = cast_to_fp8(out_grad, fp8_format="e5m2")
+        x_grad = torch._scaled_mm(
+            out_grad_fp8,
+            ctx.w_fp8_t.contiguous().t(),
+            out_dtype=ctx.out_dtype,
+            scale_a=out_grad_scale,
+            scale_b=ctx.inv_scale_w,
+        )[0]
+        w_grad = torch._scaled_mm(
+            out_grad_fp8.t().contiguous(),
+            ctx.x_fp8.t().contiguous().t(),
+            out_dtype=ctx.out_dtype,
+            scale_a=out_grad_scale,
+            scale_b=ctx.inv_scale_x,
+        )[0]
+        bias_grad = None
+        if ctx.has_bias:
+            bias_grad = out_grad.sum(0)
+        return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
+
+
+def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    return _LinearFp8.apply(x, w, bias)

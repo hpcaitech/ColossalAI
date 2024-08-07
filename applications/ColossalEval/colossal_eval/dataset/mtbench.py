@@ -27,12 +27,12 @@ class MTBenchDataset(BaseDataset):
     This dataset class will convert the original dataset into the inference dataset.
     """
 
-    def __init__(self, path, logger, few_shot):
+    def __init__(self, path, logger: DistributedLogger, *args, **kwargs):
         self.multiturn = True
-        self.dataset = self.load(path, logger, few_shot)
+        self.dataset = self.load(path, logger, *args, **kwargs)
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger, few_shot: bool) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, *args, **kwargs) -> List[Dict]:
         dataset = {"test": defaultdict(dict)}
 
         file_path = os.path.join(path, "question.jsonl")

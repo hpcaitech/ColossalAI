@@ -21,9 +21,11 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8, all_reduce_fp8, reduce_scatter_fp8
+from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
 from .bookkeeping import BucketStore, GradientStore, TensorBucket
+from .zero_hook import set_all_gather_handle, wait_all_gather_handle
 
 
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
@@ -66,7 +68,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def __init__(
         self,
         optimizer: Optimizer,
-        pg_to_param_list: Dict[ProcessGroup, List[nn.Parameter]] = None,
+        pg_to_param_list: Optional[Dict[ProcessGroup, List[nn.Parameter]]] = None,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
         growth_factor: float = 2.0,
@@ -84,6 +86,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         dp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
+        overlap_allgather: bool = False,
         fp8_communication: bool = False,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
@@ -92,7 +95,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._logger = get_dist_logger()
         self._verbose = verbose
 
-        if dp_process_group is not None and pg_to_param_list is not None:
+        if (dp_process_group is not None) and (pg_to_param_list is not None):
             raise ValueError("dp_process_group and pg_to_param_list should not be provided at the same time.")
 
         if pg_to_param_list is None:
@@ -123,6 +126,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # communication params
         self._overlap_communication = overlap_communication
+        self._overlap_allgather = overlap_allgather
         self._reduce_bucket_size = reduce_bucket_size
         self._communication_dtype = communication_dtype
         self._fp8_communication = fp8_communication
@@ -148,6 +152,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # record the padding size of each param
         self._padding_map = dict()
+        # padded working param is all-gather buffer and it shares the same memory with working param
+        self._working_param_to_padded_working_param = dict()
 
         # mapping working param and master param
         self.master_to_working_param = dict()
@@ -248,11 +254,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             with torch.no_grad():
                 if padding_size > 0:
                     padding_param = torch.nn.functional.pad(param.data.view(-1), [0, padding_size])
-                    # reset working params' ptr when no master weights
-                    if self._master_weights == False:
-                        param.data = padding_param[: param.numel()].view(param.shape)
+                    # # reset working params' ptr when no master weights
+                    # if self._master_weights == False:
+                    param.data = padding_param[: param.numel()].view(param.shape)
                 else:
                     padding_param = param.data.view(-1)
+                self._working_param_to_padded_working_param[param] = padding_param
 
                 splited_params = padding_param.split(
                     padding_param.numel() // self.pid_to_bucket_store[id(param)].world_size
@@ -261,7 +268,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
                 # use fp32 when master_weights is True
                 if self._master_weights is True:
-                    splited_param_current_rank = splited_params.detach().float().to(device)
+                    splited_param_current_rank = splited_params.detach().clone().float().to(device)
                 else:
                     splited_param_current_rank = splited_params
 
@@ -338,21 +345,21 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     self._update_unpartitoned_grad(bucket_store, grad_in_bucket.values(), flat_grads_per_rank, group_id)
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
-                    recieved_grad = torch.zeros_like(flat_grads_list[0])
+                    received_grad = torch.zeros_like(flat_grads_list[0])
                     if self._fp8_communication:
                         reduce_scatter_fp8(
-                            recieved_grad,
+                            received_grad,
                             flat_grads_list,
                             group=bucket_store.torch_pg,
                         )
                     else:
-                        dist.reduce_scatter(recieved_grad, flat_grads_list, group=bucket_store.torch_pg)
+                        dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
 
-                    if recieved_grad.dtype != grad_dtype:
-                        recieved_grad = recieved_grad.to(grad_dtype)
+                    if received_grad.dtype != grad_dtype:
+                        received_grad = received_grad.to(grad_dtype)
 
                     grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.local_rank]
-                    self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, recieved_grad, group_id, 1)
+                    self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, received_grad, group_id, 1)
 
                 bucket_store.reset()
 
@@ -562,25 +569,29 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 working_param = real_working_params[group_id][idx]
                 param_to_gather = master_param.to(device).to(self._dtype)
                 pg = self.param_to_pg[working_param]
-                if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
-                    buffer_tensor = torch.empty_like(
-                        torch.cat([param_to_gather for _ in range(dist.get_world_size(pg))])
-                    )
-                    if self._fp8_communication:
-                        all_gather_into_tensor_flat_fp8(buffer_tensor, param_to_gather, pg, fp8_format="e4m3")
-                    else:
-                        dist.all_gather_into_tensor(buffer_tensor, param_to_gather, pg)
-                    working_param.data.copy_(buffer_tensor[: working_param.numel()].reshape_as(working_param))
-                    continue
-                try:
-                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
-                except RuntimeError:
-                    self.pg_to_tensor_bucket[pg].all_gather(pg, fp8_communication=self._fp8_communication)
-                    self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
+                padded_working_param = self._working_param_to_padded_working_param[working_param]
+                if self._overlap_allgather:
+                    handle = dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg, async_op=True)
+                    set_all_gather_handle(working_param, handle)
+                else:
+                    if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
+                        if self._fp8_communication:
+                            all_gather_into_tensor_flat_fp8(
+                                padded_working_param, param_to_gather, pg, fp8_format="e4m3"
+                            )
+                        else:
+                            dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
+                        continue
+                    try:
+                        self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
+                    except RuntimeError:
+                        self.pg_to_tensor_bucket[pg].all_gather(pg, fp8_communication=self._fp8_communication)
+                        self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
-        for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
-            if not tensor_bucket.is_empty():
-                tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
+        if not self._overlap_allgather:
+            for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
+                if not tensor_bucket.is_empty():
+                    tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
     def _compute_grad_norm(self, dp_pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""
@@ -657,6 +668,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             param_group = self._working_param_groups[group_id]
             for param in param_group:
+                if is_moe_tensor(param) and param.requires_grad and param.grad is None:
+                    # TODO better of of doing this
+                    # assign zero grad to unrouted expert to avoid hang during grad reduction
+                    param.grad = torch.zeros_like(param)
+
                 if param.requires_grad and param.grad is not None:
                     self._add_to_bucket(param, group_id)
 
@@ -815,8 +831,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """
         for p in model.parameters():
             p_id = id(p)
-            pg = self.param_to_pg[p]
             if p_id in self.working_to_master_param:
+                pg = self.param_to_pg[p]
                 master_param = self.working_to_master_param[p_id]
                 padding_size = self.get_param_padding_size(p)
                 working_param = p.data.view(-1)
@@ -877,13 +893,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
     def get_param_grad(self, working_param: nn.Parameter) -> Tensor:
         grad_store = self.pid_to_grad_store[id(working_param)]
-        partial_grad = grad_store.get_working_grad_by_param_id(id(working_param))
-        if partial_grad is None:
+        grad = grad_store.get_working_grad_by_param_id(id(working_param))
+        if grad is None:
             return None
-        tensor_list = [torch.empty_like(partial_grad) for _ in range(grad_store.world_size)]
-        dist.all_gather(tensor_list, partial_grad, group=grad_store.torch_pg)
-        grad_flat = torch.cat(tensor_list, dim=0)
-        return grad_flat[: working_param.numel()].reshape_as(working_param)
+        grad_flat = torch.empty((grad_store.world_size, *grad.shape), dtype=grad.dtype, device=grad.device)
+        dist.all_gather_into_tensor(grad_flat, grad, group=grad_store.torch_pg)
+        return grad_flat.view(-1)[: working_param.numel()].view_as(working_param)
 
     def get_working_grads_by_group_id(self, group_id: int) -> List[Tensor]:
         working_grads = []
@@ -908,3 +923,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def get_partitioned_gradients_by_param_id(self, group_id: int, param_id: int) -> List:
         grad_store = self.pid_to_grad_store[param_id]
         return grad_store.get_partitioned_gradients_by_param_id(group_id, param_id)
+
+    def _force_wait_all_gather(self):
+        for param in self._working_param_to_padded_working_param.keys():
+            wait_all_gather_handle(param)

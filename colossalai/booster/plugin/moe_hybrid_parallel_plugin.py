@@ -1,9 +1,8 @@
-import random
 import warnings
+from collections import defaultdict
 from types import MethodType
-from typing import Callable, Optional, OrderedDict, Tuple
+from typing import Callable, List, Optional, OrderedDict, Tuple
 
-import numpy as np
 import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
@@ -11,34 +10,42 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
 
 from colossalai.booster.plugin.hybrid_parallel_plugin import (
+    PRECISION_TORCH_TYPE,
+    SUPPORT_SP_MODE,
     HybridParallelAMPOptimizer,
     HybridParallelModule,
     HybridParallelNaiveOptimizer,
     HybridParallelPlugin,
+    HybridParallelZeroOptimizer,
     get_param_info,
-    init_pipeline_optimizer,
+    reinitialize_optimizer,
 )
 from colossalai.checkpoint_io import MoECheckpointIO
-from colossalai.cluster import ProcessGroupMesh
+from colossalai.cluster.process_group_mesh import ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.logging import get_dist_logger
-from colossalai.pipeline.schedule import OneForwardOneBackwardSchedule
+from colossalai.interface.optimizer import DistributedOptim
+from colossalai.nn.optimizer import cast_to_distributed
+from colossalai.pipeline.schedule.interleaved_pp import InterleavedSchedule
+from colossalai.pipeline.schedule.one_f_one_b import OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer import ShardConfig
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.shardformer.shard.grad_ckpt_config import GradientCheckpointConfig
+from colossalai.shardformer.shard.shard_config import ShardConfig
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
-from colossalai.zero.low_level import LowLevelZeroOptimizer
 
 
-class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
+class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
     def __init__(
         self,
         optimizer: Optimizer,
         model: Module,
         use_pipeline: bool,
+        dp_process_group: Optional[ProcessGroup],  # the dp pg for comm
+        tp_process_group: Optional[ProcessGroup],  # if using tp
+        pp_process_group: Optional[ProcessGroup],  # if using pp
+        moe_dp_group: ProcessGroup,  # moe dp pg for comm
         param_info: OrderedDict,
         initial_scale: int = 2**16,  # grad scaler config
         min_scale: int = 1,
@@ -51,37 +58,25 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         verbose: bool = False,
         reduce_bucket_size: int = 1024 * 1024,  # communication
         communication_dtype: Optional[torch.dtype] = None,
-        overlap_communication: bool = True,
+        overlap_communication: bool = False,
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
-        dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        tp_process_group: Optional[ProcessGroup] = None,  # if using tp
-        pp_process_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
-        moe_extra_dp_process_group: Optional[ProcessGroup] = None,
+        overlap_allgather: bool = False,
     ):
-        self.param_info = param_info
-        self.stage_manager = model.stage_manager
-        self.shared_params = model.shared_params
-        self.dp_pg = dp_process_group
-        self.tp_pg = tp_process_group
-        self.pp_pg = pp_process_group
-        if use_pipeline:
-            init_pipeline_optimizer(optimizer, model)
-
         pg_param_list = {
-            dp_process_group: [],
-            moe_extra_dp_process_group: [],
+            dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
+            moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
         }
-        for param in model.parameters():
-            if is_moe_tensor(param):
-                pg_param_list[moe_extra_dp_process_group].append(param)
-            else:
-                pg_param_list[dp_process_group].append(param)
+
+        if len(pg_param_list[dp_process_group]) == 0 or len(pg_param_list[moe_dp_group]) == 0:
+            raise ValueError("No parameters found in dp_process_group or moe_dp_group")
 
         super().__init__(
+            model=model,
             optimizer=optimizer,
-            pg_to_param_list=pg_param_list,
+            use_pipeline=use_pipeline,
+            param_info=param_info,
             initial_scale=initial_scale,
             min_scale=min_scale,
             growth_factor=growth_factor,
@@ -96,30 +91,37 @@ class MoeHybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             overlap_communication=overlap_communication,
             partition_grad=partition_grad,
             cpu_offload=cpu_offload,
+            tp_process_group=tp_process_group,
+            pp_process_group=pp_process_group,
             forced_dtype=forced_dtype,
+            pg_to_param_list=pg_param_list,
+            overlap_allgather=overlap_allgather,
         )
 
 
 class MoeHybridParallelPlugin(HybridParallelPlugin):
     """
-    Plugin for Moe Hybrid Parallel Training.
+    Plugin for MoE Hybrid Parallel Training, which is similar to HybridParallelPlugin
     Tensor parallel, pipeline parallel and data parallel(DDP/ZeRO) can be picked and combined in this plugin.
     The size of tp and pp should be passed in by user, then the size of dp is automatically calculated from dp_size = world_size / (tp_size * pp_size).
 
-    Example:
-        >>> from colossalai.booster import Booster
-        >>> from colossalai.booster.plugin import HybridParallelPlugin
+    ```python
+    from colossalai.booster import Booster
+    from colossalai.booster.plugin import MoeHybridParallelPlugin
 
-        >>> model, train_dataset, optimizer, criterion = ...
-        >>> plugin =  HybridParallelPlugin(tp_size=2, pp_size=2)
+    model, train_dataset, optimizer, criterion = ...
+    plugin =  MoeHybridParallelPlugin(tp_size=2, pp_size=2, ep_size=2)
 
-        >>> train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
-        >>> booster = Booster(plugin=plugin)
-        >>> model, optimizer, criterion, train_dataloader, _ = booster.boost(model, optimizer, criterion, train_dataloader)
+    train_dataloader = plugin.prepare_dataloader(train_dataset, batch_size=8)
+    booster = Booster(plugin=plugin)
+    model, optimizer, criterion, train_dataloader, _ = booster.boost(model, optimizer, criterion, train_dataloader)
+    ```
 
     Args:
-        pp_size (int): The number of pipeline stages in pipeline parallelism. Pipeline parallelism will not be used when pp_size is set to 1.
         tp_size (int): The size of tensor parallelism. Tensor parallelism will not be used when tp_size is set to 1.
+        pp_size (int): The number of pipeline stages in pipeline parallelism. Pipeline parallelism will not be used when pp_size is set to 1.
+        ep_size (int): The size of expert parallelism
+        sp_size (int): The size of sequence parallelism.
         precision (str, optional): Specifies the precision of parameters during training.
                                     Auto-mixied precision will be used when this argument is set to 'fp16' or 'bf16', otherwise model is trained with 'fp32'.
                                     Defaults to 'fp16'.
@@ -132,7 +134,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         enable_flash_attention (bool, optional): Whether to switch on flash attention in Shardformer. Defaults to False.
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
+        sequence_parallelism_mode (str): The Sequence parallelism mode. Can only be choosed from ["split_gather", "ring", "all_to_all"]. Defaults to "split_gather".
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
+        parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
             Either ``num_microbatches`` or ``microbatch_size`` should be provided if using pipeline.
@@ -155,15 +159,21 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         cpu_offload (bool, optional): Whether to open cpu_offload when using ZeRO. Defaults to False.
         communication_dtype (torch.dtype, optional): Communication dtype when using ZeRO. If not specified, the dtype of param will be used. Defaults to None.
         overlap_communication (bool, optional): Whether to overlap communication and computation when using ZeRO. Defaults to True.
-        use_ep_inside (bool, Optional): Whether to use ep inside dp (intra-node) for moe params.
+        custom_policy (Policy, optional): Custom policy for Shardformer. Defaults to None.
+        pp_style (str, optional): The style for pipeline parallelism. Defaults to '1f1b'.
+        num_model_chunks (int, optional): The number of model chunks for interleaved pipeline parallelism. Defaults to 1.
+        gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
+        enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
+        make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
+        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
     """
 
     def __init__(
         self,
+        tp_size: int,
         pp_size: int,
         ep_size: int,
-        tp_size: int = 1,
-        sp_size: int = 1,
+        sp_size: int = None,
         precision: str = "fp16",
         zero_stage: int = 0,
         enable_all_optimization: bool = False,
@@ -171,7 +181,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         enable_flash_attention: bool = False,
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
+        sequence_parallelism_mode: str = None,
         enable_sequence_overlap: bool = False,
+        parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
         initial_scale: float = 2**16,
@@ -191,27 +203,61 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         zero_bucket_size_in_m: int = 12,
         cpu_offload: bool = False,
         communication_dtype: Optional[torch.dtype] = None,
-        overlap_communication: bool = True,
-        use_ep_inside: bool = True,
+        overlap_communication: bool = False,
         custom_policy: Policy = None,
-        checkpoint_io: Optional[MoECheckpointIO] = None,
+        pp_style: str = "1f1b",
+        num_model_chunks: int = 1,
+        num_layers_per_stage: Optional[List[int]] = None,
+        gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
+        enable_metadata_cache: bool = True,
+        make_vocab_size_divisible_by: int = 64,
+        moe_dp_outside: bool = True,
+        overlap_p2p: bool = True,
+        overlap_allgather: bool = False,
     ) -> None:
-        world_size = dist.get_world_size()
-        assert tp_size == 1, "Tensor parallel is not supported in MoE yet"
-        assert sp_size == 1 and enable_sequence_parallelism is False, "Sequence parallelism it not supported in MoE yet"
+        if overlap_communication or zero_stage == 2:
+            overlap_communication = False
+            zero_stage = 1
+            warnings.warn(
+                f"overlap_communication and zero_stage are set to False and 1 because "
+                f"ZeRO-2 or comm overlap cause program hang when some experts are not routed. "
+            )
 
         assert (
-            world_size % (tp_size * pp_size) == 0
-        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
-        assert (
-            world_size % (tp_size * pp_size * ep_size) == 0
-        ), f"world size {world_size} is not divisible by tp_size {tp_size} * pp_size {pp_size} * ep_size {ep_size}"
+            dist.get_world_size() % (tp_size * pp_size) == 0
+        ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
+        if enable_sequence_parallelism:
+            self.sequence_parallelism_mode = (
+                sequence_parallelism_mode if sequence_parallelism_mode is not None else "all_to_all"
+            )
+            assert (
+                self.sequence_parallelism_mode in SUPPORT_SP_MODE
+            ), f"Sequence parallelism mode {self.sequence_parallelism_mode} is not in the supported list {SUPPORT_SP_MODE}"
+            if self.sequence_parallelism_mode in ["split_gather", "ring"]:
+                assert (
+                    tp_size > 1
+                ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
+                if sp_size != 1:
+                    warnings.warn(
+                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
+                    )
+                self.sp_size = 1
+                self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+            elif self.sequence_parallelism_mode in ["all_to_all"]:
+                self.sp_size = 1 if sp_size is None else sp_size
+                self.dp_size = dist.get_world_size() // (self.sp_size * pp_size * tp_size)
+        else:
+            self.dp_size = dist.get_world_size() // (tp_size * pp_size)
+            assert (
+                sp_size == 1 or sp_size is None
+            ), f"You should not set sp_size when sequence parallelism is not enabled."
+            self.sp_size = 1
 
-        self.dp_size = world_size // (tp_size * pp_size)
+        assert self.dp_size % ep_size == 0, f"dp_size should be divisible by ep_size, {self.dp_size=} {ep_size=}"
+        self.moe_dp_size = self.dp_size // ep_size
+        self.ep_size = ep_size
         self.tp_size = tp_size
         self.pp_size = pp_size
-        self.ep_size = ep_size
-        self.sp_size = sp_size
         self.precision = precision
         self.zero_stage = zero_stage
         self.cpu_offload = cpu_offload
@@ -220,61 +266,69 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
-        self.checkpoint_io = checkpoint_io
-
-        logger = get_dist_logger()
-
-        # NOTE: Two process meshes: global dp for non-moe param; dp + ep for moe param
-        # See https://hpc-ai.com/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient
-        # we change pg mesh to (pp, dp, tp) for better moe performance
-        assert (
-            self.ep_size <= self.dp_size
-        ), f"Not enough devices({self.dp_size}) for expert parallelism size({self.ep_size})."
-
-        self.moe_dp_size = self.dp_size // self.ep_size
-        self.use_ep_inside = use_ep_inside
-        if self.use_ep_inside:
-            logger.info(f"MoE Parallel use ep inside dp.", ranks=[0])
-            self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 1, 2, 3
-            self.pg_mesh = ProcessGroupMesh(self.pp_size, self.moe_dp_size, ep_size, tp_size)
+        if moe_dp_outside:
+            self.moe_dp_axis, self.pp_axis, self.ep_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3, 4
+            self.pg_mesh = ProcessGroupMesh(self.moe_dp_size, self.pp_size, self.ep_size, self.tp_size, self.sp_size)
         else:
-            logger.info(f"MoE Parallel use ep outside dp.", ranks=[0])
-            warnings.warn("Using ep outside dp (cross-node) is strongly discouraged due to communication costs.")
-            self.pp_axis, self.dp_axis, self.ep_axis, self.tp_axis = 0, 2, 1, 3
-            self.pg_mesh = ProcessGroupMesh(self.pp_size, ep_size, self.moe_dp_size, tp_size)
+            self.pp_axis, self.moe_dp_axis, self.ep_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3, 4
+            self.pg_mesh = ProcessGroupMesh(self.pp_size, self.moe_dp_size, self.ep_size, self.tp_size, self.sp_size)
 
-        self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
-        self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
-        logger.info(f"Non-MoE Parameter Parallel: pp {self.pp_size}, dp {self.dp_size}, tp {tp_size}", ranks=[0])
-        logger.info(
-            f"MoE Parallel: pp {self.pp_size}, ep {ep_size}, moe dp {self.moe_dp_size}, tp {tp_size}", ranks=[0]
-        )
-
-        self.tp_group = self.pg_mesh.get_group_along_axis(
-            self.tp_axis
-        )  # TODO: support custom tp size for mixtral lm head
-        self.global_dp_group = self.pg_mesh.get_group_along_axis((self.dp_axis, self.ep_axis))
-        self.pp_group = self.pg_mesh.get_group_along_axis(self.pp_axis)
-        # TODO: Currently moe only support partially sequence parallel
-        self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
-
-        self.custom_policy = custom_policy
         self.stage_manager = None
         self.schedule = None
-
+        self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
+            assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
+            assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
-            assert self.zero_stage <= 1, "zero stage must be 0 or 1 when using pipeline parallelism"
-            self.stage_manager = PipelineStageManager(self.pg_mesh, self.pp_axis)
-            self.schedule = OneForwardOneBackwardSchedule(
-                self.stage_manager, num_microbatches=num_microbatches, microbatch_size=microbatch_size
+            assert (
+                self.zero_stage <= 1
+            ), "To avoid prohibitive gradient synchronization costs, zero stage must be 0 or 1 when using pipeline parallelism"
+            self.stage_manager = PipelineStageManager(
+                self.pg_mesh,
+                pipeline_axis=self.pp_axis,
+                enable_interleave=pp_style == "interleaved",
+                num_model_chunks=num_model_chunks,
+                num_layers_per_stage=num_layers_per_stage,
             )
+
+            if pp_style == "interleaved":
+                assert num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
+                self.schedule = InterleavedSchedule(
+                    stage_manager=self.stage_manager,
+                    num_model_chunks=num_model_chunks,
+                    num_microbatch=num_microbatches,
+                    microbatch_size=microbatch_size,
+                    enable_metadata_cache=enable_metadata_cache,
+                    overlap_p2p=overlap_p2p,
+                )
+            elif pp_style == "1f1b":
+                self.schedule = OneForwardOneBackwardSchedule(
+                    stage_manager=self.stage_manager,
+                    num_microbatches=num_microbatches,
+                    microbatch_size=microbatch_size,
+                    enable_metadata_cache=enable_metadata_cache,
+                )
+            else:
+                raise NotImplementedError()
+
+        self.tp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
+        self.dp_group = self.pg_mesh.get_group_along_axis([self.moe_dp_axis, self.ep_axis])
+        self.pp_group = self.pg_mesh.get_group_along_axis(self.pp_axis)
+        self.moe_dp_group = self.pg_mesh.get_group_along_axis(self.moe_dp_axis)
+        self.ep_group = self.pg_mesh.get_group_along_axis(self.ep_axis)
+        if self.enable_sequence_parallelism and self.sequence_parallelism_mode in ["split_gather", "ring"]:
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
+        else:
+            self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
+            sequence_parallel_process_group=self.sp_group,
+            ep_group=self.ep_group,
+            moe_dp_group=self.moe_dp_group,
             pipeline_stage_manager=self.stage_manager,
             enable_tensor_parallelism=self.tp_size > 1,
             enable_all_optimization=self.enable_all_optimization,
@@ -282,8 +336,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             enable_flash_attention=self.enable_flash_attention,
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
+            sequence_parallelism_mode=sequence_parallelism_mode,
             enable_sequence_overlap=enable_sequence_overlap,
-            ep_group=self.ep_group,
+            parallel_output=parallel_output,
+            make_vocab_size_divisible_by=make_vocab_size_divisible_by,
+            gradient_checkpoint_config=gradient_checkpoint_config,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -310,77 +367,16 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             overlap_communication=overlap_communication,
             cpu_offload=cpu_offload,
             partition_grad=(self.zero_stage == 2),
+            forced_dtype=PRECISION_TORCH_TYPE[precision],
+            overlap_allgather=overlap_allgather,
         )
 
         self.max_norm = max_norm
 
-    def prepare_dataloader(
-        self, dataset, batch_size, shuffle=False, seed=1024, drop_last=False, pin_memory=False, num_workers=0, **kwargs
-    ):
-        r"""
-        Prepare a dataloader for distributed training. The dataloader will be wrapped by
-        `torch.utils.data.DataLoader` and `torch.utils.data.DistributedSampler`.
-
-
-        Args:
-            dataset (`torch.utils.data.Dataset`): The dataset to be loaded.
-            shuffle (bool, optional): Whether to shuffle the dataset. Defaults to False.
-            seed (int, optional): Random worker seed for sampling, defaults to 1024.
-            add_sampler: Whether to add ``DistributedDataParallelSampler`` to the dataset. Defaults to True.
-            drop_last (bool, optional): Set to True to drop the last incomplete batch, if the dataset size
-                is not divisible by the batch size. If False and the size of dataset is not divisible by
-                the batch size, then the last batch will be smaller, defaults to False.
-            pin_memory (bool, optional): Whether to pin memory address in CPU memory. Defaults to False.
-            num_workers (int, optional): Number of worker threads for this dataloader. Defaults to 0.
-            kwargs (dict): optional parameters for ``torch.utils.data.DataLoader``, more details could be found in
-                    `DataLoader <https://pytorch.org/docs/stable/_modules/torch/utils/data/dataloader.html#DataLoader>`_.
-
-        Returns:
-            :class:`torch.utils.data.DataLoader`: A DataLoader used for training or testing.
-        """
-        _kwargs = kwargs.copy()
-        sampler = DistributedSampler(
-            dataset,
-            num_replicas=self.dp_size,
-            rank=dist.get_rank(self.global_dp_group),
-            shuffle=shuffle,
-        )
-
-        # Deterministic dataloader
-        def seed_worker(worker_id):
-            worker_seed = seed
-            np.random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-            random.seed(worker_seed)
-
-        return DataLoader(
-            dataset,
-            batch_size=batch_size,
-            sampler=sampler,
-            worker_init_fn=seed_worker,
-            drop_last=drop_last,
-            pin_memory=pin_memory,
-            num_workers=num_workers,
-            **_kwargs,
-        )
-
     def get_checkpoint_io(self) -> MoECheckpointIO:
-        if self.checkpoint_io is None:
-            self.checkpoint_io = MoECheckpointIO(
-                self.global_dp_group, self.pp_group, self.tp_group, self.ep_group, self.moe_dp_group, self.zero_stage
-            )
-        else:
-            self.checkpoint_io = self.checkpoint_io(
-                self.global_dp_group,
-                self.pp_group,
-                self.tp_group,
-                ep_group=self.ep_group,
-                moe_dp_group=self.moe_dp_group,
-                zero_stage=self.zero_stage,
-            )
-            if hasattr(self.checkpoint_io, "moe_info"):
-                self.checkpoint_io.moe_info = self.moe_info
-        return self.checkpoint_io
+        return MoECheckpointIO(
+            self.dp_group, self.pp_group, self.tp_group, self.ep_group, self.moe_dp_group, self.zero_stage
+        )
 
     def configure(
         self,
@@ -391,13 +387,40 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         param_info = get_param_info(optimizer)
+
+        # TODO: Support Galore + ZeRO
+        # Replace with distributed implementation if exists
+        optimizer = cast_to_distributed(optimizer)
+
         if not isinstance(model, ModelWrapper):
-            use_ddp = self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0
+            use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
+                self.dp_size == 1
+                and self.pp_size == 1
+                and self.enable_sequence_parallelism
+                and self.sequence_parallelism_mode == "all_to_all"
+            )
+            if use_ddp:
+                warnings.warn(
+                    f"Will have to check all params are used in pytorch DDP since not all experts are always activated"
+                )
+                self.ddp_config["find_unused_parameters"] = True
+
+                if dist.get_process_group_ranks(self.dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
+                    raise ValueError(
+                        f"if pytorch ddp is used, dp_group and moe_dp_group are expected to be the same since DDP can only reduce grad across a single group, but found dp_group {dist.get_process_group_ranks(self.dp_group)} and moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)}, you might want to use HybridParallelPlugin (i.e. set ep_size = 1) or set zero_stage > 0"
+                    )
+
+            # sync gradients across DP * SP ranks
+            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
+                dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
+            else:
+                dp_group = self.dp_group
+
             model = HybridParallelModule(
                 module=model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=self.global_dp_group,
+                dp_group=dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
                 use_ddp=use_ddp,
@@ -405,7 +428,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 custom_policy=self.custom_policy,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
+            if self.ep_size > 1:
+                # if ep is enabled, the num of (moe) paramaters changed since they are sharded among ep groups
+                # but the optimizer is not aware of ep, so we need to update the optimizer
+                reinitialize_optimizer(optimizer, model)
+
             if self.zero_stage == 0:
+                is_zero = False
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
                         optimizer,
@@ -418,20 +447,30 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     )
                 else:
                     optimizer = HybridParallelNaiveOptimizer(
-                        optimizer, model, use_pipeline=self.enable_pipeline_parallelism, param_info=param_info
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
                     )
             else:
-                assert self.dp_size > 1, "Please use Zero when data parallel size is greater than 1."
+                if self.dp_size <= 1:
+                    warnings.warn(
+                        "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
+                    )
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = MoeHybridParallelZeroOptimizer(
                     optimizer,
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=self.global_dp_group,
+                    dp_process_group=dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
-                    moe_extra_dp_process_group=self.moe_dp_group,
+                    moe_dp_group=self.moe_dp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
                     **self.zero_config,
@@ -439,5 +478,12 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 )
             # inject update_master_params
             model.update_master_params = MethodType(optimizer.update_master_params, model)
+
+            # Setup optimizers that require global states
+            optim = optimizer.optim
+            if isinstance(optim, DistributedOptim):
+                shard_to_param = optimizer.get_master_to_working_map() if is_zero else {}
+                padding_map = optimizer.get_param_padding_map() if is_zero else defaultdict(int)
+                optim.setup_distributed(self.tp_group, self.dp_group, shard_to_param, padding_map, is_zero)
 
         return model, optimizer, criterion, dataloader, lr_scheduler

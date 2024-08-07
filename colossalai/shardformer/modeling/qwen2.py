@@ -1,6 +1,8 @@
+import math
 from typing import List, Optional, Tuple, Union
 
 import torch
+from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
@@ -30,9 +32,14 @@ except ImportError:
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer._operation import (
+    all_to_all_comm,
+    gather_forward_split_backward,
+    split_forward_gather_backward,
+)
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 
 class Qwen2PipelineForwards:
@@ -129,7 +136,7 @@ class Qwen2PipelineForwards:
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
+            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 hidden_states.dtype,
@@ -160,6 +167,21 @@ class Qwen2PipelineForwards:
                     hidden_states,
                     past_key_values_length,
                     sliding_window=self.config.sliding_window,
+                )
+
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=1 / shard_config.sequence_parallel_size,
                 )
 
         # decoder layers
@@ -218,6 +240,20 @@ class Qwen2PipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
 
+        if shard_config and shard_config.enable_sequence_parallelism:
+            if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=shard_config.sequence_parallel_size,
+                )
         # add hidden states from the last decoder layer
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
@@ -317,25 +353,9 @@ class Qwen2PipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
-            loss = None
-            if labels is not None:
-                # Shift so that tokens < n predict n
-                shift_logits = logits[..., :-1, :].contiguous()
-                shift_labels = labels[..., 1:].contiguous()
-                # Flatten the tokens
-                loss_fct = CrossEntropyLoss()
-                shift_labels = shift_labels.view(-1)
-                # Enable model parallelism
-                shift_labels = shift_labels.to(shift_logits.device)
-                if shard_config.enable_tensor_parallelism:
-                    new_vocab_size = logits.shape[-1]
-                    shift_logits = shift_logits.view(-1, new_vocab_size)
-                    loss = cross_entropy_1d(
-                        shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-                    )
-                else:
-                    shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                    loss = loss_fct(shift_logits, shift_labels)
+            loss = dist_cross_entropy(
+                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
+            )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -469,7 +489,7 @@ class Qwen2PipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
+def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self: Qwen2Attention,
         hidden_states: torch.Tensor,
@@ -480,11 +500,26 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
         use_cache: bool = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if sp_mode is not None:
+            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert (sp_size is not None) and (
+                sp_group is not None
+            ), "Must specify sp_size and sp_group for sequence parallel"
+
         bsz, q_len, _ = hidden_states.size()
+        # sp: modify sp_len when sequence parallel mode is ring
+        if sp_mode in ["split_gather", "ring"]:
+            q_len *= sp_size
 
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
+        # sp: all-to-all comminucation when introducing sequence parallel
+        if sp_mode == "all_to_all":
+            query_states = all_to_all_comm(query_states, sp_group)
+            key_states = all_to_all_comm(key_states, sp_group)
+            value_states = all_to_all_comm(value_states, sp_group)
+            bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -538,10 +573,41 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
-        attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+        if shard_config.enable_flash_attention:
+            assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
+            attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+        else:
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
+                )
+
+            if attention_mask is not None:
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                    raise ValueError(
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    )
+                attn_weights = attn_weights + attention_mask
+
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_output = torch.matmul(attn_weights, value_states)
+
+            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+                raise ValueError(
+                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                    f" {attn_output.size()}"
+                )
         attn_output = attn_output.transpose(1, 2).contiguous()
-        attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+        if sp_mode == "all_to_all":
+            attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
+        else:
+            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
         attn_output = self.o_proj(attn_output)
 
         return attn_output, None, past_key_value
@@ -549,9 +615,8 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig):
     return forward
 
 
-def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
+def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
-    assert shard_config.enable_flash_attention, "Flash Attention is not enabled."
 
     def forward(
         self,
@@ -586,6 +651,10 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
+        if past_key_values is not None:
+            past_key_values_length = past_key_values[0][0].shape[2]
+            seq_length_with_past = seq_length_with_past + past_key_values_length
+
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
@@ -601,17 +670,26 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
         # embed positions
         hidden_states = inputs_embeds
 
-        # in this case, attention_mask is a dict rather than a tensor
-        mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
-        attention_mask = ColoAttention.prepare_attn_kwargs(
-            mask_shape,
-            hidden_states.dtype,
-            hidden_states.device,
-            q_padding_mask=attention_mask,
-            is_causal=True,
-        )
+        if shard_config.enable_flash_attention:
+            # in this case, attention_mask is a dict rather than a tensor
+            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
+            attention_mask = ColoAttention.prepare_attn_kwargs(
+                mask_shape,
+                hidden_states.dtype,
+                hidden_states.device,
+                q_padding_mask=attention_mask,
+                is_causal=True,
+            )
+        else:
+            attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask,
+                (batch_size, seq_length),
+                inputs_embeds,
+                past_key_values_length,
+                sliding_window=self.config.sliding_window,
+            )
 
-        if self.gradient_checkpointing and self.training:
+        if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
             if use_cache:
                 logger.warning_once(
                     "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
@@ -622,6 +700,11 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         next_decoder_cache = None
+
+        if sp_mode in ["ring", "split_gather"]:
+            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -656,6 +739,11 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig):
                 all_self_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
+
+        if sp_mode == "ring" or sp_mode == "split_gather":
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+        elif sp_mode == "all_to_all":
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -737,26 +825,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
         logits = logits.float()
-
-        loss = None
-        if labels is not None:
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            if shard_config.enable_tensor_parallelism:
-                new_vocab_size = logits.shape[-1]
-                shift_logits = shift_logits.view(-1, new_vocab_size)
-                loss = cross_entropy_1d(
-                    shift_logits, shift_labels, process_group=shard_config.tensor_parallel_process_group
-                )
-            else:
-                shift_logits = shift_logits.view(-1, self.config.vocab_size)
-                loss = loss_fct(shift_logits, shift_labels)
+        loss = dist_cross_entropy(
+            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
+        )
 
         if not return_dict:
             output = (logits,) + outputs[1:]

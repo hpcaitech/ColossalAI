@@ -77,7 +77,7 @@ class LongBenchDataset(BaseDataset):
     """
 
     @staticmethod
-    def load(path: str, logger: DistributedLogger) -> List[Dict]:
+    def load(path: str, logger: DistributedLogger, *args, **kwargs) -> List[Dict]:
         dataset = {"test": {}}
 
         files = os.listdir(path)
