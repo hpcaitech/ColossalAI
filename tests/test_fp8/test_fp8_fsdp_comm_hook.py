@@ -1,26 +1,17 @@
-import os
-import sys
-import tempfile
+import pytest
+from packaging import version
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
-import torch.multiprocessing as mp
 from torch.testing import assert_close
-
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-from colossalai.quantization.utils import patch_fsdp_params_comm_hook
-patch_fsdp_params_comm_hook()
+from colossalai import launch
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 # example modified from https://pytorch.org/tutorials/intermediate/ddp_tutorial.html
-
-def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
-
-    # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 def cleanup():
     dist.destroy_process_group()
@@ -35,12 +26,12 @@ class ToyModel(nn.Module):
     def forward(self, x):
         return self.net2(self.relu(self.net1(x)))
 
+@parameterize("mode", ["grad", "params"])
+def run_model(mode):
+    rank = dist.get_rank()
 
-
-def demo_basic(rank, world_size):
-    print(f"Running basic FSDP example on rank {rank}.")
-    setup(rank, world_size)
-
+    from colossalai.quantization.utils import patch_fsdp_params_comm_hook
+    patch_fsdp_params_comm_hook()
     def get_grads_after_one_iteration(grad_hook=None, params_hook=None):
         torch.manual_seed(0)
         # create model and move it to GPU with id rank
@@ -72,30 +63,35 @@ def demo_basic(rank, world_size):
 
     from colossalai.quantization.fp8 import fp8_compress_fsdp_grad_comm_hook, fp8_compress_fsdp_params_comm_hook
 
-    grad_dict = get_grads_after_one_iteration()
-    for hook in [fp8_compress_fsdp_grad_comm_hook, ]:
-        grad_dict_w_hook = get_grads_after_one_iteration(grad_hook=hook)
-        if dist.get_rank() == 0:
-            for name in grad_dict:
-                assert_close(grad_dict[name], grad_dict_w_hook[name], rtol=0.1, atol=0.1)
+    if mode == "grad":
+        grad_dict = get_grads_after_one_iteration()
+        for hook in [fp8_compress_fsdp_grad_comm_hook, ]:
+            grad_dict_w_hook = get_grads_after_one_iteration(grad_hook=hook)
+            if dist.get_rank() == 0:
+                for name in grad_dict:
+                    assert_close(grad_dict[name], grad_dict_w_hook[name], rtol=0.1, atol=0.1)
+    elif mode == "params":
+        grad_dict = get_grads_after_one_iteration()
+        for hook in [fp8_compress_fsdp_params_comm_hook, ]:
+            grad_dict_w_hook = get_grads_after_one_iteration(params_hook=hook)
+            if dist.get_rank() == 0:
+                for name in grad_dict:
+                    assert_close(grad_dict[name], grad_dict_w_hook[name], rtol=0.1, atol=0.1)
+    else:
+        raise NotImplementedError
 
-    for hook in [fp8_compress_fsdp_params_comm_hook, ]:
-        grad_dict_w_hook = get_grads_after_one_iteration(params_hook=hook)
-        if dist.get_rank() == 0:
-            for name in grad_dict:
-                assert_close(grad_dict[name], grad_dict_w_hook[name], rtol=0.1, atol=0.1)
-
+def demo_basic(rank, world_size, port):
+    print(f"Running basic FSDP example on rank {rank}.")
+    launch(rank=rank, world_size=world_size, port=port, host="localhost")
+    run_model()
     cleanup()
 
-def run_demo(demo_fn, world_size):
-    mp.spawn(demo_fn,
-             args=(world_size,),
-             nprocs=world_size,
-             join=True)
-
-
-if __name__ == "__main__":
+@rerun_if_address_is_in_use()
+@pytest.mark.skipif(version.parse(torch.__version__) < version.parse("2.2.0"), reason="torch version < 2.2.0.")
+def test_fsdp():
     n_gpus = torch.cuda.device_count()
     assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
-    world_size = n_gpus
-    run_demo(demo_basic, world_size)
+    spawn(demo_basic, n_gpus)
+
+if __name__ == "__main__":
+    test_fsdp()

@@ -1,3 +1,5 @@
+from packaging import version
+
 import torch
 import torch.distributed as dist
 from torch import Tensor
@@ -110,12 +112,10 @@ def register_params_comm_hook(self, state: object, hook: callable):
     self._handle._comm_hook_state = state
 
 
-from packaging import version
-from torch.distributed.fsdp._flat_param import FlatParamHandle
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-
 def patch_fsdp_params_comm_hook():
     if version.parse(torch.__version__) >= version.parse("2.2.0"):
+        from torch.distributed.fsdp._flat_param import FlatParamHandle
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
         FlatParamHandle._comm_hook = None
         FlatParamHandle._comm_hook_state = None
         FlatParamHandle._all_gather_flat_param = _all_gather_flat_param
