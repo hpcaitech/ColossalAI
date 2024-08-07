@@ -350,9 +350,9 @@ class Qwen2PipelineForwards:
             if hidden_states.shape[1] == 2:
                 pass
             logits = self.lm_head(hidden_states)
-            loss = dist_cross_entropy(
-                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
-            )
+            loss = None
+            if labels is not None:
+                loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -824,9 +824,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = outputs[0]
         logits = self.lm_head(hidden_states)
         logits = logits.float()
-        loss = dist_cross_entropy(
-            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, logits.dtype
-        )
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
 
         if not return_dict:
             output = (logits,) + outputs[1:]
