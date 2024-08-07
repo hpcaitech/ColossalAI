@@ -108,6 +108,7 @@ class PerformanceEvaluator:
         self.num_samples: int = 0
         self.flop_megatron = 0
         self.flop: int = 0
+        self.num_tokens: int = 0
 
     def on_step_start(self, step: int) -> None:
         self.disable = self.ignore_steps > 0 and step < self.ignore_steps
@@ -125,6 +126,7 @@ class PerformanceEvaluator:
         batch_size, seq_len = input_ids.shape
 
         self.num_samples += batch_size
+        self.num_tokens += batch_size * seq_len
         checkpoint_activations_factor = 3 + int(self.enable_grad_checkpoint)
         self.flop_megatron += (
             24 * checkpoint_activations_factor * batch_size * seq_len * self.num_layers * (self.hidden_size**2)
@@ -135,14 +137,15 @@ class PerformanceEvaluator:
 
     def on_fit_end(self) -> None:
         avg_duration = all_reduce_mean(self.timer.duration, self.coordinator.world_size)
-        avg_throughput = self.num_samples * self.dp_world_size / (avg_duration + 1e-12)
+        avg_throughput_samples = self.num_samples * self.dp_world_size / (avg_duration + 1e-12)
+        avg_throughput_tokens = self.num_tokens * self.dp_world_size / (avg_duration + 1e-12)
         mp_world_size = self.coordinator.world_size // self.dp_world_size
         avg_tflops_per_gpu_megatron = self.flop_megatron / 1e12 / (avg_duration + 1e-12) / mp_world_size
         avg_tflops_per_gpu = self.flop / 1e12 / (avg_duration + 1e-12) / mp_world_size
         self.coordinator.print_on_master(
-            f"num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop_megatron: {self.flop_megatron}, flop: {self.flop}, avg_duration: {avg_duration}, "
-            f"avg_throughput: {avg_throughput}"
+            f"num_samples: {self.num_samples}, num_tokens: {self.num_tokens}, dp_world_size: {self.dp_world_size}, flop_megatron: {self.flop_megatron}, flop: {self.flop}, avg_duration: {avg_duration}, "
+            f"avg_throughput_samples: {avg_throughput_samples}, avg_throughput_tokens: {avg_throughput_tokens}"
         )
         self.coordinator.print_on_master(
-            f"Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU by Megatron: {avg_tflops_per_gpu_megatron:.2f}, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}"
+            f"Throughput_Samples: {avg_throughput_samples:.2f} samples/sec, Throughput_Tokens: {avg_throughput_tokens:.2f} samples/sec, TFLOPS per GPU by Megatron: {avg_tflops_per_gpu_megatron:.2f}, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}"
         )
