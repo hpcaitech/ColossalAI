@@ -64,7 +64,7 @@ def run_dist(rank: int, world_size: int, port: int):
     check_mixtral_moe_layer()
 
 
-# @pytest.mark.skip("tested in corresponding sharderformer")
+@pytest.mark.skip("tested in corresponding sharderformer")
 @pytest.mark.parametrize("world_size", [2])
 def test_mixtral_moe_layer(world_size: int):
     spawn(run_dist, world_size)

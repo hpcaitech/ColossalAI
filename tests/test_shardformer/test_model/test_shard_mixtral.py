@@ -153,7 +153,6 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
-        print("parallel_output", parallel_output.dtype, dtype)
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
 
     # use checkpoint to load sharded zero model

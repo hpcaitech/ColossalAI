@@ -124,7 +124,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
         output_split_sizes = torch.zeros_like(input_split_sizes)
         
-        # all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group, fp8_communication=False)
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
         with torch.no_grad():

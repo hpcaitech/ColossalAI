@@ -18,7 +18,6 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
     Returns:
         Tuples: A tuple (fp8_tensor, scale)
     """
-    print("inp.dtype", inp.dtype)
     if inp.dtype not in [torch.float32, torch.float16, torch.bfloat16]:
         raise TypeError("Only float16, bfloat16, and float32 are allowed.")
 
