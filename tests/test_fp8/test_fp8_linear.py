@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch.testing import assert_close
 
+from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import linear_fp8
 from colossalai.utils import get_current_device
 
@@ -11,6 +12,7 @@ B, S = 2, 64
 DTYPE = torch.bfloat16
 
 
+@pytest.skipif(get_accelerator().get_device_capability()[0] < 9, "Test requires device capability >= 9.0")
 @pytest.mark.parametrize("use_bias", [True, False])
 @pytest.mark.parametrize("use_batch", [True, False])
 def test_fp8_linear(use_bias: bool, use_batch: bool):
