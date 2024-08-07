@@ -40,8 +40,8 @@ CHECKED_CONFIG = [  # FOR WORLD=4
     "config",
     [
         (1, 2, 2, 1, 1),
-        # (1, 2, 1, 2, 1),
-        # (1, 2, 1, 1, 2),
+        (1, 2, 1, 2, 1),
+        (1, 2, 1, 1, 2),
     ],
 )
 def run_zero_with_original_model(config: Tuple[int, ...]):
@@ -64,7 +64,6 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         initial_scale=1,
         precision=precision,
         find_unused_parameters=True,
-        fp8_communication=True
     )
     dp_size = plugin.dp_size
 

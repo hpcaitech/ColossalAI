@@ -23,6 +23,7 @@ from colossalai.moe._operation import (
     EPGradScalerOut,
     all_to_all_uneven,
 )
+from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
@@ -61,7 +62,7 @@ class EPDeepseekMoE(nn.Module):
     def __init__(self):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup):
+    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, fp8_communication: bool = False):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
@@ -70,6 +71,7 @@ class EPDeepseekMoE(nn.Module):
         self.ep_rank = dist.get_rank(ep_group)
         self.num_experts = self.config.n_routed_experts
         assert self.num_experts % self.ep_size == 0
+        self.fp8_communication = fp8_communication
 
         self.ep_group = ep_group
         self.num_experts_per_ep = self.num_experts // self.ep_size
@@ -106,7 +108,8 @@ class EPDeepseekMoE(nn.Module):
         if module.__class__.__name__ == "DeepseekMLP":
             return module
         module.__class__ = EPDeepseekMoE
-        module.setup_process_groups(tp_group, moe_dp_group, ep_group)
+        fp8_communication = kwargs["fp8_communication"]
+        module.setup_process_groups(tp_group, moe_dp_group, ep_group, fp8_communication)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -137,11 +140,15 @@ class EPDeepseekMoE(nn.Module):
             for i in range(1, self.ep_size):
                 activate_experts += output_split_sizes[i * self.num_experts_per_ep : (i + 1) * self.num_experts_per_ep]
             activate_experts = (activate_experts > 0).float()
-        dist.all_reduce(activate_experts, group=self.moe_dp_group)
+
+        if self.fp8_communication:
+            all_reduce_fp8(activate_experts, group=self.moe_dp_group)
+        else:
+            dist.all_reduce(activate_experts, group=self.moe_dp_group)
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
-        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
+        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication)
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
 
         if output_states.size(0) > 0:
@@ -167,7 +174,7 @@ class EPDeepseekMoE(nn.Module):
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
+        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication)
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
             flat_topk_token_idx.size(0), device=flat_topk_token_idx.device
