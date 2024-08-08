@@ -98,6 +98,7 @@ class BertPolicy(Policy):
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -106,6 +107,7 @@ class BertPolicy(Policy):
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -114,6 +116,7 @@ class BertPolicy(Policy):
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -123,7 +126,7 @@ class BertPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attention.output.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel_mode": sp_mode},
+                        kwargs={"seq_parallel_mode": sp_mode, "fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.output.dropout",
@@ -136,12 +139,13 @@ class BertPolicy(Policy):
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                             "skip_bias_add": self.enable_bias_gelu_fused,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel_mode": sp_mode},
+                        kwargs={"seq_parallel_mode": sp_mode, "fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dropout",
@@ -249,6 +253,7 @@ class BertPolicy(Policy):
                     kwargs={
                         "gather_output": True,
                         "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication": self.shard_config.fp8_communication,
                     },
                 ),
                 policy=base_policy,
@@ -259,7 +264,10 @@ class BertPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="decoder",
                     target_module=col_nn.PaddingLMHead,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs={
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication": self.shard_config.fp8_communication,
+                    },
                 ),
                 policy=base_policy,
                 target_key=BertLMPredictionHead,
