@@ -23,8 +23,8 @@ from colossalai.moe._operation import (
     EPGradScalerOut,
     all_to_all_uneven,
 )
-from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
     gather_forward_split_backward,
@@ -62,7 +62,13 @@ class EPDeepseekMoE(nn.Module):
     def __init__(self):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, fp8_communication: bool = False):
+    def setup_process_groups(
+        self,
+        tp_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
+        ep_group: ProcessGroup,
+        fp8_communication: bool = False,
+    ):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
@@ -148,7 +154,9 @@ class EPDeepseekMoE(nn.Module):
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
-        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication)
+        output_states, _ = all_to_all_uneven(
+            dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication
+        )
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
 
         if output_states.size(0) > 0:
@@ -174,7 +182,9 @@ class EPDeepseekMoE(nn.Module):
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication)
+        dispatch_states, _ = all_to_all_uneven(
+            output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication
+        )
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
             flat_topk_token_idx.size(0), device=flat_topk_token_idx.device
