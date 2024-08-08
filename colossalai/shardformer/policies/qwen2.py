@@ -13,6 +13,7 @@ from colossalai.shardformer.layer import (
     PaddingLMHead,
     RMSNorm,
     VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
 )
 
 from ..modeling.qwen2 import (
