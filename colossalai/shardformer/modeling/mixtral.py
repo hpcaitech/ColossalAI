@@ -87,9 +87,15 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.tp_group = tp_group
         if self.tp_group.size() > 1:
             for expert in held_experts:
-                expert.w1 = Linear1D_Col.from_native_module(expert.w1, self.tp_group, fp8_communication=self.fp8_communication)
-                expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.tp_group, fp8_communication=self.fp8_communication)
-                expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.tp_group, fp8_communication=self.fp8_communication)
+                expert.w1 = Linear1D_Col.from_native_module(
+                    expert.w1, self.tp_group, fp8_communication=self.fp8_communication
+                )
+                expert.w3 = Linear1D_Col.from_native_module(
+                    expert.w3, self.tp_group, fp8_communication=self.fp8_communication
+                )
+                expert.w2 = Linear1D_Row.from_native_module(
+                    expert.w2, self.tp_group, fp8_communication=self.fp8_communication
+                )
 
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
@@ -793,9 +799,13 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
             )
 
         if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, fp8_communication=shard_config.fp8_communication)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+            )
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -844,9 +854,13 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
         hidden_states = self.norm(hidden_states)
 
         if sp_mode == "ring" or sp_mode == "split_gather":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication)
+            hidden_states = gather_forward_split_backward(
+                hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication)
+            hidden_states = gather_forward_split_backward(
+                hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication
+            )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
