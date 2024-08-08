@@ -68,6 +68,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.ep_size = dist.get_world_size(ep_group)
         self.ep_rank = dist.get_rank(ep_group)
         self.ep_group = ep_group
+        self.fp8_communication = fp8_communication
 
         if self.num_experts % self.ep_size != 0:
             raise ValueError("The number of experts must be divisible by the number of expert parallel groups.")
@@ -90,7 +91,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 expert.w3 = Linear1D_Col.from_native_module(expert.w3, self.tp_group, fp8_communication=self.fp8_communication)
                 expert.w2 = Linear1D_Row.from_native_module(expert.w2, self.tp_group, fp8_communication=self.fp8_communication)
 
-        self.fp8_communication = fp8_communication
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
 

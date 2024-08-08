@@ -118,22 +118,22 @@ class DeepseekPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication", self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication", self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication", self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs={"fp8_communication", self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                 ],
             )
