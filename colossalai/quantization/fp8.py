@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import numpy as np
 import torch
@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributed import ReduceOp
 
 
-def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
+def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""
     casting torch Tensor into specified fp8 tensor with per-channel scaling or per-tensor scaling.
     Args:
@@ -652,5 +652,13 @@ class _LinearFp8(torch.autograd.Function):
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
 
 
-def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-    return _LinearFp8.apply(input, weight, bias)
+if torch.__version__ >= (2, 4):  # TODO failed on torch < 2.4
+
+    @torch.compile(mode="reduce-overhead", fullgraph=True)
+    def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return _LinearFp8.apply(x, w, bias)
+
+else:
+
+    def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return _LinearFp8.apply(x, w, bias)
