@@ -98,6 +98,7 @@ class GeminiDDP(ModelWrapper):
         extra_dp_group: Optional[ProcessGroup] = None,
         verbose: bool = False,
         enable_async_reduce: bool = True,
+        fp8_communication: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         reuse_fp16_chunk = master_weights if not enable_gradient_accumulation else False
@@ -122,6 +123,8 @@ class GeminiDDP(ModelWrapper):
                 verbose=verbose,
                 max_prefetch=max_prefetch,
             )
+        if fp8_communication:
+            self.chunk_manager.fp8_communication = True
         self.gemini_manager = GeminiManager(
             placement_policy,
             self.chunk_manager,
