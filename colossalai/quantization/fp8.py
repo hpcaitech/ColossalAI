@@ -624,7 +624,13 @@ class _LinearFp8(torch.autograd.Function):
         ctx.inv_scale_x = inv_scale_x
         ctx.inv_scale_w = inv_scale_w
         out = torch._scaled_mm(
-            x_fp8, ctx.w_fp8_t, bias=bias, out_dtype=ctx.out_dtype, scale_a=inv_scale_x, scale_b=inv_scale_w
+            x_fp8,
+            ctx.w_fp8_t,
+            bias=bias,
+            out_dtype=ctx.out_dtype,
+            scale_a=inv_scale_x,
+            scale_b=inv_scale_w,
+            use_fast_accum=True,
         )[0]
         return out.reshape(*ctx.x_shape[:-1], w.shape[0])
 
@@ -638,6 +644,7 @@ class _LinearFp8(torch.autograd.Function):
             out_dtype=ctx.out_dtype,
             scale_a=out_grad_scale,
             scale_b=ctx.inv_scale_w,
+            use_fast_accum=True,
         )[0]
         w_grad = torch._scaled_mm(
             out_grad_fp8.t().contiguous(),
@@ -645,6 +652,7 @@ class _LinearFp8(torch.autograd.Function):
             out_dtype=ctx.out_dtype,
             scale_a=out_grad_scale,
             scale_b=ctx.inv_scale_x,
+            use_fast_accum=True,
         )[0]
         bias_grad = None
         if ctx.has_bias:
