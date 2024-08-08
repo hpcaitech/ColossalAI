@@ -26,7 +26,6 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
-    model = model.to(torch.float16)
 
     assert isinstance(model.module, DDP)
     assert isinstance(optimizer, OptimizerWrapper)

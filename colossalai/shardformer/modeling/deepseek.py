@@ -94,9 +94,9 @@ class EPDeepseekMoE(nn.Module):
         self.tp_group = tp_group
         if self.tp_group.size() > 1:
             for expert in held_experts:
-                expert.gate_proj = Linear1D_Col.from_native_module(expert.gate_proj, self.tp_group)
-                expert.up_proj = Linear1D_Col.from_native_module(expert.up_proj, self.tp_group)
-                expert.down_proj = Linear1D_Row.from_native_module(expert.down_proj, self.tp_group)
+                expert.gate_proj = Linear1D_Col.from_native_module(expert.gate_proj, self.tp_group, fp8_communication=self.fp8_communication)
+                expert.up_proj = Linear1D_Col.from_native_module(expert.up_proj, self.tp_group, fp8_communication=self.fp8_communication)
+                expert.down_proj = Linear1D_Row.from_native_module(expert.down_proj, self.tp_group, fp8_communication=self.fp8_communication)
 
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
@@ -551,9 +551,9 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
@@ -612,7 +612,7 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim).contiguous()  # (1, 8, 128)
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)  # (1, 4, 256)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication)  # (1, 4, 256)
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -702,9 +702,9 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
             )
 
         if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, fp8_communication=shard_config.fp8_communication)
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication)
         # embed positions
         hidden_states = inputs_embeds
 
@@ -748,9 +748,9 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
         hidden_states = self.norm(hidden_states)
 
         if sp_mode == "ring" or sp_mode == "split_gather":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication)
         elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
