@@ -308,6 +308,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                             kwargs={
                                 "gather_output": not self.shard_config.parallel_output,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ],
