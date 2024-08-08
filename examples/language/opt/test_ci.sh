@@ -7,6 +7,19 @@ do
 for GPUNUM in 1 4
 do
 
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/booster/plugin/__init__.py
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/booster/plugin/moe_checkpoint.py
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/booster/plugin/moe_hybrid_parallel_plugin.py
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/booster/plugin/moe_hybrid_parallel_plugin.py
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/checkpoint_io/__init__.py
+echo "=============================================="
+cat /opt/conda/envs/pytorch/lib/python3.9/site-packages/colossalai/checkpoint_io/moe_checkpoint.py
+
 colossalai run \
   --nproc_per_node ${GPUNUM} \
   --master_port 29505 \
