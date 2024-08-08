@@ -29,7 +29,6 @@ from colossalai.moe._operation import (
     EPGradScalerIn,
     EPGradScalerOut,
     all_to_all_uneven,
-    all_to_all_single
 )
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import (
@@ -54,7 +53,13 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
     def __init__(self, *args, **kwargs):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup, fp8_communication: bool = False):
+    def setup_process_groups(
+        self,
+        tp_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
+        ep_group: ProcessGroup,
+        fp8_communication: bool = False,
+    ):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
@@ -123,7 +128,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         input_split_sizes = selected_experts.bincount(minlength=self.num_experts)
 
         output_split_sizes = torch.zeros_like(input_split_sizes)
-        
+
         dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
 
         with torch.no_grad():
@@ -136,7 +141,9 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
 
-        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication)
+        output_states, _ = all_to_all_uneven(
+            dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication
+        )
         # compute expert output
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
         if output_states.size(0) > 0:
@@ -166,7 +173,9 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
                 output_states = torch.cat(output_states_list)
 
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication)
+        dispatch_states, _ = all_to_all_uneven(
+            output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication
+        )
 
         recover_experts_idx = torch.empty_like(selected_experts_idx)
         recover_experts_idx[selected_experts_idx] = torch.arange(

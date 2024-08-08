@@ -5,6 +5,7 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.distributed import ProcessGroup
+
 from colossalai.quantization.fp8 import all_to_all_single_fp8
 
 MOE_KERNEL = None
@@ -381,7 +382,7 @@ def _all_to_all(
     output_split_sizes: Optional[List[int]] = None,
     group=None,
     async_op: bool = False,
-    fp8_communication: bool = False
+    fp8_communication: bool = False,
 ):
     """
     Returns:
@@ -395,7 +396,9 @@ def _all_to_all(
     inputs = inputs.contiguous()
     outputs = outputs.contiguous()
     if fp8_communication:
-        handle = all_to_all_single_fp8(outputs, inputs, output_split_sizes, input_split_sizes, group=group, async_op=False)
+        handle = all_to_all_single_fp8(
+            outputs, inputs, output_split_sizes, input_split_sizes, group=group, async_op=False
+        )
     else:
         handle = dist.all_to_all_single(
             outputs, inputs, output_split_sizes, input_split_sizes, group=group, async_op=async_op
@@ -412,7 +415,7 @@ class AllToAllUneven(torch.autograd.Function):
         output_split_sizes=None,
         group=None,
         overlap: bool = False,
-        fp8_communication: bool = False
+        fp8_communication: bool = False,
     ):
         """
         Returns:
@@ -442,14 +445,15 @@ def all_to_all_uneven(
     output_split_sizes: Optional[List[int]] = None,
     group=None,
     overlap: bool = False,
-    fp8_communication: bool=False
+    fp8_communication: bool = False,
 ):
     assert (
         inputs.requires_grad
     ), "Input must require grad to assure that backward is executed, otherwise it might hang the program."
     return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication)
 
-def all_to_all_single(output, input, group=None, fp8_communication: bool=False):
+
+def all_to_all_single(output, input, group=None, fp8_communication: bool = False):
     if fp8_communication:
         all_to_all_single_fp8(output, input, group=group)
     else:
