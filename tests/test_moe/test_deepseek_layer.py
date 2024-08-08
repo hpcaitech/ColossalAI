@@ -48,7 +48,6 @@ def check_deepseek_moe_layer():
         ep_group=plugin.ep_group,
         moe_dp_group=plugin.moe_dp_group,
         tp_group=plugin.tp_group,
-        fp8_communication=True,
     )
     ep_output = model(x)
     assert_close(orig_output, ep_output)
@@ -69,7 +68,7 @@ def run_dist(rank: int, world_size: int, port: int):
     check_deepseek_moe_layer()
 
 
-# @pytest.mark.skip("tested in corresponding sharderformer")
+@pytest.mark.skip("tested in corresponding sharderformer")
 @pytest.mark.parametrize("world_size", [2])
 def test_deepseek_moe_layer(world_size: int):
     spawn(run_dist, world_size)

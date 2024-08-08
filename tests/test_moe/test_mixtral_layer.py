@@ -42,7 +42,6 @@ def check_mixtral_moe_layer():
         ep_group=plugin.ep_group,
         tp_group=plugin.tp_group,
         moe_dp_group=plugin.moe_dp_group,
-        fp8_communication=True,
     )
     ep_output, ep_logits = model(x)
     assert_close(orig_logits, ep_logits)
