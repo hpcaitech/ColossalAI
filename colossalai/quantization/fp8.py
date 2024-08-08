@@ -155,9 +155,9 @@ def all_to_all_single_fp8(
         else:
             output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
 
-    dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
+    dist.all_to_all(output_chunks, input_chunks, group=group)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    dist.all_gather(scale_list, scale, group=group, async_op=async_op)
+    dist.all_gather(scale_list, scale, group=group)
     cast_output_chunk = [
         cast_from_fp8(out.view(fp8_type), scale, input_type) for scale, out in zip(scale_list, output_chunks)
     ]

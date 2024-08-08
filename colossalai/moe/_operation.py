@@ -451,10 +451,3 @@ def all_to_all_uneven(
         inputs.requires_grad
     ), "Input must require grad to assure that backward is executed, otherwise it might hang the program."
     return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication)
-
-
-def all_to_all_single(output, input, group=None, fp8_communication: bool = False):
-    if fp8_communication:
-        all_to_all_single_fp8(output, input, group=group)
-    else:
-        dist.all_to_all_single(output, input, group=group)
