@@ -9,6 +9,7 @@ on:
     paths:
       - "examples/**"
       - "!examples/**.md"
+      - ".github/workflows/example_check_on_pr.yml"
 
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
@@ -107,7 +108,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
 
       - name: Store Colossal-AI Cache
         run: |
