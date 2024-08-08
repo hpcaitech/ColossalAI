@@ -30,6 +30,9 @@ class ColoParamOpHook(ABC):
     def post_backward(self, params: List[torch.Tensor]) -> None:
         pass
 
+    def rewrite_op(self, func) -> Any:
+        return func
+
 
 class ColoParamOpHookManager:
     """
@@ -100,6 +103,12 @@ class ColoParamOpHookManager:
     @staticmethod
     def has_hook() -> bool:
         return len(ColoParamOpHookManager.hooks) > 0
+
+    @staticmethod
+    def rewrite_op(func) -> Any:
+        for hook in ColoParamOpHookManager.hooks:
+            func = hook.rewrite_op(func)
+        return func
 
 
 class PreFwdPostBwd(torch.autograd.Function):

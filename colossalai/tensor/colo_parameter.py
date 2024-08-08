@@ -61,6 +61,8 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
                 with torch._C.DisableTorchFunction():
                     new_args = ColoParamOpHookManager.pre_op(params, *args, *kwargs.values())
                 args, kwargs = replace_args(args, kwargs, new_args)
+                with torch._C.DisableTorchFunction():
+                    func = ColoParamOpHookManager.rewrite_op(func)
                 ret = super().__torch_function__(func, types, args, kwargs)
                 with torch._C.DisableTorchFunction():
                     ret = ColoParamOpHookManager.post_op(params, ret)
