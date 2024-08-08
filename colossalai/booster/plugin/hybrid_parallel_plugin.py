@@ -1032,9 +1032,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         dp_outside: bool = True,
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
-        fp8_communication: bool = False,
-        use_fp8: bool = False,
-        overlap_allgather: bool = False,
+        use_fp8: bool = False, 
         inner_ring_size: int = None,
     ) -> None:
         super().__init__()

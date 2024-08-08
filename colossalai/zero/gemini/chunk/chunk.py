@@ -166,6 +166,7 @@ class Chunk:
         self.grad_chunk = None
         # the async all-reduce/reduce-scatter work of this grad chunk (None means sync)
         self.grad_reduce_work = None
+        self.fp8_communication = False
 
     @property
     def memory_usage(self) -> Dict[str, int]:
@@ -521,9 +522,17 @@ class Chunk:
 
             alloc_storage(self.cuda_global_chunk)
             assert self.cuda_global_chunk.is_contiguous()
-            work = dist.all_gather_into_tensor(
-                self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
-            )
+            if self.fp8_communication:
+                assert async_op == False, "fp8 all-gather does not support async_op!"
+                from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8
+
+                work = all_gather_into_tensor_flat_fp8(
+                    self.cuda_global_chunk, self.cuda_shard, self.cuda_global_chunk.shape, self.torch_pg
+                )
+            else:
+                work = dist.all_gather_into_tensor(
+                    self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
+                )
 
             self.cuda_shard = None
             self.is_gathered = True
