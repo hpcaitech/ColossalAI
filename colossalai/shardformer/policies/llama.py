@@ -162,16 +162,6 @@ class LlamaPolicy(Policy):
             )
 
         if embedding_cls is not None:
-            kwargs = (
-                {
-                    "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                },
-            )
-            """if not isinstance(embedding_cls, PaddingEmbedding):
-                kwargs={
-                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                        "fp8_communication":self.shard_config.fp8_communication
-                    },"""
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
@@ -320,7 +310,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                             kwargs={
                                 "gather_output": not self.shard_config.parallel_output,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ],
@@ -395,7 +384,6 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                             target_module=Linear1D_Col,
                             kwargs={
                                 "gather_output": not self.shard_config.parallel_output,
-                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ]
