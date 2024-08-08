@@ -162,13 +162,22 @@ class LlamaPolicy(Policy):
             )
 
         if embedding_cls is not None:
+            kwargs = (
+                {
+                    "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                },
+            )
+            """if not isinstance(embedding_cls, PaddingEmbedding):
+                kwargs={
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication":self.shard_config.fp8_communication
+                    },"""
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
                     kwargs={
                         "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                        "fp8_communication": self.shard_config.fp8_communication,
                     },
                 ),
                 policy=policy,
@@ -330,7 +339,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                             target_module=PaddingLMHead,
                             kwargs={
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ],
