@@ -27,16 +27,19 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
     fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
     fp8_max = torch.finfo(fp8_type).max
 
-    if per_channel_scale:
-        per_channel_max = inp.abs().max(dim=-1).values.float()
-        per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
-        scale = fp8_max / per_channel_max[:, None]
-        scale_inv = per_channel_max / fp8_max
+    if inp.numel() == 0:
+        return inp.to(fp8_type), torch.tensor([1.0], device=inp.device)
     else:
-        per_tensor_max = inp.abs().max().float()
-        per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
-        scale = fp8_max / per_tensor_max
-        scale_inv = 1.0 / scale
+        if per_channel_scale:
+            per_channel_max = inp.abs().max(dim=-1).values.float()
+            per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
+            scale = fp8_max / per_channel_max[:, None]
+            scale_inv = per_channel_max / fp8_max
+        else:
+            per_tensor_max = inp.abs().max().float()
+            per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
+            scale = fp8_max / per_tensor_max
+            scale_inv = 1.0 / scale
 
     ret = (scale * inp.float()).to(fp8_type)
     return ret, scale_inv
@@ -113,7 +116,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, gro
     tensor_list = [torch.empty_like(summed_out_fp8.view(torch.uint8)) for _ in range(world_size)]
     dist.all_gather(tensor_list, summed_out_fp8.view(torch.uint8), group=group)
     for i in range(world_size):
-        tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
+        tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i].to(input_device)
     out = torch.cat(tensor_list, dim=0)
     tensor.copy_(out[:input_size].view(input_shape).to(input_type))
 
