@@ -4,8 +4,6 @@ from typing import Callable, Dict, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-import triton
-import triton.language as tl
 from einops import rearrange
 
 from colossalai.kernel.kernel_loader import (
@@ -37,7 +35,7 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
     """Invert the mask tensor.
 
     Args:
-        mask (torch.Tensor): Mask tensor. Shape should be [B, 1, Sq, Sq]
+        mask (torch.Tensor): Mask tensor. Shape should be [B, 1, Sq, Skv]
 
     Returns:
         torch.Tensor: Inverted mask tensor.
@@ -230,7 +228,7 @@ class ColoAttention:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
             k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Skv, D]
             v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D]
-            attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Sq]. Defaults to None.
+            attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
                 of the sequences in the batch, used to index into q.
@@ -277,9 +275,9 @@ class ColoAttention:
                     and q_indices is not None
                     and kv_indices is not None
                 )
-            else:
-                # if attention_mask is None, attention_mask_type should be the default value
-                assert attention_mask_type == AttnMaskType.CUSTOM
+        else:
+            # if attention_mask is None, attention_mask_type should be the default value
+            assert attention_mask_type == AttnMaskType.CUSTOM
 
         # kernel dispatch
         mask_type = attention_mask_type if attention_mask is not None else None
@@ -344,72 +342,7 @@ def _load_flash_attn():
     _load_varlen_helpers()
 
 
-@triton.jit
-def _rescale_out_lse_kernel(
-    out_ptr,
-    out_per_step_ptr,
-    lse_ptr,
-    lse_step_ptr,
-    D,  # Each thread handles D elements
-    stride_out_0,
-    stride_out_1,
-    stride_out_2,
-    stride_out_per_step_0,
-    stride_out_per_step_1,
-    stride_out_per_step_2,
-    stride_lse_0,
-    stride_lse_1,
-    BLOCK_M: tl.constexpr,
-):
-    batch_id = tl.program_id(0)
-    sq_id = tl.program_id(1)
-    h_id = tl.program_id(2)
-    d_id = tl.arange(0, D)
-
-    out_idx = batch_id * stride_out_0 + sq_id * stride_out_1 + h_id * stride_out_2 + d_id
-    out_per_step_idx = batch_id * stride_out_per_step_0 + sq_id * stride_out_per_step_1 + h_id * stride_out_per_step_2
-    lse_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
-    lse_step_idx = batch_id * stride_lse_0 + h_id * stride_lse_1
-
-    # Load inputs
-    out = tl.load(out_ptr + out_idx)
-    out_per_step = tl.load(out_per_step_ptr + out_per_step_idx)
-    lse = tl.load(lse_ptr + lse_idx)
-    lse_step = tl.load(lse_step_ptr + lse_step_idx)
-
-    # Element-wise rescale
-    new_lse = lse + tl.log(1 + tl.exp(lse_step - lse))
-    out = tl.exp(lse - new_lse) * out + tl.exp(lse_step - new_lse) * out_per_step
-
-    tl.store(out_ptr + out_idx, out)
-    tl.store(lse_ptr + lse_idx, new_lse)
-
-
-def _rescale_out_lse_triton(out, block_out, lse, block_lse):
-    T, H, D = out.shape
-
-    assert out.is_contiguous() and block_out.is_contiguous() and lse.is_contiguous() and block_lse.is_contiguous()
-
-    grid = lambda META: (triton.cdiv(T, META["BLOCK_M"]), H)
-    _rescale_out_lse_kernel[grid](
-        out,
-        block_out,
-        lse,
-        block_lse,
-        T,
-        H,
-        D,
-        out.stride(0),
-        out.stride(1),
-        out.stride(2),
-        block_out.stride(0),
-        block_out.stride(1),
-        block_out.stride(2),
-        lse.stride(0),
-        lse.stride(1),
-    )
-
-
+@torch.compile
 def _rescale_out_lse(out, block_out, lse, block_lse):
     """
     Compute the new attention denominator:
@@ -437,7 +370,6 @@ def _rescale_out_lse(out, block_out, lse, block_lse):
     # See https://github.com/zhuzilin/ring-flash-attention/pull/34#issuecomment-2076126795
     # out = (out - F.sigmoid(block_lse - lse) * (out - block_out))
     # lse = (lse - F.logsigmoid(lse - block_lse))
-    assert not (lse.isnan().any() or lse.isinf().any()), f"lse is nan: {lse}"
     return out, lse
 
 
@@ -584,6 +516,9 @@ class RingAttention(torch.autograd.Function):
     ):
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens
         max_seqlen_q = max_seqlen_kv = max_seqlen
+        cu_seqlens_half = cu_seqlens // 2
+        max_seqlen_half = max_seqlen // 2
+
         misc_kwargs = {
             "window_size": (-1, -1),
             "alibi_slopes": None,
@@ -697,9 +632,9 @@ class RingAttention(torch.autograd.Function):
                         kv_block[0],
                         kv_block[1],
                         cu_seqlens_q,
-                        cu_seqlens_kv // 2,
+                        cu_seqlens_half,
                         max_seqlen_q,
-                        max_seqlen_kv // 2,
+                        max_seqlen_half,
                         causal=False,
                         **misc_kwargs,
                     )
@@ -723,9 +658,9 @@ class RingAttention(torch.autograd.Function):
                         q_block,
                         kv_block[0],
                         kv_block[1],
-                        cu_seqlens_q // 2,
+                        cu_seqlens_half,
                         cu_seqlens_kv,
-                        max_seqlen_q // 2,
+                        max_seqlen_half,
                         max_seqlen_kv,
                         causal=False,
                         **misc_kwargs,
@@ -792,6 +727,9 @@ class RingAttention(torch.autograd.Function):
         is_packed = ctx.is_packed
         max_seqlen_q = ctx.max_seqlen_q
         max_seqlen_kv = ctx.max_seqlen_kv
+        cu_seqlens_half = cu_seqlens_q // 2
+        max_seqlen_half = max_seqlen_q // 2
+
         dkv_group = ctx.dkv_group
         misc_kwargs = ctx.misc_kwargs
         del misc_kwargs["block_table"]
@@ -887,9 +825,9 @@ class RingAttention(torch.autograd.Function):
                     dk_,
                     dv_,
                     cu_seqlens_q,
-                    cu_seqlens_kv // 2,
+                    cu_seqlens_half,
                     max_seqlen_q,
-                    max_seqlen_kv // 2,
+                    max_seqlen_half,
                     causal=False,
                     rng_state=rng_states[i],
                     **misc_kwargs,
@@ -912,9 +850,9 @@ class RingAttention(torch.autograd.Function):
                     dq_,
                     dk_,
                     dv_,
-                    cu_seqlens_q // 2,
+                    cu_seqlens_half,
                     cu_seqlens_kv,
-                    max_seqlen_q // 2,
+                    max_seqlen_half,
                     max_seqlen_kv,
                     causal=False,
                     rng_state=rng_states[i],
