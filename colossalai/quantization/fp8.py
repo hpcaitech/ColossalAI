@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from packaging.version import Version
 from torch.distributed import ReduceOp
 
 
@@ -660,7 +661,7 @@ class _LinearFp8(torch.autograd.Function):
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
 
 
-if torch.__version__ >= (2, 4):  # TODO failed on torch < 2.4
+if Version(torch.__version__) >= Version("2.3.0"):  # TODO failed on torch < 2.3.0
 
     @torch.compile(mode="reduce-overhead", fullgraph=True)
     def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
