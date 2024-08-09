@@ -214,6 +214,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         moe_dp_outside: bool = True,
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
+        fp8_communication: bool = False,
     ) -> None:
         if overlap_communication or zero_stage == 2:
             overlap_communication = False
@@ -341,6 +342,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
+            fp8_communication=fp8_communication,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
