@@ -425,7 +425,9 @@ class AllToAllUneven(torch.autograd.Function):
         ctx.input_split_sizes = input_split_sizes
         ctx.output_split_sizes = output_split_sizes
         ctx.group = group
-        return _all_to_all(inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication)
+        return _all_to_all(
+            inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication=fp8_communication
+        )
 
     @staticmethod
     def backward(ctx: Any, *grad_outputs):

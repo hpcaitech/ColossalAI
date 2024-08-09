@@ -120,8 +120,8 @@ class EPDeepseekMoE(nn.Module):
         if module.__class__.__name__ == "DeepseekMLP":
             return module
         module.__class__ = EPDeepseekMoE
-        fp8_communication = kwargs["fp8_communication"]
-        module.setup_process_groups(tp_group, moe_dp_group, ep_group, fp8_communication)
+        fp8_communication = kwargs.get("fp8_communication", False)
+        module.setup_process_groups(tp_group, moe_dp_group, ep_group, fp8_communication=fp8_communication)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -161,7 +161,11 @@ class EPDeepseekMoE(nn.Module):
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_states, _ = all_to_all_uneven(
-            dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication
+            dispatch_states,
+            input_split_list,
+            output_split_list,
+            self.ep_group,
+            fp8_communication=self.fp8_communication,
         )
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
 
@@ -189,7 +193,7 @@ class EPDeepseekMoE(nn.Module):
                 output_states = torch.cat(output_states_list)
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(
-            output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication
+            output_states, output_split_list, input_split_list, self.ep_group, fp8_communication=self.fp8_communication
         )
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
