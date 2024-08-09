@@ -148,7 +148,11 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
 
         output_states, _ = all_to_all_uneven(
-            dispatch_states, input_split_list, output_split_list, self.ep_group, self.fp8_communication
+            dispatch_states,
+            input_split_list,
+            output_split_list,
+            self.ep_group,
+            fp8_communication=self.fp8_communication,
         )
         # compute expert output
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
@@ -180,7 +184,7 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
 
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
         dispatch_states, _ = all_to_all_uneven(
-            output_states, output_split_list, input_split_list, self.ep_group, self.fp8_communication
+            output_states, output_split_list, input_split_list, self.ep_group, fp8_communication=self.fp8_communication
         )
 
         recover_experts_idx = torch.empty_like(selected_experts_idx)
