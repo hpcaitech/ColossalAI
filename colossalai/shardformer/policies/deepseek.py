@@ -298,7 +298,7 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         policy = super().module_policy()
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 "DeepseekForCausalLM": ModulePolicyDescription(
                     sub_module_replacement=[

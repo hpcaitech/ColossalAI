@@ -22,9 +22,9 @@ COMMON_MODELS = [
     "transformers_bloom_for_causal_lm",
     "transformers_falcon_for_causal_lm",
     "transformers_chatglm_for_conditional_generation",
-    "transformers_llama_for_casual_lm",
+    "transformers_llama_for_causal_lm",
     "transformers_vit_for_masked_image_modeling",
-    "transformers_mistral_for_casual_lm",
+    "transformers_mistral_for_causal_lm",
 ]
 
 IS_FAST_TEST = os.environ.get("FAST_TEST", "0") == "1"
