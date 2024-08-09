@@ -112,6 +112,8 @@ def main():
         choices=["all_to_all", "ring_attn", "ring", "split_gather"],
         help="Sequence parallelism mode",
     )
+    parser.add_argument("--overlap_allgather", action="store_true")
+    parser.add_argument("--use_fp8", action="store_true")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -149,6 +151,7 @@ def main():
             enable_flash_attention=args.xformers,
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
+            use_fp8=args.use_fp8,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -161,6 +164,7 @@ def main():
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
             enable_flash_attention=args.xformers,
+            use_fp8=args.use_fp8,
         )
     elif args.plugin == "fsdp":
         if use_empty_init:
@@ -221,6 +225,8 @@ def main():
             dp_outside=False,
             overlap_p2p=args.overlap,
             enable_metadata_cache=not args.no_cache,
+            overlap_allgather=args.overlap_allgather,
+            use_fp8=args.use_fp8,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
@@ -237,6 +243,7 @@ def main():
             initial_scale=2**8,
             precision="bf16",
             overlap_p2p=args.overlap,
+            use_fp8=args.use_fp8,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
