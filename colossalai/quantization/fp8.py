@@ -32,16 +32,16 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
         scale = fp8_max / per_tensor_max
         scale_inv = 1.0 / scale
     else:
-      if per_channel_scale:
-          per_channel_max = inp.abs().max(dim=-1).values.float()
-          per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
-          scale = fp8_max / per_channel_max[:, None]
-          scale_inv = per_channel_max / fp8_max
-      else:
-          per_tensor_max = inp.abs().max().float()
-          per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
-          scale = fp8_max / per_tensor_max
-          scale_inv = 1.0 / scale
+        if per_channel_scale:
+            per_channel_max = inp.abs().max(dim=-1).values.float()
+            per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
+            scale = fp8_max / per_channel_max[:, None]
+            scale_inv = per_channel_max / fp8_max
+        else:
+            per_tensor_max = inp.abs().max().float()
+            per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
+            scale = fp8_max / per_tensor_max
+            scale_inv = 1.0 / scale
 
     ret = (scale * inp.float()).to(fp8_type)
     return ret, scale_inv
