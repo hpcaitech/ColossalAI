@@ -664,10 +664,10 @@ class _LinearFp8(torch.autograd.Function):
 if Version(torch.__version__) >= Version("2.3.0"):  # TODO failed on torch < 2.3.0
 
     @torch.compile(mode="reduce-overhead", fullgraph=True)
-    def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return _LinearFp8.apply(x, w, bias)
+    def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return _LinearFp8.apply(input, weight, bias)
 
 else:
 
-    def linear_fp8(x: torch.Tensor, w: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return _LinearFp8.apply(x, w, bias)
+    def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return _LinearFp8.apply(input, weight, bias)
