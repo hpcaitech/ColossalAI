@@ -33,7 +33,6 @@ class ShardConfig:
         parallel_output (bool): For TP: whether to use parallelize cross entropy computation along the feature dim.
             For SP: set to True to NOT gather the output along the seq dim.
         sp_stream (Optional[torch.cuda.Stream]): : The stream for ring attention output correction. Defaults to None.
-        dkv_group (Optional[ProcessGroup]): The process group for using a new NCCL stream in ring attention backward.
     """
 
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -56,7 +55,6 @@ class ShardConfig:
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
     sp_stream: Optional[torch.cuda.Stream] = None
-    dkv_group: Optional[ProcessGroup] = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

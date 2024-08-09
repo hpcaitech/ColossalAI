@@ -64,16 +64,15 @@ def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir, nsys=
     if enable_flag:
         if nsys:
             return NsysProfiler(warmup_steps, active_steps)
-        elif dist.get_rank() == 0:
-            return profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-                schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),
-                on_trace_ready=tensorboard_trace_handler(save_dir),
-                record_shapes=True,
-                profile_memory=True,
-                with_stack=True,
-            )
-        return DummyProfiler()
+
+        return profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),
+            on_trace_ready=tensorboard_trace_handler(save_dir),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+        )
     else:
         return DummyProfiler()
 

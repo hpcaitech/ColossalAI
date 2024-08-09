@@ -155,8 +155,9 @@ def launch(rank, world_size, port):
 
 
 @rerun_if_address_is_in_use()
-def test_ring_attn():
-    spawn(launch, nprocs=2)
+@parameterize("world_size", [2])
+def test_ring_attn(world_size):
+    spawn(launch, nprocs=world_size)
 
 
 if __name__ == "__main__":

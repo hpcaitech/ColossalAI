@@ -1118,14 +1118,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
-        # According to https://github.com/InternLM/InternEvo/blob/a53a4ff4fc45761f80d7fe8e9188bc2e02d487fc/internlm/model/ops/ring_flash_attn/zigzag_ring_flash_attn_with_sliding_window.py#L405
-        # and https://zhuanlan.zhihu.com/p/706805407
-        # using a different proc group may put p2p comm on a new
-        # NCCL stream :)
-        dkv_group = None
-        if sequence_parallelism_mode == "ring_attn":
-            sp_ranks = dist.get_process_group_ranks(self.sp_group)
-            dkv_group = dist.new_group(ranks=sp_ranks)
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -1147,7 +1139,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                 if enable_sequence_parallelism and sequence_parallelism_mode == "ring_attn"
                 else None
             ),
-            dkv_group=dkv_group,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
