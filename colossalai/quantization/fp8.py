@@ -28,9 +28,7 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
     fp8_max = torch.finfo(fp8_type).max
 
     if inp.numel() == 0:
-        per_tensor_max = torch.tensor([1.0], device=inp.device)
-        scale = fp8_max / per_tensor_max
-        scale_inv = 1.0 / scale
+        return inp.to(fp8_type), torch.tensor([1.0], device=inp.device)
     else:
         if per_channel_scale:
             per_channel_max = inp.abs().max(dim=-1).values.float()
