@@ -42,7 +42,7 @@ try:
             return output
 
 except ImportError:
-    warnings.warn("Please install apex from source (https://github.com/NVIDIA/apex) to use the fused layernorm kernel")
+    warnings.warn("Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel")
 
 FAST_LAYERNORM_SUPPORTED_SIZE = [
     1024,
@@ -270,12 +270,6 @@ class FusedRMSNorm(BaseLayerNorm):
         Returns:
             nn.Module: FusedRMSNorm module.
         """
-        try:
-            pass
-        except ImportError:
-            raise ImportError(
-                "Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel"
-            )
 
         LazyInitContext.materialize(module)
 
@@ -284,11 +278,18 @@ class FusedRMSNorm(BaseLayerNorm):
         eps = module.variance_epsilon if hasattr(module, "variance_epsilon") else module.eps
         elementwise_affine = getattr(module, "elementwise_affine", True)
 
-        rmsnorm = FusedRMSNormWithHook(
-            normalized_shape=normalized_shape,
-            eps=eps,
-            elementwise_affine=elementwise_affine,
-        )
+        try:
+            rmsnorm = FusedRMSNormWithHook(
+                normalized_shape=normalized_shape,
+                eps=eps,
+                elementwise_affine=elementwise_affine,
+            )
+        except ImportError:
+            warnings.warn(
+                "Module replacement failed.\
+                Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel"
+            )
+            return module
 
         rmsnorm.weight = module.weight
 
