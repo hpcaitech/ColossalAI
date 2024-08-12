@@ -70,14 +70,23 @@ class ViTPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attention.attention.query",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.attention.key",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.attention.value",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.attention.dropout",
@@ -86,6 +95,9 @@ class ViTPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="attention.output.dense",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attention.output.dropout",
@@ -96,11 +108,15 @@ class ViTPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "skip_bias_add": self.enable_bias_gelu_fused,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dense",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="output.dropout",
@@ -215,7 +231,9 @@ class ViTForImageClassificationPolicy(ViTPolicy):
                 ViTForImageClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="classifier", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="classifier",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )
