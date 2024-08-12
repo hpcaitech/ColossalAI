@@ -16,8 +16,7 @@ from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience
 from torch.optim import Optimizer
 
-from colossalai.booster import Booster
-from colossalai.booster import Plugin
+from colossalai.booster import Booster, Plugin
 
 from .utils import is_rank_0
 
