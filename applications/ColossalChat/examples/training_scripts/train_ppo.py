@@ -502,7 +502,7 @@ if __name__ == "__main__":
     parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--max_seq_len", type=int, default=256)
-    parser.add_argument("--log_dir", default="logs", type=str)
+    parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")

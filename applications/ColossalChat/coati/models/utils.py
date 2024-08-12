@@ -138,6 +138,7 @@ def disable_dropout(model: torch.nn.Module):
     Returns:
         None
     """
-    for module in model.modules():
-        if isinstance(module, torch.nn.Dropout):
-            module.p = 0.0
+    if model is not None:
+        for module in model.modules():
+            if isinstance(module, torch.nn.Dropout):
+                module.p = 0.0
