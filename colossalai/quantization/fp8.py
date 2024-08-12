@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from packaging.version import Version
 from torch.distributed import ReduceOp
 
+SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.3.0")
+
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""
@@ -635,6 +637,7 @@ class _LinearFp8(torch.autograd.Function):
         )[0]
         return out.reshape(*ctx.x_shape[:-1], w.shape[0])
 
+    @torch.compile(mode="reduce-overhead", disable=not SUPPORT_TORCH_COMPILE)
     @staticmethod
     def backward(ctx: Any, out_grad) -> Any:
         out_grad = out_grad.reshape(-1, out_grad.shape[-1])
@@ -661,13 +664,5 @@ class _LinearFp8(torch.autograd.Function):
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
 
 
-if Version(torch.__version__) >= Version("2.3.0"):  # TODO failed on torch < 2.3.0
-
-    @torch.compile(mode="reduce-overhead", fullgraph=True)
-    def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return _LinearFp8.apply(input, weight, bias)
-
-else:
-
-    def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return _LinearFp8.apply(input, weight, bias)
+def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    return _LinearFp8.apply(input, weight, bias)
