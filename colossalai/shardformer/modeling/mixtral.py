@@ -12,6 +12,7 @@ from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
+from transformers.modeling_flash_attention_utils import _flash_attention_forward
 from transformers.models.mixtral.modeling_mixtral import (
     MixtralSparseMoeBlock,
     MoeCausalLMOutputWithPast,
@@ -660,14 +661,16 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        attn_output = self._flash_attention_forward(
+        attn_output = _flash_attention_forward(
             query_states,
             key_states,
             value_states,
             attention_mask,
             q_len,
+            position_ids=position_ids,
             dropout=dropout_rate,
-            use_sliding_windows=use_sliding_windows,
+            sliding_window=getattr(self.config, "sliding_window", None),
+            is_causal=self.is_causal,
         )
 
         # sp: all-to-all comminucation when introducing sequence parallel
