@@ -2,7 +2,6 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
@@ -55,7 +54,6 @@ class ShardConfig:
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
-    sp_stream: Optional[torch.cuda.Stream] = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

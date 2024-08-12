@@ -517,14 +517,6 @@ class RingAttention(torch.autograd.Function):
         assert (
             attention_mask_type in RingAttention.SUPPORTED_MASK_TYPES
         ), f"Mask type {attention_mask_type} is not supported yet."
-        if dkv_group is None:
-            if RingAttention.DKV_GROUP is None or dist.get_process_group_ranks(
-                sp_group
-            ) != dist.get_process_group_ranks(RingAttention.DKV_GROUP):
-                ranks = dist.get_process_group_ranks(sp_group)
-                RingAttention.DKV_GROUP = dkv_group = dist.new_group(ranks)
-            else:
-                dkv_group = RingAttention.DKV_GROUP
 
         clone_pg = lambda pg: dist.new_group(dist.get_process_group_ranks(pg))
 
@@ -831,7 +823,6 @@ class RingAttention(torch.autograd.Function):
             else:
                 out, softmax_lse = _other_ring_forward(ring_num_idx, out, softmax_lse)
 
-        # torch.cuda.current_stream().wait_stream(sp_stream)
         out = out.to(q.dtype)
         if not is_packed:
             out = out.view(b, sq, h, d)
