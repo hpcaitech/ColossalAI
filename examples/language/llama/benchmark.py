@@ -332,6 +332,8 @@ def main():
                 performance_evaluator.on_step_start(step)
                 outputs = model(**batch)
                 loss = outputs[0]
+                del outputs  # free memory
+
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step {step} loss: {loss}")
                 booster.backward(loss, optimizer)

@@ -166,8 +166,8 @@ class ColoAttention:
         else:
             assert q_padding_mask.shape == (
                 b,
-                s_q,
-            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_q}."
+                s_kv,
+            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_kv}."
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
@@ -382,6 +382,8 @@ class RingAttention(torch.autograd.Function):
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
     implemented in Jax and not optimized).
+    We adopt the double ring topology from LoongTrain (https://arxiv.org/pdf/2406.18485) to minimize inter-node latency
+    by utilizing more NICs and fully utilize intra-node bandwidth.
     """
 
     # Globle cache to avoid recomputation for same-lengthed sequences
@@ -390,7 +392,65 @@ class RingAttention(torch.autograd.Function):
     HALF_INDICES: Tuple = None
     SUPPORTED_MASK_TYPES = (AttnMaskType.CAUSAL, AttnMaskType.PADDED_CAUSAL)
     ATTN_DONE: torch.cuda.Event = None
+    SP_STREAM: torch.cuda.Stream = None
+    SP_GROUP: dist.ProcessGroup = None
+    # duplicate process group for concurrent NCCL streams
+    # while both PyTorch and NCCL warns(https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
+    # against this, in practice it seems to work fine.
+    INNER_RING_GROUP_COPY: dist.ProcessGroup = None
     DKV_GROUP: dist.ProcessGroup = None
+    LOCAL_RING_GROUP: dist.ProcessGroup = None
+    INTER_RING_GROUP: dist.ProcessGroup = None
+
+    @staticmethod
+    def get_double_ring_groups(sp_group, inner_ring_size=None):
+        """
+        Get 2D ring groups for the given process group. Generally, to avoid congestion, the inner ring size
+        shouldn't be larger than the number of NICs on each node.
+        Args:
+            sp_group (dist.ProcessGroup): Process group for sequence parallelism
+            inner_ring_size (Optional[int], optional): Inner ring size. Defaults to None.
+        Returns:
+            Tuple[dist.ProcessGroup, dist.ProcessGroup]: Inner-ring process group and inter-ring process group.
+        """
+        sp_size = dist.get_world_size(sp_group)
+        sp_rank = dist.get_rank(sp_group)
+
+        if inner_ring_size is None:
+            if sp_size <= 4:
+                inner_ring_size = min(2, sp_size)
+            else:
+                inner_ring_size = min(4, sp_size)
+        else:
+            assert (
+                inner_ring_size <= sp_size and sp_size % inner_ring_size == 0
+            ), f"Error: sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
+
+        if inner_ring_size == sp_size:
+            return sp_group, sp_group
+        assert (
+            sp_size % inner_ring_size == 0
+        ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
+
+        num_rings = sp_size // inner_ring_size
+        inner_ring_group = None
+        inter_ring_group = None
+
+        # Create inner ring groups
+        for i in range(inner_ring_size):
+            ranks = list(range(i * inner_ring_size, (i + 1) * inner_ring_size))
+            group = dist.new_group(ranks)
+            if sp_rank in ranks:
+                inner_ring_group = group
+
+        # Create inter ring groups
+        for i in range(num_rings):
+            ranks = list(range(i, sp_size, num_rings))
+            group = dist.new_group(ranks)
+            if sp_rank in ranks:
+                inter_ring_group = group
+
+        return inner_ring_group, inter_ring_group
 
     @staticmethod
     def attention(
@@ -398,7 +458,6 @@ class RingAttention(torch.autograd.Function):
         k,
         v,
         sp_group,
-        sp_stream,
         attention_mask_type,
         cu_seqlens=None,
         max_seqlen=None,
@@ -408,6 +467,7 @@ class RingAttention(torch.autograd.Function):
         deterministic=False,
         return_softmax=False,
         dkv_group=None,
+        inner_ring_size=None,
         **kwargs,
     ):
         """
@@ -430,7 +490,7 @@ class RingAttention(torch.autograd.Function):
             softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax.
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
-            dkv_group (Optional[dist.ProcessGroup]): Process group for using a new NCCL stream in ring attention backward.
+            dkv_group (Optional[dist.ProcessGroup]): Process group for using a concurrent NCCL stream in ring attention backward.
 
         Returns:
             out: Output tensor of shape [B, nHeads, Sq, D] or [T, nHeads, D] if pad_output is False.
@@ -441,6 +501,9 @@ class RingAttention(torch.autograd.Function):
         _load_flash_attn()
         if RingAttention.ATTN_DONE is None:
             RingAttention.ATTN_DONE = torch.cuda.Event()
+        if RingAttention.SP_STREAM is None:
+            RingAttention.SP_STREAM = torch.cuda.Stream()
+
         assert (
             q.shape[2] == k.shape[2]
         ), "Q, K and V having different sequence lengths (inference or cross-attn)\
@@ -448,14 +511,26 @@ class RingAttention(torch.autograd.Function):
         assert (
             attention_mask_type in RingAttention.SUPPORTED_MASK_TYPES
         ), f"Mask type {attention_mask_type} is not supported yet."
+
+        # Register process groups locally to make it simple and self-contained to use
         if dkv_group is None:
-            if RingAttention.DKV_GROUP is None or dist.get_process_group_ranks(
-                sp_group
-            ) != dist.get_process_group_ranks(RingAttention.DKV_GROUP):
+            if RingAttention.DKV_GROUP is None or RingAttention.SP_GROUP is not sp_group:
                 ranks = dist.get_process_group_ranks(sp_group)
                 RingAttention.DKV_GROUP = dkv_group = dist.new_group(ranks)
             else:
                 dkv_group = RingAttention.DKV_GROUP
+
+        if RingAttention.SP_GROUP is not sp_group:
+            RingAttention.SP_GROUP = sp_group
+            inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(sp_group, inner_ring_size)
+            ranks = dist.get_process_group_ranks(inner_ring_group)
+            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY = dist.new_group(ranks)
+            RingAttention.LOCAL_RING_GROUP = inner_ring_group
+            RingAttention.INTER_RING_GROUP = inter_ring_group
+        else:
+            inner_ring_group = RingAttention.LOCAL_RING_GROUP
+            inter_ring_group = RingAttention.INTER_RING_GROUP
+            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY
 
         # (B, H, Sq, D) -> (B, Sq, H, D)
         q, k, v = [x.transpose(1, 2).contiguous() for x in (q, k, v)]
@@ -487,7 +562,7 @@ class RingAttention(torch.autograd.Function):
             k,
             v,
             sp_group,
-            sp_stream,
+            RingAttention.SP_STREAM,
             cu_seqlens,
             max_seqlen,
             dropout_p,
@@ -496,6 +571,9 @@ class RingAttention(torch.autograd.Function):
             return_softmax,
             attention_mask_type == AttnMaskType.PADDED_CAUSAL,
             dkv_group,
+            inner_ring_group,
+            inner_ring_group_copy,
+            inter_ring_group,
         )
 
         if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
@@ -525,7 +603,11 @@ class RingAttention(torch.autograd.Function):
         return_softmax: Optional[bool] = False,
         is_packed: Optional[bool] = False,
         dkv_group: Optional[dist.ProcessGroup] = None,
+        inner_ring_group: Optional[dist.ProcessGroup] = None,
+        inner_ring_group_copy: Optional[dist.ProcessGroup] = None,
+        inter_ring_group: Optional[dist.ProcessGroup] = None,
     ):
+
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens
         max_seqlen_q = max_seqlen_kv = max_seqlen
         cu_seqlens_half = cu_seqlens // 2
@@ -561,11 +643,21 @@ class RingAttention(torch.autograd.Function):
             # Be careful about GQA/MQA in reshape
             q, k, v = [x.view(t, *x.shape[-2:]) for x in (q, k, v)]
 
-        kv_comms = [RingComm(sp_group) for _ in range(2)]
-        sp_size = kv_comms[0].world_size
-        sp_rank = kv_comms[0].rank
+        if inner_ring_group is None or inter_ring_group is None:
+            # Use one ring if not specified
+            inner_ring_group = inter_ring_group = sp_group
 
-        # Non-contiguous indexing creates a new contiguous tensor,
+        sp_size = dist.get_world_size(sp_group)
+        sp_rank = dist.get_rank(sp_group)
+        # Attempt to achieve concurrent comm in the two-stream forward
+        local_kv_comms = [RingComm(inner_ring_group), RingComm(inner_ring_group_copy)]
+        inter_ring_comm = RingComm(inter_ring_group)
+        local_sp_size = dist.get_world_size(inner_ring_group)
+        local_sp_rank = dist.get_rank(inner_ring_group)
+        inter_ring_rank = dist.get_rank(inter_ring_group) if inter_ring_group is not sp_group else 0
+        num_rings = dist.get_world_size(inter_ring_group) if inter_ring_group is not sp_group else 1
+
+        # Non-contiguous indexing copies to a new contiguous tensor,
         # so only do it once
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
@@ -605,68 +697,139 @@ class RingAttention(torch.autograd.Function):
             )
             return out, softmax_lse, rng_state
 
-        # Overlap output correction with next flash attn
-        for i in range(sp_size):
-            with torch.cuda.stream(sp_streams[i % 2]):
-                # Wait for current kv from prev rank
-                # NOTE: waiting outside the current stream will NOT correctly synchronize.
-                if i > 0:
-                    kv_comms[(i + 1) % 2].wait()
+        def _local_ring_forward():
+            # (Hopefully) overlap output correction with next flash attn
+            for i in range(local_sp_size):
+                with torch.cuda.stream(sp_streams[i % 2]):
+                    # Avoid overwriting attn input when it shares mem with buffer
+                    if not RingAttention.ATTN_DONE.query():
+                        kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
+                    if i < local_sp_size - 1:
+                        local_kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
 
-                # Avoid overwriting attn input when it shares mem with buffer
-                if not RingAttention.ATTN_DONE.query():
-                    kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
+                    # Wait for current kv from prev rank
+                    # NOTE: waiting outside the current stream will NOT correctly synchronize.
+                    if i > 0:
+                        local_kv_comms[(i + 1) % 2].wait()
 
-                if i < sp_size - 1:
-                    kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
+                    if i == 0:
+                        # Compute with local KV; no mask
+                        kv_block = kv_buffers[0]
+                        q_block = q
+                        (block_out[i % 2], block_softmax_lse[i % 2], rng_states[i]) = _forward(  # (T, H, D)  # (H, T)
+                            q_block, kv_block[0], kv_block[1], causal=True
+                        )
+                    elif i <= local_sp_rank:
+                        # Received the "surrounding" kv chunks
+                        # Drop the second half of received kv
+                        # (2, t // 2, H, D)
+                        kv_block = kv_buffers[i % 2][:, half_idx_front]
+                        q_block = q
+                        (
+                            block_out[i % 2],  # (T, H, D)
+                            block_softmax_lse[i % 2],  # (H, T)
+                            rng_states[i],
+                        ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
+                    else:
+                        # Received the inner kv chunks
+                        # Drop the first half of q
+                        kv_block = kv_buffers[i % 2]
+                        q_block = q1
+                        (
+                            block_out[i % 2],  # (T, H, D)
+                            block_softmax_lse[i % 2],  # (H, T)
+                            rng_states[i],
+                        ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
+                    RingAttention.ATTN_DONE.record()
 
-                if i == 0:
-                    # Compute with local KV; no mask
-                    kv_block = kv_buffers[0]
-                    q_block = q
-                    (block_out[i % 2], block_softmax_lse[i % 2], rng_states[i]) = _forward(  # (T, H, D)  # (H, T)
-                        q_block, kv_block[0], kv_block[1], causal=True
-                    )
-                elif i <= sp_rank:
-                    # Received the "surrounding" kv chunks
-                    # Drop the second half of received kv
-                    # (2, t // 2, H, D)
-                    kv_block = kv_buffers[i % 2][:, half_idx_front]
-                    q_block = q
-                    (
-                        block_out[i % 2],  # (T, H, D)
-                        block_softmax_lse[i % 2],  # (H, T)
-                        rng_states[i],
-                    ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
+                    block_softmax_lse[i % 2] = (
+                        block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
+                    )  # (H, T) -> (T, H, 1)
+                    assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
+                    # Output and log sum exp correction. Ideally overlap this with the next flash attn kernel.
+                    # In reality this always finishes before next flash attn; no need for extra sync.
+                    if i == 0:
+                        out = block_out[0]
+                        softmax_lse = block_softmax_lse[0]
+                    elif i <= local_sp_rank:
+                        out, softmax_lse = _rescale_out_lse(
+                            out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2]
+                        )
+                    else:
+                        out[half_idx_back], softmax_lse[half_idx_back] = _rescale_out_lse(
+                            out[half_idx_back], block_out[i % 2], softmax_lse[half_idx_back], block_softmax_lse[i % 2]
+                        )
+
+            torch.cuda.current_stream().wait_stream(sp_stream)
+            return out, softmax_lse
+
+        def _other_ring_forward(ring_num_idx, out, softmax_lse):
+            # Loop through the inner ring after receiving
+            # all new KVs from the previous inner ring
+            for i in range(local_sp_size):
+                with torch.cuda.stream(sp_streams[i % 2]):
+                    if not RingAttention.ATTN_DONE.query():
+                        kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
+                    if i < local_sp_size - 1:
+                        local_kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
+
+                    # Send & recv KV
+                    if i > 0:
+                        local_kv_comms[(i + 1) % 2].wait()
+
+                    if ring_num_idx > inter_ring_rank:
+                        kv_block = kv_buffers[i % 2]
+                        (
+                            block_out[i % 2],
+                            block_softmax_lse[i % 2],
+                            rng_states[i + local_sp_size * ring_num_idx],
+                        ) = _forward(q1, kv_block[0], kv_block[1], causal=False)
+                        RingAttention.ATTN_DONE.record()
+                        block_softmax_lse[i % 2] = (
+                            block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
+                        )
+                        out[half_idx_back], softmax_lse[half_idx_back] = _rescale_out_lse(
+                            out[half_idx_back], block_out[i % 2], softmax_lse[half_idx_back], block_softmax_lse[i % 2]
+                        )
+                    else:
+                        kv_block = kv_buffers[i % 2][:, half_idx_front]
+                        (
+                            block_out[i % 2],
+                            block_softmax_lse[i % 2],
+                            rng_states[i + local_sp_size * ring_num_idx],
+                        ) = _forward(q, kv_block[0], kv_block[1], causal=False)
+                        RingAttention.ATTN_DONE.record()
+                        block_softmax_lse[i % 2] = (
+                            block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
+                        )
+                        out, softmax_lse = _rescale_out_lse(
+                            out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2]
+                        )
+
+            torch.cuda.current_stream().wait_stream(sp_stream)
+            return out, softmax_lse
+
+        # Send and recv KV between rings at once to maximize NIC util.
+        inter_ring_kv = None
+        for ring_num_idx in range(num_rings):
+            if ring_num_idx > 0:
+                inter_ring_comm.wait()
+                # Reset indices
+                kv_buffers[0] = inter_ring_kv
+
+            if ring_num_idx < num_rings - 1:
+                if ring_num_idx == 0:
+                    to_send = kv_buffers[0]
                 else:
-                    # Received the inner kv chunks
-                    # Drop the first half of q
-                    kv_block = kv_buffers[i % 2]
-                    q_block = q1
-                    (
-                        block_out[i % 2],  # (T, H, D)
-                        block_softmax_lse[i % 2],  # (H, T)
-                        rng_states[i],
-                    ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
-                RingAttention.ATTN_DONE.record()
+                    # The last received KV
+                    to_send = kv_buffers[(local_sp_size - 1) % 2]
+                inter_ring_kv = inter_ring_comm.send_recv(to_send)
 
-                block_softmax_lse[i % 2] = (
-                    block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
-                )  # (H, T) -> (T, H, 1)
-                assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
-                # Output and log sum exp correction. Ideally overlap this with the next flash attn kernel.
-                # In reality this always finishes before next flash attn; no need for extra sync.
-                if i == 0:
-                    out = block_out[0]
-                    softmax_lse = block_softmax_lse[0]
-                elif i <= sp_rank:
-                    out, softmax_lse = _rescale_out_lse(out, block_out[i % 2], softmax_lse, block_softmax_lse[i % 2])
-                else:
-                    out[half_idx_back], softmax_lse[half_idx_back] = _rescale_out_lse(
-                        out[half_idx_back], block_out[i % 2], softmax_lse[half_idx_back], block_softmax_lse[i % 2]
-                    )
+            if ring_num_idx == 0:
+                out, softmax_lse = _local_ring_forward()
+            else:
+                out, softmax_lse = _other_ring_forward(ring_num_idx, out, softmax_lse)
 
-        # torch.cuda.current_stream().wait_stream(sp_stream)
         out = out.to(q.dtype)
         if not is_packed:
             out = out.view(b, sq, h, d)
@@ -775,8 +938,9 @@ class RingAttention(torch.autograd.Function):
                 **misc_kwargs,
             )
 
-        # NOTE: We avoid using two streams since it requires doubling dkv and kv buffers,
-        # and backward is more communication intensive than forward
+        # NOTE: We avoid using two streams due to doubled buffers
+        # and that backward is more communication intensive.
+        # def _local_ring_backward():
         for i in range(sp_size):
             if i > 0:
                 kv_comm.wait()
@@ -832,15 +996,17 @@ class RingAttention(torch.autograd.Function):
                     # q blocks "surrounding" kv blocks
                     dkv_recv[0] += dk_
                     dkv_recv[1] += dv_
-
             dkv_comm.send_recv(send_tensor=dkv_recv, recv_tensor=dkv_send)
+
         dkv_comm.wait()
         dkv_recv = dkv_send
+        # return dq, dkv_recv
+
         dq, dk, dv = [x.to(q.dtype) for x in (dq, *dkv_recv)]
         if not is_packed:
             dq, dk, dv = [x.view(b, sq, *x.shape[-2:]) for x in (dq, dk, dv)]
 
-        return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None)
+        return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None, None, None, None)
 
     @staticmethod
     def prepare_varlen_batch(

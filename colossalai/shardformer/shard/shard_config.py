@@ -2,7 +2,6 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-import torch
 import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
@@ -32,7 +31,6 @@ class ShardConfig:
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
         parallel_output (bool): For TP: whether to use parallelize cross entropy computation along the feature dim.
             For SP: set to True to NOT gather the output along the seq dim.
-        sp_stream (Optional[torch.cuda.Stream]): : The stream for ring attention output correction. Defaults to None.
     """
 
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -54,7 +52,6 @@ class ShardConfig:
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
-    sp_stream: Optional[torch.cuda.Stream] = None
     # pipeline_parallel_size: int
     # data_parallel_size: int
     # tensor_parallel_mode: Literal['1d', '2d', '2.5d', '3d']

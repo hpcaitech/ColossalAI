@@ -433,26 +433,36 @@ class RingComm:
         self.send_rank = (self.rank + 1) % self.world_size
         self.recv_rank = (self.rank - 1) % self.world_size
 
-        if process_group is not None:
-            self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
-            self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
+        self.send_rank = dist.get_global_rank(self._process_group, self.send_rank)
+        self.recv_rank = dist.get_global_rank(self._process_group, self.recv_rank)
 
-    def send_recv(self, send_tensor: torch.Tensor, recv_tensor: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def send_recv(
+        self,
+        send_tensor: torch.Tensor,
+        recv_tensor: Optional[torch.Tensor] = None,
+        commit: bool = True,
+    ) -> torch.Tensor:
         if recv_tensor is None:
             res = torch.empty_like(send_tensor)
         else:
             res = recv_tensor
 
-        # NOTE: looks like batch_isend_irecv doesn't deadlock even
-        # when we never swap send recv ops across ranks
+        # looks like batch_isend_irecv doesn't deadlock even
+        # when we don't swap send recv ops based on rank
         send_op = dist.P2POp(dist.isend, send_tensor, self.send_rank, group=self._process_group)
         recv_op = dist.P2POp(dist.irecv, res, self.recv_rank, group=self._process_group)
-        self._ops.append(send_op)
-        self._ops.append(recv_op)
-        self._reqs = dist.batch_isend_irecv(self._ops)
+        self._ops.extend([send_op, recv_op])
+
+        if commit:
+            self._reqs = dist.batch_isend_irecv(self._ops)
         return res
 
+    def commit(self):
+        assert len(self._ops) > 0, "No ops to commit"
+        self._reqs = dist.batch_isend_irecv(self._ops)
+
     def wait(self):
+        assert len(self._reqs) > 0, "No requests to wait for"
         for req in self._reqs:
             req.wait()
         self._reqs = []

@@ -21,7 +21,6 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
     device = get_current_device()
     sp_group = dist.group.WORLD
-    sp_stream = torch.cuda.Stream()
 
     # Some outliers may seem large, but our errors are still lower than
     # than Megatron-LM context parallel's
@@ -37,7 +36,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     q.requires_grad = k.requires_grad = v.requires_grad = True
 
     # Ring attention vs single GPU
-    ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, sp_stream, AttnMaskType.CAUSAL, return_softmax=True)
+    ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, AttnMaskType.CAUSAL, return_softmax=True)
     ring_out = ring_out.transpose(1, 2)
     out, lse, _ = flash_attn_qkvpacked_func(
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
@@ -60,6 +59,10 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     assert_close(ring_dq, local_dqkv[:, :, 0], atol=atol, rtol=rtol)
     assert_close(ring_dk, local_dqkv[:, :, 1], atol=atol, rtol=rtol)
     assert_close(ring_dv, local_dqkv[:, :, 2], atol=atol, rtol=rtol)
+    if dist.get_rank() == 0:
+        print(
+            f"sp_size {dist.get_world_size()}, inner ring size {dist.get_world_size(RingAttention.LOCAL_RING_GROUP)} passed."
+        )
 
 
 @parameterize("seqlen", [4096])
@@ -71,7 +74,6 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     device = get_current_device()
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
-    sp_stream = torch.cuda.Stream()
     atol = rtol = 7e-3
     torch.cuda.manual_seed(2)
     # Prepare varlen attention mask
@@ -113,7 +115,6 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
         k_ring,
         v_ring,
         sp_group,
-        sp_stream,
         **mask_info,
         pad_output=False,
         return_softmax=True,
@@ -148,17 +149,29 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     assert_close(dv, dv_ring, atol=atol, rtol=rtol)
 
 
-def launch(rank, world_size, port):
+def launch_single_ring(rank, world_size, port):
     colossalai.launch(rank, world_size, "localhost", port)
     check_packed_seq()
+    check_ring_attn()
+
+
+def launch_double_ring(rank, world_size, port):
+    colossalai.launch(rank, world_size, "localhost", port)
     check_ring_attn()
 
 
 @rerun_if_address_is_in_use()
 @parameterize("world_size", [2])
 def test_ring_attn(world_size):
-    spawn(launch, nprocs=world_size)
+    spawn(launch_single_ring, nprocs=world_size)
+
+
+@rerun_if_address_is_in_use()
+@parameterize("world_size", [4])
+def test_double_ring(world_size):
+    spawn(launch_double_ring, nprocs=world_size)
 
 
 if __name__ == "__main__":
     test_ring_attn()
+    test_double_ring()

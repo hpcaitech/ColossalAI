@@ -563,9 +563,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if sp_mode == "ring_attn":
-            attn_output = RingAttention.attention(
-                query_states, key_states, value_states, sp_group, shard_config.sp_stream, **attention_mask
-            )
+            attn_output = RingAttention.attention(query_states, key_states, value_states, sp_group, **attention_mask)
 
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."

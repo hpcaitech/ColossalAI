@@ -1065,10 +1065,21 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_sequence_parallelism = enable_sequence_parallelism
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
-            self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
+            if sequence_parallelism_mode == "ring_attn":
+                # Swap tp and sp since 2D Ring has better inter-node latency
+                self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.sp_size, self.tp_size)
+                self.sp_axis = 2
+                self.tp_axis = 3
+            else:
+                self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
         else:
             self.pp_axis, self.dp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
-            self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
+            if sequence_parallelism_mode == "ring_attn":
+                self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.sp_size, self.tp_size)
+                self.sp_axis = 2
+                self.tp_axis = 3
+            else:
+                self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
 
         self.stage_manager = None
         self.schedule = None
@@ -1134,11 +1145,6 @@ class HybridParallelPlugin(PipelinePluginBase):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
-            sp_stream=(
-                torch.cuda.Stream()
-                if enable_sequence_parallelism and sequence_parallelism_mode == "ring_attn"
-                else None
-            ),
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -1231,6 +1237,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             # Apply Hybrid ZeRO across DP * SP ranks
             if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
+                self.dp_size = get_world_size(dp_group)
             else:
                 dp_group = self.dp_group
             model = HybridParallelModule(
