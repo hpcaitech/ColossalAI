@@ -60,7 +60,9 @@ class ORPOTrainer(SLTrainer):
         save_dir: str = None,
         coordinator: DistCoordinator = None,
     ) -> None:
-        super().__init__(booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, plugin=plugin, start_epoch=start_epoch)
+        super().__init__(
+            booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, plugin=plugin, start_epoch=start_epoch
+        )
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
         self.odds_ratio_loss_fn = OddsRatioLoss()
