@@ -162,14 +162,18 @@ class LlamaPolicy(Policy):
             )
 
         if embedding_cls is not None:
-            kwargs = {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
-            if isinstance(embedding_cls, VocabParallelEmbedding1D):
-                kwargs["fp8_communication"] = (self.shard_config.fp8_communication,)
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs=kwargs,
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=LlamaModel,

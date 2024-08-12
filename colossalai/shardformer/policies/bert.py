@@ -190,6 +190,13 @@ class BertPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="word_embeddings",
                         target_module=embedding_cls,
+                        kwargs=(
+                            {
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            }
+                            if self.shard_config.enable_tensor_parallelism
+                            else {}
+                        ),
                     )
                 ],
                 policy=policy,
