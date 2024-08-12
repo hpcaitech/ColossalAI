@@ -151,7 +151,6 @@ def main(args):
         chat_io.prompt_for_output("assistant")
 
         prompt = conv.get_prompt(add_generation_prompt=True)
-        print(prompt + "<end_of_prompt>")
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
         )
