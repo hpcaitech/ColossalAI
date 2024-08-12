@@ -262,6 +262,7 @@ def train(args):
         model,
         booster,
         optim,
+        plugin,
         lr_scheduler,
         tokenizer,
         loss_fn=loss_fn,
