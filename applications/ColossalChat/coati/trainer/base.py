@@ -17,6 +17,7 @@ from coati.experience_maker import Experience
 from torch.optim import Optimizer
 
 from colossalai.booster import Booster
+from colossalai.booster import Plugin
 
 from .utils import is_rank_0
 
@@ -38,6 +39,7 @@ class SLTrainer(ABC):
         max_epochs: int,
         model: nn.Module,
         optimizer: Optimizer,
+        plugin: Plugin,
         start_epoch: int = 0,
     ) -> None:
         super().__init__()
@@ -45,6 +47,7 @@ class SLTrainer(ABC):
         self.max_epochs = max_epochs
         self.model = model
         self.optimizer = optimizer
+        self.plugin = plugin
         self.start_epoch = start_epoch
 
     @abstractmethod
