@@ -43,7 +43,6 @@ class SamPolicy(Policy):
                         target_module=col_nn.FusedLinear1D_Col,
                         kwargs={
                             "n_fused": 3,
-                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
