@@ -1,10 +1,10 @@
+import warnings
 from functools import partial
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.utils import is_flash_attn_greater_or_equal_2_10
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
@@ -192,32 +192,8 @@ class DeepseekPolicy(Policy):
             )
 
         if self.shard_config.enable_flash_attention:
-            # NOTE: there is a bug for toggling flash attention in AutoModel, which has to be used for deepseek right now
-            from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
-            flash_attn_cls = get_class_from_dynamic_module(
-                "deepseek-ai/deepseek-moe-16b-base--modeling_deepseek.DeepseekFlashAttention2",
-                "deepseek-ai/deepseek-moe-16b-base",
-            )
-
-            class TargetFlashAttn:
-                def __init__(self):
-                    raise RuntimeError("This class should not be instantiated")
-
-                @staticmethod
-                def from_native_module(original_attn: nn.Module, *args, **kwargs) -> nn.Module:
-                    original_attn.__class__ = flash_attn_cls
-                    original_attn._flash_attn_uses_top_left_mask = not is_flash_attn_greater_or_equal_2_10()
-                    return original_attn
-
-            self.append_or_create_submodule_replacement(
-                description=SubModuleReplacementDescription(
-                    suffix="self_attn",
-                    target_module=TargetFlashAttn,
-                ),
-                policy=policy,
-                target_key="DeepseekDecoderLayer",
-            )
+            warnings.warn("Flash attention is natively supported in transformers, will ignore the flag.")
+            self.shard_config.enable_flash_attention = False
         return policy
 
     def postprocess(self):
