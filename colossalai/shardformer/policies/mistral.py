@@ -328,7 +328,6 @@ class MistralForCausalLMPolicy(MistralPolicy):
                             target_module=PaddingLMHead,
                             kwargs=dict(
                                 make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
-                                fp8_communication=self.shard_config.fp8_communication,
                             ),
                         )
                     ]
