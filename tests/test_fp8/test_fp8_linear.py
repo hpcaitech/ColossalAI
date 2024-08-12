@@ -5,6 +5,7 @@ from torch.testing import assert_close
 
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import linear_fp8
+from colossalai.testing import spawn
 from colossalai.utils import get_current_device
 
 D_IN, D_OUT = 16, 32
@@ -12,10 +13,7 @@ B, S = 2, 64
 DTYPE = torch.bfloat16
 
 
-@pytest.mark.skipif(get_accelerator().get_device_capability()[0] < 9, reason="Test requires device capability >= 9.0")
-@pytest.mark.parametrize("use_bias", [True, False])
-@pytest.mark.parametrize("use_batch", [True, False])
-def test_fp8_linear(use_bias: bool, use_batch: bool):
+def run_test(rank, world_size=None, port=None, use_bias: bool = False, use_batch: bool = False):
     # create tensors
     w = torch.rand(D_OUT, D_IN, device=get_current_device(), dtype=DTYPE, requires_grad=True)
     ref_w = w.clone().detach().requires_grad_()
@@ -43,3 +41,10 @@ def test_fp8_linear(use_bias: bool, use_batch: bool):
     assert_close(w.grad, ref_w.grad, rtol=0.2, atol=0.1)
     if use_bias:
         assert_close(bias.grad, ref_bias.grad, rtol=0.2, atol=0.1)
+
+
+@pytest.mark.skipif(get_accelerator().get_device_capability()[0] < 9, reason="Test requires device capability >= 9.0")
+@pytest.mark.parametrize("use_bias", [True, False])
+@pytest.mark.parametrize("use_batch", [True, False])
+def test_fp8_linear(use_bias: bool, use_batch: bool):
+    spawn(run_test, nprocs=1, use_bias=use_bias, use_batch=use_batch)
