@@ -627,6 +627,7 @@ class FusedLinear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        fp8_communication: bool = False,
     ):
         super().__init__()
         # Keep input parameters
@@ -638,6 +639,7 @@ class FusedLinear1D_Col(ParallelModule):
         self.n_fused = n_fused
         self.process_group = process_group
         self.async_communication = async_communication
+        self.fp8_communication = fp8_communication
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -767,7 +769,9 @@ class FusedLinear1D_Col(ParallelModule):
 
         if self.gather_output:
             # All-gather across the partitions.
-            output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
+            output = gather_forward_split_backward(
+                output_parallel, dim=-1, process_group=self.process_group, fp8_communication=self.fp8_communication
+            )
         else:
             output = output_parallel
 

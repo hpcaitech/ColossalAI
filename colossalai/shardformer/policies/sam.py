@@ -43,6 +43,7 @@ class SamPolicy(Policy):
                         target_module=col_nn.FusedLinear1D_Col,
                         kwargs={
                             "n_fused": 3,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -204,6 +205,9 @@ class SamPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="final_attn_token_to_image.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                 ],
             )
