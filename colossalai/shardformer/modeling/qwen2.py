@@ -175,6 +175,7 @@ class Qwen2PipelineForwards:
                     hidden_states,
                     dim=1,
                     process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
             elif shard_config.sequence_parallelism_mode == "all_to_all":
                 hidden_states = split_forward_gather_backward(
@@ -182,6 +183,7 @@ class Qwen2PipelineForwards:
                     dim=1,
                     process_group=shard_config.sequence_parallel_process_group,
                     grad_scale=1 / shard_config.sequence_parallel_size,
+                    fp8_communication=shard_config.fp8_communication,
                 )
 
         # decoder layers
@@ -246,6 +248,7 @@ class Qwen2PipelineForwards:
                     hidden_states,
                     dim=1,
                     process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
             elif shard_config.sequence_parallelism_mode == "all_to_all":
                 hidden_states = gather_forward_split_backward(
@@ -253,6 +256,7 @@ class Qwen2PipelineForwards:
                     dim=1,
                     process_group=shard_config.sequence_parallel_process_group,
                     grad_scale=shard_config.sequence_parallel_size,
+                    fp8_communication=shard_config.fp8_communication,
                 )
         # add hidden states from the last decoder layer
         if output_hidden_states:

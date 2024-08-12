@@ -317,7 +317,11 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
             new_item = {
                 Qwen2ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
-                        SubModuleReplacementDescription(suffix="lm_head", target_module=Linear1D_Col)
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication),
+                        )
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )
@@ -366,7 +370,9 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
                 Qwen2ForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="score",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )
