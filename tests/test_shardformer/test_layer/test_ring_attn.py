@@ -21,7 +21,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     torch.cuda.manual_seed(2)
     device = get_current_device()
     sp_group = dist.group.WORLD
-
+    sp_size = dist.get_world_size()
     # Some outliers may seem large, but our errors are still lower than
     # than Megatron-LM context parallel's
     # (https://github.com/NVIDIA/TransformerEngine/blob/33a3d02f81c56e6f7b542c09bfa86657078d57fb/tests/pytorch/fused_attn/run_fused_attn_with_cp.py#L215)
@@ -36,7 +36,16 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     q.requires_grad = k.requires_grad = v.requires_grad = True
 
     # Ring attention vs single GPU
-    ring_out, ring_lse = RingAttention.attention(q, k, v, sp_group, AttnMaskType.CAUSAL, return_softmax=True)
+    ring_out, ring_lse = RingAttention.attention(
+        q,
+        k,
+        v,
+        sp_group,
+        AttnMaskType.CAUSAL,
+        return_softmax=True,
+        inner_ring_size=max(2, sp_size // 2),
+        # inner_ring_size=4
+    )
     ring_out = ring_out.transpose(1, 2)
     out, lse, _ = flash_attn_qkvpacked_func(
         qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
@@ -61,7 +70,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype):
     assert_close(ring_dv, local_dqkv[:, :, 2], atol=atol, rtol=rtol)
     if dist.get_rank() == 0:
         print(
-            f"sp_size {dist.get_world_size()}, inner ring size {dist.get_world_size(RingAttention.LOCAL_RING_GROUP)} passed."
+            f"sp_size {dist.get_world_size()}, inner ring size {dist.get_world_size(RingAttention.INNER_RING_GROUP)} passed."
         )
 
 

@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 import torch
+import torch.distributed
 import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
@@ -12,6 +13,7 @@ from colossalai.kernel.kernel_loader import (
     FlashAttentionWithCustomMaskLoader,
     KernelLoader,
 )
+from colossalai.logging import get_dist_logger
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
@@ -22,6 +24,7 @@ __all__ = [
 
 _flash_attn_forward = _flash_attn_backward = None
 _unpad_input = _pad_input = None
+logger = get_dist_logger()
 
 
 class AttnMaskType(Enum):
@@ -382,8 +385,9 @@ class RingAttention(torch.autograd.Function):
     For portable integration with more models, we don't follow the spirit of "block-wise FNN" in the original paper,
     which requires fusing FFN with the Flash Attention kernel/function (see https://arxiv.org/pdf/2305.19370;
     implemented in Jax and not optimized).
-    We adopt the double ring topology from LoongTrain (https://arxiv.org/pdf/2406.18485) to minimize inter-node latency
-    by utilizing more NICs and fully utilize intra-node bandwidth.
+    We adopt the double ring topology from LoongTrain (https://arxiv.org/pdf/2406.18485) to fully utilize available
+    NICs on each node, by computing attention within a inner ring first and then sending all KVs to the next
+    ring at once.
     """
 
     # Globle cache to avoid recomputation for same-lengthed sequences
@@ -397,10 +401,10 @@ class RingAttention(torch.autograd.Function):
     # duplicate process group for concurrent NCCL streams
     # while both PyTorch and NCCL warns(https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
     # against this, in practice it seems to work fine.
+    INNER_RING_GROUP: dist.ProcessGroup = None
     INNER_RING_GROUP_COPY: dist.ProcessGroup = None
-    DKV_GROUP: dist.ProcessGroup = None
-    LOCAL_RING_GROUP: dist.ProcessGroup = None
     INTER_RING_GROUP: dist.ProcessGroup = None
+    INTER_RING_GROUP_COPY: dist.ProcessGroup = None
 
     @staticmethod
     def get_double_ring_groups(sp_group, inner_ring_size=None):
@@ -417,6 +421,9 @@ class RingAttention(torch.autograd.Function):
         sp_rank = dist.get_rank(sp_group)
 
         if inner_ring_size is None:
+            if torch.cuda.device_count() < dist.get_world_size():
+                # single node, no need to consider NICs
+                return sp_group, sp_group
             if sp_size <= 4:
                 inner_ring_size = min(2, sp_size)
             else:
@@ -432,6 +439,9 @@ class RingAttention(torch.autograd.Function):
             sp_size % inner_ring_size == 0
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
 
+        logger.info(
+            f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Pray for the speed-up!"
+        )
         num_rings = sp_size // inner_ring_size
         inner_ring_group = None
         inter_ring_group = None
@@ -466,7 +476,6 @@ class RingAttention(torch.autograd.Function):
         softmax_scale=None,
         deterministic=False,
         return_softmax=False,
-        dkv_group=None,
         inner_ring_size=None,
         **kwargs,
     ):
@@ -490,7 +499,7 @@ class RingAttention(torch.autograd.Function):
             softmax_scale (Optional[float], optional): Scaling factor applied prior to softmax.
             deterministic (bool, optional): Whether to force deterministic backward pass. See https://github.com/Dao-AILab/flash-attention/issues/349
             return_softmax (bool, optional): Whether to return the softmax denominator (logsumexp).
-            dkv_group (Optional[dist.ProcessGroup]): Process group for using a concurrent NCCL stream in ring attention backward.
+            inner_ring_size (Optional[int], optional): Inner ring size of the 2D ring. By default use a heuristic to decide.
 
         Returns:
             out: Output tensor of shape [B, nHeads, Sq, D] or [T, nHeads, D] if pad_output is False.
@@ -512,25 +521,21 @@ class RingAttention(torch.autograd.Function):
             attention_mask_type in RingAttention.SUPPORTED_MASK_TYPES
         ), f"Mask type {attention_mask_type} is not supported yet."
 
-        # Register process groups locally to make it simple and self-contained to use
-        if dkv_group is None:
-            if RingAttention.DKV_GROUP is None or RingAttention.SP_GROUP is not sp_group:
-                ranks = dist.get_process_group_ranks(sp_group)
-                RingAttention.DKV_GROUP = dkv_group = dist.new_group(ranks)
-            else:
-                dkv_group = RingAttention.DKV_GROUP
+        clone_pg = lambda pg: dist.new_group(dist.get_process_group_ranks(pg))
 
         if RingAttention.SP_GROUP is not sp_group:
             RingAttention.SP_GROUP = sp_group
             inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(sp_group, inner_ring_size)
-            ranks = dist.get_process_group_ranks(inner_ring_group)
-            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY = dist.new_group(ranks)
-            RingAttention.LOCAL_RING_GROUP = inner_ring_group
+            # Create copies for forward 2-stream concurrent communication and dkv, kv comms in backward.
+            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY = clone_pg(inner_ring_group)
+            inter_ring_group_copy = RingAttention.INTER_RING_GROUP_COPY = clone_pg(inter_ring_group)
+            RingAttention.INNER_RING_GROUP = inner_ring_group
             RingAttention.INTER_RING_GROUP = inter_ring_group
         else:
-            inner_ring_group = RingAttention.LOCAL_RING_GROUP
+            inner_ring_group = RingAttention.INNER_RING_GROUP
             inter_ring_group = RingAttention.INTER_RING_GROUP
             inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY
+            inter_ring_group_copy = RingAttention.INTER_RING_GROUP_COPY
 
         # (B, H, Sq, D) -> (B, Sq, H, D)
         q, k, v = [x.transpose(1, 2).contiguous() for x in (q, k, v)]
@@ -570,10 +575,10 @@ class RingAttention(torch.autograd.Function):
             deterministic,
             return_softmax,
             attention_mask_type == AttnMaskType.PADDED_CAUSAL,
-            dkv_group,
             inner_ring_group,
             inner_ring_group_copy,
             inter_ring_group,
+            inter_ring_group_copy,
         )
 
         if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
@@ -602,10 +607,10 @@ class RingAttention(torch.autograd.Function):
         deterministic: Optional[bool] = False,
         return_softmax: Optional[bool] = False,
         is_packed: Optional[bool] = False,
-        dkv_group: Optional[dist.ProcessGroup] = None,
         inner_ring_group: Optional[dist.ProcessGroup] = None,
         inner_ring_group_copy: Optional[dist.ProcessGroup] = None,
         inter_ring_group: Optional[dist.ProcessGroup] = None,
+        inter_ring_group_copy: Optional[dist.ProcessGroup] = None,
     ):
 
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens
@@ -842,7 +847,11 @@ class RingAttention(torch.autograd.Function):
         del misc_kwargs["return_softmax"]
         ctx.misc_kwargs = misc_kwargs
         ctx.is_packed = is_packed
-        ctx.dkv_group = dkv_group
+
+        ctx.kv_group = inner_ring_group
+        ctx.dkv_group = inner_ring_group_copy
+        ctx.inter_kv_group = inter_ring_group
+        ctx.inter_dkv_group = inter_ring_group_copy
 
         ctx.save_for_backward(
             q,
@@ -874,8 +883,6 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_kv = ctx.max_seqlen_kv
         cu_seqlens_half = cu_seqlens_q // 2
         max_seqlen_half = max_seqlen_q // 2
-
-        dkv_group = ctx.dkv_group
         misc_kwargs = ctx.misc_kwargs
         del misc_kwargs["block_table"]
 
@@ -892,16 +899,30 @@ class RingAttention(torch.autograd.Function):
 
         # Sequence parallel args
         sp_group = ctx.sp_group
-        sp_rank = dist.get_rank(sp_group)
-        sp_size = dist.get_world_size(sp_group)
-        kv_comm = RingComm(sp_group)
-        # Put kv and dkv comms on different streams
-        if dkv_group is not None:
-            dkv_comm = RingComm(dkv_group)
-        else:
-            dkv_comm = RingComm(sp_group)
+        local_kv_group = ctx.kv_group
+        ctx.dkv_group
+        inter_kv_group = ctx.inter_kv_group
+        ctx.inter_dkv_group
 
-        if sp_rank != sp_size - 1:
+        local_sp_rank = dist.get_rank(sp_group)
+        sp_size = dist.get_world_size(sp_group)
+        # Using separate streams (pg) for concurrent kv and dkv comm may
+        # cause NCCL "software caused connection abort" here...
+        local_kv_comm = RingComm(local_kv_group)
+        local_dkv_comm = RingComm(local_kv_group)
+        inter_kv_comm = RingComm(inter_kv_group)
+        inter_dkv_comm = RingComm(inter_kv_group)
+        local_sp_size = dist.get_world_size(local_kv_group)
+        local_sp_rank = dist.get_rank(local_kv_group)
+
+        if dist.get_world_size(inter_kv_group) != sp_size:
+            num_rings = dist.get_world_size(inter_kv_group)
+            inter_ring_rank = dist.get_rank(inter_kv_group)
+        else:
+            num_rings = 1
+            inter_ring_rank = 0
+
+        if local_sp_rank != sp_size - 1:
             softmax_lse1 = softmax_lse[:, half_idx_back]
         dout = dout.contiguous()
 
@@ -915,7 +936,6 @@ class RingAttention(torch.autograd.Function):
         dk_block = torch.empty_like(k)  # (T, H, D)
         dv_block = torch.empty_like(v)  # (T, H, D)
         dkv_buffers = [torch.empty_like(kv, dtype=torch.float32) for kv in kv_buffers]  # (T, H, D)
-        dkv_send = dkv_recv = None
         del k, v
 
         def _backward(dout, q, k, v, out, softmax_lse, dq, dk, dv, rng_state, causal):
@@ -940,67 +960,143 @@ class RingAttention(torch.autograd.Function):
 
         # NOTE: We avoid using two streams due to doubled buffers
         # and that backward is more communication intensive.
-        # def _local_ring_backward():
-        for i in range(sp_size):
-            if i > 0:
-                kv_comm.wait()
+        def _local_ring_backward():
+            for i in range(local_sp_size):
+                if i > 0:
+                    local_kv_comm.wait()
 
-            if i < sp_size - 1:
-                # Send kv to next rank for backward
-                kv_comm.send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
+                if i < local_sp_size - 1:
+                    # Send kv to next rank for backward
+                    local_kv_comm.send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
 
-            if i == 0:
-                # Backward with local kv
-                k_, v_ = kv_buffers[i % 2]
-                q_, dout_, out_ = q, dout, out
-                dq_, dk_, dv_ = dq_block, dk_block, dv_block
-                _backward(dout_, q_, k_, v_, out_, softmax_lse, dq_, dk_, dv_, rng_states[i], causal=True)
+                if i == 0:
+                    # Backward with local kv
+                    k_, v_ = kv_buffers[i % 2]
+                    q_, dout_, out_ = q, dout, out
+                    dq_, dk_, dv_ = dq_block, dk_block, dv_block
+                    _backward(dout_, q_, k_, v_, out_, softmax_lse, dq_, dk_, dv_, rng_states[i], causal=True)
 
-            elif i <= sp_rank:
-                # Drop the second half of kv
-                # (T, H, D) -> (T // 2, H, D)
-                k_, v_ = [x[half_idx_front] for x in kv_buffers[i % 2]]
-                dk_, dv_ = [x[: t // 2] for x in (dk_block, dv_block)]
-                dq_, q_, out_, dout_ = (dq_block, q, out, dout)
-                _backward(dout_, q_, k_, v_, out_, softmax_lse, dq_, dk_, dv_, rng_states[i], causal=False)
+                elif i <= local_sp_rank:
+                    # Drop the second half of kv
+                    # (T, H, D) -> (T // 2, H, D)
+                    k_, v_ = [x[half_idx_front] for x in kv_buffers[i % 2]]
+                    dk_, dv_ = [x[: t // 2] for x in (dk_block, dv_block)]
+                    dq_, q_, out_, dout_ = (dq_block, q, out, dout)
+                    _backward(dout_, q_, k_, v_, out_, softmax_lse, dq_, dk_, dv_, rng_states[i], causal=False)
 
-            else:
-                # Drop the first half of q
-                k_, v_ = kv_buffers[i % 2]
-                dk_, dv_ = dk_block, dv_block
+                else:
+                    # Drop the first half of q
+                    k_, v_ = kv_buffers[i % 2]
+                    dk_, dv_ = dk_block, dv_block
+                    q_, out_, dout_ = [x[half_idx_back] for x in (q, out, dout)]
+                    dq_ = dq_block[: t // 2]
+                    _backward(dout_, q_, k_, v_, out_, softmax_lse1, dq_, dk_, dv_, rng_states[i], causal=False)
+
+                # Accumulate grads
+                if i == 0:
+                    dq = dq_block.float()
+                    dkv_buffers[i % 2][0] = dk_block.float()
+                    dkv_buffers[i % 2][1] = dv_block.float()
+                else:
+                    # Accumulate local dq
+                    if i <= local_sp_rank:
+                        dq += dq_  # (T, H, D)
+                    else:
+                        dq[half_idx_back] += dq_
+
+                    # Wait for mobile kv grad accumulators
+                    local_dkv_comm.wait()
+
+                    if i <= local_sp_rank:
+                        # q blocks "surrounded" by kv blocks
+                        dkv_buffers[i % 2][0][half_idx_front] += dk_
+                        dkv_buffers[i % 2][1][half_idx_front] += dv_
+                    else:
+                        # q blocks "surrounding" kv blocks
+                        dkv_buffers[i % 2][0] += dk_
+                        dkv_buffers[i % 2][1] += dv_
+                local_dkv_comm.send_recv(send_tensor=dkv_buffers[i % 2], recv_tensor=dkv_buffers[(i + 1) % 2])
+
+            local_dkv_comm.wait()
+            dkv_recv = dkv_buffers[local_sp_size % 2]
+            dkv_send = dkv_buffers[(local_sp_size - 1) % 2]
+            return dq, dkv_recv, dkv_send
+
+        def _other_ring_backward(ring_num_idx, dq):
+            if ring_num_idx > inter_ring_rank:
+                # Indexing is expensive
                 q_, out_, dout_ = [x[half_idx_back] for x in (q, out, dout)]
-                dq_ = dq_block[: t // 2]
-                _backward(dout_, q_, k_, v_, out_, softmax_lse1, dq_, dk_, dv_, rng_states[i], causal=False)
-
-            # Accumulate grads
-            dkv_send = dkv_buffers[i % 2]
-            dkv_recv = dkv_buffers[(i + 1) % 2]
-            if i == 0:
-                dq = dq_block.float()
-                dkv_recv[0] = dk_block.float()
-                dkv_recv[1] = dv_block.float()
             else:
-                # Accumulate local dq
-                if i <= sp_rank:
-                    dq += dq_  # (T, H, D)
-                else:
+                q_, out_, dout_ = (q, out, dout)
+
+            for i in range(local_sp_size):
+                if i > 0:
+                    local_kv_comm.wait()
+
+                if i < local_sp_size - 1:
+                    local_kv_comm.send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
+
+                rng_state = rng_states[i + local_sp_size * ring_num_idx]
+                if ring_num_idx > inter_ring_rank:
+                    k_, v_ = kv_buffers[i % 2]
+                    dk_, dv_ = dk_block, dv_block
+                    dq_ = dq_block[: t // 2]
+                    _backward(dout_, q_, k_, v_, out_, softmax_lse1, dq_, dk_, dv_, rng_state, causal=False)
+
                     dq[half_idx_back] += dq_
+                    if i > 0:
+                        local_dkv_comm.wait()
+                    else:
+                        inter_dkv_comm.wait()
 
-                # Wait for mobile kv grad accumulators
-                dkv_comm.wait()
-                if i <= sp_rank:
-                    # q blocks "surrounded" by kv blocks
-                    dkv_recv[0][half_idx_front] += dk_
-                    dkv_recv[1][half_idx_front] += dv_
+                    dkv_buffers[i % 2][0] += dk_
+                    dkv_buffers[i % 2][1] += dv_
                 else:
-                    # q blocks "surrounding" kv blocks
-                    dkv_recv[0] += dk_
-                    dkv_recv[1] += dv_
-            dkv_comm.send_recv(send_tensor=dkv_recv, recv_tensor=dkv_send)
+                    k_, v_ = [x[half_idx_front] for x in kv_buffers[i % 2]]
+                    dk_, dv_ = [x[: t // 2] for x in (dk_block, dv_block)]
+                    dq_ = dq_block
+                    _backward(dout_, q_, k_, v_, out_, softmax_lse, dq_, dk_, dv_, rng_state, causal=False)
 
-        dkv_comm.wait()
-        dkv_recv = dkv_send
-        # return dq, dkv_recv
+                    dq += dq_
+                    if i > 0:
+                        local_dkv_comm.wait()
+                    else:
+                        inter_dkv_comm.wait()
+
+                    dkv_buffers[i % 2][0][half_idx_front] += dk_
+                    dkv_buffers[i % 2][1][half_idx_front] += dv_
+
+                local_dkv_comm.send_recv(send_tensor=dkv_buffers[i % 2], recv_tensor=dkv_buffers[(i + 1) % 2])
+
+            local_dkv_comm.wait()
+            dkv_recv = dkv_buffers[local_sp_size % 2]
+            dkv_send = dkv_buffers[(local_sp_size - 1) % 2]
+            return dq, dkv_recv, dkv_send
+
+        inter_ring_kv = None
+        for ring_num_idx in range(num_rings):
+            if ring_num_idx > 0:
+                inter_kv_comm.wait()
+                kv_buffers[0] = inter_ring_kv
+
+            if ring_num_idx < num_rings - 1:
+                # Re-allocate a buffer in each inter-ring step
+                inter_ring_kv = inter_kv_comm.send_recv(kv_buffers[0])
+
+            if ring_num_idx == 0:
+                dq, dkv_recv, dkv_send = _local_ring_backward()
+            else:
+                dq, dkv_recv, dkv_send = _other_ring_backward(ring_num_idx, dq)
+
+            if num_rings > 1:
+                # Reuse the local buffers
+                inter_dkv_comm.send_recv(send_tensor=dkv_recv, recv_tensor=dkv_send)
+                # Reset indices
+                dkv_buffers[0] = dkv_send
+                dkv_buffers[1] = dkv_recv
+                if ring_num_idx == num_rings - 1:
+                    inter_dkv_comm.wait()
+                    dkv_recv = dkv_buffers[0]
 
         dq, dk, dv = [x.to(q.dtype) for x in (dq, *dkv_recv)]
         if not is_packed:
