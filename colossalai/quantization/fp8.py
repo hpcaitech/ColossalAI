@@ -637,7 +637,6 @@ class _LinearFp8(torch.autograd.Function):
         )[0]
         return out.reshape(*ctx.x_shape[:-1], w.shape[0])
 
-    @torch.compile(mode="reduce-overhead", disable=not SUPPORT_TORCH_COMPILE)
     @staticmethod
     def backward(ctx: Any, out_grad) -> Any:
         out_grad = out_grad.reshape(-1, out_grad.shape[-1])
@@ -664,5 +663,14 @@ class _LinearFp8(torch.autograd.Function):
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
 
 
-def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+@torch.compile(mode="reduce-overhead", disable=not SUPPORT_TORCH_COMPILE)
+def _linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     return _LinearFp8.apply(input, weight, bias)
+
+
+def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
+    out = _linear_fp8(input, weight, bias)
+    if SUPPORT_TORCH_COMPILE:
+        # avoid modifying the tensor created from cuda graph
+        out = out.clone()
+    return out
