@@ -15,7 +15,7 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
 
-set_n_least_used_CUDA_VISIBLE_DEVICES 2
+set_n_least_used_CUDA_VISIBLE_DEVICES 4
 
 set -xu
 
@@ -175,7 +175,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
+                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
