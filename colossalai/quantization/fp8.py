@@ -74,7 +74,7 @@ def cast_from_fp8(
 
 def all_reduce_fp8(
     tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, group=None, async_op: bool = False
-) -> None:
+) -> Optional[Handle]:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_reduce but during communication the data is cast to fp8 format.
@@ -271,7 +271,9 @@ def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
         del inp["fp8_scale"]
 
 
-def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2", async_op: bool = False) -> None:
+def reduce_scatter_fp8(
+    output: torch.Tensor, input_list, group, fp8_format="e5m2", async_op: bool = False
+) -> Optional[Handle]:
     r"""
     This is an in-place operation for compressed reduce_scatter using fp8.
     It works like dist.reduce_scatter but during communication the data is cast to fp8 format.
