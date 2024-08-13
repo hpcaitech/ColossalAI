@@ -9,6 +9,7 @@ from torch.distributed import ReduceOp
 
 SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.3.0")
 
+
 class Handle:
     def __init__(self, handles=[], remain_ops=None) -> None:
         self.handles = handles
