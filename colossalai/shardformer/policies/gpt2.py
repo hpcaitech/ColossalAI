@@ -162,7 +162,14 @@ class GPT2Policy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="wte",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=GPT2Model,
@@ -332,6 +339,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                             kwargs={
                                 "gather_output": False,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ],
@@ -402,6 +410,7 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                             kwargs={
                                 "gather_output": True,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ]

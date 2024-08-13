@@ -98,7 +98,9 @@ def main():
     parser.add_argument("--disable-async-reduce", action="store_true", help="Disable the asynchronous reduce operation")
     parser.add_argument("--prefetch_num", type=int, default=0, help="chunk prefetch max number")
     parser.add_argument("--no_cache", action="store_true")
+    parser.add_argument("--use_fp8_comm", action="store_true", default=False, help="for using fp8 during communication")
     parser.add_argument("--overlap_allgather", action="store_true")
+    parser.add_argument("--use_fp8", action="store_true")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -136,6 +138,7 @@ def main():
             enable_flash_attention=args.xformers,
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
+            use_fp8=args.use_fp8,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -148,6 +151,7 @@ def main():
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
             enable_flash_attention=args.xformers,
+            use_fp8=args.use_fp8,
         )
     elif args.plugin == "fsdp":
         if use_empty_init:
@@ -158,6 +162,7 @@ def main():
                     buffer_dtype=torch.float16,
                 ),
                 param_init_fn=empty_init(),
+                fp8_communication=args.use_fp8_comm,
             )
         else:
             plugin = TorchFSDPPlugin(
@@ -165,7 +170,8 @@ def main():
                     param_dtype=torch.float16,
                     reduce_dtype=torch.float16,
                     buffer_dtype=torch.float16,
-                )
+                ),
+                fp8_communication=args.use_fp8_comm,
             )
     elif args.plugin == "fsdp_cpu":
         if use_empty_init:
@@ -177,6 +183,7 @@ def main():
                 ),
                 cpu_offload=CPUOffload(offload_params=True),
                 param_init_fn=empty_init(),
+                fp8_communication=args.use_fp8_comm,
             )
         else:
             plugin = TorchFSDPPlugin(
@@ -186,6 +193,7 @@ def main():
                     buffer_dtype=torch.float16,
                 ),
                 cpu_offload=CPUOffload(offload_params=True),
+                fp8_communication=args.use_fp8_comm,
             )
     elif args.plugin == "3d":
         plugin = HybridParallelPlugin(
@@ -200,9 +208,11 @@ def main():
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
+            dp_outside=False,
             overlap_p2p=args.overlap,
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
+            use_fp8=args.use_fp8,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
@@ -219,6 +229,7 @@ def main():
             initial_scale=2**8,
             precision="bf16",
             overlap_p2p=args.overlap,
+            use_fp8=args.use_fp8,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -293,7 +304,7 @@ def main():
     with get_profile_context(
         args.profile,
         args.ignore_steps,
-        1,  # avoid creating massive log files
+        len(dataloader) - 1,
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
     ) as prof:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:

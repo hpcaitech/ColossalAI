@@ -572,6 +572,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         make_vocab_size_divisible_by: int = 64,
+        fp8_communication: bool = False,
         **kwargs,
     ):
         # create weight and bias
@@ -602,6 +603,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             **kwargs,
             new_num_embeddings=new_out_features,
             old_num_embeddings=out_features,
+            fp8_communication=fp8_communication,
         )
         # get the length of valid embeddings
         tp_rank = dist.get_rank(process_group)

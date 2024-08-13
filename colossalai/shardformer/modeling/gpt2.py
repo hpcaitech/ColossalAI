@@ -221,6 +221,7 @@ class GPT2PipelineForwards:
                     hidden_states,
                     dim=1,
                     process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
 
         # Going through held blocks.
@@ -276,6 +277,7 @@ class GPT2PipelineForwards:
                     hidden_states,
                     dim=1,
                     process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
 
         if stage_manager.is_last_stage():
