@@ -7,6 +7,17 @@ import torch.nn.functional as F
 from torch.distributed import ReduceOp
 
 
+class Handle:
+    def __init__(self, handles, remain_ops) -> None:
+        self.handles = handles
+        self.remain_ops = remain_ops
+
+    def wait(self):
+        for handle in self.handles:
+            handle.wait()
+        self.remain_ops()
+
+
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
     r"""
     casting torch Tensor into specified fp8 tensor with per-channel scaling or per-tensor scaling.
@@ -60,7 +71,9 @@ def cast_from_fp8(
     return ret.to(ret_type)
 
 
-def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, group=None) -> None:
+def all_reduce_fp8(
+    tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, group=None, async_op: bool = False
+) -> None:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_reduce but during communication the data is cast to fp8 format.
@@ -93,9 +106,9 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, gro
     inp = ret.view(torch.uint8)
     input_chunks = list(torch.chunk(inp, world_size, dim=0))
     output_chunks = list(torch.chunk(torch.empty_like(inp), world_size, dim=0))
-    dist.all_to_all(output_chunks, input_chunks, group=group)
+    chunk_handle = dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    dist.all_gather(scale_list, scale, group=group)
+    scale_hanle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
     for scale, out in zip(scale_list, output_chunks):
         out = out.view(fp8_type)
@@ -117,7 +130,7 @@ def all_reduce_fp8(tensor: torch.Tensor, fp8_format="e4m3", op=ReduceOp.SUM, gro
 
 def all_to_all_single_fp8(
     output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
-) -> None:
+) -> Handle:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_to_all_single but during communication the data is cast to fp8 format.
@@ -155,20 +168,27 @@ def all_to_all_single_fp8(
         else:
             output_chunks = [torch.empty_like(input_chunks[0]) for _ in range(world_size)]
 
-    dist.all_to_all(output_chunks, input_chunks, group=group)
+    chunk_handle = dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    dist.all_gather(scale_list, scale, group=group)
-    cast_output_chunk = [
-        cast_from_fp8(out.view(fp8_type), scale, input_type) for scale, out in zip(scale_list, output_chunks)
-    ]
+    scale_hanle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
 
-    tensor_out = torch.cat(cast_output_chunk, dim=0)
-    outputs_shape = list(input_shape)
-    if output_split_sizes is not None:
-        outputs_shape[0] = sum(output_split_sizes)
+    def cast_op():
+        cast_output_chunk = [
+            cast_from_fp8(out.view(fp8_type), scale, input_type) for scale, out in zip(scale_list, output_chunks)
+        ]
+
+        tensor_out = torch.cat(cast_output_chunk, dim=0)
+        outputs_shape = list(input_shape)
+        if output_split_sizes is not None:
+            outputs_shape[0] = sum(output_split_sizes)
+        else:
+            outputs_shape = input_shape
+        output.data = tensor_out.view(outputs_shape).to(input_type)
+
+    if async_op:
+        return Handle([chunk_handle, scale_hanle], cast_op)
     else:
-        outputs_shape = input_shape
-    output.data = tensor_out.view(outputs_shape).to(input_type)
+        cast_op()
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
@@ -236,7 +256,7 @@ def cast_from_fp8_pipeline(inp: Any, del_metadata=True) -> None:
         del inp["fp8_scale"]
 
 
-def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2") -> None:
+def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2", async_op: bool = False) -> None:
     r"""
     This is an in-place operation for compressed reduce_scatter using fp8.
     It works like dist.reduce_scatter but during communication the data is cast to fp8 format.
@@ -263,14 +283,20 @@ def reduce_scatter_fp8(output: torch.Tensor, input_list, group, fp8_format="e5m2
         cast_input_list.append(ret)
         output_chunks.append(torch.empty_like(ret))
         output_scale_list.append(torch.empty_like(scale))
-    dist.all_to_all(output_chunks, cast_input_list, group=group)
-    dist.all_to_all(output_scale_list, scale_list, group=group)
+    chunk_handle = dist.all_to_all(output_chunks, cast_input_list, group=group, async_op=async_op)
+    scale_handle = dist.all_to_all(output_scale_list, scale_list, group=group, async_op=async_op)
 
-    summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
-    for scale, out in zip(output_scale_list, output_chunks):
-        out = out.view(fp8_type)
-        summed_out += cast_from_fp8(out, scale, input_type)
-    output.data = summed_out
+    def cast_op():
+        summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
+        for scale, out in zip(output_scale_list, output_chunks):
+            out = out.view(fp8_type)
+            summed_out += cast_from_fp8(out, scale, input_type)
+        output.data = summed_out
+
+    if async_op:
+        return Handle([chunk_handle, scale_handle], cast_op)
+    else:
+        cast_op()
 
 
 def split_chunk_by_channel(
