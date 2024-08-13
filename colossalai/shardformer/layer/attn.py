@@ -24,6 +24,7 @@ __all__ = [
 
 _flash_attn_forward = _flash_attn_backward = None
 _unpad_input = _pad_input = None
+logger = get_dist_logger()
 
 
 class AttnMaskType(Enum):
@@ -569,6 +570,7 @@ class RingAttention(torch.autograd.Function):
             attention_mask_type == AttnMaskType.PADDED_CAUSAL,
             inner_ring_group,
             inter_ring_group,
+            inter_ring_group_copy,
         )
 
         if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
@@ -599,6 +601,7 @@ class RingAttention(torch.autograd.Function):
         is_packed: Optional[bool] = False,
         inner_ring_group: Optional[dist.ProcessGroup] = None,
         inter_ring_group: Optional[dist.ProcessGroup] = None,
+        inter_ring_group_copy: Optional[dist.ProcessGroup] = None,
     ):
 
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens

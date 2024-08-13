@@ -163,7 +163,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         #     "sequence_parallelism_mode": "ring_attn",
         #     "use_lazy_init": True,
         #     "zero_stage": 2,
-        #     "precision": "bf16",
+        #     "precision": "fp32",
         #     "initial_scale": 1,
         # },
         # Ring Attention + PP
