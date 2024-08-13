@@ -8,14 +8,15 @@ from torch.distributed import ReduceOp
 
 
 class Handle:
-    def __init__(self, handles, remain_ops) -> None:
+    def __init__(self, handles=[], remain_ops=None) -> None:
         self.handles = handles
         self.remain_ops = remain_ops
 
     def wait(self):
         for handle in self.handles:
             handle.wait()
-        self.remain_ops()
+        if self.remain_ops:
+            self.remain_ops()
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> (torch.Tensor, torch.Tensor):
@@ -106,10 +107,15 @@ def all_reduce_fp8(
     inp = ret.view(torch.uint8)
     input_chunks = list(torch.chunk(inp, world_size, dim=0))
     output_chunks = list(torch.chunk(torch.empty_like(inp), world_size, dim=0))
-    chunk_handle = dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
+    chunck_handle = dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    scale_hanle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
+    scale_handle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
+
+    if async_op:
+        chunck_handle.wait()
+        scale_handle.wait()
+
     for scale, out in zip(scale_list, output_chunks):
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
@@ -118,14 +124,23 @@ def all_reduce_fp8(
         summed_out.div_(world_size)
 
     summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
-    dist.all_gather(scale_list, scale, group=group)
+    gather_scale_handle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
 
     tensor_list = [torch.empty_like(summed_out_fp8.view(torch.uint8)) for _ in range(world_size)]
-    dist.all_gather(tensor_list, summed_out_fp8.view(torch.uint8), group=group)
-    for i in range(world_size):
-        tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
-    out = torch.cat(tensor_list, dim=0)
-    tensor.copy_(out[:input_size].view(input_shape).to(input_type))
+    gather_tensor_handle = dist.all_gather(
+        tensor_list, summed_out_fp8.view(torch.uint8), group=group, async_op=async_op
+    )
+
+    def cat_op():
+        for i in range(world_size):
+            tensor_list[i] = tensor_list[i].view(fp8_type).to(input_type) * scale_list[i]
+        out = torch.cat(tensor_list, dim=0)
+        tensor.copy_(out[:input_size].view(input_shape).to(input_type))
+
+    if async_op:
+        return Handle([gather_scale_handle, gather_tensor_handle], cat_op)
+    else:
+        cat_op()
 
 
 def all_to_all_single_fp8(

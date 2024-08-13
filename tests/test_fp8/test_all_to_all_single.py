@@ -11,7 +11,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 @parameterize("shape", [(4,), (1, 8, 16), (4, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
-@parameterize("async_op", [True])
+@parameterize("async_op", [True, False])
 def check_all2all(shape, dtype, async_op):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     output = torch.empty_like(x)
@@ -26,7 +26,7 @@ def check_all2all(shape, dtype, async_op):
 
 @parameterize("shape", [(8, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
-@parameterize("async_op", [True])
+@parameterize("async_op", [True, False])
 def check_all2all_uneven(shape, dtype, async_op):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     input_split_sizes = [3, 3, 1, 1]
