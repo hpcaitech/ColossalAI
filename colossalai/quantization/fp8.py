@@ -130,7 +130,7 @@ def all_reduce_fp8(
 
 def all_to_all_single_fp8(
     output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
-) -> Handle:
+) -> Optional[Handle]:
     r"""
     This is an in-place operation for compressed all_reduce using fp8.
     It works like dist.all_to_all_single but during communication the data is cast to fp8 format.
@@ -402,7 +402,7 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2"):
         output_list[i].copy_(cast_from_fp8(tensor, scale, input_type))
 
 
-def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
+def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
 
     world_size = dist.get_world_size(group)
 
@@ -412,13 +412,19 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2"):
     input_ = ret.view(torch.uint8)
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_.device) for _ in range(world_size)]
-    dist.all_gather(tensor_list, input_, group=group)
-    dist.all_gather(scale_list, scale, group=group)
+    chunk_handle = dist.all_gather(tensor_list, input_, group=group, async_op=async_op)
+    scale_hanle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
 
-    for i in range(world_size):
-        output = tensor_list[i].view(fp8_type)
-        scale = scale_list[i]
-        output_list[i].copy_(cast_from_fp8(output, scale, input_type))
+    def cast_op():
+        for i in range(world_size):
+            output = tensor_list[i].view(fp8_type)
+            scale = scale_list[i]
+            output_list[i].copy_(cast_from_fp8(output, scale, input_type))
+
+    if async_op:
+        return Handle([chunk_handle, scale_hanle], cast_op)
+    else:
+        cast_op()
 
 
 class _LinearFp8(torch.autograd.Function):
