@@ -673,7 +673,8 @@ def _linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.
 
 def linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     out = _linear_fp8(input, weight, bias)
-    if SUPPORT_TORCH_COMPILE:
+    # trick to support grad checkpoint
+    if SUPPORT_TORCH_COMPILE and not torch.is_grad_enabled():
         # avoid modifying the tensor created from cuda graph
         out = out.clone()
     return out
