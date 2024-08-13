@@ -169,7 +169,7 @@ def tokenize_prompt(
         template.messages = template.messages[:-1]
 
     # Prepare data
-    prompt = template.get_prompt(length=len(template.messages) - 1, add_generation_prompt=True)
+    prompt = template.get_prompt(length=len(template.messages), add_generation_prompt=True)
     tokenized = tokenizer([prompt], add_special_tokens=False)["input_ids"][0]
 
     if tokenizer.bos_token_id is not None:

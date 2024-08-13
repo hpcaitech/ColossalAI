@@ -462,26 +462,24 @@ Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of
 
 
 #### Step 1: Data Collection
-The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
+The first step in Stage 1 is to collect a dataset of human demonstrations of the following JSONL format.
 
 
 ```json
-[
-    {"messages":
-      [
-        {
-          "from": "user",
-          "content": "what are some pranks with a pen i can do?"
-        },
-        {
-          "from": "assistant",
-          "content": "Are you looking for practical joke ideas?"
-        },
-        ...
-      ]
+{"messages":
+  [
+    {
+      "from": "user",
+      "content": "what are some pranks with a pen i can do?"
+    },
+    {
+      "from": "assistant",
+      "content": "Are you looking for practical joke ideas?"
     },
     ...
-]
+  ]
+},
+...
 ```
 
 
