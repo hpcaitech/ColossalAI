@@ -1326,9 +1326,11 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
 
         # run with gradients accumulation
-        if model.require_grad_sync == False or (
-            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
-        ) or not torch.is_grad_enabled():
+        if (
+            model.require_grad_sync == False
+            or (isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False)
+            or not torch.is_grad_enabled()
+        ):
             return outputs
 
         # Synchronize the grads of shared parameters of the model.
