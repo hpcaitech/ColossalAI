@@ -154,18 +154,18 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     "test_config",
     [
         # Double Ring Attention
-        # {
-        #     "tp_size": 1,
-        #     "pp_size": 1,
-        #     "sp_size": 4,
-        #     "num_microbatches": 1,
-        #     "enable_sequence_parallelism": True,
-        #     "sequence_parallelism_mode": "ring_attn",
-        #     "use_lazy_init": True,
-        #     "zero_stage": 0,
-        #     "precision": "fp16",
-        #     "initial_scale": 1,
-        # },
+        {
+            "tp_size": 1,
+            "pp_size": 1,
+            "sp_size": 4,
+            "num_microbatches": 1,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring_attn",
+            "use_lazy_init": True,
+            "zero_stage": 0,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         # Ring Attention + PP
         {
             "tp_size": 1,
