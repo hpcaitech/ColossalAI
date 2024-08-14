@@ -193,7 +193,7 @@ def dist_cross_entropy(
             # Pad logits and labels to the same shape across all ranks for TP all_reduce
             if is_tp and parallel_output:
                 # If is packed sequence (label dim is 1), then each seq already has the end label token padded.
-                # NOTE: torch.cat is faster than F.pad...
+                # torch.cat is faster than F.pad...
                 pad_shape = (logits.shape[0], 1, *logits.shape[2:]) if is_packed else (1, *logits.shape[1:])
                 padding = torch.full(pad_shape, _IGNORE_IDX, dtype=logits.dtype, device=logits.device)
                 logits = torch.cat([logits, padding], dim=seq_dim)
@@ -201,9 +201,6 @@ def dist_cross_entropy(
                 pad_shape = (labels.shape[0], 1) if is_packed else (1,)
                 padding = torch.full(pad_shape, _IGNORE_IDX, dtype=labels.dtype, device=labels.device)
                 labels = torch.cat([labels, padding], dim=seq_dim)
-                # pad_shape = [0] * labels.dim() * 2
-                # pad_shape[1] = 1
-                # labels = F.pad(labels, (0, 1, 0, 0), value=_IGNORE_IDX)
     else:
         labels = labels[..., 1:]
         logits = logits[..., :-1, :]

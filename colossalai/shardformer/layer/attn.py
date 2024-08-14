@@ -440,7 +440,8 @@ class RingAttention(torch.autograd.Function):
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
 
         logger.info(
-            f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Pray for the speed-up!"
+            f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Pray for the speed-up!",
+            ranks=[0],
         )
         num_rings = sp_size // inner_ring_size
         inner_ring_group = None

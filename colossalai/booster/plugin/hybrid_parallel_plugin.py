@@ -1121,6 +1121,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                 )
             else:
                 raise NotImplementedError()
+        if sequence_parallelism_mode == "ring_attn":
+            assert parallel_output, "Ring Attention doesn't support gathering output yet."
 
         self.tp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         self.dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
