@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from packaging.version import Version
 from torch.distributed import ReduceOp
 
-SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.3.0")
+SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
 
 
 class Handle:
