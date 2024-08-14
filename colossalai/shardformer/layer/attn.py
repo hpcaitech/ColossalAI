@@ -440,7 +440,7 @@ class RingAttention(torch.autograd.Function):
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
 
         logger.info(
-            f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Pray for the speed-up!",
+            f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Cross your fingers for speed-ups!",
             ranks=[0],
         )
         num_rings = sp_size // inner_ring_size
@@ -1090,7 +1090,7 @@ class RingAttention(torch.autograd.Function):
         if not is_packed:
             dq, dk, dv = [x.view(b, sq, *x.shape[-2:]) for x in (dq, dk, dv)]
 
-        return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None, None, None, None)
+        return (dq, dk, dv, None, None, None, None, None, None, None, None, None, None, None)
 
     @staticmethod
     def prepare_varlen_batch(

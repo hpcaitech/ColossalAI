@@ -182,11 +182,11 @@ def dist_cross_entropy(
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
 
     if sp_mode == "ring_attn":
-        # For Ring Attention, labels should be split and shifted by RingAttention.prepare_varlen_batch()
-        # and parallel_output must be True
-        if sp_rank == sp_size - 1:
+        # For Zigzag Ring Attention, labels should've been split and
+        # shifted by RingAttention.prepare_varlen_batch()
+        if sp_rank == 0:
             logits = logits[..., :-1, :]
-            logits = torch.cat([logits, torch.zeros_like(logits[:, :1, :])], dim=seq_dim)
+            logits = torch.cat([logits, torch.full_like(logits[:, :1, :], _IGNORE_IDX)], dim=seq_dim)
     elif is_sp:
         # Shift only once: either before splitting or in the last rank without splitting
         if split_labels_here or (sp_rank == sp_size - 1):
