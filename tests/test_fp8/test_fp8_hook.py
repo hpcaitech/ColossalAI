@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from colossalai.accelerator import get_accelerator
-from colossalai.booster.plugin.fp8_hook import FP8Hook
 from colossalai.quantization.fp8 import linear_fp8
+from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import get_current_device
