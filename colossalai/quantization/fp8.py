@@ -107,14 +107,10 @@ def all_reduce_fp8(
     inp = ret.view(torch.uint8)
     input_chunks = list(torch.chunk(inp, world_size, dim=0))
     output_chunks = list(torch.chunk(torch.empty_like(inp), world_size, dim=0))
-    chunck_handle = dist.all_to_all(output_chunks, input_chunks, group=group, async_op=async_op)
+    dist.all_to_all(output_chunks, input_chunks, group=group)
     scale_list = [torch.ones(1, dtype=scale.dtype, device=input_device) for _ in range(world_size)]
-    scale_handle = dist.all_gather(scale_list, scale, group=group, async_op=async_op)
+    dist.all_gather(scale_list, scale, group=group)
     summed_out = torch.zeros_like(output_chunks[0]).to(input_type)
-
-    if async_op:
-        chunck_handle.wait()
-        scale_handle.wait()
 
     for scale, out in zip(scale_list, output_chunks):
         out = out.view(fp8_type)
@@ -336,7 +332,8 @@ def all_gather_into_tensor_flat_fp8(
     output_shape: torch.Size,
     group: dist.ProcessGroup,
     fp8_format: str = "e4m3",
-):
+    async_op: bool = False,
+) -> Optional[Handle]:
     """all gather into tensor in fp8 format
 
     Args:
@@ -383,15 +380,17 @@ def all_gather_into_tensor_flat_fp8(
         scale = fp8_max / per_tensor_max
         fp8_input = (scale * input_tensor.float()).to(fp8_type)
     scale_inv = 1.0 / scale
+
     buffer = torch.empty_like(output_tensor, dtype=fp8_type)
     dist.all_gather_into_tensor(buffer.view(torch.uint8), fp8_input.view(torch.uint8), group=group)
+
     numel = np.prod(output_shape)
     valid_buffer = buffer[:numel].reshape(output_shape)
     valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type, per_channel_scale=(len(output_shape) == 2))
     output_tensor[:numel].copy_(valid_buffer.view(-1))
 
 
-def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2"):
+def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async_op=False):
 
     world_size = dist.get_world_size(group)
 
@@ -409,14 +408,20 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2"):
 
     output_scale_list = [torch.empty_like(x) for x in scale_list]
     output_tensor_list = [torch.empty_like(x) for x in tensor_list]
-    dist.all_to_all(output_tensor_list, tensor_list, group=group)
-    dist.all_to_all(output_scale_list, scale_list, group=group)
+    tensor_hanle = dist.all_to_all(output_tensor_list, tensor_list, group=group, async_op=async_op)
+    scale_handle = dist.all_to_all(output_scale_list, scale_list, group=group, async_op=async_op)
 
-    for i in range(world_size):
-        scale = output_scale_list[i]
-        tensor = output_tensor_list[i]
-        tensor = tensor.view(fp8_type)
-        output_list[i].copy_(cast_from_fp8(tensor, scale, input_type))
+    def cast_op():
+        for i in range(world_size):
+            scale = output_scale_list[i]
+            tensor = output_tensor_list[i]
+            tensor = tensor.view(fp8_type)
+            output_list[i].copy_(cast_from_fp8(tensor, scale, input_type))
+
+    if async_op:
+        return Handle([tensor_hanle, scale_handle], cast_op)
+    else:
+        cast_op()
 
 
 def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
