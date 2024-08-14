@@ -1332,7 +1332,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             or not torch.is_grad_enabled()
         ):
             return outputs
-        print("Show torch status:", torch.is_grad_enabled())
+
         # Synchronize the grads of shared parameters of the model.
         model.sync_shared_params()
         # Synchronize sequence parallelism gradients of the model.
