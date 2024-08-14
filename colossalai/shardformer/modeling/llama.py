@@ -143,9 +143,13 @@ class LlamaPipelineForwards:
         # Support SP + PP
         if stage_manager.is_first_stage():
             if sp_mode in ["ring", "split_gather"]:
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+                )
             elif sp_mode == "all_to_all":
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+                )
 
         if self.gradient_checkpointing and self.training and use_cache:
             if use_cache:
@@ -210,9 +214,13 @@ class LlamaPipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
             if sp_mode == "ring" or sp_mode == "split_gather":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+                hidden_states = gather_forward_split_backward(
+                    hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+                )
             elif sp_mode == "all_to_all":
-                hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+                hidden_states = gather_forward_split_backward(
+                    hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication
+                )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

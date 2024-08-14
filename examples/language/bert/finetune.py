@@ -179,7 +179,7 @@ def main():
         "--plugin",
         type=str,
         default="torch_ddp",
-        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero", "hybrid_parallel"],
+        choices=["torch_ddp", "torch_ddp_fp16", "gemini", "low_level_zero", "hybrid_parallel", "torch_fsdp"],
         help="plugin to use",
     )
     parser.add_argument(
@@ -215,9 +215,9 @@ def main():
     if args.plugin == "torch_ddp_fp16":
         booster_kwargs["mixed_precision"] = "fp16"
     if args.plugin.startswith("torch_ddp"):
-        plugin = TorchDDPPlugin()
+        plugin = TorchDDPPlugin(fp8_communication=args.use_fp8_comm)
     elif args.plugin == "gemini":
-        plugin = GeminiPlugin(initial_scale=2**5)
+        plugin = GeminiPlugin(initial_scale=2**5, fp8_communication=args.use_fp8_comm)
     elif args.plugin == "low_level_zero":
         plugin = LowLevelZeroPlugin(initial_scale=2**5)
     elif args.plugin == "hybrid_parallel":
@@ -233,6 +233,17 @@ def main():
             zero_stage=1,
             precision="fp16",
             initial_scale=1,
+            fp8_communication=args.use_fp8_comm,
+        )
+    elif args.plugin == "torch_fsdp":
+        from torch.distributed.fsdp.fully_sharded_data_parallel import MixedPrecision
+
+        from colossalai.booster.plugin import TorchFSDPPlugin
+
+        plugin = TorchFSDPPlugin(
+            mixed_precision=MixedPrecision(
+                param_dtype=torch.float16, reduce_dtype=torch.float16, buffer_dtype=torch.float16
+            ),
             fp8_communication=args.use_fp8_comm,
         )
 

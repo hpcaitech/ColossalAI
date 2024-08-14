@@ -212,7 +212,7 @@ def main():
     if args.plugin == "torch_ddp_fp16":
         booster_kwargs["mixed_precision"] = "fp16"
     if args.plugin.startswith("torch_ddp"):
-        plugin = TorchDDPPlugin()
+        plugin = TorchDDPPlugin(fp8_communication=args.use_fp8_comm)
     elif args.plugin == "gemini":
         plugin = GeminiPlugin(initial_scale=2**5)
     elif args.plugin == "low_level_zero":

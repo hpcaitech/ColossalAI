@@ -177,6 +177,7 @@ class TorchDDPPlugin(DPPluginBase):
         check_reduction: bool = False,
         gradient_as_bucket_view: bool = False,
         static_graph: bool = False,
+        fp8_communication: bool = False,
     ) -> None:
         super().__init__()
         self.ddp_kwargs = dict(
@@ -187,6 +188,7 @@ class TorchDDPPlugin(DPPluginBase):
             gradient_as_bucket_view=gradient_as_bucket_view,
             static_graph=static_graph,
         )
+        self.fp8_communication = fp8_communication
 
     def support_no_sync(self) -> bool:
         return True
@@ -225,6 +227,11 @@ class TorchDDPPlugin(DPPluginBase):
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer = OptimizerWrapper(optimizer)
+
+        if self.fp8_communication:
+            from colossalai.quantization.fp8 import fp8_compress_ddp_grad_comm_hook_async
+
+            model.module.register_comm_hook(None, fp8_compress_ddp_grad_comm_hook_async)
 
         return model, optimizer, criterion, dataloader, lr_scheduler
 
