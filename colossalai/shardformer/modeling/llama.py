@@ -826,8 +826,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        if shard_config.sequence_parallelism_mode == "ring_attn":
-            labels = zigzag_split_batch(labels, shard_config.sequence_parallel_process_group)
 
         if shard_config.sequence_parallelism_mode == "ring_attn" and shard_config.parallel_output:
             # Special processing: Split labels in a zigzag fashion too

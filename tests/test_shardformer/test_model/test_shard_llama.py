@@ -153,7 +153,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
-        # # Double Ring Attention
+        # Double Ring Attention
         # {
         #     "tp_size": 1,
         #     "pp_size": 1,
@@ -162,8 +162,8 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         #     "enable_sequence_parallelism": True,
         #     "sequence_parallelism_mode": "ring_attn",
         #     "use_lazy_init": True,
-        #     "zero_stage": 2,
-        #     "precision": "fp32",
+        #     "zero_stage": 0,
+        #     "precision": "fp16",
         #     "initial_scale": 1,
         # },
         # Ring Attention + PP
@@ -176,7 +176,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "ring_attn",
             "use_lazy_init": True,
             "zero_stage": 1,
-            "precision": "bf16",
+            "precision": "fp16",
             "initial_scale": 1,
         },
         # Ring Attention + TP
@@ -189,7 +189,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "ring_attn",
             "use_lazy_init": True,
             "zero_stage": 2,
-            "precision": "bf16",
+            "precision": "fp16",
             "initial_scale": 1,
         },
         {  # Ulysess + TP
