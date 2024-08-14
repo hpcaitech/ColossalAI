@@ -22,6 +22,18 @@ class Handle:
             self.remain_ops()
 
 
+class Handle:
+    def __init__(self, handles=[], remain_ops=None) -> None:
+        self.handles = handles
+        self.remain_ops = remain_ops
+
+    def wait(self):
+        for handle in self.handles:
+            handle.wait()
+        if self.remain_ops:
+            self.remain_ops()
+
+
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""
     casting torch Tensor into specified fp8 tensor with per-channel scaling or per-tensor scaling.

@@ -22,15 +22,22 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 )
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("fp8_format", ["e4m3", "e5m2"])
-def check_4gpu(shape, dtype, fp8_format):
+@parameterize("async_op", [True, False])
+def check_4gpu(shape, dtype, fp8_format, async_op):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     x_fp8 = x.clone()
-    dist.all_reduce(x)
-    all_reduce_fp8(x_fp8, fp8_format=fp8_format)
+    origin_handle = dist.all_reduce(x, async_op=async_op)
+    fp8_handle = all_reduce_fp8(x_fp8, fp8_format=fp8_format, async_op=async_op)
+    if async_op:
+        origin_handle.wait()
+        fp8_handle.wait()
     assert_close(x, x_fp8, rtol=0.1, atol=0.1)
 
-    dist.all_reduce(x, op=dist.ReduceOp.AVG)
-    all_reduce_fp8(x_fp8, op=dist.ReduceOp.AVG, fp8_format=fp8_format)
+    origin_handle = dist.all_reduce(x, op=dist.ReduceOp.AVG, async_op=async_op)
+    fp8_handle = all_reduce_fp8(x_fp8, op=dist.ReduceOp.AVG, fp8_format=fp8_format, async_op=async_op)
+    if async_op:
+        origin_handle.wait()
+        fp8_handle.wait()
     assert_close(x, x_fp8, rtol=0.1, atol=0.1)
 
 
