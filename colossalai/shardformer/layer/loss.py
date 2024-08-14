@@ -153,7 +153,6 @@ def dist_cross_entropy(
     labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
     logits: torch.Tensor,  # [B, S, Vocab_size]
     shard_config: ShardConfig,
-    out_features: int,
     vocab_size: int,
     dtype: torch.dtype,
     seq_dim: int = 1,
@@ -226,13 +225,13 @@ def dist_cross_entropy(
             logits,
             labels,
             process_group=shard_config.tensor_parallel_process_group,
-            vocab_size=out_features,
+            vocab_size=vocab_size,
             dtype=dtype,
             mode="sum",
         )
     else:
         # NOTE if use TP and not parallel_output, the output is gathered in VocabParallelLMHead1D
-        logits = logits.view(-1, vocab_size)
+        logits = logits.view(-1, logits.size(-1))
         loss = loss_fct(logits, labels)
 
     # Reduce loss instead of gathering logits over seq dim for savings

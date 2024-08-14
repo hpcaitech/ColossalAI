@@ -183,6 +183,15 @@ class ChatGLMPipelineForwards:
         if full_attention_mask is None:
             if (attention_mask is not None and not attention_mask.all()) or (past_key_values and seq_length != 1):
                 full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
+
+        # Support SP + PP
+        sp_size = shard_config.sequence_parallel_size
+        sp_mode = shard_config.sequence_parallelism_mode
+        sp_group = shard_config.sequence_parallel_process_group
+        # For generating full positions ids (the states will be gathered along the seq dim before attention fwd).
+        if sp_mode != "ring_attn" and not stage_manager.is_first_stage():
+            seq_length *= sp_size
+
         # Rotary positional embeddings
         rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
         if position_ids is not None:
@@ -206,11 +215,11 @@ class ChatGLMPipelineForwards:
         # Keep the input split across all PP stages
         if stage_manager.is_first_stage():
             if shard_config.enable_sequence_parallelism:
-                if shard_config.sequence_parallelism_mode == "split_gather":
+                if sp_mode == "split_gather":
                     hidden_states = split_forward_gather_backward(
                         hidden_states,
                         dim=0,
-                        process_group=shard_config.tensor_parallel_process_group,
+                        process_group=sp_group,
                     )
                 elif shard_config.sequence_parallelism_mode == "all_to_all":
                     hidden_states = split_forward_gather_backward(
@@ -255,7 +264,9 @@ class ChatGLMPipelineForwards:
             # Gather seq-wise in the final output stage
             sp_mode = shard_config.sequence_parallelism_mode
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+                hidden_states = gather_sp_output(
+                    hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
+                )
 
             if not return_dict:
                 return tuple(
@@ -321,9 +332,21 @@ class ChatGLMPipelineForwards:
                 hidden_states = hidden_states[-1:]
             lm_logits = self.transformer.output_layer(hidden_states)
             lm_logits = lm_logits.transpose(0, 1).contiguous()
-            loss = dist_cross_entropy(
-                labels, lm_logits, shard_config, self.lm_head.out_features, self.config.vocab_size, lm_logits.dtype
-            )
+
+            loss = None
+            if labels is not None:
+                # ChatGLM doesn't have lm_head split
+                enable_tp = shard_config.enable_tensor_parallelism
+                shard_config.enable_tensor_parallelism = False
+                loss = dist_cross_entropy(
+                    labels,
+                    lm_logits,
+                    shard_config,
+                    self.transformer.output_layer.out_features,
+                    lm_logits.dtype,
+                )
+                shard_config.enable_tensor_parallelism = enable_tp
+
             if not return_dict:
                 output = (lm_logits,) + transformer_outputs[1:]
                 return ((loss,) + output) if loss is not None else output
@@ -424,7 +447,9 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
         )
 
         if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-            hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+            hidden_states = gather_sp_output(
+                hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
+            )
 
         if not return_dict:
             return tuple(

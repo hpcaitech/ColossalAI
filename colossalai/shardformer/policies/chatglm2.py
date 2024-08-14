@@ -64,7 +64,7 @@ class ChatGLMPolicy(Policy):
 
         if sp_mode == "ring":
             warnings.warn(
-                f"For ChatGLM2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
+                f"For ChatGLM2, sequence parallelism doesn't support mode {sp_mode} yet, will set to be split_gather"
             )
             sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap

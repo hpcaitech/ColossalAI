@@ -93,10 +93,16 @@ class CommandPipelineForwards:
             if not isinstance(past_key_values, StaticCache):
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
                 past_seen_tokens = past_key_values.get_seq_length()
+
+        # NOTE: For generating full positions ids
+        # (the states will be gathered along the seq dim before attention fwd).
+        if shard_config.sequence_parallelism_mode != "ring_attn" and not stage_manager.is_first_stage():
+            seq_length *= shard_config.sequence_parallel_size
+
         if cache_position is None:
             if isinstance(past_key_values, StaticCache):
                 raise ValueError("cache_position is a required argument when using StaticCache.")
-            cache_position = torch.arange(past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=device)
+            cache_position = torch.arange(past_seen_tokens, past_seen_tokens + seq_length, device=device)
 
         seq_length_with_past = seq_length + past_seen_tokens
 
@@ -136,7 +142,7 @@ class CommandPipelineForwards:
                 )
                 use_cache = False
 
-        if shard_config.enable_sequence_parallelism:
+        if stage_manager.is_first_stage() and shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode in ["split_gather", "ring"]:
                 hidden_states = split_forward_gather_backward(
                     hidden_states,
@@ -320,9 +326,10 @@ class CommandPipelineForwards:
             logits = self.lm_head(hidden_states)
             logits = logits * self.logit_scale
             logits = logits.float()
-            loss = dist_cross_entropy(
-                labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
-            )
+
+            loss = None
+            if labels is not None:
+                loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, self.model.dtype)
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -659,14 +666,16 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         logits = self.lm_head(hidden_states)
         logits = logits * self.logit_scale
         logits = logits.float()
-        loss = dist_cross_entropy(
-            labels,
-            logits,
-            shard_config,
-            self.lm_head.out_features,
-            self.config.vocab_size,
-            self.model.dtype,
-        )
+
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(
+                labels,
+                logits,
+                shard_config,
+                self.lm_head.out_features,
+                self.model.dtype,
+            )
 
         if not return_dict:
             output = (logits,) + outputs[1:]
