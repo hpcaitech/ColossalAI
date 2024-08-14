@@ -421,7 +421,7 @@ class RingAttention(torch.autograd.Function):
         sp_rank = dist.get_rank(sp_group)
 
         if inner_ring_size is None:
-            if torch.cuda.device_count() < dist.get_world_size():
+            if torch.cuda.device_count() >= dist.get_world_size():
                 # single node, no need to consider NICs
                 return sp_group, sp_group
             if sp_size <= 4:
@@ -527,16 +527,11 @@ class RingAttention(torch.autograd.Function):
         if RingAttention.SP_GROUP is not sp_group:
             RingAttention.SP_GROUP = sp_group
             inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(sp_group, inner_ring_size)
-            # Create copies for forward 2-stream concurrent communication and dkv, kv comms in backward.
-            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY = clone_pg(inner_ring_group)
-            inter_ring_group_copy = RingAttention.INTER_RING_GROUP_COPY = clone_pg(inter_ring_group)
             RingAttention.INNER_RING_GROUP = inner_ring_group
             RingAttention.INTER_RING_GROUP = inter_ring_group
         else:
             inner_ring_group = RingAttention.INNER_RING_GROUP
             inter_ring_group = RingAttention.INTER_RING_GROUP
-            inner_ring_group_copy = RingAttention.INNER_RING_GROUP_COPY
-            inter_ring_group_copy = RingAttention.INTER_RING_GROUP_COPY
 
         # (B, H, Sq, D) -> (B, Sq, H, D)
         q, k, v = [x.transpose(1, 2).contiguous() for x in (q, k, v)]
@@ -577,9 +572,7 @@ class RingAttention(torch.autograd.Function):
             return_softmax,
             attention_mask_type == AttnMaskType.PADDED_CAUSAL,
             inner_ring_group,
-            inner_ring_group_copy,
             inter_ring_group,
-            inter_ring_group_copy,
         )
 
         if attention_mask_type == AttnMaskType.PADDED_CAUSAL:
@@ -609,9 +602,7 @@ class RingAttention(torch.autograd.Function):
         return_softmax: Optional[bool] = False,
         is_packed: Optional[bool] = False,
         inner_ring_group: Optional[dist.ProcessGroup] = None,
-        inner_ring_group_copy: Optional[dist.ProcessGroup] = None,
         inter_ring_group: Optional[dist.ProcessGroup] = None,
-        inter_ring_group_copy: Optional[dist.ProcessGroup] = None,
     ):
 
         cu_seqlens_q = cu_seqlens_kv = cu_seqlens
@@ -656,7 +647,7 @@ class RingAttention(torch.autograd.Function):
         sp_size = dist.get_world_size(sp_group)
         sp_rank = dist.get_rank(sp_group)
         # Attempt to achieve concurrent comm in the two-stream forward
-        local_kv_comms = [RingComm(inner_ring_group), RingComm(inner_ring_group_copy)]
+        local_kv_comms = [RingComm(inner_ring_group) for _ in range(2)]
         inter_ring_comm = RingComm(inter_ring_group)
         local_sp_size = dist.get_world_size(inner_ring_group)
         local_sp_rank = dist.get_rank(inner_ring_group)
@@ -707,16 +698,16 @@ class RingAttention(torch.autograd.Function):
             # (Hopefully) overlap output correction with next flash attn
             for i in range(local_sp_size):
                 with torch.cuda.stream(sp_streams[i % 2]):
+                    # Wait for current kv from prev rank
+                    # NOTE: waiting outside the current stream will NOT correctly synchronize.
+                    if i > 0:
+                        local_kv_comms[(i + 1) % 2].wait()
+
                     # Avoid overwriting attn input when it shares mem with buffer
                     if not RingAttention.ATTN_DONE.query():
                         kv_buffers[(i + 1) % 2] = torch.empty_like(kv_buffers[i % 2])
                     if i < local_sp_size - 1:
                         local_kv_comms[i % 2].send_recv(kv_buffers[i % 2], kv_buffers[(i + 1) % 2])
-
-                    # Wait for current kv from prev rank
-                    # NOTE: waiting outside the current stream will NOT correctly synchronize.
-                    if i > 0:
-                        local_kv_comms[(i + 1) % 2].wait()
 
                     if i == 0:
                         # Compute with local KV; no mask
@@ -850,9 +841,7 @@ class RingAttention(torch.autograd.Function):
         ctx.is_packed = is_packed
 
         ctx.kv_group = inner_ring_group
-        ctx.dkv_group = inner_ring_group_copy
         ctx.inter_kv_group = inter_ring_group
-        ctx.inter_dkv_group = inter_ring_group_copy
 
         ctx.save_for_backward(
             q,
@@ -901,9 +890,7 @@ class RingAttention(torch.autograd.Function):
         # Sequence parallel args
         sp_group = ctx.sp_group
         local_kv_group = ctx.kv_group
-        ctx.dkv_group
         inter_kv_group = ctx.inter_kv_group
-        ctx.inter_dkv_group
 
         local_sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
@@ -1122,7 +1109,7 @@ class RingAttention(torch.autograd.Function):
             sp_group (dist.ProcessGroup): Process group for sequence parallelism
             inputs_embeds (torch.Tensor): Input embeddings. Shape should be [B, Sq, ...]
             position_ids (Optional[torch.Tensor], optional): Position ids of shape [Sq] or [1, Sq]. Defaults to None.
-            is_label (bool, optional): Whether the input is a label tensor. If True, mask out the first
+            is_label (bool, optional): Whether inputs_embeds is instead a label tensor. If True, mask out the first
                 token of each sequence.
             is_2d (bool, optional): Whether to return 2D outputs padded to max_seqlen // sp_size or flatten
                 the batch dim to a packed 1d sequence. Contingent on model forward shape definitions.

@@ -291,7 +291,9 @@ def create_randomizer_with_offset(
     return Randomizer(seed=base_seed)
 
 
-def split_batch_zigzag(batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim=1):
+def split_batch_zigzag(
+    batch: Union[torch.Tensor, List[torch.Tensor]], sp_group: ProcessGroup, seq_dim: int = 1, is_label: bool = False
+) -> Union[torch.Tensor, List[torch.Tensor]]:
     """
     Split the input along the sequence dimension for Ring Attention. Naively spliting the attention mask
     in the causal setting will result in the preceding ranks having much less workload.
@@ -302,6 +304,7 @@ def split_batch_zigzag(batch: Union[torch.Tensor, List[torch.Tensor]], sp_group:
         batch (List[torch.Tensor] or Tensor): The input tensor(s) to split.
         sp_group (ProcessGroup): The process group for sequence parallelism.
         seq_dim (int): The sequence dimension to split.
+        is_label (bool): If True, mask and shift the tensor for next token prediction.
 
     """
     sp_size = dist.get_world_size(sp_group)
@@ -315,6 +318,9 @@ def split_batch_zigzag(batch: Union[torch.Tensor, List[torch.Tensor]], sp_group:
             assert (
                 tensor.shape[seq_dim] // (sp_size * 2) > 1 and tensor.shape[seq_dim] % (sp_size * 2) == 0
             ), f"Bro, the seq length {tensor.shape[seq_dim]} for tensor {idx} can't be split by {sp_size * 2}!"
+            if is_label:
+                assert tensor.dim() == 2, "Label shape should be (B, Seqlen)"
+                tensor = torch.cat([tensor[:, 1:], torch.full_like(tensor[:, :1], -100)], dim=1)
 
             tensor = tensor.view(
                 *tensor.shape[:seq_dim],
@@ -371,10 +377,7 @@ def split_varlen_zigzag(
             assert max_seqlen % (sp_size * 2) == 0
             # Recreate a padded tensor with the new max seqlen
             shape = (packed_seq.shape[0], max_seqlen // sp_size, *packed_seq.shape[2:])
-            if is_label:
-                local_seq = torch.full(shape, -100, dtype=dtype, device=device)
-            else:
-                local_seq = torch.zeros(shape, dtype=dtype, device=device)
+            local_seq = torch.zeros(shape, dtype=dtype, device=device)
         else:
             total_seqlen = cu_seqlens[-1]
             assert (
@@ -392,7 +395,9 @@ def split_varlen_zigzag(
             if is_2d:
                 seq = packed_seq[j][:seqlen]
                 if is_label:
-                    seq[0] = -100
+                    # Shift one position to the right for next token prediction
+                    seq = torch.cat([seq[1:], torch.tensor([-100], dtype=dtype, device=device)])
+
                 seq = seq.chunk(2 * sp_size, dim=0)
                 half = seqlen // sp_size // 2
                 local_seq[j][:half] = seq[sp_rank]
@@ -400,7 +405,7 @@ def split_varlen_zigzag(
             else:
                 seq = packed_seq[start:end]
                 if is_label:
-                    seq[0] = -100
+                    seq = torch.cat(seq[1:], torch.tensor([-100], dtype=dtype, device=device))
                 seq = seq.chunk(sp_size * 2)
                 local_seq.extend([seq[sp_rank], seq[2 * sp_size - 1 - sp_rank]])
 

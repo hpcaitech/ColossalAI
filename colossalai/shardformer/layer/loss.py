@@ -180,11 +180,17 @@ def dist_cross_entropy(
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
     split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
-    if is_sp:
-        # shift only once: either before splitting or on the last rank without splitting
+
+    if sp_mode == "ring_attn":
+        # For Ring Attention, labels should be split and shifted by RingAttention.prepare_varlen_batch()
+        # and parallel_output must be True
+        if sp_rank == sp_size - 1:
+            logits = logits[..., :-1, :]
+            logits = torch.cat([logits, torch.zeros_like(logits[:, :1, :])], dim=seq_dim)
+    elif is_sp:
+        # Shift only once: either before splitting or in the last rank without splitting
         if split_labels_here or (sp_rank == sp_size - 1):
             labels = labels[..., 1:]
-        # Split labels when logits are split
         if split_labels_here:
             labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
 
@@ -197,7 +203,6 @@ def dist_cross_entropy(
                 pad_shape = (logits.shape[0], 1, *logits.shape[2:]) if is_packed else (1, *logits.shape[1:])
                 padding = torch.full(pad_shape, _IGNORE_IDX, dtype=logits.dtype, device=logits.device)
                 logits = torch.cat([logits, padding], dim=seq_dim)
-
                 pad_shape = (labels.shape[0], 1) if is_packed else (1,)
                 padding = torch.full(pad_shape, _IGNORE_IDX, dtype=labels.dtype, device=labels.device)
                 labels = torch.cat([labels, padding], dim=seq_dim)

@@ -564,7 +564,13 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if sp_mode == "ring_attn":
-            attn_output = RingAttention.attention(query_states, key_states, value_states, sp_group, **attention_mask)
+            attn_output = RingAttention.attention(
+                query_states,
+                key_states,
+                value_states,
+                sp_group,
+                **attention_mask,
+            )
 
         elif shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
@@ -824,7 +830,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             # Special processing: Split labels in a zigzag fashion too
             sp_group = shard_config.sequence_parallel_process_group
             if attention_mask.bool().all():
-                labels = split_batch_zigzag(labels, sp_group, seq_dim=1)
+                labels = split_batch_zigzag(labels, sp_group, seq_dim=1, is_label=True)
             else:
                 # [B, max_seq_len // sp_size]
                 labels, _, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group, labels, is_label=True)
