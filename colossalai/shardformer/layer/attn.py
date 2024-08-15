@@ -24,7 +24,6 @@ __all__ = [
 
 _flash_attn_forward = _flash_attn_backward = None
 _unpad_input = _pad_input = None
-logger = get_dist_logger()
 
 
 class AttnMaskType(Enum):
@@ -434,7 +433,6 @@ class RingAttention(torch.autograd.Function):
         assert (
             sp_size % inner_ring_size == 0
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
-
         logger = get_dist_logger()
         logger.info(
             f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Cross your fingers for speed-ups!",
