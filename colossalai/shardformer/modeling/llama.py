@@ -570,6 +570,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 value_states,
                 sp_group,
                 **attention_mask,
+                inner_ring_size=shard_config.inner_ring_size,
             )
 
         elif shard_config.enable_flash_attention:

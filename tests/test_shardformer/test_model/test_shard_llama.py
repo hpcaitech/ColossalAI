@@ -165,6 +165,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
+            "inner_ring_size": 2,
         },
         # Ring Attention + PP
         {

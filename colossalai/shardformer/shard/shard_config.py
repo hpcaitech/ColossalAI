@@ -49,6 +49,8 @@ class ShardConfig:
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    # For ring attention
+    inner_ring_size: Optional[int] = None
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
