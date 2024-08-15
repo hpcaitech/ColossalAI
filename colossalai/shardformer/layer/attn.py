@@ -24,7 +24,6 @@ __all__ = [
 
 _flash_attn_forward = _flash_attn_backward = None
 _unpad_input = _pad_input = None
-logger = get_dist_logger()
 
 
 class AttnMaskType(Enum):
@@ -167,10 +166,6 @@ class ColoAttention:
                 attention_mask = attention_mask.tril(diagonal=0)
             attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
-            assert q_padding_mask.shape == (
-                b,
-                s_kv,
-            ), f"q_padding_mask shape {q_padding_mask.shape} should be {b, s_kv}."
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
                 # self attention
@@ -178,11 +173,11 @@ class ColoAttention:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = max_seqlen_q, cu_seqlens_q, q_indices
             else:
                 max_seqlen_kv, cu_seqlens_kv, kv_indices = get_pad_info(kv_padding_mask)
-            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             assert kv_padding_mask.shape == (
                 b,
                 s_kv,
-            ), f"q_padding_mask shape {kv_padding_mask.shape} should be the same. ({shape_4d})"
+            ), f"Padding mask shape {kv_padding_mask.shape} should align with shape 4d ({b}, {s_kv})"
+            attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
             outputs.update(
                 {
                     "cu_seqlens_q": cu_seqlens_q,
@@ -439,6 +434,7 @@ class RingAttention(torch.autograd.Function):
             sp_size % inner_ring_size == 0
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
 
+        logger = get_dist_logger()
         logger.info(
             f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Cross your fingers for speed-ups!",
             ranks=[0],
