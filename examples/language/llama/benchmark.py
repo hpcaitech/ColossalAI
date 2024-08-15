@@ -10,6 +10,7 @@ from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator, get_profile_context
 from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload, MixedPrecision
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM
 from transformers.models.llama.configuration_llama import LlamaConfig
@@ -17,11 +18,13 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchFSDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchFSDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
+
+# torch._dynamo.config.optimize_ddp=False
 
 warnings.filterwarnings("ignore")
 # ==============================
@@ -64,7 +67,7 @@ def main():
     parser.add_argument(
         "-p",
         "--plugin",
-        choices=["gemini", "gemini_auto", "fsdp", "fsdp_cpu", "3d", "3d_cpu"],
+        choices=["gemini", "gemini_auto", "fsdp", "fsdp_cpu", "3d", "3d_cpu", "zero"],
         default="gemini",
         help="Choose which plugin to use",
     )
@@ -204,7 +207,7 @@ def main():
             zero_stage=args.zero,
             sp_size=args.sp,
             enable_sequence_parallelism=args.sp > 1,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=False,
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
@@ -215,6 +218,8 @@ def main():
             use_fp8=args.use_fp8,
             **hybrid_kwargs,
         )
+    elif args.plugin == "zero":
+        plugin = LowLevelZeroPlugin(initial_scale=2**5, fp8_communication=args.use_fp8_comm, use_fp8=args.use_fp8)
     elif args.plugin == "3d_cpu":
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
@@ -223,7 +228,7 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             cpu_offload=True,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=False,
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             initial_scale=2**8,
@@ -259,7 +264,7 @@ def main():
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
         else nullcontext()
     )
-
+    init_ctx = nullcontext()
     init_kwargs = {}
     if config.model_type == "chatglm":
         init_kwargs["empty_init"] = False
@@ -276,6 +281,24 @@ def main():
         model.gradient_checkpointing_enable()
         if config.model_type == "chatglm":
             model.transformer.encoder.gradient_checkpointing = True
+
+    # test lora
+    from peft import LoraConfig
+
+    # lora_config = LoraConfig(
+    #     # init_lora_weights="pissa_niter_4", # Initialize the PiSSA with fast SVD, which completes in just a few seconds.
+    # )
+    # lora_config = LoraConfig(task_type="CAUSAL_LM", r=20, lora_alpha=32, lora_dropout=0.1)
+    config_params = {
+        "init_lora_weights": "pissa_niter_4",  # Initialize the PiSSA with fast SVD, which completes in just a few seconds.
+        "task_type": "CAUSAL_LM",
+        "r": 32,
+        "lora_alpha": 32,
+        "lora_dropout": 0.1,
+    }
+
+    lora_config = LoraConfig(**config_params)
+    model = plugin.enable_lora(model, lora_config=lora_config)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -300,6 +323,8 @@ def main():
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
     )
+
+    writer = SummaryWriter("tensorboard/loss")
 
     with get_profile_context(
         args.profile,
@@ -331,6 +356,8 @@ def main():
                 performance_evaluator.on_step_start(step)
                 outputs = model(**batch)
                 loss = outputs[0]
+                if dist.get_rank() == 0:
+                    writer.add_scalar(tag="Loss", scalar_value=loss.item(), global_step=step)
                 booster.backward(loss, optimizer)
                 optimizer.step()
                 optimizer.zero_grad()
