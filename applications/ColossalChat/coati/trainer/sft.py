@@ -114,7 +114,8 @@ class SFTTrainer(SLTrainer):
                 )
                 loss = outputs["loss"]
                 if dist.get_rank() == dist.get_world_size() - 1:
-                    step_bar.set_postfix({"train/loss": loss.item()})
+                    global_loss = all_reduce_mean(loss, self.booster)
+                    step_bar.set_postfix({"train/loss": global_loss.item()})
                     step_bar.update()
                 self.optimizer.step()
                 self.optimizer.zero_grad()

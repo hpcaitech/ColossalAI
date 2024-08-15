@@ -9,6 +9,8 @@ import torch.distributed as dist
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
+from colossalai.booster import Booster
+
 
 class CycledDataLoader:
     """
@@ -85,7 +87,7 @@ def to_device(x: Any, device: torch.device) -> Any:
     return tree_map(_to, x)
 
 
-def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
+def all_reduce_mean(tensor: torch.Tensor, booster: Booster) -> torch.Tensor:
     """
     Perform all-reduce operation on the given tensor and compute the mean across all processes.
 
@@ -95,8 +97,12 @@ def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The reduced tensor with mean computed across all processes.
     """
-    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
-    tensor.div_(dist.get_world_size())
+    if booster is not None:
+        dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM, group=booster.plugin.dp_group)
+        tensor.div_(booster.plugin.dp_size)
+    else:
+        dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
+        tensor.div_(dist.get_world_size())
     return tensor
 
 
