@@ -9,8 +9,6 @@ import torch.distributed as dist
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
-from colossalai.booster import Booster
-
 
 class CycledDataLoader:
     """
