@@ -1,7 +1,7 @@
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func
+from flash_attn import flash_attn_varlen_qkvpacked_func
 from torch.testing import assert_close
 
 import colossalai
