@@ -889,7 +889,7 @@ class RingAttention(torch.autograd.Function):
 
         local_sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
-        dist.get_rank(sp_group)
+
         # Using separate streams (pg) for concurrent kv and dkv comm may
         # cause NCCL "software caused connection abort" here...
         local_kv_comm = RingComm(local_kv_group)
