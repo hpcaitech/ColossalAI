@@ -91,7 +91,7 @@ def run_lora_test():
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         task_type = None
-        if name == "transformers_llama_for_casual_lm":
+        if name == "transformers_llama_for_causal_lm":
             task_type = "CAUSAL_LM"
         if name == "transformers_llama_for_sequence_classification":
             task_type = "SEQ_CLS"

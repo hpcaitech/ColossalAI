@@ -6,6 +6,7 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
@@ -103,13 +104,13 @@ def examine_pp(num_microbatch: int, batch_size: int):
 
     # check loss
     if stage_manager.is_last_stage():
-        assert torch.allclose(torch_loss, pp_ret["loss"])
+        assert_close(torch_loss, pp_ret["loss"])
 
     # check gradients
     for i in range(len(sharded_model)):
         idx = rank * num_local_layer + i
-        assert torch.allclose(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
-        assert torch.allclose(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
+        assert_close(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
+        assert_close(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
 
     # step
     torch_optimizer.step()
@@ -119,8 +120,8 @@ def examine_pp(num_microbatch: int, batch_size: int):
     # check updated param
     for i in range(len(sharded_model)):
         idx = rank * num_local_layer + i
-        assert torch.allclose(torch_model.layers[idx].weight, sharded_model[i].weight)
-        assert torch.allclose(torch_model.layers[idx].bias, sharded_model[i].bias)
+        assert_close(torch_model.layers[idx].weight, sharded_model[i].weight)
+        assert_close(torch_model.layers[idx].bias, sharded_model[i].bias)
 
     # forward only
     with torch.no_grad():
@@ -131,14 +132,14 @@ def examine_pp(num_microbatch: int, batch_size: int):
             sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
         )
         if stage_manager.is_last_stage():
-            assert torch.allclose(torch_loss, pp_ret["loss"])
+            assert_close(torch_loss, pp_ret["loss"])
 
         for layer in sharded_model:
             if layer.weight.grad is None:
                 assert layer.weight.grad is None and layer.bias.grad is None
             else:
-                assert torch.allclose(layer.weight.grad, torch.zeros_like(layer.weight.grad))
-                assert torch.allclose(layer.bias.grad, torch.zeros_like(layer.bias.grad))
+                assert_close(layer.weight.grad, torch.zeros_like(layer.weight.grad))
+                assert_close(layer.bias.grad, torch.zeros_like(layer.bias.grad))
 
 
 def run_dist(

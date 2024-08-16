@@ -88,6 +88,7 @@ def check_attn_func(dtype: torch.dtype, attn_func, attn_kwargs: dict, padding_ma
         padding_mask = padding_mask[:, None, :, None].logical_not()
         ref_output = ref_output.masked_fill(padding_mask, 0)
         output = output.masked_fill(padding_mask, 0)
+
     assert_close(output, ref_output, **tols)
     output.mean().backward()
     ref_output.mean().backward()
@@ -128,6 +129,8 @@ def test_flash_attn_func(dtype: torch.dtype):
         attn_kwargs, padding_mask = gen_kwargs_func(dtype)
         for attn_func, name, need_postprocess in attn_funcs:
             print(f"{dtype}, {name}, {mask_type}")
+            if mask_type == "padded":
+                pass
             if need_postprocess:
                 check_attn_func(dtype, attn_func, post_process_kwargs_for_raw_attn(attn_kwargs), padding_mask)
             else:
