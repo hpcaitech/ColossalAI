@@ -292,15 +292,7 @@ class CommandForCausalLMPolicy(CommandPolicy):
     def module_policy(self):
         from transformers import CohereForCausalLM
 
-<<<<<<< HEAD
-<<<<<<< HEAD
         self.is_causal = True
-=======
-        self.is_casual = True
->>>>>>> precision tests passed
-=======
-        self.is_causal = True
->>>>>>> precision tests passed
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:

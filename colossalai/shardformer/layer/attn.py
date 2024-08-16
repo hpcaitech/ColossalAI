@@ -654,11 +654,6 @@ class RingAttention(torch.autograd.Function):
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
 
-        # Non-contiguous indexing creates a new contiguous tensor,
-        # so only do it once
-        if sp_rank != sp_size - 1:
-            q1 = q[half_idx_back]
-
         # Pre-allocate double buffer for overlapping and receiving next step's inputs
         kv_buffers = [torch.stack((k, v))]  # (2, B, Sq, H, D)
         kv_buffers.append(torch.empty_like(kv_buffers[0]))
@@ -894,7 +889,7 @@ class RingAttention(torch.autograd.Function):
 
         local_sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
-        sp_rank = dist.get_rank(sp_group)
+        dist.get_rank(sp_group)
         # Using separate streams (pg) for concurrent kv and dkv comm may
         # cause NCCL "software caused connection abort" here...
         local_kv_comm = RingComm(local_kv_group)
@@ -912,10 +907,6 @@ class RingAttention(torch.autograd.Function):
             inter_ring_rank = 0
 
         if local_sp_rank != sp_size - 1:
-            softmax_lse1 = softmax_lse[:, half_idx_back]
-        dout = dout.contiguous()
-
-        if sp_rank != sp_size - 1:
             softmax_lse1 = softmax_lse[:, half_idx_back]
         dout = dout.contiguous()
 
