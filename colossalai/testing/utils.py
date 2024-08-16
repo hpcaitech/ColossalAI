@@ -176,7 +176,7 @@ def rerun_if_address_is_in_use():
     else:
         exception = Exception
 
-    func_wrapper = rerun_on_exception(exception_type=exception, pattern=".*Address already in use.*")
+    func_wrapper = rerun_on_exception(exception_type=exception, pattern=".*(A|a)ddress already in use.*")
     return func_wrapper
 
 
