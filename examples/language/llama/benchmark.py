@@ -259,7 +259,6 @@ def main():
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
         else nullcontext()
     )
-
     init_kwargs = {}
     if config.model_type == "chatglm":
         init_kwargs["empty_init"] = False
