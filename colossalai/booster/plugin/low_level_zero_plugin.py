@@ -1,7 +1,5 @@
 import enum
-import logging
 import os
-import warnings
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
@@ -33,6 +31,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.tensor.colo_parameter import ColoParameter
@@ -113,6 +112,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
             save_state_dict(state_dict, checkpoint, use_safetensors=False)
+        self.logger = get_dist_logger()
 
     def save_sharded_optimizer(
         self,
@@ -138,7 +138,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         """
         assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before saving!"
         if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         index_file.append_meta_data("total_size", total_size)
         if self.coordinator.is_master():
             index_file.write_index_file(save_index_file)
-        logging.info(
+        self.logger.info(
             f"The optimizer is going to be split to checkpoint shards. "
             f"You can find where each parameters has been saved in the "
             f"index located at {save_index_file}."
@@ -265,7 +265,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
     def save_lora_as_pretrained(self, model, checkpoint, use_safetensors):
         if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
         from peft import PeftModel
 
@@ -360,7 +360,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         )
         self.lora_enabled = False
         self.verbose = verbose
-
+        self.logger = get_dist_logger()
         # set class name with stage, for better error message
         setattr(self.__class__, "__name__", f"LowLevelZeroPlugin_ZeRO-{stage}")
 
@@ -396,7 +396,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
-        warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
+        self.logger.warning("You have enabled LoRa training. Please check the hyperparameters such as lr")
 
         if bnb_quantization_config is not None:
             model = quantize_model(model, bnb_quantization_config)
@@ -445,7 +445,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                 origin_param = name2param[origin_key]
                 group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
                 if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
-                    warnings.warn(
+                    self.logger.warning(
                         f"Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
                     )
                 elif (
@@ -486,7 +486,9 @@ class LowLevelZeroPlugin(DPPluginBase):
         optimizer = cast_to_distributed(optimizer)
 
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
-            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            self.logger.warning(
+                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO."
+            )
             zero_optim_kwargs["partition_grad"] = False
             zero_stage = 0
 
