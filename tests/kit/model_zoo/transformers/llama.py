@@ -80,7 +80,6 @@ if HAS_LLAMA:
         data_gen_fn=data_gen_for_causal_lm,
         output_transform_fn=output_transform_fn,
         loss_fn=loss_fn_for_causal_lm,
-<<<<<<< HEAD
         model_attribute=ModelAttribute(has_control_flow=True),
     )
     model_zoo.register(
@@ -97,8 +96,6 @@ if HAS_LLAMA:
         data_gen_fn=data_gen,
         output_transform_fn=output_transform_fn,
         loss_fn=loss_fn,
-=======
->>>>>>> precision tests passed
         model_attribute=ModelAttribute(has_control_flow=True),
     )
     model_zoo.register(

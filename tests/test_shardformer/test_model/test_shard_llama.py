@@ -214,22 +214,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "all_to_all",
             "enable_all_optimization": True,
             "use_lazy_init": True,
-<<<<<<< HEAD
             "zero_stage": 1,
-=======
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-        },
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
->>>>>>> precision tests passed
             "precision": "fp16",
             "initial_scale": 1,
         },
@@ -385,8 +370,4 @@ def test_llama_3d():
 
 if __name__ == "__main__":
     test_llama()
-<<<<<<< HEAD
     test_llama_3d()
-=======
-    # test_llama_3d()
->>>>>>> precision tests passed
