@@ -119,7 +119,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(model, GeminiDDP), "Please boost the model before saving!"
         if os.path.isfile(checkpoint_path):
-            self.logger.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint_path}) should be a directory, not a file", ranks=[0])
             return
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
@@ -147,7 +147,8 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             self.logger.info(
                 f"The model is split into checkpoint shards. "
                 f"You can find where each parameters has been saved in the "
-                f"index located at {save_index_file}."
+                f"index located at {save_index_file}.",
+                ranks=[0],
             )
 
     def load_sharded_model(
@@ -169,7 +170,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, GeminiOptimizer), "Please boost the optimizer before saving!"
 
         if os.path.isfile(checkpoint):
-            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file", ranks=[0])
             return
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
@@ -205,7 +206,8 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             self.logger.info(
                 f"The optimizer is going to be split to checkpoint shards. "
                 f"You can find where each parameters has been saved in the "
-                f"index located at {save_index_file}."
+                f"index located at {save_index_file}.",
+                ranks=[0],
             )
 
     def load_sharded_optimizer(self, optimizer: GeminiOptimizer, checkpoint_index_file: Path, prefix: str):
@@ -215,7 +217,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(optimizer, GeminiOptimizer), "Please boost the optimizer before loading!"
         if not os.path.isfile(checkpoint_index_file):
-            self.logger.error(f"Provided path ({checkpoint_index_file}) should be a file")
+            self.logger.error(f"Provided path ({checkpoint_index_file}) should be a file", ranks=[0])
 
         assert isinstance(optimizer, GeminiOptimizer)
 
@@ -374,7 +376,8 @@ class GeminiPlugin(DPPluginBase):
         self.logger = get_dist_logger()
         if enable_async_reduce and not pin_memory:
             self.logger.warning(
-                f"enable_async_reduce sets pin_memory=True to achieve best performance, which is not implicitly set."
+                f"enable_async_reduce sets pin_memory=True to achieve best performance, which is not implicitly set.",
+                ranks=[0],
             )
             pin_memory = True
         self.gemini_config = dict(

@@ -138,7 +138,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         """
         assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before saving!"
         if os.path.isfile(checkpoint):
-            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file", ranks=[0])
             return
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
@@ -178,7 +178,8 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         self.logger.info(
             f"The optimizer is going to be split to checkpoint shards. "
             f"You can find where each parameters has been saved in the "
-            f"index located at {save_index_file}."
+            f"index located at {save_index_file}.",
+            ranks=[0],
         )
 
     def load_sharded_optimizer(self, optimizer: OptimizerWrapper, index_file_path: str, prefix: str):
@@ -265,7 +266,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
     def save_lora_as_pretrained(self, model, checkpoint, use_safetensors):
         if os.path.isfile(checkpoint):
-            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file", ranks=[0])
             return
         from peft import PeftModel
 
@@ -396,7 +397,7 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         assert not isinstance(model, LowLevelZeroModel), "Lora should be enabled before boosting the model."
         self.lora_enabled = True
-        self.logger.warning("You have enabled LoRa training. Please check the hyperparameters such as lr")
+        self.logger.warning("You have enabled LoRa training. Please check the hyperparameters such as lr", ranks=[0])
 
         if bnb_quantization_config is not None:
             model = quantize_model(model, bnb_quantization_config)
@@ -446,7 +447,8 @@ class LowLevelZeroPlugin(DPPluginBase):
                 group_id, check_state = self.get_param_group_id(optimizer, origin_param, param)
                 if check_state == OptimizerParamCheckState.ORIGIN_PARAM_NOT_FIND:
                     self.logger.warning(
-                        f"Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups."
+                        f"Origin parameter {origin_key} related to {name} doesn't exist in optimizer param_groups.",
+                        ranks=[0],
                     )
                 elif (
                     check_state == OptimizerParamCheckState.ORIGIN_PARAM_FINDED
@@ -487,7 +489,8 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
             self.logger.warning(
-                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO."
+                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                ranks=[0],
             )
             zero_optim_kwargs["partition_grad"] = False
             zero_stage = 0

@@ -221,7 +221,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             zero_stage = 1
             self.logger.warning(
                 f"overlap_communication and zero_stage are set to False and 1 because "
-                f"ZeRO-2 or comm overlap cause program hang when some experts are not routed. "
+                f"ZeRO-2 or comm overlap cause program hang when some experts are not routed.",
+                ranks=[0],
             )
 
         assert (
@@ -240,7 +241,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
                 if sp_size != 1:
                     self.logger.warning(
-                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
+                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode},"
+                        "will ignore the given sequence parallelism size.",
+                        ranks=[0],
                     )
                 self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
@@ -402,7 +405,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
             if use_ddp:
                 self.logger.warning(
-                    f"Will have to check all params are used in pytorch DDP since not all experts are always activated"
+                    f"Will have to check all params are used in pytorch DDP since not all experts are always activated",
+                    ranks=[0],
                 )
                 self.ddp_config["find_unused_parameters"] = True
 
@@ -460,7 +464,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 if self.dp_size <= 1:
                     self.logger.warning(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
-                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0.",
+                        ranks=[0],
                     )
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
                 optimizer = MoeHybridParallelZeroOptimizer(
