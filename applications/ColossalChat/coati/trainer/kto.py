@@ -6,7 +6,7 @@ import os
 from typing import Any, Optional
 
 import torch
-import torch.distributed
+import torch.distributed as dist
 from coati.models.loss import KTOLoss
 from coati.models.utils import calc_masked_log_probs
 from coati.trainer.utils import all_reduce_mean
@@ -59,6 +59,7 @@ class KTOTrainer(SLTrainer):
         beta: float = 0.1,
         desirable_weight: float = 1.0,
         undesirable_weight: float = 1.0,
+        apply_loss_mask: bool = True,
         accumulation_steps: int = 1,
         start_epoch: int = 0,
         save_interval: int = 0,
@@ -70,6 +71,7 @@ class KTOTrainer(SLTrainer):
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
         self.kto_loss = KTOLoss(beta=beta, desirable_weight=desirable_weight, undesirable_weight=undesirable_weight)
+        self.apply_loss_mask = apply_loss_mask
         self.save_interval = save_interval
         self.coordinator = coordinator
         self.save_dir = save_dir
@@ -134,6 +136,10 @@ class KTOTrainer(SLTrainer):
                 batch["kl_attention_mask"],
                 batch["kl_loss_mask"],
             )
+            if not self.apply_loss_mask:
+                loss_mask = loss_mask.fill_(1.0)
+                kl_loss_mask = kl_loss_mask.fill_(1.0)
+
             batch_size = input_ids.size()[0]
 
             # actor logits
@@ -182,8 +188,28 @@ class KTOTrainer(SLTrainer):
 
             # sync
             loss_mean = all_reduce_mean(tensor=loss)
-            chosen_rewards_mean = all_reduce_mean(tensor=chosen_rewards.mean())
-            rejected_rewards_mean = all_reduce_mean(tensor=rejected_rewards.mean())
+            chosen_reward_mean = chosen_rewards.mean()
+            chosen_rewards_list = [
+                torch.tensor(0, dtype=loss.dtype, device=loss.device) for _ in range(dist.get_world_size())
+            ]
+            dist.all_gather(chosen_rewards_list, chosen_reward_mean)
+            rejected_reward_mean = rejected_rewards.mean()
+            rejected_rewards_list = [
+                torch.tensor(0, dtype=loss.dtype, device=loss.device) for _ in range(dist.get_world_size())
+            ]
+            dist.all_gather(rejected_rewards_list, rejected_reward_mean)
+            chosen_rewards_list = [i for i in chosen_rewards_list if not i.isnan()]
+            rejected_rewards_list = [i for i in rejected_rewards_list if not i.isnan()]
+            chosen_rewards_mean = (
+                torch.stack(chosen_rewards_list).mean()
+                if len(chosen_rewards_list) > 0
+                else torch.tensor(torch.nan, dtype=loss.dtype, device=loss.device)
+            )
+            rejected_rewards_mean = (
+                torch.stack(rejected_rewards_list).mean()
+                if len(rejected_rewards_list) > 0
+                else torch.tensor(torch.nan, dtype=loss.dtype, device=loss.device)
+            )
             self.accumulative_meter.add("chosen_rewards", chosen_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).detach().item())
@@ -256,6 +282,11 @@ class KTOTrainer(SLTrainer):
                 batch["kl_attention_mask"],
                 batch["kl_loss_mask"],
             )
+
+            if not self.apply_loss_mask:
+                loss_mask = loss_mask.fill_(1.0)
+                kl_loss_mask = kl_loss_mask.fill_(1.0)
+
             batch_size = input_ids.size()[0]
 
             # actor logits

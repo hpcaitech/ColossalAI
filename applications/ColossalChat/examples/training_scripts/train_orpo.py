@@ -259,6 +259,7 @@ def train(args):
         save_dir=args.save_dir,
         coordinator=coordinator,
         lam=args.lam,
+        apply_loss_mask=not args.disable_loss_mask,
     )
 
     trainer.fit(
@@ -301,6 +302,7 @@ if __name__ == "__main__":
     parser.add_argument("--pp", type=int, default=1)
     parser.add_argument("--sp", type=int, default=1)
     parser.add_argument("--lam", type=float, default=0.1, help="lambda in ORPO loss")
+    parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
     parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")

@@ -299,7 +299,7 @@ class MistralForCausalLMPolicy(MistralPolicy):
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 MistralForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[

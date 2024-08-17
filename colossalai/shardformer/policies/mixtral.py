@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, MixtralModel
+from transformers.models.mixtral.modeling_mixtral import MixtralDecoderLayer, MixtralForCausalLM, MixtralModel
 
 from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
@@ -285,7 +285,7 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         policy = super().module_policy()
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 MixtralForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[

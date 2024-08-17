@@ -215,6 +215,8 @@ class Linear1D_Col(ParallelModule):
             output_parallel = linear_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
             )
+        else:
+            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -442,6 +444,9 @@ class Linear1D_Row(ParallelModule):
                     dim=self.seq_parallel_dim,
                     ring=True,
                 )
+            else:
+                output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
+                output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
             if self.bias is not None:

@@ -121,7 +121,7 @@ cd $COLOSSAL_AI_ROOT
 BUILD_EXT=1 pip install .
 
 # Install ColossalChat
-cd $COLOSSAL_AI_ROOT/applications/Chat
+cd $COLOSSAL_AI_ROOT/applications/ColossalChat
 pip install .
 ```
 

@@ -2,6 +2,8 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 
+from .utils import is_share_sp_tp
+
 try:
     import fused_mix_prec_layer_norm_cuda
 except:
@@ -105,7 +107,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
         elif ctx.async_grad_allreduce:
             # Asynchronous all-reduce
             handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
-            # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+            # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
             # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
         grad_weight = total_input.t().matmul(grad_output)
@@ -353,7 +355,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
                 # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
 
             if _grad_accum_fusion_available and weight.grad is not None:
@@ -677,8 +679,8 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     input_.shape, dtype=input_parallel.dtype, device=input_parallel.device
                 ).contiguous()
                 handle = dist.reduce_scatter(output, input_list, group=process_group, async_op=True)
-                # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
-                # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
+                # Rely on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
+                # all-reduce scheduled first and have GPU resources allocated
 
             grad_weight = total_input.t().matmul(grad_output)
             grad_bias = grad_output.sum(dim=0) if use_bias else None
@@ -760,16 +762,17 @@ class _ReduceForward(torch.autograd.Function):
 
     Args:
         input_: input matrix.
-        parallel_mode: parallel mode.
+        process_group: communication group.
+
     """
 
     @staticmethod
-    def forward(ctx, input_, process_group, fp8_communication=False):
-        return _reduce(input_, process_group, fp8_communication, fp8_format="e4m3")
+    def forward(ctx, input_, process_group):
+        return _reduce(input_, process_group)
 
     @staticmethod
     def backward(ctx, grad_output):
-        return grad_output, None, None
+        return grad_output, None
 
 
 class _ReduceBackward(torch.autograd.Function):
@@ -1079,8 +1082,8 @@ def split_forward_gather_backward(input_, dim, process_group, grad_scale=None, f
     return _SplitForwardGatherBackward.apply(input_, dim, process_group, grad_scale, fp8_communication)
 
 
-def reduce_forward(input_, process_group, fp8_communication=False):
-    return _ReduceForward.apply(input_, process_group, fp8_communication)
+def reduce_forward(input_, process_group, grad_scale=None, fp8_communication=False):
+    return _ReduceForward.apply(input_, process_group, grad_scale, fp8_communication)
 
 
 def reduce_backward(input_, process_group, fp8_communication=False):
@@ -1089,3 +1092,13 @@ def reduce_backward(input_, process_group, fp8_communication=False):
 
 def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1, fp8_communication=False):
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim, fp8_communication)
+
+
+def gather_sp_output(hidden_states, sp_group, sp_mode):
+    """
+    Gather the output of the last layer for cross entropy computation
+    """
+    # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
+    scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
+    hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=scale)
+    return hidden_states

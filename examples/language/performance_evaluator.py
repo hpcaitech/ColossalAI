@@ -28,7 +28,7 @@ def all_reduce_mean(x: float, world_size: int) -> float:
     return tensor.item()
 
 
-def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir):
+def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir, nsys=False):
     class DummyProfiler:
         def __init__(self):
             self.step_number = 0
@@ -42,7 +42,29 @@ def get_profile_context(enable_flag, warmup_steps, active_steps, save_dir):
         def __exit__(self, exc_type, exc_value, traceback):
             pass
 
+    class NsysProfiler:
+        def __init__(self, warmup_steps, active_steps):
+            self.step_number = 0
+            self.warmup_steps = warmup_steps
+            self.active_steps = active_steps
+
+        def step(self):
+            if self.step_number == self.warmup_steps:
+                torch.cuda.cudart().cudaProfilerStart()
+            elif self.step_number == self.warmup_steps + self.active_steps:
+                torch.cuda.cudart().cudaProfilerStop()
+            self.step_number += 1
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            pass
+
     if enable_flag:
+        if nsys:
+            return NsysProfiler(warmup_steps, active_steps)
+
         return profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
             schedule=schedule(wait=0, warmup=warmup_steps, active=active_steps),

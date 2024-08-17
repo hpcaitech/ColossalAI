@@ -68,11 +68,6 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.ep_size = dist.get_world_size(ep_group)
         self.ep_rank = dist.get_rank(ep_group)
         self.ep_group = ep_group
-        self.fp8_communication = fp8_communication
-
-        if self.num_experts % self.ep_size != 0:
-            raise ValueError("The number of experts must be divisible by the number of expert parallel groups.")
-
         self.num_experts_per_ep = self.num_experts // self.ep_size
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]
@@ -696,7 +691,7 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim).contiguous()  # (1, 8, 128)
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)  # (1, 4, 256)
+            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication)  # (1, 4, 256)
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 

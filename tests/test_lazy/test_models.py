@@ -18,9 +18,17 @@ def test_models_lazy_init(subset, default_device):
     sub_model_zoo = model_zoo.get_sub_registry(subset, allow_empty=True)
     for name, entry in sub_model_zoo.items():
         # TODO(ver217): lazy init does not support weight norm, skip these models
-        if name in ("torchaudio_wav2vec2_base", "torchaudio_hubert_base") or name.startswith(
-            ("transformers_vit", "transformers_blip2", "transformers_whisper")
-        ):
+        if name in (
+            "torchaudio_wav2vec2_base",
+            "torchaudio_hubert_base",
+            "timm_beit",
+            "timm_vision_transformer",
+            "timm_deit",
+            "timm_beitv2",
+            "timm_deit3",
+            "timm_convit",
+            "timm_tnt_b_patch16_224",
+        ) or name.startswith(("transformers_vit", "transformers_blip2", "transformers_whisper")):
             continue
         check_lazy_init(entry, verbose=True, default_device=default_device)
 

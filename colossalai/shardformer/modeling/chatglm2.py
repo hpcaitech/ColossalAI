@@ -16,6 +16,11 @@ from colossalai.shardformer.layer._operation import (
     gather_forward_split_backward,
     split_forward_gather_backward,
 )
+from colossalai.shardformer.layer._operation import (
+    all_to_all_comm,
+    gather_forward_split_backward,
+    split_forward_gather_backward,
+)
 
 
 def get_flash_core_attention_forward():
@@ -216,6 +221,13 @@ class ChatGLMPipelineForwards:
                     grad_scale=1 / shard_config.sequence_parallel_size,
                     fp8_communication=shard_config.fp8_communication,
                 )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=1 / shard_config.sequence_parallel_size,
+                )
         for idx in range(start_idx, end_idx):
             layer = self.encoder._get_layer(idx)
             if output_hidden_states:
@@ -256,6 +268,13 @@ class ChatGLMPipelineForwards:
                     process_group=shard_config.sequence_parallel_process_group,
                     grad_scale=shard_config.sequence_parallel_size,
                     fp8_communication=shard_config.fp8_communication,
+                )
+            elif shard_config.sequence_parallelism_mode == "all_to_all":
+                hidden_states = gather_forward_split_backward(
+                    hidden_states,
+                    dim=0,
+                    process_group=shard_config.sequence_parallel_process_group,
+                    grad_scale=shard_config.sequence_parallel_size,
                 )
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -405,6 +424,12 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
             rotary_pos_emb = rotary_pos_emb[None, :seq_length]
         rotary_pos_emb = rotary_pos_emb.transpose(0, 1).contiguous()
 
+        if sp_mode in ["all_to_all"] and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with sp mode `{sp_mode}`. Setting `use_cache=False`..."
+                )
+                use_cache = False
         if sp_mode in ["all_to_all"] and self.training:
             if use_cache:
                 logger.warning_once(

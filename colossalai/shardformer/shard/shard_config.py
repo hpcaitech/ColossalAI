@@ -10,7 +10,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from .grad_ckpt_config import GradientCheckpointConfig
 
 __all__ = ["ShardConfig"]
-SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all"]
+SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all", "ring_attn"]
 
 
 @dataclass
@@ -30,6 +30,8 @@ class ShardConfig:
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
         fp8_communication (bool, optional): Whether to enable fp8 communication in model parallelism. Defaults to False.
+        parallel_output (bool): For TP: whether to use parallelize cross entropy computation along the feature dim.
+            For SP: set to True to NOT gather the output along the seq dim.
     """
 
     tensor_parallel_process_group: Optional[ProcessGroup] = None
@@ -48,6 +50,8 @@ class ShardConfig:
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    # For ring attention
+    inner_ring_size: Optional[int] = None
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
     ep_group: Optional[ProcessGroup] = None
@@ -81,9 +85,9 @@ class ShardConfig:
                     self.enable_tensor_parallelism
                 ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is True"
             elif self.sequence_parallelism_mode in ["all_to_all"]:
-                assert (
-                    not self.enable_tensor_parallelism
-                ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
+                # assert (
+                #     not self.enable_tensor_parallelism
+                # ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
                 if self.enable_sequence_overlap:
                     self.enable_sequence_overlap = False
                     warnings.warn(

@@ -326,6 +326,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
         self.use_fp8 = use_fp8
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             sequence_parallel_process_group=self.sp_group,
