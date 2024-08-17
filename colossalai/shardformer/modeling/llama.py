@@ -26,11 +26,15 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import AttnMaskType
-from colossalai.shardformer.layer._operation import all_to_all_comm, gather_forward_split_backward, split_forward_gather_backward
+from colossalai.shardformer.layer._operation import (
+    all_to_all_comm,
+    gather_forward_split_backward,
+    split_forward_gather_backward,
+)
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, RingAttention, dist_cross_entropy, cross_entropy_1d
+from ..layer import ColoAttention, RingAttention, dist_cross_entropy
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
@@ -162,9 +166,13 @@ class LlamaPipelineForwards:
                     hidden_states, position_ids = split_batch_zigzag([hidden_states, position_ids], sp_group)
 
             elif is_share_sp_tp(sp_mode):
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+                )
             elif sp_mode == "all_to_all":
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+                )
 
         if self.gradient_checkpointing and self.training and use_cache:
             if use_cache:
@@ -355,7 +363,7 @@ class LlamaPipelineForwards:
             loss = dist_cross_entropy(
                 labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.dtype
             )
-            
+
             if not return_dict:
                 output = (logits,) + outputs[1:]
                 return (loss,) + output if loss is not None else output
@@ -675,7 +683,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         past_seen_tokens = 0
         seq_len = inputs_embeds.shape[1]
-        batch_size = inputs_embeds.shape[0]
+        inputs_embeds.shape[0]
         if use_cache:  # kept for BC (cache positions)
             if not isinstance(past_key_values, StaticCache):
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
