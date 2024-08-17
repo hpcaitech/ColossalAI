@@ -73,9 +73,9 @@ def anisotropic_Gaussian(ksize=15, theta=np.pi, l1=6, l2=6):
         k     : kernel
     """
 
-    v = np.dot(np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]), np.array([1.0, 0.0]))
-    V = np.array([[v[0], v[1]], [v[1], -v[0]]])
-    D = np.array([[l1, 0], [0, l2]])
+    v = np.dot(np.asarray([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]), np.asarray([1.0, 0.0]))
+    V = np.asarray([[v[0], v[1]], [v[1], -v[0]]])
+    D = np.asarray([[l1, 0], [0, l2]])
     Sigma = np.dot(np.dot(V, D), np.linalg.inv(V))
     k = gm_blur_kernel(mean=[0, 0], cov=Sigma, size=ksize)
 
@@ -141,7 +141,7 @@ def blur(x, k):
     return x
 
 
-def gen_kernel(k_size=np.array([15, 15]), scale_factor=np.array([4, 4]), min_var=0.6, max_var=10.0, noise_level=0):
+def gen_kernel(k_size=np.asarray([15, 15]), scale_factor=np.asarray([4, 4]), min_var=0.6, max_var=10.0, noise_level=0):
     """ "
     # modified version of https://github.com/assafshocher/BlindSR_dataset_generator
     # Kai Zhang
@@ -156,7 +156,7 @@ def gen_kernel(k_size=np.array([15, 15]), scale_factor=np.array([4, 4]), min_var
 
     # Set COV matrix using Lambdas and Theta
     LAMBDA = np.diag([lambda_1, lambda_2])
-    Q = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    Q = np.asarray([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
     SIGMA = Q @ LAMBDA @ Q.T
     INV_SIGMA = np.linalg.inv(SIGMA)[None, None, :, :]
 
@@ -201,7 +201,7 @@ def fspecial_laplacian(alpha):
     h1 = alpha / (alpha + 1)
     h2 = (1 - alpha) / (alpha + 1)
     h = [[h1, h2, h1], [h2, -4 / (alpha + 1), h2], [h1, h2, h1]]
-    h = np.array(h)
+    h = np.asarray(h)
     return h
 
 

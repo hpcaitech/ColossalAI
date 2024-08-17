@@ -36,7 +36,7 @@ def test_runtime_mem_tracer():
             torch.allclose(p1.to(torch.half), p2)
 
         non_model_data_list = runtime_mem_tracer._memstats.non_model_data_list("cuda")
-        cuda_non_model_data_list = np.array(non_model_data_list) / 1024**2
+        cuda_non_model_data_list = np.asarray(non_model_data_list) / 1024**2
         print("cuda_non_model_data_list", len(cuda_non_model_data_list))
         print(non_model_data_list)
 
