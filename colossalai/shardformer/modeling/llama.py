@@ -826,6 +826,14 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if shard_config.sequence_parallelism_mode == "ring_attn" and shard_config.parallel_output:
+            # Special processing: Split labels in a zigzag fashion too
+            sp_group = shard_config.sequence_parallel_process_group
+            if attention_mask.bool().all():
+                labels = split_batch_zigzag(labels, sp_group, seq_dim=1, is_label=True)
+            else:
+                # [B, max_seq_len // sp_size]
+                labels, _, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group, labels, is_label=True)
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
