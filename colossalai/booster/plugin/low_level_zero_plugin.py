@@ -112,7 +112,6 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
             save_state_dict(state_dict, checkpoint, use_safetensors=False)
-        self.logger = get_dist_logger()
 
     def save_sharded_optimizer(
         self,
