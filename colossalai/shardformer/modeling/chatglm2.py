@@ -262,11 +262,12 @@ class ChatGLMPipelineForwards:
                 hidden_states = self.encoder.final_layernorm(hidden_states)
 
             # Gather seq-wise in the final output stage
-            sp_mode = shard_config.sequence_parallelism_mode
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(
-                    hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
-                )
+            if shard_config.enable_sequence_parallelism:
+                sp_mode = shard_config.sequence_parallelism_mode
+                if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                    hidden_states = gather_sp_output(
+                        hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
+                    )
 
             if not return_dict:
                 return tuple(
@@ -445,11 +446,11 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
             use_cache=use_cache,
             output_hidden_states=output_hidden_states,
         )
-
-        if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-            hidden_states = gather_sp_output(
-                hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
-            )
+        if shard_config.enable_sequence_parallelism:
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(
+                    hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
+                )
 
         if not return_dict:
             return tuple(

@@ -226,8 +226,9 @@ class LlamaPipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+            if shard_config.enable_sequence_parallelism:
+                if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                    hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -752,9 +753,10 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 all_self_attns += (layer_outputs[1],)
 
         hidden_states = self.norm(hidden_states)
-        # Cases that don't support parallelizing cross entropy computation along sequence
-        if (not shard_config.parallel_output) or is_share_sp_tp(sp_mode) or force_sp_output_gather:
-            hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+        if shard_config.enable_sequence_parallelism:
+            # Cases that don't support parallelizing cross entropy computation along sequence
+            if (not shard_config.parallel_output) or is_share_sp_tp(sp_mode) or force_sp_output_gather:
+                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

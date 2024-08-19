@@ -323,7 +323,6 @@ def check_output_hidden_state(
         sp_size = shard_config.sequence_parallel_size
         if org_hidden_state.shape[seq_dim] == sharded_hidden_state.shape[seq_dim] * sp_size:
             org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
-
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
 
 

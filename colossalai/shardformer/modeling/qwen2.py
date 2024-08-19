@@ -245,8 +245,11 @@ class Qwen2PipelineForwards:
 
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+            if shard_config.enable_sequence_parallelism:
+                if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                    hidden_states = gather_sp_output(
+                        hidden_states, shard_config.sequence_parallel_process_group, sp_mode
+                    )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -737,8 +740,9 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
 
         hidden_states = self.norm(hidden_states)
 
-        if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-            hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+        if shard_config.enable_sequence_parallelism:
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

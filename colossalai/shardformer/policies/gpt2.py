@@ -9,10 +9,9 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.gpt2 import (
     GPT2PipelineForwards,
     get_gpt2_flash_attention_forward,
-    get_gpt_model_forward_for_flash_attn,
+    get_gpt2_flash_attn_model_forward,
     get_jit_fused_gpt2_mlp_forward,
     get_lm_forward_with_dist_cross_entropy,
-    gpt2_sequence_parallel_forward_fn,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
@@ -75,14 +74,6 @@ class GPT2Policy(Policy):
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
-        # todo: currently sp cannot be used with flashattention
-        if sp_mode in ["split_gather", "ring", "all_to_all"]:
-            if use_flash_attention:
-                warnings.warn(
-                    f"Sequence parallelism mode {sp_mode} cannot be used with FlashAttention, will disable FlashAttention automatically."
-                )
-                self.shard_config.enable_flash_attention = False
-                use_flash_attention = False
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
@@ -211,13 +202,10 @@ class GPT2Policy(Policy):
                 policy=policy,
                 target_key=attn_cls,
             )
-            if not self.shard_config.pipeline_stage_manager:
-                policy[GPT2Model].method_replacement = {
-                    "forward": get_gpt_model_forward_for_flash_attn(self.shard_config)
-                }
 
-        if sp_mode is not None:
-            policy[GPT2Model].method_replacement = {"forward": gpt2_sequence_parallel_forward_fn(self.shard_config)}
+        # This supports SP + flash attn
+        if not self.shard_config.pipeline_stage_manager:
+            policy[GPT2Model].method_replacement = {"forward": get_gpt2_flash_attn_model_forward(self.shard_config)}
 
         return policy
 

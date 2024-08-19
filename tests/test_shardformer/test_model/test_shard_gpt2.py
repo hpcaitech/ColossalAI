@@ -100,7 +100,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "GPT2Model":
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
+            check_output_hidden_state(
+                org_output,
+                sharded_output,
+                stage_manager,
+                atol=atol,
+                rtol=rtol,
+                shard_config=booster.plugin.shard_config,
+            )
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
@@ -137,7 +144,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "ring",
-            "enable_flash_attention": False,
+            "enable_flash_attention": True,
             "use_lazy_init": True,
             "precision": "fp32",
             "initial_scale": 1,
@@ -148,7 +155,18 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "num_microbatches": 1,
             "enable_sequence_parallelism": True,
             "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": False,
+            "enable_flash_attention": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "num_microbatches": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",
+            "enable_flash_attention": True,
             "use_lazy_init": True,
             "precision": "fp16",
             "initial_scale": 1,
