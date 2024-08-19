@@ -129,7 +129,6 @@ for lora_rank in ${LORA_RANK[@]}; do
                 plugin='3d'
             fi
             if [[ $plugin == "tp_pp" ]]; then
-                echo "Here"
                 tp='2'
                 bs='8'
                 pp='2'
