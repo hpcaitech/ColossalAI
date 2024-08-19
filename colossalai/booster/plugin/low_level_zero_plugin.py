@@ -64,7 +64,12 @@ class OptimizerParamCheckState(enum.Enum):
 
 class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
     def __init__(
-        self, module: nn.Module, precision: str, overlap_allgather: bool = False, cast_inputs: bool = True, use_fp8: bool = False
+        self,
+        module: nn.Module,
+        precision: str,
+        overlap_allgather: bool = False,
+        cast_inputs: bool = True,
+        use_fp8: bool = False,
     ) -> None:
         super().__init__(module)
         self.dtype = None

@@ -24,7 +24,7 @@ from colossalai.shardformer.layer._operation import (
 )
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, dist_cross_entropy, cross_entropy_1d
+from ..layer import ColoAttention, dist_cross_entropy
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
