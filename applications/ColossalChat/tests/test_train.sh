@@ -198,7 +198,6 @@ for lora_rank in ${LORA_RANK[@]}; do
                     $grad_ckpt \
                     --max_len 400 \
                     --use_flash_attn
-                # fi
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf ${MODEL_SAVE_PATH:?}/*
