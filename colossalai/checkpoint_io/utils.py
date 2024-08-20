@@ -570,9 +570,9 @@ def load_state_dict_into_model(
 
     if strict:
         if len(unexpected_keys) > 0:
-            error_msgs = ["Unexpected key(s) in state_dict: {}. ".format(
-                ", ".join('"{}"'.format(k) for k in unexpected_keys)
-            )]
+            error_msgs = [
+                "Unexpected key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in unexpected_keys))
+            ]
             raise RuntimeError(
                 "Error(s) in loading state_dict for {}:\n\t{}".format(model.__class__.__name__, "\n\t".join(error_msgs))
             )
