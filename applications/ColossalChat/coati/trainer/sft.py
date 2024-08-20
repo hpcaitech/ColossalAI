@@ -113,8 +113,12 @@ class SFTTrainer(SLTrainer):
                     return_loss=True,
                 )
                 loss = outputs["loss"]
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    step_bar.set_postfix({"train/loss": loss.item()})
+
+                if self.booster.plugin.stage_manager.is_last_stage():
+                    global_loss = all_reduce_mean(loss, self.plugin)
+                    if dist.get_rank() == dist.get_world_size() - 1:
+                        step_bar.set_postfix({"train/loss": global_loss.item()})
+
                 self.optimizer.step()
                 self.optimizer.zero_grad()
         else:
@@ -197,10 +201,11 @@ class SFTTrainer(SLTrainer):
                         return_loss=True,
                     )
                     loss = outputs["loss"]
-                    if dist.get_rank() == dist.get_world_size() - 1:
-                        step_bar.set_postfix({"eval/loss": loss.item()})
-                        self.accumulative_meter.add("loss", loss.item())
-                        step_bar.update()
+                    if self.booster.plugin.stage_manager.is_last_stage():
+                        global_loss = all_reduce_mean(loss, self.plugin)
+                        if dist.get_rank() == dist.get_world_size() - 1:
+                            step_bar.set_postfix({"eval/loss": global_loss.item()})
+                            self.accumulative_meter.add("loss", global_loss.item())
 
                 if dist.get_rank() == dist.get_world_size() - 1:
                     loss_mean = self.accumulative_meter.get("loss")
