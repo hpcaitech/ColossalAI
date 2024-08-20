@@ -767,11 +767,14 @@ class _ReduceForward(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input_, process_group, fp8_communication=False):
+    def forward(ctx, input_, process_group, grad_scale=None, fp8_communication=False):
+        ctx.grad_scale = grad_scale
         return _reduce(input_, process_group, fp8_communication, fp8_format="e4m3")
 
     @staticmethod
     def backward(ctx, grad_output):
+        if ctx.grad_scale is not None:
+            grad_output = grad_output * ctx.grad_scale
         return grad_output, None, None
 
 
