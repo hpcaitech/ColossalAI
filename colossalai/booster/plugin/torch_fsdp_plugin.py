@@ -1,6 +1,4 @@
-import logging
 import os
-import warnings
 from pathlib import Path
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
@@ -30,6 +28,7 @@ from torch.utils.data import DataLoader
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO, utils
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.logging import get_dist_logger
 
 from .dp_plugin_base import DPPluginBase
 
@@ -40,6 +39,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
     def __init__(self) -> None:
         super().__init__()
         self.coordinator = DistCoordinator()
+        self.logger = get_dist_logger()
 
     def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool):
         assert isinstance(model, TorchFSDPModel), "Please boost the model before loading!"
@@ -88,7 +88,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(model, TorchFSDPModel), "Please boost the model before saving!"
         if os.path.isfile(checkpoint_path):
-            logging.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint_path}) should be a directory, not a file")
             return
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
@@ -117,7 +117,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
             utils.save_config_file(model.unwrap(), checkpoint_path)
-            logging.info(
+            self.logger.info(
                 f"The model is split into checkpoint shards. "
                 f"You can find where each parameters has been saved in the "
                 f"index located at {save_index_file}."
@@ -162,7 +162,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before saving!"
 
         if os.path.isfile(checkpoint):
-            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            self.logger.error(f"Provided path ({checkpoint}) should be a directory, not a file")
             return
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
@@ -200,7 +200,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
-            logging.info(
+            self.logger.info(
                 f"The optimizer is going to be split to checkpoint shards. "
                 f"You can find where each parameters has been saved in the "
                 f"index located at {save_index_file}."
@@ -313,6 +313,7 @@ class TorchFSDPPlugin(DPPluginBase):
                 sync_module_states=sync_module_states,
             )
             self.fp8_communication = fp8_communication
+            self.logger = get_dist_logger()
 
     else:
         raise RuntimeError("FSDP is not supported while torch version under 1.12.0.")
@@ -364,7 +365,7 @@ class TorchFSDPPlugin(DPPluginBase):
 
         if optimizer is not None:
             if len(optimizer.param_groups) > 1:
-                warnings.warn(
+                self.logger.warning(
                     "TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used."
                 )
             optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)

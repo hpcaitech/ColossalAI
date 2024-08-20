@@ -1,6 +1,5 @@
 import ctypes
 import random
-import warnings
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -27,6 +26,7 @@ from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
+from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -1036,6 +1036,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         inner_ring_size: int = None,
     ) -> None:
         super().__init__()
+        self.logger = get_dist_logger()
 
         assert (
             dist.get_world_size() % (tp_size * pp_size) == 0
@@ -1053,8 +1054,9 @@ class HybridParallelPlugin(PipelinePluginBase):
                     tp_size > 1
                 ), f"Sequence parallelism mode {self.sequence_parallelism_mode} must be enabled when using tensor parallelism"
                 if sp_size != 1:
-                    warnings.warn(
-                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size."
+                    self.logger.warning(
+                        f"The sp_size will be the same as tp_size in sequence parallelism mode {self.sequence_parallelism_mode}, will ignore the given sequence parallelism size.",
+                        ranks=[0],
                     )
                 self.sp_size = 1
                 self.dp_size = dist.get_world_size() // (tp_size * pp_size)
@@ -1143,7 +1145,12 @@ class HybridParallelPlugin(PipelinePluginBase):
             else:
                 raise NotImplementedError()
         if sequence_parallelism_mode == "ring_attn":
-            assert parallel_output, "Ring Attention doesn't support gathering output yet."
+            if not parallel_output:
+                self.logger.warning(
+                    "parallel_output must be True for Zigzag Ring Attention, as we've not supported Zigzag all-gather yet.",
+                    ranks=[0],
+                )
+                parallel_output = True
 
         self.tp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         self.dp_group = self.pg_mesh.get_group_along_axis(self.dp_axis)
@@ -1249,7 +1256,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         optimizer = cast_to_distributed(optimizer)
 
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
-            warnings.warn("Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.")
+            self.logger.warning(
+                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                ranks=[0],
+            )
             zero_config["partition_grad"] = False
             zero_stage = 0
 
@@ -1306,9 +1316,10 @@ class HybridParallelPlugin(PipelinePluginBase):
             else:
                 is_zero = self.dp_size > 1
                 if self.dp_size == 1:
-                    warnings.warn(
+                    self.logger.warning(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "
-                        "If you do not intend to use cpu_offload, please consider set zero_stage=0."
+                        "If you do not intend to use cpu_offload, please consider set zero_stage=0.",
+                        ranks=[0],
                     )
 
                 assert self.precision != "fp32", "Please set precision to 'fp16' or 'bf16' when using ZeRO."
@@ -1351,7 +1362,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert self.enable_pipeline_parallelism, "pipeline parallelism is not enabled"
 
         if return_outputs:
-            warnings.warn("return_outputs may lead to significant extra memory consumption.")
+            self.logger.warning("return_outputs may lead to significant extra memory consumption.", ranks=[0])
 
         # Create a context for gradient synchronization based on the optimizer type.
         # If it's a HybridParallelZeroOptimizer, use optimizer.no_sync(); otherwise, use model.no_sync().
@@ -1365,10 +1376,8 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
 
         # run with gradients accumulation
-        if (
-            model.require_grad_sync == False
-            or (isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False)
-            or not torch.is_grad_enabled()
+        if model.require_grad_sync == False or (
+            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
         ):
             return outputs
 
@@ -1468,7 +1477,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert not isinstance(model, HybridParallelModule), "Lora should be enabled before boosting the model."
         assert self.pp_size == 1 and self.tp_size == 1
         self.lora_enabled = True
-        warnings.warn("You have enabled LoRa training. Please check the hyperparameters such as lr")
+        self.logger.warning("You have enabled LoRa training. Please check the hyperparameters such as lr", ranks=[0])
 
         if bnb_quantization_config is not None:
             model = quantize_model(model, bnb_quantization_config)
