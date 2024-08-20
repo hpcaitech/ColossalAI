@@ -1278,31 +1278,31 @@ class HybridParallelPlugin(PipelinePluginBase):
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
                 use_fp8=self.use_fp8,
             )
-            if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
-                if zero_stage == 0:
-                    is_zero = False
-                    if self.precision in ["fp16", "bf16"]:
-                        optimizer = HybridParallelAMPOptimizer(
-                            optimizer,
-                            model,
-                            use_pipeline=self.enable_pipeline_parallelism,
-                            param_info=param_info,
-                            precision=self.precision,
-                            max_norm=self.max_norm,
-                            pp_process_group=self.pp_group,
-                            tp_process_group=self.tp_group,
-                            **self.amp_config,
-                        )
-                    else:
-                        optimizer = HybridParallelNaiveOptimizer(
-                            optimizer,
-                            model,
-                            use_pipeline=self.enable_pipeline_parallelism,
-                            param_info=param_info,
-                            max_norm=self.max_norm,
-                            pp_process_group=self.pp_group,
-                            tp_process_group=self.tp_group,
-                        )
+        if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
+            if zero_stage == 0:
+                is_zero = False
+                if self.precision in ["fp16", "bf16"]:
+                    optimizer = HybridParallelAMPOptimizer(
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        precision=self.precision,
+                        max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
+                        **self.amp_config,
+                    )
+                else:
+                    optimizer = HybridParallelNaiveOptimizer(
+                        optimizer,
+                        model,
+                        use_pipeline=self.enable_pipeline_parallelism,
+                        param_info=param_info,
+                        max_norm=self.max_norm,
+                        pp_process_group=self.pp_group,
+                        tp_process_group=self.tp_group,
+                    )
             else:
                 is_zero = self.dp_size > 1
                 if self.dp_size == 1:

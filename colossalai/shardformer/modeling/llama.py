@@ -698,7 +698,7 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
 
         if shard_config.enable_flash_attention:
             mask_shape = (inputs_embeds.shape[0], 1, past_seen_tokens + seq_len, past_seen_tokens + seq_len)
-            attention_mask = ColoAttention.prepare_attn_kwargs(
+            attn_kwargs: dict = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 inputs_embeds.dtype,
                 inputs_embeds.device,

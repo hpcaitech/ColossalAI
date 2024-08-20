@@ -144,10 +144,14 @@ class MixtralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={
-                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                        "fp8_communication": self.shard_config.fp8_communication,
-                    },
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=MixtralModel,
@@ -164,7 +168,6 @@ class MixtralPolicy(Policy):
                             "ep_group": self.shard_config.ep_group,
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
-                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     )
                 ],

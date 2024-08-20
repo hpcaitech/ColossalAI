@@ -90,13 +90,14 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
         if self.dtype is not None and cast_inputs:
             self.convert_fn = partial(_convert_floating_point, dtype=self.dtype)
         if overlap_allgather:
-            self.op_hook = ZeroOpHook()
+            self.op_hooks.append(ZeroOpHook())
+        if use_fp8:
+            self.op_hooks.append(FP8Hook())
+        if overlap_allgather or use_fp8:
             for p in module.parameters():
                 if p.requires_grad and type(p) is not ColoParameter:
                     p.__class__ = ColoParameter
                     p.__init__(p, requires_grad=True)
-        if use_fp8:
-            self.op_hooks.append(FP8Hook())
 
     def forward(self, *args, **kwargs):
         if self.convert_fn is not None:
@@ -348,9 +349,9 @@ class LowLevelZeroPlugin(DPPluginBase):
         cpu_offload: bool = False,
         master_weights: bool = True,
         verbose: bool = False,
+        cast_inputs: bool = True,
         fp8_communication: bool = False,
         use_fp8: bool = False,
-        cast_inputs: bool = True,
     ) -> None:
         super().__init__()
         assert stage in (1, 2), f"LowLevelZeroPlugin only supports stage 1/2 training"
@@ -497,8 +498,8 @@ class LowLevelZeroPlugin(DPPluginBase):
                 model,
                 self.precision,
                 overlap_allgather=self.zero_optim_kwargs["overlap_allgather"],
-                use_fp8=self.use_fp8,
                 cast_inputs=self.cast_inputs,
+                use_fp8=self.use_fp8,
             )
 
         # TODO: Support Galore + ZeRO
