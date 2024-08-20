@@ -556,7 +556,7 @@ def load_state_dict_into_model(
         args = (state_dict, prefix, local_metadata, True, sub_missing_keys, unexpected_keys, error_msgs)
         # Parameters of module and children will start with prefix. We can exit early if there are none in this
         # state_dict
-        if len([key for key in state_dict if key.startswith(prefix)]) > 0:
+        if strict or len([key for key in state_dict if key.startswith(prefix)]) > 0:
             module._load_from_state_dict(*args)
         if load_sub_module:
             for name, child in module._modules.items():
