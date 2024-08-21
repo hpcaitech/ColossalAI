@@ -250,6 +250,7 @@ def train(args):
         actor=model,
         booster=booster,
         actor_optim=optim,
+        plugin=plugin,
         actor_lr_scheduler=lr_scheduler,
         tokenizer=tokenizer,
         max_epochs=args.max_epochs,

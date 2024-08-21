@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from tqdm import trange
 from transformers import PreTrainedTokenizerBase
 
-from colossalai.booster import Booster
+from colossalai.booster import Booster, Plugin
 from colossalai.cluster import DistCoordinator
 from colossalai.utils import get_current_device
 
@@ -48,6 +48,7 @@ class ORPOTrainer(SLTrainer):
         actor: Any,
         booster: Booster,
         actor_optim: Optimizer,
+        plugin: Plugin,
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
@@ -59,7 +60,9 @@ class ORPOTrainer(SLTrainer):
         save_dir: str = None,
         coordinator: DistCoordinator = None,
     ) -> None:
-        super().__init__(booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, start_epoch=start_epoch)
+        super().__init__(
+            booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, plugin=plugin, start_epoch=start_epoch
+        )
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
         self.odds_ratio_loss_fn = OddsRatioLoss()
