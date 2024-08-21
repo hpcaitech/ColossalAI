@@ -676,6 +676,7 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: boo
         cast_op()
 
 
+# @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     shape = input_.shape
@@ -687,10 +688,11 @@ def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op:
     cur_buffer = combined_buffers[dist.get_rank(group)]
     ret = cur_buffer[SCALE_BYTES:].view(fp8_type)
     ret, scale = cast_to_fp8(input_.view(-1), fp8_format=fp8_format, out=ret)
-    cur_buffer[:SCALE_BYTES].copy_(scale.unsqueeze(0).view(torch.uint8))
+    # cur_buffer[:SCALE_BYTES].view(torch.float)[0] = scale
+    cur_buffer[:SCALE_BYTES] = scale.unsqueeze(0).view(torch.uint8)
     dist.all_gather(combined_buffers, cur_buffer, group=group, async_op=async_op)
     for out, buf in zip(output_list, combined_buffers):
-        scale = buf[:SCALE_BYTES].view(scale.dtype)
+        scale = buf[:SCALE_BYTES].clone().view(scale.dtype)
         output = buf[SCALE_BYTES:].view(fp8_type)
         cast_from_fp8(output.view(shape), scale, input_type, out=out)
     # output = combined_buffer.view(world_size, -1)[:, SCALE_BYTES:].view(fp8_type)
@@ -700,6 +702,7 @@ def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op:
     #     out.copy_(output[i].view(shape))
 
 
+# @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     rank = dist.get_rank(group)
@@ -716,7 +719,7 @@ def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", asyn
     cur_buffer = combined_buffers[dist.get_rank(group)]
     ret = cur_buffer[SCALE_BYTES:].view(fp8_type)
     ret, scale = cast_to_fp8(input_.view(-1), fp8_format=fp8_format, out=ret)
-    cur_buffer[:SCALE_BYTES].copy_(scale.unsqueeze(0).view(torch.uint8))
+    cur_buffer[:SCALE_BYTES] = scale.unsqueeze(0).view(torch.uint8)
 
     def send_recv(idx):
         send_idx = (rank - idx) % world_size
@@ -731,14 +734,13 @@ def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", asyn
 
     def cast(idx):
         cast_idx = (rank - idx - 1) % world_size
-        scale = combined_buffers[cast_idx][:SCALE_BYTES].view(torch.float)
+        scale = combined_buffers[cast_idx][:SCALE_BYTES].clone().view(torch.float)
         output = combined_buffers[cast_idx][SCALE_BYTES:].view(fp8_type)
         cast_from_fp8(output.view(shape), scale, input_type, out=output_list[cast_idx])
 
     # warmup
     ops = send_recv(0)
-    if output_list[rank] is not input_ and output_list[rank].data_ptr() != input_.data_ptr():
-        output_list[rank].copy_(input_)
+    output_list[rank].copy_(input_)
     for op in ops:
         op.wait()
     ops = []
@@ -754,7 +756,7 @@ def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", asyn
     # cooldown
     for op in ops:
         op.wait()
-    cast(world_size - 1)
+    cast(world_size - 2)
 
 
 class _LinearFp8(torch.autograd.Function):
