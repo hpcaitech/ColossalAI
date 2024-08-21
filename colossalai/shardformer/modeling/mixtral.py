@@ -68,6 +68,11 @@ class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
         self.ep_size = dist.get_world_size(ep_group)
         self.ep_rank = dist.get_rank(ep_group)
         self.ep_group = ep_group
+        self.fp8_communication = fp8_communication
+
+        if self.num_experts % self.ep_size != 0:
+            raise ValueError("The number of experts must be divisible by the number of expert parallel groups.")
+
         self.num_experts_per_ep = self.num_experts // self.ep_size
         self.expert_start_idx = self.ep_rank * self.num_experts_per_ep
         held_experts = self.experts[self.expert_start_idx : self.expert_start_idx + self.num_experts_per_ep]

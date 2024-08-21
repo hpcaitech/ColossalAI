@@ -146,7 +146,9 @@ class EPDeepseekMoE(nn.Module):
 
         # [n0, n1, n2, n3] [m0, m1, m2, m3] -> [n0, n1, m0, m1] [n2, n3, m2, m3]
         dist.all_to_all_single(
-            output_split_sizes, input_split_sizes, group=self.ep_group, fp8_communication=fp8_communication
+            output_split_sizes,
+            input_split_sizes,
+            group=self.ep_group,
         )
 
         with torch.no_grad():
