@@ -86,10 +86,10 @@ class LlamaPipelineForwards:
                 batch_size, seq_length, _ = inputs_embeds.shape[:2]
             else:
                 raise ValueError("You have to specify either input_ids or inputs_embeds")
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
             if inputs_embeds is None:
                 inputs_embeds = self.embed_tokens(input_ids)
             hidden_states = inputs_embeds
+            device = hidden_states.device
         else:
             input_shape = hidden_states.shape[:-1]
             batch_size, seq_length = input_shape
@@ -99,8 +99,8 @@ class LlamaPipelineForwards:
         sp_mode = shard_config.sequence_parallelism_mode
         sp_group = shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
-        # Generating full positions ids for seq that's gathered before attn
-        if not disable_pp and (sp_mode != "ring_attn" and not stage_manager.is_first_stage()):
+        # Generating full positions ids for modes that gather sequence before attn
+        if stage_manager and (sp_mode != "ring_attn" and not stage_manager.is_first_stage()):
             seq_length *= sp_size
 
         past_seen_tokens = 0
@@ -146,7 +146,6 @@ class LlamaPipelineForwards:
             attn_kwargs = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
         # Support SP + PP
-        # TODO: support padded casual cu_seqlens across stages
         if disable_pp or stage_manager.is_first_stage():
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":
@@ -223,9 +222,8 @@ class LlamaPipelineForwards:
 
         if disable_pp or stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if shard_config.enable_sequence_parallelism:
-                if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                    hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
