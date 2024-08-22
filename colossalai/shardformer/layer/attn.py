@@ -1119,9 +1119,14 @@ class RingAttention(torch.autograd.Function):
                 the batch dim to a packed 1d sequence. Contingent on model forward shape definitions.
 
         Returns:
-            inputs_embeds: Packed input embeddings of shape [B, Sq // sp_size, ...].
-            mask_info: A dictionary of mask info.
-            position_ids: Packed position ids of shape [..., Sq // sp_size].
+            torch.Tensor:
+                Packed input embeddings of shape [B, Sq // sp_size, ...].
+
+            Dict[str, Any]:
+                A dictionary containing mask info.
+
+            torch.Tensor:
+                Packed position ids of shape [..., Sq // sp_size].
 
         """
         _load_varlen_helpers()

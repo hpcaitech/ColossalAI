@@ -309,6 +309,9 @@ def split_batch_zigzag(
     """
     sp_size = dist.get_world_size(sp_group)
     sp_rank = dist.get_rank(sp_group)
+    if sp_size == 1:
+        return batch
+
     if isinstance(batch, torch.Tensor):
         batch = [batch]
     seq_dim = seq_dim if seq_dim != -1 else batch[0].dim() - 1
@@ -364,6 +367,9 @@ def split_varlen_zigzag(
     """
     sp_size = dist.get_world_size(sp_group)
     sp_rank = dist.get_rank(sp_group)
+    if sp_size == 1:
+        return batch
+
     if is_2d:
         assert max_seqlen > 0, "max_seqlen must be provided for 2D input"
 

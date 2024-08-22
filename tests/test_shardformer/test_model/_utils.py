@@ -157,7 +157,6 @@ def build_model_from_hybrid_plugin(
         sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
 
     criterion = loss_fn
-
     plugin = pluggin_cls(**test_config)
     booster = Booster(plugin=plugin)
 

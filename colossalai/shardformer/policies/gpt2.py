@@ -6,13 +6,7 @@ from torch import Tensor, nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.gpt2 import (
-    GPT2PipelineForwards,
-    get_gpt2_flash_attention_forward,
-    get_gpt2_flash_attn_model_forward,
-    get_jit_fused_gpt2_mlp_forward,
-    get_lm_forward_with_dist_cross_entropy,
-)
+from ..modeling.gpt2 import GPT2PipelineForwards, get_gpt2_flash_attention_forward, get_jit_fused_gpt2_mlp_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
@@ -70,7 +64,7 @@ class GPT2Policy(Policy):
             warnings.warn(
                 f"For GPT2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
             )
-            sp_mode = "split_gather"
+            self.shard_config.sequence_parallelism_mode = sp_mode = "split_gather"
         overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
@@ -197,7 +191,7 @@ class GPT2Policy(Policy):
         if use_flash_attention:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_gpt2_flash_attention_forward(),
+                    "forward": get_gpt2_flash_attention_forward(shard_config=self.shard_config),
                 },
                 policy=policy,
                 target_key=attn_cls,
@@ -205,7 +199,9 @@ class GPT2Policy(Policy):
 
         # This supports SP + flash attn
         if not self.shard_config.pipeline_stage_manager:
-            policy[GPT2Model].method_replacement = {"forward": get_gpt2_flash_attn_model_forward(self.shard_config)}
+            policy[GPT2Model].method_replacement = {
+                "forward": partial(GPT2PipelineForwards.gpt2_model_forward, shard_config=self.shard_config)
+            }
 
         return policy
 
@@ -329,7 +325,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
             }
             if self.shard_config.parallel_output:
                 addon_module[GPT2LMHeadModel].method_replacement = {
-                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                    "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
                 }
         else:
             addon_module = {

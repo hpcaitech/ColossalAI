@@ -138,15 +138,17 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
+        # TODO: Ring Attention + PP seems to have some precision issue to be resolved
         {
-            "tp_size": 4,
+            "sp_size": 2,
+            "tp_size": 2,
             "pp_size": 1,
-            "num_microbatches": 1,
             "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "ring",
-            "enable_flash_attention": True,
+            "sequence_parallelism_mode": "ring_attn",
+            "num_microbatches": 1,
+            "enable_all_optimization": True,
             "use_lazy_init": True,
-            "precision": "fp32",
+            "precision": "fp16",
             "initial_scale": 1,
         },
         {
@@ -203,7 +205,16 @@ def run_gpt2_test(test_config):
         loss_fn,
         _,
     ) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+
+        if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and name != "transformers_gpt_lm":
+            # Only wrote zigzag splitting for cross entropy loss
+            continue
+
+        try:
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        except Exception as e:
+            print(f"Failed config: {test_config} for model {name}")
+            raise (e)
 
     clear_layout_converter()
     torch.cuda.empty_cache()
@@ -244,7 +255,11 @@ def run_gpt2_3d_test(test_config):
         loss_fn,
         _,
     ) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        try:
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        except Exception as e:
+            print(f"Failed config: {test_config} for model {name}")
+            raise (e)
 
     clear_layout_converter()
     torch.cuda.empty_cache()

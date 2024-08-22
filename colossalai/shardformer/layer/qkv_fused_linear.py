@@ -311,14 +311,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-
-        if self.seq_parallel_mode is None:
-            # Set up backprop all-reduce.
-            input_parallel = reduce_backward(input_, self.process_group)
-            output_parallel = matmul_with_async_comm(
-                input_parallel, self.weight, bias, self.process_group, self.async_communication
-            )
-        elif self.seq_parallel_mode == "split_gather":
+        if self.seq_parallel_mode == "split_gather":
             input_parallel = input_
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap
@@ -328,6 +321,14 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, 1, self.overlap, True
             )
+        elif self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
+            # Set up backprop all-reduce.
+            input_parallel = reduce_backward(input_, self.process_group)
+            output_parallel = matmul_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, self.async_communication
+            )
+        else:
+            raise NotImplementedError(f"seq_parallel_mode={self.seq_parallel_mode} is not supported!")
 
         if self.gather_output:
             # All-gather across the partitions.
@@ -533,7 +534,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            if self.seq_parallel_mode is None:
+            if self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reduce_forward(output_parallel, self.process_group)
             elif self.seq_parallel_mode == "split_gather":
@@ -542,6 +543,8 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             elif self.seq_parallel_mode == "ring":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(output_parallel, self.process_group, 1)
+            else:
+                raise NotImplementedError(f"seq_parallel_mode={self.seq_parallel_mode} is not supported!")
 
         if not self.skip_bias_add:
             if self.bias is not None:
