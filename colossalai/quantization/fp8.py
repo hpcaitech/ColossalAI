@@ -56,7 +56,7 @@ def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -
             scale_inv = 1.0 / scale
 
     ret = (scale * inp.float()).to(fp8_type)
-    return ret, scale_inv
+    return ret, torch.unsqueeze(scale_inv, dim=0)
 
 
 def cast_from_fp8(
@@ -124,7 +124,7 @@ def all_reduce_fp8(
         out = out.view(fp8_type)
         summed_out += cast_from_fp8(out, scale, input_type)
 
-    if op == ReduceOp.AVG:
+    if int(op) == int(ReduceOp.AVG):
         summed_out.div_(world_size)
 
     summed_out_fp8, scale = cast_to_fp8(summed_out, fp8_format=fp8_format)
