@@ -138,7 +138,18 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 @parameterize(
     "test_config",
     [
-        # TODO: Ring Attention + PP seems to have some precision issue to be resolved
+        {
+            "sp_size": 2,
+            "tp_size": 1,
+            "pp_size": 2,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "ring_attn",
+            "num_microbatches": 2,
+            "enable_all_optimization": True,
+            "use_lazy_init": True,
+            "precision": "fp16",
+            "initial_scale": 1,
+        },
         {
             "sp_size": 2,
             "tp_size": 2,

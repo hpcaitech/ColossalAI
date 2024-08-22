@@ -197,8 +197,7 @@ class GPT2Policy(Policy):
                 target_key=attn_cls,
             )
 
-        # This supports SP + flash attn
-        if not self.shard_config.pipeline_stage_manager:
+        if not self.shard_config.pipeline_stage_manager and self.shard_config.enable_sequence_parallelism:
             policy[GPT2Model].method_replacement = {
                 "forward": partial(GPT2PipelineForwards.gpt2_model_forward, shard_config=self.shard_config)
             }
@@ -307,39 +306,39 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         from transformers.models.gpt2.modeling_gpt2 import GPT2LMHeadModel
 
         module_policy = super().module_policy()
-
+        module_policy[GPT2LMHeadModel] = ModulePolicyDescription()
         if self.shard_config.enable_tensor_parallelism:
-            addon_module = {
-                GPT2LMHeadModel: ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head",
-                            target_module=col_nn.VocabParallelLMHead1D,
-                            kwargs={
-                                "gather_output": False,
-                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
-                            },
-                        )
-                    ],
-                )
-            }
-            if self.shard_config.parallel_output:
-                addon_module[GPT2LMHeadModel].method_replacement = {
-                    "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
-                }
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=col_nn.VocabParallelLMHead1D,
+                    kwargs={
+                        "gather_output": False,
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                    },
+                ),
+                policy=module_policy,
+                target_key=GPT2LMHeadModel,
+            )
         else:
-            addon_module = {
-                GPT2LMHeadModel: ModulePolicyDescription(
-                    sub_module_replacement=[
-                        SubModuleReplacementDescription(
-                            suffix="lm_head",
-                            target_module=col_nn.PaddingLMHead,
-                            kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
-                        )
-                    ]
-                )
-            }
-        module_policy.update(addon_module)
+            self.append_or_create_submodule_replacement(
+                description=SubModuleReplacementDescription(
+                    suffix="lm_head",
+                    target_module=col_nn.PaddingLMHead,
+                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                ),
+                policy=module_policy,
+                target_key=GPT2LMHeadModel,
+            )
+
+        if self.shard_config.parallel_output:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
+                },
+                policy=module_policy,
+                target_key=GPT2LMHeadModel,
+            )
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(

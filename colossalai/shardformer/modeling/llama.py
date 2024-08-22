@@ -127,14 +127,12 @@ class LlamaPipelineForwards:
 
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
-        # embed positions, for the first stage, hidden_states is the input embeddings,
-        # for the other stages, hidden_states is the output of the previous stage
+
         if (disable_pp or not stage_manager.is_first_stage()) and sp_mode == "ring_attn":
             _, attn_kwargs, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group)
         elif shard_config.enable_flash_attention:
-            # in this case, attention_mask is a dict rather than a tensor
             mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
-            attn_kwargs = ColoAttention.prepare_attn_kwargs(
+            attn_kwargs: dict = ColoAttention.prepare_attn_kwargs(
                 mask_shape,
                 hidden_states.dtype,
                 hidden_states.device,
@@ -143,9 +141,9 @@ class LlamaPipelineForwards:
                 invert=(sp_mode != "ring_attn"),
             )
         else:
-            attn_kwargs = self._update_causal_mask(attention_mask, hidden_states, cache_position)
+            attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
-        # Support SP + PP
+        # Support SP + PP. Later stages have already received the split input.
         if disable_pp or stage_manager.is_first_stage():
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":

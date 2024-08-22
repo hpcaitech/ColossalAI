@@ -225,7 +225,7 @@ class GPT2PipelineForwards:
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         sp_mode = shard_config.sequence_parallelism_mode
         sp_group = shard_config.sequence_parallel_process_group
-        if shard_config.enable_sequence_parallelism:
+        if disable_pp or stage_manager.is_first_stage():
             # Ring Attention's special zigzag batch processing
             if sp_mode == "ring_attn":
                 assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
@@ -244,6 +244,10 @@ class GPT2PipelineForwards:
                         dim=1,
                         process_group=shard_config.tensor_parallel_process_group,
                     )
+        elif sp_mode == "ring_attn":
+            # Later stages already received split hidden states
+            _, attn_kwargs, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group)
+
         del attention_mask
 
         # Going through held blocks.
