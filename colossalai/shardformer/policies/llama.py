@@ -69,13 +69,20 @@ class LlamaPolicy(Policy):
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "ring_attn" and not self.is_causal:
+            raise ValueError("Ring attention is only meant for causal language modeling.")
+
+        tp_size = self.shard_config.tensor_parallel_size
+        # Modified by SP and TP
+        num_q_heads = self.model.config.num_attention_heads
+        num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
 
         if sp_mode == "all_to_all":
-            decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sp_size,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+            num_q_heads //= sp_size
+            decoder_attribute_replacement = {"num_heads": num_q_heads}
+            if num_kv_heads:
+                num_kv_heads //= sp_size
+                decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -104,21 +111,20 @@ class LlamaPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
-                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+                num_q_heads % tp_size == 0
             ), f"The number of attention heads must be divisible by tensor parallel size."
             if hasattr(self.model.config, "num_key_value_heads"):
                 assert (
-                    self.model.config.num_key_value_heads >= self.shard_config.tensor_parallel_size
-                    and self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+                    num_kv_heads >= tp_size and num_kv_heads % tp_size == 0
                 ), f"The number of key_value heads must be divisible by, and must not be less than tensor parallel size."
+            num_q_heads //= tp_size
             decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.hidden_size": self.model.config.hidden_size // tp_size,
+                "self_attn.num_heads": num_q_heads,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["self_attn.num_key_value_heads"] = (
-                    self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
-                )
+                num_kv_heads //= tp_size
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = num_kv_heads
 
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -302,10 +308,11 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
     def module_policy(self):
         from transformers import LlamaForCausalLM
 
+        self.is_causal = True
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
@@ -321,10 +328,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                     ],
                 )
             }
-            if self.shard_config.parallel_output:
-                new_item[LlamaForCausalLM].method_replacement = {
-                    "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
-                }
         else:
             new_item = {
                 LlamaForCausalLM: ModulePolicyDescription(
@@ -344,7 +347,11 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
             self.set_pipeline_forward(
                 model_cls=LlamaForCausalLM, new_forward=LlamaPipelineForwards.llama_for_causal_lm_forward, policy=policy
             )
-
+        elif self.shard_config.enable_tensor_parallelism or self.shard_config.enable_sequence_parallelism:
+            # Compute loss distributedly along the sequence dimension
+            new_item[LlamaForCausalLM].method_replacement = {
+                "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+            }
         return policy
 
     def get_held_layers(self) -> List[Module]:
@@ -384,7 +391,12 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                 LlamaForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="score",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                            ),
                         )
                     ]
                 )

@@ -555,7 +555,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         else:
             if self.seq_parallel_mode is None:
                 output_parallel = torch.matmul(input_, self.weight)
-                output = reduce_forward(output_parallel, self.process_group, self.fp8_communication)
+                output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
             elif self.seq_parallel_mode == "split_gather":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(

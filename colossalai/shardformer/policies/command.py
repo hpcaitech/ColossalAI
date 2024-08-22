@@ -69,13 +69,18 @@ class CommandPolicy(Policy):
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        if sp_mode == "ring_attn" and not self.is_causal:
+            raise ValueError("Ring attention is only meant for causal language modeling.")
 
+        tp_size = self.shard_config.tensor_parallel_size or None
+        num_q_heads = self.model.config.num_attention_heads
+        num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
         if sp_mode == "all_to_all":
-            decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sp_size,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+            num_q_heads //= sp_size
+            decoder_attribute_replacement = {"num_heads": num_q_heads}
+            if num_kv_heads:
+                num_kv_heads //= sp_size
+                decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -104,21 +109,18 @@ class CommandPolicy(Policy):
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
-                self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
+                num_q_heads % tp_size == 0
             ), f"The number of attention heads must be divisible by tensor parallel size."
             if hasattr(self.model.config, "num_key_value_heads"):
                 assert (
-                    self.model.config.num_key_value_heads >= self.shard_config.tensor_parallel_size
-                    and self.model.config.num_key_value_heads % self.shard_config.tensor_parallel_size == 0
+                    num_kv_heads >= tp_size and num_kv_heads % tp_size == 0
                 ), f"The number of key_value heads must be divisible by, and must not be less than tensor parallel size."
             decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
+                "self_attn.hidden_size": self.model.config.hidden_size // tp_size,
+                "self_attn.num_heads": num_q_heads // tp_size,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["self_attn.num_key_value_heads"] = (
-                    self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
-                )
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = num_kv_heads // tp_size
 
             policy[CohereDecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -297,10 +299,11 @@ class CommandForCausalLMPolicy(CommandPolicy):
     def module_policy(self):
         from transformers import CohereForCausalLM
 
+        self.is_causal = True
         policy = super().module_policy()
 
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for casual lm
+            # add a new item for causal lm
             new_item = {
                 CohereForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[

@@ -64,7 +64,7 @@ model_zoo.register(
     model_attribute=ModelAttribute(has_control_flow=True),
 )
 model_zoo.register(
-    name="transformers_mistral_for_casual_lm",
+    name="transformers_mistral_for_causal_lm",
     model_fn=lambda: transformers.MistralForCausalLM(config),
     data_gen_fn=data_gen_for_lm,
     output_transform_fn=output_transform_fn,

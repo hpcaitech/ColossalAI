@@ -64,7 +64,10 @@ class DistributedLogger:
             self._logger.propagate = False
 
             DistributedLogger.__instances[name] = self
-        self.rank = dist.get_rank() if dist.is_initialized() else 0
+
+    @property
+    def rank(self):
+        return dist.get_rank() if dist.is_initialized() else 0
 
     @staticmethod
     def __get_call_info():

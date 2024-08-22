@@ -26,6 +26,8 @@ from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, dist_cross_entropy
 
+_SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
+
 
 class CommandPipelineForwards:
     """
@@ -353,7 +355,7 @@ class CommandPipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_command_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_command_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -366,7 +368,7 @@ def get_command_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
         if sp_mode is not None:
-            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert sp_mode in _SUPPORTED_SP_MODE, f"SP mode {sp_mode} is not supported by {type(self)} yet"
             assert (sp_size is not None) and (
                 sp_group is not None
             ), "Must specify sp_size and sp_group for sequence parallel"
@@ -465,7 +467,7 @@ def get_command_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
     return forward
 
 
-def get_command_flash_attention_model_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
+def get_command_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(

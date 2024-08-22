@@ -151,6 +151,7 @@ examples/training_scripts/wandb
 examples/training_scripts/output
 
 examples/awesome-chatgpt-prompts/
+examples/inference/round.txt
 temp/
 
 # ColossalChat

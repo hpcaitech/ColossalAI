@@ -278,6 +278,10 @@ def train(args):
         beta=args.beta,
         gamma=args.gamma,
         length_normalization=args.length_normalization,
+<<<<<<< HEAD
+=======
+        apply_loss_mask=not args.disable_loss_mask,
+>>>>>>> main
     )
 
     trainer.fit(
@@ -346,6 +350,10 @@ if __name__ == "__main__":
         default=False,
         help="Disable the reference model (enabled by default)",
     )
+<<<<<<< HEAD
+=======
+    parser.add_argument("--disable_loss_mask", default=False, action="store_true")
+>>>>>>> main
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")

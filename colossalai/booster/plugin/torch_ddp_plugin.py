@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.logging import get_dist_logger
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.utils import get_current_device
 
@@ -21,6 +22,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
     def __init__(self) -> None:
         super().__init__()
         self.coordinator = DistCoordinator()
+        self.logger = get_dist_logger()
 
     def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = True):
         """

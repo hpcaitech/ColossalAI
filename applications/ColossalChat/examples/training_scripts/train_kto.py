@@ -297,6 +297,7 @@ def train(args):
         beta=args.beta,
         desirable_weight=args.desirable_weight,
         undesirable_weight=args.undesirable_weight,
+        apply_loss_mask=not args.disable_loss_mask,
     )
 
     trainer.fit(
@@ -341,6 +342,7 @@ if __name__ == "__main__":
     parser.add_argument("--beta", type=float, default=0.1, help="beta in KTO loss")
     parser.add_argument("--desirable_weight", type=float, default=1.0, help="desirable_weight in KTO loss")
     parser.add_argument("--undesirable_weight", type=float, default=1.0, help="undesirable_weight in KTO loss")
+    parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
     parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")

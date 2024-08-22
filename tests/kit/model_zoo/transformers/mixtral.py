@@ -53,6 +53,8 @@ config = MixtralConfig(
     num_attention_heads=8,
     num_hidden_layers=2,
     vocab_size=1000,
+    attn_implementation="flash_attention_2",
+    torch_dtype="float16",
     output_router_logits=True,
 )
 
