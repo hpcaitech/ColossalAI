@@ -114,7 +114,7 @@ def train(args):
             parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
-            microbatch_size=args.batch_size,
+            microbatch_size=args.microbatch_size,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -269,6 +269,7 @@ def train(args):
         model=model,
         booster=booster,
         optim=optim,
+        plugin=plugin,
         lr_scheduler=lr_scheduler,
         max_epochs=args.max_epochs,
         accumulation_steps=args.accumulation_steps,
@@ -344,6 +345,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
+    parser.add_argument("--microbatch_size", type=int, default=1)
     args = parser.parse_args()
     if args.config_file is not None:
         os.makedirs(os.path.dirname(args.config_file), exist_ok=True)

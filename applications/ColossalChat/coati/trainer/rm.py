@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
 
-from colossalai.booster import Booster
+from colossalai.booster import Booster, Plugin
 from colossalai.cluster import DistCoordinator
 from colossalai.utils import get_current_device
 
@@ -48,6 +48,7 @@ class RewardModelTrainer(SLTrainer):
         model: Any,
         booster: Booster,
         optimizer: Optimizer,
+        plugin: Plugin,
         lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         loss_fn: Optional[Callable] = None,
@@ -59,7 +60,9 @@ class RewardModelTrainer(SLTrainer):
         save_dir: str = None,
         coordinator: DistCoordinator = None,
     ) -> None:
-        super().__init__(booster, max_epochs=max_epochs, model=model, optimizer=optimizer, start_epoch=start_epoch)
+        super().__init__(
+            booster, max_epochs=max_epochs, model=model, optimizer=optimizer, plugin=plugin, start_epoch=start_epoch
+        )
         self.actor_scheduler = lr_scheduler
         self.tokenizer = tokenizer
         self.loss_fn = loss_fn if loss_fn is not None else LogSigLoss(beta=beta)
