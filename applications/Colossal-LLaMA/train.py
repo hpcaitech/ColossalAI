@@ -11,7 +11,6 @@ import resource
 from contextlib import nullcontext
 
 import torch
-import torch.distributed as dist
 from colossal_llama.dataset.dummy_dataset import RandomDataset
 from colossal_llama.dataset.loader import (
     DataCollatorForSupervisedDataset,
@@ -21,6 +20,7 @@ from colossal_llama.dataset.loader import (
 from colossal_llama.utils.ckpt_io import load_checkpoint, save_checkpoint
 from colossal_llama.utils.froze import freeze_non_embeds_parameters
 from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
+from colossal_llama.utils.utils import all_reduce_mean, format_numel_str, get_model_numel
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -34,31 +34,6 @@ from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
-
-
-def get_model_numel(model: torch.nn.Module) -> int:
-    return sum(p.numel() for p in model.parameters())
-
-
-def format_numel_str(numel: int) -> str:
-    B = 1024**3
-    M = 1024**2
-    K = 1024
-    if numel >= B:
-        return f"{numel / B:.2f} B"
-    elif numel >= M:
-        return f"{numel / M:.2f} M"
-    elif numel >= K:
-        return f"{numel / K:.2f} K"
-    else:
-        return f"{numel}"
-
-
-def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
-    dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
-    tensor = tensor.data
-    tensor.div_(dist.get_world_size())
-    return tensor
 
 
 def train(args) -> None:
