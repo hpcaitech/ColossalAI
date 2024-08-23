@@ -219,10 +219,9 @@ class LlamaPipelineForwards:
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
-        gather_output = (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode)
         if disable_pp or stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if gather_output:
+            if (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode):  # noqa
                 hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer

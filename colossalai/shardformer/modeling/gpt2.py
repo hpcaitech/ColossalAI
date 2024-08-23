@@ -304,8 +304,8 @@ class GPT2PipelineForwards:
                 hidden_states = gather_sp_output(
                     hidden_states,
                     sp_dim=1,
-                    sp_group=shard_config.tensor_parallel_process_group,
-                    sp_mode=shard_config.sequence_parallelism_mode,
+                    sp_group=sp_group,
+                    sp_mode=sp_mode,
                 )
 
         # gather_sp_output could've changed seq length.
