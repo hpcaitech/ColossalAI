@@ -61,85 +61,7 @@ def all_reduce_mean(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def main() -> None:
-    # ==============================
-    # Parse Arguments
-    # ==============================
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--pretrained",
-        type=str,
-        default=None,
-        help="Address of the pre-trained modeling",
-    )
-    parser.add_argument("--dataset", nargs="+", default=[])
-    parser.add_argument(
-        "--plugin",
-        type=str,
-        default="gemini",
-        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
-        help="Choose which plugin to use",
-    )
-    parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint")
-    parser.add_argument("--save_interval", type=int, default=1000, help="Save interval")
-    parser.add_argument("--save_dir", type=str, default="checkpoint_dir", help="Checkpoint directory")
-    parser.add_argument("--tensorboard_dir", type=str, default="logs_dir", help="Tensorboard directory")
-    parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
-    parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
-    parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size of each process")
-    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
-    parser.add_argument("--max_length", type=int, default=8192, help="Model max length")
-    parser.add_argument(
-        "--mixed_precision",
-        type=str,
-        default="fp16",
-        choices=["fp16", "bf16"],
-        help="Mixed precision",
-    )
-    parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
-    parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
-    parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
-    parser.add_argument(
-        "--use_grad_checkpoint",
-        action="store_true",
-        default=False,
-        help="Use gradient checkpointing",
-    )
-    parser.add_argument(
-        "--use_flash_attn",
-        action="store_true",
-        default=False,
-        help="Use flash-attention",
-    )
-    parser.add_argument(
-        "--use_neft",
-        action="store_true",
-        default=False,
-        help="Use NEFTune",
-    )
-    parser.add_argument(
-        "--freeze_non_embeds_params",
-        action="store_true",
-        default=False,
-        help="Freeze non embeddings parameters",
-    )
-    parser.add_argument("--tp", type=int, default=1)
-    parser.add_argument("--zero", type=int, default=1)
-    parser.add_argument("--pad_token", choices=["eos", "unk"], default="eos")
-    parser.add_argument("--padding_mode", choices=["max_length", "longest"], default="max_length")
-    parser.add_argument(
-        "--skip_save_each_epoch",
-        action="store_true",
-        default=False,
-        help="skip saving the model checkpoint after each epoch is completed.",
-    )
-    parser.add_argument("--num_samples", type=int, default=500, help="Number of samples for benchmarking.")
-    parser.add_argument(
-        "--benchmark", action="store_true", default=False, help="Benchmark performance using random dataset."
-    )
-    args = parser.parse_args()
-
+def train(args) -> None:
     # ==============================
     # Initialize Distributed Training
     # ==============================
@@ -197,10 +119,17 @@ def main() -> None:
     elif args.plugin == "3d":
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
-            pp_size=1,
-            zero_stage=args.zero,
+            pp_size=args.pp,
+            sp_size=args.sp,
+            sequence_parallelism_mode=args.sp_mode,
+            zero_stage=args.zero_stage,
+            enable_flash_attention=args.use_flash_attn,
+            enable_sequence_parallelism=args.enable_sequence_parallelism,
+            cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
+            parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
+            microbatch_size=args.microbatch_size,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -465,4 +394,84 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pretrained",
+        type=str,
+        default=None,
+        help="Address of the pre-trained modeling",
+    )
+    parser.add_argument("--dataset", nargs="+", default=[])
+    parser.add_argument(
+        "--plugin",
+        type=str,
+        default="gemini",
+        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
+        help="Choose which plugin to use",
+    )
+    parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint")
+    parser.add_argument("--save_interval", type=int, default=1000, help="Save interval")
+    parser.add_argument("--save_dir", type=str, default="checkpoint_dir", help="Checkpoint directory")
+    parser.add_argument("--tensorboard_dir", type=str, default="logs_dir", help="Tensorboard directory")
+    parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
+    parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
+    parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size of each process")
+    parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
+    parser.add_argument("--max_length", type=int, default=8192, help="Model max length")
+    parser.add_argument(
+        "--mixed_precision",
+        type=str,
+        default="fp16",
+        choices=["fp16", "bf16"],
+        help="Mixed precision",
+    )
+    parser.add_argument("--grad_clip", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--weight_decay", type=float, default=0.1, help="Weight decay")
+    parser.add_argument("--warmup_steps", type=int, default=None, help="Warmup steps")
+    parser.add_argument(
+        "--use_grad_checkpoint",
+        action="store_true",
+        default=False,
+        help="Use gradient checkpointing",
+    )
+    parser.add_argument(
+        "--use_flash_attn",
+        action="store_true",
+        default=False,
+        help="Use flash-attention",
+    )
+    parser.add_argument(
+        "--use_neft",
+        action="store_true",
+        default=False,
+        help="Use NEFTune",
+    )
+    parser.add_argument(
+        "--freeze_non_embeds_params",
+        action="store_true",
+        default=False,
+        help="Freeze non embeddings parameters",
+    )
+    parser.add_argument("--tp", type=int, default=1)
+    parser.add_argument("--pp", type=int, default=1)
+    parser.add_argument("--sp", type=int, default=1)
+    parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
+    parser.add_argument("--pad_token", choices=["eos", "unk"], default="eos")
+    parser.add_argument("--padding_mode", choices=["max_length", "longest"], default="max_length")
+    parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
+    parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
+    parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
+    parser.add_argument("--microbatch_size", type=int, default=1)
+    parser.add_argument(
+        "--skip_save_each_epoch",
+        action="store_true",
+        default=False,
+        help="skip saving the model checkpoint after each epoch is completed.",
+    )
+    parser.add_argument("--num_samples", type=int, default=500, help="Number of samples for benchmarking.")
+    parser.add_argument(
+        "--benchmark", action="store_true", default=False, help="Benchmark performance using random dataset."
+    )
+    args = parser.parse_args()
+    train(args)
