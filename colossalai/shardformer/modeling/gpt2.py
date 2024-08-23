@@ -23,7 +23,6 @@ from transformers.utils import logging
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer import ColoAttention, RingAttention
 from colossalai.shardformer.layer._operation import gather_sp_output, split_forward_gather_backward
-from colossalai.shardformer.layer.attn import AttnMaskType
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
@@ -133,7 +132,7 @@ class GPT2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-        force_sp_output_gather: Optional[bool] = True,
+        force_sp_gather: Optional[bool] = True,
     ) -> Union[Dict, Tuple, BaseModelOutputWithPastAndCrossAttentions]:
         # This function is modified on the basis of transformers.models.gpt2.modeling_gpt2.GPT2Model.forward.
         # Please refer to original code of transformers for more details.
@@ -229,15 +228,14 @@ class GPT2PipelineForwards:
             # Ring Attention's special zigzag batch processing
             if sp_mode == "ring_attn":
                 assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-                # Get cu_seqlens
-                if attn_kwargs["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                if not attention_mask.bool().all():
                     hidden_states, attn_kwargs, position_ids = RingAttention.prepare_varlen_batch(
                         attention_mask, sp_group, hidden_states, position_ids
                     )
                 else:
                     hidden_states, position_ids = split_batch_zigzag([hidden_states, position_ids], sp_group)
             # Other sp modes
-            elif disable_pp or stage_manager.is_first_stage():
+            else:
                 if sp_mode == "split_gather":
                     hidden_states = split_forward_gather_backward(
                         hidden_states,
@@ -247,7 +245,6 @@ class GPT2PipelineForwards:
         elif sp_mode == "ring_attn":
             # Later stages already received split hidden states
             _, attn_kwargs, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group)
-
         del attention_mask
 
         # Going through held blocks.
@@ -301,8 +298,9 @@ class GPT2PipelineForwards:
                     all_cross_attentions = all_cross_attentions + (outputs[3 if use_cache else 2],)
 
         # When sequence parallelism is done, gather the output tensor in forward and split it in backward
-        if (disable_pp or stage_manager.is_last_stage()) and shard_config.enable_sequence_parallelism:
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+        gather_output = (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode)
+        if disable_pp or stage_manager.is_last_stage():
+            if gather_output:
                 hidden_states = gather_sp_output(
                     hidden_states,
                     sp_dim=1,
@@ -399,7 +397,7 @@ class GPT2PipelineForwards:
             hidden_states=hidden_states,
             stage_index=stage_index,
             shard_config=shard_config,
-            force_sp_output_gather=False,
+            force_sp_gather=False,
         )
 
         # If not at the last stage, return hidden_states as in GPT2Model

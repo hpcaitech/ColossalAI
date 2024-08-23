@@ -25,7 +25,6 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
@@ -58,7 +57,7 @@ class LlamaPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
-        force_sp_output_gather: bool = True,  # Set to false only when computing cross entropy
+        force_sp_gather: bool = True,  # Set to false only when computing cross entropy
     ):
         logger = logging.get_logger(__name__)
 
@@ -128,7 +127,8 @@ class LlamaPipelineForwards:
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        if (disable_pp or not stage_manager.is_first_stage()) and sp_mode == "ring_attn":
+        no_split_input = disable_pp or not stage_manager.is_first_stage()
+        if no_split_input and sp_mode == "ring_attn":
             _, attn_kwargs, _ = RingAttention.prepare_varlen_batch(attention_mask, sp_group)
         elif shard_config.enable_flash_attention:
             mask_shape = (batch_size, 1, seq_length_with_past, seq_length_with_past)
@@ -144,11 +144,12 @@ class LlamaPipelineForwards:
             attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, hidden_states, cache_position)
 
         # Support SP + PP. Later stages have already received the split input.
-        if disable_pp or stage_manager.is_first_stage():
+        split_input = disable_pp or stage_manager.is_first_stage()
+        if split_input:
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":
                 assert shard_config.enable_flash_attention, "Ring Attention inherently requires Flash Attention."
-                if attn_kwargs["attention_mask_type"] == AttnMaskType.PADDED_CAUSAL:
+                if not attention_mask.bool().all():
                     hidden_states, attn_kwargs, position_ids = RingAttention.prepare_varlen_batch(
                         attention_mask, sp_group, hidden_states, position_ids
                     )
@@ -218,9 +219,10 @@ class LlamaPipelineForwards:
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
+        gather_output = (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode)
         if disable_pp or stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
-            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+            if gather_output:
                 hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
 
         # add hidden states from the last decoder layer
@@ -333,7 +335,7 @@ class LlamaPipelineForwards:
             hidden_states=hidden_states,
             stage_index=stage_index,
             shard_config=shard_config,
-            force_sp_output_gather=False,
+            force_sp_gather=False,
         )
         past_key_values = None
 
