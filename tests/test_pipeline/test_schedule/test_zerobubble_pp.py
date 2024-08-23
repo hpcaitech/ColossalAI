@@ -389,7 +389,8 @@ def test_zerobubble_pipeline_base(
     ##########################
     # fwd & bwd
     output_base = model_base(input_base)
-    loss_base = output_base.mean()
+    # loss_base = output_base.mean()
+    loss_base = criterion(output_base)
     loss_base.backward()
     print(f"After base fwd & bwd: {torch.cuda.memory_allocated()/1024**3 :.3f} GB;")
 
