@@ -4,6 +4,7 @@ from typing import Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.testing import assert_close
 
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
@@ -56,13 +57,13 @@ def test_zerobubble_pipeline_base(
 
     # init model and input
     num_layers = 8
-    in_dim = out_dim = 2048
+    in_dim = out_dim = 8
     print(f"Before init Model: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
     input0 = torch.rand(in_dim, out_dim, requires_grad=True).to(rank)
 
-    input0.clone()
-    deepcopy(model)
+    input_base = input0.clone()
+    model_base = deepcopy(model)
 
     if rank == 0:
         # layer 0 & 7 to chunk 0 on rank0
@@ -245,12 +246,26 @@ def test_zerobubble_pipeline_base(
             model_chunk_id=chunk_id,
             # optimizer: OptimizerWrapper,
         )
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
+            model_chunk=chunk_0,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
 
     # # chunk 1 id 1 (layer 6) bwd
     if rank == 1:
         chunk_id = 1
         scheduler.schedule_b(
             scheduled_node=None,
+            model_chunk=chunk_1,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
             model_chunk=chunk_1,
             model_chunk_id=chunk_id,
             # optimizer: OptimizerWrapper,
@@ -266,11 +281,27 @@ def test_zerobubble_pipeline_base(
             # optimizer: OptimizerWrapper,
         )
 
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
+            model_chunk=chunk_2,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
+
     # chunk 3 id 1 (layer 4) bwd
     if rank == 3:
         chunk_id = 1
         scheduler.schedule_b(
             scheduled_node=None,
+            model_chunk=chunk_3,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
+
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
             model_chunk=chunk_3,
             model_chunk_id=chunk_id,
             # optimizer: OptimizerWrapper,
@@ -290,6 +321,13 @@ def test_zerobubble_pipeline_base(
             # optimizer: OptimizerWrapper,
         )
         # print(f"input_grad3 {input_grad3}")
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
+            model_chunk=chunk_3,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
 
     # chunk 2 id 0 (layer 2) bwd
     if rank == 2:
@@ -301,12 +339,27 @@ def test_zerobubble_pipeline_base(
             # optimizer: OptimizerWrapper,
         )
         # print(f"input_grad2 {input_grad2}")
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
+            model_chunk=chunk_2,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
 
     # chunk 1 id 0 (layer 1) bwd
     if rank == 1:
         chunk_id = 0
         scheduler.schedule_b(
             scheduled_node=None,
+            model_chunk=chunk_1,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
+
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
             model_chunk=chunk_1,
             model_chunk_id=chunk_id,
             # optimizer: OptimizerWrapper,
@@ -322,6 +375,55 @@ def test_zerobubble_pipeline_base(
             # optimizer: OptimizerWrapper,
         )
         # print(f"input_grad0 {input_grad0}")
+
+        scheduler.schedule_w(
+            scheduled_node=None,
+            non_w_pending=None,
+            model_chunk=chunk_0,
+            model_chunk_id=chunk_id,
+            # optimizer: OptimizerWrapper,
+        )
+
+    ##########################
+    # Fwd bwd for base
+    ##########################
+    # fwd & bwd
+    output_base = model_base(input_base)
+    loss_base = output_base.mean()
+    loss_base.backward()
+    print(f"After base fwd & bwd: {torch.cuda.memory_allocated()/1024**3 :.3f} GB;")
+
+    # assert weight
+    if rank == 0:
+        # layer 0
+        assert_close(chunk_0[0].weight, model_base.layers[0].weight)
+        assert_close(chunk_0[0].weight.grad, model_base.layers[0].weight.grad)
+        # layer 7
+        assert_close(chunk_0[1].weight, model_base.layers[7].weight)
+        assert_close(chunk_0[1].weight.grad, model_base.layers[7].weight.grad)
+    if rank == 1:
+        # layer 1
+        assert_close(chunk_1[0].weight, model_base.layers[1].weight)
+        assert_close(chunk_1[0].weight.grad, model_base.layers[1].weight.grad)
+        # layer 6
+        assert_close(chunk_1[1].weight, model_base.layers[6].weight)
+        assert_close(chunk_1[1].weight.grad, model_base.layers[6].weight.grad)
+
+    if rank == 2:
+        # layer 2
+        assert_close(chunk_2[0].weight, model_base.layers[2].weight)
+        assert_close(chunk_2[0].weight.grad, model_base.layers[2].weight.grad)
+        # layer 5
+        assert_close(chunk_2[1].weight, model_base.layers[5].weight)
+        assert_close(chunk_2[1].weight.grad, model_base.layers[5].weight.grad)
+
+    if rank == 3:
+        # layer 3
+        assert_close(chunk_3[0].weight, model_base.layers[3].weight)
+        assert_close(chunk_3[0].weight.grad, model_base.layers[3].weight.grad)
+        # layer 4
+        assert_close(chunk_3[1].weight, model_base.layers[4].weight)
+        assert_close(chunk_3[1].weight.grad, model_base.layers[4].weight.grad)
 
 
 # @pytest.mark.dist
