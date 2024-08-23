@@ -12,23 +12,23 @@ from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
+from colossal_llama.dataset.dummy_dataset import RandomDataset
 from colossal_llama.dataset.loader import (
     DataCollatorForSupervisedDataset,
     StatefulDistributedSampler,
     load_tokenized_dataset,
 )
 from colossal_llama.utils.ckpt_io import load_checkpoint, save_checkpoint
-from colossal_llama.utils.flash_attention_patch import replace_with_flash_attention
 from colossal_llama.utils.froze import freeze_non_embeds_parameters
 from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import AutoTokenizer, LlamaForCausalLM
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
-from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -77,7 +77,7 @@ def main() -> None:
         "--plugin",
         type=str,
         default="gemini",
-        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d"],
+        choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
         help="Choose which plugin to use",
     )
     parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint")
@@ -87,7 +87,7 @@ def main() -> None:
     parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
     parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
     parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
-    parser.add_argument("--micro_batch_size", type=int, default=2, help="Batch size of each process")
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size of each process")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--max_length", type=int, default=8192, help="Model max length")
     parser.add_argument(
@@ -134,10 +134,11 @@ def main() -> None:
         default=False,
         help="skip saving the model checkpoint after each epoch is completed.",
     )
+    parser.add_argument("--num_samples", type=int, default=500, help="Number of samples for benchmarking.")
+    parser.add_argument(
+        "--benchmark", action="store_true", default=False, help="Benchmark performance using random dataset."
+    )
     args = parser.parse_args()
-
-    with open(args.config_file, "w") as f:
-        json.dump(args.__dict__, f, indent=4)
 
     # ==============================
     # Initialize Distributed Training
@@ -147,21 +148,27 @@ def main() -> None:
     coordinator = DistCoordinator()
 
     # ==============================
-    # Initialize Tensorboard
+    # Initialize Tensorboard and Save Config
     # ==============================
     if coordinator.is_master():
         os.makedirs(args.tensorboard_dir, exist_ok=True)
         writer = SummaryWriter(args.tensorboard_dir)
 
+        with open(args.config_file, "w") as f:
+            json.dump(args.__dict__, f, indent=4)
+
     # ==============================
     # Initialize Booster
     # ==============================
-    if args.plugin == "gemini":
+    if args.plugin == "ddp":
+        plugin = TorchDDPPlugin(find_unused_parameters=True if args.use_grad_checkpoint is False else False)
+    elif args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,
             initial_scale=2**16,
             max_norm=args.grad_clip,
             enable_gradient_accumulation=(args.accumulation_steps > 1),
+            enable_flash_attention=args.use_flash_attn,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -170,6 +177,7 @@ def main() -> None:
             initial_scale=2**16,
             max_norm=args.grad_clip,
             enable_gradient_accumulation=(args.accumulation_steps > 1),
+            enable_flash_attention=args.use_flash_attn,
         )
     elif args.plugin == "zero2":
         plugin = LowLevelZeroPlugin(
@@ -210,24 +218,38 @@ def main() -> None:
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 
-    coordinator.print_on_master(f"Configuration file will be saved at: {args.config_file}")
-    coordinator.print_on_master(f"Tensorboard logs will be saved at: {args.tensorboard_dir}")
-    coordinator.print_on_master(f"Model checkpoint will be saved at: {args.save_dir}")
-
-    coordinator.print_on_master(f"Load dataset: {args.dataset}")
-
-    dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
-    data_collator = DataCollatorForSupervisedDataset(
-        tokenizer=tokenizer, max_length=args.max_length, padding=args.padding_mode
+    coordinator.print_on_master(
+        f"Training Info:\nConfig file: {args.config_file} \nTensorboard logs: {args.tensorboard_dir} \nModel checkpoint: {args.save_dir}"
     )
-    dataloader = plugin.prepare_dataloader(
-        dataset=dataset,
-        batch_size=args.micro_batch_size,
-        shuffle=True,
-        drop_last=True,
-        collate_fn=data_collator,
-        distributed_sampler_cls=StatefulDistributedSampler,
-    )
+
+    if args.benchmark:
+        coordinator.print_on_master(f"Run benchmark with {args.num_samples} random samples.")
+        dataset = RandomDataset(
+            num_samples=args.num_samples, max_length=args.max_length, vocab_size=tokenizer.vocab_size
+        )
+        dataloader = plugin.prepare_dataloader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            seed=42,
+            distributed_sampler_cls=StatefulDistributedSampler,
+        )
+    else:
+        coordinator.print_on_master(f"Load dataset: {args.dataset}")
+        dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train")
+        data_collator = DataCollatorForSupervisedDataset(
+            tokenizer=tokenizer, max_length=args.max_length, padding=args.padding_mode
+        )
+        dataloader = plugin.prepare_dataloader(
+            dataset=dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            drop_last=True,
+            collate_fn=data_collator,
+            distributed_sampler_cls=StatefulDistributedSampler,
+        )
+
     coordinator.print_on_master(
         f"Max device memory after data loader: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
     )
@@ -241,7 +263,19 @@ def main() -> None:
         else nullcontext()
     )
     with init_ctx:
-        model = LlamaForCausalLM.from_pretrained(args.pretrained)
+        if args.use_flash_attn:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pretrained,
+                attn_implementation="flash_attention_2",
+                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+                trust_remote_code=True,
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pretrained,
+                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+                trust_remote_code=True,
+            )
         # Freeze part of parameters.
         if args.freeze_non_embeds_params:
             freeze_non_embeds_parameters(model=model)
@@ -251,9 +285,6 @@ def main() -> None:
     if args.use_grad_checkpoint:
         model.gradient_checkpointing_enable()
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
-    if args.use_flash_attn:
-        replace_with_flash_attention(model=model)
-        coordinator.print_on_master(msg="Flash-attention enabled successfully")
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -402,7 +433,7 @@ def main() -> None:
                     lr_scheduler=lr_scheduler,
                     epoch=epoch,
                     step=step + 1,
-                    batch_size=args.micro_batch_size,
+                    batch_size=args.batch_size,
                     coordinator=coordinator,
                 )
                 coordinator.print_on_master(
