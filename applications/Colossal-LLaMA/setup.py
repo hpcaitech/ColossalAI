@@ -19,11 +19,7 @@ def fetch_version():
 setup(
     name="colossal_llama",
     version=fetch_version(),
-    packages=find_packages(
-        exclude=(
-            "*.egg-info",
-        )
-    ),
+    packages=find_packages(exclude=("*.egg-info",)),
     description="Continual Pre-training and SFT for LLaMA",
     long_description=fetch_readme(),
     long_description_content_type="text/markdown",
