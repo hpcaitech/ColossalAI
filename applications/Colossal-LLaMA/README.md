@@ -297,7 +297,7 @@ Here is details about CLI arguments:
 #### 1. Install required packages
 ```
 cd Colossal-LLaMA
-pip install -r requirements.txt
+pip install -e .
 ```
 #### 2. Install `xentropy`, `layer_norm` and `rotary`
 ```bash
