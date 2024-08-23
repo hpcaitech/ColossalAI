@@ -161,3 +161,9 @@ applications/ColossalChat/sft_data
 applications/ColossalChat/prompt_data
 applications/ColossalChat/preference_data
 applications/ColossalChat/temp
+
+# Testing data
+/kto_data/
+/preference_data/
+/prompt_data/
+/sft_data/
