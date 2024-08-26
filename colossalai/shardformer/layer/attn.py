@@ -165,10 +165,6 @@ class ColoAttention:
             if s_q != 1:
                 attention_mask = attention_mask.tril(diagonal=0)
             attention_mask = attention_mask.expand(b, s_q, s_kv)
-            attention_mask = torch.ones(s_q, s_kv, dtype=dtype, device=device)
-            if s_q != 1:
-                attention_mask = attention_mask.tril(diagonal=0)
-            attention_mask = attention_mask.expand(b, s_q, s_kv)
         else:
             max_seqlen_q, cu_seqlens_q, q_indices = get_pad_info(q_padding_mask)
             if kv_padding_mask is None:
