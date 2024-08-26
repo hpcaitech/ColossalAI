@@ -349,7 +349,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         verbose: bool = False,
         cast_inputs: bool = True,
         fp8_communication: bool = False,
-        use_fp8: bool = False
+        use_fp8: bool = False,
     ) -> None:
         super().__init__()
         assert stage in (1, 2), f"LowLevelZeroPlugin only supports stage 1/2 training"
