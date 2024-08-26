@@ -450,22 +450,41 @@ if __name__ == "__main__":
         default=False,
         help="Freeze non embeddings parameters",
     )
-    parser.add_argument("--tp", type=int, default=1)
-    parser.add_argument("--pp", type=int, default=1)
-    parser.add_argument("--sp", type=int, default=1)
-    parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage", choices=[0, 1, 2])
     parser.add_argument("--pad_token", choices=["eos", "unk"], default="eos")
     parser.add_argument("--padding_mode", choices=["max_length", "longest"], default="max_length")
-    parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
-    parser.add_argument("--enable_sequence_parallelism", default=False, action="store_true")
-    parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
-    parser.add_argument("--microbatch_size", type=int, default=1)
     parser.add_argument(
         "--skip_save_each_epoch",
         action="store_true",
         default=False,
         help="skip saving the model checkpoint after each epoch is completed.",
     )
+
+    # Additional arguments for 3d plugin.
+    parser.add_argument("--tp", type=int, default=1, help="TP size, used for 3d plugin.")
+    parser.add_argument("--pp", type=int, default=1, help="PP size, used for 3d plugin.")
+    parser.add_argument("--sp", type=int, default=1, help="SP size, used for 3d plugin.")
+    parser.add_argument("--zero_stage", type=int, default=0, help="Zero stage, used for 3d plugin.", choices=[0, 1, 2])
+    parser.add_argument(
+        "--sp_mode",
+        type=str,
+        default="split_gather",
+        choices=["split_gather", "ring", "all_to_all"],
+        help="SP mode, used for 3d plugin.",
+    )
+    parser.add_argument(
+        "--enable_sequence_parallelism",
+        default=False,
+        action="store_true",
+        help="Whether to enable SP, used for 3d plugin.",
+    )
+    parser.add_argument(
+        "--zero_cpu_offload", default=False, action="store_true", help="Whether to use offloading, used for 3d plugin."
+    )
+    parser.add_argument(
+        "--microbatch_size", type=int, default=1, help="Batch size for each process in PP, used for 3d plugin."
+    )
+
+    # Additional arguments for benchmark.
     parser.add_argument("--num_samples", type=int, default=500, help="Number of samples for benchmarking.")
     parser.add_argument(
         "--benchmark", action="store_true", default=False, help="Benchmark performance using random dataset."
