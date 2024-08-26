@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from tqdm import trange
 from transformers import PreTrainedTokenizerBase
 
-from colossalai.booster import Booster
+from colossalai.booster import Booster, Plugin
 from colossalai.cluster import DistCoordinator
 from colossalai.utils import get_current_device
 
@@ -48,17 +48,21 @@ class ORPOTrainer(SLTrainer):
         actor: Any,
         booster: Booster,
         actor_optim: Optimizer,
+        plugin: Plugin,
         actor_lr_scheduler: _LRScheduler,
         tokenizer: PreTrainedTokenizerBase,
         max_epochs: int = 1,
         lam: float = 0.1,
+        apply_loss_mask: bool = True,
         accumulation_steps: int = 1,
         start_epoch: int = 0,
         save_interval: int = 0,
         save_dir: str = None,
         coordinator: DistCoordinator = None,
     ) -> None:
-        super().__init__(booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, start_epoch=start_epoch)
+        super().__init__(
+            booster, max_epochs=max_epochs, model=actor, optimizer=actor_optim, plugin=plugin, start_epoch=start_epoch
+        )
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
         self.odds_ratio_loss_fn = OddsRatioLoss()
@@ -67,6 +71,7 @@ class ORPOTrainer(SLTrainer):
         self.save_dir = save_dir
         self.num_train_step = 0
         self.lam = lam
+        self.apply_loss_mask = apply_loss_mask
         self.accumulation_steps = accumulation_steps
         self.device = get_current_device()
         self.accumulative_meter = AccumulativeMeanMeter()
@@ -130,6 +135,11 @@ class ORPOTrainer(SLTrainer):
                 batch["reject_attention_mask"],
                 batch["reject_loss_mask"],
             )
+
+            if not self.apply_loss_mask:
+                chosen_loss_mask = chosen_loss_mask.fill_(1.0)
+                reject_loss_mask = reject_loss_mask.fill_(1.0)
+
             batch_size = chosen_input_ids.size()[0]
             actor_out = self.model(
                 input_ids=torch.cat([chosen_input_ids, reject_input_ids]),
@@ -263,6 +273,11 @@ class ORPOTrainer(SLTrainer):
                     batch["reject_attention_mask"],
                     batch["reject_loss_mask"],
                 )
+
+                if not self.apply_loss_mask:
+                    chosen_loss_mask = chosen_loss_mask.fill_(1.0)
+                    reject_loss_mask = reject_loss_mask.fill_(1.0)
+
                 batch_size = chosen_input_ids.size()[0]
                 actor_out = self.model(
                     input_ids=torch.cat([chosen_input_ids, reject_input_ids]),

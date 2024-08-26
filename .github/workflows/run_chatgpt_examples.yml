@@ -31,18 +31,18 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v -e .
+          BUILD_EXT=1 pip install --no-cache-dir -v -e .
 
       - name: Install ChatGPT
         run: |
           cd applications/ColossalChat
-          pip install -v .
+          pip install --no-cache-dir -v .
           export BUILD_EXT=1
-          pip install -r examples/requirements.txt
+          pip install --no-cache-dir -r examples/requirements.txt
 
       - name: Install Transformers
         run: |
-          pip install transformers==4.36.2
+          pip install --no-cache-dir transformers==4.36.2
 
       - name: Execute Examples
         run: |

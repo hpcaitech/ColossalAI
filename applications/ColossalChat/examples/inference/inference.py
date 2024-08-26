@@ -53,8 +53,8 @@ def load_model_and_tokenizer(model_path, tokenizer_path, device="cuda", **kwargs
         tuple: A tuple containing the loaded model and tokenizer.
     """
 
-    model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+    model = AutoModelForCausalLM.from_pretrained(model_path, **kwargs, trust_remote_code=True).to(torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
     tokenizer.pad_token = tokenizer.eos_token
     model.to(device)
 
@@ -151,7 +151,6 @@ def main(args):
         chat_io.prompt_for_output("assistant")
 
         prompt = conv.get_prompt(add_generation_prompt=True)
-        print(prompt + "<end_of_prompt>")
         input_ids = tokenizer(prompt, return_tensors="pt", add_special_tokens=False)["input_ids"].to(
             torch.cuda.current_device()
         )

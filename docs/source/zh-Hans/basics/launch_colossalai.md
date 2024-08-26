@@ -116,17 +116,17 @@ colossalai run --nproc_per_node 4 --master_port 29505 test.py
 - 通过`--hosts`来启动
 
 这个方式适合节点数不多的情况。假设我们有两个节点，分别为`host`和`host2`。我们可以用以下命令进行多节点训练。
-比起单节点训练，多节点训练需要手动设置`--master_addr` （在单节点训练中`master_addr`默认为`127.0.0.1`）。
+比起单节点训练，多节点训练需要手动设置`--master_addr` （在单节点训练中`master_addr`默认为`127.0.0.1`）。同时，你需要确保每个节点都使用同一个ssh port。可以通过--ssh-port设置。
 
 :::caution
 
-多节点训练时，`master_addr`不能为`localhost`或者`127.0.0.1`，它应该是一个节点的名字或者IP地址。
+多节点训练时，`master_addr`不能为`localhost`或者`127.0.0.1`，它应该是一个节点的**名字或者IP地址**。
 
 :::
 
 ```shell
 # 在两个节点上训练
-colossalai run --nproc_per_node 4 --host host1,host2 --master_addr host1 test.py
+colossalai run --nproc_per_node 4 --host host1,host2 --master_addr host1 test.py --ssh-port 22
 ```
 
 

@@ -61,7 +61,7 @@ def test_overfit():
     _, predicted = torch.max(outputs.data, 1)
     total = labels.size(0)
     correct = (predicted == Y).sum().item()
-    assert (correct / total > 0.95, "The model has not overfitted to the synthesized dataset")
+    assert correct / total > 0.95
     assert (weight_to_compare - model.fc1.weight).sum() < 0.01
 
 

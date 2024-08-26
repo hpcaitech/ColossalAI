@@ -666,6 +666,9 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
+        # TODO: upgrade transformers to 4.44.0 to fix the bug, remove the hard code.
+        self._use_flash_attention_2 = shard_config.enable_flash_attention
+        self._use_sdpa = False if shard_config.enable_flash_attention else self._use_sdpa
         if self._use_flash_attention_2:
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None

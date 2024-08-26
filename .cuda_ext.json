@@ -5,8 +5,8 @@
       "cuda_image": "hpcaitech/cuda-conda:12.1"
     },
     {
-      "torch_command": "pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118",
-      "cuda_image": "hpcaitech/cuda-conda:11.8"
+      "torch_command": "pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124",
+      "cuda_image": "hpcaitech/cuda-conda:12.4"
     }
   ]
 }

@@ -30,7 +30,7 @@ MODEL_SAVE_PATH=$TEMP_DIR/rlhf_models
 MODELS_DIR=$TEMP_DIR/models_config
 # Skip those tests due to CI tests timeout
 MODELS=('llama')
-ADVANCED_PLUGINS=('zero2' 'sp_split_gather' 'sp_ring' 'sp_all_to_all' 'tp_zero2' '3d' 'gemini' 'gemini_auto' 'zero2_cpu')  # pp is still buggy
+ADVANCED_PLUGINS=('zero2' 'sp_split_gather' 'sp_ring' 'sp_all_to_all' 'tp_zero2' '3d' 'gemini' 'gemini_auto' 'zero2_cpu' 'pp' 'tp_pp')
 PLUGINS=('zero2' '3d' 'gemini' 'gemini_auto' 'zero2_cpu')
 LORA_RANK=('0')  # skip to reduce CI execution time, can pass all locally
 LORA_CONFIG_ENABLE="--lora_config $BASE_DIR/examples/training_scripts/lora_config.json"
@@ -91,7 +91,7 @@ SKIPPED_TESTS=(
     llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
     llama-gemini-20 # gemini doesn't support lora
 )
-
+skip_eval=false
 GRAD_CKPTS=('--grad_checkpoint')
 for lora_rank in ${LORA_RANK[@]}; do
     for model in ${MODELS[@]}; do
@@ -119,30 +119,33 @@ for lora_rank in ${LORA_RANK[@]}; do
                 lora_config=""
             fi
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
             fi
             if [[ $plugin == "tp_zero2" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
                 zero_stage='2'
                 plugin='3d'
             fi
             if [[ $plugin == "tp_pp" ]]; then
+                echo "Here"
                 tp='2'
                 bs='8'
                 pp='2'
                 plugin='3d'
+                skip_eval=true
             fi
             if [[ $plugin == "pp" ]]; then
                 bs='8'
-                pp='4'
+                pp='2'
                 plugin='3d'
+                skip_eval=true
             fi
             if [[ $plugin == "sp_split_gather" ]]; then
                 enable_sequence_parallelism='--enable_sequence_parallelism'
                 sp_mode='split_gather'
-                tp='4'
+                tp='2'
                 sp='1'
                 bs='8'
                 plugin='3d'
@@ -150,7 +153,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             if [[ $plugin == "sp_ring" ]]; then
                 enable_sequence_parallelism='--enable_sequence_parallelism'
                 sp_mode='ring'
-                tp='4'
+                tp='2'
                 sp='1'
                 bs='8'
                 plugin='3d'
@@ -159,7 +162,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 enable_sequence_parallelism='--enable_sequence_parallelism'
                 sp_mode='all_to_all'
                 tp='1'
-                sp='4'
+                sp='2'
                 bs='8'
                 plugin='3d'
             fi
@@ -175,28 +178,53 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
-                    --pretrain $pretrain \
-                    --tokenizer_dir $tokenizer_dir \
-                    --dataset ${dataset[@]} \
-                    --eval_dataset ${dataset[@]} \
-                    --save_path $MODEL_SAVE_PATH \
-                    --config_file $MODELS_DIR/config.jsonl \
-                    $lora_config \
-                    --plugin $plugin \
-                    --batch_size $bs \
-                    --max_epochs 1 \
-                    --accumulation_steps $grad_accu \
-                    --tp $tp \
-                    --pp $pp \
-                    --zero_stage $zero_stage \
-                    --sp $sp \
-                    --sp_mode $sp_mode \
-                    $enable_sequence_parallelism \
-                    --lr 2e-5 \
-                    $grad_ckpt \
-                    --max_len 400 \
-                    --use_flash_attn
+
+                if [[ $skip_eval ]]; then
+                    colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
+                        --pretrain $pretrain \
+                        --tokenizer_dir $tokenizer_dir \
+                        --dataset ${dataset[@]} \
+                        --save_path $MODEL_SAVE_PATH \
+                        --config_file $MODELS_DIR/config.jsonl \
+                        $lora_config \
+                        --plugin $plugin \
+                        --batch_size $bs \
+                        --max_epochs 1 \
+                        --accumulation_steps $grad_accu \
+                        --tp $tp \
+                        --pp $pp \
+                        --zero_stage $zero_stage \
+                        --sp $sp \
+                        --sp_mode $sp_mode \
+                        $enable_sequence_parallelism \
+                        --lr 2e-5 \
+                        $grad_ckpt \
+                        --max_len 400 \
+                        --use_flash_attn
+                else
+                    colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_sft.py \
+                        --pretrain $pretrain \
+                        --tokenizer_dir $tokenizer_dir \
+                        --dataset ${dataset[@]} \
+                        --eval_dataset ${dataset[@]} \
+                        --save_path $MODEL_SAVE_PATH \
+                        --config_file $MODELS_DIR/config.jsonl \
+                        $lora_config \
+                        --plugin $plugin \
+                        --batch_size $bs \
+                        --max_epochs 1 \
+                        --accumulation_steps $grad_accu \
+                        --tp $tp \
+                        --pp $pp \
+                        --zero_stage $zero_stage \
+                        --sp $sp \
+                        --sp_mode $sp_mode \
+                        $enable_sequence_parallelism \
+                        --lr 2e-5 \
+                        $grad_ckpt \
+                        --max_len 400 \
+                        --use_flash_attn
+                fi
                 passed=$?
                 if [ $passed -eq 0 ]; then
                     rm -rf ${MODEL_SAVE_PATH:?}/*
@@ -242,7 +270,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 lora_config=""
             fi
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
             fi
             grad_accu='2'
@@ -256,7 +284,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_preference/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_rm.py \
+                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_rm.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
@@ -325,7 +353,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 lora_config=""
             fi
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='16'
                 ebs='32'
             fi
@@ -350,7 +378,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     ptx_dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_sft/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_ppo.py \
+                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_ppo.py \
                     --pretrain $pretrain \
                     --rm_pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
@@ -417,7 +445,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             tp='1'
             bs='2'
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
             fi
             if [[ $plugin == "zero2" ]]; then
@@ -442,7 +470,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_preference/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_dpo.py \
+                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_dpo.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
@@ -500,7 +528,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             tp='1'
             bs='2'
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
             fi
             if [[ $plugin == "zero2" ]]; then
@@ -525,7 +553,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_preference/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_orpo.py \
+                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_orpo.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
@@ -583,7 +611,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             tp='1'
             bs='2'
             if [[ $plugin == "3d" ]]; then
-                tp='4'
+                tp='2'
                 bs='8'
             fi
             if [[ $plugin == "zero2" ]]; then
@@ -608,7 +636,7 @@ for lora_rank in ${LORA_RANK[@]}; do
                 for split in $(seq -f "%05g" 0 0); do
                     dataset+=("$TEMP_DIR/rlhf_data/tokenized_${model}_kto/arrow/part-$split")
                 done
-                colossalai run --nproc_per_node 4 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_kto.py \
+                colossalai run --nproc_per_node 2 --master_port 31332 $EXAMPLES_DIR/training_scripts/train_kto.py \
                     --pretrain $pretrain \
                     --tokenizer_dir $tokenizer_dir \
                     --dataset ${dataset[@]} \
