@@ -392,12 +392,14 @@ def train(args) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # Basic training information.
     parser.add_argument(
         "--pretrained",
         type=str,
         default=None,
-        help="Address of the pre-trained modeling",
+        help="Address of the pre-trained model",
     )
+    parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint for continuous training.")
     parser.add_argument("--dataset", nargs="+", default=[])
     parser.add_argument(
         "--plugin",
@@ -406,14 +408,14 @@ if __name__ == "__main__":
         choices=["gemini", "gemini_auto", "zero2", "zero2_cpu", "3d", "ddp"],
         help="Choose which plugin to use",
     )
-    parser.add_argument("--load_checkpoint", type=str, default=None, help="Load checkpoint")
     parser.add_argument("--save_interval", type=int, default=1000, help="Save interval")
     parser.add_argument("--save_dir", type=str, default="checkpoint_dir", help="Checkpoint directory")
     parser.add_argument("--tensorboard_dir", type=str, default="logs_dir", help="Tensorboard directory")
     parser.add_argument("--config_file", type=str, default="config_file", help="Config file")
+    # Training parameters
     parser.add_argument("--num_epochs", type=int, default=1, help="Number of training epochs")
     parser.add_argument("--accumulation_steps", type=int, default=1, help="Number of accumulation steps")
-    parser.add_argument("--batch_size", type=int, default=2, help="Batch size of each process")
+    parser.add_argument("--batch_size", type=int, default=2, help="Global Batch size of each process")
     parser.add_argument("--lr", type=float, default=3e-4, help="Learning rate")
     parser.add_argument("--max_length", type=int, default=8192, help="Model max length")
     parser.add_argument(
@@ -456,7 +458,7 @@ if __name__ == "__main__":
         "--skip_save_each_epoch",
         action="store_true",
         default=False,
-        help="skip saving the model checkpoint after each epoch is completed.",
+        help="Skip saving the model checkpoint after each epoch is completed.",
     )
 
     # Additional arguments for 3d plugin.
