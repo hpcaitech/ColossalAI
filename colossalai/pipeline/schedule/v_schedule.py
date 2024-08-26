@@ -12,8 +12,8 @@ class ScheduledNode:
     chunk: int
     stage: int
     minibatch: int
-    start_time: int
-    completion_time: int
+    # start_time: int
+    # completion_time: int
     rollback: bool = False
 
 
