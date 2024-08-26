@@ -277,40 +277,62 @@ def train(args) -> None:
 
     for epoch in range(start_epoch, args.num_epochs):
         dataloader.sampler.set_epoch(epoch=epoch)
-        pbar = tqdm(
-            desc=f"Epoch {epoch}",
-            disable=not coordinator.is_master(),
-            total=num_steps_per_epoch,
-            initial=start_step // args.accumulation_steps,
-        )
-        total_loss = torch.tensor(0.0, device=get_current_device())
-        for step, batch in enumerate(dataloader, start=start_step):
-            batch = {k: v.to(get_current_device()) for k, v in batch.items() if isinstance(v, torch.Tensor)}
-
-            batch_output = model(**batch)
-
-            loss = batch_output.loss / args.accumulation_steps
-            total_loss.add_(loss.data)
-
-            booster.backward(loss=loss, optimizer=optimizer)
-
-            if (step + 1) % args.accumulation_steps == 0:
+        if isinstance(plugin, HybridParallelPlugin) and plugin.pp_size > 1:
+            data_iter = iter(dataloader)
+            step_bar = tqdm(
+                range(len(dataloader)),
+                desc="Step",
+                disable=not (coordinator._local_rank == coordinator._world_size - 1),
+            )
+            for step in step_bar:
+                outputs = booster.execute_pipeline(
+                    data_iter,
+                    model,
+                    criterion=lambda outputs, inputs: outputs[0],
+                    optimizer=optimizer,
+                    return_loss=True,
+                )
+                loss = outputs["loss"]
+                if booster.plugin.stage_manager.is_last_stage():
+                    if coordinator._local_rank == coordinator._world_size - 1:
+                        step_bar.set_postfix({"train/loss": loss.item()})
                 optimizer.step()
-                lr_scheduler.step()
                 optimizer.zero_grad()
+        else:
+            pbar = tqdm(
+                desc=f"Epoch {epoch}",
+                disable=not coordinator.is_master(),
+                total=num_steps_per_epoch,
+                initial=start_step // args.accumulation_steps,
+            )
+            total_loss = torch.tensor(0.0, device=get_current_device())
+            for step, batch in enumerate(dataloader, start=start_step):
+                batch = {k: v.to(get_current_device()) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
-                all_reduce_mean(tensor=total_loss)
-                pbar.set_postfix({"Loss": f"{total_loss.item():.4f}"})
-                if coordinator.is_master():
-                    global_step = (epoch * num_steps_per_epoch) + (step + 1) // args.accumulation_steps
-                    writer.add_scalar(tag="Loss", scalar_value=total_loss.item(), global_step=global_step)
-                    writer.add_scalar(
-                        tag="Learning Rate",
-                        scalar_value=lr_scheduler.get_last_lr()[0],
-                        global_step=global_step,
-                    )
-                total_loss.fill_(0.0)
-                pbar.update()
+                batch_output = model(**batch)
+
+                loss = batch_output.loss / args.accumulation_steps
+                total_loss.add_(loss.data)
+
+                booster.backward(loss=loss, optimizer=optimizer)
+
+                if (step + 1) % args.accumulation_steps == 0:
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad()
+
+                    all_reduce_mean(tensor=total_loss)
+                    pbar.set_postfix({"Loss": f"{total_loss.item():.4f}"})
+                    if coordinator.is_master():
+                        global_step = (epoch * num_steps_per_epoch) + (step + 1) // args.accumulation_steps
+                        writer.add_scalar(tag="Loss", scalar_value=total_loss.item(), global_step=global_step)
+                        writer.add_scalar(
+                            tag="Learning Rate",
+                            scalar_value=lr_scheduler.get_last_lr()[0],
+                            global_step=global_step,
+                        )
+                    total_loss.fill_(0.0)
+                    pbar.update()
 
             # Save modeling.
 
