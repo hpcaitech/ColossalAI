@@ -420,7 +420,7 @@ Please visit our [documentation](https://www.colossalai.org/) and [examples](htt
 ## Installation
 
 Requirements:
-- PyTorch >= 2.1
+- PyTorch >= 2.2
 - Python >= 3.7
 - CUDA >= 11.0
 - [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
