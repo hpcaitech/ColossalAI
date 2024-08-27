@@ -486,7 +486,7 @@ def test_run_fwd_bwd_base(
             ScheduledNode(type="RECV_BACKWARD", chunk=0, stage=1, minibatch=0),
             ScheduledNode(type="B", chunk=0, stage=1, minibatch=0),
             ScheduledNode(type="W", chunk=0, stage=1, minibatch=0),
-            ScheduledNode(type="SEND_BACKWARD", chunk=1, stage=0, minibatch=0),
+            ScheduledNode(type="SEND_BACKWARD", chunk=0, stage=0, minibatch=0),
         ],
         # stage 2
         [
@@ -547,7 +547,7 @@ def test_run_fwd_bwd_base(
     # init model and input
     num_layers = 8
     in_dim = out_dim = 8
-    print(f"Before init Model: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};")
+    # print(f"Before init Model: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
     input0 = torch.rand(in_dim, out_dim, requires_grad=True).to(rank)
 
@@ -578,9 +578,9 @@ def test_run_fwd_bwd_base(
         for idx, sub_model in enumerate(model.layers):
             if idx == 3 or idx == 4:
                 local_chunk.append(sub_model)
-    print(
-        f"After init Model & input: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};"
-    )
+    # print(
+    #     f"After init Model & input: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};"
+    # )
 
     torch.cuda.synchronize()
     scheduler.run_forward_backward(
