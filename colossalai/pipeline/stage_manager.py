@@ -94,8 +94,8 @@ class PipelineStageManager:
             stage_indices.append([num_layers_per_stage_accumulated[stage], num_layers_per_stage_accumulated[stage + 1]])
             stage_indices.append(
                 [
-                    num_layers_per_stage_accumulated[num_stages - stage - 1],
-                    num_layers_per_stage_accumulated[num_stages - stage],
+                    num_layers_per_stage_accumulated[2 * num_stages - stage - 1],
+                    num_layers_per_stage_accumulated[2 * num_stages - stage],
                 ]
             )
             return stage_indices
