@@ -157,6 +157,7 @@ def test_run_fwd_bwd_base(
     print(f"Before init Model: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
     input0 = torch.rand(in_dim, out_dim, requires_grad=True).to(rank)
+    # data_iter = [input0]
 
     input_base = input0.clone()
     model_base = deepcopy(model)
@@ -193,6 +194,7 @@ def test_run_fwd_bwd_base(
     scheduler.run_forward_backward(
         model_chunk=local_chunk,
         input_obj=input0,
+        # data_iter=iter(data_iter),
         data_iter=None,
         criterion=criterion,
         optimizer=None,
