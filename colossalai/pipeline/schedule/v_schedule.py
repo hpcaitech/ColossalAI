@@ -12,8 +12,8 @@ class ScheduledNode:
     chunk: int
     stage: int
     minibatch: int
-    # start_time: int
-    # completion_time: int
+    start_time: int = 0
+    completion_time: int = 0
     rollback: bool = False
 
 
@@ -460,9 +460,9 @@ class PipelineGraph(object):
                     )
                 )
             assert len(rollback_comm) == 0
-            for node in local_order_with_rollback[rank]:
-                print(f"Rank {rank} Node info {node}")
-                print(f"{node.type}-{node.minibatch}-{int(node.rollback)}", end=", ")
-            print()
+            # for node in local_order_with_rollback[rank]:
+            #     print(f"Rank {rank} Node info {node}")
+            #     print(f"{node.type}-{node.minibatch}-{int(node.rollback)}", end=", ")
+            # print()
 
         return local_order_with_rollback
