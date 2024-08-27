@@ -440,9 +440,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 torch.autograd.backward(output_obj, inputs=input_obj, retain_graph=True)
             else:
                 # commom bwd step
-                # print(f"bwd output_obj {output_obj} output_obj_grad {output_obj_grad} input_obj {input_obj}")
                 # BUG:output_obj_grad is None
-                # print(f"model_chunk_id {model_chunk_id} stage {self.stage_manager.stage}; tensor {output_obj};\n grad_tensors {output_obj_grad};\n inputs {input_obj}\n")
                 torch.autograd.backward(
                     tensors=output_obj, grad_tensors=output_obj_grad, inputs=input_obj, retain_graph=True
                 )
@@ -516,7 +514,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 input_obj = input_obj
             else:
                 input_obj = self.recv_forward_buffer[model_chunk_id].pop(0)
-
         else:
             # is last stage; recv from local
             if self.stage_manager.is_last_stage(ignore_chunk=True):
@@ -534,8 +531,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             accum_loss=accum_loss,
             outputs=outputs,
         )
-
-        # print(f"model_chunk_id {model_chunk_id} fwd output_obj {output_obj}")
 
         # add input and output object for backward b
         self.input_tensors[model_chunk_id].append(input_obj)
@@ -681,7 +676,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         """
         it = 0
         # while we still have schedules_node in self.schedules
-        # print(f"manger_stage {self.stage_manager.stage} schedule {self.schedules} \n")
         while it < len(self.schedules):
             scheduled_node = self.schedules[it]
             print(

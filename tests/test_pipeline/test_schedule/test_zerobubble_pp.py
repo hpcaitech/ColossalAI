@@ -1,6 +1,7 @@
 from copy import deepcopy
 from typing import Tuple
 
+import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -139,7 +140,7 @@ def test_run_fwd_bwd_base(
     ]
 
     scheduler = ZeroBubbleVPipeScheduler(
-        schedule=zbv_schedule[rank],
+        schedule=zbv_schedule[rank],  # hint: send whole schedule or local schedule only ?
         stage_manager=stage_manager,
         num_model_chunks=pp_size,
         num_microbatch=1,
@@ -226,7 +227,6 @@ def test_run_fwd_bwd_base(
         # layer 6
         assert_close(local_chunk[1].weight, model_base.layers[6].weight)
         assert_close(local_chunk[1].weight.grad, model_base.layers[6].weight.grad)
-
     if rank == 2:
         # layer 2
         assert_close(local_chunk[0].weight, model_base.layers[2].weight)
@@ -234,7 +234,6 @@ def test_run_fwd_bwd_base(
         # layer 5
         assert_close(local_chunk[1].weight, model_base.layers[5].weight)
         assert_close(local_chunk[1].weight.grad, model_base.layers[5].weight.grad)
-
     if rank == 3:
         # layer 3
         assert_close(local_chunk[0].weight, model_base.layers[3].weight)
@@ -244,7 +243,16 @@ def test_run_fwd_bwd_base(
         assert_close(local_chunk[1].weight.grad, model_base.layers[4].weight.grad)
 
 
-# @pytest.mark.dist
+# Test iter input & multiple microbatch
+def test_run_fwd_bwd_iter_input(
+    rank: int,
+    world_size: int,
+    port: int,
+):
+    pass
+
+
+@pytest.mark.dist
 # @pytest.mark.parametrize("num_microbatch", [4])
 # @pytest.mark.parametrize("batch_size", [4])
 # @pytest.mark.parametrize("num_model_chunk", [2])
