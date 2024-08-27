@@ -294,8 +294,9 @@ def train(args) -> None:
                 )
                 loss = outputs["loss"]
                 if booster.plugin.stage_manager.is_last_stage():
+                    global_loss = all_reduce_mean(loss, plugin)
                     if coordinator._local_rank == coordinator._world_size - 1:
-                        step_bar.set_postfix({"train/loss": loss.item()})
+                        step_bar.set_postfix({"train/loss": global_loss.item()})
                 optimizer.step()
                 optimizer.zero_grad()
         else:
