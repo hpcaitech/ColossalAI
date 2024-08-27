@@ -219,6 +219,8 @@ def main():
             performance_evaluator.on_step_start(step)
             outputs = model(**batch)
             loss = outputs[0]
+            del outputs
+
             booster.backward(loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()
