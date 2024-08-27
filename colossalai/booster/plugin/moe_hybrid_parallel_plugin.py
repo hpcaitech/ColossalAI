@@ -214,6 +214,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         moe_dp_outside: bool = True,
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
+        fp8_communication: bool = False,
+        use_fp8: bool = False,
     ) -> None:
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
@@ -327,6 +329,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
+        self.use_fp8 = use_fp8
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -345,6 +348,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
+            fp8_communication=fp8_communication,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -431,6 +435,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
+                use_fp8=self.use_fp8,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.ep_size > 1:

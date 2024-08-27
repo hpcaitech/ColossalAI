@@ -298,6 +298,7 @@ class TorchFSDPPlugin(DPPluginBase):
             ignored_modules: Optional[Iterable[torch.nn.Module]] = None,
             param_init_fn: Optional[Callable[[nn.Module], None]] = None,
             sync_module_states: bool = False,
+            fp8_communication: bool = False,
         ):
             super().__init__()
             self.fsdp_kwargs = dict(
@@ -311,6 +312,7 @@ class TorchFSDPPlugin(DPPluginBase):
                 param_init_fn=param_init_fn,
                 sync_module_states=sync_module_states,
             )
+            self.fp8_communication = fp8_communication
             self.logger = get_dist_logger()
 
     else:
@@ -347,6 +349,19 @@ class TorchFSDPPlugin(DPPluginBase):
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # wrap the model with PyTorch FSDP
         fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
+
+        if self.fp8_communication:
+            from colossalai.quantization.utils import patch_fsdp_params_comm_hook
+
+            patch_fsdp_params_comm_hook()
+
+            from colossalai.quantization.fp8 import fp8_compress_fsdp_params_comm_hook
+
+            fsdp_model.module.register_params_comm_hook(None, fp8_compress_fsdp_params_comm_hook)
+
+            from colossalai.quantization.fp8 import fp8_compress_fsdp_grad_comm_hook
+
+            fsdp_model.module.register_comm_hook(None, fp8_compress_fsdp_grad_comm_hook)
 
         if optimizer is not None:
             if len(optimizer.param_groups) > 1:

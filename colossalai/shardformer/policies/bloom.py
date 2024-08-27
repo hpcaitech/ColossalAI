@@ -76,12 +76,19 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attention.query_key_value",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel_mode": sp_mode},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.attention_dropout",
@@ -90,12 +97,19 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_h_to_4h",
                         target_module=col_nn.Linear1D_Col,
-                        kwargs={"seq_parallel_mode": sp_mode, "overlap": overlap},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.dense_4h_to_h",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel_mode": sp_mode},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                 ],
             )
@@ -115,7 +129,14 @@ class BloomPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="word_embeddings",
                         target_module=embedding_cls,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                        kwargs=(
+                            {
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            }
+                            if self.shard_config.enable_tensor_parallelism
+                            else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        ),
                     ),
                 ],
                 policy=policy,
@@ -279,6 +300,7 @@ class BloomForCausalLMPolicy(BloomPolicy):
                     kwargs=dict(
                         gather_output=not self.shard_config.parallel_output,
                         make_vocab_size_divisible_by=self.shard_config.make_vocab_size_divisible_by,
+                        fp8_communication=self.shard_config.fp8_communication,
                     ),
                 ),
                 policy=policy,
@@ -337,7 +359,9 @@ class BloomForSequenceClassificationPolicy(BloomPolicy):
         if self.shard_config.enable_tensor_parallelism:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
-                    suffix="score", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)
+                    suffix="score",
+                    target_module=col_nn.Linear1D_Col,
+                    kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                 ),
                 policy=policy,
                 target_key=BloomForSequenceClassification,
@@ -374,7 +398,9 @@ class BloomForTokenClassificationPolicy(BloomPolicy):
             self.append_or_create_submodule_replacement(
                 description=[
                     SubModuleReplacementDescription(
-                        suffix="classifier", target_module=col_nn.Linear1D_Col, kwargs=dict(gather_output=True)
+                        suffix="classifier",
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="dropout",

@@ -43,19 +43,29 @@ class SamPolicy(Policy):
                         target_module=col_nn.FusedLinear1D_Col,
                         kwargs={
                             "n_fused": 3,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.lin1",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.lin2",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                 ],
             )
@@ -68,58 +78,100 @@ class SamPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_token_to_image.q_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_token_to_image.k_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_token_to_image.v_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_token_to_image.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.lin1",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.lin2",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_image_to_token.q_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_image_to_token.k_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_image_to_token.v_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="cross_attn_image_to_token.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                 ],
             )
@@ -132,18 +184,30 @@ class SamPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="final_attn_token_to_image.q_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="final_attn_token_to_image.k_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="final_attn_token_to_image.v_proj",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="final_attn_token_to_image.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                 ],
             )

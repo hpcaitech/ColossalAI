@@ -34,6 +34,7 @@ from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
+from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero import LowLevelZeroOptimizer
@@ -62,7 +63,12 @@ class OptimizerParamCheckState(enum.Enum):
 
 class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
     def __init__(
-        self, module: nn.Module, precision: str, overlap_allgather: bool = False, cast_inputs: bool = True
+        self,
+        module: nn.Module,
+        precision: str,
+        overlap_allgather: bool = False,
+        cast_inputs: bool = True,
+        use_fp8: bool = False,
     ) -> None:
         super().__init__(module)
         self.dtype = None
@@ -75,11 +81,16 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
         module = module.to(get_accelerator().get_current_device())
         self.module = module
         self.convert_fn = None
+        self.use_fp8 = use_fp8
         if self.dtype is not None and cast_inputs:
             self.convert_fn = partial(_convert_floating_point, dtype=self.dtype)
         self.overlap_allgather = overlap_allgather
+        self.op_hooks = []
         if overlap_allgather:
-            self.op_hook = ZeroOpHook()
+            self.op_hooks.append(ZeroOpHook())
+        if use_fp8:
+            self.op_hooks.append(FP8Hook())
+        if overlap_allgather or use_fp8:
             for p in module.parameters():
                 if p.requires_grad and type(p) is not ColoParameter:
                     p.__class__ = ColoParameter
@@ -337,6 +348,8 @@ class LowLevelZeroPlugin(DPPluginBase):
         master_weights: bool = True,
         verbose: bool = False,
         cast_inputs: bool = True,
+        fp8_communication: bool = False,
+        use_fp8: bool = False,
     ) -> None:
         super().__init__()
         assert stage in (1, 2), f"LowLevelZeroPlugin only supports stage 1/2 training"
@@ -360,12 +373,14 @@ class LowLevelZeroPlugin(DPPluginBase):
             cpu_offload=cpu_offload,
             master_weights=master_weights,
             overlap_allgather=overlap_allgather,
+            fp8_communication=fp8_communication,
         )
         self.lora_enabled = False
         self.verbose = verbose
         self.logger = get_dist_logger()
         self.cast_inputs = cast_inputs
 
+        self.use_fp8 = use_fp8
         # set class name with stage, for better error message
         setattr(self.__class__, "__name__", f"LowLevelZeroPlugin_ZeRO-{stage}")
 
@@ -484,6 +499,7 @@ class LowLevelZeroPlugin(DPPluginBase):
                 self.precision,
                 overlap_allgather=self.zero_optim_kwargs["overlap_allgather"],
                 cast_inputs=self.cast_inputs,
+                use_fp8=self.use_fp8,
             )
 
         # TODO: Support Galore + ZeRO

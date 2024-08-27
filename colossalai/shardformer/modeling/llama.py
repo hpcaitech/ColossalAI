@@ -162,9 +162,13 @@ class LlamaPipelineForwards:
                     hidden_states, position_ids = split_batch_zigzag([hidden_states, position_ids], sp_group)
 
             elif is_share_sp_tp(sp_mode):
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+                )
             elif sp_mode == "all_to_all":
-                hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+                )
 
         if self.gradient_checkpointing and self.training and use_cache:
             if use_cache:
@@ -227,7 +231,9 @@ class LlamaPipelineForwards:
         if stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+                hidden_states = gather_sp_output(
+                    hidden_states, sp_group, sp_mode, fp8_communication=shard_config.fp8_communication
+                )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -532,9 +538,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -605,7 +611,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
+            attn_output = all_to_all_comm(
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -707,9 +715,13 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
                 attn_kwargs = {"attention_mask_type": attn_kwargs["attention_mask_type"]}  # drop redundant tensors
 
         elif is_share_sp_tp(sp_mode):
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+            )
         hidden_states = inputs_embeds
 
         # decoder layers
@@ -754,7 +766,9 @@ def get_llama_flash_attention_model_forward(shard_config: ShardConfig, sp_mode=N
         hidden_states = self.norm(hidden_states)
         # Cases that don't support parallelizing cross entropy computation along sequence
         if (not shard_config.parallel_output) or is_share_sp_tp(sp_mode) or force_sp_output_gather:
-            hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
+            hidden_states = gather_sp_output(
+                hidden_states, sp_group, sp_mode, fp8_communication=shard_config.fp8_communication
+            )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
