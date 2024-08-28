@@ -28,7 +28,7 @@ MODEL_CONFIGS = {
     "118M": GPT2Config(activation_function="gelu"),
     "338M": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
     "738M": GPT2Config(n_embd=1280, n_head=20, n_layer=36, activation_function="gelu"),
-    "6.21B": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=16384, activation_function="gelu"),
+    "6.21B": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=32768, activation_function="gelu"),
 }
 
 
