@@ -100,7 +100,7 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
         if self.convert_fn is not None:
             args = tree_map(self.convert_fn, args)
             kwargs = tree_map(self.convert_fn, kwargs)
-        ctx = ColoParamOpHookManager.use_hooks(self.op_hook) if self.overlap_allgather else nullcontext()
+        ctx = ColoParamOpHookManager.use_hooks(*self.op_hooks) if self.overlap_allgather else nullcontext()
         with ctx:
             return super().forward(*args, **kwargs)
 
