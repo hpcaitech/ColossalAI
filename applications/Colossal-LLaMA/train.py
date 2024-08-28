@@ -299,6 +299,41 @@ def train(args) -> None:
                         step_bar.set_postfix({"train/loss": global_loss.item()})
                 optimizer.step()
                 optimizer.zero_grad()
+                
+                # Save modeling.
+                save_model_condition = (
+                    args.save_interval > 0 and (step + 1) % args.save_interval == 0
+                )
+
+                if not args.skip_save_each_epoch:
+                    save_model_condition = save_model_condition or (step + 1) == len(dataloader)
+
+                if save_model_condition and not args.benchmark:
+                    coordinator.print_on_master("\nStart saving model checkpoint with running states")
+
+                    if args.use_neft:
+                        coordinator.print_on_master("Deactivate NEFTune before saving model.")
+                        deactivate_neftune(model, handle)
+
+                    accelerator.empty_cache()
+                    save_checkpoint(
+                        save_dir=args.save_dir,
+                        booster=booster,
+                        model=model,
+                        optimizer=optimizer,
+                        lr_scheduler=lr_scheduler,
+                        epoch=epoch,
+                        step=step + 1,
+                        batch_size=args.batch_size,
+                        coordinator=coordinator,
+                    )
+                    coordinator.print_on_master(
+                        f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
+                    )
+
+                    if args.use_neft:
+                        coordinator.print_on_master("Activate NEFTune.")
+                        model, handle = activate_neftune(model)
         else:
             pbar = tqdm(
                 desc=f"Epoch {epoch}",
@@ -336,7 +371,6 @@ def train(args) -> None:
                     pbar.update()
 
             # Save modeling.
-
             save_model_condition = (
                 args.save_interval > 0 and (step + 1) % (args.save_interval * args.accumulation_steps) == 0
             )
