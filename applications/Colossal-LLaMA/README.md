@@ -30,7 +30,7 @@ Colossal-LLaMA
   - [Install](#install)
     - [0. Pre-requisite](#0-pre-requisite)
     - [1. Install required packages](#1-install-required-packages)
-    - [2. Install `xentropy`, `layer_norm` and `rotary`](#2-install-xentropy-layer_norm-and-rotary)
+    - [2. Install Apex](#2-install-apex)
   - [How to run](#how-to-run)
     - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
     - [2. Init Model Preparation](#2-init-model-preparation)
@@ -299,18 +299,8 @@ Here is details about CLI arguments:
 cd Colossal-LLaMA
 pip install -e .
 ```
-#### 2. Install `xentropy`, `layer_norm` and `rotary`
-```bash
-git clone git@github.com:Dao-AILab/flash-attention.git
-# At the root folder
-cd csrc/xentropy && pip install .
-# At the root folder
-cd csrc/layer_norm && pip install .
-# At the root folder
-cd csrc/rotary && pip install .
-```
 
-#### 3. Install Apex
+#### 2. Install Apex
 ```bash
 git clone git@github.com:NVIDIA/apex.git
 # Install from source.
