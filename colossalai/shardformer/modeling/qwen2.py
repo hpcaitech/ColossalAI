@@ -247,9 +247,7 @@ class Qwen2PipelineForwards:
             hidden_states = self.norm(hidden_states)
             if shard_config.enable_sequence_parallelism:
                 if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                    hidden_states = gather_sp_output(
-                        hidden_states, shard_config.sequence_parallel_process_group, sp_mode
-                    )
+                    hidden_states = gather_sp_output(hidden_states, shard_config)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
@@ -516,9 +514,9 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         value_states = self.v_proj(hidden_states)
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
 
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
@@ -603,7 +601,9 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         attn_output = attn_output.transpose(1, 2).contiguous()
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim)
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)
+            attn_output = all_to_all_comm(
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -702,9 +702,13 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         next_decoder_cache = None
 
         if sp_mode in ["ring", "split_gather"]:
-            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group)
+            hidden_states = split_forward_gather_backward(
+                hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            hidden_states = split_forward_gather_backward(hidden_states, 1, sp_group, 1 / sp_size)
+            hidden_states = split_forward_gather_backward(
+                hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+            )
 
         for decoder_layer in self.layers:
             if output_hidden_states:
@@ -742,7 +746,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
 
         if shard_config.enable_sequence_parallelism:
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(hidden_states, shard_config.sequence_parallel_process_group, sp_mode)
+                hidden_states = gather_sp_output(hidden_states, shard_config)
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

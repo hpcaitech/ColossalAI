@@ -128,12 +128,17 @@ class ChatGLMPolicy(Policy):
                             "seq_parallel_mode": sp_mode,
                             "seq_parallel_dim": 0,
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.dense",
                         target_module=col_nn.Linear1D_Row,
-                        kwargs={"seq_parallel_mode": sp_mode, "seq_parallel_dim": 0},
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "seq_parallel_dim": 0,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attention.core_attention.attention_dropout",
@@ -148,7 +153,14 @@ class ChatGLMPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="embedding.word_embeddings",
                         target_module=embedding_cls,
-                        kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                        kwargs=(
+                            {
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            }
+                            if self.shard_config.enable_tensor_parallelism
+                            else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                        ),
                     ),
                 ],
                 policy=policy,

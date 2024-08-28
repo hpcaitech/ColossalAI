@@ -301,12 +301,7 @@ class GPT2PipelineForwards:
         gather_output = (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode)
         if disable_pp or stage_manager.is_last_stage():
             if gather_output:
-                hidden_states = gather_sp_output(
-                    hidden_states,
-                    sp_dim=1,
-                    sp_group=sp_group,
-                    sp_mode=sp_mode,
-                )
+                hidden_states = gather_sp_output(hidden_states, shard_config)
 
         # gather_sp_output could've changed seq length.
         input_shape = (*input_shape[:-1], hidden_states.size(-2))

@@ -114,21 +114,27 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(  # or replicate?
-                        suffix="block_sparse_moe.gate", target_module=Linear1D_Col, kwargs={"gather_output": True}
+                        suffix="block_sparse_moe.gate",
+                        target_module=Linear1D_Col,
+                        kwargs={"gather_output": True, "fp8_communication": self.shard_config.fp8_communication},
                     ),
                 ],
             )
@@ -138,7 +144,14 @@ class MixtralPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=MixtralModel,
@@ -282,7 +295,7 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True),
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )
@@ -336,7 +349,9 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
                 MixtralForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="score",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )

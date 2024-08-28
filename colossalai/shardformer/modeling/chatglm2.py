@@ -265,9 +265,7 @@ class ChatGLMPipelineForwards:
             if shard_config.enable_sequence_parallelism:
                 sp_mode = shard_config.sequence_parallelism_mode
                 if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                    hidden_states = gather_sp_output(
-                        hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
-                    )
+                    hidden_states = gather_sp_output(hidden_states, shard_config, sp_dim=0)
 
             if not return_dict:
                 return tuple(
@@ -423,6 +421,12 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
                     "`use_cache=True` is incompatible with sp mode `{sp_mode}`. Setting `use_cache=False`..."
                 )
                 use_cache = False
+        if sp_mode in ["all_to_all"] and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with sp mode `{sp_mode}`. Setting `use_cache=False`..."
+                )
+                use_cache = False
         # Run encoder.
         # [seq_len, batch_size, hidden_size] -> [seq_len/TP_size, batch_size, hidden_size]
         if sp_mode in ["split_gather"]:
@@ -430,6 +434,7 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
                 inputs_embeds,
                 dim=0,
                 process_group=sp_group,
+                fp8_communication=shard_config.fp8_communication,
             )
         elif sp_mode == "all_to_all":
             inputs_embeds = split_forward_gather_backward(
@@ -437,6 +442,7 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
                 dim=0,
                 process_group=sp_group,
                 grad_scale=1 / sp_size,
+                fp8_communication=shard_config.fp8_communication,
             )
         hidden_states, presents, all_hidden_states, all_self_attentions = self.encoder(
             inputs_embeds,
@@ -448,9 +454,7 @@ def get_chatglm_sequence_parallel_forward_fn(shard_config: ShardConfig, sp_mode,
         )
         if shard_config.enable_sequence_parallelism:
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
-                hidden_states = gather_sp_output(
-                    hidden_states, shard_config.sequence_parallel_process_group, sp_mode, sp_dim=0
-                )
+                hidden_states = gather_sp_output(hidden_states, shard_config, sp_dim=0)
 
         if not return_dict:
             return tuple(
@@ -539,9 +543,24 @@ def get_chatglm_sequence_parallel_attention_forward(shard_config: ShardConfig, s
             key_layer = key_layer.reshape(sq, bs, -1)
             value_layer = value_layer.reshape(sq, bs, -1)
 
-            query_layer = all_to_all_comm(query_layer, sp_group, gather_dim=0)
-            key_layer = all_to_all_comm(key_layer, sp_group, gather_dim=0)
-            value_layer = all_to_all_comm(value_layer, sp_group, gather_dim=0)
+            query_layer = all_to_all_comm(
+                query_layer,
+                sp_group,
+                gather_dim=0,
+                fp8_communication=shard_config.fp8_communication,
+            )
+            key_layer = all_to_all_comm(
+                key_layer,
+                sp_group,
+                gather_dim=0,
+                fp8_communication=shard_config.fp8_communication,
+            )
+            value_layer = all_to_all_comm(
+                value_layer,
+                sp_group,
+                gather_dim=0,
+                fp8_communication=shard_config.fp8_communication,
+            )
 
             query_layer = query_layer.view(
                 sq * sp_size,
@@ -617,7 +636,13 @@ def get_chatglm_sequence_parallel_attention_forward(shard_config: ShardConfig, s
 
         context_layer = self.core_attention(query_layer, key_layer, value_layer, attention_mask)
         if sp_mode == "all_to_all":
-            context_layer = all_to_all_comm(context_layer, sp_group, gather_dim=2, scatter_dim=0)
+            context_layer = all_to_all_comm(
+                context_layer,
+                sp_group,
+                gather_dim=2,
+                scatter_dim=0,
+                fp8_communication=shard_config.fp8_communication,
+            )
 
         # =================
         # Output. [sq, b, h]

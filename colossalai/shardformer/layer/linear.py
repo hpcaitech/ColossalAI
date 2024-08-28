@@ -84,6 +84,7 @@ class Linear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        fp8_communication: bool = False,
         **kwargs,
     ):
         super().__init__(weight=weight, bias_=bias_, **kwargs)
@@ -98,6 +99,7 @@ class Linear1D_Col(ParallelModule):
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.process_group = process_group
+        self.fp8_communication = fp8_communication
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -202,19 +204,25 @@ class Linear1D_Col(ParallelModule):
 
         if self.seq_parallel_mode == "split_gather":
             input_parallel = gather_forward_reducescatter_backward(
-                input_parallel, self.process_group, self.seq_parallel_dim
+                input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
             )
-            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, False)
+            output_parallel = linear_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, False, fp8_communication=self.fp8_communication
+            )
         elif self.seq_parallel_mode == "ring":
             output_parallel = linear_gather_forward_reducescatter_backward(
                 input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
             )
         else:
-            output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
+            output_parallel = linear_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, True, fp8_communication=self.fp8_communication
+            )
 
         if self.gather_output:
             # All-gather across the partitions.
-            output = gather_forward_split_backward(output_parallel, dim=-1, process_group=self.process_group)
+            output = gather_forward_split_backward(
+                output_parallel, dim=-1, process_group=self.process_group, fp8_communication=self.fp8_communication
+            )
         else:
             output = output_parallel
 
@@ -264,6 +272,7 @@ class Linear1D_Row(ParallelModule):
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         stream_chunk_num: int = 1,
+        fp8_communication: bool = False,
     ):
         super().__init__()
 
@@ -278,6 +287,7 @@ class Linear1D_Row(ParallelModule):
         self.seq_parallel_mode = seq_parallel_mode
         self.seq_parallel_dim = seq_parallel_dim
         self.num_partitions = dist.get_world_size(self.process_group)
+        self.fp8_communication = fp8_communication
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -398,7 +408,9 @@ class Linear1D_Row(ParallelModule):
             ), "Invalid shapes in Linear1D_Row forward: input={}, weight={}. Expected last dim of input {}.".format(
                 input_.shape, self.weight.shape, self.weight.shape[-1] * self.num_partitions
             )
-            input_ = split_forward_gather_backward(input_, dim=-1, process_group=self.process_group)
+            input_ = split_forward_gather_backward(
+                input_, dim=-1, process_group=self.process_group, fp8_communication=self.fp8_communication
+            )
 
         if self.stream_chunk_num > 1:
             if self.training:
@@ -416,10 +428,13 @@ class Linear1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            if self.seq_parallel_mode == "split_gather":
+            if self.seq_parallel_mode is None:
+                output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
+                output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
+            elif self.seq_parallel_mode == "split_gather":
                 output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
                 output = reducescatter_forward_gather_backward(
-                    output_parallel, self.process_group, self.seq_parallel_dim
+                    output_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
                 )
             elif self.seq_parallel_mode == "ring":
                 output = linear_reducescatter_forward_gather_backward(
@@ -562,6 +577,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         make_vocab_size_divisible_by: int = 64,
+        fp8_communication: bool = False,
         **kwargs,
     ):
         # create weight and bias
@@ -592,6 +608,7 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
             **kwargs,
             new_num_embeddings=new_out_features,
             old_num_embeddings=out_features,
+            fp8_communication=fp8_communication,
         )
         # get the length of valid embeddings
         tp_rank = dist.get_rank(process_group)

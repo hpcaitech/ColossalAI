@@ -77,6 +77,7 @@ class GPTJPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -84,6 +85,7 @@ class GPTJPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -91,19 +93,29 @@ class GPTJPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "overlap": overlap,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.out_proj",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_in",
                         target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.fc_out",
                         target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.attn_dropout",
@@ -125,7 +137,14 @@ class GPTJPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="wte",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=GPTJModel,
@@ -264,6 +283,7 @@ class GPTJForCausalLMPolicy(GPTJPolicy):
                             kwargs={
                                 "gather_output": True,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ]

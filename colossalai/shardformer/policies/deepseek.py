@@ -118,18 +118,22 @@ class DeepseekPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                 ],
             )
@@ -138,7 +142,10 @@ class DeepseekPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs={
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication": self.shard_config.fp8_communication,
+                    },
                 ),
                 policy=policy,
                 target_key="DeepseekModel",
@@ -155,6 +162,7 @@ class DeepseekPolicy(Policy):
                             "ep_group": self.shard_config.ep_group,
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     )
                 ],
@@ -298,14 +306,14 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         policy = super().module_policy()
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for causal lm
+            # add a new item for casual lm
             new_item = {
                 "DeepseekForCausalLM": ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True),
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )
