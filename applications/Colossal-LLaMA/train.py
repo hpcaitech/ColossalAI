@@ -344,7 +344,7 @@ def train(args) -> None:
             if not args.skip_save_each_epoch:
                 save_model_condition = save_model_condition or (step + 1) == len(dataloader)
 
-            if save_model_condition:
+            if save_model_condition and not args.benchmark:
                 coordinator.print_on_master("\nStart saving model checkpoint with running states")
 
                 if args.use_neft:
@@ -384,9 +384,10 @@ def train(args) -> None:
         deactivate_neftune(model, handle)
 
     # Final save.
-    coordinator.print_on_master("Start saving final model checkpoint")
-    booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(f"Saved final model checkpoint at epoch {epoch} at folder {args.save_dir}")
+    if not args.benchmark:
+        coordinator.print_on_master("Start saving final model checkpoint")
+        booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
+        coordinator.print_on_master(f"Saved final model checkpoint at epoch {epoch} at folder {args.save_dir}")
 
     coordinator.print_on_master(f"Max device memory usage: {accelerator.max_memory_allocated()/1024**2:.2f} MB")
 
