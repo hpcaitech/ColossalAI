@@ -616,10 +616,6 @@ def test_run_fwd_bwd_with_vschedule(
 # @pytest.mark.parametrize("num_model_chunk", [2])
 @rerun_if_address_is_in_use()
 def test_pp():
-    # spawn(
-    #     test_run_fwd_bwd_iter_input,
-    #     nprocs=4,
-    # )
     spawn(
         test_run_fwd_bwd_with_vschedule,
         nprocs=4,
