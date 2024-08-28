@@ -299,11 +299,9 @@ def train(args) -> None:
                         step_bar.set_postfix({"train/loss": global_loss.item()})
                 optimizer.step()
                 optimizer.zero_grad()
-                
+
                 # Save modeling.
-                save_model_condition = (
-                    args.save_interval > 0 and (step + 1) % args.save_interval == 0
-                )
+                save_model_condition = args.save_interval > 0 and (step + 1) % args.save_interval == 0
 
                 if not args.skip_save_each_epoch:
                     save_model_condition = save_model_condition or (step + 1) == len(dataloader)
