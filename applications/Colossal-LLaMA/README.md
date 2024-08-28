@@ -452,7 +452,7 @@ Here is details about CLI arguments:
 * Switch for sequence parallelism: `--enable_sequence_parallelism`. Whether to enable SP, used for 3d plugin.
 * Zero CPU offload: `--zero_cpu_offload`. Whether to use offloading, used for 3d plugin.
 * Micro batch size: `--microbatch_size`. Batch size for each process in PP, used for 3d plugin.
-* Number of dummy sample: `--num_samples`. Number of samples for benchmarking. 
+* Number of dummy sample: `--num_samples`. Number of samples for benchmarking.
 * Benchmark switch: `--benchmark`. Benchmark performance using random dataset.
 
 ##### 4.2 Arguments for Supervised Fine-tuning
