@@ -310,6 +310,12 @@ cd csrc/layer_norm && pip install .
 cd csrc/rotary && pip install .
 ```
 
+#### 3. Install Apex
+```bash
+git clone git@github.com:NVIDIA/apex.git
+# Install from source.
+```
+
 ### How to run
 
 #### 1. Init Tokenizer Preparation
