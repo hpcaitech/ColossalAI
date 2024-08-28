@@ -1101,10 +1101,12 @@ def gather_sp_output(hidden_states, shard_config, sp_dim=1):
     """
     Gather the output of the last layer for cross entropy computation
     """
-    sp_group = shard_config.sequence_parallel_group
-    sp_mode = shard_config.sequence_parallel_mode
+    sp_group = shard_config.sequence_parallel_process_group
+    sp_mode = shard_config.sequence_parallelism_mode
     if dist.get_world_size(sp_group) == 1:
         return hidden_states
+
     # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
     scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
     hidden_states = gather_forward_split_backward(hidden_states, sp_dim, sp_group, grad_scale=scale)
+    return hidden_states

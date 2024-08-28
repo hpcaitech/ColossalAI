@@ -250,7 +250,7 @@ class LlamaPipelineForwards:
                 hidden_states=all_hidden_states,
                 attentions=all_self_attns,
             )
-        # always return dict for imediate stage
+        # always return dict for intermediate stage
         return {"hidden_states": hidden_states}
 
     @staticmethod
