@@ -672,7 +672,7 @@ def run_fwd_bwd_vschedule_with_optim(
     batch_size = batch_size
     num_layers = 8
     assert num_layers % num_model_chunk == 0, f"Model with {num_layers} layer can not dist on {num_model_chunk} chunk"
-    in_dim = out_dim = 8
+    in_dim = out_dim = 16
     print(f"Before init Model: {torch.cuda.memory_allocated()/1024**3 :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
     data_iter = [torch.rand(batch_size, in_dim, out_dim, requires_grad=True).to(rank)]
@@ -714,14 +714,16 @@ def run_fwd_bwd_vschedule_with_optim(
     )
 
     torch.cuda.synchronize()
-    scheduler.run_forward_backward(
+    result = scheduler.run_forward_backward(
         model_chunk=local_chunk,
         data_iter=iter(data_iter),
         criterion=criterion,
         optimizer=optimizer_pp,
-        return_loss=None,
-        return_outputs=None,
+        return_loss=True,
+        return_outputs=True,
     )
+
+    optimizer_pp.step()
 
     ##########################
     # Fwd bwd for base
@@ -733,6 +735,15 @@ def run_fwd_bwd_vschedule_with_optim(
     optimizer_base.step()
     print(f"After base fwd & bwd: {torch.cuda.memory_allocated()/1024**3 :.3f} GB;")
 
+    ##########################
+    # assert loss & output
+    ##########################
+    # only chunk 1 stage 0 hold loss and output
+    if rank == 0:
+        assert_close(result["loss"], loss_base)
+        assert_close(result["outputs"], output_base)
+
+    # print(f"pp result {result}; base result loss:{loss_base} output_base:{output_base} ")
     ##########################
     # assert weight
     ##########################
@@ -768,6 +779,18 @@ def run_fwd_bwd_vschedule_with_optim(
     ##########################
     # assert optim state
     ##########################
+    optim_base_state_dict = optimizer_base.state_dict()["param_groups"][0]
+    optim_pp_state_dict = optimizer_pp.state_dict()["param_groups"][0]
+
+    for (key_base, val_base), (key_pp, val_pp) in zip(optim_base_state_dict.items(), optim_pp_state_dict.items()):
+        if key_base == key_pp:
+            if key_base != "params":
+                assert val_base == val_pp
+            else:
+                # BUG:
+                # param_base: [0, 1, 2, 3, 4, 5, 6, 7];
+                # params pp: [0, 1];
+                assert val_base[:2] == val_pp
 
 
 @pytest.mark.dist
