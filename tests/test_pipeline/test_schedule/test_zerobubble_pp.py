@@ -644,10 +644,10 @@ def run_fwd_bwd_vschedule_with_optim(
     graph = PipelineGraph(
         n_stage=world_size,
         n_micro=num_microbatch,
-        f_cost=6,
-        b_cost=6,
-        w_cost=6,
-        c_cost=6,
+        f_cost=1,
+        b_cost=1,
+        w_cost=1,
+        c_cost=1,
         f_mem=mem_f,
         b_mem=mem_b,
         w_mem=mem_w,
@@ -714,7 +714,7 @@ def run_fwd_bwd_vschedule_with_optim(
     )
 
     torch.cuda.synchronize()
-    result = scheduler.run_forward_backward(
+    result = scheduler.forward_backward_step(
         model_chunk=local_chunk,
         data_iter=iter(data_iter),
         criterion=criterion,
@@ -791,6 +791,25 @@ def run_fwd_bwd_vschedule_with_optim(
                 # param_base: [0, 1, 2, 3, 4, 5, 6, 7];
                 # params pp: [0, 1];
                 assert val_base[:2] == val_pp
+
+
+# 4) support Hybrid base 3)
+def run_with_hybrid(
+    rank: int,
+    world_size: int,
+    port: int,
+    num_microbatch: int,
+    batch_size: int,
+    num_model_chunk: int,
+):
+    pass
+
+
+# 5) support MoE base 3)
+
+# 6) support booster & Hybrid base 4)
+
+# 6) support booster & MoE base 4)
 
 
 @pytest.mark.dist
