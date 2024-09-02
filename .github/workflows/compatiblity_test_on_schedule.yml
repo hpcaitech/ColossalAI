@@ -50,6 +50,10 @@ jobs:
         with:
           ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
 
+      - name: Remove existing triton cache
+        run: |
+          rm -rf ~/.triton
+
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v .
