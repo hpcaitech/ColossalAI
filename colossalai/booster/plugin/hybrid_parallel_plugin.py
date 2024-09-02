@@ -313,12 +313,8 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         """
 
         # Call the superclass backward method to compute gradients.
-<<<<<<< HEAD
         with self.model._hook_context():
-            super().backward(loss, *args, **kwargs)
-=======
-        super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
->>>>>>> [plugin] hybrid support zero bubble pipeline (#6060)
+            super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -541,12 +537,8 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             None
         """
         # Call the superclass backward method to compute gradients.
-<<<<<<< HEAD
         with self.model._hook_context():
-            super().backward(loss, *args, **kwargs)
-=======
-        super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
->>>>>>> [plugin] hybrid support zero bubble pipeline (#6060)
+            super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -1100,7 +1092,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.use_fp8 = use_fp8
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
-            self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
             if sequence_parallelism_mode == "ring_attn":
                 # Swap tp and sp since 2D Ring has better inter-node latency
                 self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.sp_size, self.tp_size)
@@ -1288,6 +1279,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
+
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
