@@ -702,7 +702,7 @@ def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op:
     #     out.copy_(output[i].view(shape))
 
 
-# @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     rank = dist.get_rank(group)
