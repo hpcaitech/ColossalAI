@@ -28,8 +28,7 @@ from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
-from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, ZeroBubbleVPipeScheduler
-from colossalai.pipeline.schedule.v_schedule import PipelineGraph
+from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
@@ -1110,10 +1109,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert pp_style in ["1f1b", "interleaved", "zbv"], "Unsupported pipeline parallelism style"
-            assert (
-                pp_style == "interleaved" or pp_style == "zbv"
-            ) or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
+            assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
+            assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
@@ -1123,7 +1120,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
                 pipeline_axis=self.pp_axis,
-                enable_interleave=(pp_style == "interleaved") or (pp_style == "zbv"),
+                enable_interleave=(pp_style == "interleaved"),
                 num_model_chunks=num_model_chunks,
                 num_layers_per_stage=num_layers_per_stage,
             )
@@ -1146,31 +1143,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
                     fp8_communication=fp8_communication,
-                )
-            elif pp_style == "zbv":
-                h, a, s = 4096, 32, 1024
-                mem_f = 34 * h + 5 * a * s
-                mem_w = -32 * h
-                mem_b = -mem_w - mem_f
-                zbv_schedule = PipelineGraph(
-                    n_stage=self.pp_size,
-                    n_micro=num_microbatches,
-                    f_cost=1,
-                    b_cost=1,
-                    w_cost=1,
-                    c_cost=1,
-                    f_mem=mem_f,
-                    b_mem=mem_b,
-                    w_mem=mem_w,
-                ).get_v_schedule()
-                self.schedule = ZeroBubbleVPipeScheduler(
-                    schedule=zbv_schedule,
-                    stage_manager=self.stage_manager,
-                    num_model_chunks=num_model_chunks,
-                    num_microbatch=num_microbatches,
-                    microbatch_size=microbatch_size,
-                    enable_metadata_cache=enable_metadata_cache,
-                    overlap_p2p=overlap_p2p,
                 )
             else:
                 raise NotImplementedError()
