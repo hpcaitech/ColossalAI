@@ -47,6 +47,12 @@ jobs:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-run-test-${{ matrix.container }}
       cancel-in-progress: true
     steps:
+      - name: Clean cache
+        run: |
+          if [ -d "~/.triton" ]; then
+              rm -rf ~/.triton
+          fi
+
       - name: Install dependencies
         run: |
           apt update && apt install -y cmake
