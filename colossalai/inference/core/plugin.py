@@ -116,9 +116,9 @@ class InferCheckpoint_io(GeneralCheckpointIO):
         remain_keys = remain_keys.union(set(missing_file_keys))
         if len(remain_keys) > 0:
             if strict:
-                error_msgs = "Missing key(s) in state_dict: {}. ".format(
-                    ", ".join('"{}"'.format(k) for k in missing_keys)
-                )
+                error_msgs = [
+                    "Missing key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in missing_keys))
+                ]
                 raise RuntimeError(
                     "Error(s) in loading state_dict for {}:\n\t{}".format(
                         self.__class__.__name__, "\n\t".join(error_msgs)
