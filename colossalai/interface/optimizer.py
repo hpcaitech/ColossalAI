@@ -55,10 +55,10 @@ class OptimizerWrapper:
         """
         loss.backward(*args, **kwargs)
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
-        torch.autograd.backward(tensor, grad)
+    # def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    #     torch.autograd.backward(tensor, grad)
 
-    def backward_b_w_by_grad(self, tensors: Tensor, grad_tensors: Tensor, inputs: Tensor, retain_graph: bool = True):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor, retain_graph: bool = False):
         """
         Performs a backward pass for dx or dw,
         for dx, we only calculate dx = w*dy here
@@ -72,11 +72,31 @@ class OptimizerWrapper:
             retain_graph (bool): default to be True, we retain graph in backward_b
         """
         torch.autograd.backward(
-            tensors=tensors,
-            grad_tensors=grad_tensors,
+            tensors=tensor,
+            grad_tensors=grad,
             inputs=inputs,
             retain_graph=retain_graph,
         )
+
+    # def backward_b_w_by_grad(self, tensors: Tensor, grad_tensors: Tensor, inputs: Tensor, retain_graph: bool = True):
+    #     """
+    #     Performs a backward pass for dx or dw,
+    #     for dx, we only calculate dx = w*dy here
+    #     for dw, we only calculate dw = x*dy here
+
+    #     Args:
+    #         tensor (Tensor): y or loss of current chunk;
+    #         grad_tensors (Tensor): dy of current chunk;
+    #         input_obj (Tensor): for dx, input_obj is x of current chunk;
+    #                             for dw, input_obj is w of current chunk;
+    #         retain_graph (bool): default to be True, we retain graph in backward_b
+    #     """
+    #     torch.autograd.backward(
+    #         tensors=tensors,
+    #         grad_tensors=grad_tensors,
+    #         inputs=inputs,
+    #         retain_graph=retain_graph,
+    #     )
 
     def state_dict(self):
         """
