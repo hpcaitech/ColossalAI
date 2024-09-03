@@ -1,5 +1,5 @@
-from typing import Any, Optional, Tuple
 import os
+from typing import Any, Optional, Tuple
 
 import numpy as np
 import torch
@@ -26,6 +26,7 @@ class Handle:
 def process_group_is_intranode(pg):
     if pg is None:
         from torch.distributed.distributed_c10d import _get_default_group
+
         pg = _get_default_group()
 
     local_world_size = None
@@ -234,6 +235,7 @@ def _all_to_all_single_fp8(
     else:
         cast_op()
 
+
 def all_to_all_single_fp8(
     output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
 ) -> Optional[Handle]:
@@ -241,13 +243,24 @@ def all_to_all_single_fp8(
     This is wrapper for _all_to_all_single_fp8.
     """
     if process_group_is_intranode(group):
-        return dist.all_to_all_single(output, input,
-                                      output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes,
-                                      group=group, async_op=async_op)
+        return dist.all_to_all_single(
+            output,
+            input,
+            output_split_sizes=output_split_sizes,
+            input_split_sizes=input_split_sizes,
+            group=group,
+            async_op=async_op,
+        )
     else:
-        return _all_to_all_single_fp8(output, input, fp8_format=fp8_format,
-                                      output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes,
-                                      group=group, async_op=async_op)
+        return _all_to_all_single_fp8(
+            output,
+            input,
+            fp8_format=fp8_format,
+            output_split_sizes=output_split_sizes,
+            input_split_sizes=input_split_sizes,
+            group=group,
+            async_op=async_op,
+        )
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
