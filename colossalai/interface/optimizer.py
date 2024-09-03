@@ -55,7 +55,6 @@ class OptimizerWrapper:
         """
         loss.backward(inputs=inputs, retain_graph=retain_graph, **kwargs)
 
-
     def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         """
         Performs a backward pass for dx or dw,
