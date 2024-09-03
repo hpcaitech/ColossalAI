@@ -1,4 +1,5 @@
 from typing import Any, Optional, Tuple
+import os
 
 import numpy as np
 import torch
@@ -20,6 +21,16 @@ class Handle:
             handle.wait()
         if self.remain_ops:
             self.remain_ops()
+
+
+def process_group_is_intranode(pg):
+    if pg is None:
+        from torch.distributed.distributed_c10d import _get_default_group
+        pg = _get_default_group()
+    local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
+    group_ranks = list(dist.distributed_c10d._pg_group_ranks[pg].values())
+    group_ranks_node_ids = [rank // local_world_size for rank in group_ranks]
+    return min(group_ranks_node_ids) == max(group_ranks_node_ids)
 
 
 def cast_to_fp8(inp: torch.Tensor, fp8_format="e4m3", per_channel_scale=False) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -147,7 +158,8 @@ def all_reduce_fp8(
         cat_op()
 
 
-def all_to_all_single_fp8(
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+def _all_to_all_single_fp8(
     output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
 ) -> Optional[Handle]:
     r"""
@@ -208,6 +220,21 @@ def all_to_all_single_fp8(
         return Handle([chunk_handle, scale_hanle], cast_op)
     else:
         cast_op()
+
+def all_to_all_single_fp8(
+    output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
+) -> Optional[Handle]:
+    r"""
+    This is wrapper for _all_to_all_single_fp8.
+    """
+    if process_group_is_intranode(group):
+        return dist.all_to_all_single(output, input,
+                                      output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes,
+                                      group=group, async_op=async_op)
+    else:
+        return _all_to_all_single_fp8(output, input, fp8_format=fp8_format,
+                                      output_split_sizes=output_split_sizes, input_split_sizes=input_split_sizes,
+                                      group=group, async_op=async_op)
 
 
 def cast_to_fp8_pipeline(inp: Any) -> None:
@@ -605,10 +632,9 @@ def all_gather_into_tensor_flat_fp8(
         cast_op()
 
 
-def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async_op=False):
-
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+def _all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async_op=False):
     world_size = dist.get_world_size(group)
-
     input_type = input_list[0].dtype
     fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
     scale_list = []
@@ -637,6 +663,13 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async
         return Handle([tensor_hanle, scale_handle], cast_op)
     else:
         cast_op()
+
+
+def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async_op=False):
+    if process_group_is_intranode(group):
+        return dist.all_to_all(output_list, input_list, group=group, async_op=async_op)
+    else:
+        return _all_to_all_fp8(output_list, input_list, group=group, fp8_format=fp8_format, async_op=async_op)
 
 
 def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
