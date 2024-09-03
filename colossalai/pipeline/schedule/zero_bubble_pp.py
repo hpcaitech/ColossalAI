@@ -569,7 +569,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         )
 
         detached_output_obj = output_obj.clone()
-        detached_output_obj.requires_grad_()
 
         # Step3: send fwd
         # add output to send_fwd_buffer
