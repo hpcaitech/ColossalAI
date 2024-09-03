@@ -217,6 +217,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         fp8_communication: bool = False,
         use_fp8: bool = False,
     ) -> None:
+        if ep_size <= 1:
+            raise ValueError(
+                "Expert parallelism size should be greater than 1, if you are not using expert parallelism, please use HybridParallelPlugin instead."
+            )
+
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
             overlap_communication = False

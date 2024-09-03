@@ -33,26 +33,10 @@ MODEL_CONFIGS = {
         max_position_embeddings=4096,
         num_hidden_layers=4,
         num_attention_heads=32,
-        intermediate_size=2048,
-        hidden_size=1024,
+        intermediate_size=768,
+        hidden_size=768,
     ),
-    "5b": MixtralConfig(max_position_embeddings=4096, num_key_value_heads=8),
-    "7b": MixtralConfig(max_position_embeddings=4096, num_hidden_layers=16),
-    "13b": MixtralConfig(
-        hidden_size=5120,
-        intermediate_size=13824,
-        num_hidden_layers=40,
-        num_attention_heads=40,
-        max_position_embeddings=4096,
-    ),
-    "70b": MixtralConfig(
-        hidden_size=8192,
-        intermediate_size=28672,
-        num_hidden_layers=80,
-        num_attention_heads=64,
-        max_position_embeddings=4096,
-        num_key_value_heads=8,
-    ),
+    "7b": MixtralConfig(max_position_embeddings=4096, num_hidden_layers=5),
 }
 
 
@@ -83,7 +67,7 @@ def main():
     parser.add_argument("--offload_optim_frac", type=float, default=0.0, help="Offload optim fraction. Only for gemini")
     parser.add_argument("--offload_param_frac", type=float, default=0.0, help="Offload param fraction. Only for gemini")
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
-    parser.add_argument("--ep", type=int, default=1, help="Expert parallel size")
+    parser.add_argument("--ep", type=int, default=2, help="Expert parallel size")
     parser.add_argument("--sp", type=int, default=1, help="Sequence parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
@@ -170,6 +154,7 @@ def main():
     else:
         config = MixtralConfig.from_pretrained(args.config, trust_remote_code=True)
     torch.cuda.manual_seed(42)
+
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
