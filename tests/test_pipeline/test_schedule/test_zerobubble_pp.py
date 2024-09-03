@@ -50,7 +50,7 @@ def get_model_numel(model: torch.nn.Module) -> Tuple[int, int]:
             "num_microbatches": 4,
             "zero_stage": 1,
             "precision": "bf16",
-            "num_model_chunk": 4,
+            "num_model_chunk": 2,
         },
     ],
 )
@@ -507,7 +507,7 @@ def run_fwd_bwd_iter_input(test_config):
             "num_microbatches": 4,
             "zero_stage": 1,
             "precision": "bf16",
-            "num_model_chunk": 4,
+            "num_model_chunk": 2,
         },
     ],
 )
@@ -702,8 +702,7 @@ def run_with_hybridplugin(test_config):
 def run_with_moehybridplugin(test_config):
     model_zoo.get_sub_registry("transformers_bert")
     test_config["use_lazy_init"] = False
-    test_config["pp_size"] = 1  # Do NOT test Pipeline Parallel
-    test_config["initial_scale"] = 2**16  # avoid overflow
+    test_config["initial_scale"] = 2**16
     model_list = [
         "transformers_bert",
     ]
