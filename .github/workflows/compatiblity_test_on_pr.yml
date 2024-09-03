@@ -73,4 +73,3 @@ jobs:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib
           LLAMA_PATH: /data/scratch/llama-tiny
           MOE_TENSOR_PATH: /data/scratch/moe_tensors
-          CUDA_LAUNCH_BLOCKING: 1
