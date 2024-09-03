@@ -102,21 +102,10 @@ More details can be found in the latest news.
 conda create -n colossal-chat python=3.10.9 (>=3.8.7)
 conda activate colossal-chat
 
-# Install flash-attention
-git clone -b v2.0.5 https://github.com/Dao-AILab/flash-attention.git
-cd $FLASH_ATTENTION_ROOT/
-pip install .
-cd $FLASH_ATTENTION_ROOT/csrc/xentropy
-pip install .
-cd $FLASH_ATTENTION_ROOT/csrc/layer_norm
-pip install .
-cd $FLASH_ATTENTION_ROOT/csrc/rotary
-pip install .
-
-# Clone Colossalai
+# Clone ColossalAI
 git clone https://github.com/hpcaitech/ColossalAI.git
 
-# Install ColossalAI
+# Install ColossalAI, make sure you have torch installed before using BUILD_EXT=1.
 cd $COLOSSAL_AI_ROOT
 BUILD_EXT=1 pip install .
 
