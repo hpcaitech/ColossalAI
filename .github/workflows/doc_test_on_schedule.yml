@@ -32,7 +32,7 @@ jobs:
 
       - name: Install ColossalAI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
 
       - name: Install Doc Test Requirements
         run: |

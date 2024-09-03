@@ -41,12 +41,6 @@ jobs:
       options: --gpus all --rm -v /dev/shm -v /data/scratch/:/data/scratch/
     timeout-minutes: 200
     steps:
-      - name: Clean cache
-        run: |
-          if [ -d "~/.triton" ]; then
-              rm -rf ~/.triton
-          fi
-
       - name: Install dependencies
         run: |
           apt update && apt install -y cmake
@@ -58,7 +52,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
           pip install --no-cache-dir -r requirements/requirements-test.txt
 
       - name: Install tensornvme

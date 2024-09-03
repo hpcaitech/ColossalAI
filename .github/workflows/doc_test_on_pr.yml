@@ -89,7 +89,7 @@ jobs:
       - name: Install ColossalAI
         run: |
           source activate pytorch
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
 
       - name: Test the Doc
         run: |
