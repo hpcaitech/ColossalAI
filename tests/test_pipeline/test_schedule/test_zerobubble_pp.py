@@ -44,7 +44,7 @@ def get_model_numel(model: torch.nn.Module) -> Tuple[int, int]:
     "test_config",
     [
         {
-            "batch_size": 4,
+            "batch_size": 8,
             "tp_size": 1,
             "pp_size": 4,
             "num_microbatches": 4,
@@ -501,7 +501,7 @@ def run_fwd_bwd_iter_input(test_config):
     "test_config",
     [
         {
-            "batch_size": 4,
+            "batch_size": 8,
             "tp_size": 1,
             "pp_size": 4,
             "num_microbatches": 4,
@@ -689,13 +689,13 @@ def run_with_hybridplugin(test_config):
     "test_config",
     [
         {
-            "batch_size": 4,
+            "batch_size": 8,
             "tp_size": 1,
             "pp_size": 4,
             "num_microbatches": 4,
             "zero_stage": 1,
             "precision": "bf16",
-            "num_model_chunk": 4,
+            "num_model_chunk": 2,
         },
     ],
 )
