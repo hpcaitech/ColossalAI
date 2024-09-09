@@ -33,10 +33,10 @@ def loose_close(a, b, dtype: torch.dtype = torch.float32):
     return torch.allclose(a, b, rtol=rtol, atol=atol)
 
 
-def check_model_equal(model1, model2):
+def check_model_equal(model1, model2, dtype):
     assert set(model1.state_dict().keys()) == set(model2.state_dict().keys())
     for i, ((name, p1), p2) in enumerate(zip(model1.named_parameters(), model2.parameters())):
-        assert_loose_close(p1, p2, p1.dtype)
+        assert_loose_close(p1, p2, dtype, name=name)
 
 
 @contextmanager

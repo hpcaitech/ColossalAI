@@ -12,43 +12,25 @@ from transformers import AutoConfig, AutoModel
 import colossalai
 from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 
 NUM_BATCH = 8
-NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 2
+NUM_TOK_PER_BATCH, NUM_EXPERTS = 64, 4
 NUM_LAYERS = 4
 HIDDEN_SIZE_PER_HEAD = 4
-NUM_HEADS = 4
+NUM_HEADS = 8
 TOP_K = 2
 
 
-CHECKED_CONFIG = [  # FOR_WORLD=4
-    (1, 4, 1, 1, 1),
-    (1, 1, 4, 1, 1),
-    (1, 1, 1, 4, 1),
-    (1, 1, 1, 1, 4),
-    (0, 1, 4, 1, 1),
-    (0, 1, 1, 4, 1),
-    (0, 1, 1, 1, 4),
-    (1, 2, 1, 1, 1),
-]
-
-
-@parameterize(
-    "config",
-    [
-        (1, 2, 2, 1, 1),
-        (1, 2, 1, 2, 1),
-        (1, 2, 1, 1, 2),
-    ],
-)
-def run_zero_with_original_model(config: Tuple[int, ...]):
+def run_deepseek_commom(config: Tuple[int, ...]):
+    Randomizer.reset_index()
     stage, ep_size, pp_size, tp_size, sp_size = config
     world_size = dist.get_world_size()
     rank = dist.get_rank()
-    dtype, precision = torch.float16, "fp16"
+    dtype, precision = torch.bfloat16, "bf16"
     torch.cuda.set_device(dist.get_rank())
 
     plugin = MoeHybridParallelPlugin(
@@ -60,11 +42,11 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
         zero_stage=stage,
         enable_sequence_parallelism=sp_size > 1,
         sequence_parallelism_mode="all_to_all" if sp_size > 1 else None,
-        enable_flash_attention=sp_size > 1,
         overlap_communication=False,
         initial_scale=1,
         precision=precision,
         find_unused_parameters=True,
+        enable_flash_attention=True,
     )
     dp_size = plugin.dp_size
 
@@ -171,7 +153,7 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
     dist.barrier()
 
     saved_model = AutoModel.from_pretrained(model_dir, trust_remote_code=True).cuda()
-    check_model_equal(torch_model, saved_model)
+    check_model_equal(torch_model, saved_model, dtype=dtype)
     dist.barrier()
 
     if rank == world_size - 1:
@@ -180,17 +162,77 @@ def run_zero_with_original_model(config: Tuple[int, ...]):
     print(f"rank {dist.get_rank()} test passed")
 
 
-def run_dist(rank, world_size, port):
+@parameterize(
+    "config",
+    [
+        # DDP: ep == 1 since ep * moe_dp == dp == moe_dp; sp == 1 since sp * dp == moe_dp == dp
+        (0, 1, 4, 1, 1),
+        (0, 1, 1, 4, 1),
+        (0, 1, 2, 2, 1),
+        # zero 1
+        (1, 4, 1, 1, 1),
+        (1, 1, 4, 1, 1),
+        (1, 1, 1, 4, 1),
+        (1, 2, 1, 1, 2),
+        # zero 2
+        (2, 4, 1, 1, 1),
+        (2, 1, 4, 1, 1),
+        (2, 1, 1, 4, 1),
+        (2, 2, 1, 1, 2),
+    ],
+)
+def run_deepseek_test(config: Tuple[int, ...]):
+    run_deepseek_commom(config)
+
+
+@parameterize(
+    "config",
+    [
+        # DDP: ep == 1 since ep * moe_dp == dp == moe_dp; sp == 1 since sp * dp == moe_dp == dp
+        (0, 1, 2, 4, 1),
+        (0, 1, 4, 2, 1),
+        (0, 1, 1, 4, 1),
+        (0, 1, 4, 1, 1),
+        # zero 1:
+        (1, 2, 1, 1, 2),
+        (1, 2, 1, 4, 1),
+        (1, 1, 1, 2, 2),
+        (1, 2, 2, 2, 1),
+        # zero 2
+        (2, 2, 1, 1, 2),
+        (2, 2, 1, 4, 1),
+        (2, 1, 1, 2, 2),
+        (2, 2, 2, 2, 1),
+    ],
+)
+def run_deepseek_3d_test(config: Tuple[int, ...]):
+    run_deepseek_commom(config)
+
+
+def check_deepseek(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_zero_with_original_model()
+    run_deepseek_test()
+
+
+def check_deepseek_3d(rank, world_size, port):
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    run_deepseek_3d_test()
 
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
 def test_deepseek(world_size):
-    spawn(run_dist, world_size)
+    spawn(check_deepseek, world_size)
+
+
+@pytest.mark.largedist
+@pytest.mark.parametrize("world_size", [8])
+@rerun_if_address_is_in_use()
+def test_deepseek_3d(world_size):
+    spawn(check_deepseek_3d, world_size)
 
 
 if __name__ == "__main__":
-    test_deepseek(world_size=4)
+    test_deepseek(world_size=8)
+    test_deepseek_3d(world_size=8)

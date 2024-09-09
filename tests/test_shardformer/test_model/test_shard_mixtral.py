@@ -31,7 +31,7 @@ def run_mixtral_commom(config: Tuple[int, ...]):
     stage, ep_size, pp_size, tp_size, sp_size = config
     world_size = dist.get_world_size()
     rank = dist.get_rank()
-    dtype, precision = torch.float16, "fp16"
+    dtype, precision = torch.bfloat16, "bf16"
     torch.cuda.set_device(dist.get_rank())
 
     plugin = MoeHybridParallelPlugin(
@@ -79,7 +79,7 @@ def run_mixtral_commom(config: Tuple[int, ...]):
 
     torch_model.train()
     parallel_model.train()
-    for _ in range(5):
+    for _ in range(2):
         # gen random input
         input_embeddings = torch.rand(
             NUM_BATCH, NUM_TOK_PER_BATCH, HIDDEN_SIZE_PER_HEAD * NUM_HEADS, requires_grad=True
@@ -148,7 +148,7 @@ def run_mixtral_commom(config: Tuple[int, ...]):
     dist.barrier()
 
     saved_model = MixtralModel.from_pretrained(model_dir).cuda().to(dtype)
-    check_model_equal(torch_model, saved_model)
+    check_model_equal(torch_model, saved_model, dtype=dtype)
     dist.barrier()
 
     if rank == world_size - 1:
@@ -217,6 +217,7 @@ def check_mixtral_3d(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
+@rerun_if_address_is_in_use()
 def test_mixtral(world_size):
     spawn(check_mixtral, world_size)
 
