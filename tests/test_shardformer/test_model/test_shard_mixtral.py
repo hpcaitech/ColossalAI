@@ -13,19 +13,21 @@ from transformers.models.mixtral.modeling_mixtral import MixtralModel
 import colossalai
 from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 
 NUM_BATCH = 8
-NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 4
+NUM_TOK_PER_BATCH, NUM_EXPERTS = 64, 4
 NUM_LAYERS = 4
 HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS = 8
-TOP_K = 1
+TOP_K = 2
 
 
 def run_mixtral_commom(config: Tuple[int, ...]):
+    Randomizer.reset_index()
     stage, ep_size, pp_size, tp_size, sp_size = config
     world_size = dist.get_world_size()
     rank = dist.get_rank()
@@ -77,7 +79,7 @@ def run_mixtral_commom(config: Tuple[int, ...]):
 
     torch_model.train()
     parallel_model.train()
-    for _ in range(2):
+    for _ in range(5):
         # gen random input
         input_embeddings = torch.rand(
             NUM_BATCH, NUM_TOK_PER_BATCH, HIDDEN_SIZE_PER_HEAD * NUM_HEADS, requires_grad=True
@@ -158,22 +160,20 @@ def run_mixtral_commom(config: Tuple[int, ...]):
 @parameterize(
     "config",
     [
-        # DDP
+        # DDP: ep == 1 since ep * moe_dp == dp == moe_dp; sp == 1 since sp * dp == moe_dp == dp
         (0, 1, 4, 1, 1),
         (0, 1, 1, 4, 1),
-        (0, 1, 1, 1, 4),
+        (0, 1, 2, 2, 1),
         # zero 1
         (1, 4, 1, 1, 1),
         (1, 1, 4, 1, 1),
         (1, 1, 1, 4, 1),
-        (1, 1, 1, 1, 4),
-        (1, 2, 1, 1, 1),
+        (1, 2, 1, 1, 2),
         # zero 2
         (2, 4, 1, 1, 1),
         (2, 1, 4, 1, 1),
         (2, 1, 1, 4, 1),
-        (2, 1, 1, 1, 4),
-        (2, 2, 1, 1, 1),
+        (2, 2, 1, 1, 2),
     ],
 )
 def run_mixtral_test(config: Tuple[int, ...]):
@@ -183,24 +183,25 @@ def run_mixtral_test(config: Tuple[int, ...]):
 @parameterize(
     "config",
     [
-        # DDP
+        # DDP: ep == 1 since ep * moe_dp == dp == moe_dp; sp == 1 since sp * dp == moe_dp == dp
+        (0, 1, 2, 4, 1),
+        (0, 1, 4, 2, 1),
         (0, 1, 1, 4, 1),
-        (0, 1, 1, 2, 2),
-        (0, 1, 1, 1, 8),
-        (0, 1, 1, 8, 1),
-        # zero 1
-        (1, 4, 1, 4, 1),
-        (1, 2, 1, 4, 2),
-        (1, 2, 1, 2, 2),
+        (0, 1, 4, 1, 1),
+        # zero 1:
+        (1, 2, 1, 1, 2),
+        (1, 2, 1, 4, 1),
+        (1, 1, 1, 2, 2),
         (1, 2, 2, 2, 1),
         # zero 2
-        (2, 4, 1, 4, 1),
-        (2, 2, 1, 4, 2),
-        (2, 2, 1, 2, 2),
+        (2, 2, 1, 1, 2),
+        (2, 2, 1, 4, 1),
+        (2, 1, 1, 2, 2),
         (2, 2, 2, 2, 1),
     ],
 )
 def run_mixtral_3d_test(config: Tuple[int, ...]):
+    print(f"{config=}")
     run_mixtral_commom(config)
 
 

@@ -141,11 +141,6 @@ class MixtralPolicy(Policy):
                         target_module=Linear1D_Row,
                         kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
-                    SubModuleReplacementDescription(
-                        suffix="block_sparse_moe.gate",
-                        target_module=Linear1D_Col,
-                        kwargs={"gather_output": True, "fp8_communication": self.shard_config.fp8_communication},
-                    ),
                 ],
             )
 
