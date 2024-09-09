@@ -64,13 +64,18 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
         forced_dtype: Optional[torch.dtype] = None,
         overlap_allgather: bool = False,
     ):
-        pg_param_list = {
-            dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
-            moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
-        }
+        if dp_process_group is moe_dp_group:
+            pg_param_list = {
+                dp_process_group: list(model.parameters()),
+            }
+        else:
+            pg_param_list = {
+                dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
+                moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
+            }
 
-        if len(pg_param_list[dp_process_group]) == 0 or len(pg_param_list[moe_dp_group]) == 0:
-            raise ValueError("No parameters found in dp_process_group or moe_dp_group")
+        if len(pg_param_list[moe_dp_group]) == 0:
+            raise ValueError("No parameters found in moe_dp_group, please consider using HybridParallelPlugin instead")
 
         super().__init__(
             model=model,
@@ -217,11 +222,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         fp8_communication: bool = False,
         use_fp8: bool = False,
     ) -> None:
-        if ep_size <= 1:
-            raise ValueError(
-                "Expert parallelism size should be greater than 1, if you are not using expert parallelism, please use HybridParallelPlugin instead."
-            )
-
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
             overlap_communication = False
@@ -471,6 +471,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         tp_process_group=self.tp_group,
                     )
             else:
+                is_zero = True
                 if self.dp_size <= 1:
                     self.logger.warning(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "

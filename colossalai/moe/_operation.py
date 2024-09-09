@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, List, Optional, Tuple
 
 import torch
@@ -450,9 +449,4 @@ def all_to_all_uneven(
     overlap: bool = False,
     fp8_communication: bool = False,
 ):
-    if not inputs.requires_grad:
-        warnings.warn(
-            "Input should require grad to ensure that backward is executed, otherwise it might hang the program."
-        )
-
     return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication)

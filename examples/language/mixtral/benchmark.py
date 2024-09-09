@@ -21,6 +21,7 @@ from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
+from tests.test_moe.moe_utils import distributed_debug_mode
 
 warnings.filterwarnings("ignore")
 # ==============================
@@ -35,8 +36,13 @@ MODEL_CONFIGS = {
         num_attention_heads=32,
         intermediate_size=768,
         hidden_size=768,
+        attn_implementation="flash_attention_2",
     ),
-    "7b": MixtralConfig(max_position_embeddings=4096, num_hidden_layers=5),
+    "7b": MixtralConfig(
+        max_position_embeddings=4096,
+        num_hidden_layers=5,
+        attn_implementation="flash_attention_2",
+    ),
 }
 
 
@@ -67,7 +73,7 @@ def main():
     parser.add_argument("--offload_optim_frac", type=float, default=0.0, help="Offload optim fraction. Only for gemini")
     parser.add_argument("--offload_param_frac", type=float, default=0.0, help="Offload param fraction. Only for gemini")
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
-    parser.add_argument("--ep", type=int, default=2, help="Expert parallel size")
+    parser.add_argument("--ep", type=int, default=1, help="Expert parallel size")
     parser.add_argument("--sp", type=int, default=1, help="Sequence parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
@@ -94,9 +100,10 @@ def main():
     parser.add_argument(
         "--sp_mode",
         default="all_to_all",
-        choices=["all_to_all", "ring_attn", "ring", "split_gather"],
+        choices=["all_to_all"],
         help="Sequence parallelism mode",
     )
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -170,7 +177,7 @@ def main():
     )
 
     with init_ctx:
-        model = MixtralForCausalLM(config=config)
+        model = MixtralForCausalLM(config=config).to(torch.bfloat16)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -205,7 +212,7 @@ def main():
         1,  # avoid creating massive log files
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
         nsys=args.nsys,
-    ) as prof:
+    ) as prof, distributed_debug_mode(10, enable=args.debug):
         if isinstance(plugin, MoeHybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
