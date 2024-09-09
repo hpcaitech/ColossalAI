@@ -119,7 +119,8 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         if use_fp8:
             self.op_hooks.append(FP8Hook())
         if overlap_allgather:
-            self.op_hook = ZeroOpHook()
+            self.op_hooks.append(ZeroOpHook())
+        if use_fp8 or overlap_allgather:
             for p in module.parameters():
                 if p.requires_grad and type(p) is not ColoParameter:
                     p.__class__ = ColoParameter
