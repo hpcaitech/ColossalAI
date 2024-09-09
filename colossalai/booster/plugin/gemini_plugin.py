@@ -323,7 +323,9 @@ class GeminiPlugin(DPPluginBase):
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including chunk search result will be printed. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
     def __init__(
