@@ -21,7 +21,6 @@ from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import PipelineGradientCheckpointConfig
-from tests.test_moe.moe_utils import distributed_debug_mode
 
 warnings.filterwarnings("ignore")
 # ==============================
@@ -212,7 +211,7 @@ def main():
         1,  # avoid creating massive log files
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
         nsys=args.nsys,
-    ) as prof, distributed_debug_mode(10, enable=args.debug):
+    ) as prof:
         if isinstance(plugin, MoeHybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
