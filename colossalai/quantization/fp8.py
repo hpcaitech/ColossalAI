@@ -24,7 +24,6 @@ class Handle:
             self.remain_ops()
 
 
-
 def process_group_is_intranode(pg):
     if pg is None:
         from torch.distributed.distributed_c10d import _get_default_group
@@ -184,6 +183,7 @@ def all_reduce_fp8(
 ) -> Optional[Handle]:
     # fall back to default op due to performance issue
     return dist.all_reduce(tensor, op=op, group=group, async_op=async_op)
+
 
 @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def _all_to_all_single_fp8(
