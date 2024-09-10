@@ -12,9 +12,9 @@ Author: Mingyan Jiang
 - [Using Sequence Parallelism Strategy](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/llama/benchmark.py)
 
 **Related Papers**
-[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)  
-[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)  
-[Ring Attention with Blockwise Transformers for Near-Infinite Context](https://arxiv.org/pdf/2310.01889)  
+[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)
+[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)
+[Ring Attention with Blockwise Transformers for Near-Infinite Context](https://arxiv.org/pdf/2310.01889)
 
 ## Quick Overview
 
@@ -154,5 +154,3 @@ Currently, the `MoeHybridParallelPlugin` only supports DeepSpeed-Ulysses sequenc
 Among the sequence parallelism methods mentioned, ring attention has no requirements for the number of attention heads and can train ultra-long sequences. However, due to the division of computation, its performance may decrease. TP+SP and DeepSpeed-Ulysses have requirements for the number of attention heads, which must be divisible by the sp group size. These sequence parallelism methods are all compatible with high-performance attention mechanisms like flash attention. Sequence parallelism can also be used with Gemini to train extremely large-scale models, and it can be combined with TP, PP, and DP to form 4D parallelism.
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=4 sequence_parallelism.py  -->
-
-
