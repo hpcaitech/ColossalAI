@@ -10,3 +10,4 @@ matplotlib
 pandas
 seaborn
 scikit-learn
+vllm==0.5.5
