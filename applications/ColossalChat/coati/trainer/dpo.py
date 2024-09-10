@@ -357,7 +357,7 @@ class DPOTrainer(SLTrainer):
                 )
                 step_bar.update()
 
-        msg = "Evaluation Result:\n"
+        msg = "\nEvaluation Result:\n"
         for tag in ["loss", "chosen_rewards", "rejected_rewards", "accuracy", "margin"]:
             msg = msg + f"{tag}: {self.accumulative_meter.get(tag)}\n"
         self.coordinator.print_on_master(msg)
