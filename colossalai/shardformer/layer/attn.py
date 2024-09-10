@@ -433,7 +433,6 @@ class RingAttention(torch.autograd.Function):
         assert (
             sp_size % inner_ring_size == 0
         ), f"sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
-
         logger = get_dist_logger()
         logger.info(
             f"Using 2D Ring Attention with inner ring size {inner_ring_size} to maximze NIC util for inter-node comm. Cross your fingers for speed-ups!",
@@ -898,6 +897,7 @@ class RingAttention(torch.autograd.Function):
 
         local_sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
+
         # Using separate streams (pg) for concurrent kv and dkv comm may
         # cause NCCL "software caused connection abort" here...
         local_kv_comm = RingComm(local_kv_group)
@@ -1119,9 +1119,14 @@ class RingAttention(torch.autograd.Function):
                 the batch dim to a packed 1d sequence. Contingent on model forward shape definitions.
 
         Returns:
-            inputs_embeds: Packed input embeddings of shape [B, Sq // sp_size, ...].
-            mask_info: A dictionary of mask info.
-            position_ids: Packed position ids of shape [..., Sq // sp_size].
+            torch.Tensor:
+                Packed input embeddings of shape [B, Sq // sp_size, ...].
+
+            Dict[str, Any]:
+                A dictionary containing mask info.
+
+            torch.Tensor:
+                Packed position ids of shape [..., Sq // sp_size].
 
         """
         _load_varlen_helpers()

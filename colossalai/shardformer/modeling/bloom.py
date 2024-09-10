@@ -365,14 +365,15 @@ class BloomPipelineForwards:
             hidden_states = transformer_outputs[0]
             lm_logits = self.lm_head(hidden_states).contiguous()
 
-            loss = dist_cross_entropy(
-                labels,
-                lm_logits,
-                shard_config,
-                self.lm_head.out_features,
-                self.config.vocab_size,
-                self.transformer.dtype,
-            )
+            loss = None
+            if labels is not None:
+                loss = dist_cross_entropy(
+                    labels,
+                    lm_logits,
+                    shard_config,
+                    self.lm_head.out_features,
+                    self.transformer.dtype,
+                )
 
             if not return_dict:
                 output = (lm_logits,) + transformer_outputs[1:]
@@ -1036,9 +1037,11 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = transformer_outputs[0]
         lm_logits = self.lm_head(hidden_states)
 
-        loss = dist_cross_entropy(
-            labels, lm_logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.transformer.dtype
-        )
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(
+                labels, lm_logits, shard_config, self.lm_head.out_features, self.transformer.dtype
+            )
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]

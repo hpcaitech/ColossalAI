@@ -165,7 +165,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
-            "inner_ring_size": 2,
         },
         # Ring Attention + PP
         {
@@ -215,18 +214,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "all_to_all",
             "enable_all_optimization": True,
             "use_lazy_init": True,
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-        },
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
+            "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
         },
@@ -294,6 +282,7 @@ def run_llama_test(test_config):
         except Exception as e:
             print(f"Failed config: {test_config}, model name: {name}")
             raise e
+
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()

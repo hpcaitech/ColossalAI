@@ -1097,13 +1097,19 @@ def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1, fp8
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim, fp8_communication)
 
 
-def gather_sp_output(hidden_states, sp_group, sp_mode, fp8_communication=False):
+def gather_sp_output(hidden_states, shard_config, sp_dim=1):
     """
     Gather the output of the last layer for cross entropy computation
     """
+    sp_group = shard_config.sequence_parallel_process_group
+    sp_mode = shard_config.sequence_parallelism_mode
+    fp8_comm = shard_config.fp8_communication
+    if dist.get_world_size(sp_group) == 1:
+        return hidden_states
+
     # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
     scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
     hidden_states = gather_forward_split_backward(
-        hidden_states, 1, sp_group, grad_scale=scale, fp8_communication=fp8_communication
+        hidden_states, sp_dim, sp_group, grad_scale=scale, fp8_communication=fp8_comm
     )
     return hidden_states

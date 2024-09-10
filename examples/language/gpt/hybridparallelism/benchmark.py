@@ -28,7 +28,7 @@ MODEL_CONFIGS = {
     "118M": GPT2Config(activation_function="gelu"),
     "338M": GPT2Config(n_embd=1024, n_head=16, n_layer=24, activation_function="gelu"),
     "738M": GPT2Config(n_embd=1280, n_head=20, n_layer=36, activation_function="gelu"),
-    "6.21B": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=4096, activation_function="gelu"),
+    "6.21B": GPT2Config(n_embd=4096, n_head=32, n_layer=32, n_positions=32768, activation_function="gelu"),
 }
 
 
@@ -60,6 +60,8 @@ def main():
     parser.add_argument("--tp", type=int, default=1, help="Tensor parallel size")
     parser.add_argument("--extra_dp", type=int, default=1, help="Extra data parallel size, used for Gemini")
     parser.add_argument("--pp", type=int, default=1, help="Pipeline parallel size")
+    parser.add_argument("--sp", type=int, default=1, help="Sequence parallel size")
+    parser.add_argument("--sp_mode", type=str, default="ring_attn", help="Sequence parallel mode")
     parser.add_argument("--mbs", type=int, default=1)
     parser.add_argument("--zero", type=int, default=0)
     parser.add_argument("--pp_style", type=str, default="1f1b")
@@ -129,6 +131,9 @@ def main():
             tp_size=args.tp,
             pp_size=args.pp,
             pp_style=args.pp_style,
+            sp_size=args.sp,
+            sequence_parallelism_mode=args.sp_mode,
+            enable_sequence_parallelism=True,
             zero_stage=args.zero,
             num_model_chunks=args.num_model_chunks,
             enable_all_optimization=True,
@@ -214,6 +219,8 @@ def main():
             performance_evaluator.on_step_start(step)
             outputs = model(**batch)
             loss = outputs[0]
+            del outputs
+
             booster.backward(loss, optimizer)
             optimizer.step()
             optimizer.zero_grad()

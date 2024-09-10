@@ -16,12 +16,7 @@ from colossalai.shardformer.layer import (
     VocabParallelLMHead1D,
 )
 
-from ..modeling.llama import (
-    LlamaPipelineForwards,
-    get_llama_flash_attention_forward,
-    get_llama_flash_attention_model_forward,
-    get_lm_forward_with_dist_cross_entropy,
-)
+from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificationPolicy"]
@@ -99,11 +94,9 @@ class LlamaPolicy(Policy):
         if self.pipeline_stage_manager is None:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_model_forward(
-                        self.shard_config,
-                        sp_mode=sp_mode,
-                        sp_size=sp_size,
-                        sp_group=sp_group,
+                    "forward": partial(
+                        LlamaPipelineForwards.llama_model_forward,
+                        shard_config=self.shard_config,
                     ),
                 },
                 policy=policy,
@@ -351,7 +344,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         elif self.shard_config.enable_tensor_parallelism or self.shard_config.enable_sequence_parallelism:
             # Compute loss distributedly along the sequence dimension
             new_item[LlamaForCausalLM].method_replacement = {
-                "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                # "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                "forward": partial(LlamaPipelineForwards.llama_for_causal_lm_forward, shard_config=self.shard_config)
             }
         return policy
 
