@@ -43,7 +43,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
 
       - name: Traverse all files
         run: |

@@ -53,7 +53,7 @@ jobs:
         uses: actions/checkout@v3
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
       - name: Test the example
         run: |
           dir=${{ matrix.directory }}
