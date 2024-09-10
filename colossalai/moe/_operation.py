@@ -308,7 +308,7 @@ class EPGradScalerIn(torch.autograd.Function):
         assert len(grad_outputs) == 1
         grad = grad_outputs[0]
         if ctx.ep_size != 1:
-            grad = grad * ctx.ep_size
+            grad.mul_(ctx.ep_size)
         return grad, None
 
 
@@ -328,7 +328,7 @@ class EPGradScalerOut(torch.autograd.Function):
         assert len(grad_outputs) == 1
         grad = grad_outputs[0]
         if ctx.ep_size != 1:
-            grad = grad / ctx.ep_size
+            grad.div_(ctx.ep_size)
         return grad, None
 
 

@@ -1,4 +1,4 @@
-# modified from llama benchmark
+# modified from mixtral benchmark
 import argparse
 import resource
 import time
@@ -11,7 +11,7 @@ from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator, get_profile_context
 from tqdm import tqdm
-from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -29,23 +29,34 @@ warnings.filterwarnings("ignore")
 
 # We have lots of llamas for your choice!
 MODEL_CONFIGS = {
-    "100m": MixtralConfig(
+    "100m": lambda: AutoConfig.from_pretrained(
+        "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
-        num_hidden_layers=4,
+        num_hidden_layers=1,
         num_attention_heads=32,
-        intermediate_size=768,
-        hidden_size=768,
+        intermediate_size=512,
+        moe_intermediate_size=128,
+        hidden_size=512,
+        n_routed_experts=8,
+        n_shared_experts=4,
+        num_experts_per_tok=2,
+        first_k_dense_replace=0,
         attn_implementation="flash_attention_2",
+        trust_remote_code=True,
     ),
-    "7b": MixtralConfig(
+    "7b": lambda: AutoConfig.from_pretrained(
+        "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
-        num_hidden_layers=5,
+        num_hidden_layers=13,
         attn_implementation="flash_attention_2",
+        trust_remote_code=True,
     ),
-    "14b": MixtralConfig(
+    "14b": lambda: AutoConfig.from_pretrained(
+        "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
-        num_hidden_layers=10,
+        num_hidden_layers=26,
         attn_implementation="flash_attention_2",
+        trust_remote_code=True,
     ),
 }
 
@@ -160,10 +171,8 @@ def main():
     # ==============================
     dp_size = getattr(plugin, "dp_size", coordinator.world_size)
 
-    if args.config in MODEL_CONFIGS:
-        config = MODEL_CONFIGS[args.config]
-    else:
-        config = MixtralConfig.from_pretrained(args.config, trust_remote_code=True)
+    config = MODEL_CONFIGS[args.config]()
+
     torch.cuda.manual_seed(42)
 
     dataset = RandomDataset(
@@ -181,7 +190,7 @@ def main():
     )
 
     with init_ctx:
-        model = MixtralForCausalLM(config=config).to(torch.bfloat16)
+        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True).to(torch.bfloat16)
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
@@ -216,7 +225,7 @@ def main():
         1,  # avoid creating massive log files
         save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
         nsys=args.nsys,
-    ) as prof:
+    ) as prof:  # , distributed_debug_mode(10, enable=True):
         if isinstance(plugin, MoeHybridParallelPlugin) and args.pp > 1:
             data_iter = iter(dataloader)
             for step in tqdm(range(len(dataloader)), desc="Step", disable=not coordinator.is_master()):
@@ -236,6 +245,7 @@ def main():
 
                 performance_evaluator.on_step_end(input_ids=torch.empty(args.batch_size, args.max_length))
                 prof.step()
+                print(f"rank {dist.get_rank()} step {step} passed")
         else:
             for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not coordinator.is_master())):
                 performance_evaluator.on_step_start(step)
@@ -245,12 +255,14 @@ def main():
 
                 if dist.get_rank() == dist.get_world_size() - 1:
                     print(f"Step {step} loss: {loss}")
+
                 booster.backward(loss, optimizer)
                 optimizer.step()
                 optimizer.zero_grad()
 
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
+
     performance_evaluator.on_fit_end()
     coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 

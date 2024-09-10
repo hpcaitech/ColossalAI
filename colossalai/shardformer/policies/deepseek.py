@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
 from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.deepseek import (
+    DeepseekMoEGate_Col,
     DeepseekPipelineForwards,
     EPDeepseekMoE,
     get_deepseek_flash_attention_forward,
@@ -105,6 +106,7 @@ class DeepseekPolicy(Policy):
         else:
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
+
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
             assert (
@@ -148,8 +150,19 @@ class DeepseekPolicy(Policy):
                         target_module=Linear1D_Row,
                         kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate",
+                        target_module=DeepseekMoEGate_Col,
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "config": self.model.config,
+                        },
+                        ignore_if_not_exist=True,
+                    ),
                 ],
             )
+
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
