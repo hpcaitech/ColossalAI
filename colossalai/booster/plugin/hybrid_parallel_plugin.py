@@ -1103,7 +1103,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
                 pipeline_axis=self.pp_axis,
-                enable_interleave=pp_style == "interleaved",
+                enable_interleave=(pp_style == "interleaved"),
                 num_model_chunks=num_model_chunks,
                 num_layers_per_stage=num_layers_per_stage,
             )
