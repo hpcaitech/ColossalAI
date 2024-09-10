@@ -308,7 +308,7 @@ class EPGradScalerIn(torch.autograd.Function):
         assert len(grad_outputs) == 1
         grad = grad_outputs[0]
         if ctx.ep_size != 1:
-            grad = grad * ctx.ep_size
+            grad.mul_(ctx.ep_size)
         return grad, None
 
 
@@ -328,7 +328,7 @@ class EPGradScalerOut(torch.autograd.Function):
         assert len(grad_outputs) == 1
         grad = grad_outputs[0]
         if ctx.ep_size != 1:
-            grad = grad / ctx.ep_size
+            grad.div_(ctx.ep_size)
         return grad, None
 
 
@@ -449,7 +449,4 @@ def all_to_all_uneven(
     overlap: bool = False,
     fp8_communication: bool = False,
 ):
-    assert (
-        inputs.requires_grad
-    ), "Input must require grad to assure that backward is executed, otherwise it might hang the program."
     return AllToAllUneven.apply(inputs, input_split_sizes, output_split_sizes, group, overlap, fp8_communication)

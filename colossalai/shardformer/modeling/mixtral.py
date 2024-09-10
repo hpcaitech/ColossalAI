@@ -36,7 +36,7 @@ from colossalai.shardformer.layer._operation import (
     gather_forward_split_backward,
     split_forward_gather_backward,
 )
-from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row, ParallelModule
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
 from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_group
@@ -49,7 +49,7 @@ if is_flash_attn_2_available():
     _flash_supports_window_size = "window_size" in list(inspect.signature(flash_attn_func).parameters)
 
 
-class EPMixtralSparseMoeBlock(MixtralSparseMoeBlock):
+class EPMixtralSparseMoeBlock(ParallelModule):
     def __init__(self, *args, **kwargs):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
