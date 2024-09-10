@@ -1090,7 +1090,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert pp_style in ["1f1b", "interleaved", "zbv"], "Unsupported pipeline parallelism style"
+            assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
             assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
             assert (
                 num_microbatches is not None or microbatch_size is not None
@@ -1123,8 +1123,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
                 )
-            elif pp_style == "zbv":
-                assert num_model_chunks == 1, "number of model chunks must equal 2 when using zbv"
             else:
                 raise NotImplementedError()
         if sequence_parallelism_mode == "ring_attn":
