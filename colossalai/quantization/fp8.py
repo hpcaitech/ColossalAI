@@ -718,8 +718,8 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async
         return _all_to_all_fp8(output_list, input_list, group=group, fp8_format=fp8_format, async_op=async_op)
 
 
-def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
-
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+def _all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
 
     input_type = input_.dtype
@@ -743,8 +743,17 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: boo
         cast_op()
 
 
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
+    if process_group_is_intranode(group):
+        return dist.all_gather(output_list, input_, group=group, async_op=async_op)
+    else:
+        return _all_gather_fp8(output_list, input_, group=group, fp8_format=fp8_format, async_op=async_op)
+
+
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+def all_gather_fp8_lagacy(
+    output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False
+) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     shape = input_.shape
     input_type = input_.dtype
