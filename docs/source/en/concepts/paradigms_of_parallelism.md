@@ -87,6 +87,24 @@ Related paper:
 - [Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism](https://arxiv.org/abs/1909.08053)
 - [Chimera: Efficiently Training Large-Scale Neural Networks with Bidirectional Pipelines](https://arxiv.org/abs/2107.06925)
 
+###  Sequence Parallelism
+Sequence parallelism is a parallel strategy that partitions along the sequence dimension, making it an effective method for training long text sequences. Mature sequence parallelism methods include Megatron’s sequence parallelism, DeepSpeed-Ulysses sequence parallelism, and ring-attention sequence parallelism.
+
+#### Megatron SP:
+This sequence parallelism method is implemented on top of tensor parallelism. On each GPU in model parallelism, the samples are independent and replicated. For parts that cannot utilize tensor parallelism, such as non-linear operations like LayerNorm, the sample data can be split into multiple parts along the sequence dimension, with each GPU computing a portion of the data. Then, tensor parallelism is used for the linear parts like attention and MLP, where activations need to be aggregated. This approach further reduces activation memory usage when the model is partitioned. It is important to note that this sequence parallelism method can only be used in conjunction with tensor parallelism.
+
+#### DeepSpeed-Ulysses:
+In this sequence parallelism, samples are split along the sequence dimension and the all-to-all communication operation is used, allowing each GPU to receive the full sequence but only compute the non-overlapping subset of attention heads, thereby achieving sequence parallelism. This parallel method supports fully general attention, allowing both dense and sparse attention.
+all-to-all is a full exchange operation, similar to a distributed transpose operation. Before attention computation, samples are split along the sequence dimension, so each device only has a sequence length of N/P. However, after using all-to-all, the shape of the qkv subparts becomes [N, d/p], ensuring the overall sequence is considered during attention computation.
+
+#### Ring Attention:
+Ring attention is conceptually similar to flash attention. Each GPU computes only a local attention, and finally, the attention blocks are reduced to calculate the total attention. In Ring Attention, the input sequence is split into multiple chunks along the sequence dimension, with each chunk handled by a different GPU or processor. Ring Attention employs a strategy called "ring communication," where kv sub-blocks are passed between GPUs through p2p communication for iterative computation, enabling multi-GPU training on ultra-long texts. In this strategy, each processor exchanges information only with its predecessor and successor, forming a ring network. This allows intermediate results to be efficiently transmitted between processors without global synchronization, reducing communication overhead.
+
+Related paper：
+[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)
+[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)
+[Ring Attention with Blockwise Transformers for Near-Infinite Context](https://arxiv.org/pdf/2310.01889)
+
 
 ## Optimizer-Level Parallel
 
@@ -122,3 +140,4 @@ Related paper:
 - [ZeRO-Offload: Democratizing Billion-Scale Model Training](https://arxiv.org/abs/2101.06840)
 - [ZeRO-Infinity: Breaking the GPU Memory Wall for Extreme Scale Deep Learning](https://arxiv.org/abs/2104.07857)
 - [PatrickStar: Parallel Training of Pre-trained Models via Chunk-based Memory Management](https://arxiv.org/abs/2108.05818)
+<!-- doc-test-command: echo  -->
