@@ -318,7 +318,7 @@ class InterleavedSchedule(PipelineSchedule):
             if self.stage_manager.is_last_stage():
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
                 if accum_loss is not None:
-                    accum_loss.add_(loss.detach())
+                    accum_loss.add_(loss.data)
                 if outputs is not None:
                     outputs.append(tree_map(detach, output_obj))
                 return loss
