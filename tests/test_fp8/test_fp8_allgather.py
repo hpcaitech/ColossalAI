@@ -5,7 +5,7 @@ from torch.testing import assert_close
 
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
-from colossalai.quantization.fp8 import _all_gather_fp8
+from colossalai.quantization.fp8 import all_gather_fp8
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -21,7 +21,7 @@ def check_4gpu(shape, dtype, fp8_format, async_op):
     x = torch.rand(shape, dtype=dtype, device=get_accelerator().get_current_device())
     output_list = [torch.empty_like(x) for _ in range(world_size)]
     output_list_fp8 = [torch.empty_like(x) for _ in range(world_size)]
-    fp8_handle = _all_gather_fp8(
+    fp8_handle = all_gather_fp8(
         output_list_fp8, x, group=_get_default_group(), fp8_format=fp8_format, async_op=async_op
     )
     origin_hanle = dist.all_gather(output_list, x, group=_get_default_group(), async_op=async_op)
