@@ -12,9 +12,9 @@
 - [使用序列并行策略](https://github.com/hpcaitech/ColossalAI/blob/main/examples/language/llama/benchmark.py)
 
 **相关论文**
-[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)  
-[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)  
-[Ring Attention with Blockwise Transformers for Near-Infinite Context](https://arxiv.org/pdf/2310.01889)  
+[Reducing Activation Recomputation in Large Transformer Models](https://arxiv.org/pdf/2205.05198)
+[DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models](https://arxiv.org/abs/2309.14509)
+[Ring Attention with Blockwise Transformers for Near-Infinite Context](https://arxiv.org/pdf/2310.01889)
 
 ## 快速预览
 
