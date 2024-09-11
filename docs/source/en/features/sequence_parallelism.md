@@ -126,7 +126,7 @@ plugin = HybridParallelPlugin(
         )
 ```
 #### Using Booster
-```
+```python
 booster = Booster(plugin=plugin)
 dataloader = plugin.prepare_dataloader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, seed=42)
 model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
