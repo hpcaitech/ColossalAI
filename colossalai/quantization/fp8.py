@@ -902,9 +902,7 @@ class _LinearFp8(torch.autograd.Function):
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
 
 
-@torch.compile(
-    mode="max-autotune-no-cudagraphs", disable=not SUPPORT_TORCH_COMPILE, dynamic=False, disable=cuda_arch < 89
-)
+@torch.compile(mode="max-autotune-no-cudagraphs", disable=not SUPPORT_TORCH_COMPILE, dynamic=False)
 def _linear_fp8(input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None) -> torch.Tensor:
     return _LinearFp8.apply(input, weight, bias)
 
