@@ -20,7 +20,7 @@ Author: Mingyan Jiang
 
 In this tutorial, you will learn how to use sequence parallelism. In Colossal-AI, we have implemented several types of sequence parallelism, including TP+SP, DeepSpeed-Ulysses, and ring attention. Below, we will introduce how to use these different types of sequence parallelism.
 
-## 目录
+## Table Of Content
 
 In this tutorial, we will cover the use of three sequence parallelism strategies:
 
