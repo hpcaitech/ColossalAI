@@ -10,12 +10,12 @@ from vllm import LLM, SamplingParams
 
 from colossalai.logging import DistributedLogger
 
-from .base import BaseModel
+from .huggingface import HuggingFaceModel
 
 IGNORE_INDEX = -100
 
 
-class vLLMModel(BaseModel):
+class vLLMModel(HuggingFaceModel):
     """
     Model wrapper around vLLM models.
 
@@ -33,13 +33,13 @@ class vLLMModel(BaseModel):
         quantization: The method used to quantize the model weights
         gpu_memory_utilization: The ratio (between 0 and 1) of GPU memory to reserve for the model weights, activations, and KV cache.
         swap_space: The size (GiB) of CPU memory per GPU to use as swap space.
-        cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights. 
+        cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
         enforce_eager: Whether to enforce eager execution.
         max_context_len_to_capture: Maximum context len covered by CUDA graphs.
         max_seq_len_to_capture: Maximum sequence len covered by CUDA graphs.
         disable_custom_all_reduce: See ParallelConfig
     """
-    
+
     def __init__(
         self,
         path: str,
@@ -69,12 +69,12 @@ class vLLMModel(BaseModel):
             batch_size=batch_size,
             logger=logger,
         )
-        
+
         self._load_model_and_tokenizer(
-            path=path, 
+            path=path,
             model_kwargs=model_kwargs,
             tokenizer_kwargs=tokenizer_kwargs,
-            tokenizer_path=tokenizer_path if tokenizer_path else None, 
+            tokenizer_path=tokenizer_path if tokenizer_path else None,
             trust_remote_code=trust_remote_code,
             tensor_parallel_size=tensor_parallel_size,
             quantization=quantization,
@@ -85,35 +85,14 @@ class vLLMModel(BaseModel):
             max_context_len_to_capture=max_context_len_to_capture,
             max_seq_len_to_capture=max_seq_len_to_capture,
             disable_custom_all_reduce=disable_custom_all_reduce,
-            )
+        )
 
-    def _get_choices_indices(self, language: str):
-        """
-        Get indices for each choice
-
-        Some tokenizer will insert BOS if you don't specify add_special_tokens=False such as Llama-2.
-        The indices for choices may be different given the context. For example, for Llama-2 tokenizer, for Chinese context like "答案：{choice}", indices for choices A, B, C and D are 29909, 29933, 29907 and 29928, for English context like "Answer: {choice}", indices for choices A, B, C and D are 319, 350, 315 and 360.
-        print(self.tokenizer("答案：A")) to see
-        print(self.tokenizer("Answer: A")) to see
-
-        """
-
-        # A trick for get "all" tokens ids related to given choices.
-        self.indices_for_choices = [[] for _ in range(2)]
-        for choice in self.choices:
-            self.indices_for_choices[0].append(
-                self.tokenizer(f"Answer: {choice}", add_special_tokens=False).input_ids[-1]
-            )
-            self.indices_for_choices[1].append(
-                self.tokenizer(f"答案：{choice}", add_special_tokens=False).input_ids[-1]
-            )
-        
     def _load_model_and_tokenizer(
-        self, 
-        path: str, 
+        self,
+        path: str,
         model_kwargs: dict,
         tokenizer_kwargs: dict,
-        tokenizer_path: Optional[str] = None, 
+        tokenizer_path: Optional[str] = None,
         trust_remote_code: bool = False,
         tensor_parallel_size: int = 1,
         quantization: Optional[str] = None,
@@ -138,7 +117,7 @@ class vLLMModel(BaseModel):
             quantization: The method used to quantize the model weights
             gpu_memory_utilization: The ratio (between 0 and 1) of GPU memory to reserve for the model weights, activations, and KV cache.
             swap_space: The size (GiB) of CPU memory per GPU to use as swap space.
-            cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights. 
+            cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
             enforce_eager: Whether to enforce eager execution.
             max_context_len_to_capture: Maximum context len covered by CUDA graphs.
             max_seq_len_to_capture: Maximum sequence len covered by CUDA graphs.
@@ -147,20 +126,20 @@ class vLLMModel(BaseModel):
         """
         if "torch_dtype" in model_kwargs:
             model_kwargs["dtype"] = eval(model_kwargs["torch_dtype"])
-            model_kwargs.pop("torch_dtype") 
+            model_kwargs.pop("torch_dtype")
         else:
             model_kwargs.setdefault("dtype", torch.float16)
-            
+
         if "trust_remote_code" in model_kwargs:
             trust_remote_code = model_kwargs["trust_remote_code"]
-            model_kwargs.pop("trust_remote_code") 
-        
+            model_kwargs.pop("trust_remote_code")
+
         if "trust_remote_code" in tokenizer_kwargs:
             trust_remote_code = tokenizer_kwargs["trust_remote_code"]
             tokenizer_kwargs.pop("trust_remote_code")
 
         self.model = LLM(
-            model=path, 
+            model=path,
             trust_remote_code=trust_remote_code,
             tensor_parallel_size=tensor_parallel_size,
             quantization=quantization,
@@ -172,11 +151,11 @@ class vLLMModel(BaseModel):
             max_seq_len_to_capture=max_seq_len_to_capture,
             disable_custom_all_reduce=disable_custom_all_reduce,
             **model_kwargs,
-            **tokenizer_kwargs
-            )
-        
+            **tokenizer_kwargs,
+        )
+
         self.tokenizer = self.model.get_tokenizer()
-        
+
         if self.batch_size > 1:
             self.tokenizer.padding_side = "left"
             self.tokenizer.truncation_side = "left"
@@ -188,11 +167,11 @@ class vLLMModel(BaseModel):
             elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
-    
+
     def _calculate_loss(self, inputs: List[str], labels: List[str]) -> Tuple[List]:
         """
         Calculate loss on target tokens. Adapted from https://github.com/open-compass/opencompass/blob/c2bcd8725e615ec455bf5b7301f8d09962cd64e3/opencompass/models/vllm.py#L110
-    
+
         Args:
             input_ids_list: A batch of input string.
             labels: A batch of labels.
@@ -205,60 +184,29 @@ class vLLMModel(BaseModel):
         sampling_kwargs = SamplingParams(logprobs=1)
         outputs = self.model.generate(inputs, sampling_kwargs)
         ce_loss = []
-        
+
         if labels is not None:
-            lens = [
-                len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels
-            ]
+            lens = [len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels]
         else:
             lens = [1] * batch_size
-            
+
         for i in range(batch_size):
             logprobs = outputs[i].outputs[0].logprobs
             token_ids = outputs[i].outputs[0].token_ids
-                       
-            logprobs_list = [
-                logprobs[i][token_ids[i]]
-                for i in range(len(logprobs))
-            ]
+
+            logprobs_list = [logprobs[i][token_ids[i]] for i in range(len(logprobs))]
             logprobs_list = [i.logprob for i in logprobs_list]
             logprobs_list = np.array(logprobs_list)
 
             if lens is not None:
-                logprobs_list = logprobs_list[:lens[i]]
+                logprobs_list = logprobs_list[: lens[i]]
 
             loss = -logprobs_list.sum(axis=-1) / lens[i]
             ce_loss.append(loss)
-            
+
         batch_loss = np.array(ce_loss)
-        
+
         return batch_loss, lens
-        
-    def _get_truncated_prompts(self, inputs: List[str], max_new_tokens: int) -> List[str]:
-        """
-        Truncate the input sequence to fit model_max_length (we suggest truncate in the middle, since the left and right side may contain crucial instructions)
-        https://github.com/THUDM/LongBench/blob/main/pred.py#L16
-
-        Args:
-            inputs: A batch of input prompts.
-            max_new_tokens: Max new tokens for model to generate.
-
-        Returns:
-            Truncated prompts.
-
-        """
-
-        truncated_inputs = copy.deepcopy(inputs)
-        for i, input in enumerate(inputs):
-            tokenized_prompt = self.tokenizer(input, truncation=False, return_tensors="pt").input_ids[0]
-            if len(tokenized_prompt) > self.model_max_length - max_new_tokens:
-                half = (self.model_max_length - max_new_tokens) // 2
-                prompt = self.tokenizer.decode(
-                    tokenized_prompt[:half], skip_special_tokens=True
-                ) + self.tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=True)
-                truncated_inputs[i] = prompt
-
-        return truncated_inputs
 
     def inference(self, data_loader: DataLoader, inference_kwargs: Dict[str, Any], debug: bool = False) -> List[Dict]:
         """
@@ -392,23 +340,22 @@ class vLLMModel(BaseModel):
 
         """
         truncated_inputs = self._get_truncated_prompts(inputs, max_new_tokens)
-        
+
         generation_kwargs = kwargs.copy()
-        generation_kwargs.update({'max_tokens': max_new_tokens})
+        generation_kwargs.update({"max_tokens": max_new_tokens})
         logits_processor = GetTokenLogitsProcessor(self.indices_for_choices)
-    
+
         sampling_kwargs = SamplingParams(logits_processors=[logits_processor], **generation_kwargs)
-        
+
         outputs = self.model.generate(truncated_inputs, sampling_kwargs)
         output_strs = []
         for output in outputs:
             generated_text = output.outputs[0].text
             output_strs.append(generated_text)
         scores = logits_processor.get_target_logits()
-        
+
         return output_strs, scores
-    
-        
+
     @torch.no_grad()
     def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool) -> List[List[float]]:
         """
@@ -432,23 +379,26 @@ class vLLMModel(BaseModel):
 
         # Get the number of target answers for different questions
         batch_target_nums = [len(prompt_target) for prompt_target in batch_target]
-        
+
         if pretrain:
             batch = []
             bytes_list = []
             batch_prompt_pretrain = []
             for p, b in zip(batch_prompt, batch_target):
                 batch.append(p + b[0])
-            
+
             for input in batch:
-            # Pretrain data tends to be very long, sometimes much larger than the model_max_length, we only tokenize 1/ratio of the data first to accelerate the tokenization process.
-            # Once the length of the result is greater or equal to model_max_length, we stop iterating on ratios and use the result as input_ids and labels.
-            # After all, the rest of the original string doesn't need to be tokenized at the first place.
+                # Pretrain data tends to be very long, sometimes much larger than the model_max_length, we only tokenize 1/ratio of the data first to accelerate the tokenization process.
+                # Once the length of the result is greater or equal to model_max_length, we stop iterating on ratios and use the result as input_ids and labels.
+                # After all, the rest of the original string doesn't need to be tokenized at the first place.
                 ratio = [16, 8, 4, 2, 1]
                 tokenized = None
                 for r in ratio:
                     tokenized = self.tokenizer(
-                        [input[0 : len(input) // r]], truncation=True, max_length=self.model_max_length, return_tensors="pt"
+                        [input[0 : len(input) // r]],
+                        truncation=True,
+                        max_length=self.model_max_length,
+                        return_tensors="pt",
                     )
                     if tokenized.input_ids.size(1) >= self.model_max_length:
                         break
@@ -456,7 +406,7 @@ class vLLMModel(BaseModel):
                 string = self.tokenizer.decode(tokenized.input_ids[0], skip_special_tokens=True)
                 batch_prompt_pretrain.append(string)
                 bytes_list.append(len(string.encode("utf-8")))
-                
+
             batch_prompt = copy.deepcopy(batch_prompt_pretrain)
             batch_target = None
         else:
@@ -465,13 +415,13 @@ class vLLMModel(BaseModel):
             for prompt, targets in zip(batch_prompt, batch_target):
                 for target in targets:
                     target_tokenized = self.tokenizer(
-                            [target], truncation=True, max_length=self.model_max_length, return_tensors="pt"
-                        )
+                        [target], truncation=True, max_length=self.model_max_length, return_tensors="pt"
+                    )
                     max_new_tokens = target_tokenized["input_ids"][0].size(0)
                     prompt_with_correct_length = self._get_truncated_prompts([prompt], max_new_tokens)[0]
                     batch_prompt_processed.append(prompt_with_correct_length)
                     batch_target_processed.append(target)
-                
+
             batch_prompt = copy.deepcopy(batch_prompt_processed)
             batch_target = copy.deepcopy(batch_target_processed)
             bytes_list = None
@@ -480,7 +430,7 @@ class vLLMModel(BaseModel):
         # We will generate new batches.
         losses = []
         target_token_nums = []
-        
+
         losses_per_batch, target_token_num_per_batch = self._calculate_loss(batch_prompt, batch_target)
         losses.extend(losses_per_batch)
         target_token_nums.extend(target_token_num_per_batch)
@@ -504,25 +454,26 @@ class vLLMModel(BaseModel):
 
         return losses_per_sample, target_token_nums_per_sample, None
 
+
 class GetTokenLogitsProcessor:
     """
-    LogitsProcessor to get specific logits 
+    LogitsProcessor to get specific logits
 
     Args:
         indices_for_choices: token indices of required tokens
         target_logits: store all the target logits
     """
-    def __init__(self, 
-                 indices_for_choices: List[List[int]],
-                 ):
-        self.indices_for_choices = indices_for_choices,
+
+    def __init__(
+        self,
+        indices_for_choices: List[List[int]],
+    ):
+        self.indices_for_choices = (indices_for_choices,)
         self.target_logits = []
-        
-    def __call__(self,
-                 input_ids: torch.Tensor,
-                 logits: torch.Tensor) -> torch.Tensor:
+
+    def __call__(self, input_ids: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
         choice_scores = []
-        
+
         if not input_ids:
             for option_indices in self.indices_for_choices[0]:
                 choice_scores.append(logits[option_indices].detach().cpu())
