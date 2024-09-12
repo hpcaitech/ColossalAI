@@ -484,11 +484,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             # loss backward; output_obj is loss; so output_obj_grad should be None
             assert output_obj_grad is None
 
-        if "hidden_states" in input_obj.keys():
-            input_obj_ = input_obj["hidden_states"]
-        else:
-            input_obj_ = input_obj["input_ids"]
-
+        input_obj_ = input_obj["hidden_states"]
         if output_obj_grad is None:
             optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
         else:
