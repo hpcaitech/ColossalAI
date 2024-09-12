@@ -526,7 +526,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             output_obj_grad = None
 
         if output_obj_grad is None:
-            optimizer.backward(output_obj, inputs=list(model_chunk.parameters()), retain_graph=True)
+            optimizer.backward(output_obj, inputs=list(model_chunk.parameters()), retain_graph=False)
         else:
             output_obj_ = output_obj["hidden_states"]
             optimizer.backward_by_grad(
@@ -587,31 +587,27 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             accum_loss=accum_loss,
             outputs=outputs,
         )
-        if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
-            # We should not detach bwd LOSS
-            pass
-        else:
-            detached_output_obj = tree_map(detach, output_obj)
 
         # Step3: send fwd
         # add output to send_fwd_buffer
         if model_chunk_id == 0:
             # is last stage; send to local_send_forward_buffer
             if self.stage_manager.is_last_stage(ignore_chunk=True):
+                detached_output_obj = tree_map(detach, output_obj)
                 self.local_send_forward_buffer.append(detached_output_obj)
+                # detached output; for bwd b&w, we only need the graph(grad_fn) of output_obj
+                # tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_obj)
             else:
-                self.send_forward_buffer[model_chunk_id].append(detached_output_obj)
+                self.send_forward_buffer[model_chunk_id].append(output_obj)
         else:
             # is first stage; end of fwd; append LOSS to local_send_backward_buffer
             if self.stage_manager.is_first_stage(ignore_chunk=True):
                 pass
             else:
-                self.send_forward_buffer[model_chunk_id].append(detached_output_obj)
+                self.send_forward_buffer[model_chunk_id].append(output_obj)
 
         # add input and output object for backward b
         self.input_tensors[model_chunk_id].append(input_obj)
-        # detached output; for bwd b&w, we only need the graph(grad_fn) of output_obj
-        # tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_obj)
         self.output_tensors[model_chunk_id].append(output_obj)
         # add output object for backward w
         self.output_tensors_dw[model_chunk_id].append(output_obj)
@@ -622,9 +618,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         model_chunk: Union[ModuleList, Module],
         model_chunk_id: int,
         optimizer: OptimizerWrapper,
-        # input_obj: Optional[dict],
-        # output_obj: Union[dict, torch.Tensor],
-        # output_obj_grad: Optional[dict],
     ):
         """A complete backward b schedule; Include recv bwd --> cal bwd step --> send bwd;
 

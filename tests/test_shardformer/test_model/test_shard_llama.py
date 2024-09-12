@@ -32,10 +32,9 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
     )
-    print(f"{sharded_model=}")
     if enable_gradient_checkpointing:
         # org_model.gradient_checkpointing_enable()
-        sharded_model.unwrap().gradient_checkpointing_enable()
+        sharded_model.unwrap().gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant":False})
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
@@ -302,7 +301,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "zero_stage": 0,
             "initial_scale": 1,
-            "enable_gradient_checkpointing": False,
+            "enable_gradient_checkpointing": True,
             "parallel_output": False,
         },
     ],
