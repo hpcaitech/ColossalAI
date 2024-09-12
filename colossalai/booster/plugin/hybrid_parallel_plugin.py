@@ -1110,7 +1110,9 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.zero_stage <= 1
             ), "To avoid prohibitive gradient synchronization costs, zero stage must be 0 or 1 when using pipeline parallelism"
             if pp_style == "zbv":
-                self.logger.warning("""the enable_gradient_checkpointing function must set the use_reentrant to False, such as  model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})""")
+                self.logger.warning(
+                    """the enable_gradient_checkpointing function must set the use_reentrant to False, such as  model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})"""
+                )
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
                 pipeline_axis=self.pp_axis,
