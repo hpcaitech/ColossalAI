@@ -434,7 +434,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         if self.mixed_precision_mixin is not None:
             grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
-        torch.autograd.backward(tensor, grad, inputs=inputs, retain_graph=retain_graph,)
+        torch.autograd.backward(
+            tensor,
+            grad,
+            inputs=inputs,
+            retain_graph=retain_graph,
+        )
 
         if not self.require_grad_sync:
             return

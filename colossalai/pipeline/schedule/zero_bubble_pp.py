@@ -12,7 +12,7 @@ from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.schedule.v_schedule import ScheduledNode
 from colossalai.pipeline.stage_manager import PipelineStageManager
 
-from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, retain_grad, to_device, model_forward
+from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
 
 AUTO_SCHEDULE_COMMUNICATION_TYPES = {"RECV_FORWARD", "RECV_BACKWARD", "SEND_FORWARD", "SEND_BACKWARD"}
@@ -35,7 +35,11 @@ def deallocate_output_tensor(out, deallocate_pipeline_outputs=False):
         return
     assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
     assert out._base is None, "counter-productive to free a view of another tensor."
-    out.data = torch.empty((1,), device=out.device, dtype=out.dtype,)
+    out.data = torch.empty(
+        (1,),
+        device=out.device,
+        dtype=out.dtype,
+    )
 
 
 class ZeroBubbleVPipeScheduler(PipelineSchedule):
@@ -481,7 +485,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
             # loss backward; output_obj is loss; so output_obj_grad should be None
             assert output_obj_grad is None
-        
+
         if "hidden_states" in input_obj.keys():
             input_obj_ = input_obj["hidden_states"]
         else:
