@@ -82,20 +82,24 @@ def train(args):
             parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
+            microbatch_size=args.microbatch_size,
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
 
     booster = Booster(plugin=plugin)
-    ref_booster = Booster(plugin=plugin)
 
-    # ======================================================
-    # Initialize Model, Objective, Optimizer and LR Scheduler
-    # ======================================================
-    # Temp Fix: Disable lazy init due to version conflict
-    # init_ctx = (
-    #     LazyInitContext(default_device=get_current_device()) if isinstance(plugin, (GeminiPlugin,)) else nullcontext()
-    # )
+    ref_plugin = HybridParallelPlugin(
+        tp_size=args.ref_tp,
+        pp_size=1,
+        zero_stage=args.zero_stage,
+        enable_flash_attention=args.use_flash_attn,
+        cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
+        parallel_output=False,
+        max_norm=args.grad_clip,
+        precision=args.mixed_precision,
+    )
+    ref_booster = Booster(plugin=ref_plugin)
 
     init_ctx = nullcontext()
     with init_ctx:
@@ -120,6 +124,7 @@ def train(args):
                 ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain)
         else:
             ref_model = None
+
         if args.lora_config is not None:
             model = convert_to_lora_module(model, lora_config=lora_config)
             for name, module in model.named_modules():
@@ -129,7 +134,9 @@ def train(args):
         disable_dropout(ref_model)
 
     if args.grad_checkpoint:
-        # Note, for some models, lora may not be compatible with gradient checkpointing
+        # Make sure gradient checkpointing can be activated.
+        model.train()
+        # Note, for some models, lora may not be compatible with gradient checkpointing.
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
 
@@ -159,7 +166,7 @@ def train(args):
         adamw_mode=True,
     )
 
-    # configure dataset
+    # Configure dataset
     coordinator.print_on_master(f"Load dataset: {args.dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_dataset = load_tokenized_dataset(dataset_paths=args.dataset, mode="train", mode_map=mode_map)
@@ -203,14 +210,15 @@ def train(args):
 
     default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
     torch.set_default_dtype(default_dtype)
+
     model, optim, _, train_dataloader, lr_scheduler = booster.boost(
         model=model,
         optimizer=optim,
         lr_scheduler=lr_scheduler,
         dataloader=train_dataloader,
     )
-    if ref_model is not None:
-        ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_dataloader)
+    ref_model, _, _, _, _ = ref_booster.boost(model=ref_model)
+
     torch.set_default_dtype(torch.float)
 
     coordinator.print_on_master(f"Booster init max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
@@ -332,12 +340,6 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=2048, help="Model max length")
     parser.add_argument("--max_epochs", type=int, default=3)
     parser.add_argument("--batch_size", type=int, default=4)
-    parser.add_argument(
-        "--disable_reference_model",
-        action="store_true",
-        default=False,
-        help="Disable the reference model (enabled by default)",
-    )
     parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
@@ -348,6 +350,17 @@ if __name__ == "__main__":
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
+    parser.add_argument("--microbatch_size", type=int, default=1)
+    # Parameter for reference model
+    parser.add_argument(
+        "--disable_reference_model",
+        action="store_true",
+        default=False,
+        help="Disable the reference model (enabled by default)",
+    )
+    parser.add_argument(
+        "--ref_tp", type=int, default=1, help="TP size for reference model; used only when reference model is to large."
+    )
     args = parser.parse_args()
 
     # fool proof hyperparameter setup
