@@ -225,6 +225,7 @@ class LlamaPipelineForwards:
                 all_self_attns += (layer_outputs[1],)
 
         if stage_manager.is_last_stage():
+            print(f"{hidden_states=}")
             hidden_states = self.norm(hidden_states)
             if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
                 hidden_states = gather_sp_output(hidden_states, sp_group, sp_mode)
