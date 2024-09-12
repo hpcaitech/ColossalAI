@@ -35,11 +35,7 @@ def deallocate_output_tensor(out, deallocate_pipeline_outputs=False):
         return
     assert isinstance(out, torch.Tensor), "expected Tensor, found %s." % type(out).__name__
     assert out._base is None, "counter-productive to free a view of another tensor."
-    out.data = torch.empty(
-        (1,),
-        device=out.device,
-        dtype=out.dtype,
-    )
+    out.data.untyped_storage().resize_(0)
 
 
 class ZeroBubbleVPipeScheduler(PipelineSchedule):
@@ -336,6 +332,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                     next_rank = self.stage_manager.get_next_rank()
                     output_tensor = self.send_forward_buffer[model_chunk_id].pop(0)
                     send_handles = self.comm.send_forward(output_object=output_tensor, next_rank=next_rank)
+                    tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_tensor)
                     return send_handles
 
             else:
@@ -354,6 +351,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                     prev_rank = self.stage_manager.get_prev_rank()
                     output_tensor = self.send_forward_buffer[model_chunk_id].pop(0)
                     send_handles = self.comm.send_forward(output_tensor, prev_rank)
+                    tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_tensor)
                     return send_handles
 
     def send_backward(self, model_chunk_id: int, prev_rank: int = None) -> List:
@@ -597,10 +595,11 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         if model_chunk_id == 0:
             # is last stage; send to local_send_forward_buffer
             if self.stage_manager.is_last_stage(ignore_chunk=True):
-                detached_output_obj = tree_map(detach, output_obj)
+                output_obj_clone = tree_map(torch.Tensor.clone, output_obj)
+                detached_output_obj = tree_map(detach, output_obj_clone)
                 self.local_send_forward_buffer.append(detached_output_obj)
                 # detached output; for bwd b&w, we only need the graph(grad_fn) of output_obj
-                # tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_obj)
+                tree_map(partial(deallocate_output_tensor, deallocate_pipeline_outputs=True), output_obj)
             else:
                 self.send_forward_buffer[model_chunk_id].append(output_obj)
         else:
