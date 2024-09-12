@@ -157,7 +157,6 @@ def build_model_from_hybrid_plugin(
         sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
 
     criterion = loss_fn
-
     plugin = pluggin_cls(**test_config)
     booster = Booster(plugin=plugin)
 
@@ -311,8 +310,16 @@ def check_output_hidden_state(
 ):
     org_hidden_state = org_output.last_hidden_state
 
-    if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
-        sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+    if stage_manager:
+        if stage_manager.use_zbv:
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+            else:
+                sharded_hidden_state = sharded_output.last_hidden_state
+        elif stage_manager.is_last_stage(ignore_chunk=True):
+            sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+        else:
+            sharded_hidden_state = sharded_output.last_hidden_state
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
 

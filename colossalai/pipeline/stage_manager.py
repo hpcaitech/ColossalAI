@@ -26,6 +26,7 @@ class PipelineStageManager:
         pg_mesh: ProcessGroupMesh,
         pipeline_axis: int,
         enable_interleave: bool = False,
+        use_zbv: bool = False,
         num_model_chunks: int = 1,
         num_layers_per_stage: Optional[List[int]] = None,
     ) -> None:
@@ -49,6 +50,7 @@ class PipelineStageManager:
         next_coord = coord[: self.pipeline_axis] + (coord[self.pipeline_axis] + 1,) + coord[self.pipeline_axis + 1 :]
         self.next_rank = self.pg_mesh.ravel(next_coord, self.pg_mesh.shape, mode="wrap")
         self.is_interleave = enable_interleave
+        self.use_zbv = use_zbv
         # for interleaved pipeline parallel, each device is responsible for multiple chunk of layers
         self.num_model_chunks: int = num_model_chunks
         # for shardformer, hold stage indices of model
@@ -85,6 +87,15 @@ class PipelineStageManager:
         num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
         stage_indices = []
+        if self.use_zbv:
+            stage_indices.append([num_layers_per_stage_accumulated[stage], num_layers_per_stage_accumulated[stage + 1]])
+            stage_indices.append(
+                [
+                    num_layers_per_stage_accumulated[2 * num_stages - stage - 1],
+                    num_layers_per_stage_accumulated[2 * num_stages - stage],
+                ]
+            )
+            return stage_indices
         for model_chunk in range(num_model_chunks):
             start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
             end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
@@ -124,7 +135,11 @@ class PipelineStageManager:
         if not self.is_interleave or ignore_chunk:
             return self.stage == self.num_stages - 1
         else:
-            return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
+            # use zero bubble pipeline
+            if self.use_zbv:
+                return self.stage == 0 and self.model_chunk_id == self.num_model_chunks - 1
+            else:
+                return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:

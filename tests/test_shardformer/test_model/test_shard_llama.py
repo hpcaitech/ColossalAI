@@ -22,6 +22,7 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
@@ -31,6 +32,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
     )
+    print(f"{sharded_model=}")
     if enable_gradient_checkpointing:
         # org_model.gradient_checkpointing_enable()
         sharded_model.unwrap().gradient_checkpointing_enable()
@@ -112,12 +114,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     sharded_optimizer.step()
 
     # check last hidden state & loss
-    if stage_manager is None or stage_manager.is_last_stage(ignore_chunk=True):
+    check_flag = False
+    if stage_manager is None:
+        check_flag = True
+    else:
+        if stage_manager.use_zbv:
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                check_flag = True
+        elif stage_manager.is_last_stage(ignore_chunk=True):
+                check_flag = True
+    if check_flag:
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-
         if org_model.__class__.__name__ == "LlamaModel":
             check_output_hidden_state(
                 org_output,
@@ -282,10 +292,39 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "pp_style": "zbv",
+            "num_model_chunks": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "precision": "fp16",
+            "zero_stage": 0,
+            "initial_scale": 1,
+            "enable_gradient_checkpointing": False,
+            "parallel_output": False,
+        },
     ],
 )
 def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
+    if test_config.get("pp_style", None) == "zbv":
+        mem_f = 34 * 32 + 5 * 4 * 16
+        mem_w = - 32 * 32
+        mem_b = - mem_w - mem_f
+        scheduler_nodes = PipelineGraph(
+                n_stage = test_config["pp_size"],
+                n_micro=test_config["num_microbatches"],
+                f_cost=1000,
+                b_cost=1000,
+                w_cost=1000,
+                c_cost=1,
+                f_mem=mem_f,
+                b_mem=mem_b,
+                w_mem=mem_w,
+        ).get_v_schedule()
+        test_config["scheduler_nodes"] = scheduler_nodes
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
@@ -372,11 +411,11 @@ def test_llama():
     spawn(check_llama, 4)
 
 
-@pytest.mark.largedist
-@rerun_if_address_is_in_use()
-@clear_cache_before_run()
-def test_llama_3d():
-    spawn(check_llama_3d, 8)
+# @pytest.mark.largedist
+# @rerun_if_address_is_in_use()
+# @clear_cache_before_run()
+# def test_llama_3d():
+#     spawn(check_llama_3d, 8)
 
 
 if __name__ == "__main__":

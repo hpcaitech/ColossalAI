@@ -89,9 +89,9 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
         loss = self.mixed_precision.pre_backward(loss)
         loss.backward(*args, **kwargs)
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         grad = self.mixed_precision.pre_backward_by_grad(tensor, grad)
-        tensor.backward(grad)
+        tensor.backward(grad, inputs=inputs, retain_graph=retain_graph)
 
     def zero_grad(self, *args, **kwargs):
         for p in self.working_to_master_map.keys():
