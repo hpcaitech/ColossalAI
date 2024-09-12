@@ -41,7 +41,6 @@ class vLLMModel(HuggingFaceModel):
         disable_custom_all_reduce: See ParallelConfig
     """
 
-
     def __init__(
         self,
         path: str,
@@ -71,7 +70,6 @@ class vLLMModel(HuggingFaceModel):
             batch_size=batch_size,
             logger=logger,
         )
-
 
         self._load_model_and_tokenizer(
             path=path,
@@ -140,7 +138,6 @@ class vLLMModel(HuggingFaceModel):
         else:
             model_kwargs.setdefault("dtype", torch.float16)
 
-
         if "trust_remote_code" in model_kwargs:
             trust_remote_code = model_kwargs["trust_remote_code"]
             model_kwargs.pop("trust_remote_code")
@@ -168,11 +165,7 @@ class vLLMModel(HuggingFaceModel):
             **tokenizer_kwargs,
         )
 
-            **tokenizer_kwargs,
-        )
-
         self.tokenizer = self.model.get_tokenizer()
-
 
         if self.batch_size > 1:
             self.tokenizer.padding_side = "left"
@@ -185,7 +178,6 @@ class vLLMModel(HuggingFaceModel):
             elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
-
 
     def _calculate_loss(self, inputs: List[str], labels: List[str]) -> Tuple[List]:
         """
@@ -205,13 +197,11 @@ class vLLMModel(HuggingFaceModel):
         outputs = self.model.generate(inputs, sampling_kwargs)
         ce_loss = []
 
-
         if labels is not None:
             lens = [len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels]
             lens = [len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels]
         else:
             lens = [1] * batch_size
-
 
         for i in range(batch_size):
             logprobs = outputs[i].outputs[0].logprobs
@@ -230,9 +220,7 @@ class vLLMModel(HuggingFaceModel):
             loss = -logprobs_list.sum(axis=-1) / lens[i]
             ce_loss.append(loss)
 
-
         batch_loss = np.array(ce_loss)
-
 
         return batch_loss, lens
 
@@ -369,15 +357,12 @@ class vLLMModel(HuggingFaceModel):
         """
         truncated_inputs = self._get_truncated_prompts(inputs, max_new_tokens)
 
-
         generation_kwargs = kwargs.copy()
         generation_kwargs.update({"max_tokens": max_new_tokens})
         generation_kwargs.update({"max_tokens": max_new_tokens})
         logits_processor = GetTokenLogitsProcessor(self.indices_for_choices)
 
-
         sampling_kwargs = SamplingParams(logits_processors=[logits_processor], **generation_kwargs)
-
 
         outputs = self.model.generate(truncated_inputs, sampling_kwargs)
         output_strs = []
@@ -386,9 +371,7 @@ class vLLMModel(HuggingFaceModel):
             output_strs.append(generated_text)
         scores = logits_processor.get_target_logits()
 
-
         return output_strs, scores
-
 
     @torch.no_grad()
     def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool) -> List[List[float]]:
@@ -414,14 +397,12 @@ class vLLMModel(HuggingFaceModel):
         # Get the number of target answers for different questions
         batch_target_nums = [len(prompt_target) for prompt_target in batch_target]
 
-
         if pretrain:
             batch = []
             bytes_list = []
             batch_prompt_pretrain = []
             for p, b in zip(batch_prompt, batch_target):
                 batch.append(p + b[0])
-
 
             for input in batch:
                 # Pretrain data tends to be very long, sometimes much larger than the model_max_length, we only tokenize 1/ratio of the data first to accelerate the tokenization process.
@@ -438,10 +419,6 @@ class vLLMModel(HuggingFaceModel):
                         truncation=True,
                         max_length=self.model_max_length,
                         return_tensors="pt",
-                        [input[0 : len(input) // r]],
-                        truncation=True,
-                        max_length=self.model_max_length,
-                        return_tensors="pt",
                     )
                     if tokenized.input_ids.size(1) >= self.model_max_length:
                         break
@@ -449,7 +426,6 @@ class vLLMModel(HuggingFaceModel):
                 string = self.tokenizer.decode(tokenized.input_ids[0], skip_special_tokens=True)
                 batch_prompt_pretrain.append(string)
                 bytes_list.append(len(string.encode("utf-8")))
-
 
             batch_prompt = copy.deepcopy(batch_prompt_pretrain)
             batch_target = None
@@ -461,13 +437,10 @@ class vLLMModel(HuggingFaceModel):
                     target_tokenized = self.tokenizer(
                         [target], truncation=True, max_length=self.model_max_length, return_tensors="pt"
                     )
-                        [target], truncation=True, max_length=self.model_max_length, return_tensors="pt"
-                    )
                     max_new_tokens = target_tokenized["input_ids"][0].size(0)
                     prompt_with_correct_length = self._get_truncated_prompts([prompt], max_new_tokens)[0]
                     batch_prompt_processed.append(prompt_with_correct_length)
                     batch_target_processed.append(target)
-
 
             batch_prompt = copy.deepcopy(batch_prompt_processed)
             batch_target = copy.deepcopy(batch_target_processed)
@@ -477,7 +450,6 @@ class vLLMModel(HuggingFaceModel):
         # We will generate new batches.
         losses = []
         target_token_nums = []
-
 
         losses_per_batch, target_token_num_per_batch = self._calculate_loss(batch_prompt, batch_target)
         losses.extend(losses_per_batch)
@@ -501,7 +473,6 @@ class vLLMModel(HuggingFaceModel):
             return losses_per_sample, target_token_nums_per_sample, bytes_nums_per_sample
 
         return losses_per_sample, target_token_nums_per_sample, None
-
 
 
 class GetTokenLogitsProcessor:
@@ -528,10 +499,7 @@ class GetTokenLogitsProcessor:
         self.target_logits = []
 
     def __call__(self, input_ids: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
-
-    def __call__(self, input_ids: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
         choice_scores = []
-
 
         if not input_ids:
             for option_indices in self.indices_for_choices[0]:
