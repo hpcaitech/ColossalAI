@@ -34,7 +34,6 @@ class vLLMModel(HuggingFaceModel):
         gpu_memory_utilization: The ratio (between 0 and 1) of GPU memory to reserve for the model weights, activations, and KV cache.
         swap_space: The size (GiB) of CPU memory per GPU to use as swap space.
         cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
-        cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
         enforce_eager: Whether to enforce eager execution.
         max_context_len_to_capture: Maximum context len covered by CUDA graphs.
         max_seq_len_to_capture: Maximum sequence len covered by CUDA graphs.
@@ -71,12 +70,10 @@ class vLLMModel(HuggingFaceModel):
             logger=logger,
         )
 
-        self._load_model_and_tokenizer(
-            path=path,
+        self._load_model(
             path=path,
             model_kwargs=model_kwargs,
             tokenizer_kwargs=tokenizer_kwargs,
-            tokenizer_path=tokenizer_path if tokenizer_path else None,
             tokenizer_path=tokenizer_path if tokenizer_path else None,
             trust_remote_code=trust_remote_code,
             tensor_parallel_size=tensor_parallel_size,
@@ -90,14 +87,11 @@ class vLLMModel(HuggingFaceModel):
             disable_custom_all_reduce=disable_custom_all_reduce,
         )
 
-    def _load_model_and_tokenizer(
-        self,
-        path: str,
+    def _load_model(
         self,
         path: str,
         model_kwargs: dict,
         tokenizer_kwargs: dict,
-        tokenizer_path: Optional[str] = None,
         tokenizer_path: Optional[str] = None,
         trust_remote_code: bool = False,
         tensor_parallel_size: int = 1,
@@ -124,7 +118,6 @@ class vLLMModel(HuggingFaceModel):
             gpu_memory_utilization: The ratio (between 0 and 1) of GPU memory to reserve for the model weights, activations, and KV cache.
             swap_space: The size (GiB) of CPU memory per GPU to use as swap space.
             cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
-            cpu_offload_gb: The size (GiB) of CPU memory to use for offloading the model weights.
             enforce_eager: Whether to enforce eager execution.
             max_context_len_to_capture: Maximum context len covered by CUDA graphs.
             max_seq_len_to_capture: Maximum sequence len covered by CUDA graphs.
@@ -134,7 +127,6 @@ class vLLMModel(HuggingFaceModel):
         if "torch_dtype" in model_kwargs:
             model_kwargs["dtype"] = eval(model_kwargs["torch_dtype"])
             model_kwargs.pop("torch_dtype")
-            model_kwargs.pop("torch_dtype")
         else:
             model_kwargs.setdefault("dtype", torch.float16)
 
@@ -142,14 +134,11 @@ class vLLMModel(HuggingFaceModel):
             trust_remote_code = model_kwargs["trust_remote_code"]
             model_kwargs.pop("trust_remote_code")
 
-            model_kwargs.pop("trust_remote_code")
-
         if "trust_remote_code" in tokenizer_kwargs:
             trust_remote_code = tokenizer_kwargs["trust_remote_code"]
             tokenizer_kwargs.pop("trust_remote_code")
 
         self.model = LLM(
-            model=path,
             model=path,
             trust_remote_code=trust_remote_code,
             tensor_parallel_size=tensor_parallel_size,
@@ -178,11 +167,14 @@ class vLLMModel(HuggingFaceModel):
             elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
+            else:
+                self.logger.error("Neither eos_token nor eod_id is available for setting pad_token_id.")
+                raise ValueError("The tokenizer does not have a pad_token_id, eos_token, or eod_id. "
+                                "Please set pad_token_id manually.")
 
     def _calculate_loss(self, inputs: List[str], labels: List[str]) -> Tuple[List]:
         """
         Calculate loss on target tokens. Adapted from https://github.com/open-compass/opencompass/blob/c2bcd8725e615ec455bf5b7301f8d09962cd64e3/opencompass/models/vllm.py#L110
-
 
         Args:
             input_ids_list: A batch of input string.
@@ -199,7 +191,6 @@ class vLLMModel(HuggingFaceModel):
 
         if labels is not None:
             lens = [len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels]
-            lens = [len(self.tokenizer.encode(label, add_special_tokens=False)) for label in labels]
         else:
             lens = [1] * batch_size
 
@@ -208,13 +199,10 @@ class vLLMModel(HuggingFaceModel):
             token_ids = outputs[i].outputs[0].token_ids
 
             logprobs_list = [logprobs[i][token_ids[i]] for i in range(len(logprobs))]
-
-            logprobs_list = [logprobs[i][token_ids[i]] for i in range(len(logprobs))]
             logprobs_list = [i.logprob for i in logprobs_list]
             logprobs_list = np.array(logprobs_list)
 
             if lens is not None:
-                logprobs_list = logprobs_list[: lens[i]]
                 logprobs_list = logprobs_list[: lens[i]]
 
             loss = -logprobs_list.sum(axis=-1) / lens[i]
@@ -359,7 +347,6 @@ class vLLMModel(HuggingFaceModel):
 
         generation_kwargs = kwargs.copy()
         generation_kwargs.update({"max_tokens": max_new_tokens})
-        generation_kwargs.update({"max_tokens": max_new_tokens})
         logits_processor = GetTokenLogitsProcessor(self.indices_for_choices)
 
         sampling_kwargs = SamplingParams(logits_processors=[logits_processor], **generation_kwargs)
@@ -478,19 +465,11 @@ class vLLMModel(HuggingFaceModel):
 class GetTokenLogitsProcessor:
     """
     LogitsProcessor to get specific logits
-    LogitsProcessor to get specific logits
 
     Args:
         indices_for_choices: token indices of required tokens
         target_logits: store all the target logits
     """
-
-    def __init__(
-        self,
-        indices_for_choices: List[List[int]],
-    ):
-        self.indices_for_choices = (indices_for_choices,)
-
     def __init__(
         self,
         indices_for_choices: List[List[int]],
