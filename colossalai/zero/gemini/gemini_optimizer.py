@@ -298,7 +298,9 @@ class GeminiOptimizer(OptimizerWrapper):
         loss = self.mix_precision_mixin.pre_backward(loss)
         self.module.backward(loss)
 
-    def backward_by_grad(self, tensor: torch.Tensor, grad: torch.Tensor, inputs: torch.Tensor = None, retain_graph: bool = False):
+    def backward_by_grad(
+        self, tensor: torch.Tensor, grad: torch.Tensor, inputs: torch.Tensor = None, retain_graph: bool = False
+    ):
         # This function is called except the last stage of pipeline parallel
         # It receives the scaled grad from the previous rank
         # No need to scale the grad again

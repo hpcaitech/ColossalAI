@@ -262,7 +262,7 @@ class LlamaPolicy(Policy):
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.layers[start_idx:end_idx])
             if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
-                    held_layers.append(module.norm)
+                held_layers.append(module.norm)
             elif stage_manager.is_last_stage(ignore_chunk=True):
                 held_layers.append(module.norm)
 
@@ -356,7 +356,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         elif stage_manager.is_last_stage(ignore_chunk=True):
-                held_layers.append(self.model.lm_head)
+            held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:

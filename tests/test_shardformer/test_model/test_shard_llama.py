@@ -7,6 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
@@ -22,7 +23,6 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
-from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
@@ -121,7 +121,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             if stage_manager.is_first_stage(ignore_chunk=True):
                 check_flag = True
         elif stage_manager.is_last_stage(ignore_chunk=True):
-                check_flag = True
+            check_flag = True
     if check_flag:
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -310,18 +310,18 @@ def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
     if test_config.get("pp_style", None) == "zbv":
         mem_f = 34 * 32 + 5 * 4 * 16
-        mem_w = - 32 * 32
-        mem_b = - mem_w - mem_f
+        mem_w = -32 * 32
+        mem_b = -mem_w - mem_f
         scheduler_nodes = PipelineGraph(
-                n_stage = test_config["pp_size"],
-                n_micro=test_config["num_microbatches"],
-                f_cost=1000,
-                b_cost=1000,
-                w_cost=1000,
-                c_cost=1,
-                f_mem=mem_f,
-                b_mem=mem_b,
-                w_mem=mem_w,
+            n_stage=test_config["pp_size"],
+            n_micro=test_config["num_microbatches"],
+            f_cost=1000,
+            b_cost=1000,
+            w_cost=1000,
+            c_cost=1,
+            f_mem=mem_f,
+            b_mem=mem_b,
+            w_mem=mem_w,
         ).get_v_schedule()
         test_config["scheduler_nodes"] = scheduler_nodes
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():

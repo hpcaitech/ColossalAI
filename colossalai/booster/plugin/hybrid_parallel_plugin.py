@@ -39,7 +39,6 @@ from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
-from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 
 from .pp_plugin_base import PipelinePluginBase
 
@@ -1031,7 +1030,9 @@ class HybridParallelPlugin(PipelinePluginBase):
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
 
-        assert not pp_style == "zbv" or scheduler_nodes is not None, f"scheduler_nodes must not be None when using zero bubble pipeline."
+        assert (
+            not pp_style == "zbv" or scheduler_nodes is not None
+        ), f"scheduler_nodes must not be None when using zero bubble pipeline."
         if enable_sequence_parallelism:
             self.sequence_parallelism_mode = (
                 sequence_parallelism_mode if sequence_parallelism_mode is not None else "all_to_all"
@@ -1096,8 +1097,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
             assert pp_style in ["1f1b", "interleaved", "zbv"], "Unsupported pipeline parallelism style"
-            assert pp_style in ["interleaved", "zbv"] or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
-            assert pp_style in ["1f1b", "interleaved"] or num_model_chunks == 2, "num_model_chunks must be 2 when using zero bubble pipeline"
+            assert (
+                pp_style in ["interleaved", "zbv"] or num_model_chunks == 1
+            ), "num_model_chunks must be 1 when using 1f1b"
+            assert (
+                pp_style in ["1f1b", "interleaved"] or num_model_chunks == 2
+            ), "num_model_chunks must be 2 when using zero bubble pipeline"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
@@ -1135,7 +1140,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             elif pp_style == "zbv":
                 self.scheduler = ZeroBubbleVPipeScheduler(
                     stage_manager=self.stage_manager,
-                    schedule = scheduler_nodes,
+                    schedule=scheduler_nodes,
                     num_model_chunks=num_model_chunks,
                     num_microbatch=num_microbatches,
                     microbatch_size=microbatch_size,
