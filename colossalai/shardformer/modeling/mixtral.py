@@ -31,6 +31,7 @@ from colossalai.moe._operation import (
     all_to_all_uneven,
 )
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
     gather_forward_split_backward,
@@ -142,7 +143,11 @@ class EPMixtralSparseMoeBlock(ParallelModule):
             for i in range(1, self.ep_size):
                 activate_experts += output_split_sizes[i * self.num_experts_per_ep : (i + 1) * self.num_experts_per_ep]
             activate_experts = (activate_experts > 0).float()
-        dist.all_reduce(activate_experts, group=self.moe_dp_group)
+
+        if self.fp8_communication:
+            all_reduce_fp8(activate_experts, group=self.moe_dp_group)
+        else:
+            dist.all_reduce(activate_experts, group=self.moe_dp_group)
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
