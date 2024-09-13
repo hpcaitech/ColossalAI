@@ -7,6 +7,7 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.accelerator import get_accelerator
+from colossalai.quantization.fp8 import all_gather_fp8
 
 
 class TensorState(Enum):
@@ -523,12 +524,8 @@ class Chunk:
             alloc_storage(self.cuda_global_chunk)
             assert self.cuda_global_chunk.is_contiguous()
             if self.fp8_communication:
-                assert async_op == False, "fp8 all-gather does not support async_op!"
-                from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8
-
-                work = all_gather_into_tensor_flat_fp8(
-                    self.cuda_global_chunk, self.cuda_shard, self.cuda_global_chunk.shape, self.torch_pg
-                )
+                cuda_global_chunk_list = torch.chunk(self.cuda_global_chunk, chunks=self.pg_size)
+                work = all_gather_fp8(cuda_global_chunk_list, self.cuda_shard, self.torch_pg, async_op=async_op)
             else:
                 work = dist.all_gather_into_tensor(
                     self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
