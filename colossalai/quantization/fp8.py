@@ -10,8 +10,10 @@ from torch.distributed import ReduceOp
 
 SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
 SCALE_BYTES = 4
-
-cuda_arch = int("".join(str(i) for i in torch.cuda.get_device_capability()))
+try:
+    cuda_arch = int("".join(str(i) for i in torch.cuda.get_device_capability()))
+except:
+    cuda_arch = 0
 
 
 class Handle:

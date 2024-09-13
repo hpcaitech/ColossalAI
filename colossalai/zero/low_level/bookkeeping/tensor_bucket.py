@@ -65,12 +65,12 @@ class TensorBucket:
 
     def all_gather(self, group=None, fp8_communication: bool = False):
         flat = self.flatten()
-        buffers = [torch.empty_like(flat) for _ in range(dist.get_world_size(group))]
+        buffer = torch.empty(flat.numel() * dist.get_world_size(group), device=flat.device, dtype=flat.dtype)
         if fp8_communication:
-            all_gather_fp8(buffers, flat, group=group, fp8_format="e4m3")
+            all_gather_fp8(buffer.chunk(dist.get_world_size(group)), flat, group=group, fp8_format="e4m3")
         else:
-            dist.all_gather(buffers, flat, group=group)
-        unflat_buffers = [self.unflatten(buffer) for buffer in buffers]
+            dist.all_gather_into_tensor(buffer, flat, group=group)
+        unflat_buffers = [self.unflatten(buffer) for buffer in buffer.chunk(dist.get_world_size(group))]
         # transpose the list of list
         unflat_buffers = list(map(list, zip(*unflat_buffers)))
         for unflat_shards, tensor in zip(unflat_buffers, self._bucket):

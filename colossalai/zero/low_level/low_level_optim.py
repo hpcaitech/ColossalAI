@@ -580,8 +580,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
                         if self._fp8_communication:
-                            padded_working_param_list = torch.chunk(padded_working_param, dist.get_world_size(pg))
-                            all_gather_fp8(padded_working_param_list, param_to_gather, pg, fp8_format="e4m3")
+                            all_gather_fp8(
+                                padded_working_param.chunk(dist.get_world_size(pg)),
+                                param_to_gather,
+                                pg,
+                                fp8_format="e4m3",
+                            )
                         else:
                             dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
                         continue
