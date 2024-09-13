@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -11,9 +12,6 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.schedule.v_schedule import ScheduledNode
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.zero.low_level import LowLevelZeroOptimizer
-from contextlib import nullcontext
-
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
 
@@ -487,7 +485,13 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             assert output_obj_grad is None
 
         input_obj_ = input_obj["hidden_states"]
-        ctx = optimizer.no_sync() if isinstance(optimizer, LowLevelZeroOptimizer) else nullcontext()
+
+        # Attempt to disable gradient synchronization when using the LowLevelZeroPlugin.
+        try:
+            ctx = optimizer.no_sync()
+        except Exception as e:
+            ctx = nullcontext()
+
         with ctx:
             if output_obj_grad is None:
                 optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
