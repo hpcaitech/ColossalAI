@@ -12,6 +12,7 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.schedule.v_schedule import ScheduledNode
 from colossalai.pipeline.stage_manager import PipelineStageManager
+
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
 
@@ -489,7 +490,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # Attempt to disable gradient synchronization when using the LowLevelZeroPlugin.
         try:
             ctx = optimizer.no_sync()
-        except Exception as e:
+        except Exception:
             ctx = nullcontext()
 
         with ctx:
