@@ -18,7 +18,7 @@ from colossalai.logging import get_dist_logger
 
 from .utils import RingComm, get_half_index, split_varlen_zigzag
 
-MEMORY_BOUND = 1 * 1e9
+MEMORY_BOUND = 10 * 1e9
 
 __all__ = [
     "AttnMaskType",
