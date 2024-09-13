@@ -496,7 +496,9 @@ class HuggingFaceModel(BaseModel):
         return decoded_sequences, scores
 
     @torch.no_grad()
-    def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool) -> List[List[float]]:
+    def get_loss(
+        self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool
+    ) -> List[List[float]]:
         """
         Calculate loss only on target tokens.
 
@@ -519,7 +521,9 @@ class HuggingFaceModel(BaseModel):
         # Get the number of target answers for different questions
         batch_target_nums = [len(prompt_target) for prompt_target in batch_target]
 
-        input_ids_list, labels_list, bytes_list = self._get_input_ids_and_labels(batch_prompt, batch_target, calculate_overall_loss)
+        input_ids_list, labels_list, bytes_list = self._get_input_ids_and_labels(
+            batch_prompt, batch_target, calculate_overall_loss
+        )
 
         # Because of multiple target answers, the final batch size may be greater than self.batch_size.
         # We will generate new batches.
