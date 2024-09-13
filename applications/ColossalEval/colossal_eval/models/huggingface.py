@@ -245,7 +245,7 @@ class HuggingFaceModel(BaseModel):
         return input_ids_list, labels_list, bytes_list
 
     def _get_input_ids_and_labels(
-        self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool
+        self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool
     ) -> Tuple[List[torch.LongTensor]]:
         """
         Get input_ids and labels for the given data.
@@ -258,7 +258,7 @@ class HuggingFaceModel(BaseModel):
             Input_ids and labels for the given batch.
 
         """
-        if pretrain:
+        if calculate_overall_loss:
             batch = []
             # Concatenate prompt and target answers.
             # You should decide the concatenation character in the corresponding dataset script in dataset folder. For example, in line 119 dataset/gsm.py, the concatenation character is space.
@@ -342,7 +342,7 @@ class HuggingFaceModel(BaseModel):
         calculate_loss = inference_kwargs["calculate_loss"]
         classes = inference_kwargs["all_classes"]
         language = inference_kwargs["language"]
-        pretrain = inference_kwargs["pretrain"]
+        calculate_overall_loss = inference_kwargs["pretrain"]
         max_new_tokens = inference_kwargs["max_new_tokens"]
         few_shot_data = inference_kwargs.get("few_shot_data", None)
 
@@ -384,12 +384,12 @@ class HuggingFaceModel(BaseModel):
                 self.logger.info("-" * 120)
                 self.logger.info(batch_prompt[0] + batch_target[0][0])
 
-            if not pretrain:
+            if not calculate_overall_loss:
                 batch_decodes, scores = self.generate(batch_prompt, max_new_tokens)
 
             if calculate_loss:
                 batch_losses, batch_target_token_nums, batch_bytes_nums = self.get_loss(
-                    batch_prompt, batch_target, pretrain
+                    batch_prompt, batch_target, calculate_overall_loss
                 )
 
             probs = []
@@ -409,7 +409,7 @@ class HuggingFaceModel(BaseModel):
                 ]
 
             for j in range(len(batch)):
-                if not pretrain:
+                if not calculate_overall_loss:
                     if isinstance(batch[j]["output"], list):
                         batch[j]["output"].append(batch_decodes[j].strip())
                     else:
@@ -496,7 +496,7 @@ class HuggingFaceModel(BaseModel):
         return decoded_sequences, scores
 
     @torch.no_grad()
-    def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool) -> List[List[float]]:
+    def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool) -> List[List[float]]:
         """
         Calculate loss only on target tokens.
 
@@ -513,13 +513,13 @@ class HuggingFaceModel(BaseModel):
         # We don't need to generate new tokens.
         # Target answer's length is usually << model_max_length, but we still call it in case.
         # We don't call self._get_truncated_prompts for batch_prompt because we need target answer's length first to reserve some space for target answer's tokens.
-        if not pretrain:
+        if not calculate_overall_loss:
             batch_target = [self._get_truncated_prompts(prompt_target, 0) for prompt_target in batch_target]
 
         # Get the number of target answers for different questions
         batch_target_nums = [len(prompt_target) for prompt_target in batch_target]
 
-        input_ids_list, labels_list, bytes_list = self._get_input_ids_and_labels(batch_prompt, batch_target, pretrain)
+        input_ids_list, labels_list, bytes_list = self._get_input_ids_and_labels(batch_prompt, batch_target, calculate_overall_loss)
 
         # Because of multiple target answers, the final batch size may be greater than self.batch_size.
         # We will generate new batches.
