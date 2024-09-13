@@ -169,8 +169,10 @@ class vLLMModel(HuggingFaceModel):
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
             else:
                 self.logger.error("Neither eos_token nor eod_id is available for setting pad_token_id.")
-                raise ValueError("The tokenizer does not have a pad_token_id, eos_token, or eod_id. "
-                                "Please set pad_token_id manually.")
+                raise ValueError(
+                    "The tokenizer does not have a pad_token_id, eos_token, or eod_id. "
+                    "Please set pad_token_id manually."
+                )
 
     def _calculate_loss(self, inputs: List[str], labels: List[str]) -> Tuple[List]:
         """
@@ -470,6 +472,7 @@ class GetTokenLogitsProcessor:
         indices_for_choices: token indices of required tokens
         target_logits: store all the target logits
     """
+
     def __init__(
         self,
         indices_for_choices: List[List[int]],
