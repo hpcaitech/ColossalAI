@@ -65,7 +65,7 @@ We supported three AMP training methods and allowed the user to train with AMP w
 
 Currently we only support `fp8` mixed precision training for the `Linear` layer. Please specify the `use_fp8` parameter when create the plugin object.
 
-To reduce the communication volume between multiple nodes in low-bandwidth scenarios, we support FP8 communication compression. Please specify the `fp8_communication` parameter when create the  plugin object.
+To reduce the communication volume inter nodes in low-bandwidth scenarios, we support FP8 communication compression. Please specify the `fp8_communication` parameter when create the  plugin object.
 
 ### Start with Booster
 
@@ -134,7 +134,7 @@ Otherwise, try smaller models or checkout more parallelization training techniqu
 
 ### FP8 Communication
 
-In low-bandwidth scenarios, to reduce the communication load multiple nodes, we support FP8 communication compression, which can be enabled by using `fp8_communication=True` when you when create the plugin object (such as `GeminiPlugin`). The all-to-all, all-gather and P2P operations between multiple nodes will use FP8 format for data transmission. Currently the FP8 communication of reduction operators such as all-reduce and reduce-scatter is currently not supported due to lack of support of the NCCL library.
+In low-bandwidth scenarios, to reduce the communication load multiple nodes, we support FP8 communication compression, which can be enabled by using `fp8_communication=True` when you when create the plugin object (such as `GeminiPlugin`). The all-to-all, all-gather and P2P operations inter nodes will use FP8 format for data transmission. Currently the FP8 communication of reduction operators such as all-reduce and reduce-scatter is currently not supported due to lack of support of the NCCL library.
 
 ## Hands-on Practice
 
