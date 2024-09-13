@@ -67,7 +67,7 @@ class TensorBucket:
         flat = self.flatten()
         buffers = [torch.empty_like(flat) for _ in range(dist.get_world_size(group))]
         if fp8_communication:
-            all_gather_fp8(buffers, flat, group=group)
+            all_gather_fp8(buffers, flat, group=group, fp8_format="e4m3")
         else:
             dist.all_gather(buffers, flat, group=group)
         unflat_buffers = [self.unflatten(buffer) for buffer in buffers]

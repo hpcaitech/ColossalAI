@@ -525,7 +525,9 @@ class Chunk:
             assert self.cuda_global_chunk.is_contiguous()
             if self.fp8_communication:
                 cuda_global_chunk_list = torch.chunk(self.cuda_global_chunk, chunks=self.pg_size)
-                work = all_gather_fp8(cuda_global_chunk_list, self.cuda_shard, self.torch_pg, async_op=async_op)
+                work = all_gather_fp8(
+                    cuda_global_chunk_list, self.cuda_shard, self.torch_pg, fp8_format="e4m3", async_op=async_op
+                )
             else:
                 work = dist.all_gather_into_tensor(
                     self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
