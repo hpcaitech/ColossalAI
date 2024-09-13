@@ -525,7 +525,7 @@ class Chunk:
             assert self.cuda_global_chunk.is_contiguous()
             if self.fp8_communication:
                 work = all_gather_fp8(
-                    self.cuda_global_chunk.chunk(self.pg_size),
+                    list(self.cuda_global_chunk.chunk(self.pg_size)),
                     self.cuda_shard,
                     self.torch_pg,
                     fp8_format="e4m3",

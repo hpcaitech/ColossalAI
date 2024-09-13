@@ -581,7 +581,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
                         if self._fp8_communication:
                             all_gather_fp8(
-                                padded_working_param.chunk(dist.get_world_size(pg)),
+                                list(padded_working_param.chunk(dist.get_world_size(pg))),
                                 param_to_gather,
                                 pg,
                                 fp8_format="e4m3",
