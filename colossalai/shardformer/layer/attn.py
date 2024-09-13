@@ -210,6 +210,7 @@ class ColoAttention:
                 }
             )
             if is_causal:
+                attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
                 outputs["attention_mask_type"] = AttnMaskType.PADDED_CAUSAL
                 if memory_size < MEMORY_BOUND:
                     if s_q != 1:
