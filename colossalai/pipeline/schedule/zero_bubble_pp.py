@@ -11,6 +11,8 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.schedule.v_schedule import ScheduledNode
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.zero.low_level import LowLevelZeroOptimizer
+from contextlib import nullcontext
 
 from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_forward, retain_grad, to_device
 from .base import PipelineSchedule
@@ -485,16 +487,18 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             assert output_obj_grad is None
 
         input_obj_ = input_obj["hidden_states"]
-        if output_obj_grad is None:
-            optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
-        else:
-            output_obj_ = output_obj["hidden_states"]
-            optimizer.backward_by_grad(
-                tensor=output_obj_,
-                grad=output_obj_grad,
-                inputs=input_obj_,
-                retain_graph=True,
-            )
+        ctx = optimizer.no_sync() if isinstance(optimizer, LowLevelZeroOptimizer) else nullcontext()
+        with ctx:
+            if output_obj_grad is None:
+                optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
+            else:
+                output_obj_ = output_obj["hidden_states"]
+                optimizer.backward_by_grad(
+                    tensor=output_obj_,
+                    grad=output_obj_grad,
+                    inputs=input_obj_,
+                    retain_graph=True,
+                )
         return input_obj_.grad
 
     def backward_w_step(
