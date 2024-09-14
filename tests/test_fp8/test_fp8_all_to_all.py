@@ -5,7 +5,7 @@ from torch.testing import assert_close
 
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
-from colossalai.quantization.fp8 import all_to_all_fp8
+from colossalai.quantization.fp8 import _all_to_all_fp8
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -20,7 +20,7 @@ def check_4gpu(shape, scatter_dim, dtype, fp8_format):
     input_tensor_list = [x.contiguous() for x in input_tensor_list]
     output_tensor_list_fp8 = [torch.empty_like(x) for x in input_tensor_list]
     output_tensor_list = [torch.empty_like(x) for x in input_tensor_list]
-    all_to_all_fp8(output_tensor_list_fp8, input_tensor_list, group=_get_default_group(), fp8_format=fp8_format)
+    _all_to_all_fp8(output_tensor_list_fp8, input_tensor_list, group=_get_default_group(), fp8_format=fp8_format)
     dist.all_to_all(output_tensor_list, input_tensor_list, group=_get_default_group())
     assert_close(output_tensor_list_fp8, output_tensor_list, rtol=0.1, atol=0.1)
 

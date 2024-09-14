@@ -17,10 +17,10 @@ except ImportError:
     _grad_accum_fusion_available = False
 
 from colossalai.quantization.fp8 import (
+    all_gather_fp8,
     all_reduce_fp8,
     all_to_all_fp8,
     all_to_all_single_fp8,
-    gather_fp8,
     reduce_scatter_fp8,
 )
 
@@ -961,7 +961,7 @@ def _gather(input_, dim=-1, process_group=None, fp8_communication=False, fp8_for
     input_ = input_.contiguous()
     tensor_list = [torch.empty_like(input_) for _ in range(world_size)]
     if fp8_communication:
-        gather_fp8(tensor_list, input_, fp8_format=fp8_format, group=process_group)
+        all_gather_fp8(tensor_list, input_, fp8_format=fp8_format, group=process_group)
     else:
         dist.all_gather(tensor_list, input_, group=process_group)
 
