@@ -359,7 +359,10 @@ if __name__ == "__main__":
         help="Disable the reference model (enabled by default)",
     )
     parser.add_argument(
-        "--ref_tp", type=int, default=1, help="TP size for reference model; used only when reference model is too large."
+        "--ref_tp",
+        type=int,
+        default=1,
+        help="TP size for reference model; used only when reference model is too large.",
     )
     args = parser.parse_args()
 
