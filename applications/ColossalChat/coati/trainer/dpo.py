@@ -181,11 +181,10 @@ class DPOTrainer(SLTrainer):
                         }
                     ]
                 )
+                rewards = []
 
-                outputs = self.booster.execute_pipeline(
-                    data_iter,
-                    self.model,
-                    criterion=lambda outputs, inputs: self.actor_loss_fn(
+                def _criterion(outputs, inputs):
+                    loss, chosen_rewards, rejected_rewards = self.actor_loss_fn(
                         calc_masked_log_probs(
                             outputs["logits"][0::2],
                             inputs["input_ids"][0::2],
@@ -202,20 +201,34 @@ class DPOTrainer(SLTrainer):
                         inputs["logprob_ref"][1::2] if inputs["logprob_ref"] is not None else None,
                         inputs["loss_mask"][0::2][:, 1:],
                         inputs["loss_mask"][1::2][:, 1:],
-                    )[0],
+                    )
+                    rewards.append(chosen_rewards)
+                    rewards.append(rejected_rewards)
+                    return loss
+
+                outputs = self.booster.execute_pipeline(
+                    data_iter,
+                    self.model,
+                    criterion=_criterion,
                     optimizer=self.optimizer,
                     return_loss=True,
                 )
                 loss = outputs["loss"]
                 if self.booster.plugin.stage_manager.is_last_stage():
+                    chosen_rewards, rejected_rewards = rewards[0], rewards[1]
                     global_loss = all_reduce_mean(loss, self.plugin)
                     if dist.get_rank() == dist.get_world_size() - 1:
-                        step_bar.set_postfix({"train/loss": global_loss.item()})
+                        step_bar.set_postfix(
+                            {
+                                "train/loss": global_loss.item(),
+                                "train/chosen_rewards": chosen_rewards.to(torch.float16).mean().item(),
+                                "train/rejected_rewards": rejected_rewards.to(torch.float16).mean().item(),
+                            }
+                        )
                         step_bar.update()
 
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-
         else:
             self.accumulative_meter.reset()
             step_bar = trange(
