@@ -170,7 +170,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
-        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
+        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
     def __init__(

@@ -9,6 +9,7 @@
 **相关论文**
 
 - [Accelerating Scientific Computations with Mixed Precision Algorithms](https://arxiv.org/abs/0808.2794)
+- [FP8 Formats for Deep Learning](https://arxiv.org/pdf/2209.05433)
 
 ## 引言
 
@@ -56,9 +57,13 @@ AMP 代表自动混合精度训练。
 
 ## Colossal-AI 中的 AMP
 
-我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数;后续将会拓展`bf16`,`pf8`的混合精度训练.
+我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数; 后续将会拓展`bf16`.
 
-#### booster 启动方式
+我们目前只支持`Linear`层的`fp8`混合精度训练，如果您需要使用，请在创建 plugin实例时指定`use_fp8`参数。
+
+为了减少低带宽场景下多机之间的通讯负载，我们还支持了FP8通讯。如果您需要使用，请在创建 plugin实例时指定`fp8_communication`参数。
+
+### booster 启动方式
 
 您可以在创建 booster 实例时，指定`mixed_precision="fp16"`即使用 torch amp。
 
@@ -70,7 +75,6 @@ AMP 代表自动混合精度训练。
     'fp16': torch amp
     'fp16_apex': apex amp,
     'bf16': bf16,
-    'fp8': fp8,
     'fp16_naive': naive amp
 """
 from colossalai import Booster
@@ -117,6 +121,10 @@ booster = Booster(mixed_precision=mixed_precision,...)
 {{ autodoc:colossalai.booster.mixed_precision.FP16NaiveMixedPrecision }}
 
 当使用`colossalai.booster`时, 首先需要实例化一个模型、一个优化器和一个标准。将输出模型转换为内存消耗较小的 AMP 模型。如果您的输入模型已经太大，无法放置在 GPU 中，请使用`dtype=torch.float16`实例化你的模型。或者请尝试更小的模型，或尝试更多的并行化训练技术！
+
+### FP8通讯
+
+在低带宽场景下，为了减少多机间的通讯负载，我们支持使用FP8的形式对通讯进行压缩，可以在初始化plugin实例（如`GeminiPlugin`）时使用fp8_communication=True来启用。此时多机之间all-to-all, all-gather以及P2P操作将使用FP8的格式进行数据传输。受限于NCCL库的支持，目前不支持缩减(Reduction)算子如Allreduce, ReduceScatter的FP8通讯。
 
 ## 实例
 
