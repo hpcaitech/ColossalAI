@@ -221,6 +221,7 @@ class DPOTrainer(SLTrainer):
                         step_bar.set_postfix(
                             {
                                 "train/loss": global_loss.item(),
+                                "train/lr": self.actor_scheduler.get_last_lr()[0],
                                 "train/chosen_rewards": chosen_rewards.to(torch.float16).mean().item(),
                                 "train/rejected_rewards": rejected_rewards.to(torch.float16).mean().item(),
                             }
@@ -229,6 +230,7 @@ class DPOTrainer(SLTrainer):
 
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+                self.actor_scheduler.step()
         else:
             self.accumulative_meter.reset()
             step_bar = trange(
@@ -432,9 +434,6 @@ class DPOTrainer(SLTrainer):
                 logprob_actor_reject = calc_masked_log_probs(
                     actor_reject_logits, reject_input_ids, reject_loss_mask[:, 1:], self.length_normalization
                 )
-
-                self.ref_model.eval()
-
                 ref_all_logits = self.ref_model(
                     torch.cat([chosen_input_ids, reject_input_ids]),
                     torch.cat([chosen_attention_mask, reject_attention_mask]),
