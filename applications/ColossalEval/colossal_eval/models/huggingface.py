@@ -422,7 +422,7 @@ class HuggingFaceModel(BaseModel):
                             batch[j]["loss_over_choices"] = loss_over_choices[j]
 
                 if calculate_loss:
-                    batch[j]["loss"] = (np.array(batch_losses[j]) / np.array(batch_target_token_nums[j])).tolist()
+                    batch[j]["loss"] = (np.asarray(batch_losses[j]) / np.asarray(batch_target_token_nums[j])).tolist()
 
                     # loss_sum is specially used for pertrain dataset for calculating per-byte-perplexity.
                     # However, loss (which is per sample loss) suffices for most cases.
