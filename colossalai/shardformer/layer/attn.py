@@ -121,7 +121,8 @@ class ColoAttention:
             )
 
         if size >= MEMORY_BOUND:
-            ColoAttention._flash_kernel_dispatch = ColoAttention._flash_kernel_dispatch.load()
+            if isinstance(ColoAttention._flash_kernel_dispatch, KernelLoader):
+                ColoAttention._flash_kernel_dispatch = ColoAttention._flash_kernel_dispatch.load()
         # lazy load
         if isinstance(ColoAttention._kernel_dispatch_map[dtype][mask_type], KernelLoader):
             ColoAttention._kernel_dispatch_map[dtype][mask_type] = ColoAttention._kernel_dispatch_map[dtype][
