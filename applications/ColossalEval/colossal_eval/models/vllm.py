@@ -363,7 +363,9 @@ class vLLMModel(HuggingFaceModel):
         return output_strs, scores
 
     @torch.no_grad()
-    def get_loss(self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool) -> List[List[float]]:
+    def get_loss(
+        self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool
+    ) -> List[List[float]]:
         """
         Calculate loss only on target tokens.
 
