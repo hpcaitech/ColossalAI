@@ -231,7 +231,7 @@ class vLLMModel(HuggingFaceModel):
         calculate_loss = inference_kwargs["calculate_loss"]
         classes = inference_kwargs["all_classes"]
         language = inference_kwargs["language"]
-        calculate_overall_loss = inference_kwargs["pretrain"]
+        calculate_overall_loss = inference_kwargs["calculate_overall_loss"]
         max_new_tokens = inference_kwargs["max_new_tokens"]
         few_shot_data = inference_kwargs.get("few_shot_data", None)
 

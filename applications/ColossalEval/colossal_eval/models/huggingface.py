@@ -105,6 +105,12 @@ class HuggingFaceModel(BaseModel):
             elif hasattr(self.tokenizer, "eod_id"):
                 # Qwen has an eod token "<|endoftext|>".
                 self.tokenizer.pad_token_id = self.tokenizer.eod_id
+            else:
+                self.logger.error("Neither eos_token nor eod_id is available for setting pad_token_id.")
+                raise ValueError(
+                    "The tokenizer does not have a pad_token_id, eos_token, or eod_id. "
+                    "Please set pad_token_id manually."
+                )
 
     def _load_model(
         self, path: str, model_kwargs: dict, peft_path: Optional[str] = None, shard_config: ShardConfig = None
@@ -342,7 +348,7 @@ class HuggingFaceModel(BaseModel):
         calculate_loss = inference_kwargs["calculate_loss"]
         classes = inference_kwargs["all_classes"]
         language = inference_kwargs["language"]
-        calculate_overall_loss = inference_kwargs["pretrain"]
+        calculate_overall_loss = inference_kwargs["calculate_overall_loss"]
         max_new_tokens = inference_kwargs["max_new_tokens"]
         few_shot_data = inference_kwargs.get("few_shot_data", None)
 
