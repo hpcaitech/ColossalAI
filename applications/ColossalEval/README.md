@@ -154,7 +154,7 @@ inference_kwargs = {
     "calculate_loss": True,
     "all_classes": ["A", "B", "C", "D"],
     "language": "Chinese",
-    "pretrain": False,
+    "calculate_overall_loss": False,
     "max_new_tokens": 32
 }
 ```
@@ -163,7 +163,7 @@ The `inference_kwargs` currently contains 5 fields:
 - `calculate_loss` (bool, compulsory): Whether the loss on target tokens will be calculated
 - `all_classes` (Optional[list], compulsory): Whether the subcategory is a single-choice question. Specify all available options in a list or otherwise None.
 - `language` (str, compulsory): The language for the subcategory.
-- `pretrain` (bool, compulsory): Whether the dataset is a pretrain dataset or not. It is usually used for calculate perplexity when you want to evaluate a model with extended context length.
+- `calculate_overall_loss` (bool, compulsory): Whether to calculate the overall loss of sentences or not if the dataset is a pretrain dataset. It is usually used for calculate perplexity when you want to evaluate a model with extended context length.
 - `max_new_tokens` (int, compulsory): The number of new tokens to generate during inference.
 
 For example, for dataset MMLU, each subcategory consists of single-choice questions with options A, B, C and D by default and we can assign value `["A", "B", "C", "D"]` to key`all_classes`. For dataset C-Eval, target answers aren't provided in the test split so `calculate_loss` should be set as False. However, other dataset such as GAOKAO-bench contains different formats of questions and lacks some keys or metadata which can reveal what type (single-choice or multi-choice) of questions it is. Before assigning inference arguments, we first parse the dataset to decide which type of questions the subcategory belongs to and set the inference arguments accordingly.
