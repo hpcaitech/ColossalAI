@@ -535,15 +535,15 @@ def run_fwd_bwd_iter_input(test_config):
             "precision": "bf16",
             "num_model_chunk": 2,
         },
-        # {
-        #     "batch_size": 8,
-        #     "tp_size": 1,
-        #     "pp_size": 4,
-        #     "num_microbatches": 8,
-        #     "zero_stage": 1,
-        #     "precision": "bf16",
-        #     "num_model_chunk": 2,
-        # },
+        {
+            "batch_size": 8,
+            "tp_size": 1,
+            "pp_size": 4,
+            "num_microbatches": 8,
+            "zero_stage": 1,
+            "precision": "bf16",
+            "num_model_chunk": 2,
+        },
     ],
 )
 def run_fwd_bwd_vschedule_with_optim(test_config):
