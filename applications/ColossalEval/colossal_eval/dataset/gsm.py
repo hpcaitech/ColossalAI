@@ -72,7 +72,7 @@ default_inference_kwargs = {
     "calculate_loss": True,
     "all_classes": None,
     "language": "English",
-    "pretrain": False,
+    "calculate_overall_loss": False,
     "max_new_tokens": 256,
 }
 
@@ -114,7 +114,7 @@ class GSMDataset(BaseDataset):
             dataset[split][subject]["inference_kwargs"] = copy.deepcopy(default_inference_kwargs)
 
             if forward_only:
-                dataset[split][subject]["inference_kwargs"]["pretrain"] = True
+                dataset[split][subject]["inference_kwargs"]["calculate_overall_loss"] = True
 
             if split == "test" and few_shot:
                 dataset[split][subject]["inference_kwargs"]["few_shot_data"] = get_few_shot_data()

@@ -28,7 +28,7 @@ class ChatGLMModel(HuggingFaceModel):
 
     @torch.no_grad()
     def get_loss(
-        self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool = False
+        self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool = False
     ) -> List[List[float]]:
         """
         Calculate loss only on target tokens.
@@ -225,7 +225,7 @@ class ChatGLM2Model(ChatGLMModel):
 
     @torch.no_grad()
     def get_loss(
-        self, batch_prompt: List[str], batch_target: List[List[str]], pretrain: bool = False
+        self, batch_prompt: List[str], batch_target: List[List[str]], calculate_overall_loss: bool = False
     ) -> List[List[float]]:
         """
         Calculate loss only on target tokens.

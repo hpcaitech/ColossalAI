@@ -69,7 +69,7 @@ def rm_and_merge(
                         os.remove(directory)
                     except Exception as e:
                         print(e)
-                print(len(answers["data"]))
+
                 all_answers[category] = answers
 
             all_answers_with_dataset_class["inference_results"] = all_answers
