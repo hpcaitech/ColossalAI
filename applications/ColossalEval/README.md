@@ -565,10 +565,6 @@ class CustomizedModel(BaseModel):
 
 Once you have successfully added your own model, you can specify your model class in your inference config.
 
-## To do
-
-- [ ] Add visualization code for evaluation results on public dataset
-- [ ] Improve the way to label target tokens
 
 ## Citations
 
