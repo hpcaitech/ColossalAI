@@ -20,14 +20,15 @@ from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 NUM_BATCH = 8
 NUM_TOK_PER_BATCH, NUM_EXPERTS = 64, 4
 NUM_LAYERS = 4
-HIDDEN_SIZE_PER_HEAD = 4
+HIDDEN_SIZE_PER_HEAD = 8
 NUM_HEADS = 8
 TOP_K = 2
 
 
-def run_deepseek_commom(config: Tuple[int, ...]):
+def run_deepseek_commom(parallel_config: Tuple[int, ...]):
     Randomizer.reset_index()
-    stage, ep_size, pp_size, tp_size, sp_size = config
+    print(f"rank {dist.get_rank()} testing {parallel_config}")
+    stage, ep_size, pp_size, tp_size, sp_size = parallel_config
     world_size = dist.get_world_size()
     rank = dist.get_rank()
     dtype, precision = torch.bfloat16, "bf16"
@@ -65,6 +66,7 @@ def run_deepseek_commom(config: Tuple[int, ...]):
         attn_implementation="flash_attention_2",
         torch_dtype="float16",
         n_routed_experts=NUM_EXPERTS,
+        n_shared_experts=2,
         num_experts_per_tok=TOP_K,
         trust_remote_code=True,
     )
@@ -159,7 +161,7 @@ def run_deepseek_commom(config: Tuple[int, ...]):
     if rank == world_size - 1:
         shutil.rmtree(model_dir)
 
-    print(f"rank {dist.get_rank()} test passed")
+    print(f"rank {dist.get_rank()} passed {parallel_config}")
 
 
 @parameterize(

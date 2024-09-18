@@ -109,6 +109,19 @@ class EPDeepseekMoE(ParallelModule):
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
 
+        if self.config.n_shared_experts is not None:
+            self.shared_experts.gate_proj = Linear1D_Col.from_native_module(
+                self.shared_experts.gate_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
+
+            self.shared_experts.up_proj = Linear1D_Col.from_native_module(
+                self.shared_experts.up_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
+
+            self.shared_experts.down_proj = Linear1D_Row.from_native_module(
+                self.shared_experts.down_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
+
     @staticmethod
     def from_native_module(
         module,
