@@ -131,6 +131,16 @@ def retain_grad(x: Any) -> None:
         x.retain_grad()
 
 
+def require_grad(x: Any) -> None:
+    """Call require_grad on a tensor.
+
+    Args:
+        x (Any): Object to be called.
+    """
+    if isinstance(x, torch.Tensor) and x.requires_grad:
+        x.requires_grad_()
+
+
 def detach(x: Any) -> Any:
     """Call detach() on a tensor.
 
@@ -142,6 +152,34 @@ def detach(x: Any) -> Any:
     """
     if isinstance(x, torch.Tensor):
         return x.detach()
+    return x
+
+
+def clone(x: Any) -> Any:
+    """Call clone() on a tensor.
+
+    Args:
+        x (Any): Object to be called.
+
+    Returns:
+        Any: The cloned object.
+    """
+    if isinstance(x, torch.Tensor):
+        return x.clone()
+    return x
+
+
+def deallocate(x: Any) -> Any:
+    """Call deallocate() on a tensor.
+
+    Args:
+        x (Any): Object to be called.
+
+    Returns:
+        Any: The deallocate .data object.
+    """
+    if isinstance(x, torch.Tensor):
+        return x.data.untyped_storage().resize_(0)
     return x
 
 
