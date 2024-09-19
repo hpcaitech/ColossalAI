@@ -98,18 +98,25 @@ class DPOTrainer(SLTrainer):
         self.train_dataloader = train_preference_dataloader
         self.eval_dataloader = eval_preference_dataloader
         self.writer = None
-        if use_wandb and is_rank_0():
+
+        init_criterion = (
+            dist.get_rank() == dist.get_world_size() - 1
+            if isinstance(self.plugin, HybridParallelPlugin) and self.plugin.pp_size > 1
+            else is_rank_0()
+        )
+
+        if use_wandb and init_criterion:
             assert log_dir is not None, "log_dir must be provided when use_wandb is True"
             import wandb
 
             self.wandb_run = wandb.init(project="Coati-dpo", sync_tensorboard=True)
-        if log_dir is not None and is_rank_0():
+        if log_dir is not None and init_criterion:
             import os
             import time
 
             from torch.utils.tensorboard import SummaryWriter
 
-            log_dir = os.path.join(log_dir, "dpo")
+            log_dir = os.path.join(log_dir, "DPO")
             log_dir = os.path.join(log_dir, time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime()))
             self.writer = SummaryWriter(log_dir=log_dir)
 
@@ -227,6 +234,25 @@ class DPOTrainer(SLTrainer):
                             }
                         )
                         step_bar.update()
+                        self.accumulative_meter.add("loss", global_loss.item())
+                        self.accumulative_meter.add("chosen_rewards", chosen_rewards.to(torch.float16).mean().item())
+                        self.accumulative_meter.add(
+                            "rejected_rewards", rejected_rewards.to(torch.float16).mean().item()
+                        )
+
+                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), i)
+                        self.writer.add_scalar("train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), i)
+                        self.writer.add_scalar(
+                            "train/rejected_rewards",
+                            self.accumulative_meter.get("rejected_rewards"),
+                            i,
+                        )
+                        self.writer.add_scalar(
+                            "train/margin",
+                            self.accumulative_meter.get("chosen_rewards")
+                            - self.accumulative_meter.get("rejected_rewards"),
+                            i,
+                        )
 
                 self.optimizer.step()
                 self.optimizer.zero_grad()
