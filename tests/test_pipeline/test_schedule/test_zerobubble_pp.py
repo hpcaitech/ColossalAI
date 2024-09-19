@@ -596,7 +596,7 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     batch_size = test_config["batch_size"]
     num_layers = 8
     assert num_layers % num_model_chunk == 0, f"Model with {num_layers} layer can not dist on {num_model_chunk} chunk"
-    in_dim = out_dim = 1024
+    in_dim = out_dim = 4096
     before_init_memory = torch.cuda.memory_allocated() / 1024**3
     print(f"Before init Model: {before_init_memory :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
@@ -674,19 +674,21 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
 
     # assert memory
     if rank != 0:
-        # w.grad: hid_dim * hid_dim * 4(fp32) * 2 (2 layer in each stage) / 1024**3
-        # output: hid_dim * hid_dim * 4(fp32) / 1024**3
+        # w.grad: hid_dim * hid_dim * microbatch * 4(fp32) * 2 (2 layer in each stage) / 1024**3
+        # output: hid_dim * hid_dim * microbatch * 4(fp32) / 1024**3
         # optim: state hid_dim * hid_dim * 4(fp32) * 2 (2 layer in each stage) / 1024**3
-        print(f"rank {rank}: {(after_pp_step_memory - after_init_memory)} <= {(in_dim * in_dim * 4 * 5 / 1024**3)}")
-        # assert (after_pp_step_memory - after_init_memory) <= (in_dim * in_dim * 4 * 5 / 1024**3)
+        print(
+            f" num_microbatch {num_microbatch} rank {rank}: {(after_pp_step_memory - after_init_memory)} <= {(in_dim * in_dim * 4 * 5 * batch_size / 1024**3)}"
+        )
+        assert (after_pp_step_memory - after_init_memory) <= (in_dim * in_dim * 4 * 5 * batch_size / 1024**3)
     else:
         # rank0 will also hold output;
         print(
-            f"rank {rank}: {round((after_pp_step_memory - after_init_memory), 5)} <= {round((in_dim * in_dim * 4 * 5 / 1024**3 + batch_size * in_dim * in_dim * 4 / 1024**3), 5)}"
+            f" num_microbatch {num_microbatch} rank {rank}: {round((after_pp_step_memory - after_init_memory), 5)} <= {round((in_dim * in_dim * 4 * 5 * batch_size / 1024**3 + batch_size * in_dim * in_dim * 4 / 1024**3), 5)}"
         )
-        # assert round((after_pp_step_memory - after_init_memory), 5) <= round(
-        #     (in_dim * in_dim * 4 * 5 / 1024**3 + batch_size * in_dim * in_dim * 4 / 1024**3), 5
-        # )
+        assert round((after_pp_step_memory - after_init_memory), 5) <= round(
+            (in_dim * in_dim * 4 * 5 * batch_size / 1024**3 + batch_size * in_dim * in_dim * 4 / 1024**3), 5
+        )
 
     ##########################
     # Fwd bwd for base
