@@ -137,7 +137,7 @@ def require_grad(x: Any) -> None:
     Args:
         x (Any): Object to be called.
     """
-    if isinstance(x, torch.Tensor) and x.requires_grad:
+    if isinstance(x, torch.Tensor) and not x.requires_grad:
         x.requires_grad_()
 
 
