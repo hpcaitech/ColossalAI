@@ -595,6 +595,14 @@ class DPOTrainer(SLTrainer):
                     self.accumulative_meter.add(
                         "margin", (chosen_rewards_mean - rejected_rewards_mean).to(torch.float16).mean().item()
                     )
+                    step_bar.set_postfix(
+                        {
+                            "eval/loss": self.accumulative_meter.get("loss"),
+                            "eval/chosen_rewards": self.accumulative_meter.get("chosen_rewards"),
+                            "eval/rejected_rewards": self.accumulative_meter.get("rejected_rewards"),
+                            "eval/accuracy": self.accumulative_meter.get("accuracy"),
+                        }
+                    )
                     step_bar.update()
 
             msg = "\nEvaluation Result:\n"
