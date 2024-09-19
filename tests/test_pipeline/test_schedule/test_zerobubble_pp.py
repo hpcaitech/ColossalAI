@@ -18,8 +18,7 @@ from colossalai.pipeline.schedule.zero_bubble_pp import ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
-
-# from tests.kit.model_zoo import model_zoo
+from tests.kit.model_zoo import model_zoo
 
 
 class MlpModel(nn.Module):
