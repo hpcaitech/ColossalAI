@@ -157,7 +157,7 @@ class DpoLoss(nn.Module):
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
         logits = pi_logratios - ref_logratios - self.gamma / self.beta
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)
-        losses = losses.mean()
+        loss = losses.mean()
         # Calculate rewards for logging
         if logprob_ref_chosen is not None:
             chosen_rewards = self.beta * (logprob_actor_chosen.sum(-1) - logprob_ref_chosen.sum(-1)).detach()
@@ -168,7 +168,7 @@ class DpoLoss(nn.Module):
         else:
             rejected_rewards = self.beta * logprob_actor_reject.sum(-1).detach()
 
-        return losses, chosen_rewards, rejected_rewards
+        return loss, chosen_rewards, rejected_rewards
 
 
 class LogSigLoss(nn.Module):
