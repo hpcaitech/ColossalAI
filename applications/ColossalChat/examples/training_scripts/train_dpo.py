@@ -345,12 +345,17 @@ if __name__ == "__main__":
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--save_interval", type=int, default=1000, help="number of step between two checkpoints")
     parser.add_argument("--lr", type=float, default=5e-6)
-    parser.add_argument("--accumulation_steps", type=int, default=8)
+    parser.add_argument("--accumulation_steps", type=int, default=1)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
-    parser.add_argument("--microbatch_size", type=int, default=1)
+    parser.add_argument(
+        "--microbatch_size",
+        type=int,
+        default=2,
+        help="Micro batch size for PP training. To activate PP training for DPO-like algorithm, you must keep size even and the size should be equal or greater than 2.",
+    )
     # Parameter for reference model
     parser.add_argument(
         "--disable_reference_model",
