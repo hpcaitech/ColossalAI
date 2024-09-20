@@ -169,8 +169,8 @@ def clone(x: Any) -> Any:
     return x
 
 
-def deallocate(x: Any) -> Any:
-    """Call deallocate() on a tensor.
+def release_tensor_data(x: Any) -> Any:
+    """Call untyped_storage().resize_(0) on a tensor. Use to release tensor.data and keep grad_fn.
 
     Args:
         x (Any): Object to be called.
