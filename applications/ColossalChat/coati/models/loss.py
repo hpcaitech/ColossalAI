@@ -153,6 +153,7 @@ class DpoLoss(nn.Module):
         else:
             # If no reference model is provided
             ref_logratios = 0.0
+
         pi_logratios = logprob_actor_chosen.sum(-1) - logprob_actor_reject.sum(-1)
         logits = pi_logratios - ref_logratios - self.gamma / self.beta
         losses = -torch.nn.functional.logsigmoid(self.beta * logits)

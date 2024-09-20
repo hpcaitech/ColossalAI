@@ -239,20 +239,20 @@ class DPOTrainer(SLTrainer):
                         self.accumulative_meter.add(
                             "rejected_rewards", rejected_rewards.to(torch.float16).mean().item()
                         )
-
-                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), i)
-                        self.writer.add_scalar("train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), i)
-                        self.writer.add_scalar(
-                            "train/rejected_rewards",
-                            self.accumulative_meter.get("rejected_rewards"),
-                            i,
-                        )
-                        self.writer.add_scalar(
-                            "train/margin",
-                            self.accumulative_meter.get("chosen_rewards")
-                            - self.accumulative_meter.get("rejected_rewards"),
-                            i,
-                        )
+                        if self.writer is not None:
+                            self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), i)
+                            self.writer.add_scalar("train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), i)
+                            self.writer.add_scalar(
+                                "train/rejected_rewards",
+                                self.accumulative_meter.get("rejected_rewards"),
+                                i,
+                            )
+                            self.writer.add_scalar(
+                                "train/margin",
+                                self.accumulative_meter.get("chosen_rewards")
+                                - self.accumulative_meter.get("rejected_rewards"),
+                                i,
+                            )
 
                 self.optimizer.step()
                 self.optimizer.zero_grad()
@@ -320,7 +320,7 @@ class DPOTrainer(SLTrainer):
                     logprob_ref_chosen = None
                     logprob_ref_reject = None
 
-                losses, chosen_rewards, rejected_rewards = self.actor_loss_fn(
+                loss, chosen_rewards, rejected_rewards = self.actor_loss_fn(
                     logprob_actor_chosen,
                     logprob_actor_reject,
                     logprob_ref_chosen if logprob_ref_chosen is not None else None,
@@ -330,8 +330,6 @@ class DPOTrainer(SLTrainer):
                 )
                 reward_accuracies = (chosen_rewards > rejected_rewards).float().mean()
 
-                # DPO Loss
-                loss = losses.mean()
                 self.booster.backward(loss=loss, optimizer=self.optimizer)
                 # sync
                 loss_mean = all_reduce_mean(tensor=loss)
