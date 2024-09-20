@@ -241,7 +241,9 @@ class DPOTrainer(SLTrainer):
                         )
                         if self.writer is not None:
                             self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), i)
-                            self.writer.add_scalar("train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), i)
+                            self.writer.add_scalar(
+                                "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), i
+                            )
                             self.writer.add_scalar(
                                 "train/rejected_rewards",
                                 self.accumulative_meter.get("rejected_rewards"),
