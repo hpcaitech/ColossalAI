@@ -48,7 +48,7 @@ def pp_linear_fwd(
             return forward(hidden_states)
         # fwd start
         elif stage_mgr.is_first_stage() and model_chunk_id == 0:
-            return {"hidden_states": forward(hidden_states)}
+            return {"hidden_states": forward(data)}
         # fwd middle
         else:
             return {"hidden_states": forward(hidden_states)}
@@ -601,7 +601,7 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     print(f"Before init Model: {before_init_memory :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
     # data_iter = [torch.rand(batch_size, in_dim, out_dim, requires_grad=True).to(rank)]
-    data_iter = {"hidden_states": torch.rand(batch_size, in_dim, out_dim, requires_grad=True).to(rank)}
+    data_iter = {"data": torch.rand(batch_size, in_dim, out_dim, requires_grad=True).to(rank)}
     # input_base = [t.clone() for t in data_iter]
     input_base = {k: v.clone() for k, v in data_iter.items()}
     model_base = deepcopy(model)
@@ -694,7 +694,7 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     # Fwd bwd for base
     ##########################
     # fwd & bwd
-    output_base = model_base(input_base["hidden_states"])
+    output_base = model_base(input_base["data"])
     loss_base = criterion_base(output_base)
     loss_base.backward()
     optimizer_base.step()
