@@ -866,6 +866,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 model_chunk, data_iter, criterion, optimizer, return_loss, return_outputs
             )
 
-        # self.assert_buffer_empty()
+        self.assert_buffer_empty()
 
         return result
