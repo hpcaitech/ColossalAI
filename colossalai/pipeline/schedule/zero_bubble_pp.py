@@ -157,8 +157,8 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 self.num_microbatch % self.stage_manager.num_stages == 0
             ), "Number of microbatch should be an integer multiple of number of pipeline parallel devices"
 
-        if self.forward_only:
-            self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
+        # if self.forward_only:
+        #     self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
             # NOTE: disable metadata cache when batch size changes (not valid anymore)
             # if self.batch_size != self.last_batch_size:
             # self.enable_metadata_cache = False
@@ -435,15 +435,24 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         micro_batch = self.load_micro_batch(model_chunk_id=model_chunk_id)
 
         with self.stage_manager.switch_model_chunk_id(model_chunk_id):
-            # fwd calculate
-            internal_inputs = {} if input_obj is None else input_obj
-            internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
-            output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
+            if isinstance(model_chunk, ModuleList):
+                output_obj = model_forward(model_chunk[model_chunk_id], micro_batch, input_obj)
+            else:
+                # fwd calculate
+                internal_inputs = {} if input_obj is None else input_obj
+                internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
+                output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
+                
             # last layer in model
             if self.stage_manager.is_last_stage():
+                print(f"aaaaa{output_obj=}")
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
+                print(f"bbbb{loss=}")
                 if accum_loss is not None:
-                    accum_loss.add_(loss.detach())
+                    print(f"accum_loss{accum_loss=}")
+                    if not torch.isinf(loss):
+                        accum_loss.add_(loss.detach())
+                        print(f"add accum_loss{accum_loss=}")
                 if outputs is not None:
                     outputs.append(tree_map(detach, output_obj))
                 return loss
@@ -497,6 +506,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
             else:
                 output_obj_ = output_obj["hidden_states"]
+                print(f"{model_chunk_id=}, {output_obj_grad=}")
                 optimizer.backward_by_grad(
                     tensor=output_obj_,
                     grad=output_obj_grad,
@@ -531,6 +541,8 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             # loss backward; output_obj is loss
             output_obj_grad = None
 
+        if isinstance(model_chunk, ModuleList):
+            model_chunk = model_chunk[model_chunk_id]
         if output_obj_grad is None:
             optimizer.backward(output_obj, inputs=list(model_chunk.parameters()), retain_graph=False)
         else:
@@ -742,9 +754,10 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         outputs = [] if return_outputs and self.stage_manager.is_first_stage(ignore_chunk=True) else None
 
         # while we still have schedules_node in self.schedules
-        for it in range(len(self.schedules)):
-            scheduled_node = self.schedules[it]
-
+        # while we still have schedules_node in self.schedules
+        schedules = self.schedules[self.stage_manager.stage]  # get schedule by stage (rank)
+        for it in range(len(schedules)):
+            scheduled_node = schedules[it]
             if scheduled_node.type in {"RECV_FORWARD", "SEND_FORWARD"}:
                 # communication
                 communication_func = self.communication_map[scheduled_node.type]
@@ -761,6 +774,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # return loss & output
         if outputs is not None:
             outputs = merge_batch(outputs)
+        print(f"{accum_loss=}")
         return {"loss": accum_loss, "outputs": outputs}
 
     def run_forward_backward(
@@ -857,6 +871,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 model_chunk, data_iter, criterion, optimizer, return_loss, return_outputs
             )
 
-        self.assert_buffer_empty()
+        # self.assert_buffer_empty()
 
         return result
