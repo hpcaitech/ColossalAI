@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import torch
 import torch.cuda
 from torch.nn import Module, ModuleList
-from torch.utils._pytree import tree_map
+from torch.utils._pytree import tree_flatten, tree_map
 
 from colossalai.accelerator import get_accelerator
 from colossalai.interface import OptimizerWrapper
@@ -109,22 +109,15 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
 
     def assert_buffer_empty(self):
         # assert buuffer is empty at end
-        assert len(self.input_tensors[0]) == 0
-        assert len(self.input_tensors[1]) == 0
-        assert len(self.output_tensors[0]) == 0
-        assert len(self.output_tensors[1]) == 0
-        assert len(self.output_tensors_dw[0]) == 0
-        assert len(self.output_tensors_dw[1]) == 0
-        assert len(self.output_tensors_grad_dw[0]) == 0
-        assert len(self.output_tensors_grad_dw[1]) == 0
-        assert len(self.send_forward_buffer[0]) == 0
-        assert len(self.send_forward_buffer[1]) == 0
-        assert len(self.recv_forward_buffer[0]) == 0
-        assert len(self.recv_forward_buffer[1]) == 0
-        assert len(self.send_backward_buffer[0]) == 0
-        assert len(self.send_backward_buffer[1]) == 0
-        assert len(self.recv_backward_buffer[0]) == 0
-        assert len(self.recv_backward_buffer[1]) == 0
+        for chunk_id in [0, 1]:
+            assert len(self.input_tensors[chunk_id]) == 0, f"{self.input_tensors=}"
+            assert len(self.output_tensors[chunk_id]) == 0
+            assert len(self.output_tensors_dw[chunk_id]) == 0
+            assert len(self.output_tensors_grad_dw[chunk_id]) == 0
+            assert len(self.send_forward_buffer[chunk_id]) == 0
+            assert len(self.recv_forward_buffer[chunk_id]) == 0
+            assert len(self.send_backward_buffer[chunk_id]) == 0
+            assert len(self.recv_backward_buffer[chunk_id]) == 0
         assert len(self.local_send_forward_buffer) == 0
         assert len(self.local_send_backward_buffer) == 0
 
@@ -158,8 +151,8 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 self.num_microbatch % self.stage_manager.num_stages == 0
             ), "Number of microbatch should be an integer multiple of number of pipeline parallel devices"
 
-        # if self.forward_only:
-        #     self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
+        if self.forward_only:
+            self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
         # NOTE: disable metadata cache when batch size changes (not valid anymore)
         # if self.batch_size != self.last_batch_size:
         # self.enable_metadata_cache = False
@@ -490,8 +483,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             # loss backward; output_obj is loss; so output_obj_grad should be None
             assert output_obj_grad is None
 
-        input_obj_ = input_obj["hidden_states"]
-
         # Attempt to disable gradient synchronization when using the LowLevelZeroPlugin.
         try:
             ctx = optimizer.no_sync()
@@ -499,17 +490,27 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             ctx = nullcontext()
 
         with ctx:
+            input_obj_, tree_spec = tree_flatten(input_obj)
             if output_obj_grad is None:
                 optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
             else:
-                output_obj_ = output_obj["hidden_states"]
+                output_obj_, _ = tree_flatten(output_obj)
+                output_obj_grad_, _ = tree_flatten(output_obj_grad)
                 optimizer.backward_by_grad(
                     tensor=output_obj_,
-                    grad=output_obj_grad,
+                    grad=output_obj_grad_,
                     inputs=input_obj_,
                     retain_graph=True,
                 )
-        return input_obj_.grad
+
+        # Collect the grad of the input_obj.
+        input_obj_grad = None
+        if input_obj is not None:
+            input_obj_grad = {}
+            for k, v in input_obj.items():
+                if isinstance(v, torch.Tensor) and v.grad is not None:
+                    input_obj_grad[k] = v.grad
+        return input_obj_grad
 
     def backward_w_step(
         self,
@@ -539,13 +540,15 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
 
         if isinstance(model_chunk, ModuleList):
             model_chunk = model_chunk[model_chunk_id]
+
         if output_obj_grad is None:
             optimizer.backward(output_obj, inputs=list(model_chunk.parameters()), retain_graph=False)
         else:
-            output_obj_ = output_obj["hidden_states"]
+            output_obj_, _ = tree_flatten(output_obj)
+            output_obj_grad_, _ = tree_flatten(output_obj_grad)
             optimizer.backward_by_grad(
                 tensor=output_obj_,
-                grad=output_obj_grad,
+                grad=output_obj_grad_,
                 inputs=list(model_chunk.parameters()),
                 retain_graph=False,
             )
@@ -861,11 +864,11 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
 
         if self.forward_only:
             result = self.run_forward_only(model_chunk, data_iter, criterion, return_loss, return_outputs)
+            self._free_buffers()
         else:
             result = self.run_forward_backward(
                 model_chunk, data_iter, criterion, optimizer, return_loss, return_outputs
             )
-
-        self.assert_buffer_empty()
+            self.assert_buffer_empty()
 
         return result
