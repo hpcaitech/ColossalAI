@@ -596,7 +596,7 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     batch_size = test_config["batch_size"]
     num_layers = 8
     assert num_layers % num_model_chunk == 0, f"Model with {num_layers} layer can not dist on {num_model_chunk} chunk"
-    in_dim = out_dim = 4096
+    in_dim = out_dim = 1024
     before_init_memory = torch.cuda.memory_allocated() / 1024**3
     print(f"Before init Model: {before_init_memory :.3f} GB on device {stage_manager.get_rank()};")
     model = MlpModel(in_dim=in_dim, out_dim=out_dim, num_layers=num_layers).to(rank)
