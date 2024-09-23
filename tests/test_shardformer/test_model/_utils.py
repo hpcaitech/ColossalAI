@@ -397,7 +397,7 @@ def get_grad_tensors_for_check(
             pass
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
-
+        print(f"grad_to_check {shard_grad=}")
         grad_to_check[suffix] = {
             "org_grad": org_grad.float(),
             "shard_grad": shard_grad.float(),
