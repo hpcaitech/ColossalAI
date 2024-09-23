@@ -153,13 +153,13 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
 
         if self.forward_only:
             self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
-        # NOTE: disable metadata cache when batch size changes (not valid anymore)
-        # if self.batch_size != self.last_batch_size:
-        # self.enable_metadata_cache = False
-        # self.send_tensor_metadata = True
-        # self.send_grad_metadata = True
-        # self.tensor_metadata_recv = None
-        # self.grad_metadata_recv = None
+            # NOTE: disable metadata cache when batch size changes (not valid anymore)
+            # if self.batch_size != self.last_batch_size:
+            # self.enable_metadata_cache = False
+            # self.send_tensor_metadata = True
+            # self.send_grad_metadata = True
+            # self.tensor_metadata_recv = None
+            # self.grad_metadata_recv = None
 
         self.last_batch_size = self.batch_size
 
@@ -490,12 +490,14 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             ctx = nullcontext()
 
         with ctx:
-            input_obj_, tree_spec = tree_flatten(input_obj)
+            input_obj_, _ = tree_flatten({k: v for k, v in input_obj.items() if isinstance(v, torch.Tensor)})
             if output_obj_grad is None:
                 optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
             else:
-                output_obj_, _ = tree_flatten(output_obj)
-                output_obj_grad_, _ = tree_flatten(output_obj_grad)
+                output_obj_, _ = tree_flatten({k: v for k, v in output_obj.items() if isinstance(v, torch.Tensor)})
+                output_obj_grad_, _ = tree_flatten(
+                    {k: v for k, v in output_obj_grad.items() if isinstance(v, torch.Tensor)}
+                )
                 optimizer.backward_by_grad(
                     tensor=output_obj_,
                     grad=output_obj_grad_,
@@ -544,8 +546,10 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         if output_obj_grad is None:
             optimizer.backward(output_obj, inputs=list(model_chunk.parameters()), retain_graph=False)
         else:
-            output_obj_, _ = tree_flatten(output_obj)
-            output_obj_grad_, _ = tree_flatten(output_obj_grad)
+            output_obj_, _ = tree_flatten({k: v for k, v in output_obj.items() if isinstance(v, torch.Tensor)})
+            output_obj_grad_, _ = tree_flatten(
+                {k: v for k, v in output_obj_grad.items() if isinstance(v, torch.Tensor)}
+            )
             optimizer.backward_by_grad(
                 tensor=output_obj_,
                 grad=output_obj_grad_,
