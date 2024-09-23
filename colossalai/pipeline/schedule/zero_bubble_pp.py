@@ -446,14 +446,10 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 
             # last layer in model
             if self.stage_manager.is_last_stage():
-                print(f"aaaaa{output_obj=}")
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
-                print(f"bbbb{loss=}")
                 if accum_loss is not None:
-                    print(f"accum_loss{accum_loss=}")
                     if not torch.isinf(loss):
                         accum_loss.add_(loss.detach())
-                        print(f"add accum_loss{accum_loss=}")
                 if outputs is not None:
                     outputs.append(tree_map(detach, output_obj))
                 return loss
@@ -507,7 +503,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 optimizer.backward(output_obj, inputs=input_obj_, retain_graph=True)
             else:
                 output_obj_ = output_obj["hidden_states"]
-                print(f"{model_chunk_id=}, {output_obj_grad=}")
                 optimizer.backward_by_grad(
                     tensor=output_obj_,
                     grad=output_obj_grad,
@@ -775,7 +770,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # return loss & output
         if outputs is not None:
             outputs = merge_batch(outputs)
-        print(f"{accum_loss=}")
         return {"loss": accum_loss, "outputs": outputs}
 
     def run_forward_backward(
