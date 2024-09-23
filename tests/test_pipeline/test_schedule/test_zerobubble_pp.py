@@ -11,7 +11,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import OptimizerWrapper
-from colossalai.pipeline.schedule.v_schedule import PipelineGraph, ScheduledNode
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.pipeline.schedule.zero_bubble_pp import ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -96,14 +96,16 @@ def run_pp(
 
     sharded_model = torch.nn.ModuleList()
     for idx, sub_model in enumerate(pp_model.layers):
-        if idx == rank or (NUM_LAYER-idx-1) == rank:
+        if idx == rank or (NUM_LAYER - idx - 1) == rank:
             sub_model._forward = sub_model.forward
             sub_model.forward = MethodType(
                 partial(pp_linear_fwd, stage_mgr=stage_manager, model_chunk_id=len(sharded_model)),
                 sub_model._forward,
             )
             sharded_model.append(sub_model.cuda())
-    assert len(sharded_model) == num_model_chunk, f"{len(sharded_model)}, {num_model_chunk}, num_model_chunk is not correct"
+    assert (
+        len(sharded_model) == num_model_chunk
+    ), f"{len(sharded_model)}, {num_model_chunk}, num_model_chunk is not correct"
 
     # create optimizer
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1e-5)

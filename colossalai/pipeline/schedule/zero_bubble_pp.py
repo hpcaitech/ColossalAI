@@ -160,13 +160,13 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
 
         # if self.forward_only:
         #     self.num_microbatch = (self.batch_size - 1) // self.microbatch_size + 1
-            # NOTE: disable metadata cache when batch size changes (not valid anymore)
-            # if self.batch_size != self.last_batch_size:
-            # self.enable_metadata_cache = False
-            # self.send_tensor_metadata = True
-            # self.send_grad_metadata = True
-            # self.tensor_metadata_recv = None
-            # self.grad_metadata_recv = None
+        # NOTE: disable metadata cache when batch size changes (not valid anymore)
+        # if self.batch_size != self.last_batch_size:
+        # self.enable_metadata_cache = False
+        # self.send_tensor_metadata = True
+        # self.send_grad_metadata = True
+        # self.tensor_metadata_recv = None
+        # self.grad_metadata_recv = None
 
         self.last_batch_size = self.batch_size
 
@@ -443,7 +443,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 internal_inputs = {} if input_obj is None else input_obj
                 internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
                 output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
-                
+
             # last layer in model
             if self.stage_manager.is_last_stage():
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
