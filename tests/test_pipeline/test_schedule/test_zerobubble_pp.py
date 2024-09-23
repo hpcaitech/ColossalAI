@@ -136,7 +136,6 @@ def run_pp(
             idx = rank
         else:
             idx = world_size * 2 - rank - 1
-        print(f"{i=}, {idx=}, {rank=}, {torch_model.layers[idx].weight.grad=}, {sharded_model[i].weight.grad=}")
         assert_close(torch_model.layers[idx].weight.grad, sharded_model[i].weight.grad)
         assert_close(torch_model.layers[idx].bias.grad, sharded_model[i].bias.grad)
 
@@ -154,14 +153,24 @@ def run_pp(
         assert_close(torch_model.layers[idx].weight, sharded_model[i].weight)
         assert_close(torch_model.layers[idx].bias, sharded_model[i].bias)
 
-    # forward one step
-    torch_output = torch_model(input_list[0])
-    torch_loss = criterion(torch_output)
+    # forward only
+    with torch.no_grad():
+        torch_output = torch_model(input_list[0])
+        torch_loss = criterion(torch_output)
 
-    pp_ret = schedule.forward_backward_step(sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True)
-    if stage_manager.is_first_stage(ignore_chunk=True):
-        print(f"{torch_loss=}, {pp_ret['loss']}")
-        assert_close(torch_loss, pp_ret["loss"])
+        pp_ret = schedule.forward_backward_step(
+            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
+        )
+        if stage_manager.is_first_stage(ignore_chunk=True):
+            assert_close(torch_loss, pp_ret["loss"])
+
+        for layer in sharded_model:
+            if layer.weight.grad is None:
+                assert layer.weight.grad is None and layer.bias.grad is None
+            else:
+                assert_close(layer.weight.grad, torch.zeros_like(layer.weight.grad))
+                assert_close(layer.bias.grad, torch.zeros_like(layer.bias.grad))
+    torch.cuda.empty_cache()
 
 
 @pytest.mark.dist
