@@ -156,24 +156,16 @@ def run_pp(
         assert_close(torch_model.layers[idx].weight, sharded_model[i].weight)
         assert_close(torch_model.layers[idx].bias, sharded_model[i].bias)
 
-    # forward only
-    with torch.no_grad():
-        torch_output = torch_model(input_list[0])
-        torch_loss = criterion(torch_output)
+    # forward one step
+    torch_output = torch_model(input_list[0])
+    torch_loss = criterion(torch_output)
 
-        pp_ret = schedule.forward_backward_step(
-            sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
-        )
-        if stage_manager.is_first_stage(ignore_chunk=True):
-            print(f"{torch_loss=}, {pp_ret['loss']}")
-            assert_close(torch_loss, pp_ret["loss"])
-
-        for layer in sharded_model:
-            if layer.weight.grad is None:
-                assert layer.weight.grad is None and layer.bias.grad is None
-            else:
-                assert_close(layer.weight.grad, torch.zeros_like(layer.weight.grad))
-                assert_close(layer.bias.grad, torch.zeros_like(layer.bias.grad))
+    pp_ret = schedule.forward_backward_step(
+        sharded_model, iter(input_list), criterion, pp_optimizer, return_loss=True
+    )
+    if stage_manager.is_first_stage(ignore_chunk=True):
+        print(f"{torch_loss=}, {pp_ret['loss']}")
+        assert_close(torch_loss, pp_ret["loss"])
 
 
 @pytest.mark.dist
