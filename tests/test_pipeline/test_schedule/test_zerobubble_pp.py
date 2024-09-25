@@ -39,6 +39,7 @@ def pp_linear_fwd(
     forward,
     data: torch.Tensor = None,
     hidden_states: torch.Tensor = None,
+    stage_index=None,
     stage_mgr: PipelineStageManager = None,
     model_chunk_id: int = None,
 ):
@@ -605,6 +606,8 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     # input_base = [t.clone() for t in data_iter]
     input_base = {k: v.clone() for k, v in data_iter.items()}
     model_base = deepcopy(model)
+    layers_per_stage = stage_manager.distribute_layers(len(model.layers))
+    stage_manager.stage_indices = stage_manager.get_stage_index(layers_per_stage)
 
     if rank == 0:
         # layer 0 & 7 to chunk 0 on rank0
