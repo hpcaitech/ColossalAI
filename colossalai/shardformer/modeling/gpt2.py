@@ -866,7 +866,7 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
                 key,
                 value,
                 sp_group,
-                tp_group,
+                tp_group=tp_group,
                 **attention_mask,
                 dropout_p=dropout_p,
                 scale=scale,
