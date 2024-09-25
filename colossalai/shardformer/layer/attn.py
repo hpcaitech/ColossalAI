@@ -501,7 +501,6 @@ class RingAttention(torch.autograd.Function):
         v,
         sp_group,
         attention_mask_type,
-        tp_group=None,
         cu_seqlens=None,
         max_seqlen=None,
         valid_indices=None,
@@ -510,6 +509,7 @@ class RingAttention(torch.autograd.Function):
         deterministic=False,
         return_softmax=False,
         inner_ring_size=None,
+        tp_group=None,
         **kwargs,
     ):
         """
