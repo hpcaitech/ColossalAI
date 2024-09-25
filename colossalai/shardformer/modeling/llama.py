@@ -564,6 +564,7 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         tp_group = shard_config.tensor_parallel_process_group
+
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
                 query_states,

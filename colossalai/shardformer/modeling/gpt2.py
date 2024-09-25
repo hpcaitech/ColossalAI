@@ -859,6 +859,7 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
         sp_mode = shard_config.sequence_parallelism_mode
         sp_group = shard_config.sequence_parallel_process_group
         tp_group = shard_config.tensor_parallel_process_group
+
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
                 query,
