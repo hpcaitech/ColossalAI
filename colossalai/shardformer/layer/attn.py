@@ -500,7 +500,7 @@ class RingAttention(torch.autograd.Function):
         k,
         v,
         sp_group,
-        tp_group,
+        tp_group : Optional[dist.ProcessGroup],
         attention_mask_type,
         cu_seqlens=None,
         max_seqlen=None,
