@@ -31,9 +31,6 @@ class MlpModel(nn.Module):
     ):
         super().__init__()
         self.layers = nn.Sequential(*[nn.Linear(in_dim, out_dim, bias=None) for _ in range(num_layers)])
-        # self.layers = nn.ModuleList([nn.Linear(in_dim, out_dim, bias=None) for _ in range(num_layers)])
-        # if stage_mgr:
-        #     self.held_layers = self.layers[stage_index[0]:stage_index[1]]
 
     def forward(
         self,
