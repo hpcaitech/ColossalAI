@@ -367,7 +367,7 @@ def run_llama_test(test_config):
             "num_microbatches": 4,
             "enable_all_optimization": False,
             "precision": "fp16",
-            "zero_stage": 1,
+            "zero_stage": 0,
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
             "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
