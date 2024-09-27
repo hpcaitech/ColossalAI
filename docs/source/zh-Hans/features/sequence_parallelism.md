@@ -152,11 +152,11 @@ for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not dist.get_
 ### 结论
 在上述序列并行方法中，ring attn和Ulysses各有优劣，我们需要根据情况来选择合适的序列并行方法：
 
-通信方面：Ulysses通信量优于ring attn，Ulysess主要包含三次All2All通信量,而ring attn的通信会随着序列长度增长而平方增长。不过另一方面，all2all对底层硬件的要求也会更高。
+    通信方面：Ulysses通信量优于ring attn，Ulysess主要包含三次All2All通信量,而ring attn的通信会随着序列长度增长而平方增长。不过另一方面，all2all对底层硬件的要求也会更高。
 
-内存占用：二者类似。
+    内存占用：二者类似。
 
-模型结构泛化：ring attn优于Ulysses。Ulysses模型泛化性一般，对于head number有要求，需要满足:`head number // (tp group size * sp group size)`，而ring attn没有此限制。
+    模型结构泛化：ring attn优于Ulysses。Ulysses模型泛化性一般，对于head number有要求，需要满足:`head number // (tp group size * sp group size)`，而ring attn没有此限制。
 
 由于使用简单，对Attention计算不侵入修改，Ulysses目前是序列并行的主流。这些序列并行都可与其他高性能注意力兼容，如flash attention，还可以与ZeRO、TP、PP、DP等多种并行训练策略混合使用。
 
