@@ -381,7 +381,7 @@ class GeminiDDP(ModelWrapper):
             loss.backward()
         self._post_backward()
 
-    def backward_by_grad(self, tensor, grad):
+    def backward_by_grad(self, tensor, grad, inputs: torch.Tensor = None, retain_graph: bool = False):
         raise RuntimeError("Gemini is not compatible with pipeline. backward_by_grad shoudn't be called in Gemini.")
 
     @staticmethod

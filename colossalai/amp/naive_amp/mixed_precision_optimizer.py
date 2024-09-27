@@ -85,13 +85,18 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                     master_params.append(master_p)
             group["params"] = master_params
 
-    def backward(self, loss: Tensor, *args, **kwargs):
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         loss = self.mixed_precision.pre_backward(loss)
-        loss.backward(*args, **kwargs)
+        loss.backward(inputs=inputs, retain_graph=retain_graph, **kwargs)
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         grad = self.mixed_precision.pre_backward_by_grad(tensor, grad)
-        tensor.backward(grad)
+        torch.autograd.backward(
+            tensors=tensor,
+            grad_tensors=grad,
+            inputs=inputs,
+            retain_graph=retain_graph,
+        )
 
     def zero_grad(self, *args, **kwargs):
         for p in self.working_to_master_map.keys():
