@@ -499,13 +499,16 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         input_obj_ = [v for v in input_obj_ if isinstance(v, torch.Tensor) or v is None]
         output_obj_ = [v for v in output_obj_ if isinstance(v, torch.Tensor) or v is None]
         output_obj_grad_ = [v for v in output_obj_grad_ if isinstance(v, torch.Tensor) or v is None]
-
-        optimizer.backward_by_grad(
-            tensor=output_obj_,
-            grad=output_obj_grad_,
-            inputs=input_obj_,
-            retain_graph=True,
-        )
+        try:
+            optimizer.backward_by_grad(
+                tensor=output_obj_,
+                grad=output_obj_grad_,
+                inputs=input_obj_,
+                retain_graph=True,
+            )
+        except Exception as e:
+            print(f"{output_obj_=}")
+            raise e
 
         # Format output_obj_grad
         input_obj_grad = {}
