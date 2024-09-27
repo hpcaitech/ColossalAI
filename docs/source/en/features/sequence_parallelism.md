@@ -101,6 +101,7 @@ plugin = HybridParallelPlugin(
             sequence_parallelism_mode="split_gather",
         )
 ```
+Example of startup command parameters: ```--tp 2 --sp 8 --sp_mode split_gather```
 
 #### Using DeepSpeed-Ulysses
 Define the plugin. In the DeepSpeed-Ulysses sequence parallelism, the tp group and sp group are orthogonal.
@@ -113,6 +114,7 @@ plugin = HybridParallelPlugin(
             sequence_parallelism_mode="all_to_all",
         )
 ```
+Example of startup command parameters: ```--tp 2 --sp 8 --sp_mode all_to_all```
 
 #### Using Ring Attention
 Define the plugin. In ring attention sequence parallelism, the tp group and sp group are orthogonal, and sp_size must be set to the correct parallel size.
@@ -125,6 +127,8 @@ plugin = HybridParallelPlugin(
             sequence_parallelism_mode="ring_attn",
         )
 ```
+Example of startup command parameters: ```--tp 2 --sp 8 --sp_mode ring_attn```
+
 #### Using Booster
 ```python
 booster = Booster(plugin=plugin)
@@ -151,6 +155,10 @@ Currently, the `MoeHybridParallelPlugin` only supports DeepSpeed-Ulysses sequenc
 
 
 ### Conclusion
-Among the sequence parallelism methods mentioned, ring attention has no requirements for the number of attention heads and can train ultra-long sequences. However, due to the division of computation, its performance may decrease. TP+SP and DeepSpeed-Ulysses have requirements for the number of attention heads, which must be divisible by the sp group size. These sequence parallelism methods are all compatible with high-performance attention mechanisms like flash attention. Sequence parallelism can also be used with Gemini to train extremely large-scale models, and it can be combined with TP, PP, and DP to form 4D parallelism.
-
+Among the sequence parallelism methods mentioned, both ring attention and Ulysses have their pros and cons, and we need to choose the appropriate sequence parallelism method based on the situation:
+    Communication: Ulysses has lower communication overhead compared to ring attention, as it primarily involves three All-to-All communication ops, whereas the communication cost of ring attention grows quadratically with the sequence length. However, on the other hand, All-to-All op also demands more bandwidth from the hardware.
+    Memory usage: Both are similar in terms of memory consumption.
+    Model structure generalization: Ring attention is better than Ulysses in terms of generalization. Ulysses requires that the model config need to meet ```the head number // (tp group size * sp group size)``` condition, while ring attention has no such restrictions.
+Due to its simplicity and non-intrusive modification to attention calculation, Ulysses is currently the mainstream method for sequence parallelism. Both methods can be compatible with other high-performance attention methods such as Flash Attention, and can also be combined with other parallel training strategies like ZeRO, TP, PP, and DP.
+Overall, we recommend using Ulysses. You only need to specify ```--sp_mode all_to_all``` during startup. Based on testing, in a two-node, 16-GPU setup, using the startup parameters ```--tp 2 --sp 8 --sp_mode all_to_all```, it's easy to train sequences of up to 128k length, and the performance is the best among all sequence parallelism methods. However, if you're aiming for extreme performance optimization or training long texts on a larger scale of machines, you might want to consider using the ring attention.
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=4 sequence_parallelism.py  -->
