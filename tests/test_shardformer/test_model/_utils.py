@@ -310,8 +310,16 @@ def check_output_hidden_state(
 ):
     org_hidden_state = org_output.last_hidden_state
 
-    if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
-        sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+    if stage_manager:
+        if stage_manager.use_zbv:
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+            else:
+                sharded_hidden_state = sharded_output.last_hidden_state
+        elif stage_manager.is_last_stage(ignore_chunk=True):
+            sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+        else:
+            sharded_hidden_state = sharded_output.last_hidden_state
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
@@ -388,7 +396,6 @@ def get_grad_tensors_for_check(
             pass
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
-
         grad_to_check[suffix] = {
             "org_grad": org_grad.float(),
             "shard_grad": shard_grad.float(),
