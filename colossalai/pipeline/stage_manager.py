@@ -96,6 +96,7 @@ class PipelineStageManager:
                 ]
             )
             return stage_indices
+
         for model_chunk in range(num_model_chunks):
             start_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages]
             end_idx = num_layers_per_stage_accumulated[stage + model_chunk * num_stages + 1]
