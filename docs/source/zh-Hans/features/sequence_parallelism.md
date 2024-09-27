@@ -101,6 +101,8 @@ plugin = HybridParallelPlugin(
         )
 ```
 
+启动命令参数举例：```--tp 2 --sp 8 --sp_mode split_gather```
+
 #### 使用DeepSpeed-Ulysses
 定义plugin， 在DeepSpeed-Ulysses的序列并行种，tp group与sp group 是正交的，
 ```python
@@ -112,6 +114,7 @@ plugin = HybridParallelPlugin(
             sequence_parallelism_mode="all_to_all",
         )
 ```
+启动命令参数举例：```--tp 2 --sp 8 --sp_mode all_to_all```
 
 #### 使用ring attention
 定义plugin， 在ring attention的序列并行种，tp group与sp group 是正交的，sp_size必须传入准确的并行大小。
@@ -124,6 +127,8 @@ plugin = HybridParallelPlugin(
             sequence_parallelism_mode="ring_attn",
         )
 ```
+启动命令参数举例：```--tp 2 --sp 8 --sp_mode ring_attn```
+
 #### 使用booster
 ```python
 booster = Booster(plugin=plugin)
@@ -160,7 +165,7 @@ for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not dist.get_
 
 由于使用简单，对Attention计算不侵入修改，Ulysses目前是序列并行的主流。这些序列并行都可与其他高性能注意力兼容，如flash attention，还可以与ZeRO、TP、PP、DP等多种并行训练策略混合使用。
 
-总的来说，对于初学者、中小型企业客户，我们更推荐您使用all_to_all，经过测试，在双机16卡的情况下，使用```--tp 2 --sp 8 --sp_mode all_to_all```的启动参数可以很轻松训练128k长度的序列，同时他的性能表现也是所有序列并行模式中最好的。但如果追求极致性能优化，或者使用较多机器训练长文本，可以考虑使用ring attention模式的序列并行。
+总的来说，我们更推荐您使用Ulysses，只需要在启动时指定```--sp_mode all_to_all```即可。经过测试，在双机16卡的情况下，使用```--tp 2 --sp 8 --sp_mode all_to_all```的启动参数可以很轻松训练128k长度的序列，同时他的性能表现也是所有序列并行模式中最好的。但如果追求极致性能优化，或者使用较多机器训练长文本，可以考虑使用ring attention模式的序列并行。
 
 
 <!-- doc-test-command: torchrun --standalone --nproc_per_node=4 sequence_parallelism.py  -->
