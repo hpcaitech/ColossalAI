@@ -43,7 +43,7 @@ class MixedPrecisionMixin(ABC):
     dtype: torch.dtype
 
     @abstractmethod
-    def pre_backward(self, loss: Tensor) -> Tensor:
+    def pre_backward(self, loss: Tensor, *args, **kwargs) -> Tensor:
         """Called before backward.
 
         Args:

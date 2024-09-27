@@ -136,7 +136,11 @@ class PipelineStageManager:
         if not self.is_interleave or ignore_chunk:
             return self.stage == self.num_stages - 1
         else:
-            return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
+            # use zero bubble pipeline
+            if self.use_zbv:
+                return self.stage == 0 and self.model_chunk_id == self.num_model_chunks - 1
+            else:
+                return self.stage == self.num_stages - 1 and self.model_chunk_id == self.num_model_chunks - 1
 
     @property
     def num_stages(self) -> int:
