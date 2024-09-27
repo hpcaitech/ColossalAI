@@ -1166,6 +1166,14 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatch=num_microbatches,
                     microbatch_size=microbatch_size,
                 )
+            elif pp_style == "zbv":
+                self.scheduler = ZeroBubbleVPipeScheduler(
+                    stage_manager=self.stage_manager,
+                    schedule=scheduler_nodes,
+                    num_model_chunks=num_model_chunks,
+                    num_microbatch=num_microbatches,
+                    microbatch_size=microbatch_size,
+                )
             else:
                 raise NotImplementedError()
         if sequence_parallelism_mode == "ring_attn":
@@ -1279,7 +1287,6 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
-
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",

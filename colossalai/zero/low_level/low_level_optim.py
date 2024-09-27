@@ -433,7 +433,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         ctx = nullcontext() if self._backward_context is None else self._backward_context()
         with ctx:
-            loss.backward(retain_graph=retain_graph)
             loss.backward(inputs=inputs, retain_graph=retain_graph)
 
         if not self.require_grad_sync:
