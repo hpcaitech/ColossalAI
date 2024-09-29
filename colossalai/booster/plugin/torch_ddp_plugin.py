@@ -169,6 +169,7 @@ class TorchDDPPlugin(DPPluginBase):
         check_reduction (bool, optional): Whether to check reduction. Defaults to False.
         gradient_as_bucket_view (bool, optional): Whether to use gradient as bucket view. Defaults to False.
         static_graph (bool, optional): Whether to use static graph. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
     def __init__(

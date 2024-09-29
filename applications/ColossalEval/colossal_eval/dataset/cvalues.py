@@ -15,7 +15,7 @@ default_inference_kwargs = {
     "calculate_loss": False,
     "all_classes": ["A", "B"],
     "language": LANGUAGE,
-    "pretrain": False,
+    "calculate_overall_loss": False,
     "max_new_tokens": 32,
 }
 

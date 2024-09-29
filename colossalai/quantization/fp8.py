@@ -10,6 +10,10 @@ from torch.distributed import ReduceOp
 
 SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
 SCALE_BYTES = 4
+try:
+    cuda_arch = int("".join(str(i) for i in torch.cuda.get_device_capability()))
+except:
+    cuda_arch = 0
 
 
 class Handle:
@@ -185,7 +189,7 @@ def all_reduce_fp8(
     return dist.all_reduce(tensor, op=op, group=group, async_op=async_op)
 
 
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
 def _all_to_all_single_fp8(
     output, input, output_split_sizes=None, input_split_sizes=None, fp8_format="e5m2", group=None, async_op=False
 ) -> Optional[Handle]:
@@ -606,79 +610,7 @@ def split_chunk_by_channel(
     return chunk.split(sizes)
 
 
-def all_gather_into_tensor_flat_fp8(
-    output_tensor: torch.Tensor,
-    input_tensor: torch.Tensor,
-    output_shape: torch.Size,
-    group: dist.ProcessGroup,
-    fp8_format: str = "e4m3",
-    async_op: bool = False,
-) -> Optional[Handle]:
-    """all gather into tensor in fp8 format
-
-    Args:
-        output_tensor (torch.Tensor): output tensor, which is flattened
-        input_tensor (torch.Tensor): input tensor, which is flattened
-        group (dist.ProcessGroup): process group
-        fp8_format (str, optional): fp8 format, e4m3 or e5m2. Defaults to "e4m3".
-    """
-    assert input_tensor.dim() == 1 and output_tensor.dim() == 1, "input/output tensor should be flattened"
-    world_size = dist.get_world_size(group)
-    assert (
-        output_tensor.numel() == input_tensor.numel() * world_size
-    ), "output tensor size should be world_size times of input tensor size"
-
-    input_type = output_tensor.dtype
-
-    fp8_type = torch.float8_e4m3fn if fp8_format == "e4m3" else torch.float8_e5m2
-    fp8_max = torch.finfo(fp8_type).max
-
-    if len(output_shape) == 2:
-        per_channel_max = torch.zeros(output_shape[0], device=output_tensor.device, dtype=torch.float)
-        num_channels, channel_size = output_shape
-        rank = dist.get_rank(group)
-        channel_start_idx = (input_tensor.numel() * rank) // channel_size
-        per_channel_splits = split_chunk_by_channel(input_tensor, channel_size, num_channels, rank, world_size)
-        for i, per_channel_split in enumerate(per_channel_splits):
-            idx = i + channel_start_idx
-            if idx < num_channels:
-                per_channel_max[idx] = per_channel_split.abs().max().float()
-        dist.all_reduce(per_channel_max, op=dist.ReduceOp.MAX, group=group)
-        per_channel_max = torch.where(per_channel_max > 0, per_channel_max, 1.0)
-        scale = fp8_max / per_channel_max
-        fp8_input = input_tensor.float()
-        fp8_per_channel_splits = split_chunk_by_channel(fp8_input, channel_size, num_channels, rank, world_size)
-        for i, per_channel_split in enumerate(fp8_per_channel_splits):
-            idx = i + channel_start_idx
-            if idx < num_channels:
-                per_channel_split.mul_(scale[idx])
-        fp8_input = fp8_input.to(fp8_type)
-    else:
-        per_tensor_max = input_tensor.abs().max().float()
-        dist.all_reduce(per_tensor_max, op=dist.ReduceOp.MAX, group=group)
-        per_tensor_max = torch.where(per_tensor_max > 0, per_tensor_max, 1.0)
-        scale = fp8_max / per_tensor_max
-        fp8_input = (scale * input_tensor.float()).to(fp8_type)
-    scale_inv = 1.0 / scale
-
-    buffer = torch.empty_like(output_tensor, dtype=fp8_type)
-    tensor_handle = dist.all_gather_into_tensor(
-        buffer.view(torch.uint8), fp8_input.view(torch.uint8), group=group, async_op=async_op
-    )
-
-    def cast_op():
-        numel = output_shape.numel()
-        valid_buffer = buffer[:numel].reshape(output_shape)
-        valid_buffer = cast_from_fp8(valid_buffer, scale_inv, input_type, per_channel_scale=(len(output_shape) == 2))
-        output_tensor[:numel].copy_(valid_buffer.view(-1))
-
-    if async_op:
-        return Handle([tensor_handle], cast_op)
-    else:
-        cast_op()
-
-
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
 def _all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async_op=False):
     world_size = dist.get_world_size(group)
     input_type = input_list[0].dtype
@@ -718,8 +650,8 @@ def all_to_all_fp8(output_list, input_list, group=None, fp8_format="e5m2", async
         return _all_to_all_fp8(output_list, input_list, group=group, fp8_format=fp8_format, async_op=async_op)
 
 
-def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
-
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
+def _all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
 
     input_type = input_.dtype
@@ -743,8 +675,17 @@ def gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: boo
         cast_op()
 
 
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
 def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
+    if process_group_is_intranode(group):
+        return dist.all_gather(output_list, input_, group=group, async_op=async_op)
+    else:
+        return _all_gather_fp8(output_list, input_, group=group, fp8_format=fp8_format, async_op=async_op)
+
+
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
+def all_gather_fp8_lagacy(
+    output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False
+) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     shape = input_.shape
     input_type = input_.dtype
@@ -769,7 +710,7 @@ def all_gather_fp8(output_list, input_, group=None, fp8_format="e5m2", async_op:
     #     out.copy_(output[i].view(shape))
 
 
-@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False)
+@torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
 def all_gather_fp8_ring(output_list, input_, group=None, fp8_format="e5m2", async_op: bool = False) -> Optional[Handle]:
     world_size = dist.get_world_size(group)
     rank = dist.get_rank(group)

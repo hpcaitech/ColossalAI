@@ -327,6 +327,8 @@ class LowLevelZeroPlugin(DPPluginBase):
         overlap_communication (bool, optional): whether to overlap communication and computation. Defaults to True.
         cpu_offload (bool, optional): whether to offload grad, master weight and optimizer state to cpu. Defaults to False.
         verbose (bool, optional): verbose mode. Debug info including grad overflow will be printed. Defaults to False.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
     def __init__(

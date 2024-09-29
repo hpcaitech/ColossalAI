@@ -981,7 +981,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
-        fp8_communication (bool, optional): Whether to enable fp8 communication in model parallelism
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
         inner_ring_size (int, optional): The inner ring size of 2D Ring Attention when sp mode is "ring_attn".
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.

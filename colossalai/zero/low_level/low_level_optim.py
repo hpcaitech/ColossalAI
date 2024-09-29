@@ -20,7 +20,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
-from colossalai.quantization.fp8 import all_gather_into_tensor_flat_fp8, all_reduce_fp8, reduce_scatter_fp8
+from colossalai.quantization.fp8 import all_gather_fp8, all_reduce_fp8, reduce_scatter_fp8
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
@@ -580,8 +580,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
                         if self._fp8_communication:
-                            all_gather_into_tensor_flat_fp8(
-                                padded_working_param, param_to_gather, pg, fp8_format="e4m3"
+                            all_gather_fp8(
+                                list(padded_working_param.chunk(dist.get_world_size(pg))),
+                                param_to_gather,
+                                pg,
+                                fp8_format="e4m3",
                             )
                         else:
                             dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
