@@ -46,9 +46,9 @@ class TorchAMPOptimizer(OptimizerWrapper):
             growth_interval=growth_interval,
         )
 
-    def backward(self, loss: Tensor, *args, **kwargs) -> None:
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs) -> None:
         scaled_loss = self.scale_loss(loss)
-        scaled_loss.backward(*args, **kwargs)
+        scaled_loss.backward(inputs=inputs, retain_graph=retain_graph, **kwargs)
 
     def step(self, *args, **kwargs) -> Optional[float]:
         out = self.scaler.step(self.optim, *args, **kwargs)
