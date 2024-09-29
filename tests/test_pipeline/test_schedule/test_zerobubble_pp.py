@@ -19,6 +19,8 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.schedule.v_schedule import PipelineGraph, ScheduledNode
 from colossalai.pipeline.schedule.zero_bubble_pp import ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer.utils import Randomizer
+from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.test_moe.moe_utils import assert_loose_close
@@ -751,12 +753,13 @@ def run_with_hybridplugin(test_config):
     "config",
     [
         (0, 1, 4, 1, 1),
-        # (0, 2, 2, 1, 1),
-        # (0, 2, 1, 2, 1),
-        # (0, 2, 1, 1, 2),
+        (1, 2, 2, 1, 1),
+        (1, 2, 1, 2, 1),
+        (1, 2, 1, 1, 2),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
+    test_config = config
     stage, ep_size, pp_size, tp_size, sp_size = config
     num_microbatches = pp_size
     dist.get_world_size()
@@ -865,8 +868,15 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
             )
             # stage 0 chunk 0
             parallel_output = None
-            if rank == dist.get_process_group_ranks(plugin.pp_group)[0]:
+            if (
+                booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
+                and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
+            ):
                 parallel_output = sharded_output["loss"]
+            else:
+                parallel_output = torch.tensor(12345.0, device="cuda")
+            # broadcast along pp axis
+            dist.broadcast(parallel_output, src=dist.get_process_group_ranks(plugin.pp_group)[0], group=plugin.pp_group)
 
         else:
             # for test without pp
@@ -874,7 +884,7 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
             parallel_optimizer.backward(parallel_output)
         parallel_optimizer.step()
         parallel_optimizer.zero_grad()
-        # dist.all_reduce(parallel_output, group=plugin.dp_group)
+        dist.all_reduce(parallel_output, group=plugin.dp_group)
 
         # ===================================================================================
         # run normal model with all dp(different) inputs
@@ -891,8 +901,11 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 p.grad /= dp_size
         torch_optimizer.step()
         torch_optimizer.zero_grad()
-        if rank == dist.get_process_group_ranks(plugin.pp_group)[0]:
-            assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
+        assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
+        print(f"rank {dist.get_rank()} config {test_config}  test passed")
+        clear_layout_converter()
+        Randomizer.reset_index()
+        torch.cuda.empty_cache()
 
 
 def run_dist(rank, world_size, port):

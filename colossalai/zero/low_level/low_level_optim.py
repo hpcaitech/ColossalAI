@@ -408,7 +408,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # torch.optim.Optimizer methods
     ################################
 
-    def backward(self, loss, retain_graph=False):
+    def backward(self, loss, inputs=None, retain_graph=False):
         assert not (
             self._partition_grads and not self.require_grad_sync
         ), "ZeRO2(partition_grads) and no_sync are not compatible"
@@ -416,7 +416,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)
 
-        loss.backward(retain_graph=retain_graph)
+        loss.backward(inputs=inputs, retain_graph=retain_graph)
 
         if not self.require_grad_sync:
             return
@@ -427,14 +427,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self._overlap_communication:
             get_accelerator().synchronize()
 
-    def backward_by_grad(self, tensor, grad):
+    def backward_by_grad(self, tensor, grad, inputs: Tensor = None, retain_graph: bool = False):
         assert not (
             self._partition_grads and not self.require_grad_sync
         ), "ZeRO2(partition_grads) and gradient accumulation(no_sync) are not compatible"
 
         if self.mixed_precision_mixin is not None:
             grad = self.mixed_precision_mixin.pre_backward_by_grad(tensor, grad)
-        torch.autograd.backward(tensor, grad)
+        torch.autograd.backward(
+            tensor,
+            grad,
+            inputs=inputs,
+            retain_graph=retain_graph,
+        )
 
         if not self.require_grad_sync:
             return
