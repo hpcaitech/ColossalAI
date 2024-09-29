@@ -1174,6 +1174,14 @@ class HybridParallelPlugin(PipelinePluginBase):
                     num_microbatch=num_microbatches,
                     microbatch_size=microbatch_size,
                 )
+            elif pp_style == "zbv":
+                self.scheduler = ZeroBubbleVPipeScheduler(
+                    stage_manager=self.stage_manager,
+                    schedule=scheduler_nodes,
+                    num_model_chunks=num_model_chunks,
+                    num_microbatch=num_microbatches,
+                    microbatch_size=microbatch_size,
+                )
             else:
                 raise NotImplementedError()
         if sequence_parallelism_mode == "ring_attn":
