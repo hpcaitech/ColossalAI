@@ -157,7 +157,7 @@ Currently, the `MoeHybridParallelPlugin` only supports DeepSpeed-Ulysses sequenc
 ### Conclusion
 Among the sequence parallelism methods mentioned, both ring attention and Ulysses have their pros and cons, and we need to choose the appropriate sequence parallelism method based on the situation:
 
-    Communication: Ulysses has lower communication overhead compared to ring attention, as it primarily involves three All-to-All communication ops, whereas the communication cost of ring attention grows quadratically with the sequence length. However, on the other hand, All-to-All op also demands more bandwidth from the hardware.
+    Communication: Ulysses has lower communication overhead compared to ring attention, as it primarily involves three All-to-All communication ops, whereas the communication cost of ring attention grows quadratically with the sequence length. However, on the other hand, All-to-All op also demands dense network topologies, e.g. NVLink + NVSwitch, so it doesn't scale well across multiple nodes.
 
     Memory usage: Both are similar in terms of memory consumption.
 

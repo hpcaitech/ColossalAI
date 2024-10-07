@@ -157,7 +157,7 @@ for step, batch in enumerate(tqdm(dataloader, desc="Step", disable=not dist.get_
 ### 结论
 在上述序列并行方法中，ring attention和Ulysses各有优劣，我们需要根据情况来选择合适的序列并行方法：
 
-    通信方面：Ulysses通信量优于ring attention，Ulysess主要包含三次All2All通信量,而ring attention的通信会随着序列长度增长而平方增长。不过另一方面，all2all对底层硬件的要求也会更高。
+    通信方面：Ulysses通信量优于ring attention，Ulysess主要包含三次All2All通信量,而ring attention的通信会随着序列长度增长而平方增长。不过另一方面，all2all op由于需要更复杂的网络拓扑，例如NVLink和NVSwitch，因此在多机情况时，并不会随着机器数量增加而有较好的性能提升。
 
     内存占用：二者类似。
 
