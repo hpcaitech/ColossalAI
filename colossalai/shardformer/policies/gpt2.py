@@ -233,7 +233,9 @@ class GPT2Policy(Policy):
                 held_layers.append(module.drop)
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.h[start_idx:end_idx])
-            if stage_manager.is_last_stage(ignore_chunk=True):
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
                 held_layers.append(module.ln_f)
         else:
             layers_per_stage = stage_manager.distribute_layers(len(module.h))
@@ -355,7 +357,9 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage(ignore_chunk=True):
+        if self.pipeline_stage_manager.use_zbv and self.pipeline_stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.lm_head)
+        elif self.pipeline_stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         return held_layers
 
@@ -423,7 +427,14 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.use_zbv and self.pipeline_stage_manager.is_first_stage(ignore_chunk=True):
+            multiple_choice_head = self.model.multiple_choice_head
+            held_layers.append(self.model.lm_head)
+            held_layers.append(multiple_choice_head.summary)
+            held_layers.append(multiple_choice_head.activation)
+            held_layers.append(multiple_choice_head.first_dropout)
+            held_layers.append(multiple_choice_head.last_dropout)
+        elif self.pipeline_stage_manager.is_last_stage():
             multiple_choice_head = self.model.multiple_choice_head
             held_layers.append(self.model.lm_head)
             held_layers.append(multiple_choice_head.summary)
@@ -467,7 +478,9 @@ class GPT2ForQuestionAnsweringPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.use_zbv and self.pipeline_stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.qa_outputs)
+        elif self.pipeline_stage_manager.is_last_stage():
             held_layers.append(self.model.qa_outputs)
         return held_layers
 
@@ -506,7 +519,10 @@ class GPT2ForTokenClassificationPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.use_zbv and self.pipeline_stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        elif self.pipeline_stage_manager.is_last_stage():
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -533,7 +549,9 @@ class GPT2ForSequenceClassificationPolicy(GPT2Policy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
+        if self.pipeline_stage_manager.use_zbv and self.pipeline_stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.score)
+        elif self.pipeline_stage_manager.is_last_stage():
             held_layers.append(self.model.score)
         return held_layers
 

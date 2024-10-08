@@ -500,18 +500,12 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         output_obj_ = [v for v in output_obj_ if isinstance(v, torch.Tensor) or v is None]
         output_obj_grad_ = [v for v in output_obj_grad_ if isinstance(v, torch.Tensor) or v is None]
 
-        try:
-            ctx = optimizer.no_sync()
-        except AttributeError:
-            ctx = model_chunk.no_sync()
-
-        with ctx:
-            optimizer.backward_by_grad(
-                tensor=output_obj_,
-                grad=output_obj_grad_,
-                inputs=input_obj_,
-                retain_graph=True,
-            )
+        optimizer.backward_by_grad(
+            tensor=output_obj_,
+            grad=output_obj_grad_,
+            inputs=input_obj_,
+            retain_graph=True,
+        )
 
         # Format output_obj_grad
         input_obj_grad = {}
