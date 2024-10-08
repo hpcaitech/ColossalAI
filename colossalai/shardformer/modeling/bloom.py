@@ -221,7 +221,10 @@ class BloomPipelineForwards:
         if shard_config and shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = split_forward_gather_backward(
-                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
 
         start_idx, end_idx = stage_index[0], stage_index[1]
@@ -264,7 +267,10 @@ class BloomPipelineForwards:
         if shard_config and shard_config.enable_sequence_parallelism:
             if shard_config.sequence_parallelism_mode == "split_gather":
                 hidden_states = gather_forward_split_backward(
-                    hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+                    hidden_states,
+                    dim=1,
+                    process_group=shard_config.tensor_parallel_process_group,
+                    fp8_communication=shard_config.fp8_communication,
                 )
 
         if stage_manager.is_last_stage():
@@ -359,14 +365,15 @@ class BloomPipelineForwards:
             hidden_states = transformer_outputs[0]
             lm_logits = self.lm_head(hidden_states).contiguous()
 
-            loss = dist_cross_entropy(
-                labels,
-                lm_logits,
-                shard_config,
-                self.lm_head.out_features,
-                self.config.vocab_size,
-                self.transformer.dtype,
-            )
+            loss = None
+            if labels is not None:
+                loss = dist_cross_entropy(
+                    labels,
+                    lm_logits,
+                    shard_config,
+                    self.lm_head.out_features,
+                    self.transformer.dtype,
+                )
 
             if not return_dict:
                 output = (lm_logits,) + transformer_outputs[1:]
@@ -922,7 +929,10 @@ def get_bloom_sequence_parallel_forward_fn(shard_config: ShardConfig):
         # split the input tensor along sequence dimension
         # [batch_size, seq_len, hidden_size] -> [batch_size, seq_len/TP_size, hidden_size]
         hidden_states = split_forward_gather_backward(
-            hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            hidden_states,
+            dim=1,
+            process_group=shard_config.tensor_parallel_process_group,
+            fp8_communication=shard_config.fp8_communication,
         )
 
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
@@ -960,7 +970,10 @@ def get_bloom_sequence_parallel_forward_fn(shard_config: ShardConfig):
 
         # When sequence parallelism done, gather the output tensor in forward and split it in backward
         hidden_states = gather_forward_split_backward(
-            hidden_states, dim=1, process_group=shard_config.tensor_parallel_process_group
+            hidden_states,
+            dim=1,
+            process_group=shard_config.tensor_parallel_process_group,
+            fp8_communication=shard_config.fp8_communication,
         )
         # Add last hidden state
         hidden_states = self.ln_f(hidden_states)
@@ -1024,9 +1037,11 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         hidden_states = transformer_outputs[0]
         lm_logits = self.lm_head(hidden_states)
 
-        loss = dist_cross_entropy(
-            labels, lm_logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.transformer.dtype
-        )
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(
+                labels, lm_logits, shard_config, self.lm_head.out_features, self.transformer.dtype
+            )
 
         if not return_dict:
             output = (lm_logits,) + transformer_outputs[1:]

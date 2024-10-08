@@ -30,7 +30,7 @@ Colossal-LLaMA
   - [Install](#install)
     - [0. Pre-requisite](#0-pre-requisite)
     - [1. Install required packages](#1-install-required-packages)
-    - [2. Install `xentropy`, `layer_norm` and `rotary`](#2-install-xentropy-layer_norm-and-rotary)
+    - [2. Install Apex](#2-install-apex)
   - [How to run](#how-to-run)
     - [1. Init Tokenizer Preparation](#1-init-tokenizer-preparation)
     - [2. Init Model Preparation](#2-init-model-preparation)
@@ -297,17 +297,13 @@ Here is details about CLI arguments:
 #### 1. Install required packages
 ```
 cd Colossal-LLaMA
-pip install -r requirements.txt
+pip install -e .
 ```
-#### 2. Install `xentropy`, `layer_norm` and `rotary`
+
+#### 2. Install Apex
 ```bash
-git clone git@github.com:Dao-AILab/flash-attention.git
-# At the root folder
-cd csrc/xentropy && pip install .
-# At the root folder
-cd csrc/layer_norm && pip install .
-# At the root folder
-cd csrc/rotary && pip install .
+git clone git@github.com:NVIDIA/apex.git
+# Install from source.
 ```
 
 ### How to run
@@ -427,25 +423,33 @@ Make sure master node can access all nodes (including itself) by ssh without pas
 Here is details about CLI arguments:
 * Pre-trained model path: `--pretrained`. Path to the pre-trained model in Hugging Face format.
 * Dataset path: `--dataset`. Path to the pre-tokenized dataset.
-* Booster plugin: `--plugin`. `gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
+* Booster plugin: `--plugin`. `ddp`,`gemini`, `gemini_auto`, `zero2`，`zero2_cpu` and `3d` are supported.For more details, please refer to [Booster plugins](https://colossalai.org/docs/basics/booster_plugins/).
 * Intermediate checkpoint to load: `--load_checkpoint`. Path to the intermediate checkpoint. Saved checkpoint contains the states for `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`. If `load_checkpoint` points to the `modelling` folder, only the model weights will be loaded without any other states to support multi-stage training.
 * Save interval: `--save_interval`. The interval (steps) of saving checkpoints. The default value is 1000.
 * Checkpoint directory: `--save_dir`. The directory path to save checkpoint and intermediate states. Intermediate states include `lr_scheduler`, `optimizer`,`running_states.json` and `modelling`.
 * Tensorboard directory: `--tensorboard_dir`. The path to save tensorboard logs.
 * Configuration file: `--config_file`. The path to save the configuration file.
 * Number of epochs: `--num_epochs`. Number of training epochs. The default value is 1.
-* Micro batch size: `--micro_batch_size`. Batch size per GPU. The default value is 1.
+* Batch size: `--batch_size`. Batch size per GPU. The default value is 1. For PP, it refers to number of samples per step.
 * Learning rate: `--lr`. The default value is 3e-4.
 * Max length: `--max_length`. Max context length. The default value is 4096.
 * Mixed precision: `--mixed_precision`. The default value is "fp16". "fp16" and "bf16" are supported.
 * Gradient clipping: `--gradient_clipping`. The default value is 1.0.
-* Weight decay: `-w`, `--weight_decay`. The default value is 0.1.
-* Warmup steps: `-s`, `--warmup_steps`. The default value is calculated by 0.025 warmup ratio.
+* Weight decay: `--weight_decay`. The default value is 0.1.
+* Warmup steps: `--warmup_steps`. The default value is calculated by 0.025 warmup ratio.
 * Gradient checkpointing: `--use_grad_checkpoint`. The default value is `False`. This saves memory at the cost of speed. You'd better enable this option when training with a large batch size.
 * Flash attention: `--use_flash_attn`. If you want to use flash attention, you must install `flash-attn` and related packages. The default value is `False`. This is helpful to accelerate training while saving memory. We recommend you always use flash attention.
 * Freeze non-embedding parameters: `--freeze_non_embeds_params`. Freeze non-embedding parameters. It can be helpful to align embeddings after extending vocabulary size.
-* Tensor parallelism size: `--tp`. TP size for 3d Parallelism. The default value is 1.
-* Zero stage: `--zero`. Zero stage for 3d Parallelism. The default value is 1.
+* Tensor parallelism size: `--tp`. TP size for 3d parallelism. The default value is 1. Used for 3d plugin.
+* Pipeline parallelism size: `--pp`. PP size for 3d parallelism. The default value is 1. Used for 3d plugin.
+* Sequence parallelism size: `--sp`. SP size for 3d parallelism. The default value is 1. Used for 3d plugin.
+* Zero stage: `--zero`. Zero stage for 3d Parallelism. The default value is 1. Used for 3d plugin.
+* Sequence parallelism mode: `--sp_mode`. SP mode, used for 3d plugin. Choose from "split_gather", "ring", "all_to_all".
+* Switch for sequence parallelism: `--enable_sequence_parallelism`. Whether to enable SP, used for 3d plugin.
+* Zero CPU offload: `--zero_cpu_offload`. Whether to use offloading, used for 3d plugin.
+* Micro batch size: `--microbatch_size`. Batch size for each process in PP, used for 3d plugin.
+* Number of dummy sample: `--num_samples`. Number of samples for benchmarking.
+* Benchmark switch: `--benchmark`. Benchmark performance using random dataset.
 
 ##### 4.2 Arguments for Supervised Fine-tuning
 We add support for gradient accumulation and NEFTuning for supervised fine-tuning and thus there are two more arguments apart from the arguments listed in [4.1 Arguments for Pretraining](#41-arguments-for-pretraining).

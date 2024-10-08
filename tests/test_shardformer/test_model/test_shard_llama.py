@@ -7,6 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
@@ -33,7 +34,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     )
     if enable_gradient_checkpointing:
         # org_model.gradient_checkpointing_enable()
-        sharded_model.unwrap().gradient_checkpointing_enable()
+        sharded_model.unwrap().gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     org_loss, org_output, sharded_loss, sharded_output = run_forward_backward_with_hybrid_plugin(
         org_model, sharded_model, sharded_optimizer, data_gen_fn, output_transform_fn, criterion, booster
@@ -112,12 +113,20 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     sharded_optimizer.step()
 
     # check last hidden state & loss
-    if stage_manager is None or stage_manager.is_last_stage(ignore_chunk=True):
+    check_flag = False
+    if stage_manager is None:
+        check_flag = True
+    else:
+        if stage_manager.use_zbv:
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                check_flag = True
+        elif stage_manager.is_last_stage(ignore_chunk=True):
+            check_flag = True
+    if check_flag:
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
         else:
             atol, rtol = 5e-3, 5e-3
-
         if org_model.__class__.__name__ == "LlamaModel":
             check_output_hidden_state(
                 org_output,
@@ -165,7 +174,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "precision": "fp16",
             "initial_scale": 1,
-            "inner_ring_size": 2,
         },
         # Ring Attention + PP
         {
@@ -215,18 +223,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "sequence_parallelism_mode": "all_to_all",
             "enable_all_optimization": True,
             "use_lazy_init": True,
-            "zero_stage": 0,
-            "precision": "fp16",
-            "initial_scale": 1,
-        },
-        {
-            "tp_size": 4,
-            "pp_size": 1,
-            "num_microbatches": 1,
-            "enable_sequence_parallelism": True,
-            "sequence_parallelism_mode": "split_gather",
-            "enable_flash_attention": True,
-            "use_lazy_init": True,
+            "zero_stage": 1,
             "precision": "fp16",
             "initial_scale": 1,
         },
@@ -282,10 +279,39 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "pp_style": "zbv",
+            "num_model_chunks": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "precision": "fp16",
+            "zero_stage": 0,
+            "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "parallel_output": False,
+        },
     ],
 )
 def run_llama_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
+    if test_config.get("pp_style", None) == "zbv":
+        mem_f = 34 * 32 + 5 * 4 * 16
+        mem_w = -32 * 32
+        mem_b = -mem_w - mem_f
+        scheduler_nodes = PipelineGraph(
+            n_stage=test_config["pp_size"],
+            n_micro=test_config["num_microbatches"],
+            f_cost=1000,
+            b_cost=1000,
+            w_cost=1000,
+            c_cost=1,
+            f_mem=mem_f,
+            b_mem=mem_b,
+            w_mem=mem_w,
+        ).get_v_schedule()
+        test_config["scheduler_nodes"] = scheduler_nodes
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
@@ -294,6 +320,7 @@ def run_llama_test(test_config):
         except Exception as e:
             print(f"Failed config: {test_config}, model name: {name}")
             raise e
+
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()

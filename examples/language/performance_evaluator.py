@@ -6,7 +6,6 @@ import torch.distributed as dist
 from torch import Tensor
 from torch.profiler import ProfilerActivity, profile, schedule, tensorboard_trace_handler
 
-from colossalai.accelerator import get_accelerator
 from colossalai.cluster import DistCoordinator
 
 
@@ -22,8 +21,11 @@ def divide(x: float, y: float) -> float:
 def all_reduce_mean(x: float, world_size: int) -> float:
     if world_size == 1:
         return x
-    tensor = torch.tensor([x], device=get_accelerator().get_current_device())
-    dist.all_reduce(tensor)
+
+    # Use CPU tensor to avoid OOM/weird NCCl error
+    gloo_group = dist.new_group(backend="gloo")
+    tensor = torch.tensor([x], device="cpu")
+    dist.all_reduce(tensor, group=gloo_group)
     tensor = tensor / world_size
     return tensor.item()
 

@@ -7,6 +7,7 @@ import torch.distributed as dist
 from torch.distributed import ProcessGroup
 
 from colossalai.accelerator import get_accelerator
+from colossalai.quantization.fp8 import all_gather_fp8
 
 
 class TensorState(Enum):
@@ -166,6 +167,7 @@ class Chunk:
         self.grad_chunk = None
         # the async all-reduce/reduce-scatter work of this grad chunk (None means sync)
         self.grad_reduce_work = None
+        self.fp8_communication = False
 
     @property
     def memory_usage(self) -> Dict[str, int]:
@@ -521,9 +523,18 @@ class Chunk:
 
             alloc_storage(self.cuda_global_chunk)
             assert self.cuda_global_chunk.is_contiguous()
-            work = dist.all_gather_into_tensor(
-                self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
-            )
+            if self.fp8_communication:
+                work = all_gather_fp8(
+                    list(self.cuda_global_chunk.chunk(self.pg_size)),
+                    self.cuda_shard,
+                    self.torch_pg,
+                    fp8_format="e4m3",
+                    async_op=async_op,
+                )
+            else:
+                work = dist.all_gather_into_tensor(
+                    self.cuda_global_chunk, self.cuda_shard, self.torch_pg, async_op=async_op
+                )
 
             self.cuda_shard = None
             self.is_gathered = True

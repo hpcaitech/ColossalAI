@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
 from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.deepseek import (
+    DeepseekMoEGate_Col,
     DeepseekPipelineForwards,
     EPDeepseekMoE,
     get_deepseek_flash_attention_forward,
@@ -56,16 +57,24 @@ class DeepseekPolicy(Policy):
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
+        tp_size = self.shard_config.tensor_parallel_size
+
+        # modified for both SP and TP
+        num_q_heads = self.model.config.num_attention_heads
+        num_kv_heads = getattr(self.model.config, "num_key_value_heads", None)
         if sp_mode == "all_to_all":
+            num_q_heads //= sp_size
             decoder_attribute_replacement = {
-                "num_heads": self.model.config.num_attention_heads // sp_size,
+                "num_heads": num_q_heads,
             }
             if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
+                num_kv_heads //= sp_size
+                decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
+
         if self.shard_config.enable_sequence_parallelism:
             if self.pipeline_stage_manager is not None:
                 # NOTE: we are replacing model forward for both sequence parallelism and pipeline parallelism
@@ -97,6 +106,7 @@ class DeepseekPolicy(Policy):
         else:
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
+
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
             assert (
@@ -107,10 +117,15 @@ class DeepseekPolicy(Policy):
             ), f"The number of key_value heads must be divisible by tensor parallel size."
             decoder_attribute_replacement = {
                 "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
-                "self_attn.num_heads": self.model.config.num_attention_heads // self.shard_config.tensor_parallel_size,
-                "self_attn.num_key_value_heads": self.model.config.num_key_value_heads
-                // self.shard_config.tensor_parallel_size,
             }
+            num_q_heads //= tp_size
+            decoder_attribute_replacement = {
+                "self_attn.hidden_size": self.model.config.hidden_size // self.shard_config.tensor_parallel_size,
+                "self_attn.num_heads": num_q_heads,
+            }
+            if num_kv_heads:
+                num_kv_heads //= tp_size
+                decoder_attribute_replacement["self_attn.num_key_value_heads"] = num_kv_heads
 
             policy["DeepseekDecoderLayer"] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
@@ -118,27 +133,45 @@ class DeepseekPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate",
+                        target_module=DeepseekMoEGate_Col,
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "config": self.model.config,
+                        },
+                        ignore_if_not_exist=True,
                     ),
                 ],
             )
+
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs={
+                        "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                        "fp8_communication": self.shard_config.fp8_communication,
+                    },
                 ),
                 policy=policy,
                 target_key="DeepseekModel",
@@ -155,6 +188,7 @@ class DeepseekPolicy(Policy):
                             "ep_group": self.shard_config.ep_group,
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
+                            "fp8_communication": self.shard_config.fp8_communication,
                         },
                     )
                 ],
@@ -298,14 +332,14 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         policy = super().module_policy()
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
-            # add a new item for causal lm
+            # add a new item for casual lm
             new_item = {
                 "DeepseekForCausalLM": ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True),
+                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
                         )
                     ]
                 )

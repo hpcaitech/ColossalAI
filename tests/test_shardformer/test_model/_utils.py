@@ -157,7 +157,6 @@ def build_model_from_hybrid_plugin(
         sharded_optimizer = sharded_optim_class(sharded_model.parameters(), lr=1e-3)
 
     criterion = loss_fn
-
     plugin = pluggin_cls(**test_config)
     booster = Booster(plugin=plugin)
 
@@ -311,8 +310,16 @@ def check_output_hidden_state(
 ):
     org_hidden_state = org_output.last_hidden_state
 
-    if stage_manager and stage_manager.is_last_stage(ignore_chunk=True):
-        sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+    if stage_manager:
+        if stage_manager.use_zbv:
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+            else:
+                sharded_hidden_state = sharded_output.last_hidden_state
+        elif stage_manager.is_last_stage(ignore_chunk=True):
+            sharded_hidden_state = sharded_output["outputs"]["last_hidden_state"]
+        else:
+            sharded_hidden_state = sharded_output.last_hidden_state
     else:
         sharded_hidden_state = sharded_output.last_hidden_state
 
@@ -323,7 +330,6 @@ def check_output_hidden_state(
         sp_size = shard_config.sequence_parallel_size
         if org_hidden_state.shape[seq_dim] == sharded_hidden_state.shape[seq_dim] * sp_size:
             org_hidden_state = org_hidden_state.chunk(sp_size, dim=seq_dim)[dist.get_rank(sp_group)]
-
     assert_close(org_hidden_state.float(), sharded_hidden_state.float(), atol=atol, rtol=rtol)
 
 
@@ -390,7 +396,6 @@ def get_grad_tensors_for_check(
             pass
         if verbose and dist.get_rank() == 0:
             print(f"'{suffix}' grad: {org_grad}, {shard_grad}")
-
         grad_to_check[suffix] = {
             "org_grad": org_grad.float(),
             "shard_grad": shard_grad.float(),

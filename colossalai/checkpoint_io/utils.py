@@ -553,10 +553,10 @@ def load_state_dict_into_model(
 
     def load(module: nn.Module, state_dict, prefix="", load_sub_module: bool = True):
         local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
-        args = (state_dict, prefix, local_metadata, True, sub_missing_keys, [], error_msgs)
+        args = (state_dict, prefix, local_metadata, True, sub_missing_keys, unexpected_keys, error_msgs)
         # Parameters of module and children will start with prefix. We can exit early if there are none in this
         # state_dict
-        if len([key for key in state_dict if key.startswith(prefix)]) > 0:
+        if strict or len([key for key in state_dict if key.startswith(prefix)]) > 0:
             module._load_from_state_dict(*args)
         if load_sub_module:
             for name, child in module._modules.items():
@@ -570,9 +570,9 @@ def load_state_dict_into_model(
 
     if strict:
         if len(unexpected_keys) > 0:
-            error_msgs = "Unexpected key(s) in state_dict: {}. ".format(
-                ", ".join('"{}"'.format(k) for k in unexpected_keys)
-            )
+            error_msgs = [
+                "Unexpected key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in unexpected_keys))
+            ]
             raise RuntimeError(
                 "Error(s) in loading state_dict for {}:\n\t{}".format(model.__class__.__name__, "\n\t".join(error_msgs))
             )

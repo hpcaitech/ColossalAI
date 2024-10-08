@@ -36,7 +36,7 @@ default_inference_kwargs = {
     "calculate_loss": True,
     "all_classes": None,
     "language": "Chinese",
-    "pretrain": False,
+    "calculate_overall_loss": False,
     "max_new_tokens": 32,
 }
 

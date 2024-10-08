@@ -330,14 +330,15 @@ class OPTPipelineForwards:
         )
         if stage_manager.is_last_stage():
             logits = self.lm_head(outputs[0]).contiguous()
-            loss = dist_cross_entropy(
-                labels,
-                logits,
-                shard_config,
-                self.lm_head.out_features,
-                self.config.vocab_size,
-                self.model.decoder.dtype,
-            )
+            loss = None
+            if labels is not None:
+                loss = dist_cross_entropy(
+                    labels,
+                    logits,
+                    shard_config,
+                    self.lm_head.out_features,
+                    self.model.decoder.dtype,
+                )
 
             if not return_dict:
                 output = (logits,) + outputs[1:]
@@ -955,9 +956,9 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         )
 
         logits = self.lm_head(outputs[0]).contiguous()
-        loss = dist_cross_entropy(
-            labels, logits, shard_config, self.lm_head.out_features, self.config.vocab_size, self.model.decoder.dtype
-        )
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, self.model.decoder.dtype)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

@@ -1,6 +1,6 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Dict, Iterator, List, Optional, Tuple
 from weakref import proxy
@@ -20,6 +20,7 @@ from colossalai.amp.naive_amp.mixed_precision_mixin import (
 )
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.quantization.fp8 import all_gather_fp8, all_reduce_fp8, reduce_scatter_fp8
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 from ._utils import calculate_global_norm_from_list, has_inf_or_nan, release_param_grad, sync_tensor
@@ -86,6 +87,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
         overlap_allgather: bool = False,
+        fp8_communication: bool = False,
+        backward_context=None,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
 
@@ -127,6 +130,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self._overlap_allgather = overlap_allgather
         self._reduce_bucket_size = reduce_bucket_size
         self._communication_dtype = communication_dtype
+        self._fp8_communication = fp8_communication
+        self._backward_context = backward_context
 
         # gradient clipping
         self._clip_grad_norm = clip_grad_norm
@@ -330,7 +335,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     flat_grads = flat_grads.to(self._communication_dtype)
 
                 if not self._partition_grads:
-                    dist.all_reduce(flat_grads, group=bucket_store.torch_pg)
+                    if self._fp8_communication:
+                        all_reduce_fp8(flat_grads, group=bucket_store.torch_pg)
+                    else:
+                        dist.all_reduce(flat_grads, group=bucket_store.torch_pg)
                     if flat_grads.dtype != grad_dtype:
                         flat_grads = flat_grads.to(grad_dtype)
 
@@ -340,7 +348,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 else:
                     flat_grads_list = list(flat_grads.split(len(flat_grads) // bucket_store.world_size))
                     received_grad = torch.zeros_like(flat_grads_list[0])
-                    dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
+                    if self._fp8_communication:
+                        reduce_scatter_fp8(
+                            received_grad,
+                            flat_grads_list,
+                            group=bucket_store.torch_pg,
+                        )
+                    else:
+                        dist.reduce_scatter(received_grad, flat_grads_list, group=bucket_store.torch_pg)
 
                     if received_grad.dtype != grad_dtype:
                         received_grad = received_grad.to(grad_dtype)
@@ -416,7 +431,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if self.mixed_precision_mixin is not None:
             loss = self.mixed_precision_mixin.pre_backward(loss)
 
-        loss.backward(inputs=inputs, retain_graph=retain_graph)
+        ctx = nullcontext() if self._backward_context is None else self._backward_context()
+        with ctx:
+            loss.backward(inputs=inputs, retain_graph=retain_graph)
 
         if not self.require_grad_sync:
             return
@@ -567,18 +584,26 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     set_all_gather_handle(working_param, handle)
                 else:
                     if param_to_gather.numel() > self.pg_to_tensor_bucket[pg].max_size:
-                        dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
+                        if self._fp8_communication:
+                            all_gather_fp8(
+                                list(padded_working_param.chunk(dist.get_world_size(pg))),
+                                param_to_gather,
+                                pg,
+                                fp8_format="e4m3",
+                            )
+                        else:
+                            dist.all_gather_into_tensor(padded_working_param, param_to_gather, pg)
                         continue
                     try:
                         self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
                     except RuntimeError:
-                        self.pg_to_tensor_bucket[pg].all_gather(pg)
+                        self.pg_to_tensor_bucket[pg].all_gather(pg, fp8_communication=self._fp8_communication)
                         self.pg_to_tensor_bucket[pg].add_to_bucket(param_to_gather, write_back_tensor=working_param)
             self.optim.param_groups[group_id]["params"] = self._master_param_groups_of_current_rank[group_id]
         if not self._overlap_allgather:
             for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
                 if not tensor_bucket.is_empty():
-                    tensor_bucket.all_gather(pg)
+                    tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
     def _compute_grad_norm(self, dp_pg: ProcessGroup, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""

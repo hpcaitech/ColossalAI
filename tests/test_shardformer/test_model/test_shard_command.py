@@ -125,7 +125,14 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             atol, rtol = 5e-3, 5e-3
 
         if org_model.__class__.__name__ == "CohereModel":
-            check_output_hidden_state(org_output, sharded_output, stage_manager, atol=atol, rtol=rtol)
+            check_output_hidden_state(
+                org_output,
+                sharded_output,
+                stage_manager,
+                atol=atol,
+                rtol=rtol,
+                shard_config=booster.plugin.shard_config,
+            )
 
         check_loss(org_loss, sharded_loss, atol=atol, rtol=rtol)
 
@@ -274,7 +281,11 @@ def run_command_test(test_config):
     sub_model_zoo = model_zoo.get_sub_registry("transformers_command", "transformers_command_for_causal_lm")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-        check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        try:
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+        except Exception as e:
+            print(f"Failed test config: {test_config}")
+            raise e
 
     clear_layout_converter()
     Randomizer.reset_index()
