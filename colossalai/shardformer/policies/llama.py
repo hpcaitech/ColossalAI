@@ -16,12 +16,7 @@ from colossalai.shardformer.layer import (
     VocabParallelLMHead1D,
 )
 
-from ..modeling.llama import (
-    LlamaPipelineForwards,
-    get_llama_flash_attention_forward,
-    get_llama_flash_attention_model_forward,
-    get_lm_forward_with_dist_cross_entropy,
-)
+from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificationPolicy"]
@@ -99,11 +94,9 @@ class LlamaPolicy(Policy):
         if self.pipeline_stage_manager is None:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_llama_flash_attention_model_forward(
-                        self.shard_config,
-                        sp_mode=sp_mode,
-                        sp_size=sp_size,
-                        sp_group=sp_group,
+                    "forward": partial(
+                        LlamaPipelineForwards.llama_model_forward,
+                        shard_config=self.shard_config,
                     ),
                 },
                 policy=policy,
@@ -133,37 +126,37 @@ class LlamaPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode),
+                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
                     ),
                 ],
             )
@@ -173,7 +166,14 @@ class LlamaPolicy(Policy):
                 description=SubModuleReplacementDescription(
                     suffix="embed_tokens",
                     target_module=embedding_cls,
-                    kwargs={"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by},
+                    kwargs=(
+                        {
+                            "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                        }
+                        if self.shard_config.enable_tensor_parallelism
+                        else {"make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by}
+                    ),
                 ),
                 policy=policy,
                 target_key=LlamaModel,
@@ -318,6 +318,7 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                             kwargs={
                                 "gather_output": not self.shard_config.parallel_output,
                                 "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
                             },
                         )
                     ],
@@ -345,7 +346,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         elif self.shard_config.enable_tensor_parallelism or self.shard_config.enable_sequence_parallelism:
             # Compute loss distributedly along the sequence dimension
             new_item[LlamaForCausalLM].method_replacement = {
-                "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                # "forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)
+                "forward": partial(LlamaPipelineForwards.llama_for_causal_lm_forward, shard_config=self.shard_config)
             }
         return policy
 
@@ -388,7 +390,12 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                 LlamaForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
-                            suffix="score", target_module=Linear1D_Col, kwargs=dict(gather_output=True)
+                            suffix="score",
+                            target_module=Linear1D_Col,
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                            ),
                         )
                     ]
                 )

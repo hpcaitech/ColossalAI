@@ -9,6 +9,7 @@ on:
     paths:
       - "examples/**"
       - "!examples/**.md"
+      - ".github/workflows/example_check_on_pr.yml"
 
 jobs:
   # This is for changed example files detect and output a matrix containing all the corresponding directory name.
@@ -89,7 +90,7 @@ jobs:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-changed-example.outputs.matrix)}}
     container:
-      image: hpcaitech/pytorch-cuda:2.1.0-12.1.0
+      image: hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 30
     concurrency:
@@ -107,7 +108,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
 
       - name: Store Colossal-AI Cache
         run: |

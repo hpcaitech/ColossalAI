@@ -130,7 +130,7 @@ def check_moe_checkpoint(test_config):
         dist.barrier()
         if dist.get_rank() == 0:
             saved_model = model_cls.from_pretrained(model_dir).cuda().to(dtype)
-            check_model_equal(orig_model, saved_model)
+            check_model_equal(orig_model, saved_model, dtype=dtype)
             saved_model.save_pretrained(hf_model_dir)
         dist.barrier()
         # check load model
@@ -138,7 +138,7 @@ def check_moe_checkpoint(test_config):
         new_optimizer = Adam(new_model.parameters(), lr=1e-3)
         new_model, new_optimizer, *_ = booster.boost(model=new_model, optimizer=new_optimizer)
         booster.load_model(new_model, hf_model_dir)
-        check_model_equal(model, new_model)
+        check_model_equal(model, new_model, dtype=dtype)
 
         # check save optimizer
         optimizer.step()

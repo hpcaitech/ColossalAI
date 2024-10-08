@@ -27,7 +27,16 @@ def data_gen_for_lm():
     # LM data gen
     # the `labels` of LM is the token of the output, cause no padding, use `input_ids` as `labels`
     data = data_gen()
-    data["labels"] = data["input_ids"].clone()
+
+    # Test padded sequence for Ring Attention
+    padding = torch.zeros(1, data["input_ids"].shape[1] // 2, dtype=torch.long)
+    data["input_ids"] = torch.cat([data["input_ids"], padding], dim=1)
+    data["attention_mask"] = torch.cat([data["attention_mask"], padding], dim=1)
+
+    ignore_idx = -100
+    labels = data["input_ids"].clone()
+    labels[~data["attention_mask"].bool()] = ignore_idx
+    data["labels"] = labels
     return data
 
 

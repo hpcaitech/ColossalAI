@@ -65,13 +65,18 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
         forced_dtype: Optional[torch.dtype] = None,
         overlap_allgather: bool = False,
     ):
-        pg_param_list = {
-            dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
-            moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
-        }
+        if dp_process_group is moe_dp_group:
+            pg_param_list = {
+                dp_process_group: list(model.parameters()),
+            }
+        else:
+            pg_param_list = {
+                dp_process_group: list(filter(lambda p: not is_moe_tensor(p), model.parameters())),
+                moe_dp_group: list(filter(is_moe_tensor, model.parameters())),
+            }
 
-        if len(pg_param_list[dp_process_group]) == 0 or len(pg_param_list[moe_dp_group]) == 0:
-            raise ValueError("No parameters found in dp_process_group or moe_dp_group")
+        if len(pg_param_list[moe_dp_group]) == 0:
+            raise ValueError("No parameters found in moe_dp_group, please consider using HybridParallelPlugin instead")
 
         super().__init__(
             model=model,
@@ -166,7 +171,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
-        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
+        overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
     def __init__(
@@ -216,6 +223,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         moe_dp_outside: bool = True,
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
+        fp8_communication: bool = False,
+        use_fp8: bool = False,
     ) -> None:
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
@@ -339,6 +348,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
+        self.use_fp8 = use_fp8
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -357,6 +367,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
+            fp8_communication=fp8_communication,
         )
         self.amp_config = dict(
             initial_scale=initial_scale,
@@ -415,6 +426,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 and self.enable_sequence_parallelism
                 and self.sequence_parallelism_mode == "all_to_all"
             )
+
+            # sync gradients across DP * SP ranks
+            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
+                dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
+            else:
+                dp_group = self.dp_group
+
             if use_ddp:
                 self.logger.warning(
                     f"Will have to check all params are used in pytorch DDP since not all experts are always activated",
@@ -422,16 +440,10 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 )
                 self.ddp_config["find_unused_parameters"] = True
 
-                if dist.get_process_group_ranks(self.dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
+                if dist.get_process_group_ranks(dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
                     raise ValueError(
-                        f"if pytorch ddp is used, dp_group and moe_dp_group are expected to be the same since DDP can only reduce grad across a single group, but found dp_group {dist.get_process_group_ranks(self.dp_group)} and moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)}, you might want to use HybridParallelPlugin (i.e. set ep_size = 1) or set zero_stage > 0"
+                        f"if pytorch DDP is used, dp_group and moe_dp_group are expected to be the same since DDP can only reduce grad across a single group, but found dp_group {dist.get_process_group_ranks(dp_group)} and moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)}, you might want to modify your config to bypass DDP \nhint: check the above ddp condition to by pass this"
                     )
-
-            # sync gradients across DP * SP ranks
-            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
-            else:
-                dp_group = self.dp_group
 
             model = HybridParallelModule(
                 module=model,
@@ -443,6 +455,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 use_ddp=use_ddp,
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
+                use_fp8=self.use_fp8,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.ep_size > 1:
@@ -473,6 +486,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                         tp_process_group=self.tp_group,
                     )
             else:
+                is_zero = True
                 if self.dp_size <= 1:
                     self.logger.warning(
                         "Use Zero Optimizer when data parallel size is 1 may introduce unnecessary overhead. "

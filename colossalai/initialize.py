@@ -9,6 +9,7 @@ import os
 # https://forums.developer.nvidia.com/t/how-many-streams-maximum-number-of-streams/6571/16
 os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
+import torch
 import torch.distributed as dist
 
 from colossalai.accelerator import get_accelerator
@@ -63,6 +64,11 @@ def launch(
         cur_accelerator.set_device(local_rank)
 
     set_seed(seed)
+
+    try:
+        torch._dynamo.config.optimize_ddp = world_size > 1
+    except AttributeError:
+        pass
 
     if verbose:
         logger = get_dist_logger()

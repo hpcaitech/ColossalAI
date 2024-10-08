@@ -52,7 +52,7 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install -v .
+          BUILD_EXT=1 pip install -v -e .
           pip install --no-cache-dir -r requirements/requirements-test.txt
 
       - name: Install tensornvme

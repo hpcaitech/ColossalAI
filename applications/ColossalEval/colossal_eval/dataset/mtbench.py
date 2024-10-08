@@ -14,7 +14,7 @@ default_inference_kwargs = {
     "calculate_loss": False,
     "all_classes": None,
     "language": "English",
-    "pretrain": False,
+    "calculate_overall_loss": False,
     "max_new_tokens": 1024,
     "turns": 2,
 }

@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
+import torch.functional as F
 from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
@@ -24,14 +24,17 @@ from colossalai.moe._operation import (
     all_to_all_uneven,
 )
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
     gather_forward_split_backward,
+    linear_with_async_comm,
     split_forward_gather_backward,
 )
-from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row
+from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row, ParallelModule
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.shardformer.shard.utils import set_tensors_to_none
+from colossalai.tensor.d_tensor.api import shard_rowwise, sharded_tensor_to_existing_param
 from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_group
 
 
@@ -57,11 +60,17 @@ class AddAuxiliaryLoss(torch.autograd.Function):
         return grad_output, grad_loss
 
 
-class EPDeepseekMoE(nn.Module):
+class EPDeepseekMoE(ParallelModule):
     def __init__(self):
         raise RuntimeError(f"Please use `from_native_module` to create an instance of {self.__class__.__name__}")
 
-    def setup_process_groups(self, tp_group: ProcessGroup, moe_dp_group: ProcessGroup, ep_group: ProcessGroup):
+    def setup_process_groups(
+        self,
+        tp_group: ProcessGroup,
+        moe_dp_group: ProcessGroup,
+        ep_group: ProcessGroup,
+        fp8_communication: bool = False,
+    ):
         assert tp_group is not None
         assert moe_dp_group is not None
         assert ep_group is not None
@@ -70,6 +79,7 @@ class EPDeepseekMoE(nn.Module):
         self.ep_rank = dist.get_rank(ep_group)
         self.num_experts = self.config.n_routed_experts
         assert self.num_experts % self.ep_size == 0
+        self.fp8_communication = fp8_communication
 
         self.ep_group = ep_group
         self.num_experts_per_ep = self.num_experts // self.ep_size
@@ -86,12 +96,31 @@ class EPDeepseekMoE(nn.Module):
         self.tp_group = tp_group
         if self.tp_group.size() > 1:
             for expert in held_experts:
-                expert.gate_proj = Linear1D_Col.from_native_module(expert.gate_proj, self.tp_group)
-                expert.up_proj = Linear1D_Col.from_native_module(expert.up_proj, self.tp_group)
-                expert.down_proj = Linear1D_Row.from_native_module(expert.down_proj, self.tp_group)
+                expert.gate_proj = Linear1D_Col.from_native_module(
+                    expert.gate_proj, self.tp_group, fp8_communication=self.fp8_communication
+                )
+                expert.up_proj = Linear1D_Col.from_native_module(
+                    expert.up_proj, self.tp_group, fp8_communication=self.fp8_communication
+                )
+                expert.down_proj = Linear1D_Row.from_native_module(
+                    expert.down_proj, self.tp_group, fp8_communication=self.fp8_communication
+                )
 
         for p in self.experts.parameters():
             set_moe_tensor_ep_group(p, ep_group)
+
+        if self.config.n_shared_experts is not None:
+            self.shared_experts.gate_proj = Linear1D_Col.from_native_module(
+                self.shared_experts.gate_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
+
+            self.shared_experts.up_proj = Linear1D_Col.from_native_module(
+                self.shared_experts.up_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
+
+            self.shared_experts.down_proj = Linear1D_Row.from_native_module(
+                self.shared_experts.down_proj, self.tp_group, fp8_communication=self.fp8_communication
+            )
 
     @staticmethod
     def from_native_module(
@@ -106,7 +135,8 @@ class EPDeepseekMoE(nn.Module):
         if module.__class__.__name__ == "DeepseekMLP":
             return module
         module.__class__ = EPDeepseekMoE
-        module.setup_process_groups(tp_group, moe_dp_group, ep_group)
+        fp8_communication = kwargs.get("fp8_communication", False)
+        module.setup_process_groups(tp_group, moe_dp_group, ep_group, fp8_communication=fp8_communication)
         return module
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
@@ -130,18 +160,32 @@ class EPDeepseekMoE(nn.Module):
         output_split_sizes = torch.zeros_like(input_split_sizes)
 
         # [n0, n1, n2, n3] [m0, m1, m2, m3] -> [n0, n1, m0, m1] [n2, n3, m2, m3]
-        dist.all_to_all_single(output_split_sizes, input_split_sizes, group=self.ep_group)
+        dist.all_to_all_single(
+            output_split_sizes,
+            input_split_sizes,
+            group=self.ep_group,
+        )
 
         with torch.no_grad():
             activate_experts = output_split_sizes[: self.num_experts_per_ep].clone()
             for i in range(1, self.ep_size):
                 activate_experts += output_split_sizes[i * self.num_experts_per_ep : (i + 1) * self.num_experts_per_ep]
             activate_experts = (activate_experts > 0).float()
-        dist.all_reduce(activate_experts, group=self.moe_dp_group)
+
+        if self.fp8_communication:
+            all_reduce_fp8(activate_experts, group=self.moe_dp_group)
+        else:
+            dist.all_reduce(activate_experts, group=self.moe_dp_group)
 
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
-        output_states, _ = all_to_all_uneven(dispatch_states, input_split_list, output_split_list, self.ep_group)
+        output_states, _ = all_to_all_uneven(
+            dispatch_states,
+            input_split_list,
+            output_split_list,
+            self.ep_group,
+            fp8_communication=self.fp8_communication,
+        )
         output_states = EPGradScalerIn.apply(output_states, self.ep_size)
 
         if output_states.size(0) > 0:
@@ -167,7 +211,9 @@ class EPDeepseekMoE(nn.Module):
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)
-        dispatch_states, _ = all_to_all_uneven(output_states, output_split_list, input_split_list, self.ep_group)
+        dispatch_states, _ = all_to_all_uneven(
+            output_states, output_split_list, input_split_list, self.ep_group, fp8_communication=self.fp8_communication
+        )
         recover_token_idx = torch.empty_like(flat_topk_token_idx)
         recover_token_idx[flat_topk_token_idx] = torch.arange(
             flat_topk_token_idx.size(0), device=flat_topk_token_idx.device
@@ -181,6 +227,79 @@ class EPDeepseekMoE(nn.Module):
         if self.config.n_shared_experts is not None:
             output_hidden_states = output_hidden_states + self.shared_experts(identity)
         return output_hidden_states
+
+
+class DeepseekMoEGate_Col(ParallelModule):
+    def parallel_linear(self, hidden_states):
+        assert (
+            hidden_states.shape[-1] == self.weight.shape[-1]
+        ), "Invalid shapes in Linear1D_Col forward: input={}, weight={}. Expected last dim of input {}.".format(
+            hidden_states.shape, self.weight.shape, self.weight.shape[-1]
+        )
+
+        output = linear_with_async_comm(
+            hidden_states, self.weight, None, self.process_group, True, fp8_communication=self.fp8_communication
+        )
+
+        # All-gather across the partitions.
+        output = gather_forward_split_backward(
+            output, dim=-1, process_group=self.process_group, fp8_communication=self.fp8_communication
+        )
+        return output
+
+    def forward(self, hidden_states):
+        bsz, seq_len, h = hidden_states.shape
+        ### compute gating score
+        hidden_states = hidden_states.view(-1, h)
+        logits = self.parallel_linear(hidden_states)
+        if self.scoring_func == "softmax":
+            scores = logits.softmax(dim=-1)
+        else:
+            raise NotImplementedError(f"insupportable scoring function for MoE gating: {self.scoring_func}")
+
+        ### select top-k experts
+        topk_weight, topk_idx = torch.topk(scores, k=self.top_k, dim=-1, sorted=False)
+
+        ### norm gate to sum 1
+        if self.top_k > 1 and self.norm_topk_prob:
+            denominator = topk_weight.sum(dim=-1, keepdim=True) + 1e-20
+            topk_weight = topk_weight / denominator
+
+        ### expert-level computation auxiliary loss
+        if self.training and self.alpha > 0.0:
+            scores_for_aux = scores
+            aux_topk = self.top_k
+            # always compute aux loss based on the naive greedy topk method
+            topk_idx_for_aux_loss = topk_idx.view(bsz, -1)
+            if self.seq_aux:
+                scores_for_seq_aux = scores_for_aux.view(bsz, seq_len, -1)
+                ce = torch.zeros(bsz, self.n_routed_experts, device=hidden_states.device)
+                ce.scatter_add_(
+                    1, topk_idx_for_aux_loss, torch.ones(bsz, seq_len * aux_topk, device=hidden_states.device)
+                ).div_(seq_len * aux_topk / self.n_routed_experts)
+                aux_loss = (ce * scores_for_seq_aux.mean(dim=1)).sum(dim=1).mean() * self.alpha
+            else:
+                mask_ce = F.one_hot(topk_idx_for_aux_loss.view(-1), num_classes=self.n_routed_experts)
+                ce = mask_ce.float().mean(0)
+                Pi = scores_for_aux.mean(0)
+                fi = ce * self.n_routed_experts
+                aux_loss = (Pi * fi).sum() * self.alpha
+        else:
+            aux_loss = None
+
+        return topk_idx, topk_weight, aux_loss
+
+    @staticmethod
+    def from_native_module(
+        module, process_group: ProcessGroup, config, gather_output, fp8_communication
+    ) -> "DeepseekMoEGate_Col":
+        LazyInitContext.materialize(module)
+        module.process_group = process_group
+        module.fp8_communication = fp8_communication
+        sharded_weight = shard_rowwise(module.weight.data, process_group)
+        sharded_tensor_to_existing_param(sharded_weight, module.weight)
+        module.__class__ = DeepseekMoEGate_Col
+        return module
 
 
 class DeepseekPipelineForwards:
@@ -534,9 +653,9 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
-            query_states = all_to_all_comm(query_states, sp_group)
-            key_states = all_to_all_comm(key_states, sp_group)
-            value_states = all_to_all_comm(value_states, sp_group)
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
         # Flash attention requires the input to have the shape
         # batch_size x seq_length x head_dim x hidden_dim
@@ -595,7 +714,9 @@ def get_deepseek_flash_attention_forward(shard_config, sp_mode=None, sp_size=Non
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             attn_output = attn_output.reshape(bsz, q_len, self.num_heads * self.head_dim).contiguous()  # (1, 8, 128)
-            attn_output = all_to_all_comm(attn_output, sp_group, scatter_dim=1, gather_dim=2)  # (1, 4, 256)
+            attn_output = all_to_all_comm(
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )  # (1, 4, 256)
         else:
             attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
@@ -669,6 +790,7 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
         # TODO: upgrade transformers to 4.44.0 to fix the bug, remove the hard code.
         self._use_flash_attention_2 = shard_config.enable_flash_attention
         self._use_sdpa = False if shard_config.enable_flash_attention else self._use_sdpa
+
         if self._use_flash_attention_2:
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
@@ -688,9 +810,13 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
             )
 
         if sp_mode in ["ring", "split_gather"]:
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            inputs_embeds = split_forward_gather_backward(inputs_embeds, 1, sp_group, 1 / sp_size)
+            inputs_embeds = split_forward_gather_backward(
+                inputs_embeds, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+            )
         # embed positions
         hidden_states = inputs_embeds
 
@@ -734,9 +860,13 @@ def get_deepseek_flash_attention_model_forward(shard_config, sp_mode=None, sp_si
         hidden_states = self.norm(hidden_states)
 
         if sp_mode == "ring" or sp_mode == "split_gather":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group)
+            hidden_states = gather_forward_split_backward(
+                hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
         elif sp_mode == "all_to_all":
-            hidden_states = gather_forward_split_backward(hidden_states, 1, sp_group, grad_scale=sp_size)
+            hidden_states = gather_forward_split_backward(
+                hidden_states, 1, sp_group, grad_scale=sp_size, fp8_communication=shard_config.fp8_communication
+            )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:
