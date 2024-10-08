@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from copy import deepcopy
 from functools import partial
 from typing import Tuple
@@ -58,6 +59,9 @@ class MlpModel(nn.Module):
             # fwd middle
             else:
                 return {"hidden_states": held_layers(hidden_states)}
+
+    def no_sync(self):
+        return nullcontext()
 
 
 def assert_optim_param_groups(optim_base_param_groups, optim_pp_param_groups):
