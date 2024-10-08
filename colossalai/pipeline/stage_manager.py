@@ -83,7 +83,6 @@ class PipelineStageManager:
         stage = self.stage if stage is None else stage
         num_model_chunks = self.num_model_chunks if num_model_chunks is None else num_model_chunks
         num_stages = self.num_stages if num_stages is None else num_stages
-        self.num_model_chunks: int = num_model_chunks
 
         num_layers_per_stage_accumulated = np.insert(np.cumsum(layers_per_stage), 0, 0)
 
