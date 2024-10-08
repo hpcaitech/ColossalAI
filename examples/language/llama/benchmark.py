@@ -21,6 +21,7 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchF
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 
 warnings.filterwarnings("ignore")
@@ -91,7 +92,7 @@ def main():
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
 
-    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
+    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved", "zbv"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code")
     parser.add_argument(
@@ -137,6 +138,23 @@ def main():
     # ==============================
     # Initialize Booster
     # ==============================
+    scheduler_nodes = None
+    if args.pp_style == "zbv":
+        mem_f = 34 * 32 + 5 * 4 * 16
+        mem_w = -32 * 32
+        mem_b = -mem_w - mem_f
+        scheduler_nodes = PipelineGraph(
+            n_stage=args.pp,
+            n_micro=args.b // args.mbs,
+            f_cost=1000,
+            b_cost=1000,
+            w_cost=1000,
+            c_cost=1,
+            f_mem=mem_f,
+            b_mem=mem_b,
+            w_mem=mem_w,
+        ).get_v_schedule()
+
     use_empty_init = True
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -227,6 +245,7 @@ def main():
             overlap_allgather=args.overlap_allgather,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
+            scheduler_nodes=scheduler_nodes,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
