@@ -442,7 +442,7 @@ class RingAttention(torch.autograd.Function):
             Tuple[dist.ProcessGroup, dist.ProcessGroup]: Inner-ring process group and inter-ring process group.
         """
         sp_size = dist.get_world_size(sp_group)
-        tp_size = dist.get_world_size(tp_group)
+        tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
         sp_rank = dist.get_rank(sp_group)
 
         if inner_ring_size is None:
