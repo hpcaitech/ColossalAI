@@ -422,13 +422,18 @@ class RingAttention(torch.autograd.Function):
     ATTN_DONE: torch.cuda.Event = None
     SP_STREAM: torch.cuda.Stream = None
     SP_GROUP: dist.ProcessGroup = None
-    # duplicate process group for concurrent NCCL streams
-    # while both PyTorch and NCCL warns(https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
-    # against this, in practice it seems to work fine.
+
+    # NOTE: Duplicating PGs for concurrent NCCL streams is a risky hack -- while it may increase throughput,
+    # both PyTorch and NCCL warn against this. (https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
+    # LoongTrain's original double ring impl. uses concurrent PGs
+    # (https://github.com/InternLM/InternEvo/blob/e52f2ffc9acf818e8f2b1f97dfc69ceb2f06e154/internlm/model/ops/ring_flash_attn/zigzag_ring_flash_attn_with_sliding_window.py#L192)
+    # but I confirmed with Pytorch developers this can cause obscure "Software caused connection abort" errors.
+    # (https://github.com/pytorch/pytorch/issues/132852)
+    # NOTE: In general, a smarter idea is put as many P2P calls as possible into one `batch_isend_irecv`.
     INNER_RING_GROUP: dist.ProcessGroup = None
-    INNER_RING_GROUP_COPY: dist.ProcessGroup = None
+    # INNER_RING_GROUP_COPY: dist.ProcessGroup = None
     INTER_RING_GROUP: dist.ProcessGroup = None
-    INTER_RING_GROUP_COPY: dist.ProcessGroup = None
+    # INTER_RING_GROUP_COPY: dist.ProcessGroup = None
 
     @staticmethod
     def get_double_ring_groups(sp_group, inner_ring_size=None):
@@ -733,6 +738,8 @@ class RingAttention(torch.autograd.Function):
                     # NOTE: waiting outside the current stream will NOT correctly synchronize.
                     if i > 0:
                         local_kv_comms[(i + 1) % 2].wait()
+
+                    # Prefetch
                     if i == 0:
                         _kv_comm(i)
 
@@ -766,7 +773,7 @@ class RingAttention(torch.autograd.Function):
                         ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
                     RingAttention.ATTN_DONE.record()
                     # Pipeline the next KV comm with output correction instead of the next flash attn
-                    # to minimize idle time when comm takes longer than attn.
+                    # kernel, to minimize bubble when comm takes longer than attn.
                     _kv_comm(i + 1)
 
                     block_softmax_lse[i % 2] = (
@@ -799,6 +806,7 @@ class RingAttention(torch.autograd.Function):
                     if i > 0:
                         local_kv_comms[(i + 1) % 2].wait()
 
+                    # Prefetch
                     if i == 0:
                         _kv_comm(i)
 
