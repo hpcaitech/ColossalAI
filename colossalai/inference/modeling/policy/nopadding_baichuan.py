@@ -57,7 +57,9 @@ class NoPaddingBaichuanModelInferPolicy(LlamaForCausalLMPolicy, RPC_PARAM):
                         target_module=NopadBaichuanMLP,
                     ),
                     SubModuleReplacementDescription(
-                        suffix="self_attn.W_pack", target_module=FusedLinear1D_Col, kwargs={"n_fused": 3}
+                        suffix="self_attn.W_pack",
+                        target_module=FusedLinear1D_Col,
+                        kwargs={"split_sizes": [self.model.config.hidden_size] * 3},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",

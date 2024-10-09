@@ -44,7 +44,7 @@ __all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col"
 
 
 def split_fused_qkv_in_gpt2_style(
-    qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup, is_transposed: bool = False
+    qkv: torch.Tensor, split_sizes: List[int], process_group: ProcessGroup, is_transposed: bool = False
 ):
     """
     The fused qkv tensor looks like [Q1, Q2, K1, K2, V1, V2], this function will split them into [Q1, K1, V1] and [Q2, K2, V2].
@@ -58,7 +58,11 @@ def split_fused_qkv_in_gpt2_style(
     # get the number of slice for the fused qkv
     rank = dist.get_rank(group=process_group)
     world_size = dist.get_world_size(group=process_group)
-    order = torch.arange(world_size * n_fused)
+    order = torch.arange(world_size * len(split_sizes))
+    new_split_sizes = []
+    for sz in split_sizes:
+        assert sz % world_size == 0, f"size {sz} is not divisible by world_size {world_size}"
+        new_split_sizes.extend([sz // world_size] * world_size)
 
     # split the fused qkv
     # from
@@ -66,9 +70,11 @@ def split_fused_qkv_in_gpt2_style(
     # to
     # [Q1, Q2, K1, K2, V1, V2]
     if is_transposed:
-        weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
+        # weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
+        weight_chunks = torch.split(qkv, new_split_sizes, dim=-1)
     else:
-        weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=0)
+        # weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=0)
+        weight_chunks = torch.split(qkv, new_split_sizes, dim=0)
 
     # rearrange the slice into the final order
     # from
@@ -85,7 +91,7 @@ def split_fused_qkv_in_gpt2_style(
 
 
 def gather_fused_qkv_in_gpt2_style(
-    qkv: torch.Tensor, n_fused: int, process_group: ProcessGroup, is_transposed: bool = False
+    qkv: torch.Tensor, split_sizes: List[int], process_group: ProcessGroup, is_transposed: bool = False
 ):
     """
     The splitted qkv tensor looks like [Q1, K1, V1] and [Q2, K2, V2], this function will gather them into [Q1, Q2, K1, K2, V1, V2].
@@ -97,6 +103,10 @@ def gather_fused_qkv_in_gpt2_style(
         is_transposed (bool): generally the tensor is the shape of (out_features, in_features). Set this to True if the tensor is in the shape (in_features, out_features).
     """
     world_size = dist.get_world_size(group=process_group)
+    new_split_sizes = []
+    for sz in split_sizes:
+        assert sz % world_size == 0, f"size {sz} is not divisible by world_size {world_size}"
+        new_split_sizes.extend([sz // world_size] * world_size)
 
     # gather the tensors
     # from
@@ -121,13 +131,15 @@ def gather_fused_qkv_in_gpt2_style(
     # to
     # [Q1, Q2, K1, K2, V1, V2]
     if is_transposed:
-        weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
+        # weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
+        weight_chunks = torch.split(gather_weight, new_split_sizes, dim=-1)
     else:
-        weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=0)
+        # weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=0)
+        weight_chunks = torch.split(gather_weight, new_split_sizes, dim=0)
 
     reordered_chunk_list = []
-    for i in range(n_fused):
-        reordered_chunk_list.extend(weight_chunks[i::n_fused])
+    for i in range(len(split_sizes)):
+        reordered_chunk_list.extend(weight_chunks[i :: len(split_sizes)])
 
     if is_transposed:
         reordered_gather_weight = torch.cat(reordered_chunk_list, dim=-1)
@@ -169,6 +181,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self,
         in_features: int,
         out_features: int,
+        split_sizes: List[int],
         bias: bool = True,
         dtype: torch.dtype = None,
         device: torch.device = None,
@@ -178,7 +191,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         seq_parallel_mode: str = None,
         overlap: bool = False,
         skip_bias_add: bool = False,
-        n_fused: int = 3,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
@@ -195,10 +207,14 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
-        self.n_fused = n_fused
+        self.split_sizes = split_sizes
         self.process_group = process_group
         self.async_communication = async_communication
         self.fp8_communication = fp8_communication
+
+        assert (
+            sum(split_sizes) == out_features
+        ), f"The sum of split_sizes({sum(split_sizes)}) should be equal to out_features({out_features})."
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -223,10 +239,10 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             self.weight = weight
 
         def shard_fn(tensor):
-            return split_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
+            return split_fused_qkv_in_gpt2_style(tensor, self.split_sizes, self.process_group, True)
 
         def gather_fn(tensor):
-            return gather_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, True)
+            return gather_fused_qkv_in_gpt2_style(tensor, self.split_sizes, self.process_group, True)
 
         if not is_customized_distributed_tensor(self.weight):
             with torch.no_grad():
@@ -252,7 +268,11 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], *args, **kwargs
+        module: nn.Module,
+        process_group: Union[ProcessGroup, List[ProcessGroup]],
+        split_sizes: List[int],
+        *args,
+        **kwargs,
     ) -> ParallelModule:
         r"""
         Convert a huggingface layer `Conv1D` in gpt2 to a parallelized linear layer.
@@ -291,6 +311,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
+            split_sizes=split_sizes,
             *args,
             **kwargs,
         )
@@ -628,6 +649,7 @@ class FusedLinear1D_Col(ParallelModule):
         self,
         in_features: int,
         out_features: int,
+        split_sizes: List[int],
         bias: bool = True,
         dtype: torch.dtype = None,
         device: torch.device = None,
@@ -635,7 +657,6 @@ class FusedLinear1D_Col(ParallelModule):
         async_communication: bool = False,
         gather_output: bool = False,
         skip_bias_add: bool = False,
-        n_fused: int = 3,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
@@ -649,10 +670,14 @@ class FusedLinear1D_Col(ParallelModule):
         self.gather_output = gather_output
         self.skip_bias_add = skip_bias_add
         self.device = device
-        self.n_fused = n_fused
+        self.split_sizes = split_sizes
         self.process_group = process_group
         self.async_communication = async_communication
         self.fp8_communication = fp8_communication
+
+        assert (
+            sum(split_sizes) == out_features
+        ), f"The sum of split_sizes({sum(split_sizes)}) should be equal to out_features({out_features})."
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -677,10 +702,10 @@ class FusedLinear1D_Col(ParallelModule):
             self.weight = weight
 
         def shard_fn(tensor):
-            return split_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, False)
+            return split_fused_qkv_in_gpt2_style(tensor, self.split_sizes, self.process_group, False)
 
         def gather_fn(tensor):
-            return gather_fused_qkv_in_gpt2_style(tensor, self.n_fused, self.process_group, False)
+            return gather_fused_qkv_in_gpt2_style(tensor, self.split_sizes, self.process_group, False)
 
         if not is_customized_distributed_tensor(self.weight):
             with torch.no_grad():
@@ -706,7 +731,11 @@ class FusedLinear1D_Col(ParallelModule):
 
     @staticmethod
     def from_native_module(
-        module: nn.Module, process_group: Union[ProcessGroup, List[ProcessGroup]], n_fused: int, *args, **kwargs
+        module: nn.Module,
+        process_group: Union[ProcessGroup, List[ProcessGroup]],
+        split_sizes: List[int],
+        *args,
+        **kwargs,
     ) -> ParallelModule:
         r"""
         Convert a fused `torch.nn.linear` layer to a parallelized linear layer.
@@ -737,7 +766,7 @@ class FusedLinear1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            n_fused=n_fused,
+            n_fused=split_sizes,
             *args,
             **kwargs,
         )

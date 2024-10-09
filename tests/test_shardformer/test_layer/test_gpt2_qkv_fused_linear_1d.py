@@ -66,7 +66,7 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel_mode: str, overlap: b
         process_group=None,
         gather_output=True,
         seq_parallel_mode=seq_parallel_mode,
-        n_fused=3,
+        split_sizes=[64] * 3,
         overlap=overlap,
     )
 
@@ -94,7 +94,7 @@ def check_linear_conv_1d_col(lazy_init: bool, seq_parallel_mode: str, overlap: b
     out.sum().backward()
     gather_out.sum().backward()
 
-    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, 3, None, True)
+    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, [64] * 3, None, True)
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 

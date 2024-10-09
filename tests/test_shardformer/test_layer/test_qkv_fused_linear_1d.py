@@ -63,7 +63,7 @@ def check_linear_conv_1d_col(lazy_init: bool):
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
     linear_conv_col = GPT2FusedLinearConv1D_Col.from_native_module(
-        linear_copy, process_group=None, gather_output=True, n_fused=3
+        linear_copy, process_group=None, gather_output=True, split_sizes=[64] * 3
     )
 
     assert linear.weight.shape == torch.Size([48, 192])
@@ -87,7 +87,7 @@ def check_linear_conv_1d_col(lazy_init: bool):
     out.sum().backward()
     gather_out.sum().backward()
 
-    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, 3, None, True)
+    target_grad = split_fused_qkv_in_gpt2_style(linear.weight.grad, [64] * 3, None, True)
     assert_close(target_grad, linear_conv_col.weight.grad)
 
 

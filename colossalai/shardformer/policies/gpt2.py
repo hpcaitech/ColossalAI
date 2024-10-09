@@ -92,7 +92,7 @@ class GPT2Policy(Policy):
                         suffix="attn.c_attn",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
-                            "n_fused": 3,
+                            "split_sizes": [self.model.config.hidden_size] * 3,
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
@@ -107,7 +107,7 @@ class GPT2Policy(Policy):
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
-                            "n_fused": 1,
+                            "split_sizes": [self.model.config.hidden_size],
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                             "skip_bias_add": self.enable_bias_gelu_fused,
