@@ -107,7 +107,7 @@ class GPT2Policy(Policy):
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
-                            "split_sizes": [self.model.config.hidden_size],
+                            "split_sizes": [self.model.config.n_inner or 4 * self.model.config.hidden_size],
                             "seq_parallel_mode": sp_mode,
                             "overlap": overlap,
                             "skip_bias_add": self.enable_bias_gelu_fused,
