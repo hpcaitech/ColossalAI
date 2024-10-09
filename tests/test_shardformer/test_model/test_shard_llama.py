@@ -290,7 +290,6 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "zero_stage": 0,
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
-            "parallel_output": False,
         },
     ],
 )

@@ -371,7 +371,9 @@ class BertPolicy(Policy):
                 held_layers.append(module.embeddings)
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.encoder.layer[start_idx:end_idx])
-            if stage_manager.is_last_stage(ignore_chunk=True):
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
                 held_layers.append(module.pooler)
 
         else:
@@ -430,7 +432,9 @@ class BertForPreTrainingPolicy(BertPolicy):
         """Get pipeline layers for current stage"""
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.cls)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
 
         return held_layers
@@ -471,7 +475,9 @@ class BertLMHeadModelPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.cls)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -511,7 +517,9 @@ class BertForMaskedLMPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.cls)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -563,7 +571,10 @@ class BertForSequenceClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -607,7 +618,10 @@ class BertForTokenClassificationPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -638,7 +652,9 @@ class BertForNextSentencePredictionPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.cls)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.cls)
         return held_layers
 
@@ -681,7 +697,10 @@ class BertForMultipleChoicePolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.dropout)
+            held_layers.append(self.model.classifier)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.dropout)
             held_layers.append(self.model.classifier)
         return held_layers
@@ -711,7 +730,9 @@ class BertForQuestionAnsweringPolicy(BertPolicy):
         """
         held_layers = super().get_held_layers()
         stage_manager = self.pipeline_stage_manager
-        if stage_manager.is_last_stage(ignore_chunk=True):
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.qa_outputs)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.qa_outputs)
         return held_layers
 
