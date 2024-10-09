@@ -422,13 +422,17 @@ class RingAttention(torch.autograd.Function):
     ATTN_DONE: torch.cuda.Event = None
     SP_STREAM: torch.cuda.Stream = None
     SP_GROUP: dist.ProcessGroup = None
-    # duplicate process group for concurrent NCCL streams
-    # while both PyTorch and NCCL warns(https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
-    # against this, in practice it seems to work fine.
+
+    # NOTE: Duplicating PGs for concurrent NCCL streams is a risky hack -- while it may increase throughput,
+    # both PyTorch and NCCL warn against this. (https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
+    # LoongTrain's original double ring impl. uses concurrent PGs (https://github.com/InternLM/InternEvo/blob/d0a19fb1f513ddbb53d6ba94bd87569b8a3ce5e7/internlm/model/ops/ring_flash_attn/zigzag_ring_flash_attn_with_sliding_window.py#L191)
+    # but I confirmed with Pytorch developers this can cause obscure
+    # "Software caused connection abort" errors. (https://github.com/pytorch/pytorch/issues/132852)
+    # NOTE: So in general, a smarter idea is to try putting as many P2P calls as possible in one `batch_isend_irecv`.
     INNER_RING_GROUP: dist.ProcessGroup = None
-    INNER_RING_GROUP_COPY: dist.ProcessGroup = None
+    # INNER_RING_GROUP_COPY: dist.ProcessGroup = None
     INTER_RING_GROUP: dist.ProcessGroup = None
-    INTER_RING_GROUP_COPY: dist.ProcessGroup = None
+    # INTER_RING_GROUP_COPY: dist.ProcessGroup = None
 
     @staticmethod
     def get_double_ring_groups(sp_group, inner_ring_size=None):
@@ -733,6 +737,8 @@ class RingAttention(torch.autograd.Function):
                     # NOTE: waiting outside the current stream will NOT correctly synchronize.
                     if i > 0:
                         local_kv_comms[(i + 1) % 2].wait()
+
+                    # Prefetch
                     if i == 0:
                         _kv_comm(i)
 
@@ -799,6 +805,7 @@ class RingAttention(torch.autograd.Function):
                     if i > 0:
                         local_kv_comms[(i + 1) % 2].wait()
 
+                    # Prefetch
                     if i == 0:
                         _kv_comm(i)
 
