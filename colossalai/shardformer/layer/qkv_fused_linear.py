@@ -24,7 +24,9 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import (
+    gather_forward_reducescatter_backward,
     gather_forward_split_backward,
+    linear_gather_forward_reducescatter_backward,
     linear_with_async_comm,
     matmul_gather_forward_reducescatter_backward,
     matmul_with_async_comm,
@@ -51,7 +53,7 @@ def split_fused_qkv_in_gpt2_style(
 
     Args:
         qkv (torch.Tensor): The fused qkv tensor.
-        n_fused (int): The number items fused together, defaults to 3 (query, key and value).
+        split_sizes (List[int]): The sizes of the split tensor.
         process_group (ProcessGroup): The process group for distributed communication.
         is_transposed (bool): generally the tensor is the shape of (out_features, in_features). Set this to True if the tensor is in the shape (in_features, out_features).
     """
@@ -70,10 +72,8 @@ def split_fused_qkv_in_gpt2_style(
     # to
     # [Q1, Q2, K1, K2, V1, V2]
     if is_transposed:
-        # weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=-1)
         weight_chunks = torch.split(qkv, new_split_sizes, dim=-1)
     else:
-        # weight_chunks = torch.chunk(qkv, world_size * n_fused, dim=0)
         weight_chunks = torch.split(qkv, new_split_sizes, dim=0)
 
     # rearrange the slice into the final order
@@ -98,7 +98,7 @@ def gather_fused_qkv_in_gpt2_style(
 
     Args:
         qkv (torch.Tensor): The fused qkv tensor.
-        n_fused (int): The number items fused together, defaults to 3 (query, key and value).
+        split_sizes (List[int]): The sizes of the split tensor.
         process_group (ProcessGroup): The process group for distributed communication.
         is_transposed (bool): generally the tensor is the shape of (out_features, in_features). Set this to True if the tensor is in the shape (in_features, out_features).
     """
@@ -131,10 +131,8 @@ def gather_fused_qkv_in_gpt2_style(
     # to
     # [Q1, Q2, K1, K2, V1, V2]
     if is_transposed:
-        # weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=-1)
         weight_chunks = torch.split(gather_weight, new_split_sizes, dim=-1)
     else:
-        # weight_chunks = torch.chunk(gather_weight, world_size * n_fused, dim=0)
         weight_chunks = torch.split(gather_weight, new_split_sizes, dim=0)
 
     reordered_chunk_list = []
@@ -157,10 +155,10 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
     Args:
         in_features (int): size of each input sample.
         out_features (int): size of each output sample.
+        split_sizes (List[int]): The sizes of the split tensor.
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         device (`torch.device`): The device of parameters, defaults to None.
-        n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
         seq_parallel_mode (str): If set to ``None``, it will not use sequence parallel, otherwise will use corresponding mode of sequence parallel, defaults to None.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
@@ -280,7 +278,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         Args:
             module (`nn.Linear`): The module to be converted.
             process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
-            n_fused (int): The number of layers to be fused. In GPT2, Q,K,V are fused in one weight.
+            split_sizes (List[int]): The sizes of the split tensor. In GPT2, Q,K,V are fused in one weight.
         """
         LazyInitContext.materialize(module)
         # get the attributes
@@ -626,10 +624,10 @@ class FusedLinear1D_Col(ParallelModule):
     Args:
         in_features (int): size of each input sample.
         out_features (int): size of each output sample.
+        split_sizes (List[int]): The sizes of the split tensor.
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
         device (`torch.device`): The device of parameters, defaults to None.
-        n_fused (int): The number items fused, defaults to 3 (QKV).
         process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
         gather_output (bool, optional): If true, call all-gather on output and make Y available
                     to all GPUs, otherwise, every GPU will have its output
@@ -654,8 +652,10 @@ class FusedLinear1D_Col(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        async_communication: bool = False,
         gather_output: bool = False,
+        seq_parallel_mode: str = None,
+        seq_parallel_dim: int = 1,
+        overlap: torch.cuda.Stream = None,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
@@ -668,11 +668,13 @@ class FusedLinear1D_Col(ParallelModule):
         self.in_features = in_features
         self.out_features = out_features
         self.gather_output = gather_output
+        self.seq_parallel_mode = seq_parallel_mode
+        self.seq_parallel_dim = seq_parallel_dim
+        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.split_sizes = split_sizes
         self.process_group = process_group
-        self.async_communication = async_communication
         self.fp8_communication = fp8_communication
 
         assert (
@@ -743,7 +745,7 @@ class FusedLinear1D_Col(ParallelModule):
         Args:
             module (`nn.Linear`): The module to be converted.
             process_group (`Union[ProcessGroup, List[ProcessGroup]]`): The process group to be used for weight sharding and communication.
-            n_fused (int): The number of layers to be fused. In common, Q,K,V are fused in one weight.
+            split_sizes (List[int]): The sizes of the split tensor. In common, Q,K,V are fused in one weight.
         """
         LazyInitContext.materialize(module)
 
@@ -766,25 +768,11 @@ class FusedLinear1D_Col(ParallelModule):
             process_group=process_group,
             weight=module.weight,
             bias_=module.bias,
-            n_fused=split_sizes,
+            split_sizes=split_sizes,
             *args,
             **kwargs,
         )
 
-        # # TODO: copy the sharded weights
-        # with torch.no_grad():
-        #     sharded_weight = split_fused_qkv_in_gpt2_style(module.weight.data,
-        #                                                    n_fused=n_fused,
-        #                                                    process_group=process_group,
-        #                                                    is_transposed=False)
-        #     linear_1d.weight.data.copy_(sharded_weight.data)
-
-        #     if bias:
-        #         sharded_bias = split_fused_qkv_in_gpt2_style(module.bias.data,
-        #                                                      n_fused=n_fused,
-        #                                                      process_group=process_group,
-        #                                                      is_transposed=False)
-        #         linear_1d.bias.data.copy_(sharded_bias.data)
         return linear_1d
 
     def reset_parameters(self, weight_initializer, bias_initializer) -> None:
@@ -801,13 +789,26 @@ class FusedLinear1D_Col(ParallelModule):
             input_.shape, self.weight.shape, self.weight.shape[-1]
         )
         # Set up backprop all-reduce.
-        # input_parallel = reduce_backward(input_, self.process_group)
         input_parallel = input_
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
 
-        output_parallel = linear_with_async_comm(input_parallel, self.weight, bias, self.process_group, True)
+        if self.seq_parallel_mode == "split_gather":
+            input_parallel = gather_forward_reducescatter_backward(
+                input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
+            )
+            output_parallel = linear_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, False, fp8_communication=self.fp8_communication
+            )
+        elif self.seq_parallel_mode == "ring":
+            output_parallel = linear_gather_forward_reducescatter_backward(
+                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
+            )
+        else:
+            output_parallel = linear_with_async_comm(
+                input_parallel, self.weight, bias, self.process_group, True, fp8_communication=self.fp8_communication
+            )
 
         if self.gather_output:
             # All-gather across the partitions.
