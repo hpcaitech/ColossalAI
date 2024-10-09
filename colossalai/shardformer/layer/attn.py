@@ -425,10 +425,11 @@ class RingAttention(torch.autograd.Function):
 
     # NOTE: Duplicating PGs for concurrent NCCL streams is a risky hack -- while it may increase throughput,
     # both PyTorch and NCCL warn against this. (https://github.com/pytorch/pytorch/commit/2dbe5cb979f674f0052a8eea1f7b6c3c0ba441d7)
-    # LoongTrain's original double ring impl. uses concurrent PGs (https://github.com/InternLM/InternEvo/blob/d0a19fb1f513ddbb53d6ba94bd87569b8a3ce5e7/internlm/model/ops/ring_flash_attn/zigzag_ring_flash_attn_with_sliding_window.py#L191)
-    # but I confirmed with Pytorch developers this can cause obscure
-    # "Software caused connection abort" errors. (https://github.com/pytorch/pytorch/issues/132852)
-    # NOTE: So in general, a smarter idea is to try putting as many P2P calls as possible in one `batch_isend_irecv`.
+    # LoongTrain's original double ring impl. uses concurrent PGs
+    # (https://github.com/InternLM/InternEvo/blob/e52f2ffc9acf818e8f2b1f97dfc69ceb2f06e154/internlm/model/ops/ring_flash_attn/zigzag_ring_flash_attn_with_sliding_window.py#L192)
+    # but I confirmed with Pytorch developers this can cause obscure "Software caused connection abort" errors.
+    # (https://github.com/pytorch/pytorch/issues/132852)
+    # NOTE: In general, a smarter idea is put as many P2P calls as possible into one `batch_isend_irecv`.
     INNER_RING_GROUP: dist.ProcessGroup = None
     # INNER_RING_GROUP_COPY: dist.ProcessGroup = None
     INTER_RING_GROUP: dist.ProcessGroup = None
