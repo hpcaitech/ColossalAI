@@ -772,7 +772,7 @@ class RingAttention(torch.autograd.Function):
                         ) = _forward(q_block, kv_block[0], kv_block[1], causal=False)
                     RingAttention.ATTN_DONE.record()
                     # Pipeline the next KV comm with output correction instead of the next flash attn
-                    # to minimize idle time when comm takes longer than attn.
+                    # kernel, to minimize bubble when comm takes longer than attn.
                     _kv_comm(i + 1)
 
                     block_softmax_lse[i % 2] = (
