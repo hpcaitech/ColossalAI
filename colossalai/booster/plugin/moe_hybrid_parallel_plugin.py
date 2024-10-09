@@ -295,8 +295,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         if self.pp_size > 1:
             assert pp_style in ["1f1b", "interleaved", "zbv"], "Unsupported pipeline parallelism style"
             assert (
-                pp_style == "interleaved" or pp_style == "zbv"
-            ) or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
+                pp_style in ["interleaved", "zbv"] or num_model_chunks == 1
+            ), "num_model_chunks must be 1 when using 1f1b"
+            assert (
+                pp_style in ["1f1b", "interleaved"] or num_model_chunks == 2
+            ), "num_model_chunks must be 2 when using zero bubble pipeline"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
@@ -309,6 +312,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 enable_interleave=(pp_style == "interleaved" or pp_style == "zbv"),
                 num_model_chunks=num_model_chunks,
                 num_layers_per_stage=num_layers_per_stage,
+                use_zbv=(pp_style == "zbv"),
             )
 
             if pp_style == "interleaved":
@@ -329,7 +333,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     enable_metadata_cache=enable_metadata_cache,
                 )
             elif pp_style == "zbv":
-                self.schedule = ZeroBubbleVPipeScheduler(
+                assert num_model_chunks > 1, "number of model chunks must be > 1 when using ZerbubbleV"
+                self.scheduler = ZeroBubbleVPipeScheduler(
                     schedule=scheduler_nodes,
                     stage_manager=self.stage_manager,
                     num_model_chunks=num_model_chunks,

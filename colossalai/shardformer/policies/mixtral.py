@@ -258,14 +258,30 @@ class MixtralPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.norm)
 
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            stage_manager.stage_indices = stage_indices
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embed_tokens)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.layers[start_idx:end_idx])
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                # for zbv, when is_first_stage (last fwd), we append norm
+                # for interleaved, when is_last_stage (last fwd), we also append norm
+                held_layers.append(module.norm)
+        else:
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embed_tokens)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
+            held_layers.extend(module.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.norm)
         return held_layers
 
 
