@@ -25,6 +25,28 @@
 
 </div>
 
+## GPU Cloud HPC-AI.COM Coming！！
+
+For a limited time, you can access an H100 Server for just $1! This is your chance to leverage premium GPU power at an unbeatable price.
+Plus, when you refer a friend, you’ll receive 20% cashback or compute credits equal to 100% of their top-up!
+
+Our platform offers on-demand premium compute, ensuring safe, permanent data storage even after stopping your instance.
+Don’t miss this incredible opportunity to accelerate your AI projects!
+
+Unlock premium GPUs and register now at [HPC-AI.COM](https://hpc-ai.com) to receive $10!
+
+Special Bonuses:
+
+* Top up $1,000 and receive 300 credits
+* Top up $500 and receive 100 credits
+
+<div align="center">
+   <a href="https://youtu.be/ilMQpU71ddI?si=J4JSPzZ03ycYmlki">
+   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/HPCAICOM241010.jpg" width="700" />
+   </a>
+</div>
+
+
 ## Latest News
 * [2024/09] [Singapore Startup HPC-AI Tech Secures 50 Million USD in Series A Funding to Build the Video Generation AI Model and GPU Platform](https://company.hpc-ai.com/blog/singapore-startup-hpc-ai-tech-secures-50-million-usd-in-series-a-funding-to-build-the-video-generation-ai-model-and-gpu-platform)
 * [2024/09] [Reducing AI Large Model Training Costs by 30% Requires Just a Single Line of Code From FP8 Mixed Precision Training Upgrades](https://company.hpc-ai.com/blog/reducing-ai-large-model-training-costs-by-30-requires-just-a-single-line-of-code-from-fp8-mixed-precision-training-upgrades)
