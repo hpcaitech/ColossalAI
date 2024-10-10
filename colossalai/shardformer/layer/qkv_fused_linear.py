@@ -380,6 +380,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
             )
         elif self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
             # Set up backprop all-reduce.
+            input_parallel = input_
             output_parallel = matmul_with_async_comm(
                 input_parallel,
                 self.weight,
