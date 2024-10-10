@@ -73,7 +73,6 @@ class BertPolicy(Policy):
             )
             sp_mode = "split_gather"
 
-        overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode == "split_gather"
 
         if self.shard_config.enable_tensor_parallelism:
@@ -97,7 +96,6 @@ class BertPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -106,7 +104,6 @@ class BertPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -115,7 +112,6 @@ class BertPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -140,7 +136,6 @@ class BertPolicy(Policy):
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "skip_bias_add": self.enable_bias_gelu_fused,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
