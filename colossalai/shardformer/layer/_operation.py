@@ -840,7 +840,7 @@ class _AllToAll(torch.autograd.Function):
         ctx.gather_dim = gather_dim
         ctx.fp8_communication = fp8_communication
         world_size = dist.get_world_size(process_group)
-        bsz, _, _ = input_.shape
+        bsz = input_.shape[0]
 
         # using all_to_all_single when batch size is 1
         if bsz == 1:
@@ -871,7 +871,7 @@ class _AllToAll(torch.autograd.Function):
         gather_dim = ctx.scatter_dim
         fp8_communication = ctx.fp8_communication
         world_size = dist.get_world_size(process_group)
-        bsz, _, _ = grad_output.shape
+        bsz = grad_output.shape[0]
 
         if bsz == 1:
             return_grad = _all_to_all_single(
