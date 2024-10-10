@@ -73,8 +73,7 @@ def main():
         "--conversation_template_config",
         type=str,
         default="conversation_template_config",
-        help="Path \
-        to save conversation template config files.",
+        help="Path to save conversation template config files.",
     )
     parser.add_argument("--data_cache_dir", type=str, default="cache", help="Data cache directory")
     parser.add_argument(

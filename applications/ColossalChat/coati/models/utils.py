@@ -50,8 +50,8 @@ def _log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.
         torch.Tensor: The log probabilities corresponding to the labels.
     """
     log_probs = F.log_softmax(logits, dim=-1)
-    log_probs_labels = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
-    return log_probs_labels.squeeze(-1)
+    per_label_logps = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
+    return per_label_logps.squeeze(-1)
 
 
 def calc_action_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
