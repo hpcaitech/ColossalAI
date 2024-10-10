@@ -102,7 +102,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
             grad_output = grad_output.view(-1, grad_output.shape[-1])
             total_input = total_input.view(-1, total_input.shape[-1])
 
-        if ctx.async_grad_allreduce and fp8_communication:
+        if fp8_communication or not ctx.async_grad_allreduce:
             _reduce(grad_input, group=ctx.process_group, fp8_communication=fp8_communication, fp8_format="e5m2")
         elif ctx.async_grad_allreduce:
             # Asynchronous all-reduce
@@ -517,7 +517,7 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         # Convert the tensor shapes to 2D for execution compatibility
         if len(grad_output.shape) > 2:
             grad_output = grad_output.view(-1, grad_output.shape[-1])
-            total_input = total_input.view(-1, total_input.shape[-1])
+            total_input = total_input.reshape(-1, total_input.shape[-1])
         grad_weight = grad_output.t().matmul(total_input)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 

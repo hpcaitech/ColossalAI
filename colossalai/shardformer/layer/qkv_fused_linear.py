@@ -220,7 +220,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        async_communication: bool = False,
         gather_output: bool = False,
         seq_parallel_mode: str = None,
         skip_bias_add: bool = False,
@@ -241,7 +240,6 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.device = device
         self.split_sizes = split_sizes
         self.process_group = process_group
-        self.async_communication = async_communication
         self.fp8_communication = fp8_communication
 
         assert (
@@ -386,7 +384,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                 self.weight,
                 bias,
                 self.process_group,
-                self.async_communication,
+                True,
                 fp8_communication=self.fp8_communication,
             )
         else:
