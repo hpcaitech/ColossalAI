@@ -268,6 +268,7 @@ class MixtralPipelineForwards:
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
+        print(f"model_chunk_id {stage_manager.model_chunk_id} stage_manager {stage_manager.stage}")
         if stage_manager.is_first_stage():
             # retrieve input_ids and inputs_embeds
             if input_ids is not None and inputs_embeds is not None:

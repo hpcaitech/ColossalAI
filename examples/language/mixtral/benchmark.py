@@ -167,6 +167,7 @@ def main():
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
+            num_microbatches=args.batch_size // args.mbs,
             precision="bf16",
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
@@ -208,8 +209,10 @@ def main():
     with init_ctx:
         model = MixtralForCausalLM(config=config).to(torch.bfloat16)
 
+    # if args.grad_checkpoint:
+    #     model.gradient_checkpointing_enable()
     if args.grad_checkpoint:
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -224,6 +227,7 @@ def main():
     )
 
     optimizer = HybridAdam(model.parameters())
+    # optimizer = torch.optim.SGD(model.parameters(), lr=1)
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
 
