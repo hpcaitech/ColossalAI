@@ -67,7 +67,6 @@ class ChatGLMPolicy(Policy):
                 f"For ChatGLM2, sequence parallelism doesn't support mode {sp_mode} yet, will set to be split_gather"
             )
             sp_mode = "split_gather"
-        overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather"]
 
         if sp_mode == "all_to_all":
@@ -127,7 +126,6 @@ class ChatGLMPolicy(Policy):
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "seq_parallel_dim": 0,
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),

@@ -25,19 +25,17 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import (
-    gather_forward_reducescatter_backward,
     linear_gather_forward_reducescatter_backward,
     linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     matmul_gather_forward_reducescatter_backward,
     matmul_with_async_comm,
-    reduce_backward,
     reduce_forward,
     reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
 from .parallel_module import ParallelModule
-from .utils import create_randomizer_with_offset
+from .utils import create_randomizer_with_offset, is_share_sp_tp
 
 __all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row"]
 
@@ -222,10 +220,8 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         dtype: torch.dtype = None,
         device: torch.device = None,
         process_group: ProcessGroup = None,
-        async_communication: bool = False,
         gather_output: bool = False,
         seq_parallel_mode: str = None,
-        overlap: bool = False,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
@@ -240,12 +236,10 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.out_features = out_features
         self.gather_output = gather_output
         self.seq_parallel_mode = seq_parallel_mode
-        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.split_sizes = split_sizes
         self.process_group = process_group
-        self.async_communication = async_communication
         self.fp8_communication = fp8_communication
 
         assert (
@@ -370,7 +364,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        if self.seq_parallel_mode == "split_gather":
+        if is_share_sp_tp(self.seq_parallel_mode):
             input_parallel = input_
             output_parallel = matmul_gather_forward_reducescatter_backward(
                 input_parallel,
@@ -379,31 +373,18 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                 self.process_group,
                 True,
                 1,
-                self.overlap,
-                fp8_communication=self.fp8_communication,
-            )
-        elif self.seq_parallel_mode == "ring":
-            input_parallel = input_
-            output_parallel = matmul_gather_forward_reducescatter_backward(
-                input_parallel,
-                self.weight,
-                bias,
-                self.process_group,
-                True,
-                1,
-                self.overlap,
-                True,
+                ring=self.seq_parallel_mode == "ring",
                 fp8_communication=self.fp8_communication,
             )
         elif self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
             # Set up backprop all-reduce.
-            input_parallel = reduce_backward(input_, self.process_group)
+            input_parallel = input_
             output_parallel = matmul_with_async_comm(
                 input_parallel,
                 self.weight,
                 bias,
                 self.process_group,
-                self.async_communication,
+                True,
                 fp8_communication=self.fp8_communication,
             )
         else:
@@ -620,20 +601,13 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             if self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
-            elif self.seq_parallel_mode == "split_gather":
+            elif is_share_sp_tp(self.seq_parallel_mode):
                 output_parallel = torch.matmul(input_, self.weight)
                 output = reducescatter_forward_gather_backward(
                     output_parallel,
                     self.process_group,
                     1,
                     self.fp8_communication,
-                )
-            elif self.seq_parallel_mode == "ring":
-                output_parallel = torch.matmul(input_, self.weight)
-                output = reducescatter_forward_gather_backward(
-                    output_parallel,
-                    self.process_group,
-                    1,
                 )
             else:
                 raise NotImplementedError(f"seq_parallel_mode={self.seq_parallel_mode} is not supported!")
@@ -691,7 +665,6 @@ class FusedLinear1D_Col(ParallelModule):
         gather_output: bool = False,
         seq_parallel_mode: str = None,
         seq_parallel_dim: int = 1,
-        overlap: torch.cuda.Stream = None,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
@@ -706,7 +679,6 @@ class FusedLinear1D_Col(ParallelModule):
         self.gather_output = gather_output
         self.seq_parallel_mode = seq_parallel_mode
         self.seq_parallel_dim = seq_parallel_dim
-        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.split_sizes = split_sizes
@@ -830,16 +802,15 @@ class FusedLinear1D_Col(ParallelModule):
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
 
-        if self.seq_parallel_mode == "split_gather":
-            input_parallel = gather_forward_reducescatter_backward(
-                input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
-            )
-            output_parallel = linear_with_async_comm(
-                input_parallel, self.weight, bias, self.process_group, False, fp8_communication=self.fp8_communication
-            )
-        elif self.seq_parallel_mode == "ring":
+        if is_share_sp_tp(self.seq_parallel_mode):
             output_parallel = linear_gather_forward_reducescatter_backward(
-                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
+                input_parallel,
+                self.weight,
+                bias,
+                self.process_group,
+                True,
+                self.seq_parallel_dim,
+                ring=self.seq_parallel_mode == "ring",
             )
         else:
             output_parallel = linear_with_async_comm(
@@ -1031,18 +1002,13 @@ class FusedLinear1D_Row(ParallelModule):
             )
             input_ = split_forward_gather_backward_fused_qkv(input_, self.split_sizes, self.process_group)
 
-        if self.seq_parallel_mode == "split_gather":
-            output_parallel = F.linear(input_, self.weight)
-            output = reducescatter_forward_gather_backward(
-                output_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
-            )
-        elif self.seq_parallel_mode == "ring":
+        if is_share_sp_tp(self.seq_parallel_mode):
             output = linear_reducescatter_forward_gather_backward(
                 input_,
                 self.weight,
                 process_group=self.process_group,
                 dim=self.seq_parallel_dim,
-                ring=True,
+                ring=self.seq_parallel_mode == "ring",
             )
         else:
             output_parallel = F.linear(input_, self.weight)

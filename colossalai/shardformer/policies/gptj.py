@@ -51,7 +51,6 @@ class GPTJPolicy(Policy):
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("GPTJ doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
-        overlap = self.shard_config.enable_sequence_overlap
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
@@ -76,7 +75,6 @@ class GPTJPolicy(Policy):
                         suffix="attn.k_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -84,7 +82,6 @@ class GPTJPolicy(Policy):
                         suffix="attn.q_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -92,7 +89,6 @@ class GPTJPolicy(Policy):
                         suffix="attn.v_proj",
                         target_module=col_nn.Linear1D_Col,
                         kwargs={
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
