@@ -479,7 +479,6 @@ class RingAttention(torch.autograd.Function):
         num_inner_group = num_ring_size // inner_ring_size
 
         if tp_size > 1:
-            # inner_ring_size = 2
             for i in range(num_rings):
                 for j in range(num_inner_group):
                     # find inner ring group in one sp groups
