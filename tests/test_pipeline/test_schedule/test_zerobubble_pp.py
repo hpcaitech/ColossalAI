@@ -786,6 +786,8 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
     seed_all(10086)
 
     torch_model = MixtralModel(config).to(dtype).cuda()
+    # TODO: Support MixtralForCausalLM
+    # torch_model = MixtralForCausalLM(config).to(dtype).cuda()
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
     # init schedule
     h, a, s = config.hidden_size, config.num_attention_heads, 1024

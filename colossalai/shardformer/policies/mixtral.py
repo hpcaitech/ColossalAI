@@ -343,8 +343,18 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
-            held_layers.append(self.model.lm_head)
+        if stage_manager.is_interleave:
+            if stage_manager.use_zbv:
+                if stage_manager.is_first_stage(ignore_chunk=True):
+                    held_layers.append(self.model.lm_head)
+            else:
+                if stage_manager.is_last_stage(ignore_chunk=True):
+                    held_layers.append(self.model.lm_head)
+        else:
+            if stage_manager.is_last_stage():
+                held_layers.append(self.model.lm_head)
+        # if stage_manager.is_last_stage():
+        #     held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
