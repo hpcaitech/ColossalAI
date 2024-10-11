@@ -227,7 +227,6 @@ def main():
     )
 
     optimizer = HybridAdam(model.parameters())
-    # optimizer = torch.optim.SGD(model.parameters(), lr=1)
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
 
@@ -258,8 +257,12 @@ def main():
                     return_loss=True,
                 )
                 loss = outputs["loss"]
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    print(f"Step {step} loss: {loss}")
+                if args.pp_style == "zbv":
+                    if dist.get_rank() == 0:
+                        print(f"Step {step} loss: {loss}")
+                else:
+                    if dist.get_rank() == dist.get_world_size() - 1:
+                        print(f"Step {step} loss: {loss}")
                 optimizer.step()
                 optimizer.zero_grad()
 

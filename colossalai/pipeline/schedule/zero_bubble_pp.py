@@ -432,7 +432,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             internal_inputs = {} if input_obj is None else input_obj
             internal_inputs["stage_index"] = self.stage_manager.stage_indices[model_chunk_id]
             output_obj = model_forward(model_chunk, micro_batch, internal_inputs)
-
             # last layer in model
             if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
                 loss = criterion(output_obj, micro_batch) / self.num_microbatch
@@ -500,12 +499,18 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         output_obj_ = [v for v in output_obj_ if isinstance(v, torch.Tensor) or v is None]
         output_obj_grad_ = [v for v in output_obj_grad_ if isinstance(v, torch.Tensor) or v is None]
 
-        optimizer.backward_by_grad(
-            tensor=output_obj_,
-            grad=output_obj_grad_,
-            inputs=input_obj_,
-            retain_graph=True,
-        )
+        try:
+            ctx = optimizer.no_sync()
+        except AttributeError:
+            ctx = model_chunk.no_sync()
+
+        with ctx:
+            optimizer.backward_by_grad(
+                tensor=output_obj_,
+                grad=output_obj_grad_,
+                inputs=input_obj_,
+                retain_graph=True,
+            )
 
         # Format output_obj_grad
         input_obj_grad = {}
