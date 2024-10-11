@@ -675,7 +675,8 @@ class RingAttention(torch.autograd.Function):
 
         sp_size = dist.get_world_size(sp_group)
         sp_rank = dist.get_rank(sp_group)
-        # Attempt to achieve concurrent comm in the two-stream forward
+
+        # Create two comms corresponding to two CUDA streams
         local_kv_comms = [RingComm(inner_ring_group) for _ in range(2)]
         inter_ring_comm = RingComm(inter_ring_group)
         local_sp_size = dist.get_world_size(inner_ring_group)
@@ -683,7 +684,7 @@ class RingAttention(torch.autograd.Function):
         inter_ring_rank = dist.get_rank(inter_ring_group) if inter_ring_group is not sp_group else 0
         num_rings = dist.get_world_size(inter_ring_group) if inter_ring_group is not sp_group else 1
 
-        # Non-contiguous indexing copies to a new contiguous tensor,
+        # Any type of indexing(slicing doesn't) copies to a new contiguous tensor,
         # so only do it once
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
@@ -935,7 +936,7 @@ class RingAttention(torch.autograd.Function):
         local_sp_rank = dist.get_rank(sp_group)
         sp_size = dist.get_world_size(sp_group)
 
-        # Using separate streams (pg) for concurrent kv and dkv comm may
+        # NOTE: Using separate streams (PG) for concurrent kv and dkv comm may
         # cause NCCL "software caused connection abort" here...
         local_kv_comm = RingComm(local_kv_group)
         local_dkv_comm = RingComm(local_kv_group)
