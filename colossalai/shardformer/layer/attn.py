@@ -1158,7 +1158,7 @@ class RingAttention(torch.autograd.Function):
 
         Returns:
             torch.Tensor:
-                Packed input embeddings of shape [B, Sq // sp_size, ...].
+                Packed input embeddings of shape [B, Sq // sp_size, ...] if is_2d is True, else [T, ...].
 
             Dict[str, Any]:
                 A dictionary containing mask info.

@@ -375,6 +375,9 @@ def split_varlen_zigzag(
 
     if isinstance(batch, torch.Tensor):
         batch = [batch]
+    # seq: (B, Sq, h, n)
+    # seq = seq[:, :rank * (seqlen // sp_size), ...]
+
     for i, packed_seq in enumerate(batch):
         device = packed_seq.device
         dtype = packed_seq.dtype
