@@ -781,7 +781,9 @@ class RingAttention(torch.autograd.Function):
                         block_softmax_lse[i % 2].transpose(0, 1).unsqueeze(-1).contiguous().float()
                     )  # (H, T) -> (T, H, 1)
                     assert block_out[i % 2].shape[:-1] == block_softmax_lse[i % 2].shape[:-1]
-                    # Output and log sum exp correction. Ideally overlap this with the next flash attn kernel.
+                    # Output and log sum exp correction.
+                    # NOTE: Ideally overlap this with the next flash attn kernel,
+                    # since attn uses Tensor Core and rescale is element-wise and doesn't use Tensor Core.
                     # In reality this always finishes before next flash attn; no need for extra sync.
                     if i == 0:
                         out = block_out[0]
@@ -1153,7 +1155,7 @@ class RingAttention(torch.autograd.Function):
             position_ids (Optional[torch.Tensor], optional): Position ids of shape [Sq] or [1, Sq]. Defaults to None.
             is_label (bool, optional): Whether inputs_embeds is instead a label tensor. If True, mask out the first
                 token of each sequence.
-            is_2d (bool, optional): Whether to return 2D outputs padded to max_seqlen // sp_size or flatten
+            is_2d (bool, optional): Whether to return 2D embeddings padded to max_seqlen // sp_size or flatten
                 the batch dim to a packed 1d sequence. Contingent on model forward shape definitions.
 
         Returns:
