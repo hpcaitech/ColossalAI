@@ -129,7 +129,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce, fp8_communication=False, use_zbv=True):
+    def forward(ctx, input_, weight, bias, process_group, async_grad_allreduce, fp8_communication=False, use_zbv=False):
         ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
@@ -1094,9 +1094,11 @@ def matmul_with_async_comm(input_, weight, bias, process_group, async_grad_allre
     )
 
 
-def linear_with_async_comm(input_, weight, bias, process_group, async_grad_allreduce, fp8_communication=False):
+def linear_with_async_comm(
+    input_, weight, bias, process_group, async_grad_allreduce, fp8_communication=False, use_zbv=False
+):
     return LinearWithAsyncCommunication.apply(
-        input_, weight, bias, process_group, async_grad_allreduce, fp8_communication
+        input_, weight, bias, process_group, async_grad_allreduce, fp8_communication, use_zbv
     )
 
 

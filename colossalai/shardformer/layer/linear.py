@@ -85,6 +85,7 @@ class Linear1D_Col(ParallelModule):
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         fp8_communication: bool = False,
+        use_zbv: bool = False,
         **kwargs,
     ):
         super().__init__(weight=weight, bias_=bias_, **kwargs)
@@ -100,6 +101,7 @@ class Linear1D_Col(ParallelModule):
         self.device = device
         self.process_group = process_group
         self.fp8_communication = fp8_communication
+        self.use_zbv = use_zbv
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -206,7 +208,13 @@ class Linear1D_Col(ParallelModule):
                 input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
             )
             output_parallel = linear_with_async_comm(
-                input_parallel, self.weight, bias, self.process_group, False, fp8_communication=self.fp8_communication
+                input_parallel,
+                self.weight,
+                bias,
+                self.process_group,
+                False,
+                fp8_communication=self.fp8_communication,
+                use_zbv=self.use_zbv,
             )
         elif self.seq_parallel_mode == "ring":
             output_parallel = linear_gather_forward_reducescatter_backward(
@@ -214,7 +222,13 @@ class Linear1D_Col(ParallelModule):
             )
         else:
             output_parallel = linear_with_async_comm(
-                input_parallel, self.weight, bias, self.process_group, True, fp8_communication=self.fp8_communication
+                input_parallel,
+                self.weight,
+                bias,
+                self.process_group,
+                True,
+                fp8_communication=self.fp8_communication,
+                use_zbv=self.use_zbv,
             )
 
         if self.gather_output:
@@ -272,6 +286,7 @@ class Linear1D_Row(ParallelModule):
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         stream_chunk_num: int = 1,
         fp8_communication: bool = False,
+        use_zbv: bool = False,
     ):
         super().__init__()
 
@@ -287,6 +302,7 @@ class Linear1D_Row(ParallelModule):
         self.seq_parallel_dim = seq_parallel_dim
         self.num_partitions = dist.get_world_size(self.process_group)
         self.fp8_communication = fp8_communication
+        self.use_zbv = use_zbv
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -428,10 +444,14 @@ class Linear1D_Row(ParallelModule):
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
             if self.seq_parallel_mode is None:
-                output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
+                output_parallel = linear_with_async_comm(
+                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
+                )
                 output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
             elif self.seq_parallel_mode == "split_gather":
-                output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
+                output_parallel = linear_with_async_comm(
+                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
+                )
                 output = reducescatter_forward_gather_backward(
                     output_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
                 )
@@ -444,7 +464,9 @@ class Linear1D_Row(ParallelModule):
                     ring=True,
                 )
             else:
-                output_parallel = linear_with_async_comm(input_, self.weight, None, self.process_group, False)
+                output_parallel = linear_with_async_comm(
+                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
+                )
                 output = reduce_forward(output_parallel, self.process_group)
 
         if not self.skip_bias_add:
