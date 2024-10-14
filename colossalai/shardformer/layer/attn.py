@@ -445,18 +445,11 @@ class RingAttention(torch.autograd.Function):
         tp_size = dist.get_world_size(tp_group) if tp_group is not None else 1
         sp_rank = dist.get_rank(sp_group)
 
-        if inner_ring_size is None:
-            if torch.cuda.device_count() >= dist.get_world_size():
-                # single node, no need to consider NICs
-                return sp_group, sp_group
-            if sp_size <= 4:
-                inner_ring_size = min(2, sp_size)
-            else:
-                inner_ring_size = min(4, sp_size)
-        else:
-            assert (
-                inner_ring_size <= sp_size and sp_size % inner_ring_size == 0
-            ), f"Error: sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
+        assert inner_ring_size is not None
+
+        assert (
+            inner_ring_size <= sp_size and sp_size % inner_ring_size == 0
+        ), f"Error: sp_size {sp_size} should be divisible by inner_ring_size {inner_ring_size}"
 
         if inner_ring_size == sp_size:
             return sp_group, sp_group
@@ -575,7 +568,7 @@ class RingAttention(torch.autograd.Function):
 
         clone_pg = lambda pg: dist.new_group(dist.get_process_group_ranks(pg))
 
-        if RingAttention.SP_GROUP is not sp_group:
+        if inner_ring_size != None:
             RingAttention.SP_GROUP = sp_group
             inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(
                 sp_group, tp_group, inner_ring_size
