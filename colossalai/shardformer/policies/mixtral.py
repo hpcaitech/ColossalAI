@@ -124,27 +124,43 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": self.shard_config.use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": self.shard_config.use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": self.shard_config.use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": self.shard_config.use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="block_sparse_moe.gate",
                         target_module=Linear1D_Col,
-                        kwargs={"gather_output": True, "fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": self.shard_config.use_zbv,
+                        },
                     ),
                 ],
             )
@@ -322,9 +338,13 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=self.shard_config.use_zbv,
+                            ),
                         )
-                    ]
+                    ],
                 )
             }
             policy.update(new_item)
@@ -380,7 +400,11 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="score",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=self.shard_config.use_zbv,
+                            ),
                         )
                     ]
                 )

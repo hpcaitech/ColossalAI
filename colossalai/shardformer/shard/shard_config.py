@@ -49,6 +49,7 @@ class ShardConfig:
     make_vocab_size_divisible_by: int = 64
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+    use_zbv: bool = False
 
     # For ring attention
     inner_ring_size: Optional[int] = None
