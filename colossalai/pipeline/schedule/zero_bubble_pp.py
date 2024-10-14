@@ -11,6 +11,7 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication
 from colossalai.pipeline.schedule.v_schedule import ScheduledNode
 from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.pipeline.weight_grad_store import WeightGradStore
 
 from ._utils import (
     clone,
@@ -650,10 +651,10 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # Do not release_tensor_data loss, release_tensor_data other output_obj;
         if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
             self.output_tensors[model_chunk_id].append(output_obj)
-            self.output_tensors_dw[model_chunk_id].append(output_obj)
+            # self.output_tensors_dw[model_chunk_id].append(output_obj)
         else:
             self.output_tensors[model_chunk_id].append(output_obj)
-            self.output_tensors_dw[model_chunk_id].append(output_obj)
+            # self.output_tensors_dw[model_chunk_id].append(output_obj)
 
         # add output to send_fwd_buffer
         if model_chunk_id == 0:  # chunk 0
@@ -705,13 +706,13 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         input_obj = self.input_tensors[model_chunk_id].pop(0)
         output_obj = self.output_tensors[model_chunk_id].pop(0)
 
-        # save output_tensor_grad for dw
-        if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
-            # we save loss here
-            self.output_tensors_grad_dw[model_chunk_id].append(output_obj)
-        else:
-            # we save output_tensor_grad here
-            self.output_tensors_grad_dw[model_chunk_id].append(output_tensor_grad)
+        # # save output_tensor_grad for dw
+        # if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
+        #     # we save loss here
+        #     self.output_tensors_grad_dw[model_chunk_id].append(output_obj)
+        # else:
+        #     # we save output_tensor_grad here
+        #     self.output_tensors_grad_dw[model_chunk_id].append(output_tensor_grad)
 
         # Step2: bwd step
         input_object_grad = self.backward_b_step(
@@ -738,6 +739,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             # send to next
             else:
                 self.send_backward_buffer[model_chunk_id].append(input_object_grad)
+        WeightGradStore.flush(chunk=model_chunk_id)
 
     def schedule_w(
         self,
@@ -757,16 +759,18 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         """
 
         # get y & dy from buffer
-        output_obj = self.output_tensors_dw[model_chunk_id].pop(0)
-        output_obj_grad = self.output_tensors_grad_dw[model_chunk_id].pop(0)
+        # output_obj = self.output_tensors_dw[model_chunk_id].pop(0)
+        # output_obj_grad = self.output_tensors_grad_dw[model_chunk_id].pop(0)
 
-        self.backward_w_step(
-            model_chunk=model_chunk,
-            model_chunk_id=model_chunk_id,
-            optimizer=optimizer,
-            output_obj=output_obj,
-            output_obj_grad=output_obj_grad,
-        )
+        WeightGradStore.pop(chunk=model_chunk_id)
+
+        # self.backward_w_step(
+        #     model_chunk=model_chunk,
+        #     model_chunk_id=model_chunk_id,
+        #     optimizer=optimizer,
+        #     output_obj=output_obj,
+        #     output_obj_grad=output_obj_grad,
+        # )
 
     def run_forward_only(
         self,

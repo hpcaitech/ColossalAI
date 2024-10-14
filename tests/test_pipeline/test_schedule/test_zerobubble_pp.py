@@ -926,5 +926,6 @@ def test_pp():
     )
 
 
+# python -m pytest -s tests/test_pipeline/test_schedule/test_zerobubble_pp.py
 if __name__ == "__main__":
     test_pp()

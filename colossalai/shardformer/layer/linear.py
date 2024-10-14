@@ -201,7 +201,6 @@ class Linear1D_Col(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-
         if self.seq_parallel_mode == "split_gather":
             input_parallel = gather_forward_reducescatter_backward(
                 input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication

@@ -5,6 +5,8 @@ import warnings
 from contextlib import nullcontext
 
 import torch
+
+torch.autograd.set_detect_anomaly(True)
 import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
@@ -251,6 +253,7 @@ def main():
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
             scheduler_nodes=scheduler_nodes,
+            make_vocab_size_divisible_by=1,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
