@@ -484,12 +484,7 @@ class RingAttention(torch.autograd.Function):
                 start = i * num_ring_size
                 end = (i + 1) * num_ring_size
                 for idx in range(start, end):
-                    inner_rank = []
-                    for k in range(inner_ring_size):
-                        current_num = idx + k * tp_size
-                        if current_num >= end:
-                            break
-                        inner_rank.append(current_num)
+                    inner_rank = [idx + k * tp_size for k in range(inner_ring_size) if idx + k * tp_size < end]
                     if len(inner_rank) == inner_ring_size and inner_rank not in ranks:
                         ranks.append(inner_rank)
                         group = dist.new_group(inner_rank)
