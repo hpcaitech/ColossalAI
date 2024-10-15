@@ -24,6 +24,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
     sp_group = dist.group.WORLD
     dp_size, pp_size, tp_size = 1, 1, 1
     sp_size = dist.get_world_size()
+    sp_axis = 2
     pg_mesh = ProcessGroupMesh(dp_size, pp_size, sp_size, tp_size)
     # Some outliers may seem large, but our errors are still lower than
     # than Megatron-LM context parallel's
@@ -40,7 +41,15 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
 
     # Ring attention vs single GPU
     ring_out, ring_lse = RingAttention.attention(
-        q, k, v, sp_group, AttnMaskType.CAUSAL, return_softmax=True, inner_ring_size=inner_ring_size, pg_mesh=pg_mesh
+        q,
+        k,
+        v,
+        sp_group,
+        AttnMaskType.CAUSAL,
+        return_softmax=True,
+        inner_ring_size=inner_ring_size,
+        pg_mesh=pg_mesh,
+        sp_axis=sp_axis,
     )
     ring_out = ring_out.transpose(1, 2)
     out, lse, _ = flash_attn_qkvpacked_func(

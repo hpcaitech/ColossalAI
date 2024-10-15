@@ -1181,6 +1181,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             fp8_communication=fp8_communication,
             inner_ring_size=inner_ring_size,
             pg_mesh=self.pg_mesh,
+            sp_axis=self.sp_axis,
         )
 
         self.amp_config = dict(
