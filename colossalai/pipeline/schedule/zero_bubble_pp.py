@@ -509,12 +509,11 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             optimizer.backward_by_grad(
                 tensor=output_obj_,
                 grad=output_obj_grad_,
-                inputs=input_obj_,
-                retain_graph=True,
+                # inputs=input_obj_,
+                # retain_graph=True,
             )
-
         # Format output_obj_grad
-        input_obj_grad = {}
+        input_obj_grad = dict()
         if model_chunk_id == 0 and self.stage_manager.is_first_stage(ignore_chunk=True):
             pass
         else:
@@ -714,7 +713,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         #     # we save output_tensor_grad here
         #     self.output_tensors_grad_dw[model_chunk_id].append(output_tensor_grad)
 
-        # Step2: bwd step
         input_object_grad = self.backward_b_step(
             model_chunk=model_chunk,
             model_chunk_id=model_chunk_id,
@@ -761,7 +759,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # get y & dy from buffer
         # output_obj = self.output_tensors_dw[model_chunk_id].pop(0)
         # output_obj_grad = self.output_tensors_grad_dw[model_chunk_id].pop(0)
-
         WeightGradStore.pop(chunk=model_chunk_id)
 
         # self.backward_w_step(

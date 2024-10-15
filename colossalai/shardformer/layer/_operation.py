@@ -177,7 +177,6 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
                 handle = dist.all_reduce(grad_input, group=ctx.process_group, async_op=True)
             # Relay on CUDA_DEVICE_MAX_CONNECTIONS=1 to have
             # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
-
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
             if use_zbv:

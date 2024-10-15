@@ -753,8 +753,10 @@ def run_with_hybridplugin(test_config):
     "config",
     [
         # TODO:ERR in second iter
-        # (0, 1, 4, 1, 1),
-        # (1, 2, 2, 1, 1),
+        (0, 1, 4, 1, 1),
+        (1, 2, 2, 1, 1),
+        (1, 1, 2, 2, 1),
+        # Pass
         (1, 2, 1, 2, 1),
         (1, 2, 1, 1, 2),
     ],
@@ -891,19 +893,22 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
 
         # ===================================================================================
         # run normal model with all dp(different) inputs
-        all_inputs = [torch.empty_like(input_embeddings) for _ in range(dp_size)]
+        all_inputs = [input_embeddings.clone() for _ in range(dp_size)]
         dist.all_gather(all_inputs, input_embeddings, group=plugin.dp_group)
         torch_output_sum = 0
         for input_data_ in all_inputs:
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
             torch_output.backward()
             torch_output_sum += torch_output.detach()
+        # print(f"parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         # avg dp grads follows zero optimizer
         for p in torch_model.parameters():
             if p.grad is not None:
                 p.grad /= dp_size
         torch_optimizer.step()
         torch_optimizer.zero_grad()
+
+        # print(f"rank {dist.get_rank()} parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} config {test_config}  test passed")
     clear_layout_converter()

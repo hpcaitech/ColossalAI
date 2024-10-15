@@ -230,7 +230,6 @@ class Linear1D_Col(ParallelModule):
                 fp8_communication=self.fp8_communication,
                 use_zbv=self.use_zbv,
             )
-
         if self.gather_output:
             # All-gather across the partitions.
             output = gather_forward_split_backward(
