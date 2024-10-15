@@ -488,7 +488,7 @@ class RingAttention(torch.autograd.Function):
         q,  # (B, H, Sq, D)
         k,
         v,
-        sp_group,
+        sp_axis,
         attention_mask_type,
         cu_seqlens=None,
         max_seqlen=None,
@@ -499,7 +499,6 @@ class RingAttention(torch.autograd.Function):
         return_softmax=False,
         inner_ring_size=None,
         pg_mesh=None,
-        sp_axis=None,
         **kwargs,
     ):
         """
@@ -546,7 +545,7 @@ class RingAttention(torch.autograd.Function):
         assert pg_mesh is not None, f"Error: The pg mesh is None! please check the process group initialization."
 
         clone_pg = lambda pg: dist.new_group(dist.get_process_group_ranks(pg))
-
+        sp_group = pg_mesh.get_group_along_axis(sp_axis)
         if inner_ring_size != None:
             RingAttention.SP_GROUP = sp_group
             inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(sp_axis, pg_mesh, inner_ring_size)

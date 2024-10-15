@@ -44,12 +44,11 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
         q,
         k,
         v,
-        sp_group,
+        sp_axis,
         AttnMaskType.CAUSAL,
         return_softmax=True,
         inner_ring_size=inner_ring_size,
         pg_mesh=pg_mesh,
-        sp_axis=sp_axis,
     )
     ring_out = ring_out.transpose(1, 2)
     out, lse, _ = flash_attn_qkvpacked_func(
@@ -88,6 +87,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
     device = get_current_device()
     sp_group = dist.group.WORLD
     sp_size = dist.get_world_size()
+    sp_axis = 2
     atol = rtol = 7e-3
     torch.cuda.manual_seed(2)
     # Prepare varlen attention mask
@@ -128,11 +128,11 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
         q_ring,
         k_ring,
         v_ring,
-        sp_group,
+        sp_axis,
         **mask_info,
         pad_output=False,
         return_softmax=True,
-        pg_mesh=dist.group.WORLD,
+        pg_mesh=ProcessGroupMesh(1, 1, sp_size, 1),
         # deterministic=True
     )
     ring_out = ring_out.transpose(1, 2).reshape(-1, nheads, d)

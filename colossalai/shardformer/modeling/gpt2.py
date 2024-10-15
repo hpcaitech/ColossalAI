@@ -857,19 +857,18 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
         dropout_p = self.attn_dropout.p if self.training else 0.0
 
         sp_mode = shard_config.sequence_parallelism_mode
-        sp_group = shard_config.sequence_parallel_process_group
+        shard_config.sequence_parallel_process_group
         if sp_mode == "ring_attn":
             attn_output = RingAttention.attention(
                 query,
                 key,
                 value,
-                sp_group,
+                sp_axis=shard_config.sp_axis,
                 **attention_mask,
                 dropout_p=dropout_p,
                 scale=scale,
                 inner_ring_size=shard_config.inner_ring_size,
                 pg_mesh=shard_config.pg_mesh,
-                sp_axis=shard_config.sp_axis,
             )
         else:
             attn_output = ColoAttention.attention(query, key, value, **attention_mask, dropout_p=dropout_p, scale=scale)
