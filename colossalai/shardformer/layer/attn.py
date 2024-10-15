@@ -682,7 +682,7 @@ class RingAttention(torch.autograd.Function):
         sp_size = dist.get_world_size(sp_group)
         sp_rank = dist.get_rank(sp_group)
 
-        # Create two comms corresponding to two CUDA streams
+        # Create communicators corresponding to two CUDA streams
         local_kv_comms = [RingComm(inner_ring_group) for _ in range(2)]
         inter_ring_comm = RingComm(inter_ring_group)
         local_sp_size = dist.get_world_size(inner_ring_group)
@@ -690,7 +690,7 @@ class RingAttention(torch.autograd.Function):
         inter_ring_rank = dist.get_rank(inter_ring_group) if inter_ring_group is not sp_group else 0
         num_rings = dist.get_world_size(inter_ring_group) if inter_ring_group is not sp_group else 1
 
-        # Any type of indexing(slicing doesn't) copies to a new contiguous tensor,
+        # Any type of indexing(but not slicing) copies to a new contiguous tensor,
         # so only do it once
         if sp_rank != sp_size - 1:
             q1 = q[half_idx_back]
