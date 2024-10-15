@@ -756,11 +756,9 @@ def run_with_hybridplugin(test_config):
 @parameterize(
     "config",
     [
-        # TODO:ERR in second iter
         (0, 1, 4, 1, 1),
         (1, 2, 2, 1, 1),
         (1, 1, 2, 2, 1),
-        # Pass
         (1, 2, 1, 2, 1),
         (1, 2, 1, 1, 2),
     ],
