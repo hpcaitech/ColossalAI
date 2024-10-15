@@ -65,7 +65,7 @@ def train(args) -> None:
             initial_scale=2**16,
             max_norm=args.grad_clip,
             enable_gradient_accumulation=(args.accumulation_steps > 1),
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.use_flash_attn,
         )
     elif args.plugin == "gemini_auto":
@@ -75,7 +75,7 @@ def train(args) -> None:
             initial_scale=2**16,
             max_norm=args.grad_clip,
             enable_gradient_accumulation=(args.accumulation_steps > 1),
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.use_flash_attn,
         )
     elif args.plugin == "zero2":
@@ -101,7 +101,7 @@ def train(args) -> None:
             sequence_parallelism_mode=args.sp_mode,
             zero_stage=args.zero_stage,
             enable_flash_attention=args.use_flash_attn,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_sequence_parallelism=args.enable_sequence_parallelism,
             cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
             parallel_output=False,
@@ -170,19 +170,11 @@ def train(args) -> None:
         else nullcontext()
     )
     with init_ctx:
-        if args.use_flash_attn:
-            model = AutoModelForCausalLM.from_pretrained(
-                args.pretrained,
-                attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                trust_remote_code=True,
-            )
-        else:
-            model = AutoModelForCausalLM.from_pretrained(
-                args.pretrained,
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                trust_remote_code=True,
-            )
+        model = AutoModelForCausalLM.from_pretrained(
+            args.pretrained,
+            torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+            trust_remote_code=True,
+        )
         # Freeze part of parameters.
         if args.freeze_non_embeds_params:
             freeze_non_embeds_parameters(model=model)
@@ -371,44 +363,44 @@ def train(args) -> None:
                     total_loss.fill_(0.0)
                     pbar.update()
 
-            # Save modeling.
-            save_model_condition = (
-                args.save_interval > 0 and (step + 1) % (args.save_interval * args.accumulation_steps) == 0
-            )
-
-            if not args.skip_save_each_epoch:
-                save_model_condition = save_model_condition or (step + 1) == len(dataloader)
-
-            if save_model_condition and not args.benchmark:
-                coordinator.print_on_master("\nStart saving model checkpoint with running states")
-
-                if args.use_neft:
-                    coordinator.print_on_master("Deactivate NEFTune before saving model.")
-                    deactivate_neftune(model, handle)
-
-                accelerator.empty_cache()
-                save_checkpoint(
-                    save_dir=args.save_dir,
-                    booster=booster,
-                    model=model,
-                    optimizer=optimizer,
-                    lr_scheduler=lr_scheduler,
-                    epoch=epoch,
-                    step=step + 1,
-                    batch_size=args.batch_size,
-                    coordinator=coordinator,
-                )
-                coordinator.print_on_master(
-                    f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
+                # Save modeling.
+                save_model_condition = (
+                    args.save_interval > 0 and (step + 1) % (args.save_interval * args.accumulation_steps) == 0
                 )
 
-                if args.use_neft:
-                    coordinator.print_on_master("Activate NEFTune.")
-                    model, handle = activate_neftune(model)
+                if not args.skip_save_each_epoch:
+                    save_model_condition = save_model_condition or (step + 1) == len(dataloader)
 
-            # Delete cache.
-            # del batch, batch_labels, batch_output, loss
-            accelerator.empty_cache()
+                if save_model_condition and not args.benchmark:
+                    coordinator.print_on_master("\nStart saving model checkpoint with running states")
+
+                    if args.use_neft:
+                        coordinator.print_on_master("Deactivate NEFTune before saving model.")
+                        deactivate_neftune(model, handle)
+
+                    accelerator.empty_cache()
+                    save_checkpoint(
+                        save_dir=args.save_dir,
+                        booster=booster,
+                        model=model,
+                        optimizer=optimizer,
+                        lr_scheduler=lr_scheduler,
+                        epoch=epoch,
+                        step=step + 1,
+                        batch_size=args.batch_size,
+                        coordinator=coordinator,
+                    )
+                    coordinator.print_on_master(
+                        f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
+                    )
+
+                    if args.use_neft:
+                        coordinator.print_on_master("Activate NEFTune.")
+                        model, handle = activate_neftune(model)
+
+        # Delete cache.
+        # del batch, batch_labels, batch_output, loss
+        accelerator.empty_cache()
 
         # the continue epochs are not resumed, so we need to reset the sampler start index and start step
         dataloader.sampler.set_start_index(start_index=0)
