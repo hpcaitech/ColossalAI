@@ -5,6 +5,7 @@ from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_fu
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.shardformer.layer import AttnMaskType
 from colossalai.shardformer.layer.attn import AttnMaskType, RingAttention
 from colossalai.shardformer.layer.utils import split_batch_zigzag, split_varlen_zigzag
@@ -21,6 +22,9 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
     torch.cuda.manual_seed(2)
     device = get_current_device()
     sp_group = dist.group.WORLD
+    dp_size, pp_size, tp_size = 1, 1, 1
+    sp_size = dist.get_world_size()
+    pg_mesh = ProcessGroupMesh(dp_size, pp_size, sp_size, tp_size)
     # Some outliers may seem large, but our errors are still lower than
     # than Megatron-LM context parallel's
     # (https://github.com/NVIDIA/TransformerEngine/blob/33a3d02f81c56e6f7b542c09bfa86657078d57fb/tests/pytorch/fused_attn/run_fused_attn_with_cp.py#L215)
@@ -36,13 +40,7 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
 
     # Ring attention vs single GPU
     ring_out, ring_lse = RingAttention.attention(
-        q,
-        k,
-        v,
-        sp_group,
-        AttnMaskType.CAUSAL,
-        return_softmax=True,
-        inner_ring_size=inner_ring_size,
+        q, k, v, sp_group, AttnMaskType.CAUSAL, return_softmax=True, inner_ring_size=inner_ring_size, pg_mesh=pg_mesh
     )
     ring_out = ring_out.transpose(1, 2)
     out, lse, _ = flash_attn_qkvpacked_func(
@@ -125,6 +123,7 @@ def check_packed_seq(seqlen, bs, nheads, d, dtype):
         **mask_info,
         pad_output=False,
         return_softmax=True,
+        pg_mesh=dist.group.WORLD,
         # deterministic=True
     )
     ring_out = ring_out.transpose(1, 2).reshape(-1, nheads, d)

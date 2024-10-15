@@ -51,6 +51,7 @@ class ShardConfig:
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     # For ring attention
+    pg_mesh: Optional[int] = None
     inner_ring_size: Optional[int] = None
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None

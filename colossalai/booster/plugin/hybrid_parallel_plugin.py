@@ -1180,7 +1180,9 @@ class HybridParallelPlugin(PipelinePluginBase):
             gradient_checkpoint_config=gradient_checkpoint_config,
             fp8_communication=fp8_communication,
             inner_ring_size=inner_ring_size,
+            pg_mesh=self.pg_mesh,
         )
+
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,

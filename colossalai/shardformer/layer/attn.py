@@ -7,7 +7,6 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
 
-from colossalai.cluster import ProcessGroupMesh
 from colossalai.kernel.kernel_loader import (
     FlashAttentionDaoLoader,
     FlashAttentionForFloatAndCustomMaskLoader,
@@ -432,7 +431,7 @@ class RingAttention(torch.autograd.Function):
     INTER_RING_GROUP_COPY: dist.ProcessGroup = None
 
     @staticmethod
-    def get_double_ring_groups(sp_group, inner_ring_size=None):
+    def get_double_ring_groups(sp_group, pg_mesh, inner_ring_size=None):
         """
         Get 2D ring groups for the given process group. Generally, to avoid congestion, the inner ring size
         shouldn't be larger than the number of NICs on each node.
@@ -465,20 +464,17 @@ class RingAttention(torch.autograd.Function):
         inner_ring_group = None
         inter_ring_group = None
 
-        inter_axis, inner_axis = 0, 1
-        pg_mesh = ProcessGroupMesh(num_rings, inner_ring_size)
-
         # Create inner ring groups
         for i in range(inner_ring_size):
             ranks = list(range(i * inner_ring_size, (i + 1) * inner_ring_size))
-            group = pg_mesh.get_group_along_axis(inner_axis)
+            group = pg_mesh.get_group_along_axis(2, ranks)
             if sp_rank in ranks:
                 inner_ring_group = group
 
         # Create inter ring groups
         for i in range(num_rings):
             ranks = list(range(i, sp_size, num_rings))
-            group = pg_mesh.get_group_along_axis(inter_axis)
+            group = pg_mesh.get_group_along_axis(2, ranks)
             if sp_rank in ranks:
                 inter_ring_group = group
 
@@ -499,6 +495,7 @@ class RingAttention(torch.autograd.Function):
         deterministic=False,
         return_softmax=False,
         inner_ring_size=None,
+        pg_mesh=None,
         **kwargs,
     ):
         """
@@ -546,7 +543,9 @@ class RingAttention(torch.autograd.Function):
 
         if inner_ring_size != None:
             RingAttention.SP_GROUP = sp_group
-            inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(sp_group, inner_ring_size)
+            inner_ring_group, inter_ring_group = RingAttention.get_double_ring_groups(
+                sp_group, pg_mesh, inner_ring_size
+            )
             RingAttention.INNER_RING_GROUP = inner_ring_group
             RingAttention.INTER_RING_GROUP = inter_ring_group
         else:
