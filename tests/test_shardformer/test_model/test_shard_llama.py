@@ -114,14 +114,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 
     # check last hidden state & loss
     check_flag = False
-    if stage_manager is None:
+    if (
+        (stage_manager is None)
+        or (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True))
+        or (not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True))
+    ):
         check_flag = True
-    else:
-        if stage_manager.use_zbv:
-            if stage_manager.is_first_stage(ignore_chunk=True):
-                check_flag = True
-        elif stage_manager.is_last_stage(ignore_chunk=True):
-            check_flag = True
     if check_flag:
         if test_config["precision"] == "fp32":
             atol, rtol = 1e-5, 1e-3
@@ -288,6 +286,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "enable_all_optimization": False,
             "precision": "fp16",
             "zero_stage": 0,
+            "initial_scale": 1,
+            "enable_gradient_checkpointing": True,
+            "parallel_output": False,
+        },
+        {
+            "tp_size": 2,
+            "pp_size": 2,
+            "pp_style": "zbv",
+            "num_model_chunks": 2,
+            "num_microbatches": 4,
+            "enable_all_optimization": False,
+            "precision": "fp16",
+            "zero_stage": 1,
             "initial_scale": 1,
             "enable_gradient_checkpointing": True,
             "parallel_output": False,
