@@ -5,8 +5,6 @@ import warnings
 from contextlib import nullcontext
 
 import torch
-
-torch.autograd.set_detect_anomaly(True)
 import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel

@@ -373,7 +373,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
             fp8_communication=fp8_communication,
-            use_zbv=(pp_style == "zbv"),
         )
         self.amp_config = dict(
             initial_scale=initial_scale,

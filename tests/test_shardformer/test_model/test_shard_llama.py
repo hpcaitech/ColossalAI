@@ -277,7 +277,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
-        # TODO: assert layer error
+        # # TODO: assert layer error
         # {
         #     "tp_size": 2,
         #     "pp_size": 2,

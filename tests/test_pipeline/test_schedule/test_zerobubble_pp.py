@@ -8,12 +8,14 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.testing import assert_close
+from transformers.models.llama.configuration_llama import LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaModel
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralModel
 
 import colossalai
 from colossalai.booster.booster import Booster
-from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.booster.plugin.moe_hybrid_parallel_plugin import HybridParallelPlugin, MoeHybridParallelPlugin
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import OptimizerWrapper
 from colossalai.logging import disable_existing_loggers
@@ -918,11 +920,181 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
     torch.cuda.empty_cache()
 
 
+@parameterize(
+    "config",
+    [
+        (0, 4, 1, 1),
+        # (1, 2, 2, 1),
+        # (1, 2, 1, 2),
+        # (1, 1, 2, 2),
+    ],
+)
+def run_with_booster_hybridplugin(config: Tuple[int, ...]):
+    stage, pp_size, tp_size, sp_size = config
+    num_microbatches = pp_size
+    dist.get_world_size()
+    rank = dist.get_rank()
+    dtype, precision = torch.float16, "fp16"
+    torch.cuda.set_device(dist.get_rank())
+
+    ########
+    # init base model
+    ########
+    assert pp_size <= NUM_LAYERS, "pp_size should be less than or equal to NUM_LAYERS"
+    config = LlamaConfig(
+        hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
+        intermediate_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS * 2,
+        num_hidden_layers=NUM_LAYERS,
+        num_attention_heads=NUM_HEADS,
+        num_key_value_heads=NUM_HEADS,
+        attn_implementation="flash_attention_2",
+    )
+
+    # init model with the same seed
+    seed_all(10086)
+
+    torch_model = LlamaModel(config).to(dtype).cuda()
+    # TODO: Support MixtralForCausalLM
+    # torch_model = MixtralForCausalLM(config).to(dtype).cuda()
+    torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
+    # init schedule
+    h, a, s = config.hidden_size, config.num_attention_heads, 1024
+    mem_f = 34 * h + 5 * a * s
+    mem_w = -32 * h
+    mem_b = -mem_w - mem_f
+    graph = PipelineGraph(
+        n_stage=pp_size,
+        n_micro=num_microbatches,
+        f_cost=1,
+        b_cost=1,
+        w_cost=1,
+        c_cost=1,
+        f_mem=mem_f,
+        b_mem=mem_b,
+        w_mem=mem_w,
+    )
+
+    zbv_schedule = graph.get_v_schedule()
+
+    # init MoeHybridPlugin
+    plugin = HybridParallelPlugin(
+        pp_size=pp_size,
+        num_microbatches=pp_size,
+        tp_size=tp_size,
+        sp_size=sp_size,
+        zero_stage=stage,
+        enable_sequence_parallelism=sp_size > 1,
+        sequence_parallelism_mode="all_to_all" if sp_size > 1 else None,
+        overlap_communication=False,
+        initial_scale=1,
+        precision=precision,
+        find_unused_parameters=True,
+        pp_style="zbv",
+        scheduler_nodes=zbv_schedule,
+        num_model_chunks=2,
+    )
+
+    dp_size = plugin.dp_size
+
+    booster = Booster(plugin=plugin)
+
+    ########
+    # init pp model
+    ########
+
+    parallel_model = deepcopy(torch_model)
+    parallel_optimizer = torch.optim.SGD(parallel_model.parameters(), lr=1)
+    parallel_model, parallel_optimizer, _, _, _ = booster.boost(parallel_model, parallel_optimizer)
+    # create different input along dp axis
+    seed_all(1453 + rank)
+
+    torch_model.train()
+    parallel_model.train()
+    for i in range(2):
+        # gen random input
+        # input = torch.rand(
+        #     NUM_BATCH, NUM_TOK_PER_BATCH, NUM_HEADS, HIDDEN_SIZE_PER_HEAD, requires_grad=True
+        # ).cuda()
+        input_ids = torch.randint(0, torch_model.vocab_size, (NUM_BATCH, config.max_position_embeddings)).cuda()
+        attention_mask = torch.ones_like(input_ids).cuda()
+        input_ids.clone().cuda()
+        input_data = {"input_ids": input_ids, "attention_mask": attention_mask}
+
+        # dist.all_reduce(
+        #     input, group=plugin.pp_group
+        # )  # pp inputs except the first stage doesn't matter, but need to be replicate for torch model check
+
+        # dist.all_reduce(input, group=plugin.tp_group)  # tp group duplicate input
+        # dist.all_reduce(input, group=plugin.sp_group)  # sp group duplicate input
+
+        # run the model with hybrid parallel
+        if booster.plugin.stage_manager is not None:
+            # for test with pp
+            data_iter = iter([input_data])
+            sharded_output = booster.execute_pipeline(
+                data_iter,
+                parallel_model,
+                lambda x, y: x.last_hidden_state.mean(),
+                parallel_optimizer,
+                return_loss=True,
+                return_outputs=True,
+            )
+            # stage 0 chunk 0
+            parallel_output = None
+            if (
+                booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
+                and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
+            ):
+                parallel_output = sharded_output["loss"]
+            else:
+                parallel_output = torch.tensor(12345.0, device="cuda")
+            # broadcast along pp axis
+            dist.broadcast(parallel_output, src=dist.get_process_group_ranks(plugin.pp_group)[0], group=plugin.pp_group)
+
+        else:
+            # for test without pp
+            parallel_output = parallel_model(
+                input_ids=input_data["input_ids"],
+                attention_mask=input_data["attention_mask"],
+            ).last_hidden_state.mean()
+            parallel_optimizer.backward(parallel_output)
+        parallel_optimizer.step()
+        parallel_optimizer.zero_grad()
+        dist.all_reduce(parallel_output, group=plugin.dp_group)
+
+        # ===================================================================================
+        # run normal model with all dp(different) inputs
+        all_inputs = [input_data for _ in range(dp_size)]
+        # dist.all_gather(all_inputs, input, group=plugin.dp_group)
+        torch_output_sum = 0
+        for input_data_ in all_inputs:
+            torch_output = torch_model(
+                input_ids=input_data_["input_ids"],
+                attention_mask=input_data_["attention_mask"],
+            ).last_hidden_state.mean()
+            torch_output.backward()
+            torch_output_sum += torch_output.detach()
+        # print(f"parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
+        # avg dp grads follows zero optimizer
+        for p in torch_model.parameters():
+            if p.grad is not None:
+                p.grad /= dp_size
+        torch_optimizer.step()
+        torch_optimizer.zero_grad()
+
+        print(f"loop {i} rank {dist.get_rank()} parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
+        # assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
+        # print(f"rank {dist.get_rank()} config {test_config}  test passed")
+    clear_layout_converter()
+    Randomizer.reset_index()
+    torch.cuda.empty_cache()
+
+
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    # run_fwd_bwd_vschedule_with_optim()
     run_with_booster_moehybridplugin()
+    # run_with_booster_hybridplugin()
 
 
 @pytest.mark.dist
