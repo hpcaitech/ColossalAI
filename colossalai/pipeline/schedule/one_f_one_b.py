@@ -311,7 +311,10 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
             for k in keys:
                 tensors_to_backward.append(output_obj[k])
                 grads_to_backward.append(output_obj_grad[k])
-            optimizer.backward_by_grad(tensors_to_backward, grads_to_backward)
+            if len(tensors_to_backward) == 1:
+                optimizer.backward_by_grad(tensors_to_backward[0], grads_to_backward[0])
+            else:
+                optimizer.backward_by_grad(tensors_to_backward, grads_to_backward)
 
         # Collect the grad of the input_obj.
         input_obj_grad = None
