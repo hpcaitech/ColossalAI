@@ -87,7 +87,7 @@ def assert_not_equal_in_group(tensor, process_group=None):
 
 def run_fwd_bwd(model, data, label, criterion, optimizer, enable_autocast=False):
     model.train()
-    with torch.amp.autocast(enabled=enable_autocast):
+    with torch.cuda.amp.autocast(enabled=enable_autocast):
         if criterion:
             y = model(data)
             loss = criterion(y, label)
