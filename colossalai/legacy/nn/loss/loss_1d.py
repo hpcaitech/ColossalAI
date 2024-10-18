@@ -1,6 +1,11 @@
 import torch
 import torch.distributed as dist
-from torch.cuda.amp import custom_bwd, custom_fwd
+
+try:
+    from torch.amp import custom_bwd, custom_fwd
+except ImportError:
+    from torch.cuda.amp import custom_bwd, custom_fwd
+
 from torch.nn.modules.loss import _Loss
 
 from colossalai.legacy.context import ParallelMode

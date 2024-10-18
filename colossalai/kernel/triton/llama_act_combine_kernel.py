@@ -3,7 +3,11 @@ from typing import Any, Tuple
 
 import torch
 from torch import Tensor
-from torch.cuda.amp import custom_bwd, custom_fwd
+
+try:
+    from torch.amp import custom_bwd, custom_fwd
+except ImportError:
+    from torch.cuda.amp import custom_bwd, custom_fwd
 
 try:
     import triton

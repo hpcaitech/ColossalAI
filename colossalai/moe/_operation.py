@@ -3,7 +3,12 @@ from typing import Any, List, Optional, Tuple
 import torch
 import torch.distributed as dist
 from torch import Tensor
-from torch.cuda.amp import custom_bwd, custom_fwd
+
+try:
+    from torch.amp import custom_bwd, custom_fwd
+except ImportError:
+    from torch.cuda.amp import custom_bwd, custom_fwd
+
 from torch.distributed import ProcessGroup
 
 from colossalai.quantization.fp8 import all_to_all_single_fp8
