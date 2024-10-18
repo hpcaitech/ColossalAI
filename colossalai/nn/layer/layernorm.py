@@ -5,12 +5,7 @@
 import numbers
 
 import torch
-
-try:
-    from torch.amp import custom_bwd, custom_fwd
-except ImportError:
-    from torch.cuda.amp import custom_bwd, custom_fwd
-
+from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn import init
 from torch.nn.parameter import Parameter
 

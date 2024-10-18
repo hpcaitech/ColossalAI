@@ -3,11 +3,7 @@ from typing import Any, Optional, Tuple
 import torch
 import torch.distributed as dist
 from torch import Tensor
-
-try:
-    from torch.cuda.amp import custom_bwd, custom_fwd
-except ImportError:
-    from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 from colossalai.accelerator import get_accelerator
 from colossalai.legacy.communication.collective import all_gather, all_reduce, reduce_scatter

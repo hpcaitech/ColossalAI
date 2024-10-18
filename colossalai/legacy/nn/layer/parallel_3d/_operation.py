@@ -5,11 +5,7 @@ from typing import Optional, Tuple
 
 import torch
 from torch import Tensor
-
-try:
-    from torch.cuda.amp import custom_bwd, custom_fwd
-except ImportError:
-    from torch.cuda.amp import custom_bwd, custom_fwd
+from torch.cuda.amp import custom_bwd, custom_fwd
 
 from colossalai.legacy.communication import all_gather, all_reduce, broadcast, reduce, reduce_scatter
 from colossalai.legacy.constants import INPUT_GROUP_3D, WEIGHT_GROUP_3D
