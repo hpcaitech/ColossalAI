@@ -21,12 +21,12 @@ class TorchAMPOptimizer(OptimizerWrapper):
         optim (Optimizer): Optimizer to wrap.
         init_scale (float): Initial scale factor. Default: 2**16.
         growth_factor (float): Factor by which the scale is multiplied during
-            :meth:`torch.amp.GradScaler.step` if gradients were found to be finite
+            :meth:`torch.cuda.amp.GradScaler.step` if gradients were found to be finite
             this iteration. Default: 2.0.
         backoff_factor (float): Factor by which the scale is multiplied during
-            :meth:`torch.amp.GradScaler.step` if gradients were found to be infinite
+            :meth:`torch.cuda.amp.GradScaler.step` if gradients were found to be infinite
             this iteration. Default: 0.5.
-        growth_interval (int): Number of iterations between :meth:`torch.amp.GradScaler.step`
+        growth_interval (int): Number of iterations between :meth:`torch.cuda.amp.GradScaler.step`
             calls that may cause the scale to increase. Default: 2000.
     """
 
@@ -39,7 +39,7 @@ class TorchAMPOptimizer(OptimizerWrapper):
         growth_interval: int = 2000,
     ) -> None:
         super().__init__(optim)
-        self.scaler = torch.amp.GradScaler(
+        self.scaler = torch.cuda.amp.GradScaler(
             init_scale=init_scale,
             growth_factor=growth_factor,
             backoff_factor=backoff_factor,
@@ -100,12 +100,12 @@ class FP16TorchMixedPrecision(MixedPrecision):
     Args:
         init_scale (float): Initial scale factor. Default: 2**16.
         growth_factor (float): Factor by which the scale is multiplied during
-            :meth:`torch.amp.GradScaler.step` if gradients were found to be finite
+            :meth:`torch.cuda.amp.GradScaler.step` if gradients were found to be finite
             this iteration. Default: 2.0.
         backoff_factor (float): Factor by which the scale is multiplied during
-            :meth:`torch.amp.GradScaler.step` if gradients were found to be infinite
+            :meth:`torch.cuda.amp.GradScaler.step` if gradients were found to be infinite
             this iteration. Default: 0.5.
-        growth_interval (int): Number of iterations between :meth:`torch.amp.GradScaler.step`
+        growth_interval (int): Number of iterations between :meth:`torch.cuda.amp.GradScaler.step`
             calls that may cause the scale to increase. Default: 2000.
     """
 
