@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 
 try:
-    from torch.amp import custom_bwd, custom_fwd
+    from torch.cuda.amp import custom_bwd, custom_fwd
 except ImportError:
     from torch.cuda.amp import custom_bwd, custom_fwd
 
