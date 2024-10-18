@@ -1,10 +1,5 @@
 import torch.nn
 
-from colossalai.legacy.zero.gemini.ophooks.runtime_mem_tracer_hook import (
-    GradMemStats,
-    GradMemTracerHook,
-    ParamMemTracerHook,
-)
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.utils import _cast_float
 
@@ -27,6 +22,12 @@ class RuntimeMemTracer:
 
     def __init__(self, module: torch.nn.Module, dtype: torch.dtype = torch.half):
         super().__init__()
+        from colossalai.legacy.zero.gemini.ophooks.runtime_mem_tracer_hook import (
+            GradMemStats,
+            GradMemTracerHook,
+            ParamMemTracerHook,
+        )
+
         self.module = module
         self.dtype = dtype
         self._gradstat = GradMemStats()

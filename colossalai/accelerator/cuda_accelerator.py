@@ -279,4 +279,4 @@ class CudaAccelerator(BaseAccelerator):
         """
         Return autocast function
         """
-        return torch.cuda.amp.autocast(enabled=enabled, dtype=dtype, cache_enabled=cache_enabled)
+        return torch.amp.autocast(device_type="cuda", enabled=enabled, dtype=dtype, cache_enabled=cache_enabled)
