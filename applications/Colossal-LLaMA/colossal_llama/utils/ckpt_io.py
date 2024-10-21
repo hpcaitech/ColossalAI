@@ -43,6 +43,7 @@ def save_checkpoint(
     step: int,
     batch_size: int,
     coordinator: DistCoordinator,
+    use_lora: bool = False,
 ) -> None:
     """
     Save model checkpoint, optimizer, LR scheduler and intermedidate running states.
@@ -51,7 +52,10 @@ def save_checkpoint(
     save_dir = os.path.join(save_dir, f"epoch-{epoch}_step-{step}")
     os.makedirs(os.path.join(save_dir, "modeling"), exist_ok=True)
 
-    booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
+    if use_lora:
+        booster.save_lora_as_pretrained(model, os.path.join(save_dir, "modeling"))
+    else:
+        booster.save_model(model, os.path.join(save_dir, "modeling"), shard=True)
 
     booster.save_optimizer(optimizer, os.path.join(save_dir, "optimizer"), shard=True)
     booster.save_lr_scheduler(lr_scheduler, os.path.join(save_dir, "lr_scheduler"))

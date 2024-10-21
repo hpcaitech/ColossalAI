@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.cluster import DistCoordinator
 
@@ -59,7 +60,9 @@ def warm_up(
     for i, data in enumerate(dataloader):
         if i > num_runs:
             break
-        inputs, labels = data[0].cuda(), data[1].cuda()
+        inputs, labels = data[0].to(get_accelerator().get_current_device()), data[1].to(
+            get_accelerator().get_current_device()
+        )
         outputs = model(inputs, labels=labels)
         loss = criterion(outputs)
         booster.backward(loss, optimizer)
@@ -85,7 +88,7 @@ def benchmark(
     warm_up_steps: int = 3,
 ):
     results = {}
-    model_device = torch.cuda.current_device()
+    model_device = get_accelerator().get_current_device()
 
     # Warm up
     warm_up_fn(
@@ -106,8 +109,8 @@ def benchmark(
     # Measure Allocated Memory and Throughput
     memory = {}
     throughput = {}
-    torch.cuda.reset_peak_memory_stats(device=model_device)
-    pre_mem = torch.cuda.memory_allocated(device=model_device)
+    get_accelerator().reset_peak_memory_stats(device=model_device)
+    pre_mem = get_accelerator().memory_allocated(device=model_device)
 
     start_time = time()
 
@@ -116,7 +119,9 @@ def benchmark(
             dataloader, desc=f"Epoch [{epoch + 1}/{epoch_num}]", disable=not DistCoordinator().is_master()
         ) as pbar:
             for data in pbar:
-                inputs, labels = data[0].cuda(), data[1].cuda()
+                inputs, labels = data[0].to(get_accelerator().get_current_device()), data[1].to(
+                    get_accelerator().get_current_device()
+                )
                 outputs = model(inputs, labels=labels)
                 loss = criterion(outputs)
                 booster.backward(loss, optimizer)
@@ -128,8 +133,8 @@ def benchmark(
 
     all_sample = epoch_num * len(dataloader)
 
-    post_mem = torch.cuda.memory_allocated(device=model_device)
-    max_mem = torch.cuda.max_memory_allocated(device=model_device)
+    post_mem = get_accelerator().memory_allocated(device=model_device)
+    max_mem = get_accelerator().max_memory_allocated(device=model_device)
 
     memory[f"batch_size_{batch_size}"] = {
         "cuda_pre_training_bytes": format_num(pre_mem, bytes=True),

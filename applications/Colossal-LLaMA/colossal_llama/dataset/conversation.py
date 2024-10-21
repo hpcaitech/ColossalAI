@@ -100,7 +100,7 @@ LLaMA3_Conv = Conversation(
     messages=[],
     offset=0,
     sep_style=SeparatorStyle.ADD_BOS_EOS_TOKEN,
-    seps=["<|begin_of_text|>", "<|end_of_text|>"],
+    seps=["<|begin_of_text|>", "<|eot_id|>"],
 )
 
 default_conversation = LLaMA3_Conv
