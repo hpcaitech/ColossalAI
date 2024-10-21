@@ -21,6 +21,7 @@ from colossal_llama.utils.ckpt_io import load_checkpoint, save_checkpoint
 from colossal_llama.utils.froze import freeze_non_embeds_parameters
 from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
 from colossal_llama.utils.utils import all_reduce_mean, format_numel_str, get_model_numel
+from peft import LoraConfig
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -166,7 +167,7 @@ def train(args) -> None:
     # ======================================================
     init_ctx = (
         LazyInitContext(default_device=get_current_device())
-        if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin))
+        if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin)) and args.lora_rank == 0
         else nullcontext()
     )
     with init_ctx:
@@ -178,11 +179,16 @@ def train(args) -> None:
         # Freeze part of parameters.
         if args.freeze_non_embeds_params:
             freeze_non_embeds_parameters(model=model)
+
+    if args.lora_rank > 0:
+        lora_config = LoraConfig(task_type="CAUSAL_LM", r=args.lora_rank, lora_alpha=32, lora_dropout=0.1)
+        model = booster.enable_lora(model, lora_config=lora_config)
+
     # this is essential, otherwise the grad checkpoint will not work.
     model.train()
 
     if args.use_grad_checkpoint:
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
 
     model_numel = get_model_numel(model)
@@ -319,6 +325,7 @@ def train(args) -> None:
                         step=step + 1,
                         batch_size=args.batch_size,
                         coordinator=coordinator,
+                        use_lora=(args.lora_rank > 0),
                     )
                     coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
@@ -389,6 +396,7 @@ def train(args) -> None:
                         step=step + 1,
                         batch_size=args.batch_size,
                         coordinator=coordinator,
+                        use_lora=(args.lora_rank > 0),
                     )
                     coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {step + 1} at folder {args.save_dir}"
@@ -514,6 +522,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--microbatch_size", type=int, default=1, help="Batch size for each process in PP, used for 3d plugin."
     )
+    parser.add_argument("--lora_rank", type=int, default=0, help="lora rank when using lora to train.")
 
     # Additional arguments for benchmark.
     parser.add_argument("--num_samples", type=int, default=500, help="Number of samples for benchmarking.")
