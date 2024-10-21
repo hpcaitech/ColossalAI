@@ -957,6 +957,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         assert isinstance(
             peft_model, PeftModel
         ), "The model doesn't have lora adapters, please enable lora before saving."
-        return peft_model.save_pretrained(checkpoint, safe_serialization=use_safetensors,
-                                          state_dict=tree_map(lambda x: x.data if torch.is_tensor(x) else x,
-                                                              peft_model.state_dict()))
+        return peft_model.save_pretrained(
+            checkpoint,
+            safe_serialization=use_safetensors,
+            state_dict=tree_map(lambda x: x.data if torch.is_tensor(x) else x, peft_model.state_dict()),
+        )
