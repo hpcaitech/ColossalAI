@@ -8,6 +8,7 @@ API_KEY = "Dummy API Key"
 def get_client(base_url: str | None = None) -> openai.Client:
     return openai.Client(api_key=API_KEY, base_url=base_url)
 
+
 def chat_completion(
     messages: list[ChatCompletionMessageParam],
     model: str,
@@ -23,4 +24,3 @@ def chat_completion(
         **kwargs,
     )
     return response
-
