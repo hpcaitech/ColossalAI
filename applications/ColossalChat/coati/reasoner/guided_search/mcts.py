@@ -158,9 +158,7 @@ class MCTS(BaseModel):
             max_tokens=self.cfg.max_tokens,
         )
         critique = critique_response.choices[0].message.content
-        print(critique)
         assert critique is not None
-
         refined_answer_response = chat_completion(
             messages=[
                 {
@@ -192,11 +190,11 @@ class MCTS(BaseModel):
             messages=[
                 {
                     "role": "system",
-                    "content": "The user will provide a problem. Solve the problem. The response should begin with [reasoning process]...[Verification]... and end with [Final Answer]. \nThe answer is [answer] \n#### [answer]. \nLet's think step by step.",
+                    "content": "The user will provide a problem. Solve the problem. The response should begin with [reasoning process]...[Verification]... and end with [Final Answer]. \nThe answer is [answer] \n#### [answer].",
                 },
                 {
                     "role": "user",
-                    "content": f"<problem>\n {self.problem} \n</problem>",
+                    "content": f"<problem>\n {self.problem} \n</problem> \nLet's think step by step",
                 },
             ],
             model=self.cfg.model,
