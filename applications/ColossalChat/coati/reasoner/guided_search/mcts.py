@@ -71,13 +71,13 @@ class MCTS(BaseModel):
         Select next node to explore.
         """
         candidates: list[MCTSNode] = []
-        to_consider = deque([self.root])
+        to_explore = deque([self.root])
 
-        while to_consider:
-            current_node = to_consider.popleft()
+        while to_explore:
+            current_node = to_explore.popleft()
             if not self.is_fully_expanded(current_node):
                 candidates.append(current_node)
-            to_consider.extend(current_node.children)
+            to_explore.extend(current_node.children)
 
         if not candidates:
             return self.root
@@ -114,7 +114,6 @@ class MCTS(BaseModel):
         self.initialization()
         for _ in tqdm.tqdm(range(self.max_simulations)):
             node = self.select_node()
-            print(f"Node answer: {node.answer}")
             child = self.self_refine(node)
             node.expand_node(child)
             self.self_evaluate(child)
