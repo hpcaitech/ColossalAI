@@ -79,7 +79,7 @@ class _CppExtension(_Extension):
 
         # check if the kernel has been built
         compiled_before = False
-        kernel_file_path = build_directory.joinpath(f"{self.name}.o")
+        kernel_file_path = build_directory.joinpath(f"{self.name}.so")
         if kernel_file_path.exists():
             compiled_before = True
 
