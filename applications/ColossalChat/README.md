@@ -27,6 +27,7 @@
 - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
 - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
 - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
+- [Inference with Self-refined MCTS](#inference-with-self-refined-mcts)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
@@ -272,7 +273,7 @@ Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pd
 ## Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
 We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
 
-### Inference Quantization and Serving - After Training
+## Inference Quantization and Serving - After Training
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
@@ -280,6 +281,20 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
+
+## Inference with Self-refined MCTS
+We provide the implementation of MCT Self-Refine (MCTSr) algorithm, an innovative integration of Large Language Models with Monte Carlo Tree Search.
+To run inference with MCTS, simply use the following script.
+```python
+from coati.reasoner.guided_search.mcts import MCTS
+from coati.reasoner.guided_search.prompt_store.qwen import Qwen32B_prompt_CFG
+
+problem = "How Many R in 'Strawberry'"
+
+search_tree = MCTS(problem=problem, max_simulations=8, cfg=Qwen32B_prompt_CFG)
+answer = search_tree.simulate()
+print(answer)
+```
 
 ## Coati7B examples
 
