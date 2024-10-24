@@ -52,6 +52,10 @@ class MixtralPolicy(Policy):
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         tp_size = self.shard_config.tensor_parallel_size
+        if self.pipeline_stage_manager:
+            use_zbv = self.pipeline_stage_manager.use_zbv
+        else:
+            use_zbv = False
 
         # modified for both SP and TP
         num_q_heads = self.model.config.num_attention_heads
@@ -124,27 +128,43 @@ class MixtralPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
                     ),
                     SubModuleReplacementDescription(
                         suffix="block_sparse_moe.gate",
                         target_module=Linear1D_Col,
-                        kwargs={"gather_output": True, "fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
                     ),
                 ],
             )
@@ -179,6 +199,7 @@ class MixtralPolicy(Policy):
                             "tp_group": self.shard_config.tensor_parallel_process_group,
                             "moe_dp_group": self.shard_config.moe_dp_group,
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     )
                 ],
@@ -313,6 +334,10 @@ class MixtralModelPolicy(MixtralPolicy):
 class MixtralForCausalLMPolicy(MixtralPolicy):
     def module_policy(self):
         policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            use_zbv = self.pipeline_stage_manager.use_zbv
+        else:
+            use_zbv = False
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for causal lm
@@ -322,9 +347,13 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
-                    ]
+                    ],
                 )
             }
             policy.update(new_item)
@@ -343,7 +372,9 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
+        if stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True):
+            held_layers.append(self.model.lm_head)
+        elif stage_manager.is_last_stage(ignore_chunk=True):
             held_layers.append(self.model.lm_head)
         return held_layers
 
@@ -369,6 +400,10 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
         from transformers import MixtralForSequenceClassification
 
         policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            use_zbv = self.pipeline_stage_manager.use_zbv
+        else:
+            use_zbv = False
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
@@ -378,7 +413,11 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="score",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
                     ]
                 )

@@ -21,6 +21,7 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, TorchF
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 
 warnings.filterwarnings("ignore")
@@ -39,6 +40,7 @@ MODEL_CONFIGS = {
     ),
     "5b": LlamaConfig(max_position_embeddings=4096, num_key_value_heads=8),
     "7b": LlamaConfig(max_position_embeddings=4096),
+    # "7b": LlamaConfig(num_hidden_layers=4, max_position_embeddings=4096),
     "13b": LlamaConfig(
         hidden_size=5120,
         intermediate_size=13824,
@@ -91,7 +93,7 @@ def main():
     parser.add_argument("--zero", type=int, default=0, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
 
-    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
+    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved", "zbv"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code")
     parser.add_argument(
@@ -126,9 +128,12 @@ def main():
         {
             "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
                 num_ckpt_layers_per_stage=[19, 19, 19, 13],
+                # num_ckpt_layers_per_stage=[48, 48, 48, 48],
             ),
             "num_layers_per_stage": [19, 20, 20, 21],
-            "pp_style": "interleaved",
+            # "num_layers_per_stage": [48, 48, 48, 48],
+            # "pp_style": "interleaved",
+            "pp_style": "1f1b",
         }
         if args.custom_ckpt
         else {}
@@ -137,6 +142,11 @@ def main():
     # ==============================
     # Initialize Booster
     # ==============================
+    if args.config in MODEL_CONFIGS:
+        config = MODEL_CONFIGS[args.config]
+    else:
+        config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
+
     use_empty_init = True
     if args.plugin == "gemini":
         plugin = GeminiPlugin(
@@ -210,6 +220,25 @@ def main():
                 fp8_communication=args.use_fp8_comm,
             )
     elif args.plugin == "3d":
+        if args.pp_style == "zbv":
+            mem_f = 34 * config.hidden_size + 5 * config.num_attention_heads * args.max_length
+            mem_w = -32 * config.hidden_size
+            mem_b = -mem_w - mem_f
+            scheduler_nodes = PipelineGraph(
+                n_stage=args.pp,
+                n_micro=args.batch_size // args.mbs,
+                f_cost=1000,
+                b_cost=1000,
+                w_cost=1000,
+                c_cost=1,
+                f_mem=mem_f * 1.5,
+                b_mem=mem_b * 1.5,
+                w_mem=mem_w * 1.5,
+            ).get_v_schedule()
+        else:
+            scheduler_nodes = None
+        # print(f"{dist.get_rank()} {scheduler_nodes[]} ")
+
         plugin = HybridParallelPlugin(
             tp_size=args.tp,
             pp_size=args.pp,
@@ -227,6 +256,8 @@ def main():
             overlap_allgather=args.overlap_allgather,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
+            scheduler_nodes=scheduler_nodes,
+            make_vocab_size_divisible_by=1,
             **hybrid_kwargs,
         )
     elif args.plugin == "3d_cpu":
@@ -242,7 +273,7 @@ def main():
             microbatch_size=args.mbs,
             initial_scale=2**8,
             precision="bf16",
-            overlap_p2p=args.overlap,
+            overlap_p2p=True,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
         )
@@ -256,10 +287,6 @@ def main():
     # ==============================
     dp_size = getattr(plugin, "dp_size", coordinator.world_size)
 
-    if args.config in MODEL_CONFIGS:
-        config = MODEL_CONFIGS[args.config]
-    else:
-        config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
     torch.cuda.manual_seed(42)
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
@@ -307,7 +334,7 @@ def main():
     torch.set_default_dtype(torch.bfloat16)
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
 
-    torch.set_default_dtype(torch.float)
+    # torch.set_default_dtype(torch.float)
     coordinator.print_on_master(
         f"Booster init max CUDA memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
     )
@@ -319,7 +346,7 @@ def main():
         args.profile,
         args.ignore_steps,
         1,  # avoid creating massive log files
-        save_dir=f"profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
+        save_dir=f"./profile/{time.strftime('%H:%M', time.localtime())}-{args.plugin}-llama-{args.config}",
         nsys=args.nsys,
     ) as prof:
         if isinstance(plugin, HybridParallelPlugin) and args.pp > 1:
@@ -334,8 +361,12 @@ def main():
                     return_loss=True,
                 )
                 loss = outputs["loss"]
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    print(f"Step {step} loss: {loss}")
+                if args.pp_style == "zbv":
+                    if dist.get_rank() == 0:
+                        print(f"Step {step} loss: {loss}")
+                else:
+                    if dist.get_rank() == dist.get_world_size() - 1:
+                        print(f"Step {step} loss: {loss}")
                 optimizer.step()
                 optimizer.zero_grad()
 

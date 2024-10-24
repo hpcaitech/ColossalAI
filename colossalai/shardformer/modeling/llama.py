@@ -32,6 +32,7 @@ from colossalai.shardformer.shard import ShardConfig
 from ..layer import ColoAttention, RingAttention, dist_cross_entropy
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
+_GLOBAL_ORDER_ = 0
 
 
 class LlamaPipelineForwards:
@@ -82,7 +83,7 @@ class LlamaPipelineForwards:
             elif input_ids is not None:
                 batch_size, seq_length = input_ids.shape[:2]
             elif inputs_embeds is not None:
-                batch_size, seq_length, _ = inputs_embeds.shape[:2]
+                batch_size, seq_length = inputs_embeds.shape[:2]
             else:
                 raise ValueError("You have to specify either input_ids or inputs_embeds")
             if inputs_embeds is None:
@@ -193,6 +194,10 @@ class LlamaPipelineForwards:
             assert num_ckpt_layers <= end_idx - start_idx
 
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
+            # global _GLOBAL_ORDER_
+            # if torch.distributed.get_rank() == 0:
+            #     print(f"rank {torch.distributed.get_rank()} {stage_manager.stage}; start:{start_idx}, end:{end_idx} hidden_states require grad{hidden_states.requires_grad}")
+            # # _GLOBAL_ORDER_ += 1
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
             if idx - start_idx < num_ckpt_layers:
@@ -216,6 +221,8 @@ class LlamaPipelineForwards:
                     use_cache=use_cache,
                     cache_position=cache_position,
                 )
+                # if torch.distributed.get_rank() == 0:
+                #     print(f"rank {torch.distributed.get_rank()} {stage_manager.stage}; start:{start_idx}, end:{end_idx} layer_outputs require grad {layer_outputs[0].requires_grad}")
             hidden_states = layer_outputs[0]
 
             if use_cache:

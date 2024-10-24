@@ -60,6 +60,7 @@ class EPMixtralSparseMoeBlock(ParallelModule):
         moe_dp_group: ProcessGroup,
         ep_group: ProcessGroup,
         fp8_communication: bool = False,
+        use_zbv: bool = False,
     ):
         assert tp_group is not None
         assert moe_dp_group is not None
@@ -70,6 +71,7 @@ class EPMixtralSparseMoeBlock(ParallelModule):
         self.ep_rank = dist.get_rank(ep_group)
         self.ep_group = ep_group
         self.fp8_communication = fp8_communication
+        self.use_zbv = use_zbv
 
         if self.num_experts % self.ep_size != 0:
             raise ValueError("The number of experts must be divisible by the number of expert parallel groups.")
@@ -89,13 +91,13 @@ class EPMixtralSparseMoeBlock(ParallelModule):
         if self.tp_group.size() > 1:
             for expert in held_experts:
                 expert.w1 = Linear1D_Col.from_native_module(
-                    expert.w1, self.tp_group, fp8_communication=self.fp8_communication
+                    expert.w1, self.tp_group, fp8_communication=self.fp8_communication, use_zbv=self.use_zbv
                 )
                 expert.w3 = Linear1D_Col.from_native_module(
-                    expert.w3, self.tp_group, fp8_communication=self.fp8_communication
+                    expert.w3, self.tp_group, fp8_communication=self.fp8_communication, use_zbv=self.use_zbv
                 )
                 expert.w2 = Linear1D_Row.from_native_module(
-                    expert.w2, self.tp_group, fp8_communication=self.fp8_communication
+                    expert.w2, self.tp_group, fp8_communication=self.fp8_communication, use_zbv=self.use_zbv
                 )
 
         for p in self.experts.parameters():
@@ -399,6 +401,7 @@ class MixtralPipelineForwards:
 
         if output_router_logits and past_router_logits is not None:
             all_router_logits = past_router_logits + all_router_logits
+
         if stage_manager.is_last_stage():
             if not return_dict:
                 return tuple(
@@ -512,7 +515,6 @@ class MixtralPipelineForwards:
             hidden_states = outputs[0]
             logits = self.lm_head(hidden_states)
             logits = logits.float()
-
             loss = None
             if labels is not None:
                 # Shift so that tokens < n predict n

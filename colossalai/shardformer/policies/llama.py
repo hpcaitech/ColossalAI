@@ -60,6 +60,11 @@ class LlamaPolicy(Policy):
         else:
             norm_cls = RMSNorm
 
+        if self.pipeline_stage_manager:
+            use_zbv = self.pipeline_stage_manager.use_zbv
+        else:
+            use_zbv = False
+
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
@@ -91,7 +96,7 @@ class LlamaPolicy(Policy):
                 target_key=attn_cls,
             )
 
-        if self.pipeline_stage_manager is None:
+        if self.pipeline_stage_manager is not None:
             self.append_or_create_method_replacement(
                 description={
                     "forward": partial(
@@ -126,37 +131,65 @@ class LlamaPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                 ],
             )
@@ -265,7 +298,6 @@ class LlamaPolicy(Policy):
                 not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
             ):
                 held_layers.append(module.norm)
-
         else:
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             if stage_manager.is_first_stage():
@@ -362,8 +394,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
-            return []
+        # if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
+        #     return []
         llama_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
@@ -371,12 +403,20 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
-                return [
-                    {
-                        0: llama_model.embed_tokens.weight,
-                        self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
-                    }
-                ]
+                if self.pipeline_stage_manager.use_zbv:
+                    return [
+                        {
+                            0: llama_model.embed_tokens.weight,
+                            0: self.model.lm_head.weight,
+                        }
+                    ]
+                else:
+                    return [
+                        {
+                            0: llama_model.embed_tokens.weight,
+                            self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
+                        }
+                    ]
         return []
 
 
@@ -385,6 +425,10 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         from transformers import LlamaForSequenceClassification
 
         policy = super().module_policy()
+        if self.pipeline_stage_manager:
+            use_zbv = self.pipeline_stage_manager.use_zbv
+        else:
+            use_zbv = False
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
@@ -397,6 +441,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                             kwargs=dict(
                                 gather_output=True,
                                 fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
                             ),
                         )
                     ]
