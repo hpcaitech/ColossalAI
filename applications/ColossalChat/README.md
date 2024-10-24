@@ -27,12 +27,11 @@
 - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
 - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
 - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
-- [Inference with Self-refined MCTS](#inference-with-self-refined-mcts)
+- [O1 Journey](#o1-journey)
+  - [Inference with Self-refined MCTS](#inference-with-self-refined-mcts)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
-- [The Plan](#the-plan)
-  - [Real-time progress](#real-time-progress)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
@@ -282,7 +281,8 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-## Inference with Self-refined MCTS
+## O1 Journey
+### Inference with Self-refined MCTS
 We provide the implementation of MCT Self-Refine (MCTSr) algorithm, an innovative integration of Large Language Models with Monte Carlo Tree Search.
 To run inference with MCTS, simply use the following script.
 ```python
