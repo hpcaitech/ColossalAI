@@ -21,11 +21,16 @@ def divide(x: float, y: float) -> float:
 def all_reduce_mean(x: float, world_size: int) -> float:
     if world_size == 1:
         return x
+    # BUG: RuntimeError: Invalid scalar type when use dist.all_reduce(tensor, group=gloo_group)
+    # # Use CPU tensor to avoid OOM/weird NCCl error
+    # gloo_group = dist.new_group(backend="gloo")
+    # tensor = torch.tensor([x], device="cpu")
+    # dist.all_reduce(tensor, group=gloo_group)
+    # tensor = tensor / world_size
+    # return tensor.item()
 
-    # Use CPU tensor to avoid OOM/weird NCCl error
-    gloo_group = dist.new_group(backend="gloo")
-    tensor = torch.tensor([x], device="cpu")
-    dist.all_reduce(tensor, group=gloo_group)
+    tensor = torch.tensor([x], device=torch.cuda.current_device(), dtype=torch.float)
+    dist.all_reduce(tensor)
     tensor = tensor / world_size
     return tensor.item()
 

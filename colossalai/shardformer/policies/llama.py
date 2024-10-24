@@ -96,7 +96,7 @@ class LlamaPolicy(Policy):
                 target_key=attn_cls,
             )
 
-        if self.pipeline_stage_manager is None:
+        if self.pipeline_stage_manager is not None:
             self.append_or_create_method_replacement(
                 description={
                     "forward": partial(
@@ -298,7 +298,6 @@ class LlamaPolicy(Policy):
                 not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
             ):
                 held_layers.append(module.norm)
-
         else:
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             if stage_manager.is_first_stage():
@@ -395,8 +394,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
-            return []
+        # if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
+        #     return []
         llama_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
@@ -404,12 +403,20 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
-                return [
-                    {
-                        0: llama_model.embed_tokens.weight,
-                        self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
-                    }
-                ]
+                if self.pipeline_stage_manager.use_zbv:
+                    return [
+                        {
+                            0: llama_model.embed_tokens.weight,
+                            0: self.model.lm_head.weight,
+                        }
+                    ]
+                else:
+                    return [
+                        {
+                            0: llama_model.embed_tokens.weight,
+                            self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
+                        }
+                    ]
         return []
 
 

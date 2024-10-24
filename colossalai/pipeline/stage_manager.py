@@ -223,10 +223,10 @@ class PipelineStageManager:
 
         # calculate the num_layers per stage
         layers_per_stage = [quotient] * num_stages * num_model_chunks
-
         # deal with the rest layers
         if remainder > 0:
             start_position = (num_stages * num_model_chunks) // 2 - remainder // 2
             for i in range(start_position, start_position + remainder):
                 layers_per_stage[i] += 1
+        # print(f"layers_per_stage {layers_per_stage}")
         return layers_per_stage
