@@ -923,10 +923,11 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
 @parameterize(
     "config",
     [
-        # (0, 4, 1, 1),
-        (1, 2, 2, 1),
+        # (1, 2, 2, 1), # Pass
+        # TODO: only support pp + tp accleration; Will support fully pp and None tp Hybrid in furture;
+        (0, 4, 1, 1),
         # (1, 2, 1, 2),
-        # (1, 1, 2, 2), # TODO: no pp show gather result err
+        # (1, 1, 2, 2),
     ],
 )
 def run_with_booster_hybridplugin(config: Tuple[int, ...]):
