@@ -237,7 +237,6 @@ def main():
             ).get_v_schedule()
         else:
             scheduler_nodes = None
-        # print(f"{dist.get_rank()} {scheduler_nodes[]} ")
 
         plugin = HybridParallelPlugin(
             tp_size=args.tp,

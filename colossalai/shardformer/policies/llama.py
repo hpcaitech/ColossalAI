@@ -394,8 +394,8 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        # if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
-        #     return []
+        if self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv:
+            return []
         llama_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
@@ -403,20 +403,26 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
-                if self.pipeline_stage_manager.use_zbv:
-                    return [
-                        {
-                            0: llama_model.embed_tokens.weight,
-                            0: self.model.lm_head.weight,
-                        }
-                    ]
-                else:
-                    return [
-                        {
-                            0: llama_model.embed_tokens.weight,
-                            self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
-                        }
-                    ]
+                return [
+                    {
+                        0: llama_model.embed_tokens.weight,
+                        self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
+                    }
+                ]
+                # if self.pipeline_stage_manager.use_zbv:
+                #     return [
+                #         {
+                #             0: llama_model.embed_tokens.weight,
+                #             0: self.model.lm_head.weight,
+                #         }
+                #     ]
+                # else:
+                #     return [
+                #         {
+                #             0: llama_model.embed_tokens.weight,
+                #             self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
+                #         }
+                #     ]
         return []
 
 
