@@ -96,7 +96,8 @@ class LlamaPolicy(Policy):
                 target_key=attn_cls,
             )
 
-        if self.pipeline_stage_manager is not None:
+        # if self.pipeline_stage_manager is not None:
+        if self.pipeline_stage_manager is None:
             self.append_or_create_method_replacement(
                 description={
                     "forward": partial(

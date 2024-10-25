@@ -325,6 +325,7 @@ def run_llama_test(test_config):
         ).get_v_schedule()
         test_config["scheduler_nodes"] = scheduler_nodes
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
+        print(f"name {name}")
         if test_config.get("sequence_parallelism_mode", None) == "ring_attn" and "causal" not in name:
             continue
         try:
