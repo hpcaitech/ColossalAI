@@ -15,13 +15,17 @@ body:
     options:
     - label: I have searched the existing issues
       required: true
-- type: checkboxes
+
+- type: dropdown
+  id: share_script
   attributes:
-    label: Are you comfortable sharing a minimal script that reproduces the bug?
+    label: Do you feel comfortable sharing a succinct (minimal) script that reproduces the error?
+    description: If not, please describe your setting/training config. Please also put a link to the line in our repo that throws the error.
     options:
-    - label: Yes, I will share a script below
-    - label: No, I prefer not to share (then please describe training config and link to the line in our repo where error occurs)
-      required: true
+      - Yes, I will share a minimal reproducible script
+      - No, I prefer not to share a script
+  validations:
+    required: true
 
 - type: textarea
   attributes:
