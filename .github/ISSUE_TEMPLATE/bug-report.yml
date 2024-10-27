@@ -15,6 +15,14 @@ body:
     options:
     - label: I have searched the existing issues
       required: true
+- type: checkboxes
+  attributes:
+    label: Are you comfortable sharing a minimal script that reproduces the bug?
+    options:
+    - label: Yes, I will share a script below
+    - label: No, I prefer not to share (then please describe training config and link to the line in our repo where error occurs)
+      required: true
+
 - type: textarea
   attributes:
     label: 🐛 Describe the bug
