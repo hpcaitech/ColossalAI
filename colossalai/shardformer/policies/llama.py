@@ -414,10 +414,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         from transformers import LlamaForSequenceClassification
 
         policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            use_zbv = self.pipeline_stage_manager.use_zbv
-        else:
-            use_zbv = False
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
