@@ -60,10 +60,7 @@ class LlamaPolicy(Policy):
         else:
             norm_cls = RMSNorm
 
-        if self.pipeline_stage_manager:
-            use_zbv = self.pipeline_stage_manager.use_zbv
-        else:
-            use_zbv = False
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
@@ -96,7 +93,6 @@ class LlamaPolicy(Policy):
                 target_key=attn_cls,
             )
 
-        # if self.pipeline_stage_manager is not None:
         if self.pipeline_stage_manager is None:
             self.append_or_create_method_replacement(
                 description={
@@ -410,20 +406,6 @@ class LlamaForCausalLMPolicy(LlamaPolicy):
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
-                # if self.pipeline_stage_manager.use_zbv:
-                #     return [
-                #         {
-                #             0: llama_model.embed_tokens.weight,
-                #             0: self.model.lm_head.weight,
-                #         }
-                #     ]
-                # else:
-                #     return [
-                #         {
-                #             0: llama_model.embed_tokens.weight,
-                #             self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
-                #         }
-                #     ]
         return []
 
 

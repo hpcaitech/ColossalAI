@@ -904,7 +904,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
             torch_output.backward()
             torch_output_sum += torch_output.detach()
-        # print(f"parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         # avg dp grads follows zero optimizer
         for p in torch_model.parameters():
             if p.grad is not None:
@@ -912,7 +911,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
-        # print(f"rank {dist.get_rank()} parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} config {test_config}  test passed")
     clear_layout_converter()
@@ -1064,7 +1062,6 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
             torch_output.backward()
             torch_output_sum += torch_output.detach()
-        # print(f"parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         # avg dp grads follows zero optimizer
         for p in torch_model.parameters():
             if p.grad is not None:
@@ -1072,7 +1069,6 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
-        # print(f"rank {dist.get_rank()} parallel_output {parallel_output} torch_output_sum {torch_output_sum}")
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} pp_size:{pp_size}, tp_size {tp_size}, sp_size :{sp_size} test passed")
     clear_layout_converter()
