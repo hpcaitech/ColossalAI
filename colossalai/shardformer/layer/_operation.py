@@ -154,7 +154,6 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             wgrad_gemm_accum_func(_input_, _grad_output_, _weight_main_grad_)
 
         def execute_w_pass(_input_, _grad_output_, _weight_main_grad_=None, wgrad_gemm_func=None):
-            # _grad_output_.t().matmul(_input_)
             return wgrad_gemm_func(_grad_output_.t(), _input_)
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to bias.
@@ -233,6 +232,107 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
 
         if ctx.async_grad_allreduce and not fp8_communication:
             handle.wait()
+        return grad_input, grad_weight, grad_bias, None, None, None, None
+
+
+class LinearBase(torch.autograd.Function):
+    """
+    Linear layer baseline (no tensor parallel version).
+    """
+
+    @staticmethod
+    def forward(ctx, input_, weight, bias, async_grad_allreduce, fp8_communication=False, use_zbv=False):
+        ctx.save_for_backward(input_, weight, bias)
+        ctx.use_bias = bias is not None
+        ctx.async_grad_allreduce = async_grad_allreduce
+        ctx.fp8_communication = fp8_communication
+        ctx.use_zbv = use_zbv
+        if bias is not None:
+            output = F.linear(input_, weight, bias)
+        else:
+            output = F.linear(input_, weight)
+
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, weight, bias = ctx.saved_tensors
+        use_bias = ctx.use_bias
+        ctx.fp8_communication
+        use_zbv = ctx.use_zbv
+
+        def execute_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_, wgrad_gemm_accum_func=None):
+            wgrad_gemm_accum_func(_input_, _grad_output_, _weight_main_grad_)
+
+        def execute_w_pass(_input_, _grad_output_, _weight_main_grad_=None, wgrad_gemm_func=None):
+            return wgrad_gemm_func(_grad_output_.t(), _input_)
+
+        # In order to be hooked into Gemini's '__torch_function__', adding a view operation to bias.
+        if use_bias:
+            bias.view(bias.shape)
+
+        total_input = input.contiguous()
+        grad_input = grad_output.matmul(weight)
+        grad_output = grad_output.contiguous()
+        # Convert the tensor shapes to 2D for execution compatibility
+        if len(grad_output.shape) > 2:
+            grad_output = grad_output.view(-1, grad_output.shape[-1])
+            total_input = total_input.view(-1, total_input.shape[-1])
+
+        if _grad_accum_fusion_available and weight.grad is not None:
+            grad = weight.grad
+            if use_zbv:
+                # TODO: append input, grad_output_, weight, grad func to WeightGradStore
+                if grad.dtype == torch.float32:
+                    WeightGradStore.put(
+                        total_input,
+                        grad_output,
+                        weight,
+                        functools.partial(
+                            execute_w_pass_grad_accum,
+                            wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
+                        ),
+                    )
+                    grad_weight = None
+                elif grad.dtype in (torch.float16, torch.bfloat16):
+                    WeightGradStore.put(
+                        total_input,
+                        grad_output,
+                        weight,
+                        functools.partial(
+                            execute_w_pass_grad_accum,
+                            wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,
+                        ),
+                    )
+                    grad_weight = None
+                else:
+                    raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+            else:
+                if grad.dtype == torch.float32:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32(total_input, grad_output, grad)
+                    grad_weight = None
+                elif grad.dtype == torch.float16:
+                    fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, grad)
+                    grad_weight = None
+                else:
+                    grad_weight = grad_output.t().matmul(total_input)
+        else:
+            if use_zbv:
+                WeightGradStore.put(
+                    total_input,
+                    grad_output,
+                    weight,
+                    functools.partial(
+                        execute_w_pass,
+                        wgrad_gemm_func=torch.matmul,
+                    ),
+                )
+                grad_weight = None
+            else:
+                grad_weight = grad_output.t().matmul(total_input)
+
+        grad_bias = grad_output.sum(dim=0) if use_bias else None
+
         return grad_input, grad_weight, grad_bias, None, None, None, None
 
 
@@ -1099,6 +1199,10 @@ def linear_with_async_comm(
     return LinearWithAsyncCommunication.apply(
         input_, weight, bias, process_group, async_grad_allreduce, fp8_communication, use_zbv
     )
+
+
+def linear_base(input_, weight, bias, async_grad_allreduce, fp8_communication=False, use_zbv=False):
+    return LinearBase.apply(input_, weight, bias, async_grad_allreduce, fp8_communication, use_zbv)
 
 
 def linear_gather_forward_reducescatter_backward(
