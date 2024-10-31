@@ -8,7 +8,8 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row
+from colossalai.pipeline.weight_grad_store import WeightGradStore
+from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row, LinearWithGradAccum
 from colossalai.tensor.d_tensor import is_distributed_tensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -117,6 +118,93 @@ def check_linear_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     assert_close(x_for_unshard.grad, x_for_shard.grad)
 
 
+def check_linear_without_weight_grad_store(lazy_init: bool, seq_parallel_mode: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    linear = nn.Linear(32, 128).cuda()
+    with ctx:
+        linear_copy = nn.Linear(32, 128).cuda()
+    linear_base = LinearWithGradAccum.from_native_module(
+        linear_copy, parallel_input=False, seq_parallel_mode=seq_parallel_mode, use_zbv=False
+    )
+    assert linear_base.weight.shape == torch.Size([128, 32])
+    assert linear_base.bias.shape == torch.Size([128])
+    assert linear_copy.weight is linear_base.weight
+    assert linear_copy.bias is linear_base.bias
+
+    linear.load_state_dict(linear_base.state_dict())
+    linear_base.load_state_dict(linear.state_dict())
+
+    # check computation correctness
+    # [batch_size, seq_len, hidden_size]
+    x = torch.rand(2, 4, 32).cuda()
+    x_for_unshard = x.expand_as(x.clone())
+    x_for_unshard.requires_grad_(True)
+    x_for_shard = x.expand_as(x.clone())
+    x_for_shard.requires_grad_(True)
+
+    # run forward
+    out = linear(x_for_unshard)
+    gather_out = linear_base(x_for_shard)
+    assert_close(out, gather_out)
+
+    # check backward correctness
+    out.sum().backward()
+    gather_out.sum().backward()
+    assert_close(linear.weight.grad, linear_base.weight.grad)
+    # check the input gradients
+    assert x_for_shard.grad is not None
+    assert x_for_unshard.grad is not None
+    assert_close(x_for_unshard.grad, x_for_shard.grad)
+
+
+def check_linear_with_weight_grad_store(lazy_init: bool, seq_parallel_mode: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    linear = nn.Linear(32, 128).cuda()
+    with ctx:
+        linear_copy = nn.Linear(32, 128).cuda()
+    linear_base = LinearWithGradAccum.from_native_module(
+        linear_copy, parallel_input=False, seq_parallel_mode=seq_parallel_mode, use_zbv=True
+    )
+    assert linear_base.weight.shape == torch.Size([128, 32])
+    assert linear_base.bias.shape == torch.Size([128])
+    assert linear_copy.weight is linear_base.weight
+    assert linear_copy.bias is linear_base.bias
+
+    linear.load_state_dict(linear_base.state_dict())
+    linear_base.load_state_dict(linear.state_dict())
+
+    # check computation correctness
+    # [batch_size, seq_len, hidden_size]
+    x = torch.rand(2, 4, 32).cuda()
+    x_for_unshard = x.expand_as(x.clone())
+    x_for_unshard.requires_grad_(True)
+    x_for_shard = x.expand_as(x.clone())
+    x_for_shard.requires_grad_(True)
+
+    # run forward
+    out = linear(x_for_unshard)
+    gather_out = linear_base(x_for_shard)
+    assert_close(out, gather_out)
+
+    # check backward correctness
+    out.sum().backward()
+    gather_out.sum().backward()
+
+    # Weight grad is None before we do WeightGradStore pop
+    assert linear_base.weight.grad is None
+    # after WeightGradStore pop (dw computation complete), we assert weight grad
+    WeightGradStore.flush(chunk=0)  # flush buffer to chunk 0 Queue
+    WeightGradStore.pop(chunk=0)
+    assert_close(linear.weight.grad, linear_base.weight.grad)
+
+    # check the input gradients
+    assert x_for_shard.grad is not None
+    assert x_for_unshard.grad is not None
+    assert_close(x_for_unshard.grad, x_for_shard.grad)
+
+
 def check_linear_col_plus_row(lazy_init: bool, seq_parallel_mode: bool, overlap: bool):
     ctx = LazyInitContext() if lazy_init else nullcontext()
 
@@ -182,6 +270,8 @@ def run_dist_linear_test(lazy_init, seq_parallel_mode, overlap):
     check_linear_1d_col(lazy_init, seq_parallel_mode, overlap)
     check_linear_1d_row(lazy_init, seq_parallel_mode)
     check_linear_col_plus_row(lazy_init, seq_parallel_mode, overlap)
+    check_linear_without_weight_grad_store(lazy_init, seq_parallel_mode)
+    check_linear_with_weight_grad_store(lazy_init, seq_parallel_mode)
 
 
 def check_dist_linear(rank, world_size, port):
