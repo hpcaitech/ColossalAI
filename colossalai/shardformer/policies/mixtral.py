@@ -52,10 +52,7 @@ class MixtralPolicy(Policy):
         sp_group = self.shard_config.sequence_parallel_process_group or None
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         tp_size = self.shard_config.tensor_parallel_size
-        if self.pipeline_stage_manager:
-            use_zbv = self.pipeline_stage_manager.use_zbv
-        else:
-            use_zbv = False
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         # modified for both SP and TP
         num_q_heads = self.model.config.num_attention_heads
@@ -334,10 +331,7 @@ class MixtralModelPolicy(MixtralPolicy):
 class MixtralForCausalLMPolicy(MixtralPolicy):
     def module_policy(self):
         policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            use_zbv = self.pipeline_stage_manager.use_zbv
-        else:
-            use_zbv = False
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for causal lm
@@ -400,10 +394,7 @@ class MixtralForSequenceClassificationPolicy(MixtralPolicy):
         from transformers import MixtralForSequenceClassification
 
         policy = super().module_policy()
-        if self.pipeline_stage_manager:
-            use_zbv = self.pipeline_stage_manager.use_zbv
-        else:
-            use_zbv = False
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification

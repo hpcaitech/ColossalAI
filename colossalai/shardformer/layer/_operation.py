@@ -235,17 +235,16 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
         return grad_input, grad_weight, grad_bias, None, None, None, None
 
 
-class LinearBase(torch.autograd.Function):
+class LinearWithGradAccum(torch.autograd.Function):
     """
     Linear layer baseline (no tensor parallel version).
     """
 
     @staticmethod
-    def forward(ctx, input_, weight, bias, async_grad_allreduce, fp8_communication=False, use_zbv=False):
+    def forward(ctx, input_, weight, bias, async_grad_allreduce, use_zbv=False):
         ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.async_grad_allreduce = async_grad_allreduce
-        ctx.fp8_communication = fp8_communication
         ctx.use_zbv = use_zbv
         if bias is not None:
             output = F.linear(input_, weight, bias)
@@ -258,7 +257,6 @@ class LinearBase(torch.autograd.Function):
     def backward(ctx, grad_output):
         input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
-        ctx.fp8_communication
         use_zbv = ctx.use_zbv
 
         def execute_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_, wgrad_gemm_accum_func=None):
@@ -1201,8 +1199,8 @@ def linear_with_async_comm(
     )
 
 
-def linear_base(input_, weight, bias, async_grad_allreduce, fp8_communication=False, use_zbv=False):
-    return LinearBase.apply(input_, weight, bias, async_grad_allreduce, fp8_communication, use_zbv)
+def linear_with_grad_accum(input_, weight, bias, async_grad_allreduce, use_zbv=False):
+    return LinearWithGradAccum.apply(input_, weight, bias, async_grad_allreduce, use_zbv)
 
 
 def linear_gather_forward_reducescatter_backward(

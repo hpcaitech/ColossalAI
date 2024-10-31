@@ -25,10 +25,10 @@ from colossalai.tensor.d_tensor.api import (
 from ._operation import (
     gather_forward_reducescatter_backward,
     gather_forward_split_backward,
-    linear_base,
     linear_gather_forward_reducescatter_backward,
     linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
+    linear_with_grad_accum,
     reduce_forward,
     reducescatter_forward_gather_backward,
     split_forward_gather_backward,
@@ -36,10 +36,10 @@ from ._operation import (
 from .parallel_module import PaddingParallelModule, ParallelModule
 from .utils import create_randomizer_with_offset
 
-__all__ = ["Linear1D", "Linear1D_Col", "Linear1D_Row"]
+__all__ = ["LinearWithGradAccum", "Linear1D_Col", "Linear1D_Row"]
 
 
-class Linear1D(ParallelModule):
+class LinearWithGradAccum(ParallelModule):
     r"""Linear layer with no parallelism.
 
     Args:
@@ -69,16 +69,11 @@ class Linear1D(ParallelModule):
         bias: bool = True,
         dtype: torch.dtype = None,
         device: torch.device = None,
-        gather_output: bool = False,
-        seq_parallel_mode: str = None,
-        seq_parallel_dim: int = 1,
-        overlap: torch.cuda.Stream = None,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-        fp8_communication: bool = False,
         use_zbv: bool = False,
         **kwargs,
     ):
@@ -87,13 +82,8 @@ class Linear1D(ParallelModule):
         # Keep input parameters
         self.in_features = in_features
         self.out_features = out_features
-        self.gather_output = gather_output
-        self.seq_parallel_mode = seq_parallel_mode
-        self.seq_parallel_dim = seq_parallel_dim
-        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
-        self.fp8_communication = fp8_communication
         self.use_zbv = use_zbv
 
         if skip_bias_add and not bias:
@@ -143,7 +133,7 @@ class Linear1D(ParallelModule):
         bias = module.bias is not None
         device = module.weight.device
 
-        linear_1d = Linear1D(
+        linear_1d = LinearWithGradAccum(
             in_features=in_features,
             out_features=out_features,
             bias=bias,
@@ -174,12 +164,11 @@ class Linear1D(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        output_parallel = linear_base(
+        output_parallel = linear_with_grad_accum(
             input_parallel,
             self.weight,
             bias,
             False,
-            fp8_communication=self.fp8_communication,
             use_zbv=self.use_zbv,
         )
 

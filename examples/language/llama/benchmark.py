@@ -366,10 +366,10 @@ def main():
                 )
                 loss = outputs["loss"]
                 if args.pp_style == "zbv":
-                    if dist.get_rank() == 0:
+                    if coordinator.is_master():
                         print(f"Step {step} loss: {loss}")
                 else:
-                    if dist.get_rank() == dist.get_world_size() - 1:
+                    if coordinator.is_last_process():
                         print(f"Step {step} loss: {loss}")
                 optimizer.step()
                 optimizer.zero_grad()
