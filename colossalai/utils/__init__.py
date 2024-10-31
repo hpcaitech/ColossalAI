@@ -5,6 +5,7 @@ from .common import (
     ensure_path_exists,
     free_storage,
     get_current_device,
+    get_non_persistent_buffers_set,
     is_ddp_ignored,
     set_seed,
 )
@@ -25,4 +26,5 @@ __all__ = [
     "set_seed",
     "get_current_device",
     "is_ddp_ignored",
+    "get_non_persistent_buffers_set",
 ]
