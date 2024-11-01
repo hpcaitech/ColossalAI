@@ -78,6 +78,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
         self.use_fp8 = use_fp8
+        self.use_fp8 = use_fp8
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -118,7 +119,12 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.op_hooks = []
         if use_fp8:
             self.op_hooks.append(FP8Hook())
+        self.op_hooks = []
+        if use_fp8:
+            self.op_hooks.append(FP8Hook())
         if overlap_allgather:
+            self.op_hooks.append(ZeroOpHook())
+        if use_fp8 or overlap_allgather:
             self.op_hooks.append(ZeroOpHook())
         if use_fp8 or overlap_allgather:
             for p in module.parameters():
@@ -228,6 +234,9 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
     def _force_wait_all_gather(self):
         for p in self.module.parameters():
             wait_all_gather_handle(p)
+
+    def _hook_context(self):
+        return ColoParamOpHookManager.use_hooks(*self.op_hooks) if len(self.op_hooks) > 0 else nullcontext()
 
     def _hook_context(self):
         return ColoParamOpHookManager.use_hooks(*self.op_hooks) if len(self.op_hooks) > 0 else nullcontext()
@@ -713,6 +722,8 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             overlap_allgather=overlap_allgather,
             fp8_communication=fp8_communication,
             backward_context=model._hook_context,
+            fp8_communication=fp8_communication,
+            backward_context=model._hook_context,
         )
 
     def sync_dp_grads(self):
@@ -951,7 +962,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         sequence_parallelism_mode (str): The Sequence parallelism mode. Can only be choosed from ["split_gather", "ring", "all_to_all"]. Defaults to "split_gather".
-        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
@@ -983,6 +993,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
         inner_ring_size (int, optional): The inner ring size of 2D Ring Attention when sp mode is "ring_attn".
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.
@@ -1002,7 +1014,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
         sequence_parallelism_mode: str = None,
-        enable_sequence_overlap: bool = False,
         parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
@@ -1090,8 +1101,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.use_fp8 = use_fp8
+        self.use_fp8 = use_fp8
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
+            self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
             if sequence_parallelism_mode == "ring_attn":
                 # Swap tp and sp since 2D Ring has better inter-node latency
                 self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.sp_size, self.tp_size)
@@ -1149,6 +1162,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     enable_metadata_cache=enable_metadata_cache,
                     overlap_p2p=overlap_p2p,
                     fp8_communication=fp8_communication,
+                    fp8_communication=fp8_communication,
                 )
             elif pp_style == "1f1b":
                 self.scheduler = OneForwardOneBackwardSchedule(
@@ -1195,13 +1209,16 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             sequence_parallelism_mode=sequence_parallelism_mode,
-            enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
             fp8_communication=fp8_communication,
+            fp8_communication=fp8_communication,
             inner_ring_size=inner_ring_size,
+            pg_mesh=self.pg_mesh,
+            sp_axis=self.sp_axis,
         )
+
         self.amp_config = dict(
             initial_scale=initial_scale,
             growth_factor=growth_factor,
@@ -1229,6 +1246,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             partition_grad=(self.zero_stage == 2),
             forced_dtype=PRECISION_TORCH_TYPE[precision],
             overlap_allgather=overlap_allgather,
+            fp8_communication=fp8_communication,
             fp8_communication=fp8_communication,
         )
 
@@ -1293,6 +1311,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.dp_size == 1 and self.pp_size == 1
             )
             # sync gradients across DP * SP ranks
+            # sync gradients across DP * SP ranks
             # Apply Hybrid ZeRO across DP * SP ranks
             if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
                 dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
@@ -1310,6 +1329,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
+                use_fp8=self.use_fp8,
                 use_fp8=self.use_fp8,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):

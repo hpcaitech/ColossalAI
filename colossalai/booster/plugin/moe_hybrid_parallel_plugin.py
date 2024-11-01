@@ -141,7 +141,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         enable_jit_fused (bool, optional): Whether to switch on JIT in Shardformer. Default to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism in Shardformer. Defaults to False.
         sequence_parallelism_mode (str): The Sequence parallelism mode. Can only be choosed from ["split_gather", "ring", "all_to_all"]. Defaults to "split_gather".
-        enable_sequence_overlap (bool): Whether to turn on sequence overlap in Shardformer. Defaults to False.
         parallel_output (bool): Whether to keep the output parallel when enabling tensor parallelism. Default to True.
         num_microbatches (int, optional): Number of microbatches when using pipeline parallelism. Defaults to None.
         microbatch_size (int, optional): Microbatch size when using pipeline parallelism.
@@ -190,7 +189,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         enable_jit_fused: bool = False,
         enable_sequence_parallelism: bool = False,
         sequence_parallelism_mode: str = None,
-        enable_sequence_overlap: bool = False,
         parallel_output: bool = True,
         num_microbatches: Optional[int] = None,
         microbatch_size: Optional[int] = None,
@@ -368,7 +366,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
             sequence_parallelism_mode=sequence_parallelism_mode,
-            enable_sequence_overlap=enable_sequence_overlap,
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,

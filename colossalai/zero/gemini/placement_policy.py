@@ -8,7 +8,6 @@ import torch
 import torch.distributed as dist
 
 from colossalai.accelerator import get_accelerator
-from colossalai.legacy.utils.memory import colo_device_memory_capacity
 from colossalai.zero.gemini.chunk import Chunk
 
 from .chunk import Chunk, ChunkManager
@@ -172,6 +171,8 @@ class AutoPlacementPolicy(PlacementPolicy):
         Returns:
             int: the volume of memory that is evicted
         """
+        from colossalai.legacy.utils.memory import colo_device_memory_capacity
+
         start = time()
         cuda_capacity = colo_device_memory_capacity(get_accelerator().get_current_device())
         used_cuda_model_data = self.chunk_manager.total_mem["cuda"]

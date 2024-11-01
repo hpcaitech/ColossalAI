@@ -16,7 +16,7 @@
 AMP 代表自动混合精度训练。
 在 Colossal-AI 中, 我们结合了混合精度训练的不同实现:
 
-1. torch.cuda.amp
+1. torch.amp
 2. apex.amp
 3. naive amp
 

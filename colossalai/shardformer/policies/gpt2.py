@@ -65,7 +65,6 @@ class GPT2Policy(Policy):
                 f"For GPT2, sequence parallelism is currently not support mode {sp_mode}, will set to be split_gather"
             )
             self.shard_config.sequence_parallelism_mode = sp_mode = "split_gather"
-        overlap = self.shard_config.enable_sequence_overlap
         sp_partial_derived = sp_mode in ["split_gather", "ring"]
         use_flash_attention = self.shard_config.enable_flash_attention
         if self.shard_config.enable_tensor_parallelism:
@@ -92,9 +91,8 @@ class GPT2Policy(Policy):
                         suffix="attn.c_attn",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
-                            "n_fused": 3,
+                            "split_sizes": [self.model.config.hidden_size] * 3,
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),
@@ -107,9 +105,8 @@ class GPT2Policy(Policy):
                         suffix="mlp.c_fc",
                         target_module=col_nn.GPT2FusedLinearConv1D_Col,
                         kwargs={
-                            "n_fused": 1,
+                            "split_sizes": [self.model.config.n_inner or 4 * self.model.config.hidden_size],
                             "seq_parallel_mode": sp_mode,
-                            "overlap": overlap,
                             "skip_bias_add": self.enable_bias_gelu_fused,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },

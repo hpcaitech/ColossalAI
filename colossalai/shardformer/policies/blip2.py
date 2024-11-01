@@ -71,7 +71,7 @@ class BlipPolicy(Policy):
                         suffix="self_attn.qkv",
                         target_module=col_nn.FusedLinear1D_Col,
                         kwargs={
-                            "n_fused": 3,
+                            "split_sizes": [self.model.config.vision_config.hidden_size] * 3,
                             "fp8_communication": self.shard_config.fp8_communication,
                         },
                     ),

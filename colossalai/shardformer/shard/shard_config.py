@@ -26,7 +26,6 @@ class ShardConfig:
         enable_flash_attention (bool, optional): Whether to switch on flash attention. Defaults to False.
         enable_jit_fused (bool, optional): Whether to switch on JIT fused operators. Defaults to False.
         enable_sequence_parallelism (bool): Whether to turn on sequence parallelism, which partitions non-tensor-parallel regions along the sequence dimension. Defaults to False.
-        enable_sequence_overlap (bool): Whether to turn on sequence overlap, which overlap the computation and communication in sequence parallelism. It can only be used when enable_sequence_parallelism is True. Defaults to False.
         gradient_checkpoint_config (Optional[GradientCheckpointConfig]): The gradient checkpoint config. Defaults to None.
         enable_all_optimization (bool): Whether to turn on all optimization tools including 'fused normalization', 'flash attention', 'JIT fused operators', 'sequence parallelism' and 'sequence overlap'. Defaults to False.
         fp8_communication (bool, optional): Whether to enable fp8 communication in model parallelism. Defaults to False.
@@ -44,13 +43,14 @@ class ShardConfig:
     enable_jit_fused: bool = False
     enable_sequence_parallelism: bool = False
     sequence_parallelism_mode: str = None
-    enable_sequence_overlap: bool = False
     parallel_output: bool = True
     make_vocab_size_divisible_by: int = 64
     gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     # For ring attention
+    sp_axis: Optional[int] = None
+    pg_mesh: Optional[int] = None
     inner_ring_size: Optional[int] = None
     # for moe related
     moe_dp_group: Optional[ProcessGroup] = None
@@ -84,24 +84,12 @@ class ShardConfig:
                 assert (
                     self.enable_tensor_parallelism
                 ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is True"
-            elif self.sequence_parallelism_mode in ["all_to_all"]:
-                # assert (
-                #     not self.enable_tensor_parallelism
-                # ), f"sequence parallelism mode {self.sequence_parallelism_mode} can only be used when enable_tensor_parallelism is False"
-                if self.enable_sequence_overlap:
-                    self.enable_sequence_overlap = False
-                    warnings.warn(
-                        f"The enable_sequence_overlap flag will be ignored in sequence parallelism mode {self.sequence_parallelism_mode}"
-                    )
         else:
             if self.sequence_parallelism_mode:
                 self.sequence_parallelism_mode = None
                 warnings.warn(
                     f"The sequence_parallelism_mode will be ignored when enable_sequence_parallelism is False"
                 )
-            assert (
-                not self.enable_sequence_overlap
-            ), f"enable_sequence_overlap can only be set to True when enable_sequence_parallelism is True"
 
         # get the tensor parallel size
         if not self.enable_tensor_parallelism:
@@ -134,4 +122,3 @@ class ShardConfig:
         # This can cause non-in-place param sharding when used without ZeRO.
         # It may also slow down training when seq len is small. Plz enable manually.
         # self.enable_sequence_parallelism = True
-        # self.enable_sequence_overlap = True

@@ -271,6 +271,7 @@ class LlamaPipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
+        **kwargs,
     ):
         r"""
         Args:
@@ -568,9 +569,10 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 query_states,
                 key_states,
                 value_states,
-                sp_group,
+                sp_axis=shard_config.sp_axis,
                 **attention_mask,
                 inner_ring_size=shard_config.inner_ring_size,
+                pg_mesh=shard_config.pg_mesh,
             )
 
         elif shard_config.enable_flash_attention:
