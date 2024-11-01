@@ -723,9 +723,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(
-        ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, overlap, ring, fp8_communication
-    ):
+    def forward(ctx, input_, weight, bias, process_group, async_grad_reduce_scatter, dim, ring, fp8_communication):
         ctx.save_for_backward(input_, weight, bias)
         ctx.use_bias = bias is not None
         ctx.process_group = process_group
@@ -793,7 +791,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             handle.wait()
 
-        return output, grad_weight, grad_bias, None, None, None, None, None, None
+        return output, grad_weight, grad_bias, None, None, None, None, None
 
 
 class _SplitForwardGatherBackward(torch.autograd.Function):
