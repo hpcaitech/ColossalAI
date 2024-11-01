@@ -78,7 +78,6 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
         self.use_fp8 = use_fp8
-        self.use_fp8 = use_fp8
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -1099,7 +1098,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.use_fp8 = use_fp8
-        self.use_fp8 = use_fp8
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
@@ -1324,7 +1322,6 @@ class HybridParallelPlugin(PipelinePluginBase):
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
-                use_fp8=self.use_fp8,
                 use_fp8=self.use_fp8,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
