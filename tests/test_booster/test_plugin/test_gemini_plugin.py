@@ -54,6 +54,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
 
         booster.backward(loss, optimizer)
         optimizer.step()
+        grad_norm = optimizer.get_grad_norm()
+        assert grad_norm is None or isinstance(grad_norm, float)
 
     except NotImplementedError:
         print(f"Tensor Parallelism policy for {model.__class__} is not implemented yet\n.")
