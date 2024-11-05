@@ -68,7 +68,7 @@ def train(args):
         Default torch ddp plugin without any acceleration, for
         debugging purpose acceleration, for debugging purpose
         """
-        plugin = TorchDDPPlugin(find_unused_parameters=True if args.grad_checkpoint is False else False)
+        plugin = TorchDDPPlugin(find_unused_parameters=not args.grad_checkpoint)
     elif args.plugin == "gemini":
         plugin = GeminiPlugin(
             precision=args.mixed_precision,

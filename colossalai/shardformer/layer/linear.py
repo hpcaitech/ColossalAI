@@ -23,18 +23,16 @@ from colossalai.tensor.d_tensor.api import (
 )
 
 from ._operation import (
-    gather_forward_reducescatter_backward,
     gather_forward_split_backward,
     linear_gather_forward_reducescatter_backward,
     linear_reducescatter_forward_gather_backward,
     linear_with_async_comm,
     linear_with_grad_accum,
     reduce_forward,
-    reducescatter_forward_gather_backward,
     split_forward_gather_backward,
 )
 from .parallel_module import PaddingParallelModule, ParallelModule
-from .utils import create_randomizer_with_offset
+from .utils import create_randomizer_with_offset, is_share_sp_tp
 
 __all__ = ["LinearWithGradAccum", "Linear1D_Col", "Linear1D_Row"]
 
@@ -197,7 +195,6 @@ class Linear1D_Col(ParallelModule):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
         seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
-        overlap (`bool`): If set to ``True``, it will overlap input all-gather with gradient computation during backward, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (`typing.Callable`):
@@ -220,7 +217,6 @@ class Linear1D_Col(ParallelModule):
         gather_output: bool = False,
         seq_parallel_mode: str = None,
         seq_parallel_dim: int = 1,
-        overlap: torch.cuda.Stream = None,
         skip_bias_add: bool = False,
         weight: Optional[Parameter] = None,
         bias_: Optional[Parameter] = None,
@@ -238,7 +234,6 @@ class Linear1D_Col(ParallelModule):
         self.gather_output = gather_output
         self.seq_parallel_mode = seq_parallel_mode
         self.seq_parallel_dim = seq_parallel_dim
-        self.overlap = overlap
         self.skip_bias_add = skip_bias_add
         self.device = device
         self.process_group = process_group
@@ -345,22 +340,16 @@ class Linear1D_Col(ParallelModule):
 
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
-        if self.seq_parallel_mode == "split_gather":
-            input_parallel = gather_forward_reducescatter_backward(
-                input_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
-            )
-            output_parallel = linear_with_async_comm(
+
+        if is_share_sp_tp(self.seq_parallel_mode):
+            output_parallel = linear_gather_forward_reducescatter_backward(
                 input_parallel,
                 self.weight,
                 bias,
                 self.process_group,
-                False,
-                fp8_communication=self.fp8_communication,
-                use_zbv=self.use_zbv,
-            )
-        elif self.seq_parallel_mode == "ring":
-            output_parallel = linear_gather_forward_reducescatter_backward(
-                input_parallel, self.weight, bias, self.process_group, True, self.seq_parallel_dim, self.overlap, True
+                True,
+                self.seq_parallel_dim,
+                ring=self.seq_parallel_mode == "ring",
             )
         else:
             output_parallel = linear_with_async_comm(
@@ -584,31 +573,17 @@ class Linear1D_Row(ParallelModule):
                     handle.wait()
                 output = torch.cat(output_parallel_list, dim=-1)
         else:
-            if self.seq_parallel_mode is None:
-                output_parallel = linear_with_async_comm(
-                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
-                )
-                output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
-            elif self.seq_parallel_mode == "split_gather":
-                output_parallel = linear_with_async_comm(
-                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
-                )
-                output = reducescatter_forward_gather_backward(
-                    output_parallel, self.process_group, self.seq_parallel_dim, fp8_communication=self.fp8_communication
-                )
-            elif self.seq_parallel_mode == "ring":
+            if is_share_sp_tp(self.seq_parallel_mode):
                 output = linear_reducescatter_forward_gather_backward(
                     input_,
                     self.weight,
                     process_group=self.process_group,
                     dim=self.seq_parallel_dim,
-                    ring=True,
+                    ring=self.seq_parallel_mode == "ring",
                 )
             else:
-                output_parallel = linear_with_async_comm(
-                    input_, self.weight, None, self.process_group, False, use_zbv=self.use_zbv
-                )
-                output = reduce_forward(output_parallel, self.process_group)
+                output_parallel = F.linear(input_, self.weight)
+                output = reduce_forward(output_parallel, self.process_group, fp8_communication=self.fp8_communication)
 
         if not self.skip_bias_add:
             if self.bias is not None:
@@ -716,7 +691,6 @@ class VocabParallelLMHead1D(Linear1D_Col, PaddingParallelModule):
                     to all GPUs, otherwise, every GPU will have its output
                     which is :math:`Y_i = XA_i`, defaults to False
         seq_parallel (`bool`): If set to ``True``, it will use sequence parallel, defaults to False.
-        overlap (`bool`): If set to ``True``, it will overlap input all-gather with gradient computation during backward, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
             which is preserved for kernel fusion, defaults to False
         weight_initializer (`typing.Callable`):

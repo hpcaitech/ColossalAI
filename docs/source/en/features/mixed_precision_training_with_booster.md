@@ -16,7 +16,7 @@ Author: [Mingyan Jiang](https://github.com/jiangmingyan)
 AMP stands for automatic mixed precision training.
 In Colossal-AI, we have incorporated different implementations of mixed precision training:
 
-1. torch.cuda.amp
+1. torch.amp
 2. apex.amp
 3. naive amp
 
