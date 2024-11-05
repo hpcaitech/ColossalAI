@@ -758,11 +758,13 @@ def run_with_hybridplugin(test_config):
 @parameterize(
     "config",
     [
-        # (0, 1, 4, 1, 1),
+        # # Pass
+        (1, 2, 1, 1, 2),
+        # TODO: adapt mixtral with no TP Linear
         # (1, 2, 2, 1, 1),
-        (1, 1, 2, 2, 1),
+        # (0, 1, 4, 1, 1),
+        # (1, 1, 2, 2, 1),
         # (1, 2, 1, 2, 1),
-        # (1, 2, 1, 1, 2),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
@@ -910,7 +912,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 p.grad /= dp_size
         torch_optimizer.step()
         torch_optimizer.zero_grad()
-
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} config {test_config}  test passed")
     clear_layout_converter()
@@ -921,11 +922,12 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
 @parameterize(
     "config",
     [
-        (1, 2, 2, 1),  # Pass
-        # TODO: only support pp + tp accleration; Will support fully pp and None tp Hybrid in furture;
-        # (0, 4, 1, 1),
-        # (1, 2, 1, 2),
-        # (1, 1, 2, 2),
+        # # Pass
+        (1, 2, 2, 1),
+        (1, 2, 1, 2),
+        (1, 1, 2, 2),
+        # TODO: acc err in pp4
+        (1, 4, 1, 1),
     ],
 )
 def run_with_booster_hybridplugin(config: Tuple[int, ...]):

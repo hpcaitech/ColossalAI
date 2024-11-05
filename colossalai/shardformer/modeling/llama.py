@@ -191,7 +191,6 @@ class LlamaPipelineForwards:
                     num_model_chunks=stage_manager.num_model_chunks,
                 )
             assert num_ckpt_layers <= end_idx - start_idx
-
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)

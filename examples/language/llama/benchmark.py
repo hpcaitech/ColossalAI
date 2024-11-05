@@ -163,8 +163,6 @@ def main():
             enable_async_reduce=not args.disable_async_reduce,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
-            use_fp8=args.use_fp8,
-            fp8_communication=args.use_fp8_comm,
         )
     elif args.plugin == "gemini_auto":
         plugin = GeminiPlugin(
@@ -179,8 +177,6 @@ def main():
             enable_flash_attention=args.xformers,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
-            use_fp8=args.use_fp8,
-            fp8_communication=args.use_fp8_comm,
         )
     elif args.plugin == "fsdp":
         if use_empty_init:
@@ -191,7 +187,6 @@ def main():
                     buffer_dtype=torch.float16,
                 ),
                 param_init_fn=empty_init(),
-                fp8_communication=args.use_fp8_comm,
                 fp8_communication=args.use_fp8_comm,
             )
         else:
@@ -214,7 +209,6 @@ def main():
                 cpu_offload=CPUOffload(offload_params=True),
                 param_init_fn=empty_init(),
                 fp8_communication=args.use_fp8_comm,
-                fp8_communication=args.use_fp8_comm,
             )
         else:
             plugin = TorchFSDPPlugin(
@@ -224,7 +218,6 @@ def main():
                     buffer_dtype=torch.float16,
                 ),
                 cpu_offload=CPUOffload(offload_params=True),
-                fp8_communication=args.use_fp8_comm,
                 fp8_communication=args.use_fp8_comm,
             )
     elif args.plugin == "3d":
