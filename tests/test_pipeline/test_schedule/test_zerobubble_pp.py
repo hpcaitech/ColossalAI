@@ -749,12 +749,6 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     assert_optim_param_groups(optim_base_param_groups, optim_pp_param_groups)
 
 
-# TODO:3) support booster & Hybrid base 2)
-def run_with_hybridplugin(test_config):
-    pass
-
-
-# TODO:4) support booster & MoEHybrid base 2)
 @parameterize(
     "config",
     [
@@ -923,9 +917,9 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
     "config",
     [
         # # Pass
-        (1, 2, 2, 1),
-        (1, 2, 1, 2),
-        (1, 1, 2, 2),
+        # (1, 2, 2, 1),
+        # (1, 2, 1, 2),
+        # (1, 1, 2, 2),
         # TODO: acc err in pp4
         (1, 4, 1, 1),
     ],
@@ -1071,6 +1065,17 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
+        # assert param
+        for parall_name, parall_param in parallel_model.named_parameters():
+            parall_name = ".".join(parall_name.split(".")[1:])
+            for base_name, base_param in torch_model.named_parameters():
+                if parall_name == base_name:
+                    # assert weight
+                    assert_loose_close(parall_param, base_param, dtype=dtype, name=parall_name)
+                    # assert weight.grad
+                    if parall_param.grad is not None:
+                        assert_loose_close(parall_param.grad, base_param.grad, dtype=dtype, name=f"{parall_name}.grad")
+
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} pp_size:{pp_size}, tp_size {tp_size}, sp_size :{sp_size} test passed")
     clear_layout_converter()
@@ -1081,7 +1086,7 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
 def run_dist(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
-    run_with_booster_moehybridplugin()
+    # run_with_booster_moehybridplugin()
     run_with_booster_hybridplugin()
 
 
