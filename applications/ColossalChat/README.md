@@ -284,7 +284,7 @@ For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tre
 ## O1 Journey
 ### Inference with Self-refined MCTS
 We provide the implementation of MCT Self-Refine (MCTSr) algorithm, an innovative integration of Large Language Models with Monte Carlo Tree Search.
-To run inference with MCTS, simply use the following script.
+You can serve model using vLLM and update the config file in `Qwen32B_prompt_CFG` and then run the following script.
 ```python
 from coati.reasoner.guided_search.mcts import MCTS
 from coati.reasoner.guided_search.prompt_store.qwen import Qwen32B_prompt_CFG
