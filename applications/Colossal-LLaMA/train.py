@@ -105,7 +105,6 @@ def train(args) -> None:
             enable_fused_normalization=get_accelerator().is_available(),
             enable_sequence_parallelism=args.enable_sequence_parallelism,
             cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
-            parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
             microbatch_size=args.microbatch_size,
@@ -118,11 +117,17 @@ def train(args) -> None:
     # ======================================================
     # Initialize Tokenizer, Dataset, Collator and Dataloader
     # ======================================================
-    tokenizer = AutoTokenizer.from_pretrained(args.pretrained)
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained, trust_remote_code=True)
     if args.pad_token == "eos":
-        tokenizer.pad_token = tokenizer.eos_token
+        try:
+            tokenizer.pad_token = tokenizer.eos_token
+        except AttributeError:
+            coordinator.print_on_master(f"pad_token can't be set")
     elif args.pad_token == "unk":
-        tokenizer.pad_token = tokenizer.unk_token
+        try:
+            tokenizer.pad_token = tokenizer.unk_token
+        except AttributeError:
+            coordinator.print_on_master(f"pad_token can't be set")
     tokenizer.add_bos_token = False
     tokenizer.add_eos_token = False
 
@@ -165,6 +170,7 @@ def train(args) -> None:
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
     # ======================================================
+    # TODO chatglm doesn't support lora now
     init_ctx = (
         LazyInitContext(default_device=get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin)) and args.lora_rank == 0

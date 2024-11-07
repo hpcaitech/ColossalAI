@@ -148,7 +148,7 @@ def _broadcast_object_list(
             object_list[i] = unpickle_object
 
 
-def _check_for_nccl_backend(group):
+def _check_for_nccl_hccl_backend(group):
     pg = group or c10d._get_default_group()
     # Gate PG wrapper check on Gloo availability.
     if c10d._GLOO_AVAILABLE:
@@ -156,21 +156,15 @@ def _check_for_nccl_backend(group):
         while isinstance(pg, c10d._ProcessGroupWrapper):
             pg = pg.wrapped_pg
 
-    return c10d.is_nccl_available() and pg.name() == c10d.Backend.NCCL
-
-
-# def _check_device(group):
-#     is_nccl_backend = _check_for_nccl_backend(group)
-#     print("_check_device", is_nccl_backend)
-#     current_device = torch.device("cpu")
-#     if is_nccl_backend:
-#         current_device = torch.device(get_accelerator().current_device())
-#     return current_device, is_nccl_backend
+    return (c10d.is_nccl_available() or torch.distributed.is_hccl_available()) and pg.name() == c10d.Backend.NCCL
 
 
 def _check_device(group):
-    current_device = torch.device(get_accelerator().current_device())
-    return current_device, True
+    is_nccl_backend = _check_for_nccl_hccl_backend(group)
+    current_device = torch.device("cpu")
+    if is_nccl_backend:
+        current_device = torch.device(get_accelerator().current_device())
+    return current_device, is_nccl_backend
 
 
 TensorMetadata = namedtuple("TensorMetadata", ["shape", "dtype", "requires_grad"])
