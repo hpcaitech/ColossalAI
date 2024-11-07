@@ -58,7 +58,7 @@ class MCTS(BaseModel):
         """
         Root Initiation.
         """
-        # Dummy answer as root.
+        # Simple answer as root. You can also use negative response such as "I do not know" as a response.
         base_answer = self.sample_base_answer()
         self.root = MCTSNode(answer=base_answer)
         self.self_evaluate(self.root)
