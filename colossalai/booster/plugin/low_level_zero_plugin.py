@@ -32,7 +32,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
+from colossalai.nn.optimizer import cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
@@ -513,14 +513,23 @@ class LowLevelZeroPlugin(DPPluginBase):
 
         # Replace with the distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
-
-        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
-            self.logger.warning(
-                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
-                ranks=[0],
-            )
-            zero_optim_kwargs["partition_grad"] = False
-            zero_stage = 0
+        try:
+            from colossalai.nn.optimizer import DistGaloreAwamW
+            if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
+                self.logger.warning(
+                    "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                    ranks=[0],
+                )
+                zero_optim_kwargs["partition_grad"] = False
+                zero_stage = 0
+        except ImportError:
+            if zero_stage > 0 and dp_size > 0:
+                self.logger.warning(
+                    "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                    ranks=[0],
+                )
+                zero_optim_kwargs["partition_grad"] = False
+                zero_stage = 0
 
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             optimizer: LowLevelZeroOptimizer = LowLevelZeroOptimizer(

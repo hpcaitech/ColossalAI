@@ -19,6 +19,6 @@ class RandomDataset(Dataset):
     def __getitem__(self, idx):
         return {
             "input_ids": self.input_ids[idx],
-            "attention_mask": self.attention_mask[idx],
+            # "attention_mask": self.attention_mask[idx],
             "labels": self.input_ids[idx],
         }

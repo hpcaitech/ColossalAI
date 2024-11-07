@@ -50,7 +50,7 @@ def get_flash_core_attention_forward():
             attention_mask_type = AttnMaskType.CUSTOM
             if attention_mask is not None:
                 attn_bias = torch.zeros_like(attention_mask, dtype=query_layer.dtype)
-                attn_bias.masked_fill_(attention_mask, torch.finfo(query_layer.dtype).min)
+                attn_bias.masked_fill_(attention_mask.bool(), torch.finfo(query_layer.dtype).min)
         dropout_p = self.attention_dropout.p if self.training else 0.0
         context_layer = ColoAttention.attention(
             query_layer,
@@ -180,9 +180,9 @@ class ChatGLMPipelineForwards:
                     ],
                     dim=-1,
                 )
-        if full_attention_mask is None:
-            if (attention_mask is not None and not attention_mask.all()) or (past_key_values and seq_length != 1):
-                full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
+        # if full_attention_mask is None:
+        #     if (attention_mask is not None and not attention_mask.cpu().all()) or (past_key_values and seq_length != 1):
+        #         full_attention_mask = self.get_masks(input_ids, past_key_values, padding_mask=attention_mask)
 
         # Support SP + PP
         sp_size = shard_config.sequence_parallel_size

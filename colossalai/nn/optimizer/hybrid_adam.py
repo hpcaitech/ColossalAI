@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 import torch
-
+import torch_npu
 from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 from colossalai.utils import get_current_device, multi_tensor_applier
 
@@ -157,11 +157,17 @@ class HybridAdam(CPUAdam):
                             div_scale,
                         )
                     self._post_update(p, "exp_avg", "exp_avg_sq")
-
+                elif target_device.type == "npu":
+                    assert state["exp_avg"].device.type == "npu", "exp_avg should stay on npu"
+                    assert state["exp_avg_sq"].device.type == "npu", "exp_avg should stay on npu"
+                    # record the state by group and update at once
+                    g_l.append(p.grad.data)
+                    p_l.append(p.data)
+                    m_l.append(state["exp_avg"])
+                    v_l.append(state["exp_avg_sq"])
                 elif target_device.type == "cuda":
                     assert state["exp_avg"].device.type == "cuda", "exp_avg should stay on cuda"
                     assert state["exp_avg_sq"].device.type == "cuda", "exp_avg should stay on cuda"
-
                     # record the state by group and update at once
                     g_l.append(p.grad.data)
                     p_l.append(p.data)

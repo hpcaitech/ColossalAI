@@ -20,7 +20,6 @@ except ImportError:
 import colossalai.interface.pretrained as pretrained_utils
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.quantization import BnbQuantizationConfig
 
 from .accelerator import Accelerator
 from .mixed_precision import MixedPrecision, mixed_precision_factory
@@ -242,7 +241,7 @@ class Booster:
         model: nn.Module,
         pretrained_dir: Optional[str] = None,
         lora_config: "peft.LoraConfig" = None,
-        bnb_quantization_config: Optional[BnbQuantizationConfig] = None,
+        bnb_quantization_config = None,
         quantize=False,
     ) -> nn.Module:
         """
@@ -279,6 +278,7 @@ class Booster:
                     ranks=[0],
                 )
             else:
+                from colossalai.quantization import BnbQuantizationConfig
                 bnb_quantization_config = BnbQuantizationConfig(
                     load_in_4bit=True,
                     bnb_4bit_compute_dtype=torch.bfloat16,

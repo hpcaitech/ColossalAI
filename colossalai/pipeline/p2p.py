@@ -154,15 +154,29 @@ def _check_for_nccl_backend(group):
         while isinstance(pg, c10d._ProcessGroupWrapper):
             pg = pg.wrapped_pg
 
-    return c10d.is_nccl_available() and pg.name() == c10d.Backend.NCCL
+    return c10d.is_nccl_available() and pg.name() == c10d.Backend.NCCL 
+
+
+def _check_for_hccl_backend(group):
+    pg = group or c10d._get_default_group()
+    # Gate PG wrapper check on Gloo availability.
+    if c10d._GLOO_AVAILABLE:
+        # It is not expected for PG to be wrapped many times, but support it just in case
+        while isinstance(pg, c10d._ProcessGroupWrapper):
+            pg = pg.wrapped_pg
+    return torch.distributed.is_hccl_available() and pg.name() == c10d.Backend.HCCL 
 
 
 def _check_device(group):
     is_nccl_backend = _check_for_nccl_backend(group)
+    is_hccl_backend = _check_for_hccl_backend(group)
     current_device = torch.device("cpu")
+    
     if is_nccl_backend:
         current_device = torch.device("cuda", torch.cuda.current_device())
-    return current_device, is_nccl_backend
+    elif is_hccl_backend:
+        current_device = torch.device("npu", torch.cuda.current_device())
+    return current_device, is_nccl_backend or is_hccl_backend
 
 
 TensorMetadata = namedtuple("TensorMetadata", ["shape", "dtype", "requires_grad"])
@@ -288,7 +302,7 @@ def _send_recv_serialization_object(
             send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object, device=current_device)
         else:
             send_object_tensor, send_object_size_tensor = c10d._object_to_tensor(object)
-
+        
         if is_nccl_backend:
             send_object_size_tensor = send_object_size_tensor.to(current_device)
             send_object_tensor = send_object_tensor.to(current_device)
