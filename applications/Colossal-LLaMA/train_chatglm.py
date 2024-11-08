@@ -12,21 +12,17 @@ from contextlib import nullcontext
 
 import torch
 import torch_npu
-from torch_npu.npu import amp # 导入AMP模块
-from torch_npu.contrib import transfer_to_npu # 使能自动迁移
 from colossal_llama.dataset.dummy_dataset import RandomDataset
-from colossal_llama.dataset.loader import (
-    DataCollatorForSupervisedDataset,
-    StatefulDistributedSampler,
-    load_tokenized_dataset,
-)
+from colossal_llama.dataset.loader import StatefulDistributedSampler
 from colossal_llama.utils.ckpt_io import load_checkpoint, save_checkpoint
-from colossal_llama.utils.froze import freeze_non_embeds_parameters
 from colossal_llama.utils.neftune_patch import activate_neftune, deactivate_neftune
 from colossal_llama.utils.utils import all_reduce_mean, format_numel_str, get_model_numel
+from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
+from torch_npu.contrib import transfer_to_npu  # 使能自动迁移
+from torch_npu.npu import amp  # 导入AMP模块
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -35,8 +31,6 @@ from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLev
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
-from colossalai.nn.optimizer import HybridAdam
-from torch.optim import Adam
 from colossalai.utils import get_current_device
 
 
@@ -128,18 +122,15 @@ def train(args) -> None:
 
     coordinator.print_on_master(f"Run benchmark with {args.num_samples} random samples.")
     # chatglm2-6b vocab_size=130528
-    dataset = RandomDataset(
-        num_samples=args.num_samples, max_length=args.max_length, vocab_size=32000
-    )
+    dataset = RandomDataset(num_samples=args.num_samples, max_length=args.max_length, vocab_size=32000)
     dataloader = plugin.prepare_dataloader(
-            dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            drop_last=True,
-            seed=42,
-            distributed_sampler_cls=StatefulDistributedSampler,
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        seed=42,
+        distributed_sampler_cls=StatefulDistributedSampler,
     )
-
 
     coordinator.print_on_master(
         f"Max device memory after data loader: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"
@@ -279,7 +270,7 @@ def train(args) -> None:
                 disable=not (coordinator._local_rank == coordinator._world_size - 1),
             )
             for step in step_bar:
-                
+
                 outputs = booster.execute_pipeline(
                     data_iter,
                     model,
@@ -337,9 +328,9 @@ def train(args) -> None:
             total_loss = torch.tensor(0.0, device=get_current_device())
             for step, batch in enumerate(dataloader, start=start_step):
                 print(f"batch {batch.keys()}")
-                if 'attention_mask' in batch.keys():
-                    batch.pop('attention_mask')
-                
+                if "attention_mask" in batch.keys():
+                    batch.pop("attention_mask")
+
                 batch = {k: v.to(get_current_device()) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
                 batch_output = model(**batch)

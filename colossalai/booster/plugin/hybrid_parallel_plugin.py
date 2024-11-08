@@ -1258,6 +1258,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         try:
             from colossalai.nn.optimizer import DistGaloreAwamW
+
             if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
                 self.logger.warning(
                     "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
@@ -1273,7 +1274,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 )
                 zero_config["partition_grad"] = False
                 zero_stage = 0
-        
+
         # if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
         #     self.logger.warning(
         #         "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",

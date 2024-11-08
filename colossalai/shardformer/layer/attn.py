@@ -314,7 +314,7 @@ class ColoAttention:
             AttnMaskType.PADDED_CAUSAL,
         )
         if scale is None:
-            scale = 1.0 / ((q.size(-1)) ** 0.5) 
+            scale = 1.0 / ((q.size(-1)) ** 0.5)
         return attn_func(
             q,
             k,

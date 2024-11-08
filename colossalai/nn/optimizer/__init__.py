@@ -8,7 +8,6 @@ from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
 from .distributed_came import DistributedCAME
-
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB
@@ -44,11 +43,14 @@ optim2DistOptim = {
 }
 
 try:
-    from .distributed_galore import DistGaloreAwamW
     from galore_torch import GaLoreAdamW
+
+    from .distributed_galore import DistGaloreAwamW
     from .galore import GaLoreAdamW8bit
+
     optim2DistOptim[GaLoreAdamW8bit] = DistGaloreAwamW
     __all__.append("DistGaloreAwamW")
+
     def cast_to_distributed(optim):
         if optim.__class__ in optim2DistOptim:
             _logger = get_dist_logger()
@@ -59,7 +61,9 @@ try:
             return optim2DistOptim[optim.__class__](optim.param_groups)
 
         return optim
+
 except:
+
     def cast_to_distributed(optim):
         if optim.__class__ in optim2DistOptim:
             _logger = get_dist_logger()

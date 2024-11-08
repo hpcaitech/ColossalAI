@@ -515,6 +515,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         optimizer = cast_to_distributed(optimizer)
         try:
             from colossalai.nn.optimizer import DistGaloreAwamW
+
             if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
                 self.logger.warning(
                     "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",

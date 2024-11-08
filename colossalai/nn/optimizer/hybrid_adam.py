@@ -1,7 +1,7 @@
 from typing import Any, Optional
 
 import torch
-import torch_npu
+
 from colossalai.kernel.kernel_loader import FusedOptimizerLoader
 from colossalai.utils import get_current_device, multi_tensor_applier
 
