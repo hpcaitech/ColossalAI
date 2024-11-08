@@ -283,7 +283,7 @@ def main():
             config,
             trust_remote_code=True,
             **init_kwargs,
-            attn_implementation="flash_attention_2",
+            # attn_implementation="flash_attention_2",
             torch_dtype=torch.bfloat16,
         )
     if args.grad_checkpoint:

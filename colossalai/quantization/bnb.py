@@ -20,7 +20,7 @@ try:
 
     IS_4BIT_BNB_AVAILABLE = BNB_VERSION >= Version("0.39.0")
     IS_8BIT_BNB_AVAILABLE = BNB_VERSION >= Version("0.37.2")
-except ImportError:
+except (ImportError, TypeError):
     pass
 
 

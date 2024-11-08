@@ -27,7 +27,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
+from colossalai.nn.optimizer import cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
@@ -1256,13 +1256,32 @@ class HybridParallelPlugin(PipelinePluginBase):
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
 
-        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
-            self.logger.warning(
-                "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
-                ranks=[0],
-            )
-            zero_config["partition_grad"] = False
-            zero_stage = 0
+        try:
+            from colossalai.nn.optimizer import DistGaloreAwamW
+
+            if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
+                self.logger.warning(
+                    "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                    ranks=[0],
+                )
+                zero_config["partition_grad"] = False
+                zero_stage = 0
+        except ImportError:
+            if zero_stage > 0 and self.dp_size > 0:
+                self.logger.warning(
+                    "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+                    ranks=[0],
+                )
+                zero_config["partition_grad"] = False
+                zero_stage = 0
+
+        # if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
+        #     self.logger.warning(
+        #         "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
+        #         ranks=[0],
+        #     )
+        #     zero_config["partition_grad"] = False
+        #     zero_stage = 0
 
         if not isinstance(model, ModelWrapper):
             # Shouldn't use pp (frequent grad accumulation) with torch ddp
