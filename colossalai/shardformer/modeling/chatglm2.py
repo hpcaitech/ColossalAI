@@ -61,7 +61,6 @@ def get_flash_core_attention_forward():
             dropout_p=dropout_p,
             scale=1.0 / self.norm_factor,
         )
-        
         context_layer = context_layer.permute(2, 0, 1, 3)
         new_context_layer_shape = context_layer.size()[:-2] + (self.hidden_size_per_partition,)
         context_layer = context_layer.reshape(*new_context_layer_shape)
