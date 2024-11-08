@@ -190,7 +190,7 @@ class MCTS(BaseModel):
             messages=[
                 {
                     "role": "system",
-                    "content": "The user will provide a problem. Solve the problem. The response should begin with [reasoning process]...[Verification]... and end with [Final Answer]. \nThe answer is [answer] \n#### [answer].",
+                    "content": self.cfg.base_system_prompt,
                 },
                 {
                     "role": "user",
