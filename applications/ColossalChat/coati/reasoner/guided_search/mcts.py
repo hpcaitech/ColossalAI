@@ -1,10 +1,9 @@
 """
 Implementation of MCTS + Self-refine algorithm.
 
-Reference:
+Structure is adapted from https://github.com/BrendanGraham14/mcts-llm/ with the following reference:
 1. "Accessing GPT-4 level Mathematical Olympiad Solutions via Monte
 Carlo Tree Self-refine with LLaMa-3 8B: A Technical Report"
-2. https://github.com/BrendanGraham14/mcts-llm/
 3. https://github.com/trotsky1997/MathBlackBox/
 4. https://github.com/openreasoner/openr/blob/main/reason/guided_search/tree.py
 """
