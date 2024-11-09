@@ -1,8 +1,8 @@
 from functools import partial
-from typing import Callable, Dict, List, Union
+from typing import Dict, Union
 
 import torch.nn as nn
-from torch import Tensor
+
 from colossalai.shardformer.layer import (
     Linear1D_Col,
     Linear1D_Row,
@@ -13,9 +13,11 @@ from colossalai.shardformer.layer import (
     VocabParallelLMHead1D,
 )
 
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 from ..modeling.gemma2 import Gemma2PipelineForwards
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+
 __all__ = ["Gemma2Policy", "Gemma2ForCausalLMPolicy"]
+
 
 class Gemma2Policy(Policy):
     def config_sanity_check(self):
@@ -26,10 +28,8 @@ class Gemma2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.gemma2.modeling_gemma2 import (
-            Gemma2DecoderLayer,
-            Gemma2Model,
-        )
+        from transformers.models.gemma2.modeling_gemma2 import Gemma2DecoderLayer, Gemma2Model
+
         policy = {}
 
         embedding_cls = None
@@ -53,15 +53,9 @@ class Gemma2Policy(Policy):
             policy[Gemma2DecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
-                    SubModuleReplacementDescription(
-                        suffix="mlp.gate_proj", 
-                        target_module=Linear1D_Col),
-                    SubModuleReplacementDescription(
-                        suffix="mlp.up_proj", 
-                        target_module=Linear1D_Col),
-                    SubModuleReplacementDescription(
-                        suffix="mlp.down_proj", 
-                        target_module=Linear1D_Row),
+                    SubModuleReplacementDescription(suffix="mlp.gate_proj", target_module=Linear1D_Col),
+                    SubModuleReplacementDescription(suffix="mlp.up_proj", target_module=Linear1D_Col),
+                    SubModuleReplacementDescription(suffix="mlp.down_proj", target_module=Linear1D_Row),
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
@@ -78,7 +72,7 @@ class Gemma2Policy(Policy):
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
                     ),
-                ]
+                ],
             )
 
         if embedding_cls is not None:
@@ -94,18 +88,10 @@ class Gemma2Policy(Policy):
 
         self.append_or_create_submodule_replacement(
             description=[
-                SubModuleReplacementDescription(
-                    suffix="input_layernorm", 
-                    target_module=norm_cls),
-                SubModuleReplacementDescription(
-                    suffix="pre_feedforward_layernorm", 
-                    target_module=norm_cls),
-                SubModuleReplacementDescription(
-                    suffix="post_feedforward_layernorm", 
-                    target_module=norm_cls),
-                SubModuleReplacementDescription(
-                    suffix="post_attention_layernorm", 
-                    target_module=norm_cls),
+                SubModuleReplacementDescription(suffix="input_layernorm", target_module=norm_cls),
+                SubModuleReplacementDescription(suffix="pre_feedforward_layernorm", target_module=norm_cls),
+                SubModuleReplacementDescription(suffix="post_feedforward_layernorm", target_module=norm_cls),
+                SubModuleReplacementDescription(suffix="post_attention_layernorm", target_module=norm_cls),
             ],
             policy=policy,
             target_key=Gemma2DecoderLayer,
@@ -145,7 +131,11 @@ class Gemma2ForCausalLMPolicy(Gemma2Policy):
                 target_key=Gemma2ForCausalLM,
             )
             if self.shard_config.parallel_output:
-                method_replacement = {"forward": partial(Gemma2PipelineForwards.gemma2_for_causal_lm_forward, shard_config=self.shard_config)}
+                method_replacement = {
+                    "forward": partial(
+                        Gemma2PipelineForwards.gemma2_for_causal_lm_forward, shard_config=self.shard_config
+                    )
+                }
                 self.append_or_create_method_replacement(
                     description=method_replacement, policy=policy, target_key=Gemma2ForCausalLM
                 )

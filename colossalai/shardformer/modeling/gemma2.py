@@ -1,27 +1,18 @@
-import math
-import warnings
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional
 
 import torch
 import torch.distributed
 import torch.utils.checkpoint
-from transformers.cache_utils import DynamicCache
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-)
-from transformers.models.gemma2.modeling_gemma2 import (
-    Gemma2ForCausalLM,
-    Gemma2Model,
-)
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.models.gemma2.modeling_gemma2 import Gemma2ForCausalLM, Gemma2Model
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
+from colossalai.shardformer.layer._operation import gather_sp_output
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, RingAttention, dist_cross_entropy
+from ..layer import RingAttention, dist_cross_entropy
 
 _SUPPORTED_SP_MODE = ["all_to_all", "split_gather", "ring", "ring_attn"]
 
@@ -88,7 +79,7 @@ class Gemma2PipelineForwards:
 
         # Support SP + PP
         sp_mode = shard_config.sequence_parallelism_mode
-        sp_group = shard_config.sequence_parallel_process_group
+        shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
         # Generating full positions ids for modes that gather sequence before attn
         if stage_manager and (sp_mode != "ring_attn" and not stage_manager.is_first_stage()):
@@ -97,7 +88,7 @@ class Gemma2PipelineForwards:
         past_seen_tokens = 0
         cache_position = torch.arange(past_seen_tokens, past_seen_tokens + seq_length, device=device)
 
-        seq_length_with_past = seq_length + past_seen_tokens
+        seq_length + past_seen_tokens
 
         if output_attentions:
             logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
@@ -108,11 +99,13 @@ class Gemma2PipelineForwards:
         if use_cache:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
-            
+
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
 
-        attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, hidden_states, cache_position, past_key_values, output_attentions)
+        attn_kwargs: torch.Tensor = self._update_causal_mask(
+            attention_mask, hidden_states, cache_position, past_key_values, output_attentions
+        )
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
