@@ -220,6 +220,10 @@ _POLICY_LIST = {
     "transformers.models.cohere.modeling_cohere.CohereForCausalLM": PolicyLocation(
         file_name="command", class_name="CommandForCausalLMPolicy"
     ),
+    # gemma2
+    "transformers.models.gemma2.modeling_gemma2.Gemma2ForCausalLM": PolicyLocation(
+        file_name="gemma2", class_name="Gemma2ForCausalLMPolicy"
+    ),
 }
 
 

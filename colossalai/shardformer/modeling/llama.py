@@ -141,7 +141,7 @@ class LlamaPipelineForwards:
                 invert=(sp_mode != "ring_attn"),
             )
         else:
-            attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, hidden_states, cache_position)
+            attn_kwargs: torch.Tensor = self._update_causal_mask(attention_mask, hidden_states, cache_position, past_key_values, output_attentions)
 
         # Support SP + PP. Later stages have already received the split input.
         split_input = disable_pp or stage_manager.is_first_stage()
