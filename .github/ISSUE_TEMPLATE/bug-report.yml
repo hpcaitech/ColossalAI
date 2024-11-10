@@ -19,11 +19,11 @@ body:
 - type: dropdown
   id: share_script
   attributes:
-    label: Do you feel comfortable sharing a succinct (minimal) script that reproduces the error?
-    description: If not, please describe your setting/training config. Please also put a link to the line in our repo that throws the error.
+    label: Do you feel comfortable sharing a succinct (minimal) script that reproduces the error? :)
+    description: If not, please share your setting/training config, and point to the line in the repo that throws the error if applicable.
     options:
-      - Yes, I will share a minimal reproducible script
-      - No, I prefer not to share a script
+      - Yes, I will share a minimal reproducible script.
+      - No, I prefer not to share.
   validations:
     required: true
 
