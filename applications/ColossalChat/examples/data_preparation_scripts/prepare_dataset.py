@@ -12,7 +12,14 @@ import random
 import time
 from multiprocessing import cpu_count
 
-from coati.dataset import setup_conversation_template, tokenize_kto, tokenize_prompt, tokenize_rlhf, tokenize_sft, tokenize_process_reward
+from coati.dataset import (
+    setup_conversation_template,
+    tokenize_kto,
+    tokenize_process_reward,
+    tokenize_prompt,
+    tokenize_rlhf,
+    tokenize_sft,
+)
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -28,7 +35,7 @@ def main():
         type=str,
         required=True,
         default=None,
-        choices=["sft", "prompt", "preference", "kto", 'prm'],
+        choices=["sft", "prompt", "preference", "kto", "prm"],
         help="Type of dataset, chose from 'sft', 'prompt', 'preference'. 'kto'",
     )
     parser.add_argument(
