@@ -1,5 +1,3 @@
-import copy
-
 import pytest
 import torch
 import torch.distributed as dist
@@ -16,7 +14,6 @@ from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor import (
     distribute_tensor,
     get_device_mesh,
-    get_layout,
     get_sharding_spec,
     is_distributed_tensor,
     shard_colwise,
@@ -28,7 +25,13 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils import set_seed
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
-from tests.test_optimizer._utils import check_dist_optim_state, check_dist_param, check_optim_states
+from tests.test_optimizer._utils import (
+    check_dist_optim_state,
+    check_dist_param,
+    check_optim_states,
+    set_master_param_to_shard_param,
+    setup_param_groups,
+)
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     build_model_from_low_level_zero_plugin,
@@ -38,9 +41,12 @@ from tests.test_shardformer.test_model._utils import (
     unwrap_model,
 )
 
-HEIGHT = 4
-WIDTH = 4
+IN_DIM = 4
+HID_DIM = 4
 _TP_SPEC = DimSpec([0])
+
+Net, data_gen, *_ = next(iter(model_zoo.get_sub_registry("simple_mlp").values()))
+TPNet, *_ = next(iter(model_zoo.get_sub_registry("simple_tp_mlp").values()))
 
 
 def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torch.dtype = torch.float32):
@@ -59,92 +65,11 @@ def correctness_verify(tensor1: torch.Tensor, tensor2: torch.Tensor, dtype: torc
     assert_close(tensor1, tensor2, rtol=rtol, atol=atol)
 
 
-# setup param groups; (For zero test optim)
-def setup_param_groups_zero(model: nn.Module) -> list:
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": 0.1,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    return optimizer_grouped_parameters
-
-
-# setup param groups; (For base optim)
-def setup_param_groups(model: nn.Module) -> list:
-    optimizer_grouped_parameters = [p for n, p in model.named_parameters()]
-    return optimizer_grouped_parameters
-
-
-# setup flatten param groups, sharding spec and shape; (For dist optim)
-def setup_flatten_param_groups_sharding_spec_shape(model: nn.Module) -> dict:
-    flatten_optimizer_grouped_parameters = []
-    sharding_spec = {}  # {id(flatten param): get_layout(p).global_shape}
-    param_shape = {}  # {id(flatten param): get_sharding_spec(p)}
-    for n, p in model.named_parameters():
-        # flatten_p = copy.deepcopy(p).flatten()
-        flatten_p = nn.Parameter(p.clone().flatten().requires_grad_(True))
-        flatten_optimizer_grouped_parameters.append(flatten_p)
-        if is_distributed_tensor(p):
-            sharding_spec[id(flatten_p)] = get_sharding_spec(p)
-            param_shape[id(flatten_p)] = get_layout(p).global_shape
-        else:
-            sharding_spec[id(flatten_p)] = None
-            param_shape[id(flatten_p)] = p.shape
-    return flatten_optimizer_grouped_parameters, sharding_spec, param_shape
-
-
-def set_dist_grad(
-    dist_module: nn.Module, torch_model: nn.Module, g_dtype: torch.dtype, group: dist.ProcessGroup
-) -> None:
-    """
-    Set split grads for Tensor Parallel or ZeRO DP.
-    We do not need a separate treatment for ZeRO,
-    as the wrapper takes care of reduce-scattering grads.
-    """
-    rank = dist.get_rank(group)
-    world_size = dist.get_world_size(group)
-
-    for p, torch_p in zip(dist_module.parameters(), torch_model.parameters()):
-        if torch_p.grad is None:
-            torch_p.grad = torch.zeros_like(torch_p)
-
-        is_distributed = hasattr(p, "dist_layout")
-        if is_distributed:
-            sharding = p.dist_layout.sharding_spec.sharding_sequence
-            split_dim = sharding.index(_TP_SPEC)
-            shape = torch_p.split(world_size, dim=split_dim)[rank].shape
-
-            indices = torch.arange(shape[split_dim] * rank, shape[split_dim] * (rank + 1))
-            # Generate grads only for the correctly split chunk
-            torch_p.grad.index_add_(split_dim, indices, torch.randn(shape, device=torch_p.device, dtype=g_dtype))
-
-        else:
-            shape = torch_p.shape
-            torch_p.grad += torch.randn(shape, device=torch_p.device, dtype=g_dtype)
-
-        # avoid inconsistent grad and param dtype error
-        orig_p = p.data
-        p.data = torch_p.grad.clone().to(g_dtype)
-        p.grad = p.data
-        p.data = orig_p
-
-
-def set_master_param_to_shard_param(master_param_list) -> dict:
-    master_param_to_shard_param = {id(p): p for p in master_param_list}
-    return master_param_to_shard_param
-
-
 class MlpModel(nn.Module):
     def __init__(self):
         super(MlpModel, self).__init__()
-        self.linear1 = nn.Linear(HEIGHT, WIDTH)
-        self.linear2 = nn.Linear(WIDTH, HEIGHT)
+        self.linear1 = nn.Linear(IN_DIM, HID_DIM)
+        self.linear2 = nn.Linear(HID_DIM, IN_DIM)
 
     def forward(self, x):
         x = self.linear1(x)
@@ -182,7 +107,7 @@ def exam_dist_adafactor_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # ==============================
     # Base Case
     # ==============================
-    H, W = HEIGHT, WIDTH
+    H, W = IN_DIM, HID_DIM
     model_col = nn.Linear(H, W).to(local_rank)  # Col parallel weight
     weight, bias = model_col.weight, model_col.bias
 
@@ -284,8 +209,11 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # ==============================
     # Model Init
     # ==============================
-    base_model = MlpModel().to(local_rank)
-    tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
+    # base_model = MlpModel().to(local_rank)
+    # tp_model = TPModel(copy.deepcopy(base_model.linear1), copy.deepcopy(base_model.linear2), tp_group).to(local_rank)
+    base_model = Net(in_dim=IN_DIM, hid_dim=HID_DIM, dtype=dtype).to(local_rank)
+    # Must specify dtype; TPNet init seem to run out of set_default_dtype scope
+    tp_model = TPNet(fc1=base_model.fc1, fc2=base_model.fc2, tp_group=tp_group, dtype=dtype)
 
     base_param_group = setup_param_groups(base_model)
     tp_param_group = setup_param_groups(tp_model)
@@ -335,7 +263,7 @@ def exam_dist_adafactor_zero(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     # ==============================
     # Correctness Verify
     # ==============================
-    x = torch.randn(HEIGHT, WIDTH, device=local_rank)
+    x = torch.randn(IN_DIM, HID_DIM, device=local_rank)
 
     out = base_model(x)
     out_tp = tp_model(x)
