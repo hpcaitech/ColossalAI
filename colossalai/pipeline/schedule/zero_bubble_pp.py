@@ -101,9 +101,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # init buffer
         self._free_buffers()
 
-    def _set_send_metadata_buffers(self, model_chunk_id):
-        pass
-
     def _free_buffers(self):
         # free local buffer
         # two dim array, first dim is the model chunk, second dim is the microbatch queue

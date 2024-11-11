@@ -752,13 +752,13 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
 @parameterize(
     "config",
     [
-        # # Pass
+        # Pass
         (1, 2, 1, 1, 2),
+        (1, 1, 2, 2, 1),
+        (1, 2, 1, 2, 1),
         # TODO: adapt mixtral with no TP Linear
         # (1, 2, 2, 1, 1),
         # (0, 1, 4, 1, 1),
-        # (1, 1, 2, 2, 1),
-        # (1, 2, 1, 2, 1),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
@@ -1070,10 +1070,12 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         #     parall_name = ".".join(parall_name.split(".")[1:])
         #     for base_name, base_param in torch_model.named_parameters():
         #         if parall_name == base_name:
-        #             # assert weight
+        #             # print(f"parall_name {parall_name} parall_param.grad {parall_param.grad is not None}, base_name {base_name} base_param.grad {base_param.grad is not None}")
+        #             # # assert weight
         #             assert_loose_close(parall_param, base_param, dtype=dtype, name=parall_name)
-        #             # assert weight.grad
+        #             # # assert weight.grad
         #             if parall_param.grad is not None:
+        #                 # print(f"parall_param.grad {parall_param.grad}, base_param.grad {base_param.grad}")
         #                 assert_loose_close(parall_param.grad, base_param.grad, dtype=dtype, name=f"{parall_name}.grad")
 
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
