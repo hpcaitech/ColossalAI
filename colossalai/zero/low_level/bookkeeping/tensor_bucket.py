@@ -78,7 +78,7 @@ class TensorBucket:
         else:
             # dist.all_gather_into_tensor(buffer, flat, group=group)
             all_gather_into_flat_tensor_nd(buffer, flat, group=group)
-        unflat_buffers = [self.unflatten(buffer) for buffer in world_size]
+        unflat_buffers = [self.unflatten(buffer) for buffer in buffer.chunk(world_size)]
         # transpose the list of list
         unflat_buffers = list(map(list, zip(*unflat_buffers)))
         for unflat_shards, tensor in zip(unflat_buffers, self._bucket):

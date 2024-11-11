@@ -166,7 +166,7 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype, master_weights: bool, extra_dp_siz
         reduce_bucket_size=1024 * 1024,
         master_weights=master_weights,
         dp_process_group=dp_group,
-        extra_dp_process_group=extra_dp_group,
+        extra_dp_group=extra_dp_group,
     )
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
