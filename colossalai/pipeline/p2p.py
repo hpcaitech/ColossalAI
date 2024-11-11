@@ -432,6 +432,7 @@ def _communicate(
         overlap_p2p=overlap_p2p,
         send_first=send_first if send_first != None else True,
     )
+    # print(f"rank {dist.get_rank()}; recv_src {recv_src}; send_dst {send_dst}; metadata_send {metadata_send}; metadata_recv {metadata_recv};")
 
     if metadata_recv is not None:
         assert isinstance(metadata_recv, P2PMetadata)
