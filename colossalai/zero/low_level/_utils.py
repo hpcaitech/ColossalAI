@@ -233,3 +233,17 @@ def all_gather_into_flat_tensor_nd(
         handle = dist.all_gather_into_tensor(out, input_tensor, group=pg, async_op=async_op)
         input_tensor = out
     return handle
+
+
+def get_nd_world_size(group):
+    if isinstance(group, tuple):
+        return np.prod([dist.get_world_size(pg) for pg in group])
+    else:
+        return dist.get_world_size(group)
+
+
+def get_nd_rank(group):
+    if isinstance(group, tuple):
+        return np.ravel_multi_index(tuple(dist.get_rank(group=pg) for pg in group), get_nd_world_size(group))
+    else:
+        return dist.get_rank(group)

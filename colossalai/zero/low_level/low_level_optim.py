@@ -26,6 +26,8 @@ from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from ._utils import (
     all_gather_into_flat_tensor_nd,
     calculate_global_norm_from_list,
+    get_nd_rank,
+    get_nd_world_size,
     has_inf_or_nan,
     release_param_grad,
     sync_tensor,
@@ -782,11 +784,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if isinstance(v, torch.Tensor) and k != "step":
                     working_param = self.master_to_working_param[id(param)]
                     pg = self.param_to_pg[working_param]
-                    gather_tensor = [torch.zeros(v.shape, device=device, dtype=v.dtype) for _ in range(pg.size())]
-                    dist.all_gather(gather_tensor, v.to(device), group=pg)
-                    param_state = (
-                        torch.stack(gather_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
-                    )
+                    gathered_tensor = torch.empty(v.numel() * get_nd_world_size(pg), device=device, dtype=v.dtype)
+                    all_gather_into_flat_tensor_nd(gathered_tensor, v.to(device).flatten(), pg)
+                    param_state = gathered_tensor[: working_param.numel()].reshape_as(working_param).cpu()
                     zero_state[param][k] = param_state
 
         states_dict = self._pack_state(zero_state)
@@ -808,15 +808,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 cnt += 1
         for param_idx, state in zero_state_dict["state"].items():
             pg = self.param_to_pg[self.master_to_working_param[id(idx2master[param_idx])]]
+            world_size = get_nd_world_size(pg)
+            rank = get_nd_rank(pg)
             for k, v in state.items():
                 if isinstance(v, torch.Tensor) and k != "step":
-                    padding_size = (pg.size() - v.numel() % pg.size()) % pg.size()
+                    padding_size = (world_size - v.numel() % world_size) % world_size
                     with torch.no_grad():
                         v = v.flatten()
                         if padding_size > 0:
                             v = torch.nn.functional.pad(v, [0, padding_size])
-                        v_list = v.split(v.numel() // pg.size())
-                        zero_state_dict["state"][param_idx][k] = v_list[pg.rank()].detach().clone()
+                        v_list = v.split(v.numel() // world_size)
+                        zero_state_dict["state"][param_idx][k] = v_list[rank].detach().clone()
 
         self.optim.load_state_dict(zero_state_dict)
 
@@ -852,11 +854,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
             for k, v in states.items():
                 if isinstance(v, torch.Tensor) and k != "step":
-                    state_tensor = [torch.zeros(v.shape, device=device, dtype=v.dtype) for _ in range(pg.size())]
-                    dist.all_gather(state_tensor, v.to(device), group=pg)
-                    state_tensor = (
-                        torch.stack(state_tensor).view(-1)[: working_param.numel()].reshape_as(working_param).cpu()
-                    )
+                    state_tensor = torch.empty(v.numel() * get_nd_world_size(pg), device=device, dtype=v.dtype)
+                    all_gather_into_flat_tensor_nd(state_tensor, v.to(device).flatten(), pg)
+                    state_tensor = state_tensor[: working_param.numel()].reshape_as(working_param).cpu()
                     current_block_size += state_tensor.numel()
                     current_block[k] = state_tensor
 
@@ -880,12 +880,14 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             p_id = id(p)
             if p_id in self.working_to_master_param:
                 pg = self.param_to_pg[p]
+                world_size = get_nd_world_size(pg)
+                rank = get_nd_rank(pg)
                 master_param = self.working_to_master_param[p_id]
                 padding_size = self.get_param_padding_size(p)
                 working_param = p.data.view(-1)
                 if padding_size > 0:
                     working_param = torch.nn.functional.pad(working_param, [0, padding_size])
-                master_param.copy_(working_param.chunk(pg.size())[pg.rank()])
+                master_param.copy_(working_param.chunk(world_size)[rank])
 
     def get_working_to_master_map(self) -> Dict[int, torch.Tensor]:
         return self.working_to_master_param
