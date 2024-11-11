@@ -1,6 +1,6 @@
-import dataclasses
 import json
 import os
+from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
 import torch.distributed as dist
@@ -11,14 +11,17 @@ from colossalai.logging import get_dist_logger
 logger = get_dist_logger()
 
 
-@dataclasses.dataclass
+@dataclass
 class Conversation:
     tokenizer: PreTrainedTokenizer
     system_message: str
     chat_template: str
     stop_ids: List[int]
     end_of_assistant: str
-    roles = ["user", "assistant"]
+    messages: List[Dict[str, str]] = field(default_factory=list)
+    roles: List[str] = field(default_factory=lambda: ["user", "assistant"])
+    step_score_signal: str = None
+    reward_signal: List[str] = None
 
     @classmethod
     def from_config(cls, tokenizer: PreTrainedTokenizer, config: Dict):
@@ -26,18 +29,26 @@ class Conversation:
         Setup the conversation template from config
         """
         tokenizer.chat_template = config["chat_template"]
-        conv = cls(
-            tokenizer, config["system_message"], config["chat_template"], config["stop_ids"], config["end_of_assistant"]
-        )
-        conv.clear()
-        return conv
+        conversation = cls(tokenizer, **config)
+
+        special_tokens = []
+        if conversation.step_score_signal is not None:
+            special_tokens.extend(conversation.step_score_signal)
+
+        if conversation.reward_signal is not None:
+            special_tokens.extend(conversation.reward_signal)
+
+        if special_tokens:
+            conversation.tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
+
+        return conversation
 
     def clear(self):
         self.messages = []
 
     @classmethod
     def get_conversation_template_keys(cls):
-        return ["system_message", "chat_template"]
+        return ["system_message", "chat_template", "end_of_assistant"]
 
     def __str__(self):
         return json.dumps(
@@ -46,12 +57,12 @@ class Conversation:
             indent=4,
         )
 
-    def get_prompt(self, length: int = None, add_generation_prompt=False) -> Any:
+    def get_prompt(self, num_messages: int = None, add_generation_prompt=False) -> Any:
         """
         Retrieves the prompt for the conversation.
 
         Args:
-            length (int, optional): The number of messages to include in the prompt. Defaults to None.
+            num_messages (int, optional): The number of messages to include in the prompt. Defaults to None.
             get_seps_info (bool, optional): Whether to include separator information in the output. Defaults to False.
             add_generation_prompt (bool, optional): Whether to add the assistant line start token in generation (for generation only). Defaults to False.
 
@@ -59,21 +70,18 @@ class Conversation:
             str or tuple: The prompt string if get_seps_info is False, otherwise a tuple containing the prompt string and separator information.
         """
 
-        if length is None:
-            length = len(self.messages)
+        if num_messages is None:
+            num_messages = len(self.messages)
 
-        assert length <= len(self.messages)
+        assert num_messages <= len(self.messages)
         if self.system_message is not None:
-            messages = [{"role": "system", "content": self.system_message}] + self.messages[:length]
+            messages = [{"role": "system", "content": self.system_message}] + self.messages[:num_messages]
         else:
-            messages = self.messages[:length]
+            messages = self.messages[:num_messages]
         prompt = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt
         )
         return prompt
-
-    def save_prompt(self):
-        return self.get_prompt()
 
     def append_message(self, role: str, message: str):
         """
@@ -141,9 +149,11 @@ def setup_conversation_template(
                 pass
             except ValueError as e:
                 raise ValueError(e)
-    if not dist.is_initialized() or dist.get_rank() == 0:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        with open(save_path, "w", encoding="utf8") as f:
-            logger.info(f"Successfully generated a conversation tempalte config, save to {save_path}.")
-            json.dump(chat_template_config, f, indent=4, ensure_ascii=False)
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, "w", encoding="utf8") as f:
+        logger.info(f"Successfully generated a conversation tempalte config, save to {save_path}.")
+        json.dump(chat_template_config, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+
     return Conversation.from_config(tokenizer, chat_template_config)

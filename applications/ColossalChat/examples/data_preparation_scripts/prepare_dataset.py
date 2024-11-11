@@ -1,35 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Prepare dataset scripts
-
-Usage:
-- For SFT dataset preparation (SFT)
-python prepare_dataset.py --type sft \
-    --data_input_dirs /PATH/TO/SFT/DATASET \
-    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
-    --tokenizer_dir  "" \
-    --data_cache_dir $SAVE_DIR/cache \
-    --data_jsonl_output_dir $SAVE_DIR/jsonl \
-    --data_arrow_output_dir $SAVE_DIR/arrow \
-
-- For prompt dataset preparation (PPO)
-python prepare_dataset.py --type prompt \
-    --data_input_dirs /PATH/TO/SFT/DATASET \
-    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
-    --tokenizer_dir  "" \
-    --data_cache_dir $SAVE_DIR/cache \
-    --data_jsonl_output_dir $SAVE_DIR/jsonl \
-    --data_arrow_output_dir $SAVE_DIR/arrow \
-
-- For Preference dataset preparation (DPO and Reward model training)
-python prepare_dataset.py --type preference \
-    --data_input_dirs /PATH/TO/SFT/DATASET \
-    --conversation_template_config /PATH/TO/CHAT/TEMPLATE/CONFIG.json \
-    --tokenizer_dir  "" \
-    --data_cache_dir $SAVE_DIR/cache \
-    --data_jsonl_output_dir $SAVE_DIR/jsonl \
-    --data_arrow_output_dir $SAVE_DIR/arrow \
+Prepare Dataset for RL Alogithm.
 """
 
 import argparse
@@ -40,7 +12,7 @@ import random
 import time
 from multiprocessing import cpu_count
 
-from coati.dataset import setup_conversation_template, tokenize_kto, tokenize_prompt, tokenize_rlhf, tokenize_sft
+from coati.dataset import setup_conversation_template, tokenize_kto, tokenize_prompt, tokenize_rlhf, tokenize_sft, tokenize_process_reward
 from datasets import dataset_dict, load_dataset
 from transformers import AutoTokenizer
 
@@ -56,7 +28,7 @@ def main():
         type=str,
         required=True,
         default=None,
-        choices=["sft", "prompt", "preference", "kto"],
+        choices=["sft", "prompt", "preference", "kto", 'prm'],
         help="Type of dataset, chose from 'sft', 'prompt', 'preference'. 'kto'",
     )
     parser.add_argument(
@@ -205,8 +177,10 @@ def main():
         preparation_function = tokenize_rlhf
     elif args.type == "kto":
         preparation_function = tokenize_kto
+    elif args.type == "prm":
+        preparation_function = tokenize_process_reward
     else:
-        raise ValueError("Unknow dataset type. Please choose one from ['sft', 'prompt', 'preference']")
+        raise ValueError("Unknow dataset type. Please choose one from ['sft', 'prompt', 'preference', 'kto', 'prm']")
 
     for index, dataset in enumerate(list_dataset):
         assert isinstance(dataset, dataset_dict.Dataset)
@@ -218,6 +192,7 @@ def main():
             dataset = dataset.select(
                 random.sample(range(len(dataset)), min(args.num_samples_per_datafile, len(dataset)))
             )
+
         logger.info(f"Start to process part-{index}/{len(list_dataset)} of all original datasets.")
         dataset = dataset.map(
             function=preparation_function,
@@ -229,13 +204,6 @@ def main():
             keep_in_memory=False,
             num_proc=min(len(dataset), cpu_count()),
         )
-        if args.type == "kto":
-            filter_by = "completion"
-        elif args.type == "preference":
-            filter_by = "chosen_input_ids"
-        else:
-            filter_by = "input_ids"
-        dataset = dataset.filter(lambda data: data[filter_by] is not None)
 
         # Save each jsonl spliced dataset.
         output_index = "0" * (5 - len(str(index))) + str(index)
@@ -249,22 +217,15 @@ def main():
                     logger.info(f"processing {count} spliced data points for {fp_writer.name}")
                 count += 1
                 fp_writer.write(json.dumps(data_point, ensure_ascii=False) + "\n")
+
         logger.info(
             f"Current file {fp_writer.name}; "
             f"Data size: {len(dataset)}; "
             f"Time cost: {round((time.time() - st) / 60, 6)} minutes."
         )
+
         # Save each arrow spliced dataset
         output_arrow_path = os.path.join(args.data_arrow_output_dir, output_name)
-        logger.info(f"Start to save {output_arrow_path}")
-        dataset = load_dataset(
-            path="json",
-            data_files=[output_jsonl_path],
-            cache_dir=os.path.join(args.data_cache_dir, "tokenized"),
-            keep_in_memory=False,
-            num_proc=cpu_count(),
-            split="train",
-        )
         dataset.save_to_disk(dataset_path=output_arrow_path, num_proc=min(len(dataset), cpu_count()))
 
 

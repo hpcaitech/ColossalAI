@@ -7,7 +7,7 @@ from .loader import (
     StatefulDistributedSampler,
     load_tokenized_dataset,
 )
-from .tokenization_utils import tokenize_kto, tokenize_prompt, tokenize_rlhf, tokenize_sft
+from .tokenization_utils import tokenize_kto, tokenize_prompt, tokenize_rlhf, tokenize_sft, tokenize_process_reward
 
 __all__ = [
     "tokenize_prompt",
@@ -23,4 +23,5 @@ __all__ = [
     "tokenize_kto",
     "setup_conversation_template",
     "Conversation",
+    "tokenize_process_reward"
 ]
