@@ -2,11 +2,13 @@ import copy
 
 import pytest
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
 
 import colossalai
+from colossalai.cluster import ProcessGroupMesh
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from colossalai.zero import LowLevelZeroOptimizer
@@ -123,7 +125,8 @@ def exam_zero_1_2(fp8_communication: bool):
 
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("master_weights", [True, False])
-def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
+@parameterize("extra_dp_size", [1, 2])
+def exam_zero_1_torch_ddp(dtype: torch.dtype, master_weights: bool, extra_dp_size: int):
     """
     In this test, two pairs of model and optimizers are created.
     1. zero: use sharded optimizer and fp16 parameters
@@ -132,6 +135,15 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
     We feed these two sets of models with the same input and check if the
     differences in model output and updated parameters are within tolerance.
     """
+    if extra_dp_size > 1 and dtype != torch.bfloat16:
+        return
+    if extra_dp_size > 1:
+        pg_mesh = ProcessGroupMesh([extra_dp_size, dist.get_world_size() // extra_dp_size])
+        extra_dp_group = pg_mesh.get_group_along_axis(0)
+        dp_group = pg_mesh.get_group_along_axis(1)
+    else:
+        extra_dp_group = None
+        dp_group = None
     local_rank = torch.distributed.get_rank()
     seed_all(1453)
 
@@ -153,6 +165,8 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
         initial_scale=1,
         reduce_bucket_size=1024 * 1024,
         master_weights=master_weights,
+        dp_process_group=dp_group,
+        extra_dp_process_group=extra_dp_group,
     )
 
     torch_optimizer = torch.optim.SGD(torch_model.parameters(), lr=1)
@@ -200,14 +214,14 @@ def exam_zero_1_torch_ddp(world_size, dtype: torch.dtype, master_weights: bool):
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
-    exam_zero_1_torch_ddp(world_size=world_size)
+    exam_zero_1_torch_ddp()
     exam_zero_1_2()
 
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_1_2():
-    spawn(run_dist, 2)
+    spawn(run_dist, 4)
 
 
 if __name__ == "__main__":
