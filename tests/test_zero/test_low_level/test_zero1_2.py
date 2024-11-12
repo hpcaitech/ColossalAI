@@ -138,7 +138,7 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype, master_weights: bool, extra_dp_siz
     if extra_dp_size > 1 and dtype != torch.bfloat16:
         return
     if extra_dp_size > 1:
-        pg_mesh = ProcessGroupMesh([extra_dp_size, dist.get_world_size() // extra_dp_size])
+        pg_mesh = ProcessGroupMesh(extra_dp_size, dist.get_world_size() // extra_dp_size)
         extra_dp_group = pg_mesh.get_group_along_axis(0)
         dp_group = pg_mesh.get_group_along_axis(1)
     else:

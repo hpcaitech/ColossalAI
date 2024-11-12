@@ -9,7 +9,7 @@ class BaseStore:
     def __init__(self, torch_pg: Union[ProcessGroup, Tuple[ProcessGroup, ...]]):
         if isinstance(torch_pg, tuple):
             self.sizes = [dist.get_world_size(group=pg) for pg in torch_pg]
-            self._world_size = np.prod(self.sizes)
+            self._world_size = int(np.prod(self.sizes))
             self._local_rank = np.ravel_multi_index(tuple(dist.get_rank(group=pg) for pg in torch_pg), self.sizes)
         else:
             self._world_size = dist.get_world_size(group=torch_pg)
