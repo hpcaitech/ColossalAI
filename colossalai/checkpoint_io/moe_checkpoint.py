@@ -708,6 +708,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         checkpoint: str,
         gather_dtensor: bool,
         use_safetensors: bool,
+        use_async: Optional[bool] = False,
     ):
         state_dict = self.pre_save_model(model)
         if dist.get_rank() == 0:

@@ -55,7 +55,7 @@ class GeneralCheckpointIO(CheckpointIO):
             pass
 
         # save the checkpoint
-        save_state_dict(state_dict, checkpoint, use_safetensors, use_safetensors)
+        save_state_dict(state_dict, checkpoint, use_safetensors, use_safetensors, use_async)
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """

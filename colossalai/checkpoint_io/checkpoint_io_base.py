@@ -111,6 +111,7 @@ class CheckpointIO(ABC):
         prefix: str = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         """
         Save model to checkpoint.
@@ -140,9 +141,11 @@ class CheckpointIO(ABC):
         """
 
         if shard:
-            self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)
+            self.save_sharded_model(
+                model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors, use_async
+            )
         else:
-            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
+            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str, prefix: str = None, size_per_shard: int = 1024):
         """
@@ -234,6 +237,7 @@ class CheckpointIO(ABC):
         prefix: Optional[str],
         size_per_shard: int,
         use_safetensors: bool,
+        use_async: Optional[bool] = False,
     ):
         """
         Save model to sharded checkpoint.
@@ -248,7 +252,14 @@ class CheckpointIO(ABC):
         """
 
     @abstractmethod
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self,
+        model: nn.Module,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_safetensors: bool,
+        use_async: Optional[bool] = False,
+    ):
         """
         Save model to unsharded checkpoint.
 

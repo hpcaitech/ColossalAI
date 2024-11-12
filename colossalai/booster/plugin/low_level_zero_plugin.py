@@ -258,10 +258,17 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         super().load_sharded_model(model, checkpoint_index_file, strict, use_safetensors, load_sub_module)
         model.update_master_params()
 
-    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self,
+        model: ModelWrapper,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_safetensors: bool,
+        use_async: Optional[bool] = False,
+    ):
         assert isinstance(model, LowLevelZeroModel), "Please boost the model before loading!"
         model._force_wait_all_gather()
-        return super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
+        return super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
 
     def save_sharded_model(
         self,

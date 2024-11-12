@@ -65,7 +65,14 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         self.coordinator = DistCoordinator()
         self.logger = get_dist_logger()
 
-    def save_unsharded_model(self, model: GeminiDDP, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self,
+        model: GeminiDDP,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_safetensors: bool,
+        use_async: Optional[bool] = False,
+    ):
         """
         Save sharded model to checkpoint but only on master process.
         The model should be unwrapped in self.load_model via ModelWrapper.unwrap.
@@ -74,7 +81,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, GeminiDDP), "Please boost the model before saving!"
         state_dict = model.state_dict(only_rank_0=True)
         if self.coordinator.is_master():
-            save_state_dict(state_dict, checkpoint, use_safetensors)
+            save_state_dict(state_dict, checkpoint, use_safetensors, use_async)
 
     def load_unsharded_model(self, model: GeminiDDP, checkpoint: str, strict: bool = True):
         """

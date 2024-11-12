@@ -177,6 +177,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ) -> None:
         """
         Save sharded model checkpoint under the given checkpointing path.
@@ -226,6 +227,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 base_filename=weights_name,
                 is_master=control_saving,
                 use_safetensors=use_safetensors,
+                use_async=use_async,
             )
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
@@ -260,6 +262,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 is_master=control_saving,
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
+                use_async=use_async,
             )
 
             if control_saving:
@@ -626,7 +629,14 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         if self.verbose and self.coordinator.is_master():
             logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
 
-    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self,
+        model: ModelWrapper,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_safetensors: bool,
+        use_async: Optional[bool] = False,
+    ):
         """
         Save model state dict to a single file with given checkpointing path.
 
@@ -651,7 +661,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         if self.pp_size == 1:
             # When pipeline is not used, let master rank directly save the collected state_dict.
             if self.tp_rank == 0:
-                save_state_dict(state_dict, checkpoint, use_safetensors)
+                save_state_dict(state_dict, checkpoint, use_safetensors, use_async)
         else:
             # When pipeline is used, first collect state_dict from every pipeline stage, then save the complete state_dict.
             state_dict_list = [None for _ in range(self.pp_size)]
@@ -662,7 +672,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 complete_state_dict = dict()
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
-                save_state_dict(complete_state_dict, checkpoint, use_safetensors)
+                save_state_dict(complete_state_dict, checkpoint, use_safetensors, use_async)
 
     def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = False):
         """
