@@ -40,7 +40,7 @@ class GeneralCheckpointIO(CheckpointIO):
         checkpoint = load_state_dict(checkpoint)
         model.load_state_dict(checkpoint, strict=strict)
 
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: Optional[bool] = False):
         state_dict = model.state_dict()
 
         # TODO(FrankLeeeee): add support for gather_dtensor
@@ -48,7 +48,7 @@ class GeneralCheckpointIO(CheckpointIO):
             pass
 
         # save the checkpoint
-        save_state_dict(state_dict, checkpoint, use_safetensors)
+        save_state_dict(state_dict, checkpoint, use_safetensors, use_safetensors)
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """
@@ -151,6 +151,7 @@ class GeneralCheckpointIO(CheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False
     ):
         """
         implement this method as it can be supported by Huggingface model,
@@ -177,6 +178,7 @@ class GeneralCheckpointIO(CheckpointIO):
             base_filename=weights_name,
             is_master=True,
             use_safetensors=use_safetensors,
+            use_async = use_async,
         )
 
         index_file.append_meta_data("total_size", total_size)
