@@ -19,7 +19,6 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-
 from colossalai.utils.safetensors import save
 
 try:
@@ -229,7 +228,7 @@ def save_state_dict_shards(
     is_master: bool,
     use_safetensors: bool = False,
     use_pp_format: bool = False,
-    use_async: Optional[bool] = False
+    use_async: Optional[bool] = False,
 ) -> int:
     """
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
@@ -262,7 +261,7 @@ def save_state_dict_shards(
 
         # Only save on master rank.
         if use_async:
-            f_writer = AsyncFileWriter(fp=open(f"{checkpoint}.pkl", "wb"), n_entries=191, backend='pthread')
+            f_writer = AsyncFileWriter(fp=open(f"{checkpoint}.pkl", "wb"), n_entries=191, backend="pthread")
             save(f_writer, shard)
         else:
             save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)
@@ -317,7 +316,9 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # ======================================
 
 
-def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool, use_async: Optional[bool] = False) -> None:
+def save_state_dict(
+    state_dict: dict, checkpoint_file_path: str, use_safetensors: bool, use_async: Optional[bool] = False
+) -> None:
     """
     Save state dict to checkpoint.
 
@@ -338,8 +339,8 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
 
         safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
     elif use_async:
-            f_writer = AsyncFileWriter(fp=open(f"{checkpoint_file_path}.pkl", "wb"), n_entries=191, backend='pthread')
-            save(f_writer, state_dict_cpu)
+        f_writer = AsyncFileWriter(fp=open(f"{checkpoint_file_path}.pkl", "wb"), n_entries=191, backend="pthread")
+        save(f_writer, state_dict_cpu)
     else:
         torch.save(state_dict_cpu, checkpoint_file_path)
 
