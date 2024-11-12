@@ -45,7 +45,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         num_model_chunks: int,
         num_microbatch: Optional[int] = None,
         microbatch_size: Optional[int] = None,
-        enable_metadata_cache: bool = True,
+        enable_metadata_cache: bool = False,
         overlap_p2p: bool = True,
     ):
         super().__init__(stage_manager)
@@ -679,6 +679,7 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
             accum_loss=accum_loss,
             outputs=outputs,
         )
+        # print(f"stage {self.stage_manager.stage}; chunk {model_chunk_id}; output_obj {output_obj}")
 
         # Step3:
         # 3-1:detach output; detach output for send fwd;

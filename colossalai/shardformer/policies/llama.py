@@ -194,15 +194,7 @@ class LlamaPolicy(Policy):
 
         # not enable tp, replace layer to LinearWithGradAccum
         elif use_zbv:
-            decoder_attribute_replacement = {
-                "self_attn.hidden_size": self.model.config.hidden_size // tp_size,
-                "self_attn.num_heads": num_q_heads,
-            }
-            if getattr(self.model.config, "num_key_value_heads", False):
-                decoder_attribute_replacement["self_attn.num_key_value_heads"] = num_kv_heads
-
             policy[LlamaDecoderLayer] = ModulePolicyDescription(
-                attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",

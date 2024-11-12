@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import (
     FusedRMSNorm,
     Linear1D_Col,
     Linear1D_Row,
+    LinearWithGradAccum,
     PaddingEmbedding,
     PaddingLMHead,
     VocabParallelEmbedding1D,
@@ -62,6 +63,8 @@ class MistralPolicy(Policy):
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_sequence_parallelism:
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn(
@@ -90,6 +93,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -97,6 +101,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -104,6 +109,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -111,6 +117,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Row,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -118,6 +125,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -125,6 +133,7 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -132,6 +141,68 @@ class MistralPolicy(Policy):
                         target_module=Linear1D_Row,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                ],
+            )
+        elif use_zbv:
+            policy[MistralDecoderLayer] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                 ],

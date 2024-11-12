@@ -36,6 +36,24 @@ NUM_HEADS = 4
 TOP_K = 1
 
 
+def register_hooks(module: torch.nn.Module):
+
+    def fwd_hook(module, input, output):
+        torch.cuda.synchronize()
+        name = module._name if hasattr(module, "_name") else module
+        print(f"Fwd hook {name} \n output {output}")
+
+    def bwd_hook(module, grad_input, grad_output):
+        torch.cuda.synchronize()
+
+    def bwd_pre_hook(module, grad_output):
+        torch.cuda.synchronize()
+
+    module.register_forward_hook(fwd_hook)
+    # module.register_backward_hook(bwd_hook)
+    # module.register_full_backward_pre_hook(bwd_pre_hook)
+
+
 class MlpModel(nn.Module):
     def __init__(
         self,
@@ -756,9 +774,9 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
         (1, 2, 1, 1, 2),
         (1, 1, 2, 2, 1),
         (1, 2, 1, 2, 1),
-        # TODO: adapt mixtral with no TP Linear
-        # (1, 2, 2, 1, 1),
-        # (0, 1, 4, 1, 1),
+        (1, 2, 2, 1, 1),
+        # # TODO: adapt mixtral with no TP Linear
+        (0, 1, 4, 1, 1),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
@@ -872,7 +890,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 return_outputs=True,
             )
             # stage 0 chunk 0
-            parallel_output = None
             if (
                 booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
                 and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
@@ -880,6 +897,7 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 parallel_output = sharded_output["loss"]
             else:
                 parallel_output = torch.tensor(12345.0, device="cuda")
+            print(f"rank {dist.get_rank()} parallel_output {parallel_output}")
             # broadcast along pp axis
             dist.broadcast(parallel_output, src=dist.get_process_group_ranks(plugin.pp_group)[0], group=plugin.pp_group)
 
@@ -920,8 +938,8 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
         (1, 2, 2, 1),
         (1, 2, 1, 2),
         (1, 1, 2, 2),
-        # TODO: acc err in pp4
-        # (1, 4, 1, 1),
+        # TODO: support overlap p2p in pp4
+        (1, 4, 1, 1),
     ],
 )
 def run_with_booster_hybridplugin(config: Tuple[int, ...]):
@@ -1030,7 +1048,6 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
                 return_outputs=True,
             )
             # stage 0 chunk 0
-            parallel_output = None
             if (
                 booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
                 and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
@@ -1054,6 +1071,7 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         all_inputs = [input_embeddings.clone() for _ in range(dp_size)]
         dist.all_gather(all_inputs, input_embeddings, group=plugin.dp_group)
         torch_output_sum = 0
+        # torch_model.apply(register_hooks) # register hook for base model
         for input_data_ in all_inputs:
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
             torch_output.backward()
@@ -1065,19 +1083,7 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         torch_optimizer.step()
         torch_optimizer.zero_grad()
 
-        # # assert param
-        # for parall_name, parall_param in parallel_model.named_parameters():
-        #     parall_name = ".".join(parall_name.split(".")[1:])
-        #     for base_name, base_param in torch_model.named_parameters():
-        #         if parall_name == base_name:
-        #             # print(f"parall_name {parall_name} parall_param.grad {parall_param.grad is not None}, base_name {base_name} base_param.grad {base_param.grad is not None}")
-        #             # # assert weight
-        #             assert_loose_close(parall_param, base_param, dtype=dtype, name=parall_name)
-        #             # # assert weight.grad
-        #             if parall_param.grad is not None:
-        #                 # print(f"parall_param.grad {parall_param.grad}, base_param.grad {base_param.grad}")
-        #                 assert_loose_close(parall_param.grad, base_param.grad, dtype=dtype, name=f"{parall_name}.grad")
-
+        print(f"parallel_output {parallel_output}, torch_output_sum {torch_output_sum}")
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
         print(f"rank {dist.get_rank()} pp_size:{pp_size}, tp_size {tp_size}, sp_size :{sp_size} test passed")
     clear_layout_converter()
