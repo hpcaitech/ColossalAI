@@ -5,13 +5,18 @@ from collections import abc as container_abcs
 from collections import defaultdict
 from itertools import chain
 from pathlib import Path
-from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
+from typing import Dict, Iterator, List, Mapping, Optional, OrderedDict, Tuple
 
 import torch
 import torch.nn as nn
 from packaging.version import Version
 from torch.optim import Optimizer
 from torch.utils._pytree import tree_map
+
+try:
+    from tensornvme.async_file_io import AsyncFileWriter
+except ModuleNotFoundError:
+    raise ModuleNotFoundError("Please install tensornvme to use NVMeOptimizer")
 
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
@@ -222,6 +227,8 @@ def save_state_dict_shards(
     is_master: bool,
     use_safetensors: bool = False,
     use_pp_format: bool = False,
+    use_asyncio: bool = False,
+    asyncio_writers=None,
 ) -> int:
     """
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
@@ -253,7 +260,14 @@ def save_state_dict_shards(
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
         # Only save on master rank.
-        save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)
+
+        save_state_dict(
+            shard,
+            checkpoint_file_path,
+            use_safetensors=use_safetensors,
+            use_asyncio=use_asyncio,
+            asyncio_writers=asyncio_writers,
+        )
         shard_filenames.append(shard_file)
         del shard
 
@@ -305,7 +319,14 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # ======================================
 
 
-def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
+def save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    use_safetensors: bool,
+    use_asyncio=False,
+    asyncio_writers=None,
+    state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
+) -> None:
     """
     Save state dict to checkpoint.
 
@@ -318,13 +339,20 @@ def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors
     state_dict_cpu = tree_map(lambda x: x.data.cpu() if torch.is_tensor(x) else x, state_dict)
 
     if use_safetensors:
-        assert is_safetensors_available(), "safetensors is not available."
-        assert checkpoint_file_path.endswith(
-            ".safetensors"
-        ), "safetensors only supports .safetensors suffix for checkpoint file."
-        from safetensors.torch import save_file as safe_save_file
+        if use_asyncio:
+            f_writer = AsyncFileWriter(fp=open(checkpoint_file_path, "wb"), n_entries=191, backend="pthread")
+            asyncio_writers.append(f_writer)
+            from colossalai.utils.safetensors import save
 
-        safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
+            save(f_writer, state_dict_cpu, state_dict_pinned)
+        else:
+            assert is_safetensors_available(), "safetensors is not available."
+            assert checkpoint_file_path.endswith(
+                ".safetensors"
+            ), "safetensors only supports .safetensors suffix for checkpoint file."
+            from safetensors.torch import save_file as safe_save_file
+
+            safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
     else:
         torch.save(state_dict_cpu, checkpoint_file_path)
 
@@ -514,6 +542,10 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
     if use_safetensors and not checkpoint_file.suffix == ".safetensors":
         raise Exception("load the model using `safetensors`, but no file endwith .safetensors")
     if use_safetensors:
+        if "optim" in checkpoint_file:
+            from colossalai.utils.safetensors import load
+
+            return load(checkpoint_file)
         from safetensors.torch import load_file as safe_load_file
         from safetensors.torch import safe_open
 
@@ -741,6 +773,11 @@ def load_state_dict(checkpoint_file_path: Path):
             is_safetensors_available()
         ), f"Cannot load state dict from safetensor checkpoint {checkpoint_file_path}, because safetensors is not available. Please install safetensors first with pip install safetensors."
         # load with safetensors
+        if "optim" in checkpoint_file_path:
+            from colossalai.utils.safetensors import load
+
+            return load(checkpoint_file_path)
+
         from safetensors import safe_open
 
         state_dict = {}

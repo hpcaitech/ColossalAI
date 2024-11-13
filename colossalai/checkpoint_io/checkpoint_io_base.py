@@ -82,6 +82,8 @@ class CheckpointIO(ABC):
         # containing no distributed tensors, dtensor -> full tensor conversion
         # should be done offline via our CLI
         # the existence of index file means it is a sharded checkpoint
+        if hasattr(self, "async_writers") and len(self.async_writers) > 0:
+            self._sync_io()
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
         # return the origin model instead of the unwrapped model
@@ -111,6 +113,7 @@ class CheckpointIO(ABC):
         prefix: str = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_asyncio=False,
     ):
         """
         Save model to checkpoint.
@@ -138,11 +141,12 @@ class CheckpointIO(ABC):
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard = True.
             use_safetensors (bool): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved
         """
-
         if shard:
-            self.save_sharded_model(model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors)
+            self.save_sharded_model(
+                model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors, use_asyncio=use_asyncio
+            )
         else:
-            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors)
+            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_asyncio=use_asyncio)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str, prefix: str = None, size_per_shard: int = 1024):
         """
@@ -155,7 +159,8 @@ class CheckpointIO(ABC):
                 names to compose the keys in state_dict. Defaults to None.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
-
+        if hasattr(self, "async_writers") and len(self.async_writers) > 0:
+            self._sync_io()
         index_file_exists, index_file_path = has_index_file(checkpoint)
 
         if Path(checkpoint).is_dir() and not index_file_exists:
@@ -176,6 +181,8 @@ class CheckpointIO(ABC):
         gather_dtensor=True,
         prefix: str = None,
         size_per_shard: int = 1024,
+        use_safetensors=False,
+        use_asyncio=False,
     ):
         """
         Save optimizer to checkpoint. Optimizer states saving is not compatible with safetensors.
@@ -192,11 +199,20 @@ class CheckpointIO(ABC):
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
         """
-
         if shard:
-            self.save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
+            self.save_sharded_optimizer(
+                optimizer,
+                checkpoint,
+                gather_dtensor,
+                prefix,
+                size_per_shard,
+                use_safetensors=use_safetensors,
+                use_asyncio=use_asyncio,
+            )
         else:
-            self.save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+            self.save_unsharded_optimizer(
+                optimizer, checkpoint, gather_dtensor, use_safetensors - use_safetensors, use_asyncio=use_asyncio
+            )
 
     # ========================================================
     # Abstract methods for model loading/saving implementation
@@ -234,6 +250,7 @@ class CheckpointIO(ABC):
         prefix: Optional[str],
         size_per_shard: int,
         use_safetensors: bool,
+        use_asyncio=False,
     ):
         """
         Save model to sharded checkpoint.
@@ -248,7 +265,9 @@ class CheckpointIO(ABC):
         """
 
     @abstractmethod
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_asyncio=False
+    ):
         """
         Save model to unsharded checkpoint.
 
@@ -286,7 +305,14 @@ class CheckpointIO(ABC):
 
     @abstractmethod
     def save_sharded_optimizer(
-        self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, prefix: str, size_per_shard: int
+        self,
+        optimizer: Optimizer,
+        checkpoint: Path,
+        gather_dtensor: bool,
+        prefix: str,
+        size_per_shard: int,
+        use_safetensors=False,
+        use_asyncio=False,
     ):
         """
         Save optimizer to sharded checkpoint.
@@ -300,7 +326,9 @@ class CheckpointIO(ABC):
         """
 
     @abstractmethod
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, use_safetensors=False, use_asyncio=False
+    ):
         """
         Save optimizer to unsharded checkpoint.
 
