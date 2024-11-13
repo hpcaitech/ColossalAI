@@ -8,8 +8,7 @@ from torch.optim import Adam, AdamW
 
 from colossalai.nn.optimizer import CPUAdam, FusedAdam, HybridAdam
 from tests.kit.model_zoo import model_zoo
-
-from ._utils import force_assign_grad, setup_param_groups
+from tests.test_optimizer._utils import force_assign_grad, setup_param_groups
 
 _ALLOWED_OPTIM_DEVICES = [
     (FusedAdam, torch.device("cuda:0")),
