@@ -1,7 +1,7 @@
 # a python safetensors serializer modified from https://github.com/huggingface/safetensors/blob/41bd1acf38ad28ac559522d40596c6c802f79453/safetensors/src/tensor.rs#L214
 import json
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 import torch
 from safetensors.torch import _TYPES
@@ -52,7 +52,12 @@ def prepare(data: Dict[str, torch.Tensor]) -> Tuple[PreparedData, List[str]]:
 
     return PreparedData(n=n, header_bytes=metadata_buf, offset=offset), tensor_keys
 
-def save_state_dict(f_writer: AsyncFileWriter, state_dict: Dict[str, torch.Tensor], state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None) -> None:
+
+def save_state_dict(
+    f_writer: AsyncFileWriter,
+    state_dict: Dict[str, torch.Tensor],
+    state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
+) -> None:
     prepared_data, tensor_keys = prepare(state_dict)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
 
