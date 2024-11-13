@@ -3,7 +3,7 @@ import logging
 import os
 from functools import reduce
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 import torch.nn as nn
 from torch.optim import Optimizer
