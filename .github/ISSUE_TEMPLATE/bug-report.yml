@@ -16,11 +16,19 @@ body:
     - label: I have searched the existing issues
       required: true
 
+- type: checkboxes
+  attributes:
+    label: The bug has not been fixed in the latest main branch
+    options:
+    - label: I have checked the latest main branch
+      required: true
+
 - type: dropdown
   id: share_script
   attributes:
-    label: Do you feel comfortable sharing a succinct (minimal) script that reproduces the error? :)
-    description: If not, please share your setting/training config, and point to the line in the repo that throws the error if applicable.
+    label: Do you feel comfortable sharing a concise (minimal) script that reproduces the error? :)
+    description: If not, please share your setting/training config, and/or point to the line in the repo that throws the error.
+              If the issue is not easily reproducible by us, it will reduce the likelihood of getting responses.
     options:
       - Yes, I will share a minimal reproducible script.
       - No, I prefer not to share.
