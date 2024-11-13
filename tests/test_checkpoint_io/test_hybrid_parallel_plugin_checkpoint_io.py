@@ -85,7 +85,9 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.save_model(
+            model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_safetensors=True, use_asyncio=True
+        )
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
 

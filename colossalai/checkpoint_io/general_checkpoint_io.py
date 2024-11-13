@@ -40,7 +40,9 @@ class GeneralCheckpointIO(CheckpointIO):
         checkpoint = load_state_dict(checkpoint)
         model.load_state_dict(checkpoint, strict=strict)
 
-    def save_unsharded_model(self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_asyncio=False
+    ):
         state_dict = model.state_dict()
 
         # TODO(FrankLeeeee): add support for gather_dtensor
@@ -48,7 +50,7 @@ class GeneralCheckpointIO(CheckpointIO):
             pass
 
         # save the checkpoint
-        save_state_dict(state_dict, checkpoint, use_safetensors)
+        save_state_dict(state_dict, checkpoint, use_safetensors, use_asyncio=use_asyncio)
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """
@@ -82,6 +84,7 @@ class GeneralCheckpointIO(CheckpointIO):
         gather_dtensor: bool,
         prefix: str,
         size_per_shard: int,
+        use_asyncio=False,
     ):
         """
         Save sharded optimizer checkpoint under the given checkpointing path.
@@ -119,6 +122,7 @@ class GeneralCheckpointIO(CheckpointIO):
             base_filename=states_name,
             is_master=True,
             use_safetensors=False,
+            use_asyncio=use_asyncio,
         )
 
         # Wrap up index file.
@@ -139,9 +143,11 @@ class GeneralCheckpointIO(CheckpointIO):
         optimizer: Optimizer,
         checkpoint: Path,
         gather_dtensor: bool,
+        use_safetensors=False,
+        use_asyncio=False,
     ):
         # TODO(FrankLeeeee): handle distributed tensors
-        save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
+        save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=use_safetensors, use_asyncio=use_asyncio)
 
     def save_sharded_model(
         self,
@@ -151,6 +157,7 @@ class GeneralCheckpointIO(CheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_asyncio=False,
     ):
         """
         implement this method as it can be supported by Huggingface model,
@@ -177,6 +184,7 @@ class GeneralCheckpointIO(CheckpointIO):
             base_filename=weights_name,
             is_master=True,
             use_safetensors=use_safetensors,
+            use_asyncio=use_asyncio,
         )
 
         index_file.append_meta_data("total_size", total_size)
