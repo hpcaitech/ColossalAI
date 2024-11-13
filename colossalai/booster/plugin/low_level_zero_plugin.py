@@ -278,11 +278,12 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         assert isinstance(model, LowLevelZeroModel), "Please boost the model before loading!"
         model._force_wait_all_gather()
         return super().save_sharded_model(
-            model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors
+            model, checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors, use_async
         )
 
     def save_lora_as_pretrained(self, model, checkpoint, use_safetensors):

@@ -119,6 +119,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         """
         Save sharded model.
@@ -144,6 +145,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             base_filename=weights_name,
             is_master=is_master,
             use_safetensors=use_safetensors,
+            use_async=use_async,
         )
 
         # only save the index file on the master rank

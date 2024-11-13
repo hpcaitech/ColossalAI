@@ -310,6 +310,7 @@ class Booster:
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ) -> None:
         """Save model to checkpoint.
 
@@ -333,6 +334,7 @@ class Booster:
             prefix=prefix,
             size_per_shard=size_per_shard,
             use_safetensors=use_safetensors,
+            use_async=use_async,
         )
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str) -> None:

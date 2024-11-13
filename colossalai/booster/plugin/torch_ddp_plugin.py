@@ -78,6 +78,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         """
         Save model to checkpoint but only on master process.
@@ -85,7 +86,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
             super().save_sharded_model(
-                model.unwrap(), checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors
+                model.unwrap(), checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors, use_async
             )
 
     def load_sharded_model(

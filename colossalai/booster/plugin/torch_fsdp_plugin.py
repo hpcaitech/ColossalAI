@@ -91,6 +91,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         """
         Save model to checkpoint but only on master process.
@@ -119,6 +120,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             base_filename=weights_name,
             is_master=self.coordinator.is_master(),
             use_safetensors=use_safetensors,
+            use_async=use_async,
         )
 
         # only save the index file on the master rank

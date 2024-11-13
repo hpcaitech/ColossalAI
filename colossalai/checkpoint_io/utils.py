@@ -261,7 +261,7 @@ def save_state_dict_shards(
 
         # Only save on master rank.
         if use_async:
-            f_writer = AsyncFileWriter(fp=open(f"{checkpoint}.pkl", "wb"), n_entries=191, backend="pthread")
+            f_writer = AsyncFileWriter(fp=open(f"{checkpoint_file_path}.pkl", "wb"), n_entries=191, backend="pthread")
             save(f_writer, shard)
         else:
             save_state_dict(shard, checkpoint_file_path, use_safetensors=use_safetensors)

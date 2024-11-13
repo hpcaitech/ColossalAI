@@ -37,6 +37,13 @@ try:
 except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
+from colossalai.utils.safetensors import save
+
+try:
+    from tensornvme.async_file_io import AsyncFileWriter
+except ModuleNotFoundError:
+    raise ModuleNotFoundError("Please install tensornvme to use Async Checkpoint save")
+
 
 class MoECheckpointIO(HybridParallelCheckpointIO):
     def __init__(
@@ -117,6 +124,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ) -> None:
         """
         Save sharded model checkpoint under the given checkpointing path.
@@ -168,6 +176,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 base_filename=weights_name,
                 is_master=control_saving,
                 use_safetensors=use_safetensors,
+                use_async=use_async,
             )
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
@@ -206,6 +215,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 is_master=control_saving,
                 use_safetensors=use_safetensors,
                 use_pp_format=True,
+                use_async=use_async,
             )
             if control_saving:
                 index_file.append_meta_data("total_size", total_size)
@@ -712,7 +722,11 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
     ):
         state_dict = self.pre_save_model(model)
         if dist.get_rank() == 0:
-            torch.save(state_dict, checkpoint)
+            if use_async:
+                f_writer = AsyncFileWriter(fp=open(f"{checkpoint}.pkl", "wb"), n_entries=191, backend="pthread")
+                save(f_writer, state_dict)
+            else:
+                torch.save(state_dict, checkpoint)
         dist.barrier()
 
     # Copied from colossalai.moe
