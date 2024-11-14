@@ -21,6 +21,11 @@ from colossalai.tensor.d_tensor import (
 )
 from colossalai.utils.safetensors import move_and_save
 
+try:
+    pass
+except ModuleNotFoundError:
+    raise ModuleNotFoundError("Please install tensornvme to use Async Checkpoint save")
+
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
 STATES_NAME = "pytorch_optim.bin"
@@ -371,7 +376,11 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # ======================================
 
 
-def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
+def save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    use_safetensors: bool,
+) -> None:
     """
     Save state dict to checkpoint.
 

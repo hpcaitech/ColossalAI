@@ -82,6 +82,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: Optional[bool] = False,
     ):
         """
         Save model to checkpoint but only on master process.
@@ -102,26 +103,36 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         weights_name, save_index_file = utils.get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
-        # In general cases, is_master is set to True to get the right behavior.
-        total_size = utils.save_state_dict_shards(
-            sharded_state_dict=state_dict_shard,
-            checkpoint=checkpoint_path,
-            index_file=index_file,
-            base_filename=weights_name,
-            is_master=self.coordinator.is_master(),
-            use_safetensors=use_safetensors,
-        )
-
-        # only save the index file on the master rank
-        if self.coordinator.is_master():
-            index_file.append_meta_data("total_size", total_size)
-            index_file.write_index_file(save_index_file)
-            utils.save_config_file(model.unwrap(), checkpoint_path)
-            self.logger.info(
-                f"The model is split into checkpoint shards. "
-                f"You can find where each parameters has been saved in the "
-                f"index located at {save_index_file}."
+        if use_async:
+            super().save_sharded_model(
+                model=model,
+                checkpoint_path=checkpoint_path,
+                gather_dtensor=gather_dtensor,
+                prefix=prefix,
+                use_safetensors=use_safetensors,
+                use_async=use_async,
             )
+        else:
+            # In general cases, is_master is set to True to get the right behavior.
+            total_size = utils.save_state_dict_shards(
+                sharded_state_dict=state_dict_shard,
+                checkpoint=checkpoint_path,
+                index_file=index_file,
+                base_filename=weights_name,
+                is_master=self.coordinator.is_master(),
+                use_safetensors=use_safetensors,
+            )
+
+            # only save the index file on the master rank
+            if self.coordinator.is_master():
+                index_file.append_meta_data("total_size", total_size)
+                index_file.write_index_file(save_index_file)
+                utils.save_config_file(model.unwrap(), checkpoint_path)
+                self.logger.info(
+                    f"The model is split into checkpoint shards. "
+                    f"You can find where each parameters has been saved in the "
+                    f"index located at {save_index_file}."
+                )
 
     def load_sharded_model(
         self,

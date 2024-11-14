@@ -310,7 +310,7 @@ class Booster:
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
-        use_async: bool = False,
+        use_async: Optional[bool] = False,
     ) -> None:
         """Save model to checkpoint.
 
@@ -325,6 +325,7 @@ class Booster:
                 names to compose the keys in state_dict. Defaults to None.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
             use_safetensors (bool, optional): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved.
+            use_async (bool, optional): whether to save the state_dict of model asynchronously. Default: False.
         """
         self.checkpoint_io.save_model(
             model,
