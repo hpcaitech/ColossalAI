@@ -339,7 +339,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if self._overlap_communication:
                 stream = bucket_store.comm_stream
                 # in case of the memory being reused in the default stream
-                # flat_grads.record_stream(stream)
+                flat_grads.record_stream(stream)
                 # waiting for ops in the default stream finishing
                 stream.wait_stream(get_accelerator().current_stream())
             else:
