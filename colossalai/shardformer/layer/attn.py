@@ -1,11 +1,13 @@
 from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
+import flash_attn
 import torch
 import torch.distributed
 import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
+from packaging import version
 
 from colossalai.kernel.kernel_loader import (
     FlashAttentionDaoLoader,
@@ -642,17 +644,27 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_q = max_seqlen_kv = max_seqlen
         cu_seqlens_half = cu_seqlens // 2
         max_seqlen_half = max_seqlen // 2
-
-        misc_kwargs = {
-            "window_size_left": -1,
-            "window_size_right": -1,
-            "alibi_slopes": None,
-            "softmax_scale": q.shape[-1] ** -0.5 if softmax_scale is None else softmax_scale,
-            "dropout_p": dropout_p,
-            "block_table": None,
-            "softcap": 0.0,
-            "return_softmax": False,
-        }
+        if version.parse(flash_attn.__version__) <= version.parse("2.6.3"):
+            misc_kwargs = {
+                "window_size": (-1, -1),
+                "alibi_slopes": None,
+                "softmax_scale": q.shape[-1] ** -0.5 if softmax_scale is None else softmax_scale,
+                "dropout_p": dropout_p,
+                "block_table": None,
+                "softcap": 0.0,
+                "return_softmax": False,
+            }
+        else:
+            misc_kwargs = {
+                "window_size_left": -1,
+                "window_size_right": -1,
+                "alibi_slopes": None,
+                "softmax_scale": q.shape[-1] ** -0.5 if softmax_scale is None else softmax_scale,
+                "dropout_p": dropout_p,
+                "block_table": None,
+                "softcap": 0.0,
+                "return_softmax": False,
+            }
 
         if (
             RingAttention.HALF_INDICES is not None
