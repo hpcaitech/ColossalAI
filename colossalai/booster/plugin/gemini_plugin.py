@@ -71,7 +71,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         checkpoint: str,
         gather_dtensor: bool,
         use_safetensors: bool,
-        use_async: Optional[bool] = False,
+        use_async: bool = False,
     ):
         """
         Save sharded model to checkpoint but only on master process.
@@ -122,7 +122,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
-        use_async: Optional[bool] = False,
+        use_async: bool = False,
     ):
         """
         Save sharded model.

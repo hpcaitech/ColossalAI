@@ -310,7 +310,7 @@ class Booster:
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
-        use_async: Optional[bool] = False,
+        use_async: bool = False,
     ) -> None:
         """Save model to checkpoint.
 
