@@ -644,7 +644,7 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_q = max_seqlen_kv = max_seqlen
         cu_seqlens_half = cu_seqlens // 2
         max_seqlen_half = max_seqlen // 2
-        if version.parse(flash_attn.__version__) >= version.parse("2.6.3"):
+        if version.parse(flash_attn.__version__) > version.parse("2.6.3"):
             misc_kwargs = {
                 "window_size_left": -1,
                 "window_size_right": -1,
