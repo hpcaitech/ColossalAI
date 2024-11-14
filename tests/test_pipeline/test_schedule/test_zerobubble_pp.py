@@ -770,13 +770,11 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
 @parameterize(
     "config",
     [
-        # Pass
         (1, 2, 1, 1, 2),
         (1, 1, 2, 2, 1),
         (1, 2, 1, 2, 1),
         (1, 2, 2, 1, 1),
-        # # TODO: adapt mixtral with no TP Linear
-        (0, 1, 4, 1, 1),
+        (1, 1, 4, 1, 1),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
@@ -938,7 +936,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
         (1, 2, 2, 1),
         (1, 2, 1, 2),
         (1, 1, 2, 2),
-        # TODO: support overlap p2p in pp4
         (1, 4, 1, 1),
     ],
 )
