@@ -7,9 +7,18 @@ from torch import Tensor
 from torch.nn import Module
 from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, MixtralModel
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
-from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
-from colossalai.shardformer.layer.linear import Linear1D_Row
+from colossalai.shardformer.layer import (
+    FusedRMSNorm,
+    Linear1D_Col,
+    Linear1D_Row,
+    LinearWithGradAccum,
+    PaddingEmbedding,
+    VocabParallelEmbedding1D,
+)
+
+# from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+# from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
+# from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.mixtral import (
     EPMixtralSparseMoeBlock,
     MixtralPipelineForwards,
@@ -166,6 +175,52 @@ class MixtralPolicy(Policy):
                 ],
             )
 
+        elif use_zbv:
+            policy[MixtralDecoderLayer] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="block_sparse_moe.gate",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                ],
+            )
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
@@ -341,6 +396,23 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
+                        )
+                    ],
+                )
+            }
+            policy.update(new_item)
+        elif use_zbv:
+            new_item = {
+                MixtralForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=LinearWithGradAccum,
                             kwargs=dict(
                                 gather_output=True,
                                 fp8_communication=self.shard_config.fp8_communication,
