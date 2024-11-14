@@ -64,7 +64,8 @@ from .run import launch_multi_processes
     "This will be converted to --arg1=1 --arg2=2 during execution",
 )
 @click.option("--ssh-port", type=int, default=None, help="(optional) the port used for ssh connection")
-@click.argument("user_script", type=str)
+@click.option("-m", type=str, default=None, help="run library module as a script (terminates option list)")
+@click.argument("user_script", type=str, required=False, default=None)
 @click.argument("user_args", nargs=-1)
 def run(
     host: str,
@@ -77,8 +78,9 @@ def run(
     master_port: int,
     extra_launch_args: str,
     ssh_port: int,
+    m: str,
     user_script: str,
-    user_args: str,
+    user_args: tuple,
 ) -> None:
     """
     To launch multiple processes on a single node or multiple nodes via command line.
@@ -102,9 +104,24 @@ def run(
         # run with hostfile excluding the hosts selected
         colossalai run --hostfile <file_path> --master_addr host1 --exclude host2  --nprocs_per_node 4 train.py
     """
-    if not user_script.endswith(".py"):
-        click.echo(f"Error: invalid Python file {user_script}. Did you use a wrong option? Try colossalai run --help")
-        exit()
+    if m is not None:
+        if m.endswith(".py"):
+            click.echo(f"Error: invalid Python module {m}. Did you use a wrong option? Try colossalai run --help")
+            exit()
+        if user_script is not None:
+            user_args = (user_script,) + user_args
+        user_script = m
+        m = True
+    else:
+        if user_script is None:
+            click.echo("Error: missing script argument. Did you use a wrong option? Try colossalai run --help")
+            exit()
+        if not user_script.endswith(".py"):
+            click.echo(
+                f"Error: invalid Python file {user_script}. Did you use a wrong option? Try colossalai run --help"
+            )
+            exit()
+        m = False
 
     args_dict = locals()
     args = Config(args_dict)
