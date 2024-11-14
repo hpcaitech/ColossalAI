@@ -23,5 +23,5 @@ __all__ = [
     "tokenize_kto",
     "setup_conversation_template",
     "Conversation",
-    "tokenize_process_reward"
+    "tokenize_process_reward",
 ]
