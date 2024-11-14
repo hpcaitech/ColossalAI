@@ -189,4 +189,4 @@ def test_double_ring(world_size):
 
 if __name__ == "__main__":
     test_ring_attn()
-    # test_double_ring()
+    test_double_ring()
