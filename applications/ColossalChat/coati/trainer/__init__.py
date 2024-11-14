@@ -5,6 +5,7 @@ from .orpo import ORPOTrainer
 from .ppo import PPOTrainer
 from .rm import RewardModelTrainer
 from .sft import SFTTrainer
+from .prm import ProcessRewardModelTrainer
 
 __all__ = [
     "SLTrainer",
@@ -15,4 +16,5 @@ __all__ = [
     "DPOTrainer",
     "ORPOTrainer",
     "KTOTrainer",
+    "ProcessRewardModelTrainer"
 ]
