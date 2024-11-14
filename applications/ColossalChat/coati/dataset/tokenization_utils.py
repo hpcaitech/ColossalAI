@@ -431,8 +431,8 @@ def tokenize_process_reward(
     decoded_label = tokenizer.decode(label, skip_special_tokens=False)
 
     return {
-        "input": tokenized,
-        "label": label,
+        "input_ids": tokenized,
+        "labels": label,
         "loss_mask": loss_mask,
         "decoded_input": decoded_input,
         "decoded_label": decoded_label,
