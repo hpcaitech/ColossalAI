@@ -3,7 +3,6 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-import torch.distributed as dist
 from transformers import AutoTokenizer, PreTrainedTokenizer
 
 from colossalai.logging import get_dist_logger
