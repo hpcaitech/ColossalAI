@@ -1,7 +1,9 @@
+import flash_attn
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func
+from packaging import version
 from torch.testing import assert_close
 
 import colossalai
@@ -51,9 +53,20 @@ def check_ring_attn(seq_len, bs, nheads, d, dtype, inner_ring_size):
         pg_mesh=pg_mesh,
     )
     ring_out = ring_out.transpose(1, 2)
-    out, lse, _ = flash_attn_qkvpacked_func(
-        qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
-    )
+    if version.parse(flash_attn.__version__) > version.parse("2.6.3"):
+        out, lse, _ = flash_attn_qkvpacked_func(
+            qkv,
+            dropout_p=0.0,
+            causal=True,
+            window_size_left=-1,
+            window_size_right=-1,
+            alibi_slopes=None,
+            return_attn_probs=True,
+        )
+    else:
+        out, lse, _ = flash_attn_qkvpacked_func(
+            qkv, dropout_p=0.0, causal=True, window_size=(-1, -1), alibi_slopes=None, return_attn_probs=True
+        )
 
     # Checkout out and softmax denominator
     local_out = split_batch_zigzag(out, sp_group)
@@ -189,4 +202,4 @@ def test_double_ring(world_size):
 
 if __name__ == "__main__":
     test_ring_attn()
-    test_double_ring()
+    # test_double_ring()
