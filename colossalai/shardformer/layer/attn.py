@@ -644,7 +644,8 @@ class RingAttention(torch.autograd.Function):
         max_seqlen_half = max_seqlen // 2
 
         misc_kwargs = {
-            "window_size": (-1, -1),
+            "window_size_left": -1,
+            "window_size_right": -1,
             "alibi_slopes": None,
             "softmax_scale": q.shape[-1] ** -0.5 if softmax_scale is None else softmax_scale,
             "dropout_p": dropout_p,
