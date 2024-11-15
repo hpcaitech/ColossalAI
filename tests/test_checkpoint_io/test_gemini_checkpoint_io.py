@@ -33,12 +33,9 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("placement_config", MODEL_PLACEMENT_CONFIGS)
 @parameterize("model_name", ["transformers_bert_for_sequence_classification"])
 @parameterize("use_safetensors", [False, True])
-@parameterize("use_async", [False, True])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-def exam_state_dict_with_origin(
-    placement_config, model_name, use_safetensors: bool, use_async: bool, tp_size: int, zero_size: int
-):
+def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: bool, tp_size: int, zero_size: int):
     from transformers import BertForSequenceClassification
 
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
@@ -73,12 +70,9 @@ def exam_state_dict_with_origin(
             "",
             (model_size / 3),
             use_safetensors=use_safetensors,
-            use_async=use_async,
         )
         dist.barrier()
-        print("pretrained_path: ", pretrained_path)
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
-        print("new_bert_model: ", new_bert_model)
         check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict())
 
 
