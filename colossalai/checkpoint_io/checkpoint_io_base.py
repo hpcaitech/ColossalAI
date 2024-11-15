@@ -176,10 +176,10 @@ class CheckpointIO(ABC):
 
         if shard:
             self.save_sharded_model(
-                model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors, use_async=use_async
+                model, checkpoint, gather_dtensor, prefix, size_per_shard, use_safetensors, use_async
             )
         else:
-            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async=use_async)
+            self.save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str, prefix: str = None, size_per_shard: int = 1024):
         """
