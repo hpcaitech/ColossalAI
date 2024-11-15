@@ -26,7 +26,7 @@ from tests.kit.model_zoo import model_zoo
 # only test 2 is fine
 @clear_cache_before_run()
 @parameterize("stage", [2])
-@parameterize("shard", [True])
+@parameterize("shard", [False, True])
 @parameterize("offload", [False, True])
 @parameterize("use_async", [False, True])
 def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool):
@@ -48,10 +48,9 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         if not shard and not use_async:
-            model_ckpt_path = f"{model_ckpt_path}.safetensors"
-        if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.pt"
-
+        if not shard and use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
         booster.save_model(
             model,
             model_ckpt_path,
