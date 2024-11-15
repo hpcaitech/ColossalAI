@@ -59,10 +59,8 @@ class GeneralCheckpointIO(CheckpointIO):
             writer = AsyncFileWriter(open(checkpoint, "wb"), self.N_WRITE_ENTRIES, backend="pthread")
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
-            writer.sync_before_step()
             self.async_writers.append(writer)
             move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
-            writer.synchronize()
 
         else:
             # save the checkpoint
