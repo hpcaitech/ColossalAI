@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 
-from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, get_optimizer_state_dict_numl, has_index_file
+from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, has_index_file
 
 __all__ = ["CheckpointIO"]
 
@@ -230,9 +230,7 @@ class CheckpointIO(ABC):
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
         """
-        if not shard and use_async:
-            size_per_shard = get_optimizer_state_dict_numl(optimizer)
-        if shard or use_async:
+        if shard:
             self.save_sharded_optimizer(
                 optimizer, checkpoint, gather_dtensor, prefix, size_per_shard, use_async=use_async
             )

@@ -871,12 +871,3 @@ def create_pinned_state_dict(state_dict: Dict[str, torch.Tensor]):
     for name, tensor in state_dict.items():
         pin_mem[name] = torch.empty_like(tensor, pin_memory=True, device="cpu")
     return pin_mem
-
-
-def get_optimizer_state_dict_numl(optimizer):
-    total_size = 0
-    state_dict = optimizer.state_dict()
-    for param_group in state_dict["state"].values():
-        for param_name, param_tensor in param_group.items():
-            total_size += torch.tensor(param_tensor).numel() if param_name == "step" else param_tensor.numel()
-    return total_size
