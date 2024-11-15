@@ -61,8 +61,8 @@ class GeneralCheckpointIO(CheckpointIO):
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
             self.async_writers.append(writer)
             move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
-        else:
 
+        else:
             # save the checkpoint
             save_state_dict(state_dict, checkpoint, use_safetensors)
 

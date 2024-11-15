@@ -42,15 +42,30 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
     loss = criterion(output)
     booster.backward(loss, optimizer)
     optimizer.step()
+
     with shared_tempdir() as tempdir:
+
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
+        if not shard and not use_async:
+            model_ckpt_path = f"{model_ckpt_path}.pt"
+        if not shard and use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+        booster.save_model(
+            model,
+            model_ckpt_path,
+            shard=shard,
+            use_async=use_async,
+        )
+
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
         if not shard and use_async:
             optimizer_ckpt_path = f"{tempdir}/optimizer.safetensors"
         booster.save_model(model, model_ckpt_path, shard=shard)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, use_async=use_async)
 
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = resnet18()
@@ -74,6 +89,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
+
     torch.cuda.empty_cache()
 
 
@@ -127,7 +143,6 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
                 assert torch.equal(
                     working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
                 )
-            booster.checkpoint_io.synchronize()
             new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
             check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
 
