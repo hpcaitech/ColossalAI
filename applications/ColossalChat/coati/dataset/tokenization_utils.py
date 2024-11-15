@@ -419,7 +419,7 @@ def tokenize_process_reward(
     template = deepcopy(conversation_template)
     template.append_message("user", input)
     template.append_message("assistant", label)
-    prompt = template.get_prompt(add_generation_prompt=True)
+    prompt = template.get_prompt(add_generation_prompt=False)
     reward_signal_id = tokenizer.convert_tokens_to_ids(template.reward_signal)
     tokenized = tokenizer(prompt, add_special_tokens=False)["input_ids"]
 
