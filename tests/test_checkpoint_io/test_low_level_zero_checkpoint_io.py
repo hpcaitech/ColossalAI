@@ -46,16 +46,16 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
     import os
 
     os.makedirs(output_dir, exist_ok=True)
-
-    with open(output_dir, "rb") as f:
-        model_ckpt_path = f"{f}/model"
-        optimizer_ckpt_path = f"{f}/optimizer"
-        if not shard:
-            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+    model_ckpt_path = f"{output_dir}/model"
+    optimizer_ckpt_path = f"{output_dir}/optimizer"
+    if not shard:
+        model_ckpt_path = f"{model_ckpt_path}.safetensors"
+        print("model_ckpt_path: ", model_ckpt_path)
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
         booster.save_model(model, model_ckpt_path, shard=shard, use_async=use_async)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
-
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = resnet18()
