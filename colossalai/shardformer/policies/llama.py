@@ -506,25 +506,24 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                 )
             }
             policy.update(new_item)
-        # TODO: test lora bug here
-        # # enable tp, replace layer to LinearWithGradAccum
-        # else:
-        #     # add a new item for sequence classification
-        #     new_item = {
-        #         LlamaForSequenceClassification: ModulePolicyDescription(
-        #             sub_module_replacement=[
-        #                 SubModuleReplacementDescription(
-        #                     suffix="score",
-        #                     target_module=LinearWithGradAccum,
-        #                     kwargs=dict(
-        #                         fp8_communication=self.shard_config.fp8_communication,
-        #                         use_zbv=use_zbv,
-        #                     ),
-        #                 )
-        #             ]
-        #         )
-        #     }
-        #     policy.update(new_item)
+        # enable tp, replace layer to LinearWithGradAccum
+        else:
+            # add a new item for sequence classification
+            new_item = {
+                LlamaForSequenceClassification: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="score",
+                            target_module=LinearWithGradAccum,
+                            kwargs=dict(
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
+                        )
+                    ]
+                )
+            }
+            policy.update(new_item)
 
         # to be confirmed
         if self.pipeline_stage_manager:
