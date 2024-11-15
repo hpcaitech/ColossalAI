@@ -55,7 +55,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         optimizer.load_state_dict(sharded_osd)
 
     def save_unsharded_model(
-        self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool
+        self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
     ):
         """
         Save model to checkpoint but only on master process.
@@ -84,6 +84,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: bool = False,
     ):
         """
         Save model to checkpoint but only on master process.
