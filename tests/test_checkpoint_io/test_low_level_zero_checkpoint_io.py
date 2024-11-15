@@ -42,17 +42,16 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
     loss = criterion(output)
     booster.backward(loss, optimizer)
     optimizer.step()
-    output_dir = "./checkpoints"
-    import os
-
-    os.makedirs(output_dir, exist_ok=True)
-    model_ckpt_path = f"{output_dir}/model"
-    optimizer_ckpt_path = f"{output_dir}/optimizer"
-    if not shard:
-        model_ckpt_path = f"{model_ckpt_path}.safetensors"
-        print("model_ckpt_path: ", model_ckpt_path)
-        # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        if use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+        if not use_async:
+            model_ckpt_path = f"{model_ckpt_path}.pt"
         booster.save_model(model, model_ckpt_path, shard=shard, use_async=use_async)
+
+        # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
         booster.checkpoint_io._sync_d2h()
         booster.checkpoint_io._sync_io()
@@ -79,6 +78,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
         check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
+
     torch.cuda.empty_cache()
 
 

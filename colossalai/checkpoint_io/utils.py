@@ -811,7 +811,6 @@ def load_state_dict(checkpoint_file_path: Path):
         from safetensors import safe_open
 
         state_dict = {}
-        print("checkpoint_file_path:", checkpoint_file_path)
         with safe_open(checkpoint_file_path, framework="pt", device="cpu") as f:
             for k in f.keys():
                 state_dict[k] = f.get_tensor(k)
@@ -819,7 +818,6 @@ def load_state_dict(checkpoint_file_path: Path):
 
     else:
         # load with torch
-        print("checkpoint_file_path:", checkpoint_file_path)
         return torch.load(checkpoint_file_path, map_location=torch.device("cpu"))
 
 
