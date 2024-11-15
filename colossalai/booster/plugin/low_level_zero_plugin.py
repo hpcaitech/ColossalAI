@@ -128,8 +128,9 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # the `state_dict` in LowLevelZeroOptimizer has communication
         # if only the master rank collect state_dict and save,
         # the communication on each rank would not match
-        if use_async and id(optimizer) not in self.pinned_state_dicts:
-            self.pinned_state_dicts[id(optimizer)] = {}
+        if use_async:
+            if id(optimizer) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(optimizer)] = {}
             pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
         else:
             pinned_state_dicts = None
@@ -189,8 +190,9 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # state_dict only provide only 'param_groups'
         state_dict = optimizer.optim.state_dict()
         # state shard would be handled by the low-level zero optimizer
-        if use_async and id(optimizer) not in self.pinned_state_dicts:
-            self.pinned_state_dicts[id(optimizer)] = {}
+        if use_async:
+            if id(optimizer) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(optimizer)] = {}
             pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
         else:
             pinned_state_dicts = None
