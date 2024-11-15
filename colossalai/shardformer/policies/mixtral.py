@@ -214,7 +214,6 @@ class MixtralPolicy(Policy):
                         suffix="block_sparse_moe.gate",
                         target_module=LinearWithGradAccum,
                         kwargs={
-                            "gather_output": True,
                             "fp8_communication": self.shard_config.fp8_communication,
                             "use_zbv": use_zbv,
                         },
@@ -414,7 +413,6 @@ class MixtralForCausalLMPolicy(MixtralPolicy):
                             suffix="lm_head",
                             target_module=LinearWithGradAccum,
                             kwargs=dict(
-                                gather_output=True,
                                 fp8_communication=self.shard_config.fp8_communication,
                                 use_zbv=use_zbv,
                             ),
