@@ -506,7 +506,6 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                 )
             }
             policy.update(new_item)
-        # TODO: test lora bug here
         # enable tp, replace layer to LinearWithGradAccum
         elif use_zbv:
             # add a new item for sequence classification
