@@ -28,7 +28,8 @@ from tests.kit.model_zoo import model_zoo
 @parameterize("stage", [2])
 @parameterize("shard", [True, False])
 @parameterize("offload", [False, True])
-def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
+@parameterize("use_async", [False, True])
+def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool):
     plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
     booster = Booster(plugin=plugin)
     model = resnet18()
@@ -41,11 +42,18 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool):
     loss = criterion(output)
     booster.backward(loss, optimizer)
     optimizer.step()
-    with shared_tempdir() as tempdir:
-        model_ckpt_path = f"{tempdir}/model"
-        optimizer_ckpt_path = f"{tempdir}/optimizer"
+    output_dir = "./checkpoints"
+    import os
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    with open(output_dir, "rb") as f:
+        model_ckpt_path = f"{f}/model"
+        optimizer_ckpt_path = f"{f}/optimizer"
+        if not shard:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
-        booster.save_model(model, model_ckpt_path, shard=shard)
+        booster.save_model(model, model_ckpt_path, shard=shard, use_async=use_async)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)
 
         dist.barrier()

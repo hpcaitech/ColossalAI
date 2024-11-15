@@ -14,7 +14,6 @@ from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
     async_save_state_dict_shards,
-    create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     is_safetensors_available,
@@ -57,10 +56,13 @@ class GeneralCheckpointIO(CheckpointIO):
             from tensornvme.async_file_io import AsyncFileWriter
 
             writer = AsyncFileWriter(open(checkpoint, "wb"), self.N_WRITE_ENTRIES, backend="pthread")
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
+            # if id(model) not in self.pinned_state_dicts:
+            #    self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
+            writer.sync_before_step()
             self.async_writers.append(writer)
-            move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
+            move_and_save(writer, state_dict, None)
+            writer.synchronize()
+
         else:
             # save the checkpoint
             save_state_dict(state_dict, checkpoint, use_safetensors)

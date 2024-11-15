@@ -21,11 +21,6 @@ from colossalai.tensor.d_tensor import (
 )
 from colossalai.utils.safetensors import move_and_save
 
-try:
-    pass
-except ModuleNotFoundError:
-    raise ModuleNotFoundError("Please install tensornvme to use Async Checkpoint save")
-
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
 STATES_NAME = "pytorch_optim.bin"
@@ -593,11 +588,8 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
         from safetensors.torch import safe_open
 
         with safe_open(checkpoint_file, framework="pt") as f:
-            metadata = f.metadata()
-        if metadata["format"] != "pt":
-            raise NotImplementedError(
-                f"Conversion from a {metadata['format']} safetensors archive to PyTorch is not implemented yet."
-            )
+            f.metadata()
+
         return safe_load_file(checkpoint_file)
     else:
         return torch.load(checkpoint_file, map_location=torch.device("cpu"))
@@ -819,6 +811,7 @@ def load_state_dict(checkpoint_file_path: Path):
         from safetensors import safe_open
 
         state_dict = {}
+        print("checkpoint_file_path:", checkpoint_file_path)
         with safe_open(checkpoint_file_path, framework="pt", device="cpu") as f:
             for k in f.keys():
                 state_dict[k] = f.get_tensor(k)
@@ -826,6 +819,7 @@ def load_state_dict(checkpoint_file_path: Path):
 
     else:
         # load with torch
+        print("checkpoint_file_path:", checkpoint_file_path)
         return torch.load(checkpoint_file_path, map_location=torch.device("cpu"))
 
 

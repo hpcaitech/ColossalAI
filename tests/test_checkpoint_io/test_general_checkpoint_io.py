@@ -106,6 +106,53 @@ def test_sharded_model_checkpoint(use_safetensors: bool):
     check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
 
 
+@parameterize("use_async", [True, False])
+def test_unsharded_checkpoint(use_async: bool):
+    # create a model and optimizer
+    model = resnet18()
+    optimizer = Adam(model.parameters(), lr=0.001)
+    lr_scheduler = CosineAnnealingWarmupLR(optimizer, total_steps=10)
+
+    # create test data sample
+    x = torch.randn(1, 3, 224, 224)
+
+    # run fwd and bwd
+    y = model(x)
+    loss = y.sum()
+    loss.backward()
+    optimizer.step()
+    lr_scheduler.step()
+
+    # create a temp file for checkpoint
+    if use_async:
+        suffix = ".safetensors"
+    else:
+        suffix = ".bin"
+    model_ckpt_tempfile = tempfile.NamedTemporaryFile(suffix=suffix)
+    optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
+    lr_scheduler_ckpt_tempfile = tempfile.NamedTemporaryFile()
+
+    # save the model, optimizer, lr_scheduler
+    ckpt_io = GeneralCheckpointIO()
+    ckpt_io.save_model(model, model_ckpt_tempfile.name, use_async=use_async)
+    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
+    ckpt_io.save_lr_scheduler(lr_scheduler, lr_scheduler_ckpt_tempfile.name)
+
+    # create new model
+    new_model = resnet18()
+    new_optimizer = Adam(new_model.parameters(), lr=0.001)
+    new_lr_scheduler = CosineAnnealingWarmupLR(optimizer, total_steps=10)
+
+    # load the model, optimizer, lr_scheduler
+    ckpt_io.load_model(new_model, model_ckpt_tempfile.name)
+    ckpt_io.load_optimizer(new_optimizer, optimizer_ckpt_tempfile.name)
+    ckpt_io.load_lr_scheduler(new_lr_scheduler, lr_scheduler_ckpt_tempfile.name)
+
+    # check for model and optimizer state dict recursively
+    check_state_dict_equal(model.state_dict(), new_model.state_dict())
+    check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
+
+
 def test_sharded_optimizer_checkpoint():
     # create a model and optimizer
     model = resnet18()

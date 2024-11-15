@@ -28,14 +28,12 @@ class PreparedData:
 
 
 def prepare(data: Dict[str, torch.Tensor]) -> Tuple[PreparedData, List[torch.Tensor], List[str]]:
-    sorted_data = sorted(data.items(), key=lambda x: (x[1].dtype, x[0]))
 
     tensors = []
     tensor_keys = []
     metadata = {}
     offset = 0
-
-    for name, tensor in sorted_data:
+    for name, tensor in data.items():
         n = tensor.numel() * tensor.element_size()
         tensor_info = TensorInfo(
             dtype=_TYPES_INV[tensor.dtype], shape=list(tensor.shape), data_offsets=(offset, offset + n)

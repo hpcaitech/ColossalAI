@@ -84,7 +84,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             if use_async:
                 super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
             else:
-                save_state_dict(state_dict, checkpoint, use_safetensors, use_async)
+                save_state_dict(state_dict, checkpoint, use_safetensors)
 
     def load_unsharded_model(self, model: GeminiDDP, checkpoint: str, strict: bool = True):
         """

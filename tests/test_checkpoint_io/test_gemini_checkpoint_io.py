@@ -33,9 +33,12 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("placement_config", MODEL_PLACEMENT_CONFIGS)
 @parameterize("model_name", ["transformers_bert_for_sequence_classification"])
 @parameterize("use_safetensors", [False, True])
+@parameterize("use_async", [False, True])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: bool, tp_size: int, zero_size: int):
+def exam_state_dict_with_origin(
+    placement_config, model_name, use_safetensors: bool, use_async: bool, tp_size: int, zero_size: int
+):
     from transformers import BertForSequenceClassification
 
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
@@ -63,11 +66,19 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
         model_size = sum(p.numel() * p.element_size() for p in bert_model.parameters()) / 1024**2
 
         booster.save_model(
-            bert_model, pretrained_path, True, True, "", (model_size / 3), use_safetensors=use_safetensors
+            bert_model,
+            pretrained_path,
+            True,
+            True,
+            "",
+            (model_size / 3),
+            use_safetensors=use_safetensors,
+            use_async=use_async,
         )
         dist.barrier()
-
+        print("pretrained_path: ", pretrained_path)
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
+        print("new_bert_model: ", new_bert_model)
         check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict())
 
 
@@ -119,7 +130,12 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.save_model(
+            model,
+            model_ckpt_path,
+            shard=shard,
+            size_per_shard=size_per_shard,
+        )
 
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
         dist.barrier()
