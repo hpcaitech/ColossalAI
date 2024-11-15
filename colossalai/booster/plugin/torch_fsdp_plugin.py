@@ -60,20 +60,16 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         checkpoint: str,
         gather_dtensor: bool,
         use_safetensors: bool,
-        use_async: bool = False,
     ):
         """
         Save model to checkpoint but only on master process.
         """
         assert isinstance(model, TorchFSDPModel), "Please boost the model before saving!"
         model = model.unwrap()
-        if use_async:
-            super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
-        else:
-            cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-            with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, cfg):
-                full_model_state = model.state_dict()
-            utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
+        cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
+        with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, cfg):
+            full_model_state = model.state_dict()
+        utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
 
     def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
         """
@@ -92,7 +88,6 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
-        use_async: bool = False,
     ):
         """
         Save model to checkpoint but only on master process.
@@ -113,36 +108,26 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         weights_name, save_index_file = utils.get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
-        if use_async:
-            super().save_sharded_model(
-                model=model,
-                checkpoint_path=checkpoint_path,
-                gather_dtensor=gather_dtensor,
-                prefix=prefix,
-                use_safetensors=use_safetensors,
-                use_async=use_async,
-            )
-        else:
-            # In general cases, is_master is set to True to get the right behavior.
-            total_size = utils.save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint_path,
-                index_file=index_file,
-                base_filename=weights_name,
-                is_master=self.coordinator.is_master(),
-                use_safetensors=use_safetensors,
-            )
+        # In general cases, is_master is set to True to get the right behavior.
+        total_size = utils.save_state_dict_shards(
+            sharded_state_dict=state_dict_shard,
+            checkpoint=checkpoint_path,
+            index_file=index_file,
+            base_filename=weights_name,
+            is_master=self.coordinator.is_master(),
+            use_safetensors=use_safetensors,
+        )
 
-            # only save the index file on the master rank
-            if self.coordinator.is_master():
-                index_file.append_meta_data("total_size", total_size)
-                index_file.write_index_file(save_index_file)
-                utils.save_config_file(model.unwrap(), checkpoint_path)
-                self.logger.info(
-                    f"The model is split into checkpoint shards. "
-                    f"You can find where each parameters has been saved in the "
-                    f"index located at {save_index_file}."
-                )
+        # only save the index file on the master rank
+        if self.coordinator.is_master():
+            index_file.append_meta_data("total_size", total_size)
+            index_file.write_index_file(save_index_file)
+            utils.save_config_file(model.unwrap(), checkpoint_path)
+            self.logger.info(
+                f"The model is split into checkpoint shards. "
+                f"You can find where each parameters has been saved in the "
+                f"index located at {save_index_file}."
+            )
 
     def load_sharded_model(
         self,

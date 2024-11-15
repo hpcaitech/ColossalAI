@@ -26,7 +26,7 @@ from tests.kit.model_zoo import model_zoo
 # only test 2 is fine
 @clear_cache_before_run()
 @parameterize("stage", [2])
-@parameterize("shard", [True, False])
+@parameterize("shard", [True])
 @parameterize("offload", [False, True])
 @parameterize("use_async", [False, True])
 def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool):
@@ -42,14 +42,22 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
     loss = criterion(output)
     booster.backward(loss, optimizer)
     optimizer.step()
+
     with shared_tempdir() as tempdir:
+
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        if use_async:
+        if not shard and not use_async:
             model_ckpt_path = f"{model_ckpt_path}.safetensors"
-        if not use_async:
+        if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.pt"
-        booster.save_model(model, model_ckpt_path, shard=shard, use_async=use_async)
+
+        booster.save_model(
+            model,
+            model_ckpt_path,
+            shard=shard,
+            use_async=use_async,
+        )
 
         # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)

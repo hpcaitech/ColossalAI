@@ -585,10 +585,6 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
         raise Exception("load the model using `safetensors`, but no file endwith .safetensors")
     if use_safetensors:
         from safetensors.torch import load_file as safe_load_file
-        from safetensors.torch import safe_open
-
-        with safe_open(checkpoint_file, framework="pt") as f:
-            f.metadata()
 
         return safe_load_file(checkpoint_file)
     else:
