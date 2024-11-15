@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from colossalai.interface import ModelWrapper
 from colossalai.logging import get_dist_logger
 
-from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, has_index_file
+from .utils import SAFE_WEIGHTS_NAME, WEIGHTS_NAME, get_optimizer_state_dict_numl, has_index_file
 
 __all__ = ["CheckpointIO"]
 
@@ -213,6 +213,7 @@ class CheckpointIO(ABC):
         gather_dtensor=True,
         prefix: str = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save optimizer to checkpoint. Optimizer states saving is not compatible with safetensors.
@@ -229,11 +230,14 @@ class CheckpointIO(ABC):
             prefix (str): prefix for the optimizer checkpoint when shard = True. Default: None.
             size_per_shard (int): size per shard in MB. Default: 1024. This value is only used when shard is set to True.
         """
-
-        if shard:
-            self.save_sharded_optimizer(optimizer, checkpoint, gather_dtensor, prefix, size_per_shard)
+        if not shard and use_async:
+            size_per_shard = get_optimizer_state_dict_numl(optimizer)
+        if shard or use_async:
+            self.save_sharded_optimizer(
+                optimizer, checkpoint, gather_dtensor, prefix, size_per_shard, use_async=use_async
+            )
         else:
-            self.save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+            self.save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor, use_async=use_async)
 
     # ========================================================
     # Abstract methods for model loading/saving implementation
@@ -326,7 +330,13 @@ class CheckpointIO(ABC):
 
     @abstractmethod
     def save_sharded_optimizer(
-        self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, prefix: str, size_per_shard: int
+        self,
+        optimizer: Optimizer,
+        checkpoint: Path,
+        gather_dtensor: bool,
+        prefix: str,
+        size_per_shard: int,
+        use_async: bool = False,
     ):
         """
         Save optimizer to sharded checkpoint.
@@ -340,7 +350,9 @@ class CheckpointIO(ABC):
         """
 
     @abstractmethod
-    def save_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self, optimizer: Optimizer, checkpoint: Path, gather_dtensor: bool, use_async: bool = False
+    ):
         """
         Save optimizer to unsharded checkpoint.
 

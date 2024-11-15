@@ -78,7 +78,7 @@ def check_state_dict_equal(
                 v1 = v1.to(v2.dtype)
             assert_close_loose(v1, v2)
         else:
-            assert v1 == v2, f"{v1} not equals to {v2}"
+            assert v1 == v2, f"{v1} not equals to {v2}. {type(v1)}, {type(v2)}"
 
 
 def check_state_dict_equal_pytree(d1: OrderedDict, d2: OrderedDict, ignore_device: bool = True):

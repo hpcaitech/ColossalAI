@@ -24,9 +24,11 @@ from colossalai.utils.safetensors import move_and_save
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
 STATES_NAME = "pytorch_optim.bin"
+SAFE_STATE_NAME = "optimizer.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
 WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 STATES_INDEX_NAME = "pytorch_optim.bin.index.json"
+SAFE_STATES_INDEX_NAME = "optimizer.safetensors.index.json"
 GROUP_FILE_NAME = "pytorch_optim_group.bin"
 
 # ======================================
@@ -842,14 +844,14 @@ def get_model_base_filenames(prefix: str = None, use_safetensors: bool = False):
     return weights_name, save_index_file
 
 
-def get_optimizer_base_filenames(prefix: str = None):
+def get_optimizer_base_filenames(prefix: str = None, use_safetensors: bool = False):
     """
     generate base optimizer state filenames
     """
-    states_name = STATES_NAME
+    states_name = SAFE_STATE_NAME if use_safetensors else STATES_NAME
     states_name = add_prefix(states_name, prefix)
 
-    save_index_file = STATES_INDEX_NAME
+    save_index_file = SAFE_STATES_INDEX_NAME if use_safetensors else STATES_INDEX_NAME
     save_index_file = add_prefix(save_index_file, prefix)
 
     param_group_file = GROUP_FILE_NAME
@@ -872,3 +874,12 @@ def create_pinned_state_dict(state_dict: Dict[str, torch.Tensor]):
     for name, tensor in state_dict.items():
         pin_mem[name] = torch.empty_like(tensor, pin_memory=True, device="cpu")
     return pin_mem
+
+
+def get_optimizer_state_dict_numl(optimizer):
+    total_size = 0
+    state_dict = optimizer.state_dict()
+    for param_group in state_dict["state"].values():
+        for param_name, param_tensor in param_group.items():
+            total_size += torch.tensor(param_tensor).numel() if param_name == "step" else param_tensor.numel()
+    return total_size

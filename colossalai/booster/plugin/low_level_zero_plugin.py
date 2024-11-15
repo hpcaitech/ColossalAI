@@ -24,6 +24,7 @@ from colossalai.checkpoint_io.utils import (
     get_shard_filename,
     load_param_groups_into_optimizer,
     load_shard_state_dict,
+    load_state_dict,
     load_states_into_optimizer,
     save_param_groups,
     save_state_dict,
@@ -113,7 +114,9 @@ class LowLevelZeroModel(ModelWrapper, AMPModelMixin):
 
 
 class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False):
+    def save_unsharded_optimizer(
+        self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool = False, use_async: bool = False
+    ):
         """Save optimizer to checkpoint but only on master process.
 
         Args:
@@ -127,7 +130,26 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # the communication on each rank would not match
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
-            save_state_dict(state_dict, checkpoint, use_safetensors=False)
+            if use_async:
+                from tensornvme.async_file_io import AsyncFileWriter
+
+                from colossalai.utils.safetensors import save_nested
+
+                f_writer = AsyncFileWriter(fp=open(checkpoint, "wb"), n_entries=self.N_WRITE_ENTRIES, backend="pthread")
+                save_nested(f_writer, state_dict["state"], state_dict["param_groups"])
+                self.async_writers.append(f_writer)
+            else:
+                save_state_dict(state_dict, checkpoint, use_safetensors=False)
+
+    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str):
+        use_async = checkpoint.endswith(".safetensors")
+        if use_async:
+            from colossalai.utils.safetensors import load_flat
+
+            checkpoint = load_flat(checkpoint)
+        else:
+            checkpoint = load_state_dict(checkpoint)
+        optimizer.load_state_dict(checkpoint)
 
     def save_sharded_optimizer(
         self,
@@ -136,6 +158,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         gather_dtensor: bool = False,
         prefix: str = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save sharded Zero-optimizer checkpoint under the given checkpointing path.
@@ -164,7 +187,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         sharded_state = optimizer.state_dict_shard(max_shard_size=size_per_shard)
 
         # Preparing file paths and index file.
-        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
+        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix, use_safetensors=use_async)
         index_file = CheckpointIndexFile(checkpoint)
         index_file.append_meta_data("param_groups", param_group_file)
 
@@ -184,7 +207,18 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
             checkpoint_file_path = os.path.join(checkpoint, shard_file)
             if self.coordinator.is_master():
-                save_state_dict(shard, checkpoint_file_path, use_safetensors=False)
+                if use_async:
+                    from tensornvme.async_file_io import AsyncFileWriter
+
+                    from colossalai.utils.safetensors import save_nested
+
+                    f_writer = AsyncFileWriter(
+                        fp=open(checkpoint_file_path, "wb"), n_entries=self.N_WRITE_ENTRIES, backend="pthread"
+                    )
+                    save_nested(f_writer, shard)
+                    self.async_writers.append(f_writer)
+                else:
+                    save_state_dict(shard, checkpoint_file_path, use_safetensors=False)
 
         # Wrap up index file.
         index_file.append_meta_data("total_size", total_size)
@@ -223,7 +257,12 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
 
         for shard_file in checkpoint_files:
-            state_dict = load_shard_state_dict(Path(shard_file), use_safetensors=False)
+            if shard_file.endswith(".safetensors"):
+                from colossalai.utils.safetensors import load_flat
+
+                state_dict = load_flat(shard_file)
+            else:
+                state_dict = load_shard_state_dict(Path(shard_file), use_safetensors=False)
             # shard state dict
             for param_idx, state in state_dict.items():
                 for k, v in state.items():
