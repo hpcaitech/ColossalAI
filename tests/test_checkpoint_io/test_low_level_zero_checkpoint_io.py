@@ -86,7 +86,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
             )
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        check_state_dict_equal(optimizer.optim.state_dict()["state"], new_optimizer.optim.state_dict()["state"])
+        check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
 
     torch.cuda.empty_cache()
 

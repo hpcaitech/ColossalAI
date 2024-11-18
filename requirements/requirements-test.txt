@@ -13,7 +13,7 @@ triton
 requests==2.27.1 # downgrade to avoid huggingface error https://github.com/huggingface/transformers/issues/17611
 SentencePiece
 ninja
-flash_attn==2.5.0
+flash_attn
 datasets
 pydantic
 ray
