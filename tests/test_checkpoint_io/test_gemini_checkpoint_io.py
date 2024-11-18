@@ -86,17 +86,12 @@ def exam_state_dict_with_origin(
 
 @clear_cache_before_run()
 @parameterize("placement_config", OPTIM_PLACEMENT_CONFIGS)
-@parameterize("shard", [False])
+@parameterize("shard", [False, True])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-@parameterize(
-    "use_async",
-    [
-        True,
-    ],
-)
+@parameterize("use_async", [False, True])
 def exam_state_dict(
     placement_config, shard: bool, model_name: str, size_per_shard: int, tp_size: int, zero_size: int, use_async: bool
 ):
@@ -136,23 +131,6 @@ def exam_state_dict(
     optimizer.step()
     for group in optimizer.param_groups:
         group["lr"] = 0.1
-
-    """output_dir = "./checkpoints"
-    import os
-    os.makedirs(output_dir, exist_ok=True)
-    model_ckpt_path = f"{output_dir}/model"
-    optimizer_ckpt_path = f"{output_dir}/optimizer"
-    if not shard:
-        model_ckpt_path = f"{model_ckpt_path}.safetensors"
-    print("model_ckpt_path", model_ckpt_path)
-    booster.save_model(
-            model,
-            model_ckpt_path,
-            shard=shard,
-            size_per_shard=size_per_shard,
-            use_async=use_async
-        )
-    booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)"""
 
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
@@ -214,7 +192,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
-    # exam_lazy_from_pretrained()
+    exam_lazy_from_pretrained()
 
 
 @pytest.mark.dist
