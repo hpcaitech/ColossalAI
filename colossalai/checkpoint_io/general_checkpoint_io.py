@@ -98,6 +98,7 @@ class GeneralCheckpointIO(CheckpointIO):
         gather_dtensor: bool,
         prefix: str,
         size_per_shard: int,
+        use_async: bool = False,
     ):
         """
         Save sharded optimizer checkpoint under the given checkpointing path.
@@ -155,6 +156,7 @@ class GeneralCheckpointIO(CheckpointIO):
         optimizer: Optimizer,
         checkpoint: Path,
         gather_dtensor: bool,
+        use_async: bool = False,
     ):
         # TODO(FrankLeeeee): handle distributed tensors
         save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)

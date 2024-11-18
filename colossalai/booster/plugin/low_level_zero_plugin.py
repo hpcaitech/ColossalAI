@@ -194,7 +194,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
         else:
             pinned_state_dicts = None
-        sharded_state = optimizer.state_dict_shard(max_shard_size=size_per_shard, pinned_state_dict=pinned_state_dicts)
+        sharded_state = optimizer.state_dict_shard(max_shard_size=size_per_shard, pinned_state_dicts=pinned_state_dicts)
 
         # Preparing file paths and index file.
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix, use_safetensors=use_async)
