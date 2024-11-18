@@ -86,7 +86,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
             )
 
         booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-        print(optimizer.optim.state_dict())
         check_state_dict_equal(optimizer.optim.state_dict()["state"], new_optimizer.optim.state_dict()["state"])
 
     torch.cuda.empty_cache()
@@ -143,7 +142,6 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
                     working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
                 )
             new_booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
-            # print(optimizer.optim.state_dict()["param_groups"], new_optimizer.optim.state_dict()["param_groups"])
             check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
 
     except Exception as e:

@@ -28,32 +28,6 @@ class PreparedData:
     offset: int
 
 
-# class TupleEncoder(json.JSONEncoder):
-#     def default(self, obj):
-#         if isinstance(obj, tuple):
-#             return {"__tuple__": True, "items": list(obj)}
-#         return super().default(obj)
-
-
-# def tuple_decoder(d):
-#     if "__tuple__" in d:
-#         return tuple(d["items"])
-#     return d
-# 自定义 JSON 编码器，处理 tuple
-class NestedTupleEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, tuple):
-            return {"__tuple__": True, "items": list(obj)}
-        return super().default(obj)
-
-
-# 自定义解码器，处理 tuple
-def nested_tuple_decoder(d):
-    if "__tuple__" in d:
-        return tuple(d["items"])
-    return d
-
-
 def flatten_dict(nested_dict, parent_key="", separator="^"):
     """
     Flatten a nested dictionary, generating a flattened dictionary where the keys are joined by the specified separator.
@@ -105,8 +79,7 @@ def prepare(
     if metadata is not None:
         assert isinstance(metadata, dict)
         for k, v in metadata.items():
-            metadata[k] = json.dumps(v, cls=NestedTupleEncoder)
-            print("metadata[k]", type(metadata[k]))
+            metadata[k] = json.dumps(v)
             assert isinstance(k, str)
             assert isinstance(metadata[k], str)
 
@@ -184,11 +157,7 @@ def load_flat(checkpoint_path):
     state_dict = unflatten_dict(state_dict_load)
     if metadata is None:
         return state_dict
-    print("metadata", metadata)
-    metadata = dict(
-        map(lambda item: (item[0], json.loads(item[1], object_hook=nested_tuple_decoder)), metadata.items())
-    )
-    # metadata = json.loads(metadata, object_hook=tuple_decoder)
+    metadata = dict(map(lambda item: (item[0], json.loads(item[1])), metadata.items()))
     combined_state_dict = {"state": state_dict}
     combined_state_dict.update(metadata)
     return combined_state_dict
