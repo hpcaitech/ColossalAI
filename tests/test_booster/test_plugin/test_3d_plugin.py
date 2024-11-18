@@ -76,6 +76,8 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn) -> Optional[
 
         booster.execute_pipeline(data_iter, model, _criterion, optimizer, return_loss=True)
         optimizer.step()
+        grad_norm = optimizer.get_grad_norm()
+        assert grad_norm is None or isinstance(grad_norm, float)
 
     except Exception as e:
         return repr(e)

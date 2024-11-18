@@ -152,6 +152,18 @@ class OptimizerWrapper:
         """
         return self.optim
 
+    def get_grad_norm(self, norm_type: Union[float, int] = 2.0, **kwargs) -> Optional[float]:
+        """
+        Returns the gradient norm of an iterable of parameters. This method should be called after optimizer.step().
+
+        Args:
+            norm_type (float or int): type of the used p-norm. Can be ``'inf'`` for infinity norm.
+
+        Returns:
+            Optional[float]: Total norm of the gradients (viewed as a single vector). If there are no valid gradients, returns None.
+        """
+        raise NotImplementedError("The method get_grad_norm is not implemented yet.")
+
 
 class DistributedOptim(Optimizer):
     def setup_distributed(

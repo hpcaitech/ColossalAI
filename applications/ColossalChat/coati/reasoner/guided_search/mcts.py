@@ -58,7 +58,7 @@ class MCTS(BaseModel):
         """
         Root Initiation.
         """
-        # Dummy answer as root.
+        # Simple answer as root. You can also use negative response such as "I do not know" as a response.
         base_answer = self.sample_base_answer()
         self.root = MCTSNode(answer=base_answer)
         self.self_evaluate(self.root)
@@ -190,7 +190,7 @@ class MCTS(BaseModel):
             messages=[
                 {
                     "role": "system",
-                    "content": "The user will provide a problem. Solve the problem. The response should begin with [reasoning process]...[Verification]... and end with [Final Answer]. \nThe answer is [answer] \n#### [answer].",
+                    "content": self.cfg.base_system_prompt,
                 },
                 {
                     "role": "user",
