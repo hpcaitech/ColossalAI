@@ -749,24 +749,17 @@ def run_fwd_bwd_vschedule_with_optim(test_config):
     assert_optim_param_groups(optim_base_param_groups, optim_pp_param_groups)
 
 
-# TODO:3) support booster & Hybrid base 2)
-def run_with_hybridplugin(test_config):
-    pass
-
-
-# TODO:4) support booster & MoEHybrid base 2)
 @parameterize(
     "config",
     [
-        # (0, 1, 4, 1, 1),
-        # (1, 2, 2, 1, 1),
+        (1, 2, 1, 1, 2),
         (1, 1, 2, 2, 1),
-        # (1, 2, 1, 2, 1),
-        # (1, 2, 1, 1, 2),
+        (1, 2, 1, 2, 1),
+        (1, 2, 2, 1, 1),
+        (1, 1, 4, 1, 1),
     ],
 )
 def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
-    test_config = config
     stage, ep_size, pp_size, tp_size, sp_size = config
     num_microbatches = pp_size
     dist.get_world_size()
@@ -876,7 +869,6 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 return_outputs=True,
             )
             # stage 0 chunk 0
-            parallel_output = None
             if (
                 booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
                 and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
@@ -910,9 +902,7 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
                 p.grad /= dp_size
         torch_optimizer.step()
         torch_optimizer.zero_grad()
-
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
-        print(f"rank {dist.get_rank()} config {test_config}  test passed")
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
@@ -921,11 +911,11 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
 @parameterize(
     "config",
     [
-        (1, 2, 2, 1),  # Pass
-        # TODO: only support pp + tp accleration; Will support fully pp and None tp Hybrid in furture;
-        # (0, 4, 1, 1),
-        # (1, 2, 1, 2),
-        # (1, 1, 2, 2),
+        # Pass
+        (1, 2, 2, 1),
+        (1, 2, 1, 2),
+        (1, 1, 2, 2),
+        (1, 4, 1, 1),
     ],
 )
 def run_with_booster_hybridplugin(config: Tuple[int, ...]):
@@ -1034,7 +1024,6 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
                 return_outputs=True,
             )
             # stage 0 chunk 0
-            parallel_output = None
             if (
                 booster.plugin.stage_manager.is_first_stage(ignore_chunk=True)
                 and rank == dist.get_process_group_ranks(plugin.pp_group)[0]
@@ -1068,9 +1057,8 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
                 p.grad /= dp_size
         torch_optimizer.step()
         torch_optimizer.zero_grad()
-
         assert_loose_close(parallel_output, torch_output_sum, dtype=dtype)
-        print(f"rank {dist.get_rank()} pp_size:{pp_size}, tp_size {tp_size}, sp_size :{sp_size} test passed")
+
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()

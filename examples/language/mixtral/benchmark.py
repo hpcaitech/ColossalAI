@@ -122,7 +122,7 @@ def main():
                 num_ckpt_layers_per_stage=[19, 19, 19, 13],
             ),
             "num_layers_per_stage": [19, 20, 20, 21],
-            # "pp_style": "interleaved",
+            "pp_style": "interleaved",
         }
         if args.custom_ckpt
         else {}

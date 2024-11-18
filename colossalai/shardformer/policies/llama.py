@@ -9,6 +9,7 @@ from colossalai.shardformer.layer import (
     FusedRMSNorm,
     Linear1D_Col,
     Linear1D_Row,
+    LinearWithGradAccum,
     PaddingEmbedding,
     PaddingLMHead,
     RMSNorm,
@@ -104,7 +105,7 @@ class LlamaPolicy(Policy):
                 policy=policy,
                 target_key=LlamaModel,
             )
-
+        # enable tp, replace layer to tp Linear1D_Col,Linear1D_Row,
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 num_q_heads % tp_size == 0
@@ -182,6 +183,76 @@ class LlamaPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                ],
+            )
+
+        # not enable tp, replace layer to LinearWithGradAccum
+        elif use_zbv:
+            policy[LlamaDecoderLayer] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=LinearWithGradAccum,
                         kwargs=dict(
                             seq_parallel_mode=sp_mode,
                             fp8_communication=self.shard_config.fp8_communication,
@@ -416,6 +487,7 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
         policy = super().module_policy()
         use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
+        # enable tp, replace layer to tp Linear1D_Col,Linear1D_Row,
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
             new_item = {
@@ -434,6 +506,25 @@ class LlamaForSequenceClassificationPolicy(LlamaPolicy):
                 )
             }
             policy.update(new_item)
+        # enable tp, replace layer to LinearWithGradAccum
+        elif use_zbv:
+            # add a new item for sequence classification
+            new_item = {
+                LlamaForSequenceClassification: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="score",
+                            target_module=LinearWithGradAccum,
+                            kwargs=dict(
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
+                        )
+                    ]
+                )
+            }
+            policy.update(new_item)
+
         # to be confirmed
         if self.pipeline_stage_manager:
             # set None as default

@@ -381,7 +381,6 @@ class MixtralPipelineForwards:
                     output_router_logits,
                     use_cache,
                 )
-
             hidden_states = layer_outputs[0]
 
             if use_cache:
