@@ -49,7 +49,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         overlap_p2p: bool = True,
     ):
         super().__init__(stage_manager)
-        # Not support overlap_p2p so far
         # batch info
         self.num_microbatch = num_microbatch
         self.microbatch_size = microbatch_size
@@ -543,8 +542,6 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         output_obj_grad_ = []
 
         # For chunk 0 stage 0, use micro_batch as input_obj_; and we don't have to cal microbatch dx.
-        # if model_chunk_id == 0 and self.stage_manager.is_first_stage(ignore_chunk=True):
-        #     return None
 
         # For loss backward; output_obj is loss; output_obj_grad should be None
         if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
@@ -718,10 +715,8 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
         # Do not release_tensor_data loss, release_tensor_data other output_obj;
         if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
             self.output_tensors[model_chunk_id].append(output_obj)
-            # self.output_tensors_dw[model_chunk_id].append(output_obj)
         else:
             self.output_tensors[model_chunk_id].append(output_obj)
-            # self.output_tensors_dw[model_chunk_id].append(output_obj)
 
         # add output to send_fwd_buffer
         if model_chunk_id == 0:  # chunk 0
