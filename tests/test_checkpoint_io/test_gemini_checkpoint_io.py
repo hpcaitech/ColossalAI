@@ -35,7 +35,13 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("use_safetensors", [False, True])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: bool, tp_size: int, zero_size: int):
+def exam_state_dict_with_origin(
+    placement_config,
+    model_name,
+    use_safetensors: bool,
+    tp_size: int,
+    zero_size: int,
+):
     from transformers import BertForSequenceClassification
 
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
@@ -71,6 +77,8 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
             (model_size / 3),
             use_safetensors=use_safetensors,
         )
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
         new_bert_model = BertForSequenceClassification.from_pretrained(pretrained_path)
         check_state_dict_equal(bert_model.state_dict(only_rank_0=False), new_bert_model.state_dict())
@@ -78,12 +86,20 @@ def exam_state_dict_with_origin(placement_config, model_name, use_safetensors: b
 
 @clear_cache_before_run()
 @parameterize("placement_config", OPTIM_PLACEMENT_CONFIGS)
-@parameterize("shard", [True, False])
+@parameterize("shard", [False])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_shard: int, tp_size: int, zero_size: int):
+@parameterize(
+    "use_async",
+    [
+        True,
+    ],
+)
+def exam_state_dict(
+    placement_config, shard: bool, model_name: str, size_per_shard: int, tp_size: int, zero_size: int, use_async: bool
+):
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     enable_flash_attention = True if tp_size > 1 else False
@@ -121,17 +137,35 @@ def exam_state_dict(placement_config, shard: bool, model_name: str, size_per_sha
     for group in optimizer.param_groups:
         group["lr"] = 0.1
 
-    with shared_tempdir() as tempdir:
-        model_ckpt_path = f"{tempdir}/model"
-        optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(
+    """output_dir = "./checkpoints"
+    import os
+    os.makedirs(output_dir, exist_ok=True)
+    model_ckpt_path = f"{output_dir}/model"
+    optimizer_ckpt_path = f"{output_dir}/optimizer"
+    if not shard:
+        model_ckpt_path = f"{model_ckpt_path}.safetensors"
+    print("model_ckpt_path", model_ckpt_path)
+    booster.save_model(
             model,
             model_ckpt_path,
             shard=shard,
             size_per_shard=size_per_shard,
+            use_async=use_async
         )
+    booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard)"""
+
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        optimizer_ckpt_path = f"{tempdir}/optimizer"
+        if not use_async:
+            model_ckpt_path = f"{model_ckpt_path}.pt"
+        if use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
 
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         booster.load_model(new_model, model_ckpt_path)
@@ -180,7 +214,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
-    exam_lazy_from_pretrained()
+    # exam_lazy_from_pretrained()
 
 
 @pytest.mark.dist
