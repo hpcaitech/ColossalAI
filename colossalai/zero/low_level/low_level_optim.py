@@ -770,7 +770,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         return {"state": packed_state, "param_groups": param_groups}
 
-    def state_dict(self, pinned_state_dicts=None) -> Dict:
+    def state_dict(self, pinned_state_dicts: Optional[Dict[str, Dict[str, torch.Tensor]]] = None) -> Dict:
         """Return a state_dict same with DDP
 
         Returns:
@@ -830,7 +830,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         self.optim.load_state_dict(zero_state_dict)
 
-    def state_dict_shard(self, max_shard_size: int = 1024, pinned_state_dicts=None) -> Iterator[Tuple[Dict, int]]:
+    def state_dict_shard(
+        self, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+    ) -> Iterator[Tuple[Dict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
            Only include the 'state' in state_dict.
 

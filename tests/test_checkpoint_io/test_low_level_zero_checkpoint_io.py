@@ -51,7 +51,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
             model_ckpt_path = f"{model_ckpt_path}.pt"
         if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.safetensors"
-        # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
         if not shard and use_async:
             optimizer_ckpt_path = f"{tempdir}/optimizer.safetensors"
         booster.save_model(
@@ -60,8 +59,9 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
             shard=shard,
             use_async=use_async,
         )
-        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, use_async=use_async)
 
+        # lr scheduler is tested in test_torch_ddp_checkpoint_io.py and low level zero does not change it, we can skip it here
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, use_async=use_async)
         booster.checkpoint_io._sync_d2h()
         booster.checkpoint_io._sync_io()
         dist.barrier()
