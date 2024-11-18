@@ -369,6 +369,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save sharded optimizer checkpoint under the given checkpointing path.
@@ -729,7 +730,13 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         dist.barrier()
 
     # Copied from colossalai.moe
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self,
+        optimizer: OptimizerWrapper,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_async: bool = False,
+    ):
         """
         Save optimizer state dict to a file with given path.
 
