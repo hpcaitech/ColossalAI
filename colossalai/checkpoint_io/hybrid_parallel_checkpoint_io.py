@@ -416,6 +416,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save sharded optimizer checkpoint under the given checkpointing path.
@@ -725,7 +726,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Update master params if mixed-precision training is enabled.
         model_before_wrapping.update_master_params()
 
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
+    ):
         """
         Save optimizer state dict to a file with given path.
 

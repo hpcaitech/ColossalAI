@@ -52,7 +52,9 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
         super().load_unsharded_optimizer(optimizer, checkpoint)
 
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
+    ):
         """
         Save optimizer to checkpoint but only on master process.
         """
@@ -113,13 +115,16 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save optimizer to sharded checkpoint but only on master process.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if self.coordinator.is_master():
-            super().save_sharded_optimizer(optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard)
+            super().save_sharded_optimizer(
+                optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard, use_async=use_async
+            )
 
     def load_sharded_optimizer(
         self,
