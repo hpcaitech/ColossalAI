@@ -441,7 +441,6 @@ def clean_folder(
                 reg = re.compile(r"(.*?)-stage-\d{5}-shard-\d{5}")
             if (
                 filename.startswith(weights_no_suffix)
-                and os.path.isfile(full_filename)
                 and filename not in shard_filenames
                 and reg.fullmatch(filename_no_suffix) is not None
             ):
