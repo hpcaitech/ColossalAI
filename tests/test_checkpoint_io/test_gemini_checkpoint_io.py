@@ -192,7 +192,7 @@ def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
-    # exam_lazy_from_pretrained()
+    exam_lazy_from_pretrained()
 
 
 @pytest.mark.dist
