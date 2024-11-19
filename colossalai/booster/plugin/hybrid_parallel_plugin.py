@@ -118,12 +118,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.op_hooks = []
         if use_fp8:
             self.op_hooks.append(FP8Hook())
-        self.op_hooks = []
-        if use_fp8:
-            self.op_hooks.append(FP8Hook())
         if overlap_allgather:
-            self.op_hooks.append(ZeroOpHook())
-        if use_fp8 or overlap_allgather:
             self.op_hooks.append(ZeroOpHook())
         if use_fp8 or overlap_allgather:
             for p in module.parameters():
@@ -233,9 +228,6 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
     def _force_wait_all_gather(self):
         for p in self.module.parameters():
             wait_all_gather_handle(p)
-
-    def _hook_context(self):
-        return ColoParamOpHookManager.use_hooks(*self.op_hooks) if len(self.op_hooks) > 0 else nullcontext()
 
     def _hook_context(self):
         return ColoParamOpHookManager.use_hooks(*self.op_hooks) if len(self.op_hooks) > 0 else nullcontext()
@@ -993,8 +985,6 @@ class HybridParallelPlugin(PipelinePluginBase):
         gradient_checkpoint_config (GradientCheckpointConfig, optional): Configuration for gradient checkpointing. Defaults to None.
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
-        fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
-        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism

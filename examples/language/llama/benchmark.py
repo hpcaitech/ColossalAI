@@ -129,12 +129,9 @@ def main():
         {
             "gradient_checkpoint_config": PipelineGradientCheckpointConfig(
                 num_ckpt_layers_per_stage=[19, 19, 19, 13],
-                # num_ckpt_layers_per_stage=[48, 48, 48, 48],
             ),
             "num_layers_per_stage": [19, 20, 20, 21],
-            # "num_layers_per_stage": [48, 48, 48, 48],
-            # "pp_style": "interleaved",
-            "pp_style": "1f1b",
+            "pp_style": "interleaved",
         }
         if args.custom_ckpt
         else {}
