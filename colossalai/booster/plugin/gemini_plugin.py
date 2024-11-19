@@ -82,7 +82,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         state_dict = model.state_dict(only_rank_0=True)
         if self.coordinator.is_master():
             if use_async:
-                super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
+                super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async, state_dict)
             else:
                 save_state_dict(state_dict, checkpoint, use_safetensors)
 
