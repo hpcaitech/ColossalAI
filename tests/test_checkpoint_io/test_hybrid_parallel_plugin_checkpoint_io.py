@@ -38,7 +38,7 @@ else:
     ]
 
 
-@parameterize("shard", [False])
+@parameterize("shard", [False, True])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
