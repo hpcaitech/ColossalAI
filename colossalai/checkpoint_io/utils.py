@@ -19,7 +19,7 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-from colossalai.utils.safetensors import move_and_save
+from colossalai.utils.safetensors import flatten_dict, move_and_save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -314,14 +314,15 @@ def async_save_state_dict_shards(
         writer = AsyncFileWriter(open(checkpoint_file_path, "wb"), n_write_entries, backend="pthread")
         writers.append(writer)
 
+        flatten_dicts = flatten_dict(shard)
         if pinned_state_dict is not None:
-            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in shard.keys()}
+            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in flatten_dicts.keys()}
         else:
-            sub_pinned_state_dict = create_pinned_state_dict(shard)
+            sub_pinned_state_dict = create_pinned_state_dict(flatten_dicts)
             returned_state_dict.update(sub_pinned_state_dict)
 
         # Only save on master rank.
-        move_and_save(writer, shard, sub_pinned_state_dict)
+        move_and_save(writer, state_dict=flatten_dicts, state_dict_pinned=sub_pinned_state_dict)
         shard_filenames.append(shard_file)
         del shard
 
