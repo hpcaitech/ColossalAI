@@ -9,6 +9,7 @@ from typing import Dict, Iterator, Optional, OrderedDict, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from tensornvme.async_file_io import AsyncFileWriter
 from torch.distributed import ProcessGroup
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
@@ -22,6 +23,7 @@ from colossalai.tensor.padded_tensor import (
     to_unpadded_tensor,
 )
 from colossalai.utils import get_current_device, get_non_persistent_buffers_set
+from colossalai.utils.safetensors import move_and_save
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -199,7 +201,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             use_safetensors (bool, optional): Whether to use safe tensors. Defaults to False.
             use_async (bool, optional): Whether to save the state_dicts of model asynchronously. Defaults to False.
         """
-
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         model._force_wait_all_gather()
         model = model.unwrap()
@@ -224,7 +225,18 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         if self.pp_size == 1:
             # When pipeline is not used, save the model shards as in general checkpointIO
             if use_async:
-                super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async=use_async)
+                pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+                total_size, pinned_state_dict, writers = async_save_state_dict_shards(
+                    sharded_state_dict=state_dict_shard,
+                    checkpoint=checkpoint,
+                    index_file=index_file,
+                    base_filename=weights_name,
+                    is_master=control_saving,
+                    use_safetensors=use_safetensors,
+                    n_write_entries=self.N_WRITE_ENTRIES,
+                )
+                self.pinned_state_dicts[id(model)] = pinned_state_dict
+                self.async_writers.extend(writers)
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -234,16 +246,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     is_master=control_saving,
                     use_safetensors=use_safetensors,
                 )
-                if control_saving:
-                    index_file.append_meta_data("total_size", total_size)
-                    index_file.write_index_file(save_index_file)
-                    save_config_file(model, checkpoint)
-                    if self.verbose and self.coordinator.is_master():
-                        logging.info(
-                            f"The model is split into checkpoint shards. "
-                            f"You can find where each parameters has been saved in the "
-                            f"index located at {save_index_file}."
-                        )
+            if control_saving:
+                index_file.append_meta_data("total_size", total_size)
+                index_file.write_index_file(save_index_file)
+                save_config_file(model, checkpoint)
+                if self.verbose and self.coordinator.is_master():
+                    logging.info(
+                        f"The model is split into checkpoint shards. "
+                        f"You can find where each parameters has been saved in the "
+                        f"index located at {save_index_file}."
+                    )
 
         else:
             # When pipeline is used, each stage produces its own shard files and index files.
@@ -259,24 +271,28 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}.json")
             save_index_file = os.path.join("tmp_index_files", save_index_file)
             if use_async:
-                total_size, returned_state_dict, writers = async_save_state_dict_shards(
+                pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+                total_size, pinned_state_dict, writers = async_save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
                     checkpoint=checkpoint,
                     index_file=index_file,
                     base_filename=weights_name,
                     is_master=control_saving,
-                    use_pp_format=True,
-                    n_write_entries=191,
+                    use_safetensors=use_safetensors,
+                    n_write_entries=self.N_WRITE_ENTRIES,
                 )
-            total_size = save_state_dict_shards(
-                sharded_state_dict=state_dict_shard,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=weights_name,
-                is_master=control_saving,
-                use_safetensors=use_safetensors,
-                use_pp_format=True,
-            )
+                self.pinned_state_dicts[id(model)] = pinned_state_dict
+                self.async_writers.extend(writers)
+            else:
+                total_size = save_state_dict_shards(
+                    sharded_state_dict=state_dict_shard,
+                    checkpoint=checkpoint,
+                    index_file=index_file,
+                    base_filename=weights_name,
+                    is_master=control_saving,
+                    use_safetensors=use_safetensors,
+                    use_pp_format=True,
+                )
 
             if control_saving:
                 assert (
@@ -664,7 +680,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model = model.unwrap()
         if self.dp_rank != 0:
             return
-
         # The logic of collecting parameter shards along tp degree
         # has been implemented by _save_to_state_dict method of ParallelModule in Shardformer.
         state_dict = model.state_dict()
@@ -686,15 +701,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
                 if use_async:
-                    from tensornvme.async_file_io import AsyncFileWriter
-
-                    from colossalai.utils.safetensors import move_and_save
 
                     writer = AsyncFileWriter(open(checkpoint, "wb"), self.N_WRITE_ENTRIES, backend="pthread")
                     if id(model) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
+                        self.pinned_state_dicts[id(model)] = create_pinned_state_dict(complete_state_dict)
                     self.async_writers.append(writer)
-                    move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
+                    move_and_save(writer, complete_state_dict, self.pinned_state_dicts[id(model)])
                 else:
                     save_state_dict(complete_state_dict, checkpoint, use_safetensors)
 

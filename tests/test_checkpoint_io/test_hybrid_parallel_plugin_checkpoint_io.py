@@ -34,6 +34,7 @@ if Version(torch.__version__) < Version("2.0.0"):
 else:
     TEST_CONFIGS = [
         # TODO(ver217): other configs lead to hang
+        {"tp_size": 1, "pp_size": 1, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
         {"tp_size": 1, "pp_size": 2, "num_microbatches": 4, "zero_stage": 1, "precision": "fp16", "initial_scale": 1},
     ]
 
@@ -42,8 +43,9 @@ else:
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
+@parameterize("use_async", [True, False])
 @clear_cache_before_run()
-def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
+def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict, use_async: bool):
     (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
         iter(model_zoo.get_sub_registry(model_name).values())
     )
@@ -85,8 +87,14 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        if not use_async:
+            model_ckpt_path = f"{model_ckpt_path}.pt"
+        if use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = model_fn().cuda()
