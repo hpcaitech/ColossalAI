@@ -49,14 +49,31 @@ class OptimizerWrapper:
         """
         self.optim.zero_grad(*args, **kwargs)
 
-    def backward(self, loss: Tensor, *args, **kwargs):
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         """
         Performs a backward pass on the loss.
         """
-        loss.backward(*args, **kwargs)
+        loss.backward(inputs=inputs, retain_graph=retain_graph, **kwargs)
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
-        torch.autograd.backward(tensor, grad)
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
+        """
+        Performs a backward pass for dx or dw,
+        for dx, we only calculate dx = w*dy here
+        for dw, we only calculate dw = x*dy here
+
+        Args:
+            tensor (Tensor): y or loss of current chunk;
+            grad_tensors (Tensor): dy of current chunk;
+            input_obj (Tensor): for dx, input_obj is x of current chunk;
+                                for dw, input_obj is w of current chunk;
+            retain_graph (bool): default to be True, we retain graph in backward_b
+        """
+        torch.autograd.backward(
+            tensors=tensor,
+            grad_tensors=grad,
+            inputs=inputs,
+            retain_graph=retain_graph,
+        )
 
     def state_dict(self):
         """

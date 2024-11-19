@@ -82,7 +82,7 @@ class LlamaPipelineForwards:
             elif input_ids is not None:
                 batch_size, seq_length = input_ids.shape[:2]
             elif inputs_embeds is not None:
-                batch_size, seq_length, _ = inputs_embeds.shape[:2]
+                batch_size, seq_length = inputs_embeds.shape[:2]
             else:
                 raise ValueError("You have to specify either input_ids or inputs_embeds")
             if inputs_embeds is None:
@@ -191,7 +191,6 @@ class LlamaPipelineForwards:
                     num_model_chunks=stage_manager.num_model_chunks,
                 )
             assert num_ckpt_layers <= end_idx - start_idx
-
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
