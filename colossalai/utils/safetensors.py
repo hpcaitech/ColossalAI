@@ -116,6 +116,7 @@ def prepare(
     data: Dict[str, torch.Tensor], metadata: Optional[Dict[str, str]] = None
 ) -> Tuple[PreparedData, List[torch.Tensor], List[str]]:
     if metadata is not None:
+        print("metadata", metadata)
         assert isinstance(metadata, dict)
         for k, v in metadata.items():
             metadata[k] = json.dumps(v)
