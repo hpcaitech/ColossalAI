@@ -123,9 +123,6 @@ class PipelineGraph(object):
             if cat > 0 or chunk > 0:
                 last_id = cat * 2 + chunk - 1
                 if cat < 2:
-                    # if end_time[self.get_id(last_id // 2, last_id % 2, stage, _cnt)] < 0:
-                    #     print(cat, chunk, stage, _cnt)
-                    #     self.print_details(end_time)
                     assert end_time[self.get_id(last_id // 2, last_id % 2, stage, _cnt)] >= 0
                 else:
                     assert end_time[self.get_id(1, chunk, stage, _cnt)] >= 0
@@ -137,9 +134,6 @@ class PipelineGraph(object):
             if chunk == 0 and cat < 2:
                 if stage > 0:
                     _fa_id = self.get_id(cat, chunk, stage - 1, _cnt)
-                    # if end_time[_fa_id] < 0:
-                    #     print(cat, chunk, stage, _cnt)
-                    #     self.print_details(end_time)
                     assert end_time[_fa_id] >= 0, f"{cat}, {chunk}, {stage}, {_cnt}"
                     _tmp = max(_tmp, end_time[_fa_id] + self.c_cost + self.fbw_cost[cat])
             _id = self.get_id(cat, chunk, stage, _cnt)
@@ -153,20 +147,6 @@ class PipelineGraph(object):
             if cat == 1:
                 pending_w[stage].append((2, chunk, _cnt))
             count[stage][cat * 2 + chunk] += 1
-
-        # for _ in range(2 * self.n_stage):
-        #     for i in range(self.n_stage):
-        #         if count[i][1] >= count[i][0]:
-        #             put(0, 0, i, assert_cnt=False)
-        #             continue
-        #         if i == self.n_stage - 1:
-        #             put(0, 1, i, assert_cnt=False)
-        #             continue
-        #         fa_id = self.get_id(0, 1, i + 1, count[i][1])
-        #         if 0 <= end_time[fa_id] < cur_time[i + 1]:  # TODO
-        #             put(0, 1, i, assert_cnt=False)
-        #         else:
-        #             put(0, 0, i, assert_cnt=False)
 
         for i in range(self.n_stage):
             put(0, 0, i)
@@ -198,17 +178,7 @@ class PipelineGraph(object):
                     if count[j][iter_chunk_] < self.n_micro:
                         put(0, iter_chunk_, j)
                 iter_chunk_ = 1 - iter_chunk_
-            # while mem[i] + self.fbw_mem[0] <= self.max_mem and cur_time[i] + self.fbw_cost[0] <= tmp:
-            #     if iter_chunk_ == 0 and count[i][0] >= count[i - 1][0]:
-            #         break
-            #     for j in range(self.n_stage - 1, i - 1, -1):
-            #         if count[j][iter_chunk_] < self.n_micro:
-            #             put(0, iter_chunk_, j)
-            #     iter_chunk_ = 1 - iter_chunk_
-            # end_tmp = max(tmp, cur_time[i]) + self.fbw_cost[1]
 
-        # init_bubble = get_max_stage_bubble()
-        # print(stage_bubble)
         for _ in range(2 * self.n_micro):
             # check mem before putting b
             for i in range(self.n_stage):
@@ -304,13 +274,9 @@ class PipelineGraph(object):
             while len(pending_w[i]) > 0:
                 put_w(i)
 
-        # for i in range(self.n_stage):
-        #     print(stage_str[i])
-
         max_bubble = get_max_stage_bubble()
         expected_time = sum(self.fbw_cost) * self.n_micro * 2
         max_bubble / expected_time
-        # print("%6.4f" % bubble_rate, "->", stage_bubble)
         if max_approved_bubble < 0 or max_bubble < max_approved_bubble:
             _schedule, _end_time, _max_bubble = self.try_v_schedule(
                 fill_f=fill_f,
@@ -319,8 +285,6 @@ class PipelineGraph(object):
             )
             if _max_bubble < max_bubble:
                 return _schedule, _end_time, _max_bubble
-        # print("%2d %3d, [%5d %5d %5d], %6d -> %6.4f %6.4f" % \
-        #       (self.n_stage, self.n_micro, *self.fbw_cost, self.max_mem // self.f_mem, init_bubble / expected_time, bubble_rate), max_bubble)
         return schedule, end_time, max_bubble
 
     def print_details(self, end_time, print_scaling=1):
@@ -357,17 +321,13 @@ class PipelineGraph(object):
         for fill_b in [True, False]:
             for fill_f in [True, False]:
                 _schedule, _end_time, _max_bubble = self.try_v_schedule(fill_b=fill_b, fill_f=fill_f)
-                # print("")
                 if max_bubble is None or _max_bubble < max_bubble:
                     max_bubble = _max_bubble
                     schedule = _schedule
                     end_time = _end_time
         if only_run_time:
             return max_bubble + expected_time
-        # self.print_details(end_time, print_scaling=1)
         max_bubble / (expected_time + max_bubble)
-        # print("%2d %3d, [%5d %5d %5d %5d], %6d -> %6.4f" % \
-        #       (self.n_stage, self.n_micro, *self.fbw_cost, self.c_cost, self.max_mem // self.f_mem, bubble_rate))
         local_order = [[] for _ in range(self.n_stage)]
         comm_id = {}
         comm_id_counter = 0
@@ -378,7 +338,6 @@ class PipelineGraph(object):
                 post_validation_time, end_time[self.get_id(0, 0, i, pv_id)] - self.fbw_cost[0] - self.c_cost
             )
             # post_validation_time = 0
-            # print(i, pv_id, post_validation_time)
             for it in ["RECV_", "SEND_", ""]:
                 if i == 0 and it == "SEND_":
                     continue
@@ -486,9 +445,5 @@ class PipelineGraph(object):
                     )
                 )
             assert len(rollback_comm) == 0
-            # for node in local_order_with_rollback[rank]:
-            #     print(f"Rank {rank} Node info {node}")
-            #     print(f"{node.type}-{node.minibatch}-{int(node.rollback)}", end=", ")
-            # print()
 
         return local_order_with_rollback
