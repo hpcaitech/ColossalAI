@@ -38,11 +38,11 @@ else:
     ]
 
 
-@parameterize("shard", [False, True])
+@parameterize("shard", [True, False])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
-@parameterize("use_async", [False])
+@parameterize("use_async", [True, False])
 @clear_cache_before_run()
 def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict, use_async: bool):
     (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
