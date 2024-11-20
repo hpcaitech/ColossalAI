@@ -22,7 +22,7 @@ from colossalai.tensor.padded_tensor import (
     to_unpadded_tensor,
 )
 from colossalai.utils import get_current_device, get_non_persistent_buffers_set
-from colossalai.utils.safetensors import flatten_dict, load_flat, move_and_save
+from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat, move_and_save
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -830,7 +830,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 if use_async:
                     from tensornvme.async_file_io import AsyncFileWriter
 
-                    flatten_state_dict = flatten_dict(state_dict["state"])
+                    flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
                     if use_async and id(optimizer) not in self.pinned_state_dicts:
                         self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
 
@@ -840,7 +840,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     move_and_save(
                         f_writer,
                         state_dict=flatten_state_dict,
-                        metadata={"param_groups": state_dict["param_groups"]},
+                        metadata=metadata,
                         state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
                     )
                     self.async_writers.append(f_writer)
@@ -864,7 +864,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 if use_async:
                     from tensornvme.async_file_io import AsyncFileWriter
 
-                    flatten_state_dict = flatten_dict(state_dict["state"])
+                    flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
                     if id(optimizer) not in self.pinned_state_dicts:
                         self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
 
@@ -874,7 +874,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     move_and_save(
                         f_writer,
                         state_dict=flatten_state_dict,
-                        metadata={"param_groups": state_dict["param_groups"]},
+                        metadata=metadata,
                         state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
                     )
                     self.async_writers.append(f_writer)
