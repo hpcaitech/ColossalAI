@@ -1,6 +1,5 @@
 # a python safetensors serializer modified from https://github.com/huggingface/safetensors/blob/41bd1acf38ad28ac559522d40596c6c802f79453/safetensors/src/tensor.rs#L214
 import json
-import warnings
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple
 
