@@ -37,7 +37,7 @@ Limited Academic Bonuses:
 * Top up $500 and receive 100 credits
 
 <div align="center">
-   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion&utm_content=colossalai&utm_term=Hello">
+   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
    <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/2.gif" width="850" />
    </a>
 </div>
