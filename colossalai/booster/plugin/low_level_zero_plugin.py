@@ -142,7 +142,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
                 from colossalai.utils.safetensors import save_nested
 
                 f_writer = AsyncFileWriter(fp=open(checkpoint, "wb"), n_entries=self.N_WRITE_ENTRIES, backend="pthread")
-                save_nested(f_writer, state_dict["state"], {"param_groups": state_dict["param_groups"]})
+                save_nested(f_writer, state_dict)
                 self.async_writers.append(f_writer)
             else:
                 save_state_dict(state_dict, checkpoint, use_safetensors=False)
