@@ -232,7 +232,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     index_file=index_file,
                     base_filename=weights_name,
                     is_master=control_saving,
-                    use_safetensors=use_safetensors,
+                    pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
                 )
                 self.pinned_state_dicts[id(model)] = pinned_state_dict
@@ -278,7 +278,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     index_file=index_file,
                     base_filename=weights_name,
                     is_master=control_saving,
-                    use_safetensors=use_safetensors,
+                    pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
                 )
                 self.pinned_state_dicts[id(model)] = pinned_state_dict
