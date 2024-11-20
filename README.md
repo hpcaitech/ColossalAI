@@ -25,24 +25,20 @@
 
 </div>
 
-## GPU Cloud HPC-AI.COM Coming！！
+## Get Started with Colossal-AI Without Setup
 
-For a limited time, you can access an H100 Server for just $1! This is your chance to leverage premium GPU power at an unbeatable price.
-Plus, when you refer a friend, you’ll receive 20% cashback or compute credits equal to 100% of their top-up!
+Access high-end, on-demand compute for your research instantly—no setup needed.
 
-Our platform offers on-demand premium compute, ensuring safe, permanent data storage even after stopping your instance.
-Don’t miss this incredible opportunity to accelerate your AI projects!
+Sign up now and get $10 in credits!
 
-Unlock premium GPUs and register now at [HPC-AI.COM](https://hpc-ai.com) to receive $10!
-
-Special Bonuses:
+Limited Academic Bonuses:
 
 * Top up $1,000 and receive 300 credits
 * Top up $500 and receive 100 credits
 
 <div align="center">
-   <a href="https://youtu.be/ilMQpU71ddI?si=J4JSPzZ03ycYmlki">
-   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/HPCAICOM241010.jpg" width="700" />
+   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion&utm_content=colossalai&utm_term=Hello">
+   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/2.gif" width="700" />
    </a>
 </div>
 
