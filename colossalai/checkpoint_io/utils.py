@@ -275,6 +275,7 @@ def async_save_state_dict_shards(
     pinned_state_dict: Optional[Dict[str, torch.Tensor]],
     n_write_entries: int,
     use_pp_format: bool = False,
+    shard_preprocess: bool = False,
 ) -> Tuple[int, Dict[str, torch.Tensor], list]:
     """
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
@@ -313,16 +314,18 @@ def async_save_state_dict_shards(
 
         writer = AsyncFileWriter(open(checkpoint_file_path, "wb"), n_write_entries, backend="pthread")
         writers.append(writer)
-
-        flatten_dicts, _ = _flatten_optim_state_dict(shard)
-        if pinned_state_dict is not None:
-            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in flatten_dicts.keys()}
+        if shard_preprocess:
+            state_dict, _ = _flatten_optim_state_dict(shard)
         else:
-            sub_pinned_state_dict = create_pinned_state_dict(flatten_dicts)
+            state_dict = shard
+        if pinned_state_dict is not None:
+            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in state_dict.keys()}
+        else:
+            sub_pinned_state_dict = create_pinned_state_dict(state_dict)
             returned_state_dict.update(sub_pinned_state_dict)
 
         # Only save on master rank.
-        move_and_save(writer, state_dict=flatten_dicts, state_dict_pinned=sub_pinned_state_dict)
+        move_and_save(writer, state_dict=state_dict, state_dict_pinned=sub_pinned_state_dict)
         shard_filenames.append(shard_file)
         del shard
 
