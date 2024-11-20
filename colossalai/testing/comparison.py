@@ -1,4 +1,4 @@
-from typing import Any, List, OrderedDict, Tuple
+from typing import Any, List, OrderedDict
 
 import torch
 import torch.distributed as dist
