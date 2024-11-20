@@ -170,7 +170,7 @@ def train(args) -> None:
     # ======================================================
     # Initialize Model, Objective, Optimizer and LR Scheduler
     # ======================================================
-    # When training of the ChatGLM model, LoRA and gradient checkpointing are incompatible.
+    # When training the ChatGLM model, LoRA and gradient checkpointing are incompatible.
     init_ctx = (
         LazyInitContext(default_device=get_current_device())
         if isinstance(plugin, (GeminiPlugin, HybridParallelPlugin)) and args.lora_rank == 0
