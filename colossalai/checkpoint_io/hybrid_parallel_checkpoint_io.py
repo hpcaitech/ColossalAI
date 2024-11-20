@@ -530,6 +530,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
             # Manage filenames of sharded weights and index file for each pipeline stage.
             states_name = states_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-shard.bin")
+            states_name = states_name.replace(".safetensors", f"-stage-{self.pp_rank+1:05d}-shard.safetensors")
             save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}.json")
             save_index_file = os.path.join("tmp_index_files", save_index_file)
 
