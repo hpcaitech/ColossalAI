@@ -509,9 +509,9 @@ class LazyInitContext:
             # factory_like functions (eg. torch.empty_like())
             def wrapper(*args, **kwargs):
                 orig_t = args[0]
-                return self.tensor_cls(
-                    orig_target, *orig_t.shape, *args[1:], device=orig_t.device, dtype=orig_t.dtype, **kwargs
-                )
+                device = kwargs.pop("device", orig_t.device)
+                dtype = kwargs.pop("dtype", orig_t.dtype)
+                return self.tensor_cls(orig_target, *orig_t.shape, *args[1:], device=device, dtype=dtype, **kwargs)
 
             return wrapper, target
 

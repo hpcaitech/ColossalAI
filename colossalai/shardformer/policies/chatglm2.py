@@ -11,6 +11,7 @@ from colossalai.shardformer.modeling.chatglm2 import ChatGLMPipelineForwards
 from ..modeling.chatglm2 import (
     get_chatglm_sequence_parallel_attention_forward,
     get_chatglm_sequence_parallel_forward_fn,
+    get_flash_attention_forward_for_chat_glm_model,
     get_flash_core_attention_forward,
     get_jit_fused_glm_block_forward,
 )
@@ -202,6 +203,13 @@ class ChatGLMPolicy(Policy):
                 },
                 policy=policy,
                 target_key="CoreAttention",
+            )
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_flash_attention_forward_for_chat_glm_model(),
+                },
+                policy=policy,
+                target_key="ChatGLMModel",
             )
 
         # use sequence parallel
