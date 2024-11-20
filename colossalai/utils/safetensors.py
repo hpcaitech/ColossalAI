@@ -86,7 +86,7 @@ def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[d
 def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None, seperator: str = "."):
     state_dict = {}
     if metadata is not None:
-        non_tensor_keys = metadata["non_tensor_keys"]
+        non_tensor_keys = json.loads(metadata["non_tensor_keys"])
     else:
         non_tensor_keys = []
     flat_dict = {k: _cast_to_object(v) if k in non_tensor_keys else v for k, v in flat_dict.items()}
