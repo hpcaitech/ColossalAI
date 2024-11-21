@@ -163,6 +163,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 tp_group=tp_group,
                 use_zero=use_zero,
                 inplace=False,
+                device=get_current_device(),
             )
 
             block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
@@ -234,6 +235,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     is_master=control_saving,
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
+                    move=False,
                 )
                 self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
@@ -281,6 +283,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     use_pp_format=True,
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
+                    move=False,
                 )
                 self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
@@ -489,6 +492,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
                     shard_preprocess=True,
+                    move=False,
                 )
                 self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
@@ -546,6 +550,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
                     shard_preprocess=True,
+                    move=False,
                 )
                 self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
@@ -729,6 +734,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         pinned_state_dict,
                         self.N_WRITE_ENTRIES,
                         shard_preprocess=False,
+                        move=False,
                     )
                     self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                     self.async_writers.extend(writers)
@@ -752,6 +758,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         pinned_state_dict,
                         self.N_WRITE_ENTRIES,
                         shard_preprocess=False,
+                        move=False,
                     )
                     self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                     self.async_writers.extend(writers)
@@ -847,6 +854,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         pinned_state_dict,
                         self.N_WRITE_ENTRIES,
                         shard_preprocess=True,
+                        move=False,
                     )
                     self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
                     self.async_writers.extend(writers)
@@ -875,6 +883,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         pinned_state_dict,
                         self.N_WRITE_ENTRIES,
                         shard_preprocess=True,
+                        move=False,
                     )
                     self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
                 else:
