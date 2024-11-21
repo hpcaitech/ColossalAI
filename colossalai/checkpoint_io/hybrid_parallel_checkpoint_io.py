@@ -22,14 +22,14 @@ from colossalai.tensor.padded_tensor import (
     to_unpadded_tensor,
 )
 from colossalai.utils import get_current_device, get_non_persistent_buffers_set
-from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat, move_and_save
+from colossalai.utils.safetensors import load_flat
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
     StateDictSharder,
+    async_save_state_dict,
     async_save_state_dict_shards,
-    create_pinned_state_dict,
     gather_distributed_param,
     get_model_base_filenames,
     get_optimizer_base_filenames,
@@ -722,7 +722,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is not used, let master rank directly save the collected state_dict.
             if self.tp_rank == 0:
                 if use_async:
-                    super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async)
+                    pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+                    new_pinned_state_dict, writers = async_save_state_dict(
+                        state_dict,
+                        checkpoint,
+                        pinned_state_dict,
+                        self.N_WRITE_ENTRIES,
+                        shard_preprocess=False,
+                    )
+                    self.pinned_state_dicts[id(model)] = new_pinned_state_dict
+                    self.async_writers.extend(writers)
                 else:
                     save_state_dict(state_dict, checkpoint, use_safetensors)
         else:
@@ -736,15 +745,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
                 if use_async:
-                    from tensornvme.async_file_io import AsyncFileWriter
-
-                    writer = AsyncFileWriter(open(checkpoint, "wb"), self.N_WRITE_ENTRIES, backend="pthread")
-                    if id(model) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(model)] = create_pinned_state_dict(complete_state_dict)
-                    self.async_writers.append(writer)
-                    move_and_save(
-                        writer, state_dict=complete_state_dict, state_dict_pinned=self.pinned_state_dicts[id(model)]
+                    pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+                    new_pinned_state_dict, writers = async_save_state_dict(
+                        complete_state_dict,
+                        checkpoint,
+                        pinned_state_dict,
+                        self.N_WRITE_ENTRIES,
+                        shard_preprocess=False,
                     )
+                    self.pinned_state_dicts[id(model)] = new_pinned_state_dict
+                    self.async_writers.extend(writers)
                 else:
                     save_state_dict(complete_state_dict, checkpoint, use_safetensors)
 
@@ -830,22 +840,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             state_dict = {"param_groups": param_groups, "state": local_states}
             if self.coordinator.is_master():
                 if use_async:
-                    from tensornvme.async_file_io import AsyncFileWriter
-
-                    flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-                    if use_async and id(optimizer) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
-
-                    f_writer = AsyncFileWriter(
-                        fp=open(checkpoint, "wb"), n_entries=self.N_WRITE_ENTRIES, backend="pthread"
+                    pinned_state_dict = self.pinned_state_dicts.get(id(optimizer), None)
+                    new_pinned_state_dict, writers = async_save_state_dict(
+                        state_dict,
+                        checkpoint,
+                        pinned_state_dict,
+                        self.N_WRITE_ENTRIES,
+                        shard_preprocess=True,
                     )
-                    move_and_save(
-                        f_writer,
-                        state_dict=flatten_state_dict,
-                        metadata=metadata,
-                        state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
-                    )
-                    self.async_writers.append(f_writer)
+                    self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
+                    self.async_writers.extend(writers)
                 else:
                     save_state_dict(state_dict, checkpoint, use_safetensors=False)
         else:
@@ -864,22 +868,15 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 for _states in states_list:
                     state_dict["state"].update(_states)
                 if use_async:
-                    from tensornvme.async_file_io import AsyncFileWriter
-
-                    flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-                    if id(optimizer) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
-
-                    f_writer = AsyncFileWriter(
-                        fp=open(checkpoint, "wb"), n_entries=self.N_WRITE_ENTRIES, backend="pthread"
+                    pinned_state_dict = self.pinned_state_dicts.get(id(optimizer), None)
+                    new_pinned_state_dict, writers = async_save_state_dict(
+                        state_dict,
+                        checkpoint,
+                        pinned_state_dict,
+                        self.N_WRITE_ENTRIES,
+                        shard_preprocess=True,
                     )
-                    move_and_save(
-                        f_writer,
-                        state_dict=flatten_state_dict,
-                        metadata=metadata,
-                        state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
-                    )
-                    self.async_writers.append(f_writer)
+                    self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
                 else:
                     save_state_dict(state_dict, checkpoint, use_safetensors=False)
 

@@ -405,6 +405,34 @@ def save_state_dict(
         torch.save(state_dict_cpu, checkpoint_file_path)
 
 
+def async_save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    pinned_state_dict: Optional[Dict[str, torch.Tensor]],
+    n_write_entries: int,
+    shard_preprocess: bool = False,
+):
+    from tensornvme.async_file_io import AsyncFileWriter
+
+    async_writers = []
+    if shard_preprocess:
+        saved_state_dict, metadata = _flatten_optim_state_dict(state_dict)
+    else:
+        saved_state_dict, metadata = state_dict, None
+    if pinned_state_dict is None:
+        pinned_state_dict = create_pinned_state_dict(saved_state_dict)
+
+    f_writer = AsyncFileWriter(fp=open(checkpoint_file_path, "wb"), n_entries=n_write_entries, backend="pthread")
+    move_and_save(
+        f_writer,
+        state_dict=saved_state_dict,
+        metadata=metadata,
+        state_dict_pinned=pinned_state_dict,
+    )
+    async_writers.append(f_writer)
+    return pinned_state_dict, async_writers
+
+
 def save_param_groups(state_dict: dict, group_file_path: str) -> None:
     """
     Save information of param_groups to given file path.
