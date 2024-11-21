@@ -82,6 +82,8 @@ class ChatGLMPolicy(Policy):
                 attribute_replacement=decoder_attribute_replacement,
             )
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
@@ -136,6 +138,35 @@ class ChatGLMPolicy(Policy):
                             "seq_parallel_mode": sp_mode,
                             "seq_parallel_dim": 0,
                             "fp8_communication": self.shard_config.fp8_communication,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attention.core_attention.attention_dropout",
+                        target_module=col_nn.DropoutForParallelInput,
+                    ),
+                ],
+            )
+        elif use_zbv:
+            policy["GLMBlock"] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attention.query_key_value",
+                        target_module=col_nn.Linear1D_Col,
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "seq_parallel_dim": 0,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attention.dense",
+                        target_module=col_nn.Linear1D_Row,
+                        kwargs={
+                            "seq_parallel_mode": sp_mode,
+                            "seq_parallel_dim": 0,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -253,17 +284,30 @@ class ChatGLMPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(module.num_layers)
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embedding)
-        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-        held_layers.extend(module.encoder.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            if module.encoder.post_layer_norm:
-                held_layers.append(module.encoder.final_layernorm)
+        if stage_manager.is_interleave:
+            layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embed_tokens)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.layers[start_idx:end_idx])
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                if module.encoder.post_layer_norm:
+                    held_layers.append(module.encoder.final_layernorm)
+        else:
+            layers_per_stage = stage_manager.distribute_layers(module.num_layers)
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embedding)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
+            held_layers.extend(module.encoder.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                if module.encoder.post_layer_norm:
+                    held_layers.append(module.encoder.final_layernorm)
 
-        # rotary_pos_emb is needed for all stages
-        held_layers.append(module.rotary_pos_emb)
+            # rotary_pos_emb is needed for all stages
+            held_layers.append(module.rotary_pos_emb)
 
         return held_layers
 
@@ -327,8 +371,15 @@ class ChatGLMForConditionalGenerationPolicy(ChatGLMModelPolicy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
-            held_layers.append(self.model.transformer.output_layer)
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.transformer.output_layer)
+        else:
+            if self.pipeline_stage_manager.is_last_stage():
+                held_layers.append(self.model.transformer.output_layer)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
