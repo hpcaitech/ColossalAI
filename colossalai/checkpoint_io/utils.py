@@ -19,7 +19,7 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-from colossalai.utils.safetensors import move_and_save
+from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -275,6 +275,7 @@ def async_save_state_dict_shards(
     pinned_state_dict: Optional[Dict[str, torch.Tensor]],
     n_write_entries: int,
     use_pp_format: bool = False,
+    shard_preprocess: bool = False,
 ) -> Tuple[int, Dict[str, torch.Tensor], list]:
     """
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
@@ -313,15 +314,18 @@ def async_save_state_dict_shards(
 
         writer = AsyncFileWriter(open(checkpoint_file_path, "wb"), n_write_entries, backend="pthread")
         writers.append(writer)
-
-        if pinned_state_dict is not None:
-            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in shard.keys()}
+        if shard_preprocess:
+            state_dict, _ = _flatten_optim_state_dict(shard)
         else:
-            sub_pinned_state_dict = create_pinned_state_dict(shard)
+            state_dict = shard
+        if pinned_state_dict is not None:
+            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in state_dict.keys()}
+        else:
+            sub_pinned_state_dict = create_pinned_state_dict(state_dict)
             returned_state_dict.update(sub_pinned_state_dict)
 
         # Only save on master rank.
-        move_and_save(writer, shard, sub_pinned_state_dict)
+        move_and_save(writer, state_dict=state_dict, state_dict_pinned=sub_pinned_state_dict)
         shard_filenames.append(shard_file)
         del shard
 
@@ -399,6 +403,34 @@ def save_state_dict(
         safe_save_file(state_dict_cpu, checkpoint_file_path, metadata={"format": "pt"})
     else:
         torch.save(state_dict_cpu, checkpoint_file_path)
+
+
+def async_save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    pinned_state_dict: Optional[Dict[str, torch.Tensor]],
+    n_write_entries: int,
+    shard_preprocess: bool = False,
+):
+    from tensornvme.async_file_io import AsyncFileWriter
+
+    async_writers = []
+    if shard_preprocess:
+        saved_state_dict, metadata = _flatten_optim_state_dict(state_dict)
+    else:
+        saved_state_dict, metadata = state_dict, None
+    if pinned_state_dict is None:
+        pinned_state_dict = create_pinned_state_dict(saved_state_dict)
+
+    f_writer = AsyncFileWriter(fp=open(checkpoint_file_path, "wb"), n_entries=n_write_entries, backend="pthread")
+    move_and_save(
+        f_writer,
+        state_dict=saved_state_dict,
+        metadata=metadata,
+        state_dict_pinned=pinned_state_dict,
+    )
+    async_writers.append(f_writer)
+    return pinned_state_dict, async_writers
 
 
 def save_param_groups(state_dict: dict, group_file_path: str) -> None:
