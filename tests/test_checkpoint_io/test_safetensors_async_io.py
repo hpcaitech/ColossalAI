@@ -110,7 +110,7 @@ def test_save_load():
         }
 
         optimizer_saved_path = f"{tempdir}/save_optimizer.safetensors"
-        f_writer = AsyncFileWriter(fp=open(optimizer_saved_path, "wb"), n_entries=191, backend="pthread")
+        f_writer = AsyncFileWriter(optimizer_saved_path, n_entries=191, backend="pthread")
         save_nested(f_writer, optimizer_state_dict)
         f_writer.sync_before_step()
         f_writer.synchronize()
@@ -119,7 +119,7 @@ def test_save_load():
         check_state_dict_equal(load_state_dict, optimizer_state_dict)
 
         optimizer_shard_saved_path = f"{tempdir}/save_optimizer_shard.safetensors"
-        f_writer = AsyncFileWriter(fp=open(optimizer_shard_saved_path, "wb"), n_entries=191, backend="pthread")
+        f_writer = AsyncFileWriter(optimizer_shard_saved_path, n_entries=191, backend="pthread")
         save_nested(f_writer, optimizer_state_dict["state"])
         f_writer.sync_before_step()
         f_writer.synchronize()
@@ -133,7 +133,7 @@ def test_save_load():
             "module.weight2": torch.rand((1024, 1024)),
         }
         model_saved_path = f"{tempdir}/save_model.safetensors"
-        f_writer = AsyncFileWriter(fp=open(model_saved_path, "wb"), n_entries=191, backend="pthread")
+        f_writer = AsyncFileWriter(model_saved_path, n_entries=191, backend="pthread")
         save(f_writer, model_state_dict)
         f_writer.sync_before_step()
         f_writer.synchronize()
@@ -144,7 +144,7 @@ def test_save_load():
         model_state_dict_cuda = {k: v.to(get_current_device()) for k, v in model_state_dict.items()}
         model_state_pinned = {k: v.pin_memory() for k, v in model_state_dict.items()}
         model_saved_path = f"{tempdir}/save_model_cuda.safetensors"
-        f_writer = AsyncFileWriter(fp=open(model_saved_path, "wb"), n_entries=191, backend="pthread")
+        f_writer = AsyncFileWriter(model_saved_path, n_entries=191, backend="pthread")
         move_and_save(f_writer, model_state_dict_cuda, model_state_pinned)
         f_writer.sync_before_step()
         f_writer.synchronize()
