@@ -9,6 +9,7 @@ from colossalai.shardformer.layer import (
     FusedRMSNorm,
     Linear1D_Col,
     Linear1D_Row,
+    LinearWithGradAccum,
     PaddingEmbedding,
     RMSNorm,
     VocabParallelEmbedding1D,
@@ -96,6 +97,8 @@ class Qwen2Policy(Policy):
                 attribute_replacement=decoder_attribute_replacement,
             )
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
@@ -119,37 +122,134 @@ class Qwen2Policy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                ],
+            )
+        elif use_zbv:
+            policy[Qwen2DecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                 ],
             )
@@ -278,7 +378,9 @@ class Qwen2Policy(Policy):
                 held_layers.append(module.embed_tokens)
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.layers[start_idx:end_idx])
-            if stage_manager.is_last_stage(ignore_chunk=True):
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
                 held_layers.append(module.norm)
 
         else:
@@ -318,6 +420,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
     def module_policy(self):
         policy = super().module_policy()
         setattr(self.shard_config, "causal_lm", True)
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
@@ -327,7 +430,22 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
+                        )
+                    ],
+                    method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
+                )
+            }
+            policy.update(new_item)
+        elif use_zbv:
+            # add a new item for casual lm
+            new_item = {
+                Qwen2ForCausalLM: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=LinearWithGradAccum,
+                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
                         )
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
@@ -347,8 +465,14 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage(ignore_chunk=True):
-            held_layers.append(self.model.lm_head)
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.lm_head)
+        else:
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
@@ -371,6 +495,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
 class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
     def module_policy(self):
         policy = super().module_policy()
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
             new_item = {
@@ -379,7 +504,28 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
                         SubModuleReplacementDescription(
                             suffix="score",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
+                        )
+                    ]
+                )
+            }
+            policy.update(new_item)
+        elif use_zbv:
+            new_item = {
+                Qwen2ForSequenceClassification: ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="score",
+                            target_module=LinearWithGradAccum,
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
                     ]
                 )
@@ -399,8 +545,14 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage(ignore_chunk=True):
-            held_layers.append(self.model.score)
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.score)
+        else:
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(self.model.score)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
