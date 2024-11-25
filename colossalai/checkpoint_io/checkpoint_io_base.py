@@ -70,7 +70,8 @@ class CheckpointIO(ABC):
         self.async_writers = []
 
     def _sync_io(self):
-        # writer is auto-synced after destruction
+        for writer in self.async_writers:
+            writer.synchronize()
         self.async_writers.clear()
 
     def _sync_d2h(self):

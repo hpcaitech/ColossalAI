@@ -10,6 +10,7 @@ try:
 except ModuleNotFoundError:
     raise ModuleNotFoundError("Please install tensornvme to use NVMeOptimizer")
 
+
 from colossalai.testing import check_state_dict_equal
 from colossalai.utils import get_current_device
 
@@ -114,7 +115,7 @@ def test_save_load():
         save_nested(f_writer, optimizer_state_dict)
         f_writer.sync_before_step()
         f_writer.synchronize()
-        f_writer.fp.close()
+        del f_writer
         load_state_dict = load_flat(optimizer_saved_path)
         check_state_dict_equal(load_state_dict, optimizer_state_dict)
 
@@ -123,7 +124,7 @@ def test_save_load():
         save_nested(f_writer, optimizer_state_dict["state"])
         f_writer.sync_before_step()
         f_writer.synchronize()
-        f_writer.fp.close()
+        del f_writer
         load_state_dict_shard = load_flat(optimizer_shard_saved_path)
         check_state_dict_equal(load_state_dict_shard, optimizer_state_dict["state"])
 
@@ -137,7 +138,7 @@ def test_save_load():
         save(f_writer, model_state_dict)
         f_writer.sync_before_step()
         f_writer.synchronize()
-        f_writer.fp.close()
+        del f_writer
         load_state_dict = load_file(model_saved_path)
         check_state_dict_equal(model_state_dict, load_state_dict)
 
@@ -148,6 +149,6 @@ def test_save_load():
         move_and_save(f_writer, model_state_dict_cuda, model_state_pinned)
         f_writer.sync_before_step()
         f_writer.synchronize()
-        f_writer.fp.close()
+        del f_writer
         load_state_dict = load_file(model_saved_path)
         check_state_dict_equal(model_state_dict, load_state_dict)
