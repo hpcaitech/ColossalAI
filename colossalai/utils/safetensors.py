@@ -170,9 +170,10 @@ def save_nested(f_writer: AsyncFileWriter, state_dict: Dict[str, torch.Tensor]) 
 def move_and_save(
     f_writer: AsyncFileWriter,
     state_dict: Dict[str, torch.Tensor],
+    metadata: Optional[Dict[str, str]] = None,
     state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
 ) -> None:
-    prepared_data, _, tensor_keys = prepare(state_dict)
+    prepared_data, _, tensor_keys = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
 
     f_writer.write(n.to_bytes(8, byteorder="little"))

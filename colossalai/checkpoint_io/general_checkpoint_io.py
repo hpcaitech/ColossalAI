@@ -8,13 +8,11 @@ from typing import Optional
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.utils.safetensors import move_and_save
-
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
+    async_save_state_dict,
     async_save_state_dict_shards,
-    create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     is_safetensors_available,
@@ -59,13 +57,16 @@ class GeneralCheckpointIO(CheckpointIO):
             pass
 
         if use_async:
-            from tensornvme.async_file_io import AsyncFileWriter
-
-            writer = AsyncFileWriter(open(checkpoint, "wb", buffering=0), self.N_WRITE_ENTRIES, backend="pthread")
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
-            self.async_writers.append(writer)
-            move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
+            pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+            new_pinned_state_dict, writers = async_save_state_dict(
+                state_dict,
+                checkpoint,
+                pinned_state_dict,
+                self.N_WRITE_ENTRIES,
+                shard_preprocess=False,
+            )
+            self.pinned_state_dicts[id(model)] = new_pinned_state_dict
+            self.async_writers.extend(writers)
 
         else:
             # save the checkpoint

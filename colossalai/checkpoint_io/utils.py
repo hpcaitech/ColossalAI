@@ -19,7 +19,7 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-from colossalai.utils.safetensors import move_and_save
+from colossalai.utils.safetensors import move_and_save, save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -264,6 +264,38 @@ def save_state_dict_shards(
     clean_folder(checkpoint, base_filename, shard_filenames, is_master=is_master, use_pp_format=use_pp_format)
 
     return total_size
+
+
+def async_save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    pinned_state_dict: Optional[Dict[str, torch.Tensor]],
+    n_write_entries: int,
+    shard_preprocess: bool = False,
+    move: bool = True,
+):
+    from tensornvme.async_file_io import AsyncFileWriter
+
+    async_writers = []
+
+    saved_state_dict, metadata = state_dict, None
+    if pinned_state_dict is None:
+        pinned_state_dict = create_pinned_state_dict(saved_state_dict)
+
+    f_writer = AsyncFileWriter(fp=open(checkpoint_file_path, "wb"), n_entries=n_write_entries, backend="pthread")
+    if move:
+        move_and_save(
+            f_writer,
+            state_dict=saved_state_dict,
+            metadata=metadata,
+            state_dict_pinned=pinned_state_dict,
+        )
+    else:
+        for name, tensor in saved_state_dict.items():
+            pinned_state_dict[name].copy_(tensor)
+        save(f_writer=f_writer, state_dict=pinned_state_dict, metadata=metadata)
+    async_writers.append(f_writer)
+    return pinned_state_dict, async_writers
 
 
 def async_save_state_dict_shards(
