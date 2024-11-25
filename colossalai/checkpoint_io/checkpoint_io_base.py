@@ -72,7 +72,6 @@ class CheckpointIO(ABC):
     def _sync_io(self):
         for writer in self.async_writers:
             writer.synchronize()
-            writer.fp.close()
         self.async_writers.clear()
 
     def _sync_d2h(self):
