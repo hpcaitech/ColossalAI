@@ -353,7 +353,7 @@ def async_save_state_dict_shards(
             returned_state_dict.update(sub_pinned_state_dict)
 
         # Only save on master rank.
-        move_and_save(writer, shard, sub_pinned_state_dict)
+        move_and_save(writer, shard, state_dict_pinned=sub_pinned_state_dict)
         shard_filenames.append(shard_file)
         del shard
 
