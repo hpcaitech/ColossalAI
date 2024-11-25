@@ -11,6 +11,7 @@ from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
 from performance_evaluator import PerformanceEvaluator, get_profile_context
 from tqdm import tqdm
+from transformers import AutoConfig
 from transformers.models.mixtral import MixtralConfig, MixtralForCausalLM
 
 import colossalai
@@ -20,6 +21,7 @@ from colossalai.booster.plugin import MoeHybridParallelPlugin
 from colossalai.cluster import DistCoordinator
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
 
 warnings.filterwarnings("ignore")
@@ -85,7 +87,7 @@ def main():
     parser.add_argument("--zero", type=int, default=1, help="Zero Stage when hybrid plugin is enabled")
     parser.add_argument("--custom-ckpt", action="store_true", help="Customize checkpoint", default=False)
 
-    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved"])
+    parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved", "zbv"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code")
     parser.add_argument(
@@ -129,7 +131,29 @@ def main():
     # ==============================
     # Initialize Booster
     # ==============================
+    if args.config in MODEL_CONFIGS:
+        config = MODEL_CONFIGS[args.config]
+    else:
+        config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
+
     if args.plugin == "3d":
+        if args.pp_style == "zbv":
+            mem_f = 34 * config.hidden_size + 5 * config.num_attention_heads * args.max_length
+            mem_w = -32 * config.hidden_size
+            mem_b = -mem_w - mem_f
+            scheduler_nodes = PipelineGraph(
+                n_stage=args.pp,
+                n_micro=args.batch_size // args.mbs,
+                f_cost=1000,
+                b_cost=1000,
+                w_cost=1000,
+                c_cost=1,
+                f_mem=mem_f,
+                b_mem=mem_b,
+                w_mem=mem_w,
+            ).get_v_schedule()
+        else:
+            scheduler_nodes = None
         plugin = MoeHybridParallelPlugin(
             ep_size=args.ep,
             tp_size=args.tp,
@@ -143,11 +167,13 @@ def main():
             enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
+            num_microbatches=args.batch_size // args.mbs,
             precision="bf16",
             enable_metadata_cache=not args.no_cache,
             overlap_allgather=args.overlap_allgather,
             use_fp8=args.use_fp8,
             fp8_communication=args.use_fp8_comm,
+            scheduler_nodes=scheduler_nodes,
             **hybrid_kwargs,
         )
     else:
@@ -183,8 +209,10 @@ def main():
     with init_ctx:
         model = MixtralForCausalLM(config=config).to(torch.bfloat16)
 
+    # if args.grad_checkpoint:
+    #     model.gradient_checkpointing_enable()
     if args.grad_checkpoint:
-        model.gradient_checkpointing_enable()
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
@@ -229,8 +257,12 @@ def main():
                     return_loss=True,
                 )
                 loss = outputs["loss"]
-                if dist.get_rank() == dist.get_world_size() - 1:
-                    print(f"Step {step} loss: {loss}")
+                if args.pp_style == "zbv":
+                    if dist.get_rank() == 0:
+                        print(f"Step {step} loss: {loss}")
+                else:
+                    if dist.get_rank() == dist.get_world_size() - 1:
+                        print(f"Step {step} loss: {loss}")
                 optimizer.step()
                 optimizer.zero_grad()
 

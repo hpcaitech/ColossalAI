@@ -28,7 +28,7 @@ from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
-from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule
+from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
@@ -296,7 +296,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         self._current_grad_norm: Optional[float] = None
         super().__init__(optim)
 
-    def backward(self, loss: Tensor, *args, **kwargs):
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         r"""
         Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
 
@@ -315,7 +315,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
 
         # Call the superclass backward method to compute gradients.
         with self.model._hook_context():
-            super().backward(loss, *args, **kwargs)
+            super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -324,7 +324,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
             # If gradient synchronization is is not required, return.
             return
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         """
         Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
 
@@ -341,7 +341,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
         """
 
         # Call the superclass backward method to compute gradients.
-        super().backward_by_grad(tensor, grad)
+        super().backward_by_grad(tensor, grad, inputs=inputs, retain_graph=retain_graph)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -525,7 +525,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             max_norm=max_norm,
         )
 
-    def backward(self, loss: Tensor, *args, **kwargs):
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         r"""
         Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
 
@@ -543,7 +543,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
         """
         # Call the superclass backward method to compute gradients.
         with self.model._hook_context():
-            super().backward(loss, *args, **kwargs)
+            super().backward(loss, inputs=inputs, retain_graph=retain_graph, **kwargs)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -552,7 +552,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             # If gradient synchronization is is not required, return.
             return
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         """
         Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
 
@@ -568,7 +568,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
             None
         """
         # Call the superclass backward method to compute gradients.
-        super().backward_by_grad(tensor, grad)
+        super().backward_by_grad(tensor, grad, inputs=inputs, retain_graph=retain_graph)
 
         if self.model.require_grad_sync:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -785,7 +785,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         else:
             return
 
-    def backward(self, loss, retain_graph=False):
+    def backward(self, loss, inputs=None, retain_graph=False):
         """
         Backpropagate gradients through the model and optionally synchronize sequence parallelism gradients.
 
@@ -801,7 +801,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             None
         """
         # Call the superclass backward method to compute gradients.
-        super().backward(loss, retain_graph)
+        super().backward(loss, inputs=inputs, retain_graph=retain_graph)
 
         if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -810,7 +810,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             # If gradient synchronization is is not required, return.
             return
 
-    def backward_by_grad(self, tensor, grad):
+    def backward_by_grad(self, tensor, grad, inputs: Tensor = None, retain_graph: bool = False):
         """
         Backpropagate gradients through the model using a precomputed gradient and optionally synchronize sequence parallelism gradients.
 
@@ -826,7 +826,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             None
         """
         # Call the superclass backward_by_grad method to compute gradients.
-        super().backward_by_grad(tensor, grad)
+        super().backward_by_grad(tensor, grad, inputs=inputs, retain_graph=retain_graph)
 
         if self.require_grad_sync and self.model.shard_config.enable_sequence_parallelism:
             # If gradient synchronization is required, sync sequence parallelism gradients.
@@ -1030,6 +1030,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         custom_policy: Policy = None,
         pp_style: str = "1f1b",
         num_model_chunks: int = 1,
+        scheduler_nodes: List = None,
         num_layers_per_stage: Optional[List[int]] = None,
         gradient_checkpoint_config: Optional[GradientCheckpointConfig] = None,
         enable_metadata_cache: bool = True,
@@ -1048,6 +1049,9 @@ class HybridParallelPlugin(PipelinePluginBase):
             dist.get_world_size() % (tp_size * pp_size) == 0
         ), f"World size {dist.get_world_size()} is not divisible by tp_size {tp_size} * pp_size {pp_size}"
 
+        assert (
+            not pp_style == "zbv" or scheduler_nodes is not None
+        ), f"scheduler_nodes must not be None when using zero bubble pipeline."
         if enable_sequence_parallelism:
             self.sequence_parallelism_mode = (
                 sequence_parallelism_mode if sequence_parallelism_mode is not None else "all_to_all"
@@ -1109,29 +1113,39 @@ class HybridParallelPlugin(PipelinePluginBase):
                 self.pg_mesh = ProcessGroupMesh(self.pp_size, self.dp_size, self.tp_size, self.sp_size)
 
         self.stage_manager = None
-        self.schedule = None
+        self.scheduler = None
         self.custom_policy = custom_policy
         assert zero_stage in (0, 1, 2)
         if self.pp_size > 1:
-            assert pp_style in ["1f1b", "interleaved"], "Unsupported pipeline parallelism style"
-            assert pp_style == "interleaved" or num_model_chunks == 1, "num_model_chunks must be 1 when using 1f1b"
+            assert pp_style in ["1f1b", "interleaved", "zbv"], "Unsupported pipeline parallelism style"
+            assert (
+                pp_style in ["interleaved", "zbv"] or num_model_chunks == 1
+            ), "num_model_chunks must be 1 when using 1f1b"
+            assert (
+                pp_style in ["1f1b", "interleaved"] or num_model_chunks == 2
+            ), "num_model_chunks must be 2 when using zero bubble pipeline"
             assert (
                 num_microbatches is not None or microbatch_size is not None
             ), "num_microbatches or microbatch_size must be specified when using pipeline parallelism"
             assert (
                 self.zero_stage <= 1
             ), "To avoid prohibitive gradient synchronization costs, zero stage must be 0 or 1 when using pipeline parallelism"
+            if pp_style == "zbv":
+                self.logger.warning(
+                    """the enable_gradient_checkpointing function must set the use_reentrant to False, such as  model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})"""
+                )
             self.stage_manager = PipelineStageManager(
                 self.pg_mesh,
                 pipeline_axis=self.pp_axis,
-                enable_interleave=pp_style == "interleaved",
+                enable_interleave=(pp_style == "interleaved" or pp_style == "zbv"),
+                use_zbv=(pp_style == "zbv"),
                 num_model_chunks=num_model_chunks,
                 num_layers_per_stage=num_layers_per_stage,
             )
 
             if pp_style == "interleaved":
                 assert num_model_chunks > 1, "number of model chunks must be > 1 when using interleaved"
-                self.schedule = InterleavedSchedule(
+                self.scheduler = InterleavedSchedule(
                     stage_manager=self.stage_manager,
                     num_model_chunks=num_model_chunks,
                     num_microbatch=num_microbatches,
@@ -1141,12 +1155,20 @@ class HybridParallelPlugin(PipelinePluginBase):
                     fp8_communication=fp8_communication,
                 )
             elif pp_style == "1f1b":
-                self.schedule = OneForwardOneBackwardSchedule(
+                self.scheduler = OneForwardOneBackwardSchedule(
                     stage_manager=self.stage_manager,
                     num_microbatches=num_microbatches,
                     microbatch_size=microbatch_size,
                     enable_metadata_cache=enable_metadata_cache,
                     fp8_communication=fp8_communication,
+                )
+            elif pp_style == "zbv":
+                self.scheduler = ZeroBubbleVPipeScheduler(
+                    stage_manager=self.stage_manager,
+                    schedule=scheduler_nodes,
+                    num_model_chunks=num_model_chunks,
+                    num_microbatch=num_microbatches,
+                    microbatch_size=microbatch_size,
                 )
             else:
                 raise NotImplementedError()
@@ -1263,7 +1285,6 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
-
         if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
@@ -1277,6 +1298,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
                 self.dp_size == 1 and self.pp_size == 1
             )
+            # sync gradients across DP * SP ranks
             # sync gradients across DP * SP ranks
             # Apply Hybrid ZeRO across DP * SP ranks
             if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
@@ -1380,7 +1402,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         ctx = optimizer.no_sync() if isinstance(optimizer, HybridParallelZeroOptimizer) else model.no_sync()
 
         with ctx, model._hook_context():
-            outputs = self.schedule.forward_backward_step(
+            outputs = self.scheduler.forward_backward_step(
                 model, data_iter, criterion, optimizer, return_loss, return_outputs
             )
 

@@ -1,4 +1,4 @@
-from typing import Any, List, OrderedDict, Tuple
+from typing import Any, List, OrderedDict
 
 import torch
 import torch.distributed as dist
@@ -78,9 +78,7 @@ def check_state_dict_equal(
                 v1 = v1.to(v2.dtype)
             assert_close_loose(v1, v2)
         else:
-            if isinstance(v1, Tuple) and not isinstance(v2, Tuple):
-                v2 = tuple(v2)
-            assert v1 == v2, f"{v1} not equals to {v2}. {type(v1)}, {type(v2)}"
+            assert v1 == v2, f"{v1} not equals to {v2}"
 
 
 def check_state_dict_equal_pytree(d1: OrderedDict, d2: OrderedDict, ignore_device: bool = True):

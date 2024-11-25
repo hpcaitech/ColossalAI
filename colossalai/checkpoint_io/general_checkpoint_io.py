@@ -61,7 +61,7 @@ class GeneralCheckpointIO(CheckpointIO):
         if use_async:
             from tensornvme.async_file_io import AsyncFileWriter
 
-            writer = AsyncFileWriter(open(checkpoint, "wb"), self.N_WRITE_ENTRIES, backend="pthread")
+            writer = AsyncFileWriter(open(checkpoint, "wb", buffering=0), self.N_WRITE_ENTRIES, backend="pthread")
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
             self.async_writers.append(writer)
