@@ -87,9 +87,7 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        if not use_async:
-            model_ckpt_path = f"{model_ckpt_path}.pt"
-        if use_async:
+        if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.safetensors"
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
         booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)

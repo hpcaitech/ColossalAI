@@ -47,8 +47,6 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
 
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        if not shard and not use_async:
-            model_ckpt_path = f"{model_ckpt_path}.pt"
         if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.safetensors"
         if not shard and use_async:
