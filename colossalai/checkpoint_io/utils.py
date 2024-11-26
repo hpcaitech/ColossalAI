@@ -311,7 +311,7 @@ def async_save_state_dict_shards(
             index_file.append_weight_map(key, shard_file)
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
-        writer = AsyncFileWriter(open(checkpoint_file_path, "wb", buffering=0), n_write_entries, backend="pthread")
+        writer = AsyncFileWriter(checkpoint_file_path, n_write_entries, backend="pthread")
         writers.append(writer)
 
         if pinned_state_dict is not None:
