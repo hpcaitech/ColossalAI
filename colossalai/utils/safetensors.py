@@ -154,7 +154,7 @@ def save(
 ) -> None:
     prepared_data, tensors, _ = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
-
+    f_writer.register_tasks(2 + len(tensors))
     f_writer.write(n.to_bytes(8, byteorder="little"))
     f_writer.write(header_bytes)
 
@@ -174,7 +174,7 @@ def move_and_save(
 ) -> None:
     prepared_data, _, tensor_keys = prepare(state_dict)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
-
+    f_writer.register_tasks(2 + len(tensor_keys))
     f_writer.write(n.to_bytes(8, byteorder="little"))
     f_writer.write(header_bytes)
 
