@@ -45,11 +45,16 @@ class GeneralCheckpointIO(CheckpointIO):
         model.load_state_dict(checkpoint, strict=strict)
 
     def save_unsharded_model(
-        self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
+        self,
+        model: nn.Module,
+        checkpoint: str,
+        gather_dtensor: bool,
+        use_safetensors: bool,
+        use_async: bool = False,
+        state_dict: dict = None,
     ):
-        state_dict = model.state_dict()
-
-        # TODO(FrankLeeeee): add support for gather_dtensor
+        if state_dict is None:
+            state_dict = model.state_dict()
         if gather_dtensor:
             pass
 
@@ -60,11 +65,11 @@ class GeneralCheckpointIO(CheckpointIO):
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
             self.async_writers.append(writer)
-            move_and_save(writer, state_dict, self.pinned_state_dicts[id(model)])
+            move_and_save(writer, state_dict, state_dict_pinned=self.pinned_state_dicts[id(model)])
 
         else:
             # save the checkpoint
-            save_state_dict(state_dict, checkpoint, use_safetensors)
+            save_state_dict(model.state_dict(), checkpoint, use_safetensors)
 
     def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
         """
