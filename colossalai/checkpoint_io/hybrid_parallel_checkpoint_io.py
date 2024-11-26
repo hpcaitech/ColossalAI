@@ -702,9 +702,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     complete_state_dict.update(_state_dict)
                 if use_async:
 
-                    writer = AsyncFileWriter(
-                        open(checkpoint, "wb", buffering=0), self.N_WRITE_ENTRIES, backend="pthread"
-                    )
+                    writer = AsyncFileWriter(checkpoint, self.N_WRITE_ENTRIES, backend="pthread")
                     if id(model) not in self.pinned_state_dicts:
                         self.pinned_state_dicts[id(model)] = create_pinned_state_dict(complete_state_dict)
                     self.async_writers.append(writer)
