@@ -226,7 +226,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             # When pipeline is not used, save the model shards as in general checkpointIO
             if use_async:
                 pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
-                total_size, pinned_state_dict, writers = async_save_state_dict_shards(
+                total_size, new_pinned_state_dict, writers = async_save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
                     checkpoint=checkpoint,
                     index_file=index_file,
@@ -235,7 +235,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
                 )
-                self.pinned_state_dicts[id(model)] = pinned_state_dict
+                self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
             else:
                 total_size = save_state_dict_shards(
@@ -272,16 +272,18 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             save_index_file = os.path.join("tmp_index_files", save_index_file)
             if use_async:
                 pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
-                total_size, pinned_state_dict, writers = async_save_state_dict_shards(
+                total_size, new_pinned_state_dict, writers = async_save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
                     checkpoint=checkpoint,
                     index_file=index_file,
                     base_filename=weights_name,
                     is_master=control_saving,
+                    use_pp_format=True,
                     pinned_state_dict=pinned_state_dict,
                     n_write_entries=self.N_WRITE_ENTRIES,
+                    move=False,
                 )
-                self.pinned_state_dicts[id(model)] = pinned_state_dict
+                self.pinned_state_dicts[id(model)] = new_pinned_state_dict
                 self.async_writers.extend(writers)
             else:
                 total_size = save_state_dict_shards(
