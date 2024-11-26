@@ -145,7 +145,7 @@ def test_save_load():
         model_state_dict_cuda = {k: v.to(get_current_device()) for k, v in model_state_dict.items()}
         model_state_pinned = {k: v.pin_memory() for k, v in model_state_dict.items()}
         model_saved_path = f"{tempdir}/save_model_cuda.safetensors"
-        f_writer = AsyncFileWriter(fp=open(model_saved_path, "wb"), n_entries=191, backend="pthread")
+        f_writer = AsyncFileWriter(model_saved_path, n_entries=191, backend="pthread")
         move_and_save(
             f_writer,
             state_dict=model_state_dict_cuda,
