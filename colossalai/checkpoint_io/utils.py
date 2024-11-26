@@ -19,7 +19,7 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-from colossalai.utils.safetensors import move_and_save
+from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save, save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -267,6 +267,65 @@ def save_state_dict_shards(
 
 
 def async_save_state_dict_shards(
+    sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
+    checkpoint: str,
+    index_file: "CheckpointIndexFile",
+    base_filename: str,
+    is_master: bool,
+    n_write_entries: int,
+    use_pp_format: bool = False,
+    state_preprocess: bool = False,
+) -> Tuple[int, list]:
+    """
+    Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
+    Args:
+        sharded_state_dict (Iterator[Tuple[OrderedDict, int]]): a generator of shards, each shard contains state dict and shard size.
+        checkpoint (str): The path of checkpoint directory as string.
+        index_file (CheckpointIndexFile): The index file object to be updated.
+        base_filename (str): Decides the prefix of filenames of shards.
+        is_master (bool): Whether current rank is main process.
+        use_safetensors (bool, optional): Whether to use safetensors to save checkpoint. Defaults to False.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
+
+    Returns:
+        int: the total size of shards
+    """
+    from tensornvme.async_file_io import AsyncFileWriter
+
+    total_size = 0
+    shard_filenames = []
+    writers = []
+    for idx, shard_pair in enumerate(sharded_state_dict):
+        shard, current_size = shard_pair
+        # Just loop over the sharder and gather to other ranks if not master
+        if not is_master:
+            del shard
+            continue
+        shard_file = get_shard_filename(base_filename, idx)
+        total_size = total_size + current_size
+        for key in shard.keys():
+            index_file.append_weight_map(key, shard_file)
+        checkpoint_file_path = os.path.join(checkpoint, shard_file)
+
+        if state_preprocess:
+            state_dict, _ = _flatten_optim_state_dict(state_dict=shard)
+        else:
+            state_dict = shard
+        writer = AsyncFileWriter(checkpoint_file_path, n_write_entries, backend="pthread")
+        writers.append(writer)
+
+        # Only save on master rank.
+        save(f_writer=writer, state_dict=state_dict)
+        shard_filenames.append(shard_file)
+        del shard
+
+    # Clean folder, deleted unneeded files.
+    clean_folder(checkpoint, base_filename, shard_filenames, is_master=is_master, use_pp_format=use_pp_format)
+
+    return total_size, writers
+
+
+def async_move_save_state_dict_shards(
     sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
     checkpoint: str,
     index_file: "CheckpointIndexFile",
