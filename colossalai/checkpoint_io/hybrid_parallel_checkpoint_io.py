@@ -112,8 +112,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
                 pinned_state_dicts[prefix + name].copy_(param_)
                 param_ = pinned_state_dicts[prefix + name]
-            else:
-                param_ = param_.cpu()
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
                 yield block, block_size
@@ -128,8 +126,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
                     pinned_state_dicts[prefix + name].copy_(buffer)
                     buffer = pinned_state_dicts[prefix + name]
-                else:
-                    buffer = buffer.cpu()
                 block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
@@ -146,8 +142,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     pinned_state_dicts[extra_state_key] = torch.empty_like(param_, pin_memory=True, device="cpu")
                 pinned_state_dicts[extra_state_key].copy_(extra_state)
                 extra_state = pinned_state_dicts[extra_state_key]
-            else:
-                extra_state = extra_state.cpu()
             block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
             if block is not None:
                 yield block, block_size
