@@ -3,11 +3,12 @@ import tempfile
 import torch
 from safetensors.torch import load_file
 
-from colossalai.testing import check_state_dict_equal
+from colossalai.testing import check_state_dict_equal, clear_cache_before_run
 from colossalai.utils import get_current_device
 from colossalai.utils.safetensors import load_flat, move_and_save, save, save_nested
 
 
+@clear_cache_before_run()
 def test_save_load():
     with tempfile.TemporaryDirectory() as tempdir:
         optimizer_state_dict = {

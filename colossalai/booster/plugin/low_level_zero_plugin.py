@@ -140,7 +140,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
                 from colossalai.utils.safetensors import save_nested
 
-                f_writer = save_nested(checkpoint, f_writer, state_dict)
+                f_writer = save_nested(checkpoint, state_dict)
                 self.async_writers.append(f_writer)
             else:
                 save_state_dict(state_dict, checkpoint, use_safetensors=False)
