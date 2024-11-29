@@ -138,7 +138,9 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
     base_optim.zero_grad()
     dist_optim.zero_grad()
 
-    for p, tp_p in zip(base_param_group, tp_param_group):
+    base_params = base_model.parameters()
+    tp_params = tp_model.parameters()
+    for p, tp_p in zip(base_params, tp_params):
         param_is_distributed = is_distributed_tensor(tp_p)
         if param_is_distributed:
             shard_spec = get_sharding_spec(tp_p)
@@ -156,6 +158,7 @@ def exam_dist_came_base(dtype: torch.dtype, tp_zero_size: tuple[int, int]):
             # No TP bias
             pass
         correctness_verify(p.data, tp_p.data, dtype)
+
     clear_layout_converter()
     Randomizer.reset_index()
     torch.cuda.empty_cache()
