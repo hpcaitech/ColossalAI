@@ -1,10 +1,9 @@
 """
 Implementation of MCTS + Self-refine algorithm.
 
-Reference:
+Structure is adapted from https://github.com/BrendanGraham14/mcts-llm/ with the following reference:
 1. "Accessing GPT-4 level Mathematical Olympiad Solutions via Monte
 Carlo Tree Self-refine with LLaMa-3 8B: A Technical Report"
-2. https://github.com/BrendanGraham14/mcts-llm/
 3. https://github.com/trotsky1997/MathBlackBox/
 4. https://github.com/openreasoner/openr/blob/main/reason/guided_search/tree.py
 """
@@ -121,16 +120,15 @@ class MCTS(BaseModel):
 
         return self.get_best_answer()
 
-    def get_best_answer(self):
+    def _iter_nodes(self):
         to_visit = deque([self.root])
-        best_node = self.root
-
         while to_visit:
             current_node = to_visit.popleft()
-            if current_node.Q > best_node.Q:
-                best_node = current_node
+            yield current_node
             to_visit.extend(current_node.children)
 
+    def get_best_answer(self):
+        best_node = max(self._iter_nodes(), key=lambda node: node.Q, default=self.root)
         return best_node.answer
 
     def self_refine(self, node: MCTSNode):
