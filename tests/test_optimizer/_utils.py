@@ -1,10 +1,13 @@
 import torch
 import torch.distributed as dist
+import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.shardformer.layer.utils import Randomizer
+from colossalai.tensor.d_tensor import get_layout, get_sharding_spec, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
+from colossalai.tensor.d_tensor.sharding_spec import DimSpec
 from colossalai.testing import parameterize, spawn
 from tests.kit.model_zoo import model_zoo
 from tests.test_shardformer.test_model._utils import (
@@ -13,6 +16,88 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
+
+def force_assign_grad(p, g_dtype, grad=None):
+    """Bypass inconsistent grad and param dtype error when assigning grad"""
+    orig_p = p.data
+    p.data = torch.randn_like(p, device=orig_p.device, dtype=g_dtype) if grad == None else grad.clone().to(g_dtype)
+    p.grad = p.data
+    p.data = orig_p
+
+
+def setup_param_groups(model: nn.Module) -> list:
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "weight_decay": 0.1,
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+            "weight_decay": 0.0,
+        },
+    ]
+    return optimizer_grouped_parameters
+
+
+# setup flatten param groups, sharding spec and shape; (For dist Adafactor and CAME)
+def setup_flatten_param_groups_sharding_spec_shape(model: nn.Module) -> dict:
+    flatten_optimizer_grouped_parameters = []
+    sharding_spec = {}  # {id(flatten param): get_layout(p).global_shape}
+    param_shape = {}  # {id(flatten param): get_sharding_spec(p)}
+    for n, p in model.named_parameters():
+        # flatten_p = copy.deepcopy(p).flatten()
+        flatten_p = nn.Parameter(p.clone().flatten().requires_grad_(True))
+        flatten_optimizer_grouped_parameters.append(flatten_p)
+        if is_distributed_tensor(p):
+            sharding_spec[id(flatten_p)] = get_sharding_spec(p)
+            param_shape[id(flatten_p)] = get_layout(p).global_shape
+        else:
+            sharding_spec[id(flatten_p)] = None
+            param_shape[id(flatten_p)] = p.shape
+    return flatten_optimizer_grouped_parameters, sharding_spec, param_shape
+
+
+def set_master_param_to_shard_param(master_param_list) -> dict:
+    master_param_to_shard_param = {id(p): p for p in master_param_list}
+    return master_param_to_shard_param
+
+
+def set_dist_grad(
+    dist_module: nn.Module,
+    torch_model: nn.Module,
+    g_dtype: torch.dtype,
+    group: dist.ProcessGroup,
+    tp_spec: DimSpec,
+) -> None:
+    """
+    Set split grads for Tensor Parallel or ZeRO DP.
+    We do not need a separate treatment for ZeRO,
+    as the wrapper takes care of reduce-scattering grads.
+    """
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    for p, torch_p in zip(dist_module.parameters(), torch_model.parameters()):
+        if torch_p.grad is None:
+            torch_p.grad = torch.zeros_like(torch_p)
+
+        is_distributed = hasattr(p, "dist_layout")
+        if is_distributed:
+            sharding = p.dist_layout.sharding_spec.sharding_sequence
+            split_dim = sharding.index(tp_spec)
+            shape = torch_p.split(world_size, dim=split_dim)[rank].shape
+
+            indices = torch.arange(shape[split_dim] * rank, shape[split_dim] * (rank + 1))
+            # Generate grads only for the correctly split chunk
+            torch_p.grad.index_add_(split_dim, indices, torch.randn(shape, device=torch_p.device, dtype=g_dtype))
+
+        else:
+            shape = torch_p.shape
+            torch_p.grad += torch.randn(shape, device=torch_p.device, dtype=g_dtype)
+
+        force_assign_grad(p, g_dtype, grad=torch_p.grad)
 
 
 def check_optim_states(org_optim, sharded_optim):
