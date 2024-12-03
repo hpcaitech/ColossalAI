@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import (
     LayerNorm,
     Linear1D_Col,
     Linear1D_Row,
+    LinearWithGradAccum,
     PaddingEmbedding,
     PaddingLMHead,
     VocabParallelEmbedding1D,
@@ -76,6 +77,8 @@ class OPTPolicy(Policy):
             self.shard_config.enable_sequence_parallelism = False
             warnings.warn("OPT doesn't support sequence parallelism now, will ignore the sequence parallelism flag.")
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 self.model.config.num_attention_heads % self.shard_config.tensor_parallel_size == 0
@@ -85,10 +88,16 @@ class OPTPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="fc1",
                         target_module=Linear1D_Col,
+                        kwargs=dict(
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="fc2",
                         target_module=Linear1D_Row,
+                        kwargs=dict(
+                            use_zbv=use_zbv,
+                        ),
                     ),
                 ]
             )
@@ -104,6 +113,7 @@ class OPTPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -111,6 +121,7 @@ class OPTPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -118,6 +129,7 @@ class OPTPolicy(Policy):
                         target_module=Linear1D_Col,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -125,11 +137,67 @@ class OPTPolicy(Policy):
                         target_module=Linear1D_Row,
                         kwargs={
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                 ],
             )
+        elif use_zbv:
+            policy[OPTDecoderLayer] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="fc1",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="fc2",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                ]
+            )
 
+            policy[attn_cls] = ModulePolicyDescription(
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="out_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
+                        },
+                    ),
+                ],
+            )
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
@@ -221,15 +289,30 @@ class OPTPolicy(Policy):
 
         held_layers = []
         layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-            held_layers.append(module.embed_positions)
-            held_layers.append(module.project_in)
-        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.final_layer_norm)
-            held_layers.append(module.project_out)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embed_tokens)
+                held_layers.append(module.embed_positions)
+                held_layers.append(module.project_in)
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.layers[start_idx:end_idx])
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(module.final_layer_norm)
+                held_layers.append(module.project_out)
+        else:
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embed_tokens)
+                held_layers.append(module.embed_positions)
+                held_layers.append(module.project_in)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
+            held_layers.extend(module.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.final_layer_norm)
+                held_layers.append(module.project_out)
         return held_layers
 
     def set_pipeline_forward(self, model_cls: nn.Module, new_forward: Callable, policy: Dict) -> None:
@@ -323,8 +406,15 @@ class OPTForCausalLMPolicy(OPTPolicy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
-            held_layers.append(self.model.lm_head)
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.lm_head)
+        else:
+            if self.pipeline_stage_manager.is_last_stage():
+                held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
@@ -395,8 +485,15 @@ class OPTForQuestionAnsweringPolicy(OPTPolicy):
 
     def get_held_layers(self) -> List[nn.Module]:
         held_layers = super().get_held_layers()
-        if self.pipeline_stage_manager.is_last_stage():
-            held_layers.append(self.model.qa_outputs)
+        stage_manager = self.pipeline_stage_manager
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.qa_outputs)
+        else:
+            if self.pipeline_stage_manager.is_last_stage():
+                held_layers.append(self.model.qa_outputs)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
