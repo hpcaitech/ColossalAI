@@ -8,8 +8,6 @@ from typing import Optional
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.utils.safetensors import move_and_save
-
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
@@ -54,6 +52,7 @@ class GeneralCheckpointIO(CheckpointIO):
             pass
 
         if use_async:
+            from colossalai.utils.safetensors import move_and_save
 
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
