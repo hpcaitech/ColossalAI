@@ -8,8 +8,6 @@ from typing import Optional
 import torch.nn as nn
 from torch.optim import Optimizer
 
-from colossalai.utils.safetensors import move_and_save
-
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
@@ -55,6 +53,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         if use_async:
             from tensornvme.async_file_io import AsyncFileWriter
+            from colossalai.utils.safetensors import move_and_save
 
             writer = AsyncFileWriter(checkpoint, self.N_WRITE_ENTRIES, backend="pthread")
             if id(model) not in self.pinned_state_dicts:

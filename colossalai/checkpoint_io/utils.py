@@ -19,7 +19,6 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
-from colossalai.utils.safetensors import move_and_save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -290,6 +289,7 @@ def async_save_state_dict_shards(
     Returns:
         int: the total size of shards
     """
+    from colossalai.utils.safetensors import move_and_save
     from tensornvme.async_file_io import AsyncFileWriter
 
     total_size = 0
