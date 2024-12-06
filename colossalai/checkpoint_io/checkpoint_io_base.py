@@ -59,8 +59,6 @@ class CheckpointIO(ABC):
         >>> checkpoint_io.save_optimizer(optimizer, 'optimizer.pt')
     """
 
-    N_WRITE_ENTRIES: int = 32
-
     # ======================================
     # Public methods
     # ======================================

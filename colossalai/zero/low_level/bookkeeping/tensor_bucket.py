@@ -83,7 +83,11 @@ class TensorBucket:
         unflat_buffers = list(map(list, zip(*unflat_buffers)))
         for unflat_shards, tensor in zip(unflat_buffers, self._bucket):
             write_back_tensor = self._write_back_pairs[tensor]
-            write_back_tensor.data.copy_(
-                _flatten_dense_tensors(unflat_shards)[: write_back_tensor.numel()].reshape_as(write_back_tensor)
-            )
+            rec_tensor = _flatten_dense_tensors(unflat_shards)[: write_back_tensor.numel()]
+            if write_back_tensor.is_contiguous():
+                rec_tensor = rec_tensor.view_as(write_back_tensor)
+            else:
+                rec_tensor = rec_tensor.reshape_as(write_back_tensor)
+            write_back_tensor.data.copy_(rec_tensor)
+
         self.empty()
