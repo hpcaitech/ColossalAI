@@ -38,7 +38,13 @@ from ._operation import (
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset, is_share_sp_tp
 
-__all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row", "GPT2FusedLinearConv1D"]
+__all__ = [
+    "FusedLinear1D_Col",
+    "FusedLinear1D_Row",
+    "GPT2FusedLinearConv1D_Col",
+    "GPT2FusedLinearConv1D_Row",
+    "GPT2FusedLinearConv1D",
+]
 
 # ====================================
 # For GPT Only
@@ -641,6 +647,7 @@ class GPT2FusedLinearConv1D(ParallelModule):
     More details about ``initializer`` please refer to
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
+
     def __init__(
         self,
         in_features: int,

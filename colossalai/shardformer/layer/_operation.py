@@ -146,7 +146,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
         input, weight, bias = ctx.saved_tensors
         use_bias = ctx.use_bias
         use_zbv = ctx.use_zbv
-        
+
         def execute_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_, wgrad_gemm_accum_func=None):
             wgrad_gemm_accum_func(_grad_output_, _input_, _weight_main_grad_)
 
@@ -165,7 +165,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
         if len(grad_output.shape) > 2:
             grad_output = grad_output.view(-1, grad_output.shape[-1])
             total_input = total_input.view(-1, total_input.shape[-1])
-        
+
         # split dx & dw
         if weight.grad is not None:
             grad = weight.grad
@@ -217,7 +217,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                 grad_weight = None
             else:
                 grad_weight = total_input.t().matmul(grad_output)
-     
+
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         return grad_input, grad_weight, grad_bias, None, None, None, None
@@ -1213,10 +1213,10 @@ def matmul_with_async_comm(input_, weight, bias, process_group, async_grad_allre
         input_, weight, bias, process_group, async_grad_allreduce, fp8_communication
     )
 
+
 def matmul_with_grad_comm(input_, weight, bias, async_grad_allreduce, use_zbv=False):
-    return MatmulWithGradAccum.apply(
-        input_, weight, bias, async_grad_allreduce, use_zbv
-    )
+    return MatmulWithGradAccum.apply(input_, weight, bias, async_grad_allreduce, use_zbv)
+
 
 def linear_with_async_comm(
     input_, weight, bias, process_group, async_grad_allreduce, fp8_communication=False, use_zbv=False
