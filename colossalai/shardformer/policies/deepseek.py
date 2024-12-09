@@ -6,7 +6,7 @@ from torch import Tensor
 from torch.nn import Module
 from transformers.utils import is_flash_attn_greater_or_equal_2_10
 
-from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col
+from colossalai.shardformer.layer import FusedRMSNorm, Linear1D_Col, LinearWithGradAccum
 from colossalai.shardformer.layer.embedding import PaddingEmbedding, VocabParallelEmbedding1D
 from colossalai.shardformer.layer.linear import Linear1D_Row
 from colossalai.shardformer.modeling.deepseek import (
@@ -107,6 +107,8 @@ class DeepseekPolicy(Policy):
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_tensor_parallelism:
             # tensor parallelism for non-moe params
             assert (
@@ -133,22 +135,22 @@ class DeepseekPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs={"fp8_communication": self.shard_config.fp8_communication},
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate",
@@ -162,7 +164,42 @@ class DeepseekPolicy(Policy):
                     ),
                 ],
             )
-
+        elif use_zbv:
+            policy["DeepseekDecoderLayer"] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs={"fp8_communication": self.shard_config.fp8_communication, "use_zbv": use_zbv},
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate",
+                        target_module=DeepseekMoEGate_Col,
+                        kwargs={
+                            "gather_output": True,
+                            "fp8_communication": self.shard_config.fp8_communication,
+                            "config": self.model.config,
+                        },
+                        ignore_if_not_exist=True,
+                    ),
+                ],
+            )
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
@@ -291,13 +328,26 @@ class DeepseekPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-        layers_per_stage = stage_manager.distribute_layers(len(module.layers))
-        if stage_manager.is_first_stage():
-            held_layers.append(module.embed_tokens)
-        start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
-        held_layers.extend(module.layers[start_idx:end_idx])
-        if stage_manager.is_last_stage():
-            held_layers.append(module.norm)
+        if stage_manager.is_interleave:
+            assert stage_manager.num_model_chunks is not None
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            if stage_manager.is_first_stage(ignore_chunk=True):
+                held_layers.append(module.embed_tokens)
+            for start_idx, end_idx in stage_indices:
+                held_layers.extend(module.layers[start_idx:end_idx])
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(module.norm)
+        else:
+            layers_per_stage = stage_manager.distribute_layers(len(module.layers))
+            if stage_manager.is_first_stage():
+                held_layers.append(module.embed_tokens)
+            start_idx, end_idx = stage_manager.get_stage_index(layers_per_stage)
+            held_layers.extend(module.layers[start_idx:end_idx])
+            if stage_manager.is_last_stage():
+                held_layers.append(module.norm)
 
         return held_layers
 
@@ -330,6 +380,7 @@ class DeepseekModelPolicy(DeepseekPolicy):
 class DeepseekForCausalLMPolicy(DeepseekPolicy):
     def module_policy(self):
         policy = super().module_policy()
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
         # TODO: assign pg mesh from plugin to all modules
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
@@ -339,7 +390,29 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(gather_output=True, fp8_communication=self.shard_config.fp8_communication),
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
+                        )
+                    ]
+                )
+            }
+            policy.update(new_item)
+        elif use_zbv:
+            # add a new item for casual lm
+            new_item = {
+                "DeepseekForCausalLM": ModulePolicyDescription(
+                    sub_module_replacement=[
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=LinearWithGradAccum,
+                            kwargs=dict(
+                                gather_output=True,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
                     ]
                 )
@@ -360,8 +433,14 @@ class DeepseekForCausalLMPolicy(DeepseekPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage():
-            held_layers.append(self.model.lm_head)
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.lm_head)
+        else:
+            if stage_manager.is_last_stage():
+                held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
