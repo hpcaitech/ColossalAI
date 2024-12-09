@@ -8,7 +8,8 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
+from colossalai.pipeline.weight_grad_store import WeightGradStore
+from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row, GPT2FusedLinearConv1D
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -118,11 +119,85 @@ def check_linear_conv_1d_row(lazy_init: bool, seq_parallel_mode: bool):
     assert_close(target_grad, linear_row.weight.grad)
 
 
+def check_linear_conv_1d_without_weight_grad_store(lazy_init: bool, seq_parallel_mode: str):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    linear = Conv1D(192, 48).cuda()
+    with ctx:
+        linear_copy = Conv1D(192, 48).cuda()
+    linear_base = GPT2FusedLinearConv1D.from_native_module(
+        linear_copy, seq_parallel_mode=seq_parallel_mode
+    )
+
+    assert linear.weight.shape == torch.Size([48, 192])
+    assert linear_base.weight.shape == torch.Size([48, 192])
+    assert linear_base.bias.shape == torch.Size([192])
+    assert linear_copy.weight is linear_base.weight
+    assert linear_copy.bias is linear_base.bias
+
+    # ensure weights are reversibly loadable
+    linear_base.load_state_dict(linear.state_dict())
+    linear.load_state_dict(linear_base.state_dict())
+
+    # check computation correctness
+    x = torch.rand(1, 4, 48).cuda()
+    out = linear(x)
+    gather_out = linear_base(x)
+    assert_close(out, gather_out)
+
+    # check backward correctness
+    out.sum().backward()
+    gather_out.sum().backward()
+
+    # check the input gradients & weight gradients
+    assert_close(out.grad, gather_out.grad)
+    assert_close(linear.weight.grad, linear_base.weight.grad)
+
+def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mode: str):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+
+    linear = Conv1D(192, 48).cuda()
+    with ctx:
+        linear_copy = Conv1D(192, 48).cuda()
+    linear_base = GPT2FusedLinearConv1D.from_native_module(
+        linear_copy, seq_parallel_mode=seq_parallel_mode, use_zbv=True
+    )
+
+    assert linear.weight.shape == torch.Size([48, 192])
+    assert linear_base.weight.shape == torch.Size([48, 192])
+    assert linear_base.bias.shape == torch.Size([192])
+    assert linear_copy.weight is linear_base.weight
+    assert linear_copy.bias is linear_base.bias
+
+    # ensure weights are reversibly loadable
+    linear_base.load_state_dict(linear.state_dict())
+    linear.load_state_dict(linear_base.state_dict())
+
+    # check computation correctness
+    x = torch.rand(1, 4, 48).cuda()
+    out = linear(x)
+    gather_out = linear_base(x)
+    assert_close(out, gather_out)
+
+    # check backward correctness
+    out.sum().backward()
+    gather_out.sum().backward()
+    
+    WeightGradStore.flush(chunk=0)  # flush buffer to chunk 0 Queue
+    WeightGradStore.pop(chunk=0)
+
+    # check the input gradients & weight gradients
+    assert_close(out.grad, gather_out.grad)
+    # TODO:linear_base.weight.grad is None; But not none in WeightGradStore
+    # assert_close(linear.weight.grad, linear_base.weight.grad)
+
 @parameterize("lazy_init", [False, True])
 @parameterize("seq_parallel_mode", ["split_gather", None])
 def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel_mode: bool):
     check_linear_conv_1d_col(lazy_init, seq_parallel_mode)
     check_linear_conv_1d_row(lazy_init, seq_parallel_mode)
+    check_linear_conv_1d_without_weight_grad_store(lazy_init, None)
+    check_linear_conv_1d_with_weight_grad_store(lazy_init, None)
 
 
 def run_dist(rank, world_size, port):

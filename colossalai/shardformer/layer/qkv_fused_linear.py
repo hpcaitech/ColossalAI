@@ -38,7 +38,7 @@ from ._operation import (
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset, is_share_sp_tp
 
-__all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row"]
+__all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row", "GPT2FusedLinearConv1D"]
 
 # ====================================
 # For GPT Only
@@ -630,7 +630,6 @@ class GPT2FusedLinearConv1D(ParallelModule):
         out_features (int): size of each output sample.
         bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
         dtype (`torch.dtype`): The dtype of parameters, defaults to None.
-        parallel_input (bool): If set to ``True``, it's assumed that the input is split, defaults to False.
         skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
         seq_parallel_mode (str): If set to ``None``, it will not use sequence parallel, otherwise will use corresponding mode of sequence parallel, defaults to None.
             which is preserved for kernel fusion, defaults to False
@@ -646,7 +645,6 @@ class GPT2FusedLinearConv1D(ParallelModule):
         self,
         in_features: int,
         out_features: int,
-        split_sizes: List[int],
         bias: bool = True,
         dtype: torch.dtype = None,
         device: torch.device = None,
@@ -668,13 +666,8 @@ class GPT2FusedLinearConv1D(ParallelModule):
         self.seq_parallel_dim = seq_parallel_dim
         self.skip_bias_add = skip_bias_add
         self.device = device
-        self.split_sizes = split_sizes
         self.fp8_communication = fp8_communication
         self.use_zbv = use_zbv
-
-        assert (
-            sum(split_sizes) == out_features
-        ), f"The sum of split_sizes({sum(split_sizes)}) should be equal to out_features({out_features})."
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")
@@ -714,7 +707,6 @@ class GPT2FusedLinearConv1D(ParallelModule):
     @staticmethod
     def from_native_module(
         module: nn.Module,
-        split_sizes: List[int],
         *args,
         **kwargs,
     ) -> ParallelModule:
@@ -739,7 +731,6 @@ class GPT2FusedLinearConv1D(ParallelModule):
             device=device,
             weight=module.weight,
             bias_=module.bias,
-            split_sizes=split_sizes,
             *args,
             **kwargs,
         )

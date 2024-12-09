@@ -136,7 +136,6 @@ class MatmulWithGradAccum(torch.autograd.Function):
         ctx.use_zbv = use_zbv
 
         output = torch.matmul(input_, weight)
-
         if bias is not None:
             output = output + bias
 
@@ -149,10 +148,10 @@ class MatmulWithGradAccum(torch.autograd.Function):
         use_zbv = ctx.use_zbv
         
         def execute_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_, wgrad_gemm_accum_func=None):
-            wgrad_gemm_accum_func(_input_, _grad_output_, _weight_main_grad_)
+            wgrad_gemm_accum_func(_grad_output_, _input_, _weight_main_grad_)
 
         def execute_w_pass(_input_, _grad_output_, _weight_main_grad_=None, wgrad_gemm_func=None):
-            return wgrad_gemm_func(_grad_output_.t(), _input_)
+            return wgrad_gemm_func(_input_.t(), _grad_output_)
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
         weight = weight.view(weight.shape)
@@ -203,7 +202,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                     fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16(total_input, grad_output, grad)
                     grad_weight = None
                 else:
-                    grad_weight = grad_output.t().matmul(total_input)
+                    grad_weight = total_input.t().matmul(grad_output)
         else:
             if use_zbv:
                 WeightGradStore.put(
@@ -217,8 +216,8 @@ class MatmulWithGradAccum(torch.autograd.Function):
                 )
                 grad_weight = None
             else:
-                grad_weight = grad_output.t().matmul(total_input)
-
+                grad_weight = total_input.t().matmul(grad_output)
+     
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         return grad_input, grad_weight, grad_bias, None, None, None, None
