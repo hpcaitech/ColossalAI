@@ -1349,9 +1349,7 @@ class FusedLinear1D(ParallelModule):
         # Matrix multiply.
         bias = self.bias if not self.skip_bias_add else None
 
-        output_parallel = linear_with_grad_accum(
-            input_parallel, self.weight, bias, True, fp8_communication=self.fp8_communication, use_zbv=self.use_zbv
-        )
+        output_parallel = linear_with_grad_accum(input_parallel, self.weight, bias, True, use_zbv=self.use_zbv)
 
         output = output_parallel
 

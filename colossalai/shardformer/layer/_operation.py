@@ -173,7 +173,6 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
                 grad_weight = None
             else:
                 grad_weight = total_input.t().matmul(grad_output)
-
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
         if ctx.async_grad_allreduce and not fp8_communication:
@@ -1114,7 +1113,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             handle.wait()
 
-        return output, grad_weight, grad_bias, None, None, None, None, None
+        return output, grad_weight, grad_bias, None, None, None, None, None, None
 
 
 class _SplitForwardGatherBackward(torch.autograd.Function):
