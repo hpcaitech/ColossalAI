@@ -10,6 +10,7 @@ from colossalai.shardformer.layer import (
     LayerNorm,
     Linear1D_Col,
     Linear1D_Row,
+    LinearWithGradAccum,
     PaddingEmbedding,
     PaddingLMHead,
     VocabParallelEmbedding1D,
@@ -107,6 +108,8 @@ class CommandPolicy(Policy):
                     target_key=CohereModel,
                 )
 
+        use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
         if self.shard_config.enable_tensor_parallelism:
             assert (
                 num_q_heads % tp_size == 0
@@ -128,41 +131,137 @@ class CommandPolicy(Policy):
                     SubModuleReplacementDescription(
                         suffix="self_attn.q_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.k_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.v_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.o_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.gate_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.up_proj",
                         target_module=Linear1D_Col,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.down_proj",
                         target_module=Linear1D_Row,
-                        kwargs=dict(seq_parallel_mode=sp_mode, fp8_communication=self.shard_config.fp8_communication),
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
                     ),
                 ],
             )
-
+        elif use_zbv:
+            policy[CohereDecoderLayer] = ModulePolicyDescription(
+                attribute_replacement=decoder_attribute_replacement,
+                sub_module_replacement=[
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.q_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.k_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.v_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="self_attn.o_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.gate_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.up_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                    SubModuleReplacementDescription(
+                        suffix="mlp.down_proj",
+                        target_module=LinearWithGradAccum,
+                        kwargs=dict(
+                            seq_parallel_mode=sp_mode,
+                            fp8_communication=self.shard_config.fp8_communication,
+                            use_zbv=use_zbv,
+                        ),
+                    ),
+                ],
+            )
         if embedding_cls is not None:
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
@@ -258,7 +357,9 @@ class CommandPolicy(Policy):
                 held_layers.append(module.embed_tokens)
             for start_idx, end_idx in stage_indices:
                 held_layers.extend(module.layers[start_idx:end_idx])
-            if stage_manager.is_last_stage(ignore_chunk=True):
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
                 held_layers.append(module.norm)
 
         else:
@@ -351,8 +452,14 @@ class CommandForCausalLMPolicy(CommandPolicy):
         """Get pipeline layers for current stage."""
         stage_manager = self.pipeline_stage_manager
         held_layers = super().get_held_layers()
-        if stage_manager.is_last_stage(ignore_chunk=True):
-            held_layers.append(self.model.lm_head)
+        if stage_manager.is_interleave:
+            if (stage_manager.use_zbv and stage_manager.is_first_stage(ignore_chunk=True)) or (
+                not stage_manager.use_zbv and stage_manager.is_last_stage(ignore_chunk=True)
+            ):
+                held_layers.append(self.model.lm_head)
+        else:
+            if stage_manager.is_last_stage(ignore_chunk=True):
+                held_layers.append(self.model.lm_head)
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:

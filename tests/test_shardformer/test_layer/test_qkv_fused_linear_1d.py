@@ -7,7 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import FusedLinear1D_Col, FusedLinear1D_Row
+from colossalai.shardformer.layer import FusedLinear1D, FusedLinear1D_Col, FusedLinear1D_Row
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -120,12 +120,45 @@ def check_linear_1d_col_row(lazy_init: bool):
     assert_close(target_grad2, linear_row.weight.grad)
 
 
+@parameterize("lazy_init", [False, True])
+def check_linear_1d_base(lazy_init: bool):
+    ctx = LazyInitContext() if lazy_init else nullcontext()
+    linear = nn.Linear(8, 80).cuda()
+    with ctx:
+        linear_copy = nn.Linear(8, 80).cuda()
+    linear_base = FusedLinear1D.from_native_module(linear_copy)
+
+    assert linear.weight.shape == torch.Size([80, 8])
+    assert linear.bias.shape == torch.Size([80])
+    assert linear_base.weight.shape == torch.Size([80, 8])
+    assert linear_base.bias.shape == torch.Size([80])
+    assert linear_copy.weight is linear_base.weight
+    assert linear_copy.bias is linear_base.bias
+
+    # ensure weights are reversibly loadable
+    linear_base.load_state_dict(linear.state_dict())
+    linear.load_state_dict(linear_base.state_dict())
+
+    # check computation correctness
+    x = torch.rand(4, 8).cuda()
+    out = linear(x)
+    base_out = linear_base(x)
+    assert_close(out, base_out)
+
+    # check backward correctness
+    out.sum().backward()
+    base_out.sum().backward()
+
+    assert_close(linear.weight.grad, linear_base.weight.grad)
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 
     check_linear_1d_col()
     check_linear_1d_row()
     check_linear_1d_col_row()
+    check_linear_1d_base()
 
 
 @rerun_if_address_is_in_use()
