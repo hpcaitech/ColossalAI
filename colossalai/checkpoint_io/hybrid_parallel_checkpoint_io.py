@@ -772,6 +772,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 for _state_dict in state_dict_list:
                     complete_state_dict.update(_state_dict)
                 if use_async:
+                    from colossalai.utils.safetensors import save
                     if id(model) not in self.pinned_state_dicts:
                         self.pinned_state_dicts[id(model)] = create_pinned_state_dict(complete_state_dict)
                     for name, param in complete_state_dict.items():
