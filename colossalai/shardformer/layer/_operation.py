@@ -736,7 +736,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         if ctx.async_grad_reduce_scatter:
             handle.wait()
 
-        return output, grad_weight, grad_bias, None, None, None, None
+        return output, grad_weight, grad_bias, None, None, None, None, None
 
 
 def _ring_as_reducescatter(
@@ -930,7 +930,7 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
         # grad_weight = grad_output.t().matmul(total_input)
         grad_bias = grad_output.sum(dim=0) if use_bias else None
 
-        return grad_input, grad_weight, grad_bias, None, None, None
+        return grad_input, grad_weight, grad_bias, None, None, None, None
 
 
 class _ReduceScatterForwardGatherBackward(torch.autograd.Function):
