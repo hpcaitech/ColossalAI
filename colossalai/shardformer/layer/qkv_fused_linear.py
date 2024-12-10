@@ -38,7 +38,13 @@ from ._operation import (
 from .parallel_module import ParallelModule
 from .utils import create_randomizer_with_offset, is_share_sp_tp
 
-__all__ = ["FusedLinear1D_Col", "FusedLinear1D_Row", "GPT2FusedLinearConv1D_Col", "GPT2FusedLinearConv1D_Row", "GPT2FusedLinearConv1D"]
+__all__ = [
+    "FusedLinear1D_Col",
+    "FusedLinear1D_Row",
+    "GPT2FusedLinearConv1D_Col",
+    "GPT2FusedLinearConv1D_Row",
+    "GPT2FusedLinearConv1D",
+]
 
 # ====================================
 # For GPT Only
@@ -647,6 +653,7 @@ class GPT2FusedLinearConv1D(ParallelModule):
     More details about ``initializer`` please refer to
     `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
     """
+
     def __init__(
         self,
         in_features: int,
@@ -1174,3 +1181,32 @@ class FusedLinear1D_Row(ParallelModule):
             return output
         else:
             return output, self.bias
+
+
+class FusedLinear1D(ParallelModule):
+    r"""Fused Linear layer with column parallelism.
+
+    The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
+    its second dimension as :math:`A = [A_1, ..., A_p]`. This layer is used to fit `torch.nn.Linear` layer (Fused QKV) in normal torch layer of huggingface, like SAM.
+
+    Args:
+        in_features (int): size of each input sample.
+        out_features (int): size of each output sample.
+        split_sizes (List[int]): The sizes of the split tensor.
+        bias (bool, optional): If set to ``False``, the layer will not learn an additive bias, defaults to ``True``.
+        dtype (`torch.dtype`): The dtype of parameters, defaults to None.
+        device (`torch.device`): The device of parameters, defaults to None.
+        process_group (`torch.distributed.ProcessGroup`): The process group to be used for weight sharding and communication, defaults to None.
+        gather_output (bool, optional): If true, call all-gather on output and make Y available
+                    to all GPUs, otherwise, every GPU will have its output
+                    which is :math:`Y_i = XA_i`, defaults to False
+        skip_bias_add (bool): If set to ``True``, it will skip bias add for linear layer,
+            which is preserved for kernel fusion, defaults to False
+        weight_initializer (`typing.Callable`):
+            The initializer of weight, defaults to kaiming uniform initializer.
+        bias_initializer (`typing.Callable`):
+            The initializer of bias, defaults to xavier uniform initializer.
+
+    More details about ``initializer`` please refer to
+    `init <https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/nn/init.py>`_.
+    """
