@@ -9,7 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.weight_grad_store import WeightGradStore
-from colossalai.shardformer.layer import GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row, GPT2FusedLinearConv1D
+from colossalai.shardformer.layer import GPT2FusedLinearConv1D, GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -125,9 +125,7 @@ def check_linear_conv_1d_without_weight_grad_store(lazy_init: bool, seq_parallel
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_base = GPT2FusedLinearConv1D.from_native_module(
-        linear_copy, seq_parallel_mode=seq_parallel_mode
-    )
+    linear_base = GPT2FusedLinearConv1D.from_native_module(linear_copy, seq_parallel_mode=seq_parallel_mode)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_base.weight.shape == torch.Size([48, 192])
@@ -152,6 +150,7 @@ def check_linear_conv_1d_without_weight_grad_store(lazy_init: bool, seq_parallel
     # check the input gradients & weight gradients
     assert_close(out.grad, gather_out.grad)
     assert_close(linear.weight.grad, linear_base.weight.grad)
+
 
 def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mode: str):
     ctx = LazyInitContext() if lazy_init else nullcontext()
@@ -182,7 +181,7 @@ def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mo
     # check backward correctness
     out.sum().backward()
     gather_out.sum().backward()
-    
+
     WeightGradStore.flush(chunk=0)  # flush buffer to chunk 0 Queue
     WeightGradStore.pop(chunk=0)
 
@@ -190,6 +189,7 @@ def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mo
     assert_close(out.grad, gather_out.grad)
     # TODO:linear_base.weight.grad is None; But not none in WeightGradStore
     # assert_close(linear.weight.grad, linear_base.weight.grad)
+
 
 @parameterize("lazy_init", [False, True])
 @parameterize("seq_parallel_mode", ["split_gather", None])
