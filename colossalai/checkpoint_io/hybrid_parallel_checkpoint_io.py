@@ -22,7 +22,7 @@ from colossalai.tensor.padded_tensor import (
     to_unpadded_tensor,
 )
 from colossalai.utils import get_current_device, get_non_persistent_buffers_set
-from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat, save
+from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -865,6 +865,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if self.coordinator.is_master():
                 if use_async:
                     from colossalai.utils.safetensors import save
+
                     flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
                     if id(optimizer) not in self.pinned_state_dicts:
                         self.pinned_state_dicts = create_pinned_state_dict(flatten_state_dict)
@@ -892,13 +893,14 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_dict["state"].update(_states)
                 if use_async:
                     from colossalai.utils.safetensors import save
+
                     flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
                     if id(optimizer) not in self.pinned_state_dicts:
                         self.pinned_state_dicts = create_pinned_state_dict(flatten_state_dict)
                     for k, v in flatten_state_dict.items():
                         self.pinned_state_dicts[k].copy_(v)
                         flatten_state_dict[k] = self.pinned_state_dicts[k]
-                    writer=save(path=checkpoint, state_dict=flatten_state_dict, metadata=metadata)
+                    writer = save(path=checkpoint, state_dict=flatten_state_dict, metadata=metadata)
                     self.async_writers.append(writer)
                 else:
                     save_state_dict(state_dict, checkpoint, use_safetensors=False)
