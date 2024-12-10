@@ -75,6 +75,7 @@ class BlipPolicy(Policy):
                         kwargs={
                             "split_sizes": [self.model.config.vision_config.hidden_size] * 3,
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
@@ -297,7 +298,6 @@ class BlipPolicy(Policy):
                     policy=policy,
                     target_key=Blip2MLP,
                 )
-
         elif use_zbv:
             policy[Blip2EncoderLayer] = ModulePolicyDescription(
                 sub_module_replacement=[
@@ -307,10 +307,11 @@ class BlipPolicy(Policy):
                     ),
                     SubModuleReplacementDescription(
                         suffix="self_attn.qkv",
-                        target_module=col_nn.FusedLinear1D_Col,
+                        target_module=col_nn.FusedLinear1D,
                         kwargs={
                             "split_sizes": [self.model.config.vision_config.hidden_size] * 3,
                             "fp8_communication": self.shard_config.fp8_communication,
+                            "use_zbv": use_zbv,
                         },
                     ),
                     SubModuleReplacementDescription(
