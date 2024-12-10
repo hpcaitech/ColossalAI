@@ -189,7 +189,6 @@ def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mo
     # check the input gradients & weight gradients
     assert_close(out.grad, gather_out.grad)
     # TODO:linear_base.weight.grad is None; But not none in WeightGradStore
-    print(f"ZBV weight.grad {linear_base.weight.grad}")
     # assert_close(linear.weight.grad, linear_base.weight.grad)
 
 @parameterize("lazy_init", [False, True])

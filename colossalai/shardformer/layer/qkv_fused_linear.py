@@ -229,6 +229,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         fp8_communication: bool = False,
+        use_zbv: bool = False,
     ):
         super().__init__()
 
@@ -242,6 +243,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
         self.split_sizes = split_sizes
         self.process_group = process_group
         self.fp8_communication = fp8_communication
+        self.use_zbv = use_zbv
 
         assert (
             sum(split_sizes) == out_features
@@ -376,6 +378,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                 1,
                 ring=self.seq_parallel_mode == "ring",
                 fp8_communication=self.fp8_communication,
+                use_zbv=self.use_zbv,
             )
         elif self.seq_parallel_mode is None or self.seq_parallel_mode == "ring_attn":
             # Set up backprop all-reduce.
@@ -387,6 +390,7 @@ class GPT2FusedLinearConv1D_Col(ParallelModule):
                 self.process_group,
                 True,
                 fp8_communication=self.fp8_communication,
+                use_zbv=self.use_zbv,
             )
         else:
             raise NotImplementedError(f"seq_parallel_mode={self.seq_parallel_mode} is not supported!")
@@ -442,6 +446,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
         stream_chunk_num: int = 1,
         fp8_communication: bool = False,
+        use_zbv: bool = False,
     ):
         super().__init__()
 
@@ -456,6 +461,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
         self.seq_parallel_mode = seq_parallel_mode
         self.num_partitions = dist.get_world_size(self.process_group)
         self.fp8_communication = fp8_communication
+        self.use_zbv = use_zbv
 
         if skip_bias_add and not bias:
             raise ValueError("cannot skip bias addition if bias is None")

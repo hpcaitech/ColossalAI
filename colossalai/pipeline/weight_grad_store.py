@@ -8,7 +8,6 @@ class WeightGradStore:
 
     @classmethod
     def put(cls, total_input, grad_output, weight, func):
-        # func(total_input, grad_output, weight.main_grad)
         cls.cache.append((total_input, grad_output, weight, func))
 
     @classmethod
@@ -27,6 +26,5 @@ class WeightGradStore:
                 else:
                     grad_weight = func(total_input, grad_output)
                     weight.grad = grad_weight
-                    print(f"WeightGradStore {weight.grad}")
         else:
             raise Exception("Pop empty queue.")
