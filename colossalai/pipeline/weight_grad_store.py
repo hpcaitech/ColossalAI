@@ -27,5 +27,6 @@ class WeightGradStore:
                 else:
                     grad_weight = func(total_input, grad_output)
                     weight.grad = grad_weight
+                    print(f"WeightGradStore {weight.grad}")
         else:
             raise Exception("Pop empty queue.")
