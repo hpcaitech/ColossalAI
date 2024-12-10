@@ -11,7 +11,7 @@ from torch.optim import Optimizer
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
-    async_save_state_dict_shards,
+    async_move_save_state_dict_shards,
     create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
@@ -186,7 +186,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         if use_async:
             pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
-            total_size, new_pinned_state_dict, writers = async_save_state_dict_shards(
+            total_size, new_pinned_state_dict, writers = async_move_save_state_dict_shards(
                 sharded_state_dict=state_dict_shard,
                 checkpoint=checkpoint_path,
                 index_file=index_file,
