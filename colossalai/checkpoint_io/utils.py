@@ -922,6 +922,7 @@ def get_shard_filename(weights_name: str, idx: int):
 def create_pinned_state_dict(state_dict: Dict[str, torch.Tensor]):
     pin_mem = dict()
     for name, tensor in state_dict.items():
-        pin_mem[name] = torch.empty(tensor.shape, pin_memory=False, dtype=tensor.dtype, device="cpu", requires_grad=False)
+        pin_mem[name] = torch.empty(
+            tensor.shape, pin_memory=False, dtype=tensor.dtype, device="cpu", requires_grad=False
+        )
     return pin_mem
-        
