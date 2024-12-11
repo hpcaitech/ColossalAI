@@ -29,6 +29,8 @@ from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralC
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.checkpoint_io.utils import create_pinned_state_dict, async_save_state_dict_shards
+from colossalai.utils.safetensors import load_flat
 
 from .dp_plugin_base import DPPluginBase
 
@@ -49,7 +51,10 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: Path):
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before loading!"
-        checkpoint = utils.load_state_dict(checkpoint)
+        if checkpoint.endswith(".safetensors"):
+            checkpoint = load_flat(checkpoint, seperator='-')
+        else:
+            checkpoint = utils.load_state_dict(checkpoint)
         fsdp_model = optimizer.unwrap_model()
         sharded_osd = FSDP.scatter_full_optim_state_dict(checkpoint, fsdp_model)
         optimizer.load_state_dict(sharded_osd)
@@ -65,7 +70,17 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, cfg):
             full_model_state = model.state_dict()
-        utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
+        if use_async:
+            from colossalai.utils.safetensors import save
+            if id(model) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(model)] = create_pinned_state_dict(full_model_state)
+            for k, v in full_model_state.items():
+                self.pinned_state_dicts[id(model)][k].copy_(v)
+                full_model_state[k] = self.pinned_state_dicts[id(model)][k]
+            writer = save(checkpoint, full_model_state)
+            self.async_writers.append(writer)
+        else:
+            utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
 
     def save_unsharded_optimizer(
         self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
@@ -76,7 +91,18 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before saving!"
         fsdp_model = optimizer.unwrap_model()
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=True)
-        utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)
+        if use_async:
+            from colossalai.utils.safetensors import save, _flatten_optim_state_dict
+            flatten_state_dict, metadata = _flatten_optim_state_dict(full_optimizer_state, seperator='-')
+            if id(optimizer) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+            for k, v in flatten_state_dict.items():
+                self.pinned_state_dicts[id(optimizer)][k].copy_(v)
+                flatten_state_dict[k] = self.pinned_state_dicts[id(optimizer)][k]
+            writer = save(checkpoint, state_dict=flatten_state_dict, metadata=metadata)
+            self.async_writers.append(writer)
+        else:
+            utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)
 
     def save_sharded_model(
         self,
@@ -102,20 +128,36 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         ):
             state_dict = model.unwrap().state_dict()
 
-        state_dict_shard = utils.shard_model_checkpoint(state_dict, max_shard_size=size_per_shard)
+        if use_async and self.coordinator.is_master():
+            if id(model) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(model)] = {}
+            pinned_state_dicts = self.pinned_state_dicts[id(model)]
+        else:
+            pinned_state_dicts = None
+        state_dict_shard = utils.shard_model_checkpoint(state_dict, max_shard_size=size_per_shard, pinned_state_dicts=pinned_state_dicts)
 
         weights_name, save_index_file = utils.get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
         # In general cases, is_master is set to True to get the right behavior.
-        total_size = utils.save_state_dict_shards(
-            sharded_state_dict=state_dict_shard,
-            checkpoint=checkpoint_path,
-            index_file=index_file,
-            base_filename=weights_name,
-            is_master=self.coordinator.is_master(),
-            use_safetensors=use_safetensors,
-        )
+        if use_async:
+            total_size, writers = async_save_state_dict_shards(
+                sharded_state_dict=state_dict_shard,
+                checkpoint=checkpoint_path,
+                index_file=index_file,
+                base_filename=weights_name,
+                is_master=True,
+            )
+            self.async_writers.extend(writers)
+        else:
+            total_size = utils.save_state_dict_shards(
+                sharded_state_dict=state_dict_shard,
+                checkpoint=checkpoint_path,
+                index_file=index_file,
+                base_filename=weights_name,
+                is_master=self.coordinator.is_master(),
+                use_safetensors=use_safetensors,
+            )
 
         # only save the index file on the master rank
         if self.coordinator.is_master():
@@ -189,25 +231,41 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
         if self.coordinator.is_master():
             # Preparing file paths and index file.
-            states_name, save_index_file, param_group_file = utils.get_optimizer_base_filenames(prefix)
+            states_name, save_index_file, param_group_file = utils.get_optimizer_base_filenames(prefix, use_safetensors=use_async)
             index_file = CheckpointIndexFile(checkpoint)
 
             index_file.append_meta_data("param_groups", param_group_file)
             group_file_path = os.path.join(checkpoint, param_group_file)
             utils.save_param_groups(fsdp_optim_state, group_file_path)
 
-            sharded_state = utils.shard_optimizer_checkpoint(fsdp_optim_state, max_shard_size=size_per_shard)
-
+            if use_async:
+                if id(optimizer) not in self.pinned_state_dicts:
+                    self.pinned_state_dicts[id(optimizer)] = {}
+                pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
+            else:
+                pinned_state_dicts = None
+            sharded_state = utils.shard_optimizer_checkpoint(fsdp_optim_state, max_shard_size=size_per_shard, pinned_state_dicts=pinned_state_dicts)
             # Save shards of optimizer states.
             # In general cases, is_master is set to True to get the right behavior.
-            total_size = utils.save_state_dict_shards(
-                sharded_state_dict=sharded_state,
-                checkpoint=checkpoint,
-                index_file=index_file,
-                base_filename=states_name,
-                is_master=self.coordinator.is_master(),
-                use_safetensors=False,
-            )
+            if use_async:
+                total_size, writers = async_save_state_dict_shards(
+                    sharded_state_dict=sharded_state,
+                    checkpoint=checkpoint,
+                    index_file=index_file,
+                    base_filename=states_name,
+                    is_master=True,
+                    state_preprocess=True
+                )
+                self.async_writers.extend(writers)
+            else:
+                total_size = utils.save_state_dict_shards(
+                    sharded_state_dict=sharded_state,
+                    checkpoint=checkpoint,
+                    index_file=index_file,
+                    base_filename=states_name,
+                    is_master=self.coordinator.is_master(),
+                    use_safetensors=False,
+                )
 
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
@@ -239,7 +297,10 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         fsdp_optim_state = {}
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         for shard_file in checkpoint_files:
-            state_dict_shard = utils.load_shard_state_dict(Path(shard_file), use_safetensors=False)
+            if shard_file.endswith(".safetensors"):
+                state_dict_shard = load_flat(shard_file, seperator='-')
+            else:
+                state_dict_shard = utils.load_shard_state_dict(Path(shard_file), use_safetensors=False)
             fsdp_optim_state.update(state_dict_shard)
 
         fsdp_optim_dict = dict(state=fsdp_optim_state, param_groups=saved_param_groups)

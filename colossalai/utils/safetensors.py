@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 from safetensors.torch import _TYPES, load_file, safe_open
+import torch.distributed
 
 try:
     from tensornvme.async_file_io import AsyncFileWriter
@@ -59,7 +60,7 @@ def _cast_to_object(tensor: torch.Tensor):
     return _tensor_to_object(tensor, tensor.numel() * tensor.element_size())
 
 
-def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[dict, Optional[dict]]:
+def _flatten_optim_state_dict(state_dict: dict, seperator: str = "-") -> Tuple[dict, Optional[dict]]:
     flat_dict = {}
     non_tensor_keys = []
     if "state" in state_dict:
@@ -87,7 +88,8 @@ def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[d
 
 def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None, seperator: str = "."):
     state_dict = {}
-    if metadata is not None:
+
+    if metadata is not None and "non_tensor_keys" in metadata:
         non_tensor_keys = json.loads(metadata["non_tensor_keys"])
     else:
         non_tensor_keys = []
@@ -104,7 +106,11 @@ def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None
     for k, v in flat_dict.items():
         parts = k.split(seperator)
         assert len(parts) == 3 and parts[0] == "state"
-        idx = int(parts[1])
+        try:
+            idx = int(parts[1])
+        except:
+            # exception for fsdp, part[1] isn't param_id 
+            idx = parts[1]
         key = parts[2]
         if idx not in states:
             states[idx] = {}
@@ -128,8 +134,10 @@ def prepare(
     header = {}
     offset = 0
 
+    header_metadata = {"format": "pt"}
     if metadata is not None:
-        header["__metadata__"] = metadata
+        header_metadata.update(metadata)
+    header["__metadata__"] = header_metadata
 
     for name, tensor in data.items():
         n = tensor.numel() * tensor.element_size()
@@ -172,8 +180,9 @@ def move_and_save(
     path: str,
     state_dict: Dict[str, torch.Tensor],
     state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
+    metadata: Optional[Dict[str, str]] = None
 ) -> None:
-    prepared_data, _, tensor_keys = prepare(state_dict)
+    prepared_data, _, tensor_keys = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
     f_writer = AsyncFileWriter(path, n_entries=ASYNC_WRITE_ENTRIES, backend="pthread", n_tasks=2 + len(tensor_keys))
     f_writer.write(n.to_bytes(8, byteorder="little"))
@@ -188,9 +197,9 @@ def move_and_save(
     return f_writer
 
 
-def load_flat(checkpoint_path):
+def load_flat(checkpoint_path, seperator: str = "-"):
     with safe_open(checkpoint_path, framework="pt") as f:
         metadata = f.metadata()
     state_dict_load = load_file(checkpoint_path)
-    state_dict = _unflatten_optim_state_dict(state_dict_load, metadata)
+    state_dict = _unflatten_optim_state_dict(state_dict_load, metadata, seperator)
     return state_dict

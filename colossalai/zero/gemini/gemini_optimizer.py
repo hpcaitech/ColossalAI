@@ -809,7 +809,7 @@ class GeminiOptimizer(OptimizerWrapper):
         self.optimizer_loading_epilogue()
 
     def state_shard(
-        self, prefix: str = "", max_shard_size: int = 1024, only_rank_0: bool = True
+        self, prefix: str = "", max_shard_size: int = 1024, only_rank_0: bool = True, pinned_state_dicts: Optional[Dict[int, Dict[str, torch.Tensor]]] = None
     ) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing shards of optimizer states one by one.
            The max size of each dictionary shard is specified by ``max_shard_size``.
@@ -829,6 +829,12 @@ class GeminiOptimizer(OptimizerWrapper):
             dist.barrier()
             state = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
 
+            if pinned_state_dicts is not None:
+                pinned_state_dicts[param_id] = {}
+                for k, v in state.items():
+                    pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
+                    pinned_state_dicts[param_id][k].copy_(v)
+                    state[k] = pinned_state_dicts[param_id][k]
             block, block_size = sharder.append_optim_state(param_id, state)
             if block is not None:
                 yield block, block_size

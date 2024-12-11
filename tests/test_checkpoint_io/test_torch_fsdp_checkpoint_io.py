@@ -12,7 +12,7 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from colossalai.booster.plugin import TorchFSDPPlugin
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-from colossalai.testing import rerun_if_address_is_in_use, spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn, parameterize
 
 
 def compare_nested_dict(dict1, dict2):
@@ -42,8 +42,8 @@ def compare_nested_dict(dict1, dict2):
             return False
     return True
 
-
-def check_torch_fsdp_ckpt():
+@parameterize("use_async", [False, True])
+def check_torch_fsdp_ckpt(use_async: bool):
     model = resnet18()
     plugin = TorchFSDPPlugin()
     booster = Booster(plugin=plugin)
@@ -65,10 +65,17 @@ def check_torch_fsdp_ckpt():
         model_ckpt_path = f"{tempdir}/model"
         optim_ckpt_path = f"{tempdir}/optimizer"
 
+        if use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+            optim_ckpt_path = f"{optim_ckpt_path}.safetensors"
+
         run_model()
 
-        booster.save_model(fsdp_model, model_ckpt_path, shard=False)
-        booster.save_optimizer(optimizer, optim_ckpt_path, shard=False)
+        booster.save_model(fsdp_model, model_ckpt_path, shard=False, use_async=use_async)
+        booster.save_optimizer(optimizer, optim_ckpt_path, shard=False, use_async=use_async)
+
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
 
         full_msd = fsdp_model.state_dict()
         # full_osd = FSDP.full_optim_state_dict(fsdp_model, optimizer)
@@ -106,8 +113,11 @@ def check_torch_fsdp_ckpt():
 
         run_model()
 
-        booster.save_model(fsdp_model, model_ckpt_path, shard=True)
-        booster.save_optimizer(optimizer, optim_ckpt_path, shard=True)
+        booster.save_model(fsdp_model, model_ckpt_path, shard=True, use_async=False)
+        booster.save_optimizer(optimizer, optim_ckpt_path, shard=True, use_async=True)
+
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
 
         full_msd = fsdp_model.unwrap().state_dict()
         full_osd = FSDP.full_optim_state_dict(optimizer.unwrap_model().unwrap(), optim=optimizer)

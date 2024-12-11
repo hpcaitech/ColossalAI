@@ -307,7 +307,7 @@ def async_save_state_dict_shards(
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
         if state_preprocess:
-            state_dict, _ = _flatten_optim_state_dict(state_dict=shard)
+            state_dict, _ = _flatten_optim_state_dict(state_dict=shard, seperator='-')
         else:
             state_dict = shard
 
@@ -331,6 +331,7 @@ def async_move_save_state_dict_shards(
     is_master: bool,
     pinned_state_dict: Optional[Dict[str, torch.Tensor]],
     use_pp_format: bool = False,
+    state_preprocess: bool = False,
 ) -> Tuple[int, Dict[str, torch.Tensor], list]:
     """
     Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
@@ -367,14 +368,19 @@ def async_move_save_state_dict_shards(
             index_file.append_weight_map(key, shard_file)
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
-        if pinned_state_dict is not None:
-            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in shard.keys()}
+        if state_preprocess:
+            state_dict, _ = _flatten_optim_state_dict(state_dict=shard)
         else:
-            sub_pinned_state_dict = create_pinned_state_dict(shard)
+            state_dict = shard
+
+        if pinned_state_dict is not None:
+            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in state_dict.keys()}
+        else:
+            sub_pinned_state_dict = create_pinned_state_dict(state_dict)
             returned_state_dict.update(sub_pinned_state_dict)
 
         # Only save on master rank.
-        writer = move_and_save(checkpoint_file_path, shard, sub_pinned_state_dict)
+        writer = move_and_save(checkpoint_file_path, state_dict, sub_pinned_state_dict)
         writers.append(writer)
         shard_filenames.append(shard_file)
         del shard
@@ -385,7 +391,7 @@ def async_move_save_state_dict_shards(
     return total_size, returned_state_dict, writers
 
 
-def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
+def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[int,Dict[str, torch.Tensor]]] = None) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
@@ -394,6 +400,10 @@ def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024)
 
     for key, weight in state_dict.items():
         if not is_distributed_tensor(weight):
+            if pinned_state_dicts is not None:
+                pinned_state_dicts[key] = torch.empty_like(weight, pin_memory=True, device="cpu")
+                pinned_state_dicts[key].copy_(weight)
+                weight = pinned_state_dicts[key]
             block, block_size = state_dict_sharder.append_param(key, weight)
 
         if block != None:
@@ -403,7 +413,7 @@ def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024)
     yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
-def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
+def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[str, torch.Tensor]]=None) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits an optimizer state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
@@ -414,6 +424,14 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
     state_dict_sharder = StateDictSharder(max_shard_size)
 
     for param_id, state in states.items():
+        if pinned_state_dicts is not None:
+            if param_id not in pinned_state_dicts:
+                pinned_state_dicts[param_id] = {}
+                for k, v in state.items():
+                    pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
+                    pinned_state_dicts[param_id][k].copy_(v)
+                    state[k] = pinned_state_dicts[param_id][k]
+
         block, block_size = state_dict_sharder.append_optim_state(param_id, state)
         if block != None:
             yield block, block_size
@@ -922,7 +940,5 @@ def get_shard_filename(weights_name: str, idx: int):
 def create_pinned_state_dict(state_dict: Dict[str, torch.Tensor]):
     pin_mem = dict()
     for name, tensor in state_dict.items():
-        pin_mem[name] = torch.empty(
-            tensor.shape, pin_memory=False, dtype=tensor.dtype, device="cpu", requires_grad=False
-        )
+        pin_mem[name] = torch.empty_like(tensor, pin_memory=True, device="cpu")
     return pin_mem

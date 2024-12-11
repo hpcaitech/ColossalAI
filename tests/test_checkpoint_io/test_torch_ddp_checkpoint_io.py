@@ -12,9 +12,10 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 
 
-@parameterize("shard", [True, False])
+@parameterize("shard", [False, True])
 @parameterize("size_per_shard", [16, 128])
-def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
+@parameterize("use_async", [False, True])
+def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int, use_async: bool):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
     model = resnet18()
@@ -39,9 +40,16 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         lr_scheduler_ckpt_path = f"{tempdir}/lr_scheduler"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
-        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+
+        if not shard and use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+            optimizer_ckpt_path = f"{optimizer_ckpt_path}.safetensors"
+
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
+        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
         booster.save_lr_scheduler(scheduler, lr_scheduler_ckpt_path)
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = resnet18()
