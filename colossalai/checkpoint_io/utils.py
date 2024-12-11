@@ -307,7 +307,7 @@ def async_save_state_dict_shards(
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
         if state_preprocess:
-            state_dict, _ = _flatten_optim_state_dict(state_dict=shard, seperator='-')
+            state_dict, _ = _flatten_optim_state_dict(state_dict=shard, seperator="-")
         else:
             state_dict = shard
 
@@ -391,7 +391,11 @@ def async_move_save_state_dict_shards(
     return total_size, returned_state_dict, writers
 
 
-def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[int,Dict[str, torch.Tensor]]] = None) -> Iterator[Tuple[OrderedDict, int]]:
+def shard_model_checkpoint(
+    state_dict: torch.Tensor,
+    max_shard_size: int = 1024,
+    pinned_state_dicts: Optional[Dict[int, Dict[str, torch.Tensor]]] = None,
+) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.
@@ -413,7 +417,9 @@ def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024,
     yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
 
-def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[str, torch.Tensor]]=None) -> Iterator[Tuple[OrderedDict, int]]:
+def shard_optimizer_checkpoint(
+    state_dict: dict, max_shard_size: int = 1024, pinned_state_dicts: Optional[Dict[str, torch.Tensor]] = None
+) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits an optimizer state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
     given size.

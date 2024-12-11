@@ -809,7 +809,11 @@ class GeminiOptimizer(OptimizerWrapper):
         self.optimizer_loading_epilogue()
 
     def state_shard(
-        self, prefix: str = "", max_shard_size: int = 1024, only_rank_0: bool = True, pinned_state_dicts: Optional[Dict[int, Dict[str, torch.Tensor]]] = None
+        self,
+        prefix: str = "",
+        max_shard_size: int = 1024,
+        only_rank_0: bool = True,
+        pinned_state_dicts: Optional[Dict[int, Dict[str, torch.Tensor]]] = None,
     ) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing shards of optimizer states one by one.
            The max size of each dictionary shard is specified by ``max_shard_size``.

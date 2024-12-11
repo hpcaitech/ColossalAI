@@ -17,24 +17,24 @@ from torch.utils.data.distributed import DistributedSampler
 from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO
 from colossalai.checkpoint_io.utils import (
+    async_save_state_dict_shards,
+    create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     load_shard_state_dict,
     save_config_file,
     save_state_dict,
     save_state_dict_shards,
-    async_save_state_dict_shards,
-    create_pinned_state_dict
 )
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig, ShardFormer
+from colossalai.utils.safetensors import load_flat
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
 from .dp_plugin_base import DPPluginBase
-from colossalai.utils.safetensors import load_flat  
 
 __all__ = ["GeminiPlugin"]
 
@@ -86,6 +86,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             if use_async:
                 from colossalai.utils.safetensors import save
+
                 if id(model) not in self.pinned_state_dicts:
                     self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
                 for k, v in state_dict.items():
@@ -117,7 +118,8 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         state_dict = optimizer.state_dict()
         if self.coordinator.is_master():
             if use_async:
-                from colossalai.utils.safetensors import save, _flatten_optim_state_dict
+                from colossalai.utils.safetensors import _flatten_optim_state_dict, save
+
                 flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
                 if id(optimizer) not in self.pinned_state_dicts:
                     self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
@@ -157,14 +159,16 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             return
 
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
-        
+
         if use_async and self.coordinator.is_master():
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = {}
             pinned_state_dicts = self.pinned_state_dicts[id(model)]
         else:
             pinned_state_dicts = None
-        state_dict_shard = model.state_dict_shard(max_shard_size=max_shard_size, only_rank_0=True, pinned_state_dicts=pinned_state_dicts)
+        state_dict_shard = model.state_dict_shard(
+            max_shard_size=max_shard_size, only_rank_0=True, pinned_state_dicts=pinned_state_dicts
+        )
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint_path)
 
@@ -249,7 +253,9 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
         else:
             pinned_state_dicts = None
-        state_dict_shard = optimizer.state_shard(prefix=prefix, max_shard_size=size_per_shard, only_rank_0=True, pinned_state_dicts=pinned_state_dicts)
+        state_dict_shard = optimizer.state_shard(
+            prefix=prefix, max_shard_size=size_per_shard, only_rank_0=True, pinned_state_dicts=pinned_state_dicts
+        )
 
         # Save shards of optimizer states.
         if use_async:
@@ -259,7 +265,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                 index_file=index_file,
                 base_filename=states_name,
                 is_master=True,
-                state_preprocess=True
+                state_preprocess=True,
             )
             self.async_writers.extend(writers)
         else:

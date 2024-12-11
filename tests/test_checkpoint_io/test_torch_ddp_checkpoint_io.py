@@ -46,7 +46,9 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int, use_async: bo
             optimizer_ckpt_path = f"{optimizer_ckpt_path}.safetensors"
 
         booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
-        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
+        booster.save_optimizer(
+            optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async
+        )
         booster.save_lr_scheduler(scheduler, lr_scheduler_ckpt_path)
         booster.checkpoint_io._sync_d2h()
         booster.checkpoint_io._sync_io()

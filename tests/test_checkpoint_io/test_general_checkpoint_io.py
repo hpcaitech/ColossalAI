@@ -93,7 +93,9 @@ def test_sharded_model_checkpoint(use_safetensors: bool, use_async: bool):
     # save the model and optimizer
     ckpt_io = GeneralCheckpointIO()
 
-    ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors, use_async=use_async)
+    ckpt_io.save_model(
+        model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors, use_async=use_async
+    )
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name, shard=False)
 
     ckpt_io._sync_d2h()
@@ -156,7 +158,6 @@ def test_sharded_optimizer_checkpoint(use_async: bool):
         loss = y.sum()
         loss.backward()
         new_optimizer.step()
-
 
     # create temp directories for checkpoint
     model_ckpt_dir = tempfile.TemporaryDirectory()

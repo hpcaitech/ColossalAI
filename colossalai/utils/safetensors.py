@@ -4,8 +4,8 @@ from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch
-from safetensors.torch import _TYPES, load_file, safe_open
 import torch.distributed
+from safetensors.torch import _TYPES, load_file, safe_open
 
 try:
     from tensornvme.async_file_io import AsyncFileWriter
@@ -109,7 +109,7 @@ def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None
         try:
             idx = int(parts[1])
         except:
-            # exception for fsdp, part[1] isn't param_id 
+            # exception for fsdp, part[1] isn't param_id
             idx = parts[1]
         key = parts[2]
         if idx not in states:
@@ -180,7 +180,7 @@ def move_and_save(
     path: str,
     state_dict: Dict[str, torch.Tensor],
     state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
-    metadata: Optional[Dict[str, str]] = None
+    metadata: Optional[Dict[str, str]] = None,
 ) -> None:
     prepared_data, _, tensor_keys = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset

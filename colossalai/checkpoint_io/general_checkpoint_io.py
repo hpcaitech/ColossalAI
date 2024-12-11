@@ -8,6 +8,8 @@ from typing import Optional
 import torch.nn as nn
 from torch.optim import Optimizer
 
+from colossalai.utils.safetensors import load_flat
+
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
@@ -30,8 +32,6 @@ from .utils import (
     sharded_optimizer_loading_epilogue,
 )
 
-from colossalai.utils.safetensors import load_flat
-
 __all__ = ["GeneralCheckpointIO"]
 
 
@@ -51,7 +51,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         if use_async:
             from colossalai.utils.safetensors import move_and_save
-            
+
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
             writer = move_and_save(checkpoint, state_dict, self.pinned_state_dicts[id(model)])
@@ -135,7 +135,7 @@ class GeneralCheckpointIO(CheckpointIO):
                 base_filename=states_name,
                 is_master=True,
                 pinned_state_dict=pinned_state_dict,
-                state_preprocess=True
+                state_preprocess=True,
             )
             self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
             self.async_writers.extend(writers)
@@ -175,12 +175,17 @@ class GeneralCheckpointIO(CheckpointIO):
         # TODO(FrankLeeeee): handle distributed tensors
         state_dict = optimizer.state_dict()
         if use_async:
-            from colossalai.utils.safetensors import move_and_save, _flatten_optim_state_dict
+            from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save
 
             flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
             if id(optimizer) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
-            writer = move_and_save(path=checkpoint, state_dict=flatten_state_dict, state_dict_pinned=self.pinned_state_dicts[id(optimizer)], metadata=metadata)
+            writer = move_and_save(
+                path=checkpoint,
+                state_dict=flatten_state_dict,
+                state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
+                metadata=metadata,
+            )
             self.async_writers.append(writer)
         else:
             save_state_dict(state_dict, checkpoint, use_safetensors=False)

@@ -903,7 +903,7 @@ class GeminiDDP(ModelWrapper):
         keep_vars: bool = False,
         max_shard_size: int = 1024,
         only_rank_0: bool = True,
-        pinned_state_dicts: Optional[Dict[str, torch.Tensor]] = None
+        pinned_state_dicts: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Iterator[Tuple[OrderedDict, int]]:
         """Returns dictionaries containing a whole state of the module one by one. The max size of dictionary shard is specified by ``max_shard_size``.
 
@@ -946,7 +946,9 @@ class GeminiDDP(ModelWrapper):
 
                 if pinned_state_dicts is not None:
                     if (prefix + name) not in pinned_state_dicts:
-                        pinned_state_dicts[prefix + name] = torch.empty_like(gathered_param, pin_memory=True, device="cpu")
+                        pinned_state_dicts[prefix + name] = torch.empty_like(
+                            gathered_param, pin_memory=True, device="cpu"
+                        )
                         pinned_state_dicts[prefix + name].copy_(gathered_param)
                         gathered_param = pinned_state_dicts[prefix + name]
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
