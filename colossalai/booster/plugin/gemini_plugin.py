@@ -180,7 +180,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                 checkpoint=checkpoint_path,
                 index_file=index_file,
                 base_filename=weights_name,
-                is_master=True,
+                is_master=is_master,
             )
             self.async_writers.extend(writers)
         else:
@@ -264,7 +264,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                 checkpoint=checkpoint,
                 index_file=index_file,
                 base_filename=states_name,
-                is_master=True,
+                is_master=self.coordinator.is_master(),
                 state_preprocess=True,
             )
             self.async_writers.extend(writers)
