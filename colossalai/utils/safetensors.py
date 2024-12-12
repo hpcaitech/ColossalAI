@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.distributed
 from safetensors.torch import _TYPES, load_file, safe_open
 
 try:

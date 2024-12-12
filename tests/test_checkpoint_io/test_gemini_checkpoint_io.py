@@ -169,9 +169,9 @@ def exam_state_dict(
         booster.backward(loss, new_optimizer)
         new_optimizer.step()
 
-    with shared_tempdir() as tempdir:
-        model_ckpt_path = f"{tempdir}/model"
-        optimizer_ckpt_path = f"{tempdir}/optimizer"
+    with shared_tempdir() as new_tempdir:
+        model_ckpt_path = f"{new_tempdir}/model"
+        optimizer_ckpt_path = f"{new_tempdir}/optimizer"
 
         if not shard and use_async:
             model_ckpt_path = f"{model_ckpt_path}.safetensors"
