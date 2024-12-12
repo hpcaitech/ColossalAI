@@ -437,7 +437,6 @@ def _communicate(
         overlap_p2p=overlap_p2p,
         send_first=send_first if send_first != None else True,
     )
-
     if metadata_recv is not None:
         assert isinstance(metadata_recv, P2PMetadata)
         tree_spec = metadata_recv.tree_spec

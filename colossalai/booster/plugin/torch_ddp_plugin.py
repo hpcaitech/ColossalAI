@@ -1,9 +1,11 @@
 from typing import Callable, Dict, Iterator, List, Optional, Tuple, Union
 
+import torch
 import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
+from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
@@ -31,13 +33,17 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
         super().load_unsharded_model(model.unwrap(), checkpoint, strict=strict)
 
-    def save_unsharded_model(self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool):
+    def save_unsharded_model(
+        self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
+    ):
         """
         Save model to checkpoint but only on master process.
         """
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
-            super().save_unsharded_model(model.unwrap(), checkpoint, gather_dtensor, use_safetensors)
+            super().save_unsharded_model(
+                model.unwrap(), checkpoint, gather_dtensor, use_safetensors, use_async=use_async
+            )
 
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str):
         """
@@ -46,7 +52,9 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
         super().load_unsharded_optimizer(optimizer, checkpoint)
 
-    def save_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool):
+    def save_unsharded_optimizer(
+        self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
+    ):
         """
         Save optimizer to checkpoint but only on master process.
         """
@@ -69,6 +77,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         prefix: Optional[str] = None,
         max_shard_size: int = 1024,
         use_safetensors: bool = False,
+        use_async: bool = False,
     ):
         """
         Save model to checkpoint but only on master process.
@@ -76,7 +85,13 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         if self.coordinator.is_master():
             super().save_sharded_model(
-                model.unwrap(), checkpoint_path, gather_dtensor, prefix, max_shard_size, use_safetensors
+                model.unwrap(),
+                checkpoint_path,
+                gather_dtensor,
+                prefix,
+                max_shard_size,
+                use_safetensors,
+                use_async=use_async,
             )
 
     def load_sharded_model(
@@ -100,13 +115,16 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ):
         """
         Save optimizer to sharded checkpoint but only on master process.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if self.coordinator.is_master():
-            super().save_sharded_optimizer(optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard)
+            super().save_sharded_optimizer(
+                optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard, use_async=use_async
+            )
 
     def load_sharded_optimizer(
         self,
@@ -134,7 +152,11 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
             assert isinstance(
                 peft_model, PeftModel
             ), "The model doesn't have lora adapters, please enable lora before saving."
-            peft_model.save_pretrained(save_directory=checkpoint, safe_serialization=use_safetensors)
+            return peft_model.save_pretrained(
+                checkpoint,
+                safe_serialization=use_safetensors,
+                state_dict=tree_map(lambda x: x.data if torch.is_tensor(x) else x, peft_model.state_dict()),
+            )
 
 
 class TorchDDPModel(ModelWrapper):

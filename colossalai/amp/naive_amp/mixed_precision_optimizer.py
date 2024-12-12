@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 from torch import Tensor, inf
@@ -84,14 +84,20 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                     self.master_to_working_map[master_p] = p
                     master_params.append(master_p)
             group["params"] = master_params
+        self._current_grad_norm: Optional[float] = None
 
-    def backward(self, loss: Tensor, *args, **kwargs):
+    def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         loss = self.mixed_precision.pre_backward(loss)
-        loss.backward(*args, **kwargs)
+        loss.backward(inputs=inputs, retain_graph=retain_graph, **kwargs)
 
-    def backward_by_grad(self, tensor: Tensor, grad: Tensor):
+    def backward_by_grad(self, tensor: Tensor, grad: Tensor, inputs: Tensor = None, retain_graph: bool = False):
         grad = self.mixed_precision.pre_backward_by_grad(tensor, grad)
-        tensor.backward(grad)
+        torch.autograd.backward(
+            tensors=tensor,
+            grad_tensors=grad,
+            inputs=inputs,
+            retain_graph=retain_graph,
+        )
 
     def zero_grad(self, *args, **kwargs):
         for p in self.working_to_master_map.keys():
@@ -187,6 +193,7 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
                 if p.grad is not None
             ]
             total_norm = self._compute_grad_norm(param_gradient_pairs)
+            self._current_grad_norm = total_norm
         self._unscale_and_clip_grads(total_norm)
 
         self.optim.step(*args, **kwargs)
@@ -212,3 +219,6 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
 
     def get_master_to_working_map(self) -> Dict[int, torch.Tensor]:
         return {id(master_p): working_p for master_p, working_p in self.master_to_working_map.items()}
+
+    def get_grad_norm(self, norm_type=2, **kwargs):
+        return self._current_grad_norm

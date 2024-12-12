@@ -310,6 +310,7 @@ class Booster:
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
         use_safetensors: bool = False,
+        use_async: bool = False,
     ) -> None:
         """Save model to checkpoint.
 
@@ -324,6 +325,7 @@ class Booster:
                 names to compose the keys in state_dict. Defaults to None.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
             use_safetensors (bool, optional): whether to use safe tensors. Default: False. If set to True, the checkpoint will be saved.
+            use_async (bool, optional): whether to save the state_dict of model asynchronously. Default: False.
         """
         self.checkpoint_io.save_model(
             model,
@@ -333,6 +335,7 @@ class Booster:
             prefix=prefix,
             size_per_shard=size_per_shard,
             use_safetensors=use_safetensors,
+            use_async=use_async,
         )
 
     def load_optimizer(self, optimizer: Optimizer, checkpoint: str) -> None:
@@ -356,6 +359,7 @@ class Booster:
         gather_dtensor: bool = True,
         prefix: Optional[str] = None,
         size_per_shard: int = 1024,
+        use_async: bool = False,
     ) -> None:
         """
         Save optimizer to checkpoint.
@@ -371,7 +375,9 @@ class Booster:
                 names to compose the keys in state_dict. Defaults to None.
             size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
         """
-        self.checkpoint_io.save_optimizer(optimizer, checkpoint, shard, gather_dtensor, prefix, size_per_shard)
+        self.checkpoint_io.save_optimizer(
+            optimizer, checkpoint, shard, gather_dtensor, prefix, size_per_shard, use_async=use_async
+        )
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str) -> None:
         """Save lr scheduler to checkpoint.

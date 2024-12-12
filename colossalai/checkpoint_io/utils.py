@@ -5,7 +5,7 @@ from collections import abc as container_abcs
 from collections import defaultdict
 from itertools import chain
 from pathlib import Path
-from typing import Iterator, List, Mapping, Optional, OrderedDict, Tuple
+from typing import Dict, Iterator, List, Mapping, Optional, OrderedDict, Tuple
 
 import torch
 import torch.nn as nn
@@ -19,13 +19,16 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
+from colossalai.utils.safetensors import move_and_save
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
 STATES_NAME = "pytorch_optim.bin"
+SAFE_STATE_NAME = "optimizer.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
 WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 STATES_INDEX_NAME = "pytorch_optim.bin.index.json"
+SAFE_STATES_INDEX_NAME = "optimizer.safetensors.index.json"
 GROUP_FILE_NAME = "pytorch_optim_group.bin"
 
 # ======================================
@@ -263,6 +266,67 @@ def save_state_dict_shards(
     return total_size
 
 
+def async_save_state_dict_shards(
+    sharded_state_dict: Iterator[Tuple[OrderedDict, int]],
+    checkpoint: str,
+    index_file: "CheckpointIndexFile",
+    base_filename: str,
+    is_master: bool,
+    pinned_state_dict: Optional[Dict[str, torch.Tensor]],
+    use_pp_format: bool = False,
+) -> Tuple[int, Dict[str, torch.Tensor], list]:
+    """
+    Save sharded state dict only on master rank, this method can be used by both model and optimizer states.
+    Args:
+        sharded_state_dict (Iterator[Tuple[OrderedDict, int]]): a generator of shards, each shard contains state dict and shard size.
+        checkpoint (str): The path of checkpoint directory as string.
+        index_file (CheckpointIndexFile): The index file object to be updated.
+        base_filename (str): Decides the prefix of filenames of shards.
+        is_master (bool): Whether current rank is main process.
+        use_safetensors (bool, optional): Whether to use safetensors to save checkpoint. Defaults to False.
+        use_pp_format: (bool, optional): Whether to save the files in pipeline format including stage information. Defaults to False.
+
+    Returns:
+        int: the total size of shards
+    """
+
+    total_size = 0
+    shard_filenames = []
+    if pinned_state_dict is None:
+        returned_state_dict = {}
+    else:
+        returned_state_dict = pinned_state_dict
+    writers = []
+    for idx, shard_pair in enumerate(sharded_state_dict):
+        shard, current_size = shard_pair
+        # Just loop over the sharder and gather to other ranks if not master
+        if not is_master:
+            del shard
+            continue
+        shard_file = get_shard_filename(base_filename, idx)
+        total_size = total_size + current_size
+        for key in shard.keys():
+            index_file.append_weight_map(key, shard_file)
+        checkpoint_file_path = os.path.join(checkpoint, shard_file)
+
+        if pinned_state_dict is not None:
+            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in shard.keys()}
+        else:
+            sub_pinned_state_dict = create_pinned_state_dict(shard)
+            returned_state_dict.update(sub_pinned_state_dict)
+
+        # Only save on master rank.
+        writer = move_and_save(checkpoint_file_path, shard, sub_pinned_state_dict)
+        writers.append(writer)
+        shard_filenames.append(shard_file)
+        del shard
+
+    # Clean folder, deleted unneeded files.
+    clean_folder(checkpoint, base_filename, shard_filenames, is_master=is_master, use_pp_format=use_pp_format)
+
+    return total_size, returned_state_dict, writers
+
+
 def shard_model_checkpoint(state_dict: torch.Tensor, max_shard_size: int = 1024) -> Iterator[Tuple[OrderedDict, int]]:
     """
     Splits a model state dictionary in sub-checkpoints so that the final size of each sub-checkpoint does not exceed a
@@ -305,7 +369,11 @@ def shard_optimizer_checkpoint(state_dict: dict, max_shard_size: int = 1024) -> 
 # ======================================
 
 
-def save_state_dict(state_dict: dict, checkpoint_file_path: str, use_safetensors: bool) -> None:
+def save_state_dict(
+    state_dict: dict,
+    checkpoint_file_path: str,
+    use_safetensors: bool,
+) -> None:
     """
     Save state dict to checkpoint.
 
@@ -371,7 +439,6 @@ def clean_folder(
                 reg = re.compile(r"(.*?)-stage-\d{5}-shard-\d{5}")
             if (
                 filename.startswith(weights_no_suffix)
-                and os.path.isfile(full_filename)
                 and filename not in shard_filenames
                 and reg.fullmatch(filename_no_suffix) is not None
             ):
@@ -515,14 +582,7 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
         raise Exception("load the model using `safetensors`, but no file endwith .safetensors")
     if use_safetensors:
         from safetensors.torch import load_file as safe_load_file
-        from safetensors.torch import safe_open
 
-        with safe_open(checkpoint_file, framework="pt") as f:
-            metadata = f.metadata()
-        if metadata["format"] != "pt":
-            raise NotImplementedError(
-                f"Conversion from a {metadata['format']} safetensors archive to PyTorch is not implemented yet."
-            )
         return safe_load_file(checkpoint_file)
     else:
         return torch.load(checkpoint_file, map_location=torch.device("cpu"))
@@ -776,14 +836,14 @@ def get_model_base_filenames(prefix: str = None, use_safetensors: bool = False):
     return weights_name, save_index_file
 
 
-def get_optimizer_base_filenames(prefix: str = None):
+def get_optimizer_base_filenames(prefix: str = None, use_safetensors: bool = False):
     """
     generate base optimizer state filenames
     """
-    states_name = STATES_NAME
+    states_name = SAFE_STATE_NAME if use_safetensors else STATES_NAME
     states_name = add_prefix(states_name, prefix)
 
-    save_index_file = STATES_INDEX_NAME
+    save_index_file = SAFE_STATES_INDEX_NAME if use_safetensors else STATES_INDEX_NAME
     save_index_file = add_prefix(save_index_file, prefix)
 
     param_group_file = GROUP_FILE_NAME
@@ -799,3 +859,10 @@ def get_shard_filename(weights_name: str, idx: int):
     shard_file = weights_name.replace(".bin", f"-{idx+1:05d}.bin")
     shard_file = shard_file.replace(".safetensors", f"-{idx+1:05d}.safetensors")
     return shard_file
+
+
+def create_pinned_state_dict(state_dict: Dict[str, torch.Tensor]):
+    pin_mem = dict()
+    for name, tensor in state_dict.items():
+        pin_mem[name] = torch.empty_like(tensor, pin_memory=True, device="cpu")
+    return pin_mem

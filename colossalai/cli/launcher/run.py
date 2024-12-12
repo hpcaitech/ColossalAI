@@ -113,6 +113,7 @@ def get_launch_command(
     user_args: List[str],
     node_rank: int,
     num_nodes: int,
+    run_as_module: bool,
     extra_launch_args: str = None,
 ) -> str:
     """
@@ -155,6 +156,8 @@ def get_launch_command(
 
     torch_version = version.parse(torch.__version__)
     assert torch_version.major >= 1
+    if torch_version.major < 2 and run_as_module:
+        raise ValueError("Torch version < 2.0 does not support running as module")
 
     if torch_version.major == 1 and torch_version.minor < 9:
         # torch distributed launch cmd with torch < 1.9
@@ -198,7 +201,10 @@ def get_launch_command(
             ]
         cmd += _arg_dict_to_list(default_torchrun_rdzv_args)
 
-    cmd += _arg_dict_to_list(extra_launch_args) + [user_script] + user_args
+    cmd += _arg_dict_to_list(extra_launch_args)
+    if run_as_module:
+        cmd.append("-m")
+    cmd += [user_script] + user_args
     cmd = " ".join(cmd)
     return cmd
 
@@ -294,6 +300,7 @@ def launch_multi_processes(args: Config) -> None:
             user_args=args.user_args,
             node_rank=node_id,
             num_nodes=len(active_device_pool),
+            run_as_module=args.m,
             extra_launch_args=args.extra_launch_args,
         )
         runner.send(hostinfo=hostinfo, cmd=cmd)
