@@ -1,5 +1,6 @@
-from ...base_extension import _Extension
 import math
+
+from ...base_extension import _Extension
 
 
 class FlashAttentionNpuExtension(_Extension):

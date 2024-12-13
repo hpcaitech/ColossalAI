@@ -6,7 +6,7 @@ import torch.distributed
 from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
-from colossalai.accelerator import get_accelerator, BaseAccelerator
+from colossalai.accelerator import BaseAccelerator, get_accelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager

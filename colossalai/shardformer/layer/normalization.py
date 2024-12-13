@@ -17,6 +17,7 @@ from .utils import SeqParallelUtils
 SUPPORT_NPU = False
 try:
     import torch_npu
+
     SUPPORT_NPU = True
 except Exception:
     pass
