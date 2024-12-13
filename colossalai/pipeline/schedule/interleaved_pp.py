@@ -6,7 +6,7 @@ import torch.distributed
 from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
 
-from colossalai.accelerator import get_accelerator
+from colossalai.accelerator import get_accelerator, BaseAccelerator
 from colossalai.interface import OptimizerWrapper
 from colossalai.pipeline.p2p import PipelineP2PCommunication, create_send_metadata
 from colossalai.pipeline.stage_manager import PipelineStageManager
@@ -17,7 +17,7 @@ from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_
 from .base import PipelineSchedule
 
 
-def _wait_p2p(wait_handles: List[get_accelerator().Event]) -> None:
+def _wait_p2p(wait_handles: List[BaseAccelerator.Event]) -> None:
     if wait_handles is not None:
         for req in wait_handles:
             req.wait()

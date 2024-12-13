@@ -17,11 +17,9 @@ from .utils import SeqParallelUtils
 SUPPORT_NPU = False
 try:
     import torch_npu
-
     SUPPORT_NPU = True
-    warnings.warn("support npu")
 except Exception:
-    warnings.warn("support gpu")
+    pass
 
 
 __all__ = ["FusedLayerNorm", "FusedRMSNorm", "LayerNorm", "RMSNorm", "BaseLayerNorm"]

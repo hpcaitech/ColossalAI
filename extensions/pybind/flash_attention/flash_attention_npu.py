@@ -1,4 +1,5 @@
 from ...base_extension import _Extension
+import math
 
 
 class FlashAttentionNpuExtension(_Extension):
@@ -27,7 +28,6 @@ class FlashAttentionNpuExtension(_Extension):
         )
 
     def load(self):
-        import math
         from typing import Optional
 
         import torch

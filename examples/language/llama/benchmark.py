@@ -340,7 +340,7 @@ def main():
 
     torch.set_default_dtype(torch.float)
     coordinator.print_on_master(
-        f"Booster init max NPU memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
+        f"Booster init max device memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
     )
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
