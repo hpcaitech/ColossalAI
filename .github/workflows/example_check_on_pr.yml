@@ -114,30 +114,6 @@ jobs:
         run: |
           cp -p -r /__w/ColossalAI/ColossalAI/build /github/home/cuda_ext_cache/
 
-      - name: Checkout TensorNVMe
-        uses: actions/checkout@v2
-        with:
-          repository: hpcaitech/TensorNVMe
-          ssh-key: ${{ secrets.SSH_KEY_FOR_CI }}
-          path: TensorNVMe
-
-      - name: Restore TensorNVMe Cache
-        run: |
-          if [ -d /github/home/tensornvme_cache ] && [ ! -z "$(ls -A /github/home/tensornvme_cache/)" ]; then
-            cp -p -r /github/home/tensornvme_cache/* /__w/ColossalAI/ColossalAI/TensorNVMe
-          fi
-      - name: Install TensorNVMe
-        run: |
-          cd TensorNVMe
-          conda install cmake
-          pip install -r requirements.txt
-          DISABLE_URING=1 pip install -v --no-cache-dir .
-      - name: Store TensorNVMe Cache
-        run: |
-          cd TensorNVMe
-          cp -p -r ./build /github/home/tensornvme_cache/
-          cp -p -r ./cmake-build /github/home/tensornvme_cache/
-
       - name: Test the example
         run: |
           example_dir=${{ matrix.directory }}
