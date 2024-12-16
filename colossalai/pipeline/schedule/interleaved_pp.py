@@ -17,7 +17,7 @@ from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_
 from .base import PipelineSchedule
 
 
-def _wait_p2p(wait_handles: List[BaseAccelerator.Event]) -> None:
+def _wait_p2p(wait_handles) -> None:
     if wait_handles is not None:
         for req in wait_handles:
             req.wait()
