@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import _get_default_group
 
-from colossalai.accelerator import get_accelerator
+from colossalai.accelerator import get_accelerator, BaseAccelerator
 from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_param
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor

@@ -392,7 +392,7 @@ def main():
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
     performance_evaluator.on_fit_end()
-    coordinator.print_on_master(f"Max NPU memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(f"Max device memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":
