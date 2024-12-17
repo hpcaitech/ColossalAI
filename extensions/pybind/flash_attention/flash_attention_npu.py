@@ -1,3 +1,5 @@
+import math
+
 from ...base_extension import _Extension
 
 
@@ -47,6 +49,8 @@ class FlashAttentionNpuExtension(_Extension):
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
         ):
+            if scale is None:
+                scale = 1.0 / math.sqrt(q.size(-1))
             num_heads = q.size(1)
             return torch_npu.npu_fusion_attention(
                 q,

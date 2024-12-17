@@ -38,7 +38,7 @@ criterion = lambda x: x.loss
 
 
 def move_to_cuda(batch):
-    return {k: v.cuda() for k, v in batch.items()}
+    return {k: v.to(get_accelerator().get_current_device()) for k, v in batch.items()}
 
 
 @torch.no_grad()
@@ -266,7 +266,8 @@ def main():
     cfg = AutoConfig.from_pretrained(model_name, num_labels=data_builder.num_labels)
 
     if model_name == "bert-base-uncased":
-        model = BertForSequenceClassification.from_pretrained(model_name, config=cfg).cuda()
+        model = BertForSequenceClassification.from_pretrained(model_name, config=cfg)
+        model = model.to(get_accelerator().get_current_device())
     elif model_name == "albert-xxlarge-v2":
         model = AlbertForSequenceClassification.from_pretrained(model_name, config=cfg)
     else:

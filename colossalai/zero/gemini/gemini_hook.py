@@ -62,7 +62,7 @@ class GeminiZeROHook(ColoParamOpHook):
             #
             # Other than that, self._gemini_manager.wait_chunks will have synced with default stream
             # by calling dist.Work.wait() and this line makes no diff.
-            self._gemini_manager.chunk_manager._prefetch_stream.wait_stream(torch.cuda.current_stream())
+            self._gemini_manager.chunk_manager._prefetch_stream.wait_stream(get_accelerator().current_stream())
 
         with get_accelerator().stream(self._gemini_manager.chunk_manager._prefetch_stream):
             for chunk in chunks_fetch_async:

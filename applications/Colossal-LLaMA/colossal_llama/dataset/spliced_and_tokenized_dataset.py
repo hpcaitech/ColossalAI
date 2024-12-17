@@ -88,7 +88,7 @@ def supervised_tokenize_sft(
 
     assert (
         tokenizer.bos_token == conversation_template.seps[0] and tokenizer.eos_token == conversation_template.seps[1]
-    ), "`bos_token` and `eos_token` should be the same with `conversation_template.seps`."
+    ), f"`bos_token`{tokenizer.bos_token} and `eos_token`{tokenizer.eos_token} should be the same with `conversation_template.seps`{conversation_template.seps}."
 
     if ignore_index is None:
         ignore_index = IGNORE_INDEX
