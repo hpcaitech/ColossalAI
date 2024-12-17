@@ -307,7 +307,7 @@ def async_save_state_dict_shards(
         checkpoint_file_path = os.path.join(checkpoint, shard_file)
 
         if state_preprocess:
-            state_dict, _ = _flatten_optim_state_dict(state_dict=shard, seperator="-")
+            state_dict, _ = _flatten_optim_state_dict(state_dict=shard, seperator=".")
         else:
             state_dict = shard
 

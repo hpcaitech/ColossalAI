@@ -114,8 +114,8 @@ def check_torch_fsdp_ckpt(use_async: bool):
 
         run_model()
 
-        booster.save_model(fsdp_model, model_ckpt_path, shard=True, use_async=False)
-        booster.save_optimizer(optimizer, optim_ckpt_path, shard=True, use_async=True)
+        booster.save_model(fsdp_model, model_ckpt_path, shard=True, use_async=use_async)
+        booster.save_optimizer(optimizer, optim_ckpt_path, shard=True, use_async=use_async)
 
         booster.checkpoint_io._sync_d2h()
         booster.checkpoint_io._sync_io()

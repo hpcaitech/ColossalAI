@@ -59,7 +59,7 @@ def _cast_to_object(tensor: torch.Tensor):
     return _tensor_to_object(tensor, tensor.numel() * tensor.element_size())
 
 
-def _flatten_optim_state_dict(state_dict: dict, seperator: str = "-") -> Tuple[dict, Optional[dict]]:
+def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[dict, Optional[dict]]:
     flat_dict = {}
     non_tensor_keys = []
     if "state" in state_dict:
@@ -196,7 +196,7 @@ def move_and_save(
     return f_writer
 
 
-def load_flat(checkpoint_path, seperator: str = "-"):
+def load_flat(checkpoint_path, seperator: str = "."):
     with safe_open(checkpoint_path, framework="pt") as f:
         metadata = f.metadata()
     state_dict_load = load_file(checkpoint_path)

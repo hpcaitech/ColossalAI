@@ -70,6 +70,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         dp_group: ProcessGroup,
         pp_group: ProcessGroup,
         tp_group: ProcessGroup,
+        sp_group: ProcessGroup,
         zero_stage: int,
         verbose: bool = True,
     ) -> None:
@@ -77,9 +78,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.global_dp_group = dp_group
         self.pp_group = pp_group
         self.tp_group = tp_group
+        self.sp_group = sp_group
         self.dp_rank = dist.get_rank(self.global_dp_group)
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
+        self.sp_rank = dist.get_rank(self.sp_group)
         self.global_dp_size = dist.get_world_size(dp_group)
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
@@ -490,7 +493,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded states along dp_group(if using zero)/tp_group.
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
-        control_saving = self.dp_rank == 0 and self.tp_rank == 0
+        control_saving = self.dp_rank == 0 and self.tp_rank == 0 and self.sp_rank == 0
 
         if use_async and control_saving:
             if id(optimizer) not in self.pinned_state_dicts:
@@ -560,8 +563,10 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
 
             # Manage filenames of sharded weights and index file for each pipeline stage.
-            states_name = states_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-shard.bin")
-            states_name = states_name.replace(".safetensors", f"-stage-{self.pp_rank+1:05d}-shard.safetensors")
+            if not use_async:
+                states_name = states_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-shard.bin")
+            else:
+                states_name = states_name.replace(".safetensors", f"-stage-{self.pp_rank+1:05d}-shard.safetensors")
             save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}.json")
             save_index_file = os.path.join("tmp_index_files", save_index_file)
 

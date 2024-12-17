@@ -1,6 +1,5 @@
 import os
-from pathlib import Path
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Any
 
 import torch
 import torch.nn as nn
@@ -52,10 +51,40 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
     def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: Path):
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before loading!"
         if checkpoint.endswith(".safetensors"):
-            checkpoint = load_flat(checkpoint, seperator="-")
+            checkpoint = load_flat(checkpoint, seperator=".")
         else:
             checkpoint = utils.load_state_dict(checkpoint)
+
         fsdp_model = optimizer.unwrap_model()
+        full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=False)
+        start_index = 0
+        id2name = {}
+        def get_index_mapping(group: Dict[str, Any]) -> Dict[str, Any]:
+            nonlocal start_index
+            start_num = len(id2name)
+            id2name.update(
+                {
+                    i: p
+                    for i, p in enumerate(group["params"], start_index)
+                    if i not in id2name
+                }
+            )
+            end_num = len(id2name)
+            start_index += end_num - start_num
+        
+        for g in full_optimizer_state["param_groups"]:
+            get_index_mapping(g)
+    
+        new_state = {}
+        for key, value in checkpoint["state"].items():
+            new_state[id2name[int(key)]] = value
+        checkpoint["state"] = new_state
+        for g in checkpoint["param_groups"]:
+            new_group = []
+            for param_id in g["params"]:
+                new_group.append(id2name[param_id])
+            g["params"] = new_group
+
         sharded_osd = FSDP.scatter_full_optim_state_dict(checkpoint, fsdp_model)
         optimizer.load_state_dict(sharded_osd)
 
@@ -70,18 +99,19 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
         with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, cfg):
             full_model_state = model.state_dict()
-        if use_async:
-            from colossalai.utils.safetensors import save
+        if self.coordinator.is_master():
+            if use_async:
+                from colossalai.utils.safetensors import save
 
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = create_pinned_state_dict(full_model_state)
-            for k, v in full_model_state.items():
-                self.pinned_state_dicts[id(model)][k].copy_(v)
-                full_model_state[k] = self.pinned_state_dicts[id(model)][k]
-            writer = save(checkpoint, full_model_state)
-            self.async_writers.append(writer)
-        else:
-            utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
+                if id(model) not in self.pinned_state_dicts:
+                    self.pinned_state_dicts[id(model)] = create_pinned_state_dict(full_model_state)
+                for k, v in full_model_state.items():
+                    self.pinned_state_dicts[id(model)][k].copy_(v)
+                    full_model_state[k] = self.pinned_state_dicts[id(model)][k]
+                writer = save(checkpoint, full_model_state)
+                self.async_writers.append(writer)
+            else:
+                utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
 
     def save_unsharded_optimizer(
         self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
@@ -91,20 +121,48 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before saving!"
         fsdp_model = optimizer.unwrap_model()
-        full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=True)
-        if use_async:
-            from colossalai.utils.safetensors import _flatten_optim_state_dict, save
 
-            flatten_state_dict, metadata = _flatten_optim_state_dict(full_optimizer_state, seperator="-")
-            if id(optimizer) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
-            for k, v in flatten_state_dict.items():
-                self.pinned_state_dicts[id(optimizer)][k].copy_(v)
-                flatten_state_dict[k] = self.pinned_state_dicts[id(optimizer)][k]
-            writer = save(checkpoint, state_dict=flatten_state_dict, metadata=metadata)
-            self.async_writers.append(writer)
-        else:
-            utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)
+        full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=True)
+
+        if self.coordinator.is_master():
+
+            # Save order indices instead of Tensors
+            name2id: Dict[str, int] = {}
+            start_index = 0
+
+            def pack_group(group: Dict[str, Any]) -> Dict[str, Any]:
+                nonlocal start_index
+                packed = {k: v for k, v in group.items() if k != "params"}
+                name2id.update(
+                    {
+                        p: i
+                        for i, p in enumerate(group["params"], start_index)
+                        if p not in name2id
+                    }
+                )
+                packed["params"] = [name2id[p] for p in group["params"]]
+                start_index += len(packed["params"])
+                return packed
+            
+            param_groups = [pack_group(g) for g in full_optimizer_state["param_groups"]]
+            full_optimizer_state["param_groups"] = param_groups
+            new_state = {}
+            for key, value in full_optimizer_state["state"].items():
+                new_state[name2id[key]] = value
+            full_optimizer_state["state"] = new_state
+
+            if use_async:
+                from colossalai.utils.safetensors import _flatten_optim_state_dict, save
+                flatten_state_dict, metadata = _flatten_optim_state_dict(full_optimizer_state, seperator=".")
+                if id(optimizer) not in self.pinned_state_dicts:
+                    self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+                for k, v in flatten_state_dict.items():
+                    self.pinned_state_dicts[id(optimizer)][k].copy_(v)
+                    flatten_state_dict[k] = self.pinned_state_dicts[id(optimizer)][k]
+                writer = save(checkpoint, state_dict=flatten_state_dict, metadata=metadata)
+                self.async_writers.append(writer)
+            else:
+                utils.save_state_dict(full_optimizer_state, checkpoint_file_path=checkpoint, use_safetensors=False)
 
     def save_sharded_model(
         self,
@@ -150,7 +208,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                 checkpoint=checkpoint_path,
                 index_file=index_file,
                 base_filename=weights_name,
-                is_master=True,
+                is_master=self.coordinator.is_master(),
             )
             self.async_writers.extend(writers)
         else:
@@ -234,6 +292,32 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             )
 
         if self.coordinator.is_master():
+
+            # Save order indices instead of Tensors
+            name2id: Dict[str, int] = {}
+            start_index = 0
+
+            def pack_group(group: Dict[str, Any]) -> Dict[str, Any]:
+                nonlocal start_index
+                packed = {k: v for k, v in group.items() if k != "params"}
+                name2id.update(
+                    {
+                        p: i
+                        for i, p in enumerate(group["params"], start_index)
+                        if p not in name2id
+                    }
+                )
+                packed["params"] = [name2id[p] for p in group["params"]]
+                start_index += len(packed["params"])
+                return packed
+            
+            param_groups = [pack_group(g) for g in fsdp_optim_state["param_groups"]]
+            fsdp_optim_state["param_groups"] = param_groups
+            new_state = {}
+            for key, value in fsdp_optim_state["state"].items():
+                new_state[name2id[key]] = value
+            fsdp_optim_state["state"] = new_state
+
             # Preparing file paths and index file.
             states_name, save_index_file, param_group_file = utils.get_optimizer_base_filenames(
                 prefix, use_safetensors=use_async
@@ -261,7 +345,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                     checkpoint=checkpoint,
                     index_file=index_file,
                     base_filename=states_name,
-                    is_master=True,
+                    is_master=self.coordinator.is_master(),
                     state_preprocess=True,
                 )
                 self.async_writers.extend(writers)
@@ -306,12 +390,42 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         for shard_file in checkpoint_files:
             if shard_file.endswith(".safetensors"):
-                state_dict_shard = load_flat(shard_file, seperator="-")
+                state_dict_shard = load_flat(shard_file, seperator=".")
             else:
                 state_dict_shard = utils.load_shard_state_dict(Path(shard_file), use_safetensors=False)
             fsdp_optim_state.update(state_dict_shard)
 
         fsdp_optim_dict = dict(state=fsdp_optim_state, param_groups=saved_param_groups)
+
+        fsdp_model = optimizer.unwrap_model()
+        full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model.unwrap(), optim=optimizer, rank0_only=False)
+        start_index = 0
+        id2name = {}
+        def get_index_mapping(group: Dict[str, Any]) -> Dict[str, Any]:
+            nonlocal start_index
+            start_num = len(id2name)
+            id2name.update(
+                {
+                    i: p
+                    for i, p in enumerate(group["params"], start_index)
+                    if i not in id2name
+                }
+            )
+            end_num = len(id2name)
+            start_index += end_num - start_num
+        
+        for g in full_optimizer_state["param_groups"]:
+            get_index_mapping(g)
+    
+        new_state = {}
+        for key, value in fsdp_optim_dict["state"].items():
+            new_state[id2name[int(key)]] = value
+        fsdp_optim_dict["state"] = new_state
+        for g in fsdp_optim_dict["param_groups"]:
+            new_group = []
+            for param_id in g["params"]:
+                new_group.append(id2name[param_id])
+            g["params"] = new_group
 
         with FSDP.state_dict_type(optimizer.unwrap_model().unwrap(), StateDictType.FULL_STATE_DICT):
             fsdp_state = FSDP.optim_state_dict_to_load(
