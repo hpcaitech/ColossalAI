@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Any
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -59,22 +59,17 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=False)
         start_index = 0
         id2name = {}
+
         def get_index_mapping(group: Dict[str, Any]) -> Dict[str, Any]:
             nonlocal start_index
             start_num = len(id2name)
-            id2name.update(
-                {
-                    i: p
-                    for i, p in enumerate(group["params"], start_index)
-                    if i not in id2name
-                }
-            )
+            id2name.update({i: p for i, p in enumerate(group["params"], start_index) if i not in id2name})
             end_num = len(id2name)
             start_index += end_num - start_num
-        
+
         for g in full_optimizer_state["param_groups"]:
             get_index_mapping(g)
-    
+
         new_state = {}
         for key, value in checkpoint["state"].items():
             new_state[id2name[int(key)]] = value
@@ -111,7 +106,9 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                 writer = save(checkpoint, full_model_state)
                 self.async_writers.append(writer)
             else:
-                utils.save_state_dict(full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors)
+                utils.save_state_dict(
+                    full_model_state, checkpoint_file_path=checkpoint, use_safetensors=use_safetensors
+                )
 
     def save_unsharded_optimizer(
         self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
@@ -133,17 +130,11 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             def pack_group(group: Dict[str, Any]) -> Dict[str, Any]:
                 nonlocal start_index
                 packed = {k: v for k, v in group.items() if k != "params"}
-                name2id.update(
-                    {
-                        p: i
-                        for i, p in enumerate(group["params"], start_index)
-                        if p not in name2id
-                    }
-                )
+                name2id.update({p: i for i, p in enumerate(group["params"], start_index) if p not in name2id})
                 packed["params"] = [name2id[p] for p in group["params"]]
                 start_index += len(packed["params"])
                 return packed
-            
+
             param_groups = [pack_group(g) for g in full_optimizer_state["param_groups"]]
             full_optimizer_state["param_groups"] = param_groups
             new_state = {}
@@ -153,6 +144,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
 
             if use_async:
                 from colossalai.utils.safetensors import _flatten_optim_state_dict, save
+
                 flatten_state_dict, metadata = _flatten_optim_state_dict(full_optimizer_state, seperator=".")
                 if id(optimizer) not in self.pinned_state_dicts:
                     self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
@@ -300,17 +292,11 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             def pack_group(group: Dict[str, Any]) -> Dict[str, Any]:
                 nonlocal start_index
                 packed = {k: v for k, v in group.items() if k != "params"}
-                name2id.update(
-                    {
-                        p: i
-                        for i, p in enumerate(group["params"], start_index)
-                        if p not in name2id
-                    }
-                )
+                name2id.update({p: i for i, p in enumerate(group["params"], start_index) if p not in name2id})
                 packed["params"] = [name2id[p] for p in group["params"]]
                 start_index += len(packed["params"])
                 return packed
-            
+
             param_groups = [pack_group(g) for g in fsdp_optim_state["param_groups"]]
             fsdp_optim_state["param_groups"] = param_groups
             new_state = {}
@@ -401,22 +387,17 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model.unwrap(), optim=optimizer, rank0_only=False)
         start_index = 0
         id2name = {}
+
         def get_index_mapping(group: Dict[str, Any]) -> Dict[str, Any]:
             nonlocal start_index
             start_num = len(id2name)
-            id2name.update(
-                {
-                    i: p
-                    for i, p in enumerate(group["params"], start_index)
-                    if i not in id2name
-                }
-            )
+            id2name.update({i: p for i, p in enumerate(group["params"], start_index) if i not in id2name})
             end_num = len(id2name)
             start_index += end_num - start_num
-        
+
         for g in full_optimizer_state["param_groups"]:
             get_index_mapping(g)
-    
+
         new_state = {}
         for key, value in fsdp_optim_dict["state"].items():
             new_state[id2name[int(key)]] = value
