@@ -209,7 +209,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
 
 Shardformer的配置由类`ShardConfig`的参数控制：
 
-{{ autodoc:colossalai.shardformer.ShardConfig }}
+{{ autodoc:colossalai.shardformer.shard.shard_config.ShardConfig }}
 
 如果您想启用 Apex Fused Layernorm，请安装 `apex`。如果您想启用 flash attention，请安装 `flash_attn`。此外，xFormers 的 `cutlass_op` 可以作为Flash Attention的补充优化方式。
 
