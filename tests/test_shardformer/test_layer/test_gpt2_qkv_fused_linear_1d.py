@@ -9,7 +9,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.lazy import LazyInitContext
 from colossalai.pipeline.weight_grad_store import WeightGradStore
-from colossalai.shardformer.layer import GPT2FusedLinearConv1D, GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
+from colossalai.shardformer.layer import GPT2FusedLinearConv, GPT2FusedLinearConv1D_Col, GPT2FusedLinearConv1D_Row
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -125,7 +125,7 @@ def check_linear_conv_1d_without_weight_grad_store(lazy_init: bool, seq_parallel
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_base = GPT2FusedLinearConv1D.from_native_module(linear_copy, seq_parallel_mode=seq_parallel_mode)
+    linear_base = GPT2FusedLinearConv.from_native_module(linear_copy, seq_parallel_mode=seq_parallel_mode)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_base.weight.shape == torch.Size([48, 192])
@@ -158,9 +158,7 @@ def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mo
     linear = Conv1D(192, 48).cuda()
     with ctx:
         linear_copy = Conv1D(192, 48).cuda()
-    linear_base = GPT2FusedLinearConv1D.from_native_module(
-        linear_copy, seq_parallel_mode=seq_parallel_mode, use_zbv=True
-    )
+    linear_base = GPT2FusedLinearConv.from_native_module(linear_copy, seq_parallel_mode=seq_parallel_mode, use_zbv=True)
 
     assert linear.weight.shape == torch.Size([48, 192])
     assert linear_base.weight.shape == torch.Size([48, 192])

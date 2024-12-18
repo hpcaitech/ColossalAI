@@ -164,7 +164,7 @@ class GPT2Policy(Policy):
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
                         suffix="attn.c_attn",
-                        target_module=col_nn.GPT2FusedLinearConv1D,
+                        target_module=col_nn.GPT2FusedLinearConv,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "fp8_communication": self.shard_config.fp8_communication,
@@ -173,7 +173,7 @@ class GPT2Policy(Policy):
                     ),
                     SubModuleReplacementDescription(
                         suffix="attn.c_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D,
+                        target_module=col_nn.GPT2FusedLinearConv,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "fp8_communication": self.shard_config.fp8_communication,
@@ -182,7 +182,7 @@ class GPT2Policy(Policy):
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_fc",
-                        target_module=col_nn.GPT2FusedLinearConv1D,
+                        target_module=col_nn.GPT2FusedLinearConv,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "skip_bias_add": self.enable_bias_gelu_fused,
@@ -192,7 +192,7 @@ class GPT2Policy(Policy):
                     ),
                     SubModuleReplacementDescription(
                         suffix="mlp.c_proj",
-                        target_module=col_nn.GPT2FusedLinearConv1D,
+                        target_module=col_nn.GPT2FusedLinearConv,
                         kwargs={
                             "seq_parallel_mode": sp_mode,
                             "fp8_communication": self.shard_config.fp8_communication,
@@ -531,13 +531,6 @@ class GPT2DoubleHeadsModelPolicy(GPT2Policy):
                 held_layers.append(multiple_choice_head.activation)
                 held_layers.append(multiple_choice_head.first_dropout)
                 held_layers.append(multiple_choice_head.last_dropout)
-            # if self.pipeline_stage_manager.is_last_stage():
-            #     multiple_choice_head = self.model.multiple_choice_head
-            #     held_layers.append(self.model.lm_head)
-            #     held_layers.append(multiple_choice_head.summary)
-            #     held_layers.append(multiple_choice_head.activation)
-            #     held_layers.append(multiple_choice_head.first_dropout)
-            #     held_layers.append(multiple_choice_head.last_dropout)
 
         return held_layers
 

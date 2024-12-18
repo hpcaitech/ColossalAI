@@ -31,7 +31,7 @@ from colossalai.pipeline.schedule.zero_bubble_pp import ZeroBubbleVPipeScheduler
 colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
 ```
 
-### step 3. 初始化模型优化器和流水线Schedule
+### step 3. 初始化模型优化器
 建立我们的模型和优化器 我们创建了一个带有8层Decoder-Layer的 Llama。然后，使用get_v_schedule()函数创建PipelineGraph和Pipeline schedule。
 
 ```python
@@ -53,6 +53,9 @@ configuration = LlamaConfig(
 )
 model = LlamaModel(configuration).cuda()
 optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
+```
+### step 4.初始化流水线Schedule
+```python
 # Init schedule
 h, a, s = config.hidden_size, config.num_attention_heads, 1024
 mem_f = 34 * h + 5 * a * s
@@ -72,7 +75,7 @@ graph = PipelineGraph(
 zbv_schedule = graph.get_v_schedule()
 ```
 
-### step 4.初始化Booster
+### step 5.初始化Booster
 在初始化Plugin时输入pp_style="zbv"，以使用ZeroBubble流水线并行。
 ```python
 plugin = HybridParallelPlugin(
@@ -92,7 +95,7 @@ dp_size = plugin.dp_size
 booster = Booster(plugin=plugin)
 ```
 
-### step 5.训练模型
+### step 6.训练模型
 ```python
 steps = 10
 for step in range(steps):

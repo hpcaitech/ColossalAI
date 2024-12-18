@@ -7,7 +7,7 @@ from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import FusedLinear1D, FusedLinear1D_Col, FusedLinear1D_Row
+from colossalai.shardformer.layer import FusedLinear, FusedLinear1D_Col, FusedLinear1D_Row
 from colossalai.shardformer.layer.qkv_fused_linear import split_fused_qkv_in_gpt2_style
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
@@ -126,7 +126,7 @@ def check_linear_1d_base(lazy_init: bool):
     linear = nn.Linear(8, 80).cuda()
     with ctx:
         linear_copy = nn.Linear(8, 80).cuda()
-    linear_base = FusedLinear1D.from_native_module(linear_copy)
+    linear_base = FusedLinear.from_native_module(linear_copy)
 
     assert linear.weight.shape == torch.Size([80, 8])
     assert linear.bias.shape == torch.Size([80])

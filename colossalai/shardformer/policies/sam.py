@@ -248,7 +248,7 @@ class SamPolicy(Policy):
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
                         suffix="attn.qkv",
-                        target_module=col_nn.FusedLinear1D,
+                        target_module=col_nn.FusedLinear,
                         kwargs={
                             "split_sizes": [self.model.config.vision_config.hidden_size] * 3,
                             "fp8_communication": self.shard_config.fp8_communication,

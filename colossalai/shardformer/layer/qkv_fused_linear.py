@@ -41,10 +41,10 @@ from .utils import create_randomizer_with_offset, is_share_sp_tp
 __all__ = [
     "FusedLinear1D_Col",
     "FusedLinear1D_Row",
-    "FusedLinear1D",
+    "FusedLinear",
     "GPT2FusedLinearConv1D_Col",
     "GPT2FusedLinearConv1D_Row",
-    "GPT2FusedLinearConv1D",
+    "GPT2FusedLinearConv",
 ]
 
 # ====================================
@@ -634,7 +634,7 @@ class GPT2FusedLinearConv1D_Row(ParallelModule):
             return output, self.bias
 
 
-class GPT2FusedLinearConv1D(ParallelModule):
+class GPT2FusedLinearConv(ParallelModule):
     r"""Linear layer without parallelism.
     This layer is used to fit `Conv1D` layer (Fused QKV) in gpt2 of huggingface.
 
@@ -738,7 +738,7 @@ class GPT2FusedLinearConv1D(ParallelModule):
         bias = module.bias is not None
         device = module.weight.device
 
-        linear_1d = GPT2FusedLinearConv1D(
+        linear_1d = GPT2FusedLinearConv(
             in_features=in_features,
             out_features=out_features,
             bias=bias,
@@ -1204,7 +1204,7 @@ class FusedLinear1D_Row(ParallelModule):
             return output, self.bias
 
 
-class FusedLinear1D(ParallelModule):
+class FusedLinear(ParallelModule):
     r"""Fused Linear layer with column parallelism.
 
     The linear layer is defined as :math:`Y = XA + b`. A is parallelized along
@@ -1317,7 +1317,7 @@ class FusedLinear1D(ParallelModule):
         bias = module.bias is not None
         device = module.weight.device
 
-        linear_1d = FusedLinear1D(
+        linear_1d = FusedLinear(
             in_features=in_features,
             out_features=out_features,
             bias=bias,

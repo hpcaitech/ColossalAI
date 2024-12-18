@@ -52,6 +52,14 @@ configuration = LlamaConfig(
 )
 model = LlamaModel(configuration).cuda()
 optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
+```
+### step 4. Initialize Pipeline Schedule
+Then, we need to create the PipelineGraph and PipelineSchedule using the get_v_schedule() function. We need to initialise the PipelineGraph with the following parameters.
+x_cost represents the runtime consumed by operation x of each model chunk.
+x_mem represents the amount of memory consumed by the operation x of each model chunk.
+These parameters are estimated and filled in before the pipeline starts. In fact, better results can be obtained based on the runtime and memory cost during the real computation of the model.
+In the following example, we assume that the computation times for the model's forward, reverse B, and reverse W are 1, 1, 1, respectively, and the p2p communication time is 1
+```python
 # Init schedule
 h, a, s = config.hidden_size, config.num_attention_heads, 1024
 mem_f = 34 * h + 5 * a * s
@@ -71,7 +79,7 @@ graph = PipelineGraph(
 zbv_schedule = graph.get_v_schedule()
 ```
 
-### step 4.Init Booster
+### step 5.Init Booster
 Pass pp_style="zbv" when initialising the Plugin to use the ZeroBubble Pipeline.
 ```python
 plugin = HybridParallelPlugin(
@@ -91,7 +99,7 @@ dp_size = plugin.dp_size
 booster = Booster(plugin=plugin)
 ```
 
-### step 5.Train Your Model
+### step 6.Train Your Model
 ```python
 steps = 10
 for step in range(steps):
