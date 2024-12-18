@@ -213,7 +213,7 @@ The support matrix will grow larger as more models and optimization tools emerge
 
 The configuration of Shardformer is controlled by class `ShardConfig`:
 
-{{ autodoc:colossalai.shardformer.shard.shard_config.ShardConfig }}
+{{ autodoc:colossalai.shardformer.shard.shard_config }}
 
 If you want to enable Apex Fused Layernorm, please install `apex`.
 If you want to enable the usage of flash attention, please install `flash_attn`.
