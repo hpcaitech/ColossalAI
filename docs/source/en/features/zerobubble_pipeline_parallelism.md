@@ -58,7 +58,7 @@ Then, we need to create the PipelineGraph and PipelineSchedule using the get_v_s
 x_cost represents the runtime consumed by operation x of each model chunk.
 x_mem represents the amount of memory consumed by the operation x of each model chunk.
 These parameters are estimated and filled in before the pipeline starts. In fact, better results can be obtained based on the runtime and memory cost during the real computation of the model.
-In the following example, we assume that the computation times for the model's forward, reverse B, and reverse W are 1, 1, 1, respectively, and the p2p communication time is 1
+In the following example, we assume that the computation times for the model's forward, reverse B, and reverse W are 1, 1, 1, respectively, and the p2p communication time is 1.
 ```python
 # Init schedule
 h, a, s = config.hidden_size, config.num_attention_heads, 1024
@@ -183,10 +183,6 @@ Performance Benchmark
   </tr>
 </table>
 
-### 3.Fine-tuning Scheduler parameters
-
-```python
-```
 ## Model compatibility
 <table>
   <tr>

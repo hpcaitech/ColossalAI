@@ -55,6 +55,11 @@ model = LlamaModel(configuration).cuda()
 optimizer = torch.optim.Adam(torch_model.parameters(), lr=1)
 ```
 ### step 4.初始化流水线Schedule
+然后，我们需要使用 get_v_schedule() 函数创建 PipelineGraph 和 PipelineSchedule。我们需要用以下参数初始化 PipelineGraph。
+x_cost 表示每个模型块的操作 x 所消耗的运行时间。
+x_mem 表示每个模型块的操作 x 所消耗的内存量。
+这些参数都是在流水线启动前估算并填入的。事实上，在模型的实际计算过程中，根据运行时间和内存成本可以获得更好的结果。
+在下面的例子中，我们假设模型的正向、反向 B 和反向 W 的计算时间分别为 1、1、1，p2p 通信时间为 1。
 ```python
 # Init schedule
 h, a, s = config.hidden_size, config.num_attention_heads, 1024
@@ -123,7 +128,6 @@ for step in range(steps):
 
 ### 1.在ZeroBubble中使用元数据缓存
 在初始化Plugin时输入 "enable_metadata_cache=True"，以便在ZeroBubble管道中使用元数据缓存。
-Pass "enable_metadata_cache=True" when initialising the Plugin to use the Meta Cache with ZeroBubble Pipeline.
 ```python
 plugin = HybridParallelPlugin(
     pp_size=2,
@@ -181,10 +185,6 @@ plugin = HybridParallelPlugin(
   </tr>
 </table>
 
-### 3.Fine-tuning Scheduler parameters
-
-```python
-```
 ## 模型兼容性
 <table>
   <tr>
