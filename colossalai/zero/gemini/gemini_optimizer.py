@@ -834,9 +834,13 @@ class GeminiOptimizer(OptimizerWrapper):
             state = self.collect_states(param_id=param_id, only_rank_0=only_rank_0)
 
             if pinned_state_dicts is not None:
-                pinned_state_dicts[param_id] = {}
+                if param_id not in pinned_state_dicts:
+                    pinned_state_dicts[param_id] = {}
                 for k, v in state.items():
-                    pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
+                    if v is None:
+                        continue
+                    if k not in pinned_state_dicts[param_id]:
+                        pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
                     pinned_state_dicts[param_id][k].copy_(v)
                     state[k] = pinned_state_dicts[param_id][k]
             block, block_size = sharder.append_optim_state(param_id, state)

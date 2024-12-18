@@ -405,7 +405,8 @@ def shard_model_checkpoint(
     for key, weight in state_dict.items():
         if not is_distributed_tensor(weight):
             if pinned_state_dicts is not None:
-                pinned_state_dicts[key] = torch.empty_like(weight, pin_memory=True, device="cpu")
+                if key not in pinned_state_dicts:
+                    pinned_state_dicts[key] = torch.empty_like(weight, pin_memory=True, device="cpu")
                 pinned_state_dicts[key].copy_(weight)
                 weight = pinned_state_dicts[key]
             block, block_size = state_dict_sharder.append_param(key, weight)
@@ -434,7 +435,8 @@ def shard_optimizer_checkpoint(
             if param_id not in pinned_state_dicts:
                 pinned_state_dicts[param_id] = {}
                 for k, v in state.items():
-                    pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
+                    if k not in pinned_state_dicts[param_id]:
+                        pinned_state_dicts[param_id][k] = torch.empty_like(v, pin_memory=True, device="cpu")
                     pinned_state_dicts[param_id][k].copy_(v)
                     state[k] = pinned_state_dicts[param_id][k]
 

@@ -71,6 +71,8 @@ def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[d
 
     for idx, d in states.items():
         for k, v in d.items():
+            if v is None:
+                continue
             nested_key = f"state{seperator}{idx}{seperator}{k}"
             if not isinstance(v, torch.Tensor):
                 non_tensor_keys.append(nested_key)

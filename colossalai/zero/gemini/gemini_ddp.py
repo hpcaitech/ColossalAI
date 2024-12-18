@@ -949,8 +949,8 @@ class GeminiDDP(ModelWrapper):
                         pinned_state_dicts[prefix + name] = torch.empty_like(
                             gathered_param, pin_memory=True, device="cpu"
                         )
-                        pinned_state_dicts[prefix + name].copy_(gathered_param)
-                        gathered_param = pinned_state_dicts[prefix + name]
+                    pinned_state_dicts[prefix + name].copy_(gathered_param)
+                    gathered_param = pinned_state_dicts[prefix + name]
                 block, block_size = sharder.append_param(prefix + name, gathered_param)
                 if block is not None:
                     yield block, block_size
@@ -965,8 +965,8 @@ class GeminiDDP(ModelWrapper):
                 if pinned_state_dicts is not None:
                     if (prefix + name) not in pinned_state_dicts:
                         pinned_state_dicts[prefix + name] = torch.empty_like(buffer, pin_memory=True, device="cpu")
-                        pinned_state_dicts[prefix + name].copy_(buffer)
-                        buffer = pinned_state_dicts[prefix + name]
+                    pinned_state_dicts[prefix + name].copy_(buffer)
+                    buffer = pinned_state_dicts[prefix + name]
                 block, block_size = sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
@@ -980,8 +980,8 @@ class GeminiDDP(ModelWrapper):
             if pinned_state_dicts is not None:
                 if extra_state_key not in pinned_state_dicts:
                     pinned_state_dicts[extra_state_key] = torch.empty_like(extra_state, pin_memory=True, device="cpu")
-                    pinned_state_dicts[extra_state_key].copy_(extra_state)
-                    extra_state = pinned_state_dicts[extra_state_key]
+                pinned_state_dicts[extra_state_key].copy_(extra_state)
+                extra_state = pinned_state_dicts[extra_state_key]
             block, block_size = sharder.append_param(extra_state_key, extra_state)
             if block is not None:
                 yield block, block_size

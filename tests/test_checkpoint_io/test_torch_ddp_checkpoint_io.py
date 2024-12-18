@@ -20,7 +20,7 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int, use_async: bo
     booster = Booster(plugin=plugin)
     model = resnet18()
     criterion = lambda x: x.mean()
-    optimizer = SGD((model.parameters()), lr=0.001)
+    optimizer = SGD((model.parameters()), lr=0.001, momentum=0.5)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion, lr_scheduler=scheduler)
 

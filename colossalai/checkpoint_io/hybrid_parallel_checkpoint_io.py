@@ -1017,6 +1017,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         state_ = state if inplace else copy.deepcopy(state)
 
         for k, v in state_.items():
+            if v is None:
+                continue
             if isinstance(v, torch.Tensor) and k != "step":
                 # First gather Zero shards.
                 if use_zero:
