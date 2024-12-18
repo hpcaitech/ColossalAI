@@ -60,7 +60,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if self.coordinator.is_master():
-            super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+            super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor, use_async=use_async)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """

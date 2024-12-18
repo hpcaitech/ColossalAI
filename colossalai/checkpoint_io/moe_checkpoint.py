@@ -44,12 +44,13 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         global_dp_group: ProcessGroup,
         pp_group: ProcessGroup,
         tp_group: ProcessGroup,
+        sp_group: ProcessGroup,
         ep_group: ProcessGroup,
         moe_dp_group: ProcessGroup,
         zero_stage: int,
         verbose: bool = True,
     ) -> None:
-        super().__init__(global_dp_group, pp_group, tp_group, zero_stage, verbose)
+        super().__init__(global_dp_group, pp_group, tp_group, sp_group, zero_stage, verbose)
         self.global_dp_group = global_dp_group
         self.global_dp_rank = dist.get_rank(global_dp_group)
         self.global_dp_size = dist.get_world_size(global_dp_group)
