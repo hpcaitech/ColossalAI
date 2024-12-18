@@ -149,6 +149,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 [[博客]](https://hpc-ai.com/blog/colossal-llama-2-13b)
 [[HuggingFace 模型权重]](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-13b-base)
 [[Modelscope 模型权重]](https://www.modelscope.cn/models/colossalai/Colossal-LLaMA-2-13b-base/summary)
+[[openMind_Hub 模型权重]](https://modelers.cn/models/HPCAITECH/Colossal-LLaMA-2-13B-base)
 
 |             Model              |  Backbone  | Tokens Consumed | MMLU (5-shot) | CMMLU (5-shot) | AGIEval (5-shot) | GAOKAO (0-shot) | CEval (5-shot) |
 |:------------------------------:|:----------:|:---------------:|:-------------:|:--------------:|:----------------:|:---------------:|:--------------:|
