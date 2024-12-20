@@ -107,11 +107,7 @@ def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None
     for k, v in flat_dict.items():
         parts = k.split(seperator)
         assert len(parts) == 3 and parts[0] == "state"
-        try:
-            idx = int(parts[1])
-        except:
-            # exception for fsdp, part[1] isn't param_id
-            idx = parts[1]
+        idx = int(parts[1])
         key = parts[2]
         if idx not in states:
             states[idx] = {}

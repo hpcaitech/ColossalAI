@@ -244,7 +244,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
-        control_saving = self.tp_rank == 0
+        control_saving = self.tp_rank == 0 and self.sp_rank == 0
         if control_saving and use_async:
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = {}
