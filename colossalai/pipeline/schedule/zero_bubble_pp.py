@@ -38,6 +38,19 @@ def _wait_p2p(wait_handles: List[torch.cuda.Event]) -> None:
 
 
 class ZeroBubbleVPipeScheduler(PipelineSchedule):
+    r"""
+    ZeroBubbleVPipeScheduler
+
+    Args:
+        stage_manager (PipelineStageManager): If using pipeline parallelism, it's necessary to specify a pipeline stage manager for inter-process communication in pipeline parallelism. Defaults to None, which means not using pipeline parallelism.
+        schedule (List[ScheduledNode]): Schedule for ZeroBubbleVPipe.
+        num_model_chunks (int) : The number of model chunk in a device.
+        num_microbatch (Optional[int]): The number of microbatch.
+        microbatch_size (Optional[int]): The size per microbatch.
+        enable_metadata_cache (bool): whether to enable metadata cache to acclerate communication.
+        overlap_p2p (bool): whether to use overlap_p2p.
+    """
+
     def __init__(
         self,
         stage_manager: PipelineStageManager,
