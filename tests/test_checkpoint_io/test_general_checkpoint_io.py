@@ -19,7 +19,8 @@ from colossalai.testing import check_state_dict_equal, clear_cache_before_run, p
 
 @clear_cache_before_run()
 @parameterize("use_safetensors", [True, False])
-def test_unsharded_checkpoint(use_safetensors: bool):
+@parameterize("use_async", [False, True])
+def test_unsharded_checkpoint(use_safetensors: bool, use_async: bool):
     # create a model and optimizer
     model = resnet18()
     optimizer = Adam(model.parameters(), lr=0.001)
@@ -36,24 +37,30 @@ def test_unsharded_checkpoint(use_safetensors: bool):
     lr_scheduler.step()
 
     # create a temp file for checkpoint
-    if use_safetensors:
+    if use_async or use_safetensors:
         suffix = ".safetensors"
     else:
         suffix = ".bin"
     model_ckpt_tempfile = tempfile.NamedTemporaryFile(suffix=suffix)
-    optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
+    if use_async:
+        optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile(suffix=suffix)
+    else:
+        optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
     lr_scheduler_ckpt_tempfile = tempfile.NamedTemporaryFile()
 
     # save the model, optimizer, lr_scheduler
     ckpt_io = GeneralCheckpointIO()
-    ckpt_io.save_model(model, model_ckpt_tempfile.name, use_safetensors=use_safetensors)
-    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name)
+    ckpt_io.save_model(model, model_ckpt_tempfile.name, use_safetensors=use_safetensors, use_async=use_async)
+    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name, use_async=use_async)
     ckpt_io.save_lr_scheduler(lr_scheduler, lr_scheduler_ckpt_tempfile.name)
 
     # create new model
     new_model = resnet18()
     new_optimizer = Adam(new_model.parameters(), lr=0.001)
     new_lr_scheduler = CosineAnnealingWarmupLR(optimizer, total_steps=10)
+
+    ckpt_io._sync_d2h()
+    ckpt_io._sync_io()
 
     # load the model, optimizer, lr_scheduler
     ckpt_io.load_model(new_model, model_ckpt_tempfile.name)
@@ -66,7 +73,8 @@ def test_unsharded_checkpoint(use_safetensors: bool):
 
 
 @pytest.mark.parametrize("use_safetensors", [True, False])
-def test_sharded_model_checkpoint(use_safetensors: bool):
+@pytest.mark.parametrize("use_async", [False, True])
+def test_sharded_model_checkpoint(use_safetensors: bool, use_async: bool):
     # create a model and optimizer
     model = resnet18()
     optimizer = Adam(model.parameters(), lr=0.001)
@@ -79,20 +87,19 @@ def test_sharded_model_checkpoint(use_safetensors: bool):
     loss.backward()
     optimizer.step()
 
-    # create a temp file for checkpoint
-    if use_safetensors:
-        pass
-    else:
-        pass
-
     model_ckpt_dir = tempfile.TemporaryDirectory()
     optimizer_ckpt_tempfile = tempfile.NamedTemporaryFile()
 
     # save the model and optimizer
     ckpt_io = GeneralCheckpointIO()
 
-    ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors)
+    ckpt_io.save_model(
+        model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=use_safetensors, use_async=use_async
+    )
     ckpt_io.save_optimizer(optimizer, optimizer_ckpt_tempfile.name, shard=False)
+
+    ckpt_io._sync_d2h()
+    ckpt_io._sync_io()
 
     # create new model
     new_model = resnet18()
@@ -106,7 +113,8 @@ def test_sharded_model_checkpoint(use_safetensors: bool):
     check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
 
 
-def test_sharded_optimizer_checkpoint():
+@pytest.mark.parametrize("use_async", [False, True])
+def test_sharded_optimizer_checkpoint(use_async: bool):
     # create a model and optimizer
     model = resnet18()
     optimizer = Adam(model.parameters(), lr=0.001)
@@ -128,7 +136,10 @@ def test_sharded_optimizer_checkpoint():
     ckpt_io = GeneralCheckpointIO()
 
     ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=False)
-    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10)
+    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10, use_async=use_async)
+
+    ckpt_io._sync_d2h()
+    ckpt_io._sync_io()
 
     # create new model
     new_model = resnet18()
@@ -148,9 +159,16 @@ def test_sharded_optimizer_checkpoint():
         loss.backward()
         new_optimizer.step()
 
+    # create temp directories for checkpoint
+    model_ckpt_dir = tempfile.TemporaryDirectory()
+    optimizer_ckpt_dir = tempfile.TemporaryDirectory()
+
     # save the newly got optimizer
     ckpt_io.save_model(new_model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=False)
-    ckpt_io.save_optimizer(new_optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10)
+    ckpt_io.save_optimizer(new_optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10, use_async=use_async)
+
+    ckpt_io._sync_d2h()
+    ckpt_io._sync_io()
 
     # create another new model
     new_new_model = resnet18()
@@ -164,7 +182,8 @@ def test_sharded_optimizer_checkpoint():
     check_state_dict_equal(new_optimizer.state_dict(), new_new_optimizer.state_dict())
 
 
-def test_sharded_optimizer_multiple_param_groups():
+@pytest.mark.parametrize("use_async", [False, True])
+def test_sharded_optimizer_multiple_param_groups(use_async: bool):
     # create a model and optimizer
     model = resnet18()
     optimizer = Adam(
@@ -188,7 +207,10 @@ def test_sharded_optimizer_multiple_param_groups():
     ckpt_io = GeneralCheckpointIO()
 
     ckpt_io.save_model(model, model_ckpt_dir.name, True, True, "", 10, use_safetensors=False)
-    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10)
+    ckpt_io.save_optimizer(optimizer, optimizer_ckpt_dir.name, shard=True, size_per_shard=10, use_async=use_async)
+
+    ckpt_io._sync_d2h()
+    ckpt_io._sync_io()
 
     # create new model
     new_model = resnet18()
