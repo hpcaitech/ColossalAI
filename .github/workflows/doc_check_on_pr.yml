@@ -58,6 +58,7 @@ jobs:
       # there is no main branch, so it's safe to checkout the main branch from the merged branch
       # docer will rebase the remote main branch to the merged branch, so we have to config user
       - name: Make the merged branch main
+
         run: |
           cd ColossalAI
           git checkout -b main
