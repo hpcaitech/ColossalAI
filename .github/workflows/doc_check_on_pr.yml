@@ -73,14 +73,5 @@ jobs:
           cd ColossalAI-Documentation
           pip install -v ./doc-build/third_party/hf-doc-builder
           pip install -v ./doc-build
-          set -euo pipefail  # fail early
-          SCRIPT_DIR="$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-          DOC_BUILD_DIR="${SCRIPT_DIR}/../doc-build"
-          DOCUSAURUS_DIR="${SCRIPT_DIR}/../docusaurus"
-          cd "${DOC_BUILD_DIR}"
-          docer extract -o hpcaitech -p ColossalAI
-          docer autodoc -o hpcaitech -p ColossalAI
-          docer docusaurus -d ../docusaurus
-          cd "${DOCUSAURUS_DIR}"
-          yarn install
-          yarn build
+        list: |
+          from colossalai.shardformer import ShardConfig
