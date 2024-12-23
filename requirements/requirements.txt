@@ -24,4 +24,5 @@ fastapi
 uvicorn==0.29.0
 galore_torch
 diffusers==0.29.0
-pyramid==1.5
+pyramid<=1.10.7
+zope<=5.5.2
