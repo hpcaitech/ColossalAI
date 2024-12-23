@@ -2,7 +2,6 @@ from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
-import torch.cuda
 import torch.distributed
 from torch.nn import Module, ModuleList
 from torch.utils._pytree import tree_map
@@ -18,7 +17,7 @@ from ._utils import detach, get_batch_size, get_micro_batch, merge_batch, model_
 from .base import PipelineSchedule
 
 
-def _wait_p2p(wait_handles: List[torch.cuda.Event]) -> None:
+def _wait_p2p(wait_handles) -> None:
     if wait_handles is not None:
         for req in wait_handles:
             req.wait()

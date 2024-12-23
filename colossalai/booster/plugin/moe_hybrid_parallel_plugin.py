@@ -404,7 +404,13 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         return MoECheckpointIO(
-            self.dp_group, self.pp_group, self.tp_group, self.ep_group, self.moe_dp_group, self.zero_stage
+            self.dp_group,
+            self.pp_group,
+            self.tp_group,
+            self.sp_group,
+            self.ep_group,
+            self.moe_dp_group,
+            self.zero_stage,
         )
 
     def configure(

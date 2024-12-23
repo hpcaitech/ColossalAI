@@ -154,7 +154,7 @@ def main():
             offload_param_frac=args.offload_param_frac,
             tp_size=args.tp,
             extra_dp_size=args.extra_dp,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.xformers,
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
@@ -168,7 +168,7 @@ def main():
             warmup_non_model_data_ratio=args.warmup_ratio,
             tp_size=args.tp,
             extra_dp_size=args.extra_dp,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             max_prefetch=args.prefetch_num,
             enable_async_reduce=not args.disable_async_reduce,
             enable_flash_attention=args.xformers,
@@ -245,7 +245,7 @@ def main():
             sp_size=args.sp,
             sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
@@ -264,7 +264,7 @@ def main():
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
             cpu_offload=True,
-            enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             initial_scale=2**8,
@@ -287,8 +287,8 @@ def main():
         config = MODEL_CONFIGS[args.config]
     else:
         config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
+    get_accelerator().manual_seed(42)
 
-    torch.cuda.manual_seed(42)
     dataset = RandomDataset(
         num_samples=args.batch_size * args.num_steps * dp_size, max_length=args.max_length, vocab_size=config.vocab_size
     )
@@ -311,7 +311,6 @@ def main():
             config,
             trust_remote_code=True,
             **init_kwargs,
-            attn_implementation="flash_attention_2",
             torch_dtype=torch.bfloat16,
         )
     if args.grad_checkpoint:
@@ -321,9 +320,13 @@ def main():
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")
+    if config.model_type == "chatglm":
+        num_layers = model.config.num_layers
+    else:
+        num_layers = model.config.num_hidden_layers
     performance_evaluator = PerformanceEvaluator(
         model_numel,
-        model.config.num_hidden_layers,
+        num_layers,
         model.config.hidden_size,
         model.config.vocab_size,
         args.grad_checkpoint,
@@ -337,7 +340,7 @@ def main():
 
     torch.set_default_dtype(torch.float)
     coordinator.print_on_master(
-        f"Booster init max CUDA memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
+        f"Booster init max device memory: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB"
     )
     coordinator.print_on_master(
         f"Booster init max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024:.2f} MB"
@@ -389,7 +392,7 @@ def main():
                 performance_evaluator.on_step_end(**batch)
                 prof.step()
     performance_evaluator.on_fit_end()
-    coordinator.print_on_master(f"Max CUDA memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
+    coordinator.print_on_master(f"Max device memory usage: {get_accelerator().max_memory_allocated()/1024**2:.2f} MB")
 
 
 if __name__ == "__main__":
