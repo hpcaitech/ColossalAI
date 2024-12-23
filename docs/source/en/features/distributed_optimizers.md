@@ -20,12 +20,12 @@ We now demonstrate how to use Distributed Adafactor with booster API combining T
 ### step 1. Import libraries
 
 ```python
-import torch
-import colossalai
-from colossalai.booster import Booster
 from transformers import LlamaModel, LlamaConfig
 from colossalai.nn.optimizer.distributed_adafactor import DistributedAdaFactor
+from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
+import colossalai
+import torch
 ```
 
 ### step 2. Initialize Distributed Environment and Parallism Group
