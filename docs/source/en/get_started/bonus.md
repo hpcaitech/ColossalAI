@@ -13,7 +13,7 @@ If you build open-source projects based on [Colossal-AI](https://github.com/hpca
 
 Please fill out the following information and send your voucher application to the corresponding email address:
 
-1. GitHub Repo：Ensure that **your project is recognized by GitHub as a [Colossal-AI Dependents](https://github.com/hpcaitech/ColossalAI/network/dependents) project**. 
+1. GitHub Repo：Ensure that **your project is recognized by GitHub as a [Colossal-AI Dependents](https://github.com/hpcaitech/ColossalAI/network/dependents) project**.
 If not, check whether your project [dependencies (e.g.requirements files) include colossalai](https://github.com/hpcaitech/Open-Sora/blob/main/requirements/requirements.txt#L1).
 2. Verification Method: Verify the connection between the sender’s email and the GitHub repo, such as the GitHub account homepage of the project maintainer or the email address of the primary author of a related paper.
 3. Claiming Platform：[hpc-ai.com](https://hpc-ai.com/): H200 GPU，application email `service@hpc-ai.com`
@@ -31,7 +31,7 @@ If not, check whether your project [dependencies (e.g.requirements files) includ
 2. Each open-source project and [hpc-ai.com](https://hpc-ai.com/) account can only claim a reward once.
 3. Due to the high volume of applications, those that fail to pass the review may not receive a reply.
 4. The final interpretation rights of this activity belong to the Colossal-AI and OpenSora teams.
-5. Examples of high-quality projects 
+5. Examples of high-quality projects
    - https://github.com/Vchitect/FasterCache
    - https://github.com/AdaCache-DiT/AdaCache
    - https://github.com/VideoVerses/VideoTuna
