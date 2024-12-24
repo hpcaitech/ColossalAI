@@ -96,6 +96,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
         use_zbv = ctx.use_zbv
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
+        weight_origin = weight
         weight = weight.view(weight.shape)
         if bias is not None:
             bias = bias.view(bias.shape)
@@ -130,7 +131,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
@@ -141,7 +142,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,
@@ -164,7 +165,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
                 WeightGradStore.put(
                     total_input,
                     grad_output,
-                    weight,
+                    (weight, weight_origin),
                     functools.partial(
                         execute_w_pass,
                         wgrad_gemm_func=torch.matmul,
@@ -212,6 +213,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
             return wgrad_gemm_func(_input_.t(), _grad_output_)
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
+        weight_origin = weight
         weight = weight.view(weight.shape)
         if bias is not None:
             bias = bias.view(bias.shape)
@@ -232,7 +234,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
@@ -243,7 +245,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,
@@ -266,7 +268,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                 WeightGradStore.put(
                     total_input,
                     grad_output,
-                    weight,
+                    (weight, weight_origin),
                     functools.partial(
                         execute_w_pass,
                         wgrad_gemm_func=torch.matmul,
@@ -1026,6 +1028,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         use_zbv = ctx.use_zbv
 
         # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm
+        weight_origin = weight
         weight = weight.view(weight.shape)
         if use_bias:
             bias = bias.view(bias.shape)
@@ -1064,7 +1067,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32,
@@ -1075,7 +1078,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                     WeightGradStore.put(
                         total_input,
                         grad_output,
-                        weight,
+                        (weight, weight_origin),
                         functools.partial(
                             execute_w_pass_grad_accum,
                             wgrad_gemm_accum_func=fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16,
@@ -1098,7 +1101,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 WeightGradStore.put(
                     total_input,
                     grad_output,
-                    weight,
+                    (weight, weight_origin),
                     functools.partial(
                         execute_w_pass,
                         wgrad_gemm_func=torch.matmul,
