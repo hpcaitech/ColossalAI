@@ -24,7 +24,7 @@ class WeightGradStore:
                     # In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias.
                     # View will lead to weight ptr change
                     # weight_cal & weight_origin in tuple, weight_cal use to cal dw, weight_origin use to update
-                    weight_cal, weight_origin = weight
+                    _, weight_origin = weight
                     if weight_origin.grad is not None:
                         func(total_input, grad_output, weight_origin)
                     # for first bwd; weight.grad is None, assign grad_weight to weight.grad
