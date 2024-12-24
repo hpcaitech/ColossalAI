@@ -21,7 +21,7 @@ __all__ = [
     "LinearWithGradAccum",
     "Linear1D_Col",
     "Linear1D_Row",
-    "GPT2FusedLinearConv1D_Col",
+    "GPT2FusedLinearConv",
     "GPT2FusedLinearConv1D_Row",
     "GPT2FusedLinearConv1D_Col",
     "DropoutForParallelInput",
