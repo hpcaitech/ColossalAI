@@ -669,7 +669,6 @@ class GPT2FusedLinearConv(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
-        fp8_communication: bool = False,
         use_zbv: bool = False,
     ):
         super().__init__()
@@ -680,7 +679,6 @@ class GPT2FusedLinearConv(ParallelModule):
         self.seq_parallel_dim = seq_parallel_dim
         self.skip_bias_add = skip_bias_add
         self.device = device
-        self.fp8_communication = fp8_communication
         self.use_zbv = use_zbv
 
         if skip_bias_add and not bias:
@@ -832,6 +830,7 @@ class FusedLinear1D_Col(ParallelModule):
         bias_: Optional[Parameter] = None,
         weight_initializer: Callable = init.kaiming_uniform_(a=math.sqrt(5)),
         bias_initializer: Callable = init.xavier_uniform_(a=1, scale=1),
+        fp8_communication: bool = False,
         use_zbv: bool = False,
     ):
         super().__init__()
@@ -845,6 +844,7 @@ class FusedLinear1D_Col(ParallelModule):
         self.device = device
         self.split_sizes = split_sizes
         self.process_group = process_group
+        self.fp8_communication = fp8_communication
         self.use_zbv = use_zbv
 
         assert (
