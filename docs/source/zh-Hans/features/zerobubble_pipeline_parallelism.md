@@ -234,4 +234,4 @@ plugin = HybridParallelPlugin(
 ## API 参考
 {{ autodoc:colossalai.pipeline.schedule.zero_bubble_pp.ZeroBubbleVPipeScheduler }}
 
-<!-- doc-test-command: python -m pytest -s tests/test_pipeline/test_schedule/test_zerobubble_pp.py  -->
+<!-- doc-test-command: torchrun --standalone --nproc_per_node=4 zerobubble_pipeline_parallelism.py  -->
