@@ -235,4 +235,4 @@ Performance Benchmark
 ## API Reference
 {{ autodoc:colossalai.pipeline.schedule.zero_bubble_pp.ZeroBubbleVPipeScheduler }}
 
-<!-- doc-test-command: echo  -->
+<!-- doc-test-command: python -m pytest -s tests/test_pipeline/test_schedule/test_zerobubble_pp.py  -->
