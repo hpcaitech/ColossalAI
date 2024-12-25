@@ -188,7 +188,7 @@ def check_linear_conv_1d_with_weight_grad_store(lazy_init: bool, seq_parallel_mo
     assert_close(linear.weight.grad, linear_base.weight.grad)
 
 
-@parameterize("lazy_init", [False])
+@parameterize("lazy_init", [False, True])
 @parameterize("seq_parallel_mode", ["split_gather", None])
 def check_gpt2_qkv_fused_linear_1d(lazy_init: bool, seq_parallel_mode: bool):
     check_linear_conv_1d_col(lazy_init, seq_parallel_mode)

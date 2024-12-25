@@ -36,11 +36,10 @@ Build our model and Optimizer. We created a Llama with 8 Decoder-Layer. Then, in
 ```python
 # Global Param
 NUM_BATCH = 8
-NUM_TOK_PER_BATCH, NUM_EXPERTS = 4, 4
+NUM_TOK_PER_BATCH = 4
 NUM_LAYERS = 8
 HIDDEN_SIZE_PER_HEAD = 4
 NUM_HEADS = 4
-TOP_K = 1
 # Init Llama from huggingface
 configuration = LlamaConfig(
     hidden_size=HIDDEN_SIZE_PER_HEAD * NUM_HEADS,
