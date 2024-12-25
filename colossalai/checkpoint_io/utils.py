@@ -4,7 +4,6 @@ import os
 import re
 from collections import abc as container_abcs
 from collections import defaultdict
-from functools import partial
 from itertools import chain
 from pathlib import Path
 from typing import Dict, Iterator, List, Mapping, Optional, OrderedDict, Tuple, Union
