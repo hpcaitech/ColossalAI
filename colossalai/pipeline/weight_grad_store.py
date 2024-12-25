@@ -26,7 +26,7 @@ class WeightGradStore:
                     # weight_cal & weight_origin in tuple, weight_cal use to cal dw, weight_origin use to update
                     _, weight_origin = weight
                     if weight_origin.grad is not None:
-                        func(total_input, grad_output, weight_origin)
+                        func(total_input, grad_output, weight_origin.grad)
                     # for first bwd; weight.grad is None, assign grad_weight to weight.grad
                     else:
                         grad_weight = func(total_input, grad_output)
