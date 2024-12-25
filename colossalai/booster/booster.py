@@ -288,7 +288,14 @@ class Booster:
 
         return self.plugin.enable_lora(model, pretrained_dir, lora_config, bnb_quantization_config)
 
-    def load_model(self, model: Union[nn.Module, ModelWrapper], checkpoint: str, strict: bool = True) -> None:
+    def load_model(
+        self,
+        model: Union[nn.Module, ModelWrapper],
+        checkpoint: str,
+        strict: bool = True,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
+    ) -> None:
         """Load model from checkpoint.
 
         Args:
@@ -298,8 +305,12 @@ class Booster:
             strict (bool, optional): whether to strictly enforce that the keys
                 in :attr:`state_dict` match the keys returned by this module's
                 :meth:`~torch.nn.Module.state_dict` function. Defaults to True.
+            low_cpu_mem_mode (bool): whether to load the model in low cpu memory mode. If false, it will use RAM cache to accelerate loading. Default: True.
+            num_threads (int): number of threads to use when loading the model. Only useful when disabling low cpu mem mode. Default: 1.
         """
-        self.checkpoint_io.load_model(model, checkpoint, strict)
+        self.checkpoint_io.load_model(
+            model, checkpoint, strict, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
+        )
 
     def save_model(
         self,
@@ -338,18 +349,25 @@ class Booster:
             use_async=use_async,
         )
 
-    def load_optimizer(self, optimizer: Optimizer, checkpoint: str) -> None:
+    def load_optimizer(
+        self,
+        optimizer: Optimizer,
+        checkpoint: str,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
+    ) -> None:
         """Load optimizer from checkpoint.
 
         Args:
             optimizer (Optimizer): An optimizer boosted by Booster.
             checkpoint (str): Path to the checkpoint. It must be a local path.
                 It should be a directory path if the checkpoint is sharded. Otherwise, it should be a file path.
-            prefix (str, optional): A prefix added to parameter and buffer
-                names to compose the keys in state_dict. Defaults to None.
-            size_per_shard (int, optional): Maximum size of checkpoint shard file in MB. This is useful only when ``shard=True``. Defaults to 1024.
+            low_cpu_mem_mode (bool): whether to load the model in low cpu memory mode. If false, it will use RAM cache to accelerate loading. Default: True.
+            num_threads (int): number of threads to use when loading the model. Only useful when disabling low cpu mem mode. Default: 1.
         """
-        self.checkpoint_io.load_optimizer(optimizer, checkpoint)
+        self.checkpoint_io.load_optimizer(
+            optimizer, checkpoint, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
+        )
 
     def save_optimizer(
         self,
