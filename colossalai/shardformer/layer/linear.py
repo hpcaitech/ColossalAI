@@ -350,6 +350,7 @@ class Linear1D_Col(ParallelModule):
                 True,
                 self.seq_parallel_dim,
                 ring=self.seq_parallel_mode == "ring",
+                use_zbv=self.use_zbv,
             )
         else:
             output_parallel = linear_with_async_comm(
@@ -580,6 +581,7 @@ class Linear1D_Row(ParallelModule):
                     process_group=self.process_group,
                     dim=self.seq_parallel_dim,
                     ring=self.seq_parallel_mode == "ring",
+                    use_zbv=self.use_zbv,
                 )
             else:
                 output_parallel = F.linear(input_, self.weight)
