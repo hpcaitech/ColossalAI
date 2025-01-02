@@ -107,9 +107,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if param is None:
                 continue
             # Gather tensor pieces when using tensor parallel.
-            if is_padded_tensor(param):
-                param = to_unpadded_tensor(param)
             param_ = gather_distributed_param(param, keep_vars=False)
+            if is_padded_tensor(param_):
+                param_ = to_unpadded_tensor(param_)
             if pinned_state_dicts is not None:
                 if (prefix + name) not in pinned_state_dicts:
                     pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
