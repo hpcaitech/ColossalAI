@@ -29,7 +29,6 @@ from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.utils.safetensors import load_flat
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
 
