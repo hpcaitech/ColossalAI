@@ -62,7 +62,7 @@ engine = InferenceEngine(model, tokenizer, inference_config, verbose=True)
 
 # Step 4: try inference
 prompts = ['Who is the best player in the history of NBA?']
-response = engine.generate(prompts)
+response = engine.generate(prompts=prompts)
 pprint(response)
 ```
 
