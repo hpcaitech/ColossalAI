@@ -10,6 +10,7 @@ jobs:
   matrix_preparation:
     name: Prepare Container List
     runs-on: ubuntu-latest
+    if: ${{github.event_name != 'schedule' || github.repository == 'hpcaitech-colossalai'}}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
