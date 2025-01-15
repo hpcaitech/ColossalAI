@@ -26,12 +26,21 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         self.coordinator = DistCoordinator()
         self.logger = get_dist_logger()
 
-    def load_unsharded_model(self, model: ModelWrapper, checkpoint: str, strict: bool = True):
+    def load_unsharded_model(
+        self,
+        model: ModelWrapper,
+        checkpoint: str,
+        strict: bool = True,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
+    ):
         """
         Load model from checkpoint.
         """
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
-        super().load_unsharded_model(model.unwrap(), checkpoint, strict=strict)
+        super().load_unsharded_model(
+            model.unwrap(), checkpoint, strict=strict, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
+        )
 
     def save_unsharded_model(
         self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
@@ -45,12 +54,16 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
                 model.unwrap(), checkpoint, gather_dtensor, use_safetensors, use_async=use_async
             )
 
-    def load_unsharded_optimizer(self, optimizer: OptimizerWrapper, checkpoint: str):
+    def load_unsharded_optimizer(
+        self, optimizer: OptimizerWrapper, checkpoint: str, low_cpu_mem_mode: bool = True, num_threads: int = 1
+    ):
         """
         Load optimizer from checkpoint.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-        super().load_unsharded_optimizer(optimizer, checkpoint)
+        super().load_unsharded_optimizer(
+            optimizer, checkpoint, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
+        )
 
     def save_unsharded_optimizer(
         self, optimizer: OptimizerWrapper, checkpoint: str, gather_dtensor: bool, use_async: bool = False
@@ -60,7 +73,7 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if self.coordinator.is_master():
-            super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor)
+            super().save_unsharded_optimizer(optimizer, checkpoint, gather_dtensor, use_async=use_async)
 
     def save_lr_scheduler(self, lr_scheduler: LRScheduler, checkpoint: str):
         """
@@ -101,12 +114,22 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         strict: bool = False,
         use_safetensors: bool = False,
         load_sub_module: bool = True,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
     ):
         """
         Load model from sharded checkpoint.
         """
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
-        super().load_sharded_model(model.unwrap(), checkpoint_index_file, strict, use_safetensors, load_sub_module)
+        super().load_sharded_model(
+            model.unwrap(),
+            checkpoint_index_file,
+            strict,
+            use_safetensors,
+            load_sub_module,
+            low_cpu_mem_mode=low_cpu_mem_mode,
+            num_threads=num_threads,
+        )
 
     def save_sharded_optimizer(
         self,
@@ -131,12 +154,16 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         optimizer: Optimizer,
         index_file_path: str,
         prefix: Optional[str] = None,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
     ):
         """
         Load optimizer from sharded checkpoint.
         """
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
-        super().load_sharded_optimizer(optimizer.unwrap(), index_file_path, prefix)
+        super().load_sharded_optimizer(
+            optimizer.unwrap(), index_file_path, prefix, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
+        )
 
     def save_lora_as_pretrained(
         self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False

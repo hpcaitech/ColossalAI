@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 from functools import reduce
@@ -8,18 +7,20 @@ from typing import Optional
 import torch.nn as nn
 from torch.optim import Optimizer
 
+from colossalai.utils.safetensors import load_flat
+
 from .checkpoint_io_base import CheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
-    async_save_state_dict_shards,
+    async_move_save_state_dict_shards,
     create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     is_safetensors_available,
     load_param_groups_into_optimizer,
-    load_shard_state_dict,
     load_state_dict,
     load_state_dict_into_model,
+    load_state_dict_shards,
     load_states_into_optimizer,
     save_config_file,
     save_param_groups,
@@ -38,18 +39,23 @@ class GeneralCheckpointIO(CheckpointIO):
     Checkpoint IO
     """
 
-    def load_unsharded_model(self, model: nn.Module, checkpoint: str, strict: bool):
+    def load_unsharded_model(
+        self,
+        model: nn.Module,
+        checkpoint: str,
+        strict: bool,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
+    ):
         checkpoint = load_state_dict(checkpoint)
+        if not low_cpu_mem_mode:
+            checkpoint = create_pinned_state_dict(checkpoint, empty=False, num_threads=num_threads)
         model.load_state_dict(checkpoint, strict=strict)
 
     def save_unsharded_model(
         self, model: nn.Module, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
     ):
         state_dict = model.state_dict()
-
-        # TODO(FrankLeeeee): add support for gather_dtensor
-        if gather_dtensor:
-            pass
 
         if use_async:
             from colossalai.utils.safetensors import move_and_save
@@ -58,12 +64,18 @@ class GeneralCheckpointIO(CheckpointIO):
                 self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
             writer = move_and_save(checkpoint, state_dict, self.pinned_state_dicts[id(model)])
             self.async_writers.append(writer)
-
         else:
             # save the checkpoint
             save_state_dict(state_dict, checkpoint, use_safetensors)
 
-    def load_sharded_optimizer(self, optimizer: Optimizer, index_file_path: str, prefix: str):
+    def load_sharded_optimizer(
+        self,
+        optimizer: Optimizer,
+        index_file_path: str,
+        prefix: str,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
+    ):
         """
         Load sharded optimizer with the given path to index file.
         """
@@ -82,8 +94,9 @@ class GeneralCheckpointIO(CheckpointIO):
 
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
 
-        for shard_file in checkpoint_files:
-            state_dict = load_shard_state_dict(Path(shard_file), use_safetensors=False)
+        for state_dict in load_state_dict_shards(checkpoint_files, True, False, low_cpu_mem_mode):
+            if not low_cpu_mem_mode:
+                state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
             load_states_into_optimizer(optimizer, state_dict, id_map)
 
         sharded_optimizer_loading_epilogue(optimizer)
@@ -116,7 +129,7 @@ class GeneralCheckpointIO(CheckpointIO):
         sharded_state = shard_optimizer_checkpoint(state_dict, max_shard_size=size_per_shard)
 
         # Preparing file paths and index file.
-        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix)
+        states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix, use_safetensors=use_async)
         index_file = CheckpointIndexFile(checkpoint)
 
         # Store the information of param groups to param_group_file.
@@ -126,14 +139,28 @@ class GeneralCheckpointIO(CheckpointIO):
 
         # Save shards of optimizer states.
         # In general cases, is_master is set to True to get the right behavior.
-        total_size = save_state_dict_shards(
-            sharded_state_dict=sharded_state,
-            checkpoint=checkpoint,
-            index_file=index_file,
-            base_filename=states_name,
-            is_master=True,
-            use_safetensors=False,
-        )
+        if use_async:
+            pinned_state_dict = self.pinned_state_dicts.get(id(optimizer), None)
+            total_size, new_pinned_state_dict, writers = async_move_save_state_dict_shards(
+                sharded_state_dict=sharded_state,
+                checkpoint=checkpoint,
+                index_file=index_file,
+                base_filename=states_name,
+                is_master=True,
+                pinned_state_dict=pinned_state_dict,
+                state_preprocess=True,
+            )
+            self.pinned_state_dicts[id(optimizer)] = new_pinned_state_dict
+            self.async_writers.extend(writers)
+        else:
+            total_size = save_state_dict_shards(
+                sharded_state_dict=sharded_state,
+                checkpoint=checkpoint,
+                index_file=index_file,
+                base_filename=states_name,
+                is_master=True,
+                use_safetensors=False,
+            )
 
         # Wrap up index file.
         index_file.append_meta_data("total_size", total_size)
@@ -144,8 +171,15 @@ class GeneralCheckpointIO(CheckpointIO):
             f"index located at {save_index_file}."
         )
 
-    def load_unsharded_optimizer(self, optimizer: Optimizer, checkpoint: Path):
-        checkpoint = load_state_dict(checkpoint)
+    def load_unsharded_optimizer(
+        self, optimizer: Optimizer, checkpoint: Path, low_cpu_mem_mode: bool = True, num_threads: int = 1
+    ):
+        if checkpoint.endswith(".safetensors"):
+            checkpoint = load_flat(checkpoint)
+        else:
+            checkpoint = load_state_dict(checkpoint)
+        if not low_cpu_mem_mode:
+            checkpoint = create_pinned_state_dict(checkpoint, empty=False, num_threads=num_threads)
         optimizer.load_state_dict(checkpoint)
 
     def save_unsharded_optimizer(
@@ -156,7 +190,22 @@ class GeneralCheckpointIO(CheckpointIO):
         use_async: bool = False,
     ):
         # TODO(FrankLeeeee): handle distributed tensors
-        save_state_dict(optimizer.state_dict(), checkpoint, use_safetensors=False)
+        state_dict = optimizer.state_dict()
+        if use_async:
+            from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save
+
+            flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
+            if id(optimizer) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+            writer = move_and_save(
+                path=checkpoint,
+                state_dict=flatten_state_dict,
+                state_dict_pinned=self.pinned_state_dicts[id(optimizer)],
+                metadata=metadata,
+            )
+            self.async_writers.append(writer)
+        else:
+            save_state_dict(state_dict, checkpoint, use_safetensors=False)
 
     def save_sharded_model(
         self,
@@ -186,7 +235,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         if use_async:
             pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
-            total_size, new_pinned_state_dict, writers = async_save_state_dict_shards(
+            total_size, new_pinned_state_dict, writers = async_move_save_state_dict_shards(
                 sharded_state_dict=state_dict_shard,
                 checkpoint=checkpoint_path,
                 index_file=index_file,
@@ -224,6 +273,8 @@ class GeneralCheckpointIO(CheckpointIO):
         strict: bool = False,
         use_safetensors: bool = False,
         load_sub_module: bool = True,
+        low_cpu_mem_mode: bool = True,
+        num_threads: int = 1,
     ):
         """
         load shard model, load model from multiple files
@@ -240,11 +291,10 @@ class GeneralCheckpointIO(CheckpointIO):
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         missing_keys = []
 
-        for shard_file in checkpoint_files:
-            state_dict = load_shard_state_dict(Path(shard_file), use_safetensors)
+        for state_dict in load_state_dict_shards(checkpoint_files, False, use_safetensors, low_cpu_mem_mode):
+            if not low_cpu_mem_mode:
+                state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
             load_state_dict_into_model(model, state_dict, missing_keys, strict, load_sub_module)
-            del state_dict
-            gc.collect()
 
         if strict:
             remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))

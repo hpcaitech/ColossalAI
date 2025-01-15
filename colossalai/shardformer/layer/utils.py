@@ -9,6 +9,43 @@ from torch.distributed import ProcessGroup, get_world_size
 
 from colossalai.accelerator import get_accelerator
 
+try:
+    import fused_weight_gradient_mlp_cuda
+
+    _grad_accum_fusion_available = True
+except ImportError:
+    _grad_accum_fusion_available = False
+
+
+# execute_w_pass_grad_accum & execute_conv1d_w_pass for GPT2FusedLinearConv1D
+def execute_conv1d_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_):
+    if _input_.dtype == torch.float32:
+        wgrad_gemm_accum_func = fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32
+    elif _input_.dtype in (torch.float16, torch.bfloat16):
+        wgrad_gemm_accum_func = fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16
+    else:
+        raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+    wgrad_gemm_accum_func(_grad_output_, _input_, _weight_main_grad_)
+
+
+def execute_conv1d_w_pass(_input_, _grad_output_, _weight_main_grad_=None, wgrad_gemm_func=None):
+    return wgrad_gemm_func(_input_.t(), _grad_output_)
+
+
+# execute_w_pass_grad_accum & execute_w_pass for Linear (except GPT2FusedLinearConv1D)
+def execute_w_pass_grad_accum(_input_, _grad_output_, _weight_main_grad_):
+    if _input_.dtype == torch.float32:
+        wgrad_gemm_accum_func = fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp32
+    elif _input_.dtype in (torch.float16, torch.bfloat16):
+        wgrad_gemm_accum_func = fused_weight_gradient_mlp_cuda.wgrad_gemm_accum_fp16
+    else:
+        raise RuntimeError("Unsupported gradient type for gradient accumulation fusion")
+    wgrad_gemm_accum_func(_input_, _grad_output_, _weight_main_grad_)
+
+
+def execute_w_pass(_input_, _grad_output_, _weight_main_grad_=None, wgrad_gemm_func=None):
+    return wgrad_gemm_func(_grad_output_.t(), _input_)
+
 
 class SeqParallelUtils:
     @staticmethod

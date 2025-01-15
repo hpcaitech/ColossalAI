@@ -29,7 +29,8 @@ from tests.kit.model_zoo import model_zoo
 @parameterize("shard", [False, True])
 @parameterize("offload", [False, True])
 @parameterize("use_async", [False, True])
-def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool):
+@parameterize("low_cpu_mem_mode", [False, True])
+def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool, low_cpu_mem_mode: bool):
     plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)
     booster = Booster(plugin=plugin)
     model = resnet18()
@@ -70,7 +71,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
         new_optimizer = HybridAdam((new_model.parameters()), lr=0.001)
         new_model, new_optimizer, _, _, _ = booster.boost(new_model, new_optimizer)
 
-        booster.load_model(new_model, model_ckpt_path)
+        booster.load_model(new_model, model_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(model.state_dict(), new_model.state_dict())
         # check master weight
         assert isinstance(new_optimizer, LowLevelZeroOptimizer)
@@ -85,7 +86,7 @@ def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, us
                 working_shard, master_param.data.view(-1).to(dtype=padded_param.dtype, device=padded_param.device)
             )
 
-        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(optimizer.optim.state_dict(), new_optimizer.optim.state_dict())
 
     torch.cuda.empty_cache()

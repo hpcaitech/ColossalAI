@@ -12,14 +12,16 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
 
 
-@parameterize("shard", [True, False])
+@parameterize("shard", [False, True])
 @parameterize("size_per_shard", [16, 128])
-def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
+@parameterize("use_async", [False, True])
+@parameterize("low_cpu_mem_mode", [False, True])
+def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int, use_async: bool, low_cpu_mem_mode: bool):
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)
     model = resnet18()
     criterion = lambda x: x.mean()
-    optimizer = SGD((model.parameters()), lr=0.001)
+    optimizer = SGD((model.parameters()), lr=0.001, momentum=0.5)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion, lr_scheduler=scheduler)
 
@@ -39,9 +41,18 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
         lr_scheduler_ckpt_path = f"{tempdir}/lr_scheduler"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
-        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+
+        if not shard and use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+            optimizer_ckpt_path = f"{optimizer_ckpt_path}.safetensors"
+
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
+        booster.save_optimizer(
+            optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async
+        )
         booster.save_lr_scheduler(scheduler, lr_scheduler_ckpt_path)
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = resnet18()
@@ -51,10 +62,10 @@ def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int):
             new_model, new_optimizer, lr_scheduler=new_scheduler
         )
 
-        booster.load_model(new_model, model_ckpt_path)
+        booster.load_model(new_model, model_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(model.state_dict(), new_model.state_dict())
 
-        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
         booster.load_lr_scheduler(new_scheduler, lr_scheduler_ckpt_path)
         check_state_dict_equal(scheduler.state_dict(), new_scheduler.state_dict())

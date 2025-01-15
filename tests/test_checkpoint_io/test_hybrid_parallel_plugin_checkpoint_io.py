@@ -38,12 +38,16 @@ else:
     ]
 
 
-@parameterize("shard", [True, False])
+@parameterize("shard", [False, True])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
+@parameterize("use_async", [False, True])
+@parameterize("low_cpu_mem_mode", [False, True])
 @clear_cache_before_run()
-def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_config: dict):
+def exam_state_dict(
+    shard: bool, model_name: str, size_per_shard: int, test_config: dict, use_async: bool, low_cpu_mem_mode: bool
+):
     (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
         iter(model_zoo.get_sub_registry(model_name).values())
     )
@@ -85,17 +89,25 @@ def exam_state_dict(shard: bool, model_name: str, size_per_shard: int, test_conf
     with shared_tempdir() as tempdir:
         model_ckpt_path = f"{tempdir}/model"
         optimizer_ckpt_path = f"{tempdir}/optimizer"
-        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard)
-        booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard)
+        if not shard and use_async:
+            model_ckpt_path = f"{model_ckpt_path}.safetensors"
+            optimizer_ckpt_path = f"{optimizer_ckpt_path}.safetensors"
+
+        booster.save_model(model, model_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async)
+        booster.save_optimizer(
+            optimizer, optimizer_ckpt_path, shard=shard, size_per_shard=size_per_shard, use_async=use_async
+        )
+        booster.checkpoint_io._sync_d2h()
+        booster.checkpoint_io._sync_io()
         dist.barrier()
 
         new_model = model_fn().cuda()
         new_optimizer = Adam(new_model.parameters(), lr=1e-3)
         new_model, new_optimizer, criterion, _, _ = booster.boost(new_model, new_optimizer, criterion)
 
-        booster.load_model(new_model, model_ckpt_path)
+        booster.load_model(new_model, model_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict())
-        booster.load_optimizer(new_optimizer, optimizer_ckpt_path)
+        booster.load_optimizer(new_optimizer, optimizer_ckpt_path, low_cpu_mem_mode=low_cpu_mem_mode)
         check_state_dict_equal(optimizer.unwrap().state_dict(), new_optimizer.unwrap().state_dict())
         dist.barrier()
 
