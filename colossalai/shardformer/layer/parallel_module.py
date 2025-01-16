@@ -120,7 +120,6 @@ class ParallelModule(nn.Module, ABC):
                         "received {}".format(key, type(input_param))
                     )
                     continue
-
                 if is_distributed_tensor(param):
                     # shard the input param
                     device_mesh = get_device_mesh(param)

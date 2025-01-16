@@ -78,6 +78,9 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
         self.use_fp8 = use_fp8
+        self.param_origin_shape = {}
+        for name, param in module.named_parameters():
+            self.param_origin_shape[name] = param.shape
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
