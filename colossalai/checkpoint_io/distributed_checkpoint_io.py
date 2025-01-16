@@ -363,9 +363,6 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         self.create_model_metadata(model)
         model = model.unwrap()
 
-        # Load from checkpoint. Since the logic of breaking parameter shards along tp degree
-        # has been implemented by _load_from_state_dict method of ParallelModule in Shardformer,
-        # model.load_state_dict can be directly called.
         metadata_loaded = self.load_metadata(checkpoint)
 
         load_files = {}
@@ -379,7 +376,6 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
             shards = metadata_loaded[key]["shards"]
             covering_shards = self.find_covering_shards(shards=shards, target_offsets=offsets, target_lengths=lengths)
             covered_shards[key] = covering_shards
-            # load_files.update({rank: shard['file'] for rank, shard in covering_shards.items()})
             for rank, shard in covering_shards.items():
                 if rank not in load_files:
                     load_files[rank] = set()
@@ -510,12 +506,10 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
 
         Path(checkpoint).mkdir(parents=True, exist_ok=True)
         # Devices along the same dp_group share the same copies of model.
-        # So only let the device with dp_rank == 0 save the model.
+        # So only let the device with dp_rank == 0 and sp_rank == 0 save the model.
         if self.dp_rank != 0 and self.sp_rank == 0:
             return
 
-        # Then collect the sharded parameters & buffers along tp_group.
-        # Only devices with tp_rank == 0 are responsible for model saving.
         if use_async:
             if id(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(model)] = {}
