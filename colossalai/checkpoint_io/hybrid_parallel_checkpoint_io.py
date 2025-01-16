@@ -126,7 +126,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 buffer = buf if keep_vars else buf.detach()
                 if pinned_state_dicts is not None:
                     if (prefix + name) not in pinned_state_dicts:
-                        pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
+                        pinned_state_dicts[prefix + name] = torch.empty_like(buffer, pin_memory=True, device="cpu")
                     pinned_state_dicts[prefix + name].copy_(buffer)
                     buffer = pinned_state_dicts[prefix + name]
                 block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
@@ -142,7 +142,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             extra_state = model.get_extra_state()
             if pinned_state_dicts is not None:
                 if extra_state_key not in pinned_state_dicts:
-                    pinned_state_dicts[extra_state_key] = torch.empty_like(param_, pin_memory=True, device="cpu")
+                    pinned_state_dicts[extra_state_key] = torch.empty_like(extra_state, pin_memory=True, device="cpu")
                 pinned_state_dicts[extra_state_key].copy_(extra_state)
                 extra_state = pinned_state_dicts[extra_state_key]
             block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
@@ -298,9 +298,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             Path(tmp_index_file_folder).mkdir(parents=True, exist_ok=True)
 
             # Manage filenames of sharded weights and index file for each pipeline stage.
-            weights_name = weights_name.replace(".bin", f"-stage-{self.pp_rank+1:05d}-shard.bin")
-            weights_name = weights_name.replace(".safetensors", f"-stage-{self.pp_rank+1:05d}-shard.safetensors")
-            save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank+1:05d}.json")
+            weights_name = weights_name.replace(".bin", f"-stage-{self.pp_rank:05d}-shard.bin")
+            weights_name = weights_name.replace(".safetensors", f"-stage-{self.pp_rank:05d}-shard.safetensors")
+            save_index_file = save_index_file.replace(".json", f"-stage-{self.pp_rank:05d}.json")
             save_index_file = os.path.join("tmp_index_files", save_index_file)
             if use_async:
                 total_size, writers = async_save_state_dict_shards(
