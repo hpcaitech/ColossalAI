@@ -1,29 +1,18 @@
-import copy
+import json
 import logging
 import os
-from functools import reduce
 from pathlib import Path
-from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
-import json
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
-from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
-from torch.utils._pytree import tree_map
+from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.cluster import DistCoordinator
-from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.tensor.padded_tensor import (
-    init_as_padded_tensor,
-    is_padded_tensor,
-    to_padded_tensor,
-    to_unpadded_tensor,
-)
-from colossalai.utils import get_current_device, get_non_persistent_buffers_set
-from torch.distributed.distributed_c10d import _get_default_group
+from colossalai.interface import ModelWrapper
+from colossalai.utils import get_non_persistent_buffers_set
 
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -31,21 +20,11 @@ from .utils import (
     StateDictSharder,
     async_save_state_dict_shards,
     create_pinned_state_dict,
-    gather_distributed_param,
     get_model_base_filenames,
-    get_optimizer_base_filenames,
-    is_safetensors_available,
-    load_shard_state_dict,
     load_state_dict,
-    load_state_dict_into_model,
-    load_states_into_optimizer,
-    save_config_file,
-    save_param_groups,
     save_state_dict,
     save_state_dict_shards,
-    search_padding_dim,
     search_tp_partition_dim,
-    sharded_optimizer_loading_epilogue,
 )
 
 try:
@@ -97,7 +76,6 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         self.model_metadata = None
         self.optimizer_metadata = None
         self.global_rank = dist.get_rank(_get_default_group())
-        
 
     @staticmethod
     def model_state_dict(model: nn.Module, prefix: str = "", keep_vars: bool = False):
@@ -106,13 +84,13 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         for name, param in model.named_parameters():
             if param is None:
                 continue
-            destination[prefix+name] = param
+            destination[prefix + name] = param
         # Save buffers.
         non_persist_buffers_set = get_non_persistent_buffers_set(model)
         for name, buf in model.named_buffers():
             if buf is not None and name not in non_persist_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
-                destination[prefix+name] = buffer
+                destination[prefix + name] = buffer
 
         # Save extra states.
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
@@ -123,22 +101,24 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
             extra_state = model.get_extra_state()
             destination[extra_state_key] = extra_state
         return destination
-    
+
     @staticmethod
-    def load_state_dict(model: nn.Module, state_dict: Dict, prefix: str = "", keep_vars: bool = False, strict: bool = False):
+    def load_state_dict(
+        model: nn.Module, state_dict: Dict, prefix: str = "", keep_vars: bool = False, strict: bool = False
+    ):
         destination = dict()
         # Save parameters.
         for name, param in model.named_parameters():
             if param is None:
                 continue
             with torch.no_grad():
-                param.copy_(state_dict[prefix+name])
+                param.copy_(state_dict[prefix + name])
         # Save buffers.
         non_persist_buffers_set = get_non_persistent_buffers_set(model)
         for name, buf in model.named_buffers():
             if buf is not None and name not in non_persist_buffers_set:
                 with torch.no_grad():
-                    buf.copy_(state_dict[prefix+name])
+                    buf.copy_(state_dict[prefix + name])
 
         # Save extra states.
         extra_state_key = prefix + _EXTRA_STATE_KEY_SUFFIX
@@ -151,26 +131,33 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
                 extra_state.copy_(state_dict[extra_state_key])
         return destination
 
-    def create_model_metadata(self, model: nn.Module, prefix: str = "",):
+    def create_model_metadata(
+        self,
+        model: nn.Module,
+        prefix: str = "",
+    ):
         param_origin_shape = model.param_origin_shape
         model = model.unwrap()
         self.model_metadata = {}
         for name, param in model.named_parameters():
             if param is None:
                 continue
-            self.model_metadata[prefix+name] = {}
+            self.model_metadata[prefix + name] = {}
             original_shape = param_origin_shape[name]
-            tp_partition_dim = search_tp_partition_dim(current_shape=param.shape, original_shape=original_shape, tp_size=self.tp_size)
-            self.model_metadata[prefix+name]["offsets"] = torch.zeros(len(original_shape), dtype=torch.int)
-            self.model_metadata[prefix+name]["lengths"] = list(param.shape)
-            self.model_metadata[prefix+name]["global_shape"] = list(original_shape)
+            tp_partition_dim = search_tp_partition_dim(
+                current_shape=param.shape, original_shape=original_shape, tp_size=self.tp_size
+            )
+            self.model_metadata[prefix + name]["offsets"] = torch.zeros(len(original_shape), dtype=torch.int)
+            self.model_metadata[prefix + name]["lengths"] = list(param.shape)
+            self.model_metadata[prefix + name]["global_shape"] = list(original_shape)
             if tp_partition_dim is not None:
                 partition_size = param.shape[tp_partition_dim]
-                self.model_metadata[prefix+name]["offsets"][tp_partition_dim] = partition_size * self.tp_rank
+                self.model_metadata[prefix + name]["offsets"][tp_partition_dim] = partition_size * self.tp_rank
                 if self.tp_rank == self.tp_size - 1:
-                    self.model_metadata[prefix+name]["lengths"][tp_partition_dim] = original_shape[tp_partition_dim] - (partition_size * (self.tp_size -1))
+                    self.model_metadata[prefix + name]["lengths"][tp_partition_dim] = original_shape[
+                        tp_partition_dim
+                    ] - (partition_size * (self.tp_size - 1))
 
-        
     def save_metadata(self, metadata_file, checkpoint_file=None, total_size=None):
         metadata_dicts = {
             "checkpoint_version": "1.0",
@@ -188,7 +175,7 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
             metadata_dicts["metadata"][name]["rank"] = self.global_rank
         with open(metadata_file, "w") as json_file:
             json.dump(metadata_dicts, json_file, indent=4)
-    
+
     def save_unsharded_model(
         self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
     ):
@@ -247,13 +234,13 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
                 try:
                     with open(file_path, "r") as f:
                         metadata_json = json.load(f)
-                        for name, item in metadata_json['metadata'].items():
+                        for name, item in metadata_json["metadata"].items():
                             if name not in metadata_dict:
                                 metadata_dict[name] = {}
-                                metadata_dict[name]["global_shape"] = item['global_shape']
+                                metadata_dict[name]["global_shape"] = item["global_shape"]
                                 metadata_dict[name]["shards"] = {}
                             else:
-                                assert metadata_dict[name]["global_shape"] == item['global_shape']
+                                assert metadata_dict[name]["global_shape"] == item["global_shape"]
                             shard = {}
                             shard[item["rank"]] = {}
                             shard[item["rank"]]["file"] = item["file"]
@@ -302,7 +289,7 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
 
         assert total_lengths == global_shape
         return covering_shards
-    
+
     def extract_weight_from_shard_partial(self, shard, target_offsets, target_lengths):
         """
         Extract the target range of weights from shard data, supporting partial overlap.
@@ -312,14 +299,16 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         param target_lengths: A 1D array indicating the length of the target tensor in each dimension.
         return: The extracted sub-tensor of the target weights and its position within the target range.
         """
-        shard_offsets = shard['offsets']
-        shard_lengths = shard['lengths']
-        weight = shard['weight']
+        shard_offsets = shard["offsets"]
+        shard_lengths = shard["lengths"]
+        weight = shard["weight"]
 
         slices = []
         target_slices = []
 
-        for dim, (t_offset, t_length, s_offset, s_length) in enumerate(zip(target_offsets, target_lengths, shard_offsets, shard_lengths)):
+        for dim, (t_offset, t_length, s_offset, s_length) in enumerate(
+            zip(target_offsets, target_lengths, shard_offsets, shard_lengths)
+        ):
             intersection_start = max(t_offset, s_offset)
             intersection_end = min(t_offset + t_length, s_offset + s_length)
 
@@ -337,7 +326,6 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         target_weight = weight[tuple(slices)]
         return target_weight, target_slices
 
-
     def assemble_tensor_from_shards_partial(self, shards, target_offsets, target_lengths, dtype):
         target_tensor = torch.zeros(target_lengths, dtype=dtype)
 
@@ -349,15 +337,14 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
 
         return target_tensor
 
-
-    def load_unsharded_model(        
+    def load_unsharded_model(
         self,
         model: ModelWrapper,
         checkpoint: str,
         strict: bool = False,
         low_cpu_mem_mode: bool = True,
         num_threads: int = 1,
-        ):
+    ):
         """
         Load model from a single file with the given path of checkpoint.
 
@@ -386,7 +373,9 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         for key, item in self.model_metadata.items():
             offsets = item["offsets"]
             lengths = item["lengths"]
-            assert item["global_shape"] == metadata_loaded[key]["global_shape"], f"{item['global_shape']}, {metadata_loaded[key]['global_shape']}"
+            assert (
+                item["global_shape"] == metadata_loaded[key]["global_shape"]
+            ), f"{item['global_shape']}, {metadata_loaded[key]['global_shape']}"
             shards = metadata_loaded[key]["shards"]
             covering_shards = self.find_covering_shards(shards=shards, target_offsets=offsets, target_lengths=lengths)
             covered_shards[key] = covering_shards
@@ -394,14 +383,14 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
             for rank, shard in covering_shards.items():
                 if rank not in load_files:
                     load_files[rank] = set()
-                load_files[rank].add(shard['file'])
+                load_files[rank].add(shard["file"])
 
         dtype = None
         for rank, files in load_files.items():
             for file in files:
                 file_path = os.path.join(checkpoint, file)
                 state_dict_shard = load_state_dict(file_path)
-                for key, weight  in state_dict_shard.items():
+                for key, weight in state_dict_shard.items():
                     if key not in covered_shards:
                         continue
                     if dtype == None:
@@ -409,7 +398,9 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
                     covered_shards[key][rank]["weight"] = weight
         state_dict = {}
         for key, shards in covered_shards.items():
-            state = self.assemble_tensor_from_shards_partial(shards, self.model_metadata[key]["offsets"], self.model_metadata[key]["lengths"], dtype=dtype)
+            state = self.assemble_tensor_from_shards_partial(
+                shards, self.model_metadata[key]["offsets"], self.model_metadata[key]["lengths"], dtype=dtype
+            )
             state_dict[key] = state
 
         if not low_cpu_mem_mode:
@@ -419,7 +410,6 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
 
         # Update master params if mixed-precision training is enabled.
         model_before_wrapping.update_master_params()
-
 
     @staticmethod
     def _model_sharder(
@@ -565,7 +555,7 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
             )
         for k, _ in self.model_metadata.items():
             self.model_metadata[k]["file"] = index_file.get_checkpoint_file(k)
-            
+
         self.save_metadata(metadata_file, total_size=total_size)
 
     def load_sharded_model(
@@ -598,30 +588,34 @@ class DistributedCheckpointIO(GeneralCheckpointIO):
         for key, item in self.model_metadata.items():
             offsets = item["offsets"]
             lengths = item["lengths"]
-            assert item["global_shape"] == metadata_loaded[key]["global_shape"], f"{item['global_shape']}, {metadata_loaded[key]['global_shape']}"
+            assert (
+                item["global_shape"] == metadata_loaded[key]["global_shape"]
+            ), f"{item['global_shape']}, {metadata_loaded[key]['global_shape']}"
             shards = metadata_loaded[key]["shards"]
             covering_shards = self.find_covering_shards(shards=shards, target_offsets=offsets, target_lengths=lengths)
             covered_shards[key] = covering_shards
             for rank, shard in covering_shards.items():
                 if rank not in load_files:
                     load_files[rank] = set()
-                load_files[rank].add(shard['file'])
-        
+                load_files[rank].add(shard["file"])
+
         dtype = None
         for rank, files in load_files.items():
             for file in files:
                 file_path = os.path.join(checkpoint, file)
                 state_dict_shard = load_state_dict(file_path)
-                for key, weight  in state_dict_shard.items():
+                for key, weight in state_dict_shard.items():
                     if key not in covered_shards:
                         continue
                     if dtype == None:
                         dtype = weight.dtype
                     covered_shards[key][rank]["weight"] = weight
-        
+
         state_dict = {}
         for key, shards in covered_shards.items():
-            state = self.assemble_tensor_from_shards_partial(shards, self.model_metadata[key]["offsets"], self.model_metadata[key]["lengths"], dtype=dtype)
+            state = self.assemble_tensor_from_shards_partial(
+                shards, self.model_metadata[key]["offsets"], self.model_metadata[key]["lengths"], dtype=dtype
+            )
             state_dict[key] = state
 
         if not low_cpu_mem_mode:
