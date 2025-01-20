@@ -408,7 +408,7 @@ def load_dist_model(
             file_path = os.path.join(checkpoint, file)
             state_dict_shard = load_state_dict(file_path)
             for key, weight in state_dict_shard.items():
-                if key not in covered_shards:
+                if key not in covered_shards or rank not in covered_shards[key]:
                     continue
                 if dtype == None:
                     dtype = weight.dtype
