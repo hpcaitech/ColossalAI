@@ -47,6 +47,14 @@ from .utils import (
     sharded_optimizer_loading_epilogue,
 )
 
+from .distributed_checkpoint_utils import (
+    save_dist_sharded_model,
+    save_dist_unshard_model,
+    load_dist_model,
+    is_pytorch_model_meta_dist_file,
+    create_model_metadata
+)
+
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
 except ImportError:
@@ -230,6 +238,16 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         model._force_wait_all_gather()
+
+        if gather_dtensor:
+            if self.dp_rank != 0 and self.sp_rank != 0:
+                return
+            dist_id = self.tp_size * self.pp_rank + self.tp_rank
+            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            async_writers = save_dist_sharded_model(model=model, model_metadata=model_metadata, checkpoint=checkpoint, prefix=prefix, size_per_shard=size_per_shard, use_safetensors=use_safetensors, use_async=use_async, dist_id = dist_id, pinned_state_dicts = self.pinned_state_dicts)
+            self.async_writers.extend(async_writers)
+            return
+        
         model = model.unwrap()
 
         if os.path.isfile(checkpoint):
@@ -374,6 +392,13 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
         model._force_wait_all_gather()
+
+        if is_pytorch_model_meta_dist_file(checkpoint_index_file):
+            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            checkpoint = checkpoint_index_file.parent
+            load_dist_model(model=model, model_metadata=model_metadata, checkpoint=checkpoint, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads)
+            return
+        
         model_before_wrapping = model  # backup for model before wrapping
         model = model.unwrap()
 
@@ -762,6 +787,18 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         model._force_wait_all_gather()
+
+        model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+
+        if gather_dtensor:
+            if self.dp_rank != 0 and self.sp_rank != 0:
+                return
+            dist_id = self.tp_size * self.pp_rank + self.tp_rank
+            writer= save_dist_unshard_model(model=model, model_metadata=model_metadata, checkpoint=checkpoint, use_safetensors=use_safetensors, use_async=use_async, dist_id = dist_id, pinned_state_dicts = self.pinned_state_dicts)
+            if writer is not None:
+                self.async_writers.append(writer)
+            return
+        
         model = model.unwrap()
         if self.dp_rank != 0:
             return
@@ -829,6 +866,14 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
         model._force_wait_all_gather()
+
+        if os.path.isdir(checkpoint):
+            for filename in os.listdir(checkpoint):
+                if is_pytorch_model_meta_dist_file(filename):
+                    model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+                    load_dist_model(model=model, model_metadata=model_metadata, checkpoint=checkpoint, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads)
+                    return
+
         strict = False
         model_before_wrapping = model
         model = model.unwrap()
@@ -1057,6 +1102,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     gather_tensor = [torch.zeros_like(v) for _ in range(dp_size)]
                     dist.all_gather(gather_tensor, v, group=dp_group)
                     v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
+
 
                 # Then gather TP shards.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, tp_size)

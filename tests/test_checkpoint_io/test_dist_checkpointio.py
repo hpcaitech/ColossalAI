@@ -7,7 +7,6 @@ from utils import shared_tempdir
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
-from colossalai.checkpoint_io import DistributedCheckpointIO
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import (
@@ -44,14 +43,6 @@ def exam_state_dict(
     test_config_0, test_config_1 = test_config
     plugin_0 = HybridParallelPlugin(**test_config_0)
     booster_0 = Booster(plugin=plugin_0)
-    hybrid_ckp_0 = booster_0.checkpoint_io
-    booster_0.checkpoint_io = DistributedCheckpointIO(
-        hybrid_ckp_0.global_dp_group,
-        hybrid_ckp_0.pp_group,
-        hybrid_ckp_0.tp_group,
-        hybrid_ckp_0.sp_group,
-        hybrid_ckp_0.use_zero,
-    )
 
     def _criterion(outputs, inputs):
         outputs = output_transform_fn(outputs)
@@ -88,7 +79,7 @@ def exam_state_dict(
         model_ckpt_path_0 = f"{tempdir}/model_0"
 
         booster_0.save_model(
-            model_0, model_ckpt_path_0, shard=shard, size_per_shard=size_per_shard, use_async=use_async
+            model_0, model_ckpt_path_0, shard=shard, gather_dtensor=True, size_per_shard=size_per_shard, use_async=use_async
         )
         booster_0.checkpoint_io._sync_d2h()
         booster_0.checkpoint_io._sync_io()
@@ -96,14 +87,6 @@ def exam_state_dict(
 
         plugin_1 = HybridParallelPlugin(**test_config_1)
         booster_1 = Booster(plugin=plugin_1)
-        hybrid_ckp_1 = booster_1.checkpoint_io
-        booster_1.checkpoint_io = DistributedCheckpointIO(
-            hybrid_ckp_1.global_dp_group,
-            hybrid_ckp_1.pp_group,
-            hybrid_ckp_1.tp_group,
-            hybrid_ckp_1.sp_group,
-            hybrid_ckp_1.use_zero,
-        )
 
         model_1 = model_fn().cuda()
         optimizer_1 = Adam(model_1.parameters(), lr=1e-3)
@@ -113,7 +96,7 @@ def exam_state_dict(
 
         model_ckpt_path_1 = f"{tempdir}/model_1"
         booster_1.save_model(
-            model_1, model_ckpt_path_1, shard=shard, size_per_shard=size_per_shard, use_async=use_async
+            model_1, model_ckpt_path_1, shard=shard, gather_dtensor=True, size_per_shard=size_per_shard, use_async=use_async
         )
         booster_1.checkpoint_io._sync_d2h()
         booster_1.checkpoint_io._sync_io()

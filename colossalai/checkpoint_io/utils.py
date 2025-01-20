@@ -854,11 +854,8 @@ def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
         # check if there is only one a file ending with .index.json in this directory
         index_files = list(checkpoint_path.glob("*.index.*json"))
 
-        if len(index_files) == 1:
+        if len(index_files) >= 1:
             return True, index_files[0]
-        elif len(index_files) > 1:
-            # Used for distributed checkpoint IO, where the metadata is stored across multiple files.
-            return True, checkpoint_path
         else:
             return False, None
     else:
