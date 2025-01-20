@@ -58,6 +58,7 @@ def dist_model_state_dict(model: nn.Module, prefix: str = "", keep_vars: bool = 
         destination[extra_state_key] = extra_state
     return destination
 
+
 def load_state_dict_into_dist_model(
     model: nn.Module, state_dict: Dict, prefix: str = "", keep_vars: bool = False, strict: bool = False
 ):
@@ -86,11 +87,12 @@ def load_state_dict_into_dist_model(
             extra_state.copy_(state_dict[extra_state_key])
     return destination
 
+
 def create_model_metadata(
     model: nn.Module,
     prefix: str = "",
-    tp_size = None,
-    tp_rank = None,
+    tp_size=None,
+    tp_rank=None,
 ):
     param_origin_shape = model.param_origin_shape
     model = model.unwrap()
@@ -110,10 +112,11 @@ def create_model_metadata(
             partition_size = param.shape[tp_partition_dim]
             model_metadata[prefix + name]["offsets"][tp_partition_dim] = partition_size * tp_rank
             if tp_rank == tp_size - 1:
-                model_metadata[prefix + name]["lengths"][tp_partition_dim] = original_shape[
-                    tp_partition_dim
-                ] - (partition_size * (tp_size - 1))
+                model_metadata[prefix + name]["lengths"][tp_partition_dim] = original_shape[tp_partition_dim] - (
+                    partition_size * (tp_size - 1)
+                )
     return model_metadata
+
 
 def save_metadata(model_metadata, metadata_file, checkpoint_file=None, total_size=None):
     metadata_dicts = {
@@ -132,6 +135,7 @@ def save_metadata(model_metadata, metadata_file, checkpoint_file=None, total_siz
         metadata_dicts["metadata"][name]["rank"] = dist.get_rank(_get_default_group())
     with open(metadata_file, "w") as json_file:
         json.dump(metadata_dicts, json_file, indent=4)
+
 
 def load_metadata(checkpoint: str):
     metadata_dict = {}
@@ -197,6 +201,7 @@ def find_covering_shards(shards, target_offsets, target_lengths):
     assert total_lengths == global_shape
     return covering_shards
 
+
 def extract_weight_from_shard_partial(shard, target_offsets, target_lengths):
     """
     Extract the target range of weights from shard data, supporting partial overlap.
@@ -232,6 +237,7 @@ def extract_weight_from_shard_partial(shard, target_offsets, target_lengths):
 
     target_weight = weight[tuple(slices)]
     return target_weight, target_slices
+
 
 def assemble_tensor_from_shards_partial(shards, target_offsets, target_lengths, dtype):
     target_tensor = torch.zeros(target_lengths, dtype=dtype)
@@ -310,7 +316,13 @@ def dist_model_sharder(
 
 
 def save_dist_unshard_model(
-    model: ModelWrapper, model_metadata: Dict, checkpoint: str, use_safetensors: bool, use_async: bool = False, dist_id = 0, pinned_state_dicts = None
+    model: ModelWrapper,
+    model_metadata: Dict,
+    checkpoint: str,
+    use_safetensors: bool,
+    use_async: bool = False,
+    dist_id=0,
+    pinned_state_dicts=None,
 ):
     """
     Save model state dict to a single file with given checkpointing path.
@@ -426,7 +438,7 @@ def save_dist_sharded_model(
     use_safetensors: bool = False,
     use_async: bool = False,
     dist_id: int = 0,
-    pinned_state_dicts = None,
+    pinned_state_dicts=None,
 ) -> None:
     """
     Save sharded model checkpoint under the given checkpointing path.
@@ -463,9 +475,7 @@ def save_dist_sharded_model(
         pinned_state_dicts = pinned_state_dicts[id(model)]
     else:
         pinned_state_dicts = None
-    state_dict_shard = dist_model_sharder(
-        model, size_per_shard=size_per_shard, pinned_state_dicts=pinned_state_dicts
-    )
+    state_dict_shard = dist_model_sharder(model, size_per_shard=size_per_shard, pinned_state_dicts=pinned_state_dicts)
     weights_name, _ = get_model_base_filenames(prefix, use_safetensors)
     index_file = CheckpointIndexFile(checkpoint)
 

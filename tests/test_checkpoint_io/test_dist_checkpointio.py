@@ -79,7 +79,12 @@ def exam_state_dict(
         model_ckpt_path_0 = f"{tempdir}/model_0"
 
         booster_0.save_model(
-            model_0, model_ckpt_path_0, shard=shard, gather_dtensor=True, size_per_shard=size_per_shard, use_async=use_async
+            model_0,
+            model_ckpt_path_0,
+            shard=shard,
+            gather_dtensor=True,
+            size_per_shard=size_per_shard,
+            use_async=use_async,
         )
         booster_0.checkpoint_io._sync_d2h()
         booster_0.checkpoint_io._sync_io()
@@ -96,7 +101,12 @@ def exam_state_dict(
 
         model_ckpt_path_1 = f"{tempdir}/model_1"
         booster_1.save_model(
-            model_1, model_ckpt_path_1, shard=shard, gather_dtensor=True, size_per_shard=size_per_shard, use_async=use_async
+            model_1,
+            model_ckpt_path_1,
+            shard=shard,
+            gather_dtensor=True,
+            size_per_shard=size_per_shard,
+            use_async=use_async,
         )
         booster_1.checkpoint_io._sync_d2h()
         booster_1.checkpoint_io._sync_io()
