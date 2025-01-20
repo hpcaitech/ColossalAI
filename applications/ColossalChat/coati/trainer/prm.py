@@ -119,7 +119,7 @@ class ProcessRewardModelTrainer(SLTrainer):
                     booster=self.booster,
                     model=self.model,
                     optimizer=self.optimizer,
-                    lr_scheduler=self.scheduler,
+                    lr_scheduler=self.lr_scheduler,
                     epoch=epoch,
                     step=self.num_train_step + 1,
                     batch_size=batch_size,
