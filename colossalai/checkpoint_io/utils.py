@@ -854,13 +854,7 @@ def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
         # check if there is only one a file ending with .index.json in this directory
         index_files = list(checkpoint_path.glob("*.index.*json"))
 
-        # if we found a .index.json file, make sure there is only one
-        if len(index_files) > 0:
-            assert (
-                len(index_files) == 1
-            ), f"Expected to find one .index.json file in {checkpoint_path}, but found {len(index_files)}"
-
-        if len(index_files) == 1:
+        if len(index_files) >= 1:
             return True, index_files[0]
         else:
             return False, None
@@ -943,8 +937,8 @@ def get_shard_filename(weights_name: str, idx: int):
     """
     get shard file name
     """
-    shard_file = weights_name.replace(".bin", f"-{idx+1:05d}.bin")
-    shard_file = shard_file.replace(".safetensors", f"-{idx+1:05d}.safetensors")
+    shard_file = weights_name.replace(".bin", f"-{idx:05d}.bin")
+    shard_file = shard_file.replace(".safetensors", f"-{idx:05d}.safetensors")
     return shard_file
 
 
