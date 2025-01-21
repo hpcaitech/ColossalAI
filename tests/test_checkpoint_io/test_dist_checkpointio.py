@@ -82,7 +82,7 @@ def exam_state_dict(
             model_0,
             model_ckpt_path_0,
             shard=shard,
-            gather_dtensor=True,
+            gather_dtensor=False,
             size_per_shard=size_per_shard,
             use_async=use_async,
         )
@@ -104,7 +104,7 @@ def exam_state_dict(
             model_1,
             model_ckpt_path_1,
             shard=shard,
-            gather_dtensor=True,
+            gather_dtensor=False,
             size_per_shard=size_per_shard,
             use_async=use_async,
         )
