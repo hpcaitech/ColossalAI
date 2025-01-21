@@ -1,11 +1,11 @@
 import copy
 import logging
 import os
+from contextlib import nullcontext
 from functools import reduce
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
-from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
@@ -26,14 +26,14 @@ from colossalai.utils import get_current_device, get_non_persistent_buffers_set
 from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat
 
 from .distributed_checkpoint_utils import (
+    MODEL_WEIGHT_PREFIX,
+    RestoreDefaultStateDictBehavior,
     create_model_metadata,
+    get_dist_files_name,
+    get_dist_meta_file_name,
     is_pytorch_model_meta_dist_file,
     load_dist_model,
     save_metadata,
-    get_dist_files_name,
-    get_dist_meta_file_name,
-    MODEL_WEIGHT_PREFIX,
-    RestoreDefaultStateDictBehavior
 )
 from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
@@ -108,7 +108,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         keep_vars: bool = False,
         size_per_shard: int = 1024,
         pinned_state_dicts: Optional[Dict[str, torch.Tensor]] = None,
-        gather_dtensor: bool = True, 
+        gather_dtensor: bool = True,
     ) -> Iterator[Tuple[OrderedDict, int]]:
         # An internel method that breaks state_dict of model into shards within limited size.
 
@@ -118,7 +118,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         for name, param in model.named_parameters():
             if param is None:
                 continue
-                
+
             # Gather tensor pieces when using tensor parallel.
             param_ = gather_distributed_param(param, keep_vars=False)
             if is_padded_tensor(param_):
@@ -245,12 +245,12 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model._force_wait_all_gather()
         if self.dp_rank != 0 and self.sp_rank != 0:
             return
-        
+
         model_metadata = None
         if not gather_dtensor:
             # Manage filenames of sharded weights and index file for each pipeline stage.
             model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
-            
+
         model = model.unwrap()
 
         if os.path.isfile(checkpoint):
@@ -280,7 +280,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if not gather_dtensor:
                 dist_id = self.tp_size * self.pp_rank + self.tp_rank
                 weights_name = get_dist_files_name(weights_name=weights_name, dist_id=dist_id)
-                metadata_file = get_dist_meta_file_name(checkpoint=checkpoint, dist_id=dist_id, use_safetensors=use_safetensors)
+                metadata_file = get_dist_meta_file_name(
+                    checkpoint=checkpoint, dist_id=dist_id, use_safetensors=use_safetensors
+                )
 
             if use_async:
                 total_size, writers = async_save_state_dict_shards(
@@ -413,9 +415,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             )
             model = model.unwrap()
             with RestoreDefaultStateDictBehavior(model):
-                load_state_dict_into_model(
-                    model, state_dict, missing_keys=[], strict=False, load_sub_module=True
-                )
+                load_state_dict_into_model(model, state_dict, missing_keys=[], strict=False, load_sub_module=True)
             return
 
         model_before_wrapping = model  # backup for model before wrapping
@@ -897,7 +897,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     load_dtensor = True
                     break
 
-        model_metadata = None # used for dist model
+        model_metadata = None  # used for dist model
         if load_dtensor:
             model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
 

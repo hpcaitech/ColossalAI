@@ -1,5 +1,6 @@
 import json
 import os
+from contextlib import contextmanager
 from typing import Dict
 
 import torch
@@ -9,12 +10,8 @@ from torch.distributed.distributed_c10d import _get_default_group
 
 from colossalai.interface import ModelWrapper
 from colossalai.shardformer.layer.parallel_module import ParallelModule
-from contextlib import contextmanager
 
-from .utils import (
-    load_state_dict,
-    search_tp_partition_dim,
-)
+from .utils import load_state_dict, search_tp_partition_dim
 
 MODEL_META_PREFIX = "pytorch_model-meta-dist-"
 MODEL_WEIGHT_PREFIX = "pytorch_model-dist-"
@@ -34,8 +31,7 @@ def RestoreDefaultStateDictBehavior(model):
         yield model
     finally:
         for module, original_method in original_methods.items():
-            module._save_to_state_dict, module._load_from_state_dict  = original_method
-    
+            module._save_to_state_dict, module._load_from_state_dict = original_method
 
 
 def create_model_metadata(
@@ -260,10 +256,12 @@ def load_dist_model(
 
     return state_dict
 
+
 def get_dist_files_name(weights_name, dist_id):
     weights_name = weights_name.replace(".bin", f"-dist-{dist_id:05d}-shard.bin")
     weights_name = weights_name.replace(".safetensors", f"-dist-{dist_id:05d}-shard.safetensors")
     return weights_name
+
 
 def get_dist_meta_file_name(checkpoint, dist_id, use_safetensors):
     if use_safetensors:
