@@ -35,39 +35,6 @@ def RestoreDefaultStateDictBehavior(model):
     finally:
         for module, original_method in original_methods.items():
             module._save_to_state_dict, module._load_from_state_dict  = original_method
-    
-
-
-def create_model_metadata(
-    model: ModelWrapper,
-    prefix: str = "",
-    tp_size: int = None,
-    tp_rank: int = None,
-    zero_size: int = None,
-    zero_rank: int = None,
-):
-    param_origin_shape = model.param_origin_shape
-    model = model.unwrap()
-    model_metadata = {}
-    for name, param in model.named_parameters():
-        if param is None:
-            continue
-        model_metadata[prefix + name] = {}
-        original_shape = param_origin_shape[name]
-        tp_partition_dim = search_tp_partition_dim(
-            current_shape=param.shape, original_shape=original_shape, tp_size=tp_size
-        )
-        model_metadata[prefix + name]["offsets"] = [0] * len(original_shape)
-        model_metadata[prefix + name]["lengths"] = list(param.shape)
-        model_metadata[prefix + name]["global_shape"] = list(original_shape)
-        if tp_partition_dim is not None:
-            partition_size = param.shape[tp_partition_dim]
-            model_metadata[prefix + name]["offsets"][tp_partition_dim] = partition_size * tp_rank
-            if tp_rank == tp_size - 1:
-                model_metadata[prefix + name]["lengths"][tp_partition_dim] = original_shape[tp_partition_dim] - (
-                    partition_size * (tp_size - 1)
-                )
-    return model_metadata
 
 
 def save_metadata(model_metadata, metadata_file, checkpoint_file=None, total_size=None):

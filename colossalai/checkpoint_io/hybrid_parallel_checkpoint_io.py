@@ -26,7 +26,6 @@ from colossalai.utils import get_current_device, get_non_persistent_buffers_set
 from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat
 
 from .distributed_checkpoint_utils import (
-    create_model_metadata,
     is_pytorch_model_meta_dist_file,
     load_dist_model,
     save_metadata,
@@ -216,6 +215,34 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Return the last block in sharder.
         yield state_dict_sharder.current_block, state_dict_sharder.current_block_size
 
+    def create_model_metadata(
+        self,
+        model: ModelWrapper,
+        prefix: str = "",
+    ):
+        param_origin_shape = model.param_origin_shape
+        model = model.unwrap()
+        model_metadata = {}
+        for name, param in model.named_parameters():
+            if param is None:
+                continue
+            model_metadata[prefix + name] = {}
+            original_shape = param_origin_shape[name]
+            tp_partition_dim = search_tp_partition_dim(
+                current_shape=param.shape, original_shape=original_shape, tp_size=self.tp_size
+            )
+            model_metadata[prefix + name]["offsets"] = [0] * len(original_shape)
+            model_metadata[prefix + name]["lengths"] = list(param.shape)
+            model_metadata[prefix + name]["global_shape"] = list(original_shape)
+            if tp_partition_dim is not None:
+                partition_size = param.shape[tp_partition_dim]
+                model_metadata[prefix + name]["offsets"][tp_partition_dim] = partition_size * self.tp_rank
+                if self.tp_rank == self.tp_size - 1:
+                    model_metadata[prefix + name]["lengths"][tp_partition_dim] = original_shape[tp_partition_dim] - (
+                        partition_size * (self.tp_size - 1)
+                    )
+        return model_metadata
+
     def save_sharded_model(
         self,
         model: ModelWrapper,
@@ -253,7 +280,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model_metadata = None
         if not gather_dtensor:
             # Manage filenames of sharded weights and index file for each pipeline stage.
-            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            model_metadata = self.create_model_metadata(model)
             
         model = model.unwrap()
 
@@ -409,7 +436,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         model._force_wait_all_gather()
 
         if is_pytorch_model_meta_dist_file(checkpoint_index_file):
-            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            model_metadata = self.create_model_metadata(model)
             checkpoint = checkpoint_index_file.parent
             state_dict = load_dist_model(
                 model_metadata=model_metadata,
@@ -817,7 +844,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         if not gather_dtensor:
             dist_id = self.tp_size * self.pp_rank + self.tp_rank
             Path(checkpoint).mkdir(parents=True, exist_ok=True)
-            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            model_metadata = self.create_model_metadata(model)
             checkpoint_file = os.path.join(checkpoint, f"{MODEL_WEIGHT_PREFIX}{dist_id:05d}.bin")
             if use_async:
                 checkpoint_file = checkpoint_file.replace(".bin", f".safetensors")
@@ -903,7 +930,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         model_metadata = None # used for dist model
         if load_dtensor:
-            model_metadata = create_model_metadata(model, tp_size=self.tp_size, tp_rank=self.tp_rank)
+            model_metadata = self.create_model_metadata(model)
 
         strict = False
         model_before_wrapping = model
