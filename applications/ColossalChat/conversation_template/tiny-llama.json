@@ -4,5 +4,10 @@
     "stop_ids": [
         2
     ],
-    "end_of_assistant": "</s>"
+    "end_of_assistant": "</s>",
+    "step_score_signal": "ки",
+    "reward_signal": [
+        "+",
+        "-"
+    ]
 }
