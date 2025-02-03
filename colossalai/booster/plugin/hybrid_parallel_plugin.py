@@ -1192,8 +1192,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         # sync gradients across DP * SP ranks
         # Apply Hybrid ZeRO across DP * SP ranks
         if self.enable_sequence_parallelism and not is_share_sp_tp(self.sequence_parallelism_mode):
-            self.dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
-            self.dp_size = get_world_size(self.dp_group)
+            self.mixed_dp_group = self.pg_mesh.create_group_along_axis([self.dp_axis, self.sp_axis])
+            self.dp_size = get_world_size(self.mixed_dp_group)
+        else:
+            self.mixed_dp_group = self.dp_group
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -1309,7 +1311,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=self.dp_group,
+                dp_group=self.mixed_dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
                 use_ddp=use_ddp,
@@ -1358,7 +1360,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=self.dp_group,
+                    dp_process_group=self.mixed_dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     verbose=True,
