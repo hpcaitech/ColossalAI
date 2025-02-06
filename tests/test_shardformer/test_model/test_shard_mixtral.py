@@ -118,12 +118,12 @@ def run_mixtral_commom(config: Tuple[int, ...]):
             parallel_optimizer.backward(parallel_output)
         parallel_optimizer.step()
         parallel_optimizer.zero_grad()
-        dist.all_reduce(parallel_output, group=plugin.dp_group)
+        dist.all_reduce(parallel_output, group=plugin.mixed_dp_group)
 
         # ===================================================================================
         # run normal model with all dp(different) inputs
         all_inputs = [torch.empty_like(input_embeddings) for _ in range(dp_size)]
-        dist.all_gather(all_inputs, input_embeddings, group=plugin.dp_group)
+        dist.all_gather(all_inputs, input_embeddings, group=plugin.mixed_dp_group)
         torch_output_sum = 0
         for input_data_ in all_inputs:
             torch_output = torch_model(inputs_embeds=input_data_.to(dtype)).last_hidden_state.mean()
