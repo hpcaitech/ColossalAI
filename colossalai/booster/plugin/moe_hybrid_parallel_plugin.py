@@ -351,6 +351,14 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.sp_group = self.pg_mesh.get_group_along_axis(self.tp_axis)
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
+
+        # sync gradients across DP * SP ranks
+        if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
+            self.mixed_dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
+            self.dp_size = dist.get_world_size(self.mixed_dp_group)
+        else:
+            self.mixed_dp_group = self.dp_group
+
         self.use_fp8 = use_fp8
 
         self.shard_config = ShardConfig(
@@ -404,7 +412,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
     def get_checkpoint_io(self) -> MoECheckpointIO:
         return MoECheckpointIO(
-            self.dp_group,
+            self.mixed_dp_group,
             self.pp_group,
             self.tp_group,
             self.sp_group,
@@ -435,12 +443,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 and self.sequence_parallelism_mode == "all_to_all"
             )
 
-            # sync gradients across DP * SP ranks
-            if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
-                dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
-            else:
-                dp_group = self.dp_group
-
             if use_ddp:
                 self.logger.warning(
                     f"Will have to check all params are used in pytorch DDP since not all experts are always activated",
@@ -448,7 +450,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 )
                 self.ddp_config["find_unused_parameters"] = True
 
-                if dist.get_process_group_ranks(dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
+                if dist.get_process_group_ranks(self.mixed_dp_group) != dist.get_process_group_ranks(self.moe_dp_group):
                     raise ValueError(
                         f"if pytorch DDP is used, dp_group and moe_dp_group are expected to be the same since DDP can only reduce grad across a single group, but found dp_group {dist.get_process_group_ranks(dp_group)} and moe_dp_group {dist.get_process_group_ranks(self.moe_dp_group)}, you might want to modify your config to bypass DDP \nhint: check the above ddp condition to by pass this"
                     )
@@ -457,7 +459,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 module=model,
                 precision=self.precision,
                 shard_config=self.shard_config,
-                dp_group=dp_group,
+                dp_group=self.mixed_dp_group,
                 tp_group=self.tp_group,
                 sp_group=self.sp_group,
                 use_ddp=use_ddp,
@@ -507,7 +509,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=dp_group,
+                    dp_process_group=self.mixed_dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     moe_dp_group=self.moe_dp_group,
