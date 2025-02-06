@@ -1,6 +1,3 @@
-import os
-import shutil
-from copy import deepcopy
 from typing import Tuple
 
 import pytest
@@ -8,27 +5,16 @@ import torch
 import torch.distributed
 import torch.distributed as dist
 from torch.testing import assert_close
-from transformers import AutoConfig, AutoModel
 
 import colossalai
-from colossalai.booster.booster import Booster
 from colossalai.booster.plugin import MoeHybridParallelPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
-from colossalai.shardformer.layer.utils import Randomizer
-from colossalai.tensor.moe_tensor.api import is_moe_tensor
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
 from tests.kit.model_zoo import model_zoo
-from tests.test_moe.moe_utils import assert_loose_close, check_model_equal
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
-    check_all_grad_tensors,
-    check_loss,
-    check_output_hidden_state,
-    check_weight,
-    get_grad_tensors_for_check,
     run_forward_backward_with_hybrid_plugin,
-    unwrap_model,
 )
 
 

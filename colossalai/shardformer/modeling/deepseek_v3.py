@@ -1,20 +1,7 @@
-import warnings
-from typing import List, Optional, Tuple, Union
-
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.functional as F
 from torch.distributed import ProcessGroup
-from torch.nn import CrossEntropyLoss
-from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import (
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
-from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import (
@@ -24,18 +11,8 @@ from colossalai.moe._operation import (
     EPGradScalerOut,
     all_to_all_uneven,
 )
-from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.quantization.fp8 import all_reduce_fp8
-from colossalai.shardformer.layer._operation import (
-    all_to_all_comm,
-    gather_forward_split_backward,
-    linear_with_async_comm,
-    split_forward_gather_backward,
-)
-from colossalai.shardformer.layer.linear import Linear1D_Col, Linear1D_Row, ParallelModule
-from colossalai.shardformer.shard import ShardConfig
+from colossalai.shardformer.layer.linear import ParallelModule
 from colossalai.shardformer.shard.utils import set_tensors_to_none
-from colossalai.tensor.d_tensor.api import shard_rowwise, sharded_tensor_to_existing_param
 from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_group
 
 
