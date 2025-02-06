@@ -352,7 +352,6 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         else:
             self.sp_group = self.pg_mesh.get_group_along_axis(self.sp_axis)
 
-
         # sync gradients across DP * SP ranks
         if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
             self.mixed_dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
