@@ -68,6 +68,10 @@ class ShardConfig:
     def sequence_parallel_size(self):
         return self._sequence_parallel_size
 
+    @property
+    def expert_parallel_size(self):
+        return self._expert_parallel_size
+
     def __post_init__(self):
         # turn on all optimization if all_optimization is set to True
         if self.enable_all_optimization:
@@ -102,6 +106,8 @@ class ShardConfig:
             self._sequence_parallel_size = 1
         else:
             self._sequence_parallel_size = dist.get_world_size(self.sequence_parallel_process_group)
+
+        self._expert_parallel_size = dist.get_world_size(self.ep_group) if self.ep_group else 1
 
     def _turn_on_all_optimization(self):
         """

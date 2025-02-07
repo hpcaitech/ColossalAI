@@ -1,4 +1,6 @@
 # modified from tests/kit/model_zoo/transformers/mistral.py
+from types import MethodType
+
 import torch
 import transformers
 from transformers import AutoConfig
@@ -68,7 +70,10 @@ def init_deepseek():
     if hasattr(config, "pad_token_id"):
         config.pad_token_id = config.eos_token_id
     model = transformers.AutoModelForCausalLM.from_config(config, trust_remote_code=True)
-
+    # enable grad for moe layers
+    for m in model.modules():
+        if m.__class__.__name__ == "DeepseekV3MoE":
+            m.moe_infer = MethodType(m.moe_infer.__wrapped__, m)
     return model
 
 

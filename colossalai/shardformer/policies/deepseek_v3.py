@@ -22,7 +22,10 @@ class DeepseekV3Policy(Policy):
 
         policy = {}
 
-        if self.shard_config.ep_group:
+        # support gradient checkpointing
+        # policy["DeepseekV3Model"] = ModulePolicyDescription(method_replacement={"forward": deepseek_v3_model_forward})
+
+        if self.shard_config.expert_parallel_size > 1:
             # expert parallel
             self.append_or_create_submodule_replacement(
                 description=[
