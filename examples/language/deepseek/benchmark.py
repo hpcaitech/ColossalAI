@@ -4,11 +4,13 @@ import resource
 import time
 import warnings
 from contextlib import nullcontext
+from types import MethodType
 
 import torch
 import torch.distributed as dist
 from data_utils import RandomDataset
 from model_utils import format_numel_str, get_model_numel
+from peft import LoraConfig
 from performance_evaluator import PerformanceEvaluator, get_profile_context
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM
@@ -29,7 +31,7 @@ warnings.filterwarnings("ignore")
 
 # We have lots of llamas for your choice!
 MODEL_CONFIGS = {
-    "100m": lambda: AutoConfig.from_pretrained(
+    "100m": AutoConfig.from_pretrained(
         "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
         num_hidden_layers=1,
@@ -44,17 +46,26 @@ MODEL_CONFIGS = {
         attn_implementation="flash_attention_2",
         trust_remote_code=True,
     ),
-    "7b": lambda: AutoConfig.from_pretrained(
+    "7b": AutoConfig.from_pretrained(
         "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
         num_hidden_layers=13,
         attn_implementation="flash_attention_2",
         trust_remote_code=True,
     ),
-    "14b": lambda: AutoConfig.from_pretrained(
+    "14b": AutoConfig.from_pretrained(
         "deepseek-ai/deepseek-moe-16b-base",
         max_position_embeddings=4096,
         num_hidden_layers=26,
+        attn_implementation="flash_attention_2",
+        trust_remote_code=True,
+    ),
+    "v3-6b": AutoConfig.from_pretrained(
+        "deepseek-ai/DeepSeek-V3",
+        num_hidden_layers=5,
+        first_k_dense_replace=2,
+        n_routed_experts=32,
+        vocab_size=8192,
         attn_implementation="flash_attention_2",
         trust_remote_code=True,
     ),
@@ -119,6 +130,7 @@ def main():
         help="Sequence parallelism mode",
     )
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--enable_lora", action="store_true", help="Enable LoRA")
     args = parser.parse_args()
 
     colossalai.launch_from_torch()
@@ -151,7 +163,7 @@ def main():
             sp_size=args.sp,
             sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
-            enable_fused_normalization=torch.cuda.is_available(),
+            # enable_fused_normalization=torch.cuda.is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
@@ -171,7 +183,10 @@ def main():
     # ==============================
     dp_size = getattr(plugin, "dp_size", coordinator.world_size)
 
-    config = MODEL_CONFIGS[args.config]()
+    if args.config in MODEL_CONFIGS:
+        config = MODEL_CONFIGS[args.config]
+    else:
+        config = AutoConfig.from_pretrained(args.config, trust_remote_code=True)
 
     torch.cuda.manual_seed(42)
 
@@ -190,10 +205,23 @@ def main():
     )
 
     with init_ctx:
-        model = AutoModelForCausalLM.from_config(config, trust_remote_code=True).to(torch.bfloat16)
+        model = AutoModelForCausalLM.from_config(
+            config, trust_remote_code=True, attn_implementation="flash_attention_2", torch_dtype=torch.bfloat16
+        ).to(torch.bfloat16)
+        if args.enable_lora:
+            booster.enable_lora(
+                model,
+                lora_config=LoraConfig(task_type="CAUSAL_LM", target_modules=["gate_proj", "up_proj", "down_proj"]),
+            )
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
+    if model.__class__.__name__.startswith("DeepseekV3"):
+        model.eval()
+        # enable grad for moe layers
+        for m in model.modules():
+            if m.__class__.__name__ == "DeepseekV3MoE":
+                m.moe_infer = MethodType(m.moe_infer.__wrapped__, m)
 
     model_numel = get_model_numel(model)
     coordinator.print_on_master(f"Model params: {format_numel_str(model_numel)}")

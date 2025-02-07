@@ -104,7 +104,7 @@ def _data_tolist(tensor: torch.Tensor) -> list:
     return tensor.data.tolist()
 
 
-def _convert_cls(tensor: "LazyTensor", target: torch.Tensor) -> torch.Tensor:
+def _convert_cls(tensor: "LazyTensor", target: torch.Tensor, requires_grad=None) -> torch.Tensor:
     """Convert a lazy tensor's class to target's class, with target's data.
 
     The reason why we change the class of a lazy tensor in-place is that this can easily handle shared modules/parameters, which is common in huggingface models.
@@ -117,13 +117,14 @@ def _convert_cls(tensor: "LazyTensor", target: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: the converted tensor
     """
+    requires_grad = target.requires_grad if requires_grad is None else requires_grad
     cls_to_become = Parameter if isinstance(tensor, Parameter) else torch.Tensor
     tensor.__class__ = cls_to_become
     if cls_to_become is Parameter:
         # to fit UninitializedParameter
         delattr(tensor, "_is_param")
     tensor.data = target
-    tensor.requires_grad = target.requires_grad
+    tensor.requires_grad = requires_grad
     # subclass of torch.Tensor does not have tolist() method
     # overwrite this method after materialization or distribution
     tensor.tolist = MethodType(_data_tolist, tensor)
@@ -212,9 +213,10 @@ class LazyTensor(torch.Tensor):
         Returns:
             torch.Tensor: The materialized tensor (self).
         """
+        requires_grad = self.requires_grad
         target = self._materialize_data()
         self.clean()
-        return _convert_cls(self, target)
+        return _convert_cls(self, target, requires_grad=requires_grad)
 
     def clean(self) -> None:
         """Clean all stored operations, meta data and materialized data, which prevents memory leaking. This should be called after all tensors are materialized."""
