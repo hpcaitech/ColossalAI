@@ -1,0 +1,9 @@
+{
+    "chat_template": "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "system_message": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant.",
+    "stop_ids": [
+        151645,
+        151643
+    ],
+    "end_of_assistant": "<|im_end|>"
+}

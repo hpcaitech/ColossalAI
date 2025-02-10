@@ -155,13 +155,14 @@ class DataCollatorForPromptDataset(DataCollatorForSupervisedDataset):
                 `input_ids`: `torch.Tensor` of shape (bsz, max_len);
                 `attention_mask`: `torch.BoolTensor` of shape (bsz, max_len);
         """
+        gt_answer = [ins.get("gt_answer", None) for ins in instances]
         instances = [{"input_ids": ins["input_ids"], "labels": ins["input_ids"]} for ins in instances]
         ret = super().__call__(instances=instances)
         input_ids = F.pad(
             ret["input_ids"], (self.max_length - ret["input_ids"].size(1), 0), value=self.tokenizer.pad_token_id
         )
         attention_mask = F.pad(ret["attention_mask"], (self.max_length - ret["attention_mask"].size(1), 0), value=False)
-        return {"input_ids": input_ids, "attention_mask": attention_mask}
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "gt_answer": gt_answer}
 
 
 @dataclass

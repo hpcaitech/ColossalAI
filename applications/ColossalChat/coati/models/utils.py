@@ -142,3 +142,17 @@ def disable_dropout(model: torch.nn.Module):
         for module in model.modules():
             if isinstance(module, torch.nn.Dropout):
                 module.p = 0.0
+
+def repad_to_left(tensor, tokenizer, to_remove_tokens = [], to_append_tokens = None):
+    repadded_input_ids = []
+    max_non_padded_seq_len = 0
+    for i in range(tensor.size(0)):
+        non_pad_indices = (tensor[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0]
+        start, end = non_pad_indices.min(), non_pad_indices.max()
+        if to_append_tokens is not None:
+            repadded_input_ids.append(torch.cat([tensor[i][start:end+1-len(to_remove_tokens)], to_append_tokens]))
+        else:
+            repadded_input_ids.append(tensor[i][start:end+1-len(to_remove_tokens)])
+        max_non_padded_seq_len = max(max_non_padded_seq_len, repadded_input_ids[-1].size(0))
+    repadded_input_ids = [F.pad(t, (max_non_padded_seq_len - t.size(0), 0), value=tokenizer.pad_token_id) for t in repadded_input_ids]
+    return torch.stack(repadded_input_ids)

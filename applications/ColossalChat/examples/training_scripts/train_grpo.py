@@ -13,8 +13,8 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_conversation_template,
 )
-from coati.models import Critic, LoraConfig, RewardModel, convert_to_lora_module, disable_dropout, lora_manager
-from coati.trainer import PPOTrainer
+from coati.models import LoraConfig, RLVRRewardModel, convert_to_lora_module, disable_dropout, lora_manager
+from coati.trainer import GRPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -27,8 +27,28 @@ from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
+from coati.models import generate_tts, generate, prepare_inputs_fn, update_model_kwargs_fn
+
 logger = get_dist_logger()
 
+def reward_fn(input_ids, attention_mask, **kwargs):
+    # apply varifiable reward
+    # reward 10 points if the final answer is correct
+    response_start = kwargs['response_start']
+    response_end = kwargs['response_end']
+    gt_answer = kwargs['gt_answer']
+    tokenizer = kwargs['tokenizer']
+    reward = torch.tensor(0.).to(input_ids.device)
+    if gt_answer is None:
+        return reward
+    decoded_final_answer = tokenizer.decode(input_ids)
+    if not "Final Answer:" in decoded_final_answer:
+        return reward
+    final_answer = decoded_final_answer.split("Final Answer:")[-1]
+    final_answer = final_answer.replace(" ", "").lower()
+    if gt_answer.replace(" ", "").lower() in final_answer:
+        reward = reward + 10.
+    return reward
 
 def train(args):
     lora_config = None
@@ -70,43 +90,23 @@ def train(args):
                 local_files_only=True,
                 trust_remote_code=True
             )
-            reward_model = RewardModel(
-                args.rm_pretrain,
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                use_flash_attention_2=True,
-                trust_remote_code=True
-            )
-            critic = Critic(
-                args.rm_pretrain,
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                use_flash_attention_2=True,
-                trust_remote_code=True
-            )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
             ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
-            reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
-            critic = Critic(args.rm_pretrain)
 
         if args.lora_config is not None:
             actor = convert_to_lora_module(actor, lora_config=lora_config)
-            critic = convert_to_lora_module(critic, lora_config=lora_config)
             for name, module in actor.named_modules():
-                if "norm" in name or "gate" in name:
-                    module = module.to(torch.float32)
-            for name, module in critic.named_modules():
                 if "norm" in name or "gate" in name:
                     module = module.to(torch.float32)
             lora_manager.able_to_merge = False
 
         # Disable dropout
         disable_dropout(actor)
-        disable_dropout(critic)
 
     if args.grad_checkpoint:
         actor.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        critic.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
 
     # configure tokenizer
@@ -152,28 +152,12 @@ def train(args):
         adamw_mode=True,
     )
 
-    coordinator.print_on_master(f"setting up optimizer for critic: lr={args.lr}, weight_decay={args.weight_decay}")
-    critic_optim = HybridAdam(
-        model_params=critic.parameters(),
-        lr=args.critic_lr,
-        betas=(0.9, 0.95),
-        weight_decay=args.weight_decay,
-        adamw_mode=True,
-    )
-
     if args.warmup_steps is None:
         args.warmup_steps = int(0.025 * args.num_episodes)
         coordinator.print_on_master(f"Warmup steps is set to {args.warmup_steps}")
 
     actor_lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=actor_optim,
-        total_steps=args.num_episodes,
-        warmup_steps=args.warmup_steps,
-        eta_min=0.1 * args.lr,
-    )
-
-    critic_lr_scheduler = CosineAnnealingWarmupLR(
-        optimizer=critic_optim,
         total_steps=args.num_episodes,
         warmup_steps=args.warmup_steps,
         eta_min=0.1 * args.lr,
@@ -237,30 +221,14 @@ def train(args):
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
         )
-        custom_plugin = HybridParallelPlugin(
-            tp_size=args.tp,
-            pp_size=args.pp,
-            sp_size=args.sp,
-            sequence_parallelism_mode=args.sp_mode,
-            zero_stage=args.zero_stage,
-            enable_flash_attention=args.use_flash_attn,
-            enable_sequence_parallelism=args.enable_sequence_parallelism,
-            cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
-            parallel_output=False,
-            max_norm=args.grad_clip,
-            precision=args.mixed_precision,
-            custom_policy=get_autopolicy(reward_model.model),
-        )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
-
-    if args.plugin != "3d":
-        custom_plugin = plugin
 
     # configure dataset
     coordinator.print_on_master(f"Load dataset: {args.prompt_dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_prompt_dataset = load_tokenized_dataset(dataset_paths=args.prompt_dataset, mode="train", mode_map=mode_map)
+   
     data_collator = DataCollatorForPromptDataset(tokenizer=tokenizer, max_length=args.max_length - args.max_seq_len)
 
     train_prompt_dataloader = plugin.prepare_dataloader(
@@ -288,8 +256,6 @@ def train(args):
 
     actor_booster = Booster(plugin=plugin)
     ref_booster = Booster(plugin=plugin)
-    rm_booster = Booster(plugin=custom_plugin)
-    critic_booster = Booster(plugin=custom_plugin)
 
     default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
     torch.set_default_dtype(default_dtype)
@@ -299,14 +265,6 @@ def train(args):
         lr_scheduler=actor_lr_scheduler,
         dataloader=train_prompt_dataloader,
     )
-
-    critic, critic_optim, _, _, critic_lr_scheduler = critic_booster.boost(
-        model=critic,
-        optimizer=critic_optim,
-        lr_scheduler=critic_lr_scheduler,
-        dataloader=train_prompt_dataloader,
-    )
-    reward_model, _, _, _, _ = rm_booster.boost(model=reward_model, dataloader=train_prompt_dataloader)
     ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_prompt_dataloader)
 
     torch.set_default_dtype(torch.float)
@@ -318,19 +276,6 @@ def train(args):
 
     sampler_start_idx = 0
     start_step = 0
-
-    if args.rm_checkpoint_path is not None:
-        if "modeling" in args.rm_checkpoint_path:
-            rm_booster.load_model(reward_model, args.rm_checkpoint_path)
-        else:
-            _, _, _ = load_checkpoint(
-                load_dir=args.rm_checkpoint_path,
-                booster=rm_booster,
-                model=reward_model,
-                optimizer=None,
-                lr_scheduler=None,
-            )
-        coordinator.print_on_master(f"Loaded reward model checkpoint {args.rm_checkpoint_path}")
 
     if args.checkpoint_path is not None:
         if "modeling" in args.checkpoint_path:
@@ -348,9 +293,7 @@ def train(args):
             _, _, _ = load_checkpoint(
                 load_dir=args.checkpoint_path,
                 booster=ref_booster,
-                model=ref_model,
-                optimizer=critic_optim,
-                lr_scheduler=critic_lr_scheduler,
+                model=ref_model
             )
             assert isinstance(train_prompt_dataloader.sampler, StatefulDistributedSampler)
             train_prompt_dataloader.sampler.set_start_index(start_index=sampler_start_idx)
@@ -369,60 +312,86 @@ def train(args):
         coordinator.print_on_master(
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
-
-    if args.critic_checkpoint_path is not None:
-        if "modeling" in args.critic_checkpoint_path:
-            critic_booster.load_model(critic, args.critic_checkpoint_path)
-        else:
-            _, _, _ = load_checkpoint(
-                load_dir=args.critic_checkpoint_path,
-                booster=critic_booster,
-                model=critic,
-                optimizer=critic_optim,
-                lr_scheduler=critic_lr_scheduler,
-            )
-        coordinator.print_on_master(f"Loaded critic checkpoint {args.critic_checkpoint_path}")
-        coordinator.print_on_master(
-            f"Checkpoint loaded max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
-        )
-        coordinator.print_on_master(
-            f"Checkpoint loaded CUDA memory: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB"
-        )
-        coordinator.print_on_master(
-            f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
-        )
+    device = f"cuda:{dist.get_rank()}"
+    reward_model = RLVRRewardModel(reward_fn_list=[reward_fn], tokenizer=tokenizer)
+    
+    
+    # test_input_ids = torch.tensor([[1, 122757, 8251, 5, 95353, 12895, 2131, 1348, 22693, 3441, 1384, 1458, 17898, 17036, 16434, 72, 1507, 16434, 6040, 11061, 95342, 9450, 95342, 1384, 73252, 10864, 1385, 1358, 3441, 95361, 95328, 4483, 72, 5, 5, 122753, 5, 122757, 1836, 5, 5187, 1980, 2302, 14174, 1538, 95322, 95386, 1410, 1476, 2759, 1457, 47121, 2824, 95368, 95322, 95369, 1631, 1378, 1631, 2824, 95368, 95370, 95322, 95320, 63, 95320, 95381, 95369, 1786, 1631, 2824, 95368, 95349, 95322, 95320, 62, 95320, 95367, 2486, 74, 122753, 5, 122757, 43686, 5]])
+    
+    # test_input_ids = test_input_ids.to(device)
+    # stop_token_ids_thought = torch.tensor(tokenizer.encode("<|im_end|>", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
+    # stop_token_ids_answer = torch.tensor(tokenizer.encode("<|im_end|>", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
+    # think_prefix = torch.tensor(tokenizer.encode("Think:", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
+    # final_answer_prefix = torch.tensor(tokenizer.encode("\nFinal Answer:", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
+    # ignore_tokens = torch.tensor(tokenizer.encode("\nWait", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
+    # print("stop ids", stop_ids)
+    # print("stop token ids thought", stop_token_ids_thought)
+    # print("stop token ids answer", stop_token_ids_answer)
+    # print("think prefix", think_prefix)
+    
+    # print("test generation tts")
+    # output = generate_tts(
+    #     actor, test_input_ids, tokenizer, 7000, 
+    #     think_prefix = think_prefix,
+    #     final_answer_prefix = final_answer_prefix,
+    #     stop_token_ids_thought=stop_ids,
+    #     stop_token_ids_final_answer=stop_ids,
+    #     max_tokens_thinking = 5000,
+    #     update_model_kwargs_fn = update_model_kwargs_fn,
+    #     temperature=0.1,
+    #     stop_token_ids=stop_ids,
+    #     ignore_tokens = ignore_tokens
+    # )
+    # output = generate(
+    #     actor, test_input_ids, tokenizer, 5000, 1, True, True, prepare_inputs_fn = None, 
+    #     update_model_kwargs_fn = update_model_kwargs_fn, temperature=0.1, stop_token_ids=stop_ids
+    # )
+    # print(output)
+    # print(tokenizer.decode(output[0]))
+    # return
+    
+    tts_config = {
+        "tts_thought_stop": "<|im_end|>",
+        "tts_final_answer_stop": "<|im_end|>",
+        "tts_think_prefix": "Think:",
+        "tts_final_answer_prefix": "\nFinal Answer:",
+        "tts_reflexion_prefix": "\nWait"
+    }
 
     # configure trainer
-    trainer = PPOTrainer(
+    trainer = GRPOTrainer(
         actor_booster,
-        critic_booster,
         actor,
-        critic,
         reward_model,
         ref_model,
         actor_optim,
-        critic_optim,
         actor_lr_scheduler,
-        critic_lr_scheduler,
         tokenizer=tokenizer,
         stop_token_ids=stop_ids,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
-        buffer_limit=args.num_collect_steps * args.experience_batch_size,
+        buffer_limit=args.num_collect_steps * args.experience_batch_size * args.num_generations,
         max_length=args.max_length,
-        max_new_tokens=args.max_seq_len,
         use_cache=True,
         do_sample=True,
-        temperature=0.7,
+        temperature=args.temperature,
         apply_loss_mask=not args.disable_loss_mask,
         accumulation_steps=args.accumulation_steps,
         save_dir=args.save_path,
         save_interval=args.save_interval,
         top_k=50,
         use_tp=args.tp > 1,
+        num_generations=args.num_generations,
+        inference_batch_size=args.inference_batch_size,
+        use_tts_inference = True,
+        tts_config = tts_config,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
+        max_tokens_thinking = args.max_length - 500,
+        # Hack: overwrite CPM's default update_model_kwargs_fn, the default doesn't work due to version conflict
+        update_model_kwargs_fn = update_model_kwargs_fn,
+        # prepare_inputs_fn = None
     )
 
     trainer.fit(
@@ -434,22 +403,16 @@ def train(args):
         log_dir=args.log_dir,
         use_wandb=args.use_wandb,
     )
-
+    
     if lora_config is not None and lora_config.r > 0:
         # NOTE: set model to eval to merge LoRA weights
         lora_manager.able_to_merge = True
         actor.eval()
-        critic.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final actor model checkpoint")
     actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final actor model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
-    )
-    coordinator.print_on_master("Start saving final critic model checkpoint")
-    critic_booster.save_model(critic, os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(
-        f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
@@ -484,14 +447,13 @@ if __name__ == "__main__":
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
     parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=str, default=None)
-    parser.add_argument("--critic_checkpoint_path", type=str, default=None)
-    parser.add_argument("--rm_checkpoint_path", type=str, help="Reward model checkpoint path")
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument("--num_collect_steps", type=int, default=2)
     parser.add_argument("--num_update_steps", type=int, default=5)
+    parser.add_argument("--num_generations", type=int, default=8)
+    parser.add_argument("--inference_batch_size", type=int, default=8)
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--experience_batch_size", type=int, default=16)
@@ -499,13 +461,13 @@ if __name__ == "__main__":
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--accumulation_steps", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=9e-6)
-    parser.add_argument("--critic_lr", type=float, default=9e-6)
-    parser.add_argument("--kl_coef", type=float, default=0.1)
+    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--kl_coef", type=float, default=0.7)
     parser.add_argument("--ptx_coef", type=float, default=0.0)
     parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--temperature", type=float, default=0.9)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
