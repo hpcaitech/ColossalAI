@@ -7,6 +7,7 @@ from torch import Tensor
 from torch.profiler import ProfilerActivity, profile, schedule, tensorboard_trace_handler
 
 from colossalai.cluster import DistCoordinator
+from colossalai.utils import get_current_device
 
 
 def divide(x: float, y: float) -> float:
@@ -29,7 +30,7 @@ def all_reduce_mean(x: float, world_size: int) -> float:
     # tensor = tensor / world_size
     # return tensor.item()
 
-    tensor = torch.tensor([x], device=torch.cuda.current_device(), dtype=torch.float)
+    tensor = torch.tensor([x], device=get_current_device(), dtype=torch.float)
     dist.all_reduce(tensor)
     tensor = tensor / world_size
     return tensor.item()

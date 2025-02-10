@@ -163,7 +163,7 @@ def main():
             sp_size=args.sp,
             sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
-            # enable_fused_normalization=torch.cuda.is_available(),
+            enable_fused_normalization=get_accelerator().is_available(),
             enable_flash_attention=args.xformers,
             microbatch_size=args.mbs,
             precision="bf16",
@@ -204,9 +204,10 @@ def main():
         else nullcontext()
     )
 
+    attn_impl = "eager" if get_accelerator().name == "npu" else "flash_attention_2"
     with init_ctx:
         model = AutoModelForCausalLM.from_config(
-            config, trust_remote_code=True, attn_implementation="flash_attention_2", torch_dtype=torch.bfloat16
+            config, trust_remote_code=True, attn_implementation=attn_impl, torch_dtype=torch.bfloat16
         ).to(torch.bfloat16)
         if args.enable_lora:
             booster.enable_lora(
