@@ -13,7 +13,14 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_conversation_template,
 )
-from coati.models import LoraConfig, RLVRRewardModel, convert_to_lora_module, disable_dropout, lora_manager
+from coati.models import (
+    LoraConfig,
+    RLVRRewardModel,
+    convert_to_lora_module,
+    disable_dropout,
+    lora_manager,
+    update_model_kwargs_fn,
+)
 from coati.trainer import GRPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -25,30 +32,36 @@ from colossalai.cluster import DistCoordinator
 from colossalai.logging import get_dist_logger
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.shardformer.policies.auto_policy import get_autopolicy
-
-from coati.models import generate_tts, generate, prepare_inputs_fn, update_model_kwargs_fn
 
 logger = get_dist_logger()
+
 
 def reward_fn(input_ids, attention_mask, **kwargs):
     # apply varifiable reward
     # reward 10 points if the final answer is correct
-    response_start = kwargs['response_start']
-    response_end = kwargs['response_end']
-    gt_answer = kwargs['gt_answer']
-    tokenizer = kwargs['tokenizer']
-    reward = torch.tensor(0.).to(input_ids.device)
+    kwargs["response_start"]
+    kwargs["response_end"]
+    gt_answer = kwargs["gt_answer"]
+    tokenizer = kwargs["tokenizer"]
+    reward = torch.tensor(0.0).to(input_ids.device)
     if gt_answer is None:
         return reward
     decoded_final_answer = tokenizer.decode(input_ids)
     if not "Final Answer:" in decoded_final_answer:
         return reward
+    think_part = "Final Answer:".join("Think".join(decoded_final_answer.split("Think")[1:]).split("Final Answer:")[:-1])
     final_answer = decoded_final_answer.split("Final Answer:")[-1]
     final_answer = final_answer.replace(" ", "").lower()
-    if gt_answer.replace(" ", "").lower() in final_answer:
-        reward = reward + 10.
+    if (
+        gt_answer.replace(" ", "").lower() in final_answer
+        and len(think_part.split(" ")) > 3 * len(final_answer.split(" "))
+        and len(think_part.split(" ")) > 100
+        and len(final_answer.split(" ")) < 200
+    ):
+        # to prevent reward hacking that stack response at the final answer part
+        reward = reward + 10.0
     return reward
+
 
 def train(args):
     lora_config = None
@@ -81,19 +94,21 @@ def train(args):
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 use_flash_attention_2=True,
                 local_files_only=True,
-                trust_remote_code=True
+                trust_remote_code=True,
             )
             ref_model = AutoModelForCausalLM.from_pretrained(
                 args.pretrain,
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 use_flash_attention_2=True,
                 local_files_only=True,
-                trust_remote_code=True
+                trust_remote_code=True,
             )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
-            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
+            ref_model = AutoModelForCausalLM.from_pretrained(
+                args.pretrain, local_files_only=True, trust_remote_code=True
+            )
 
         if args.lora_config is not None:
             actor = convert_to_lora_module(actor, lora_config=lora_config)
@@ -228,7 +243,7 @@ def train(args):
     coordinator.print_on_master(f"Load dataset: {args.prompt_dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_prompt_dataset = load_tokenized_dataset(dataset_paths=args.prompt_dataset, mode="train", mode_map=mode_map)
-   
+
     data_collator = DataCollatorForPromptDataset(tokenizer=tokenizer, max_length=args.max_length - args.max_seq_len)
 
     train_prompt_dataloader = plugin.prepare_dataloader(
@@ -290,11 +305,7 @@ def train(args):
                 optimizer=actor_optim,
                 lr_scheduler=actor_lr_scheduler,
             )
-            _, _, _ = load_checkpoint(
-                load_dir=args.checkpoint_path,
-                booster=ref_booster,
-                model=ref_model
-            )
+            _, _, _ = load_checkpoint(load_dir=args.checkpoint_path, booster=ref_booster, model=ref_model)
             assert isinstance(train_prompt_dataloader.sampler, StatefulDistributedSampler)
             train_prompt_dataloader.sampler.set_start_index(start_index=sampler_start_idx)
 
@@ -314,10 +325,9 @@ def train(args):
         )
     device = f"cuda:{dist.get_rank()}"
     reward_model = RLVRRewardModel(reward_fn_list=[reward_fn], tokenizer=tokenizer)
-    
-    
+
     # test_input_ids = torch.tensor([[1, 122757, 8251, 5, 95353, 12895, 2131, 1348, 22693, 3441, 1384, 1458, 17898, 17036, 16434, 72, 1507, 16434, 6040, 11061, 95342, 9450, 95342, 1384, 73252, 10864, 1385, 1358, 3441, 95361, 95328, 4483, 72, 5, 5, 122753, 5, 122757, 1836, 5, 5187, 1980, 2302, 14174, 1538, 95322, 95386, 1410, 1476, 2759, 1457, 47121, 2824, 95368, 95322, 95369, 1631, 1378, 1631, 2824, 95368, 95370, 95322, 95320, 63, 95320, 95381, 95369, 1786, 1631, 2824, 95368, 95349, 95322, 95320, 62, 95320, 95367, 2486, 74, 122753, 5, 122757, 43686, 5]])
-    
+
     # test_input_ids = test_input_ids.to(device)
     # stop_token_ids_thought = torch.tensor(tokenizer.encode("<|im_end|>", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
     # stop_token_ids_answer = torch.tensor(tokenizer.encode("<|im_end|>", add_special_tokens=False), dtype=test_input_ids.dtype).to(device)
@@ -328,10 +338,10 @@ def train(args):
     # print("stop token ids thought", stop_token_ids_thought)
     # print("stop token ids answer", stop_token_ids_answer)
     # print("think prefix", think_prefix)
-    
+
     # print("test generation tts")
     # output = generate_tts(
-    #     actor, test_input_ids, tokenizer, 7000, 
+    #     actor, test_input_ids, tokenizer, 7000,
     #     think_prefix = think_prefix,
     #     final_answer_prefix = final_answer_prefix,
     #     stop_token_ids_thought=stop_ids,
@@ -343,19 +353,19 @@ def train(args):
     #     ignore_tokens = ignore_tokens
     # )
     # output = generate(
-    #     actor, test_input_ids, tokenizer, 5000, 1, True, True, prepare_inputs_fn = None, 
+    #     actor, test_input_ids, tokenizer, 5000, 1, True, True, prepare_inputs_fn = None,
     #     update_model_kwargs_fn = update_model_kwargs_fn, temperature=0.1, stop_token_ids=stop_ids
     # )
     # print(output)
     # print(tokenizer.decode(output[0]))
     # return
-    
+
     tts_config = {
         "tts_thought_stop": "<|im_end|>",
         "tts_final_answer_stop": "<|im_end|>",
         "tts_think_prefix": "Think:",
         "tts_final_answer_prefix": "\nFinal Answer:",
-        "tts_reflexion_prefix": "\nWait"
+        "tts_reflexion_prefix": "\nWait",
     }
 
     # configure trainer
@@ -384,13 +394,13 @@ def train(args):
         use_tp=args.tp > 1,
         num_generations=args.num_generations,
         inference_batch_size=args.inference_batch_size,
-        use_tts_inference = True,
-        tts_config = tts_config,
+        use_tts_inference=True,
+        tts_config=tts_config,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
-        max_tokens_thinking = args.max_length - 500,
+        max_tokens_thinking=args.max_length - 500,
         # Hack: overwrite CPM's default update_model_kwargs_fn, the default doesn't work due to version conflict
-        update_model_kwargs_fn = update_model_kwargs_fn,
+        update_model_kwargs_fn=update_model_kwargs_fn,
         # prepare_inputs_fn = None
     )
 
@@ -403,7 +413,7 @@ def train(args):
         log_dir=args.log_dir,
         use_wandb=args.use_wandb,
     )
-    
+
     if lora_config is not None and lora_config.r > 0:
         # NOTE: set model to eval to merge LoRA weights
         lora_manager.able_to_merge = True
