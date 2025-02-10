@@ -13,7 +13,7 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_conversation_template,
 )
-from coati.models import Critic, LoraConfig, RewardModel, convert_to_lora_module, disable_dropout, lora_manager
+from coati.models import Critic, LoraConfig, RLVRRewardModel, convert_to_lora_module, disable_dropout, lora_manager
 from coati.trainer import PPOTrainer
 from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -29,6 +29,12 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 logger = get_dist_logger()
 
+def reward_fn(input_ids, attention_mask, **kwargs):
+    # apply varifiable reward
+    # reward the actor if the response length is close to 20
+    response_start = kwargs['response_start']
+    response_end = kwargs['response_end']
+    return - torch.abs(torch.tensor(response_end - response_start - 20)).to(input_ids.device)
 
 def train(args):
     lora_config = None
@@ -70,14 +76,8 @@ def train(args):
                 local_files_only=True,
                 trust_remote_code=True
             )
-            reward_model = RewardModel(
-                args.rm_pretrain,
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                use_flash_attention_2=True,
-                trust_remote_code=True
-            )
             critic = Critic(
-                args.rm_pretrain,
+                args.pretrain,
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 use_flash_attention_2=True,
                 trust_remote_code=True
@@ -86,8 +86,7 @@ def train(args):
         else:
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
             ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
-            reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
-            critic = Critic(args.rm_pretrain)
+            critic = Critic(args.pretrain, trust_remote_code=True)
 
         if args.lora_config is not None:
             actor = convert_to_lora_module(actor, lora_config=lora_config)
@@ -249,7 +248,7 @@ def train(args):
             parallel_output=False,
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
-            custom_policy=get_autopolicy(reward_model.model),
+            custom_policy=get_autopolicy(critic.model),
         )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
@@ -288,7 +287,6 @@ def train(args):
 
     actor_booster = Booster(plugin=plugin)
     ref_booster = Booster(plugin=plugin)
-    rm_booster = Booster(plugin=custom_plugin)
     critic_booster = Booster(plugin=custom_plugin)
 
     default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
@@ -306,7 +304,6 @@ def train(args):
         lr_scheduler=critic_lr_scheduler,
         dataloader=train_prompt_dataloader,
     )
-    reward_model, _, _, _, _ = rm_booster.boost(model=reward_model, dataloader=train_prompt_dataloader)
     ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_prompt_dataloader)
 
     torch.set_default_dtype(torch.float)
@@ -318,19 +315,6 @@ def train(args):
 
     sampler_start_idx = 0
     start_step = 0
-
-    if args.rm_checkpoint_path is not None:
-        if "modeling" in args.rm_checkpoint_path:
-            rm_booster.load_model(reward_model, args.rm_checkpoint_path)
-        else:
-            _, _, _ = load_checkpoint(
-                load_dir=args.rm_checkpoint_path,
-                booster=rm_booster,
-                model=reward_model,
-                optimizer=None,
-                lr_scheduler=None,
-            )
-        coordinator.print_on_master(f"Loaded reward model checkpoint {args.rm_checkpoint_path}")
 
     if args.checkpoint_path is not None:
         if "modeling" in args.checkpoint_path:
@@ -392,6 +376,8 @@ def train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
+    reward_model = RLVRRewardModel(reward_fn_list=[reward_fn])
+
     # configure trainer
     trainer = PPOTrainer(
         actor_booster,
@@ -414,7 +400,7 @@ def train(args):
         max_new_tokens=args.max_seq_len,
         use_cache=True,
         do_sample=True,
-        temperature=0.7,
+        temperature=args.temperature,
         apply_loss_mask=not args.disable_loss_mask,
         accumulation_steps=args.accumulation_steps,
         save_dir=args.save_path,
@@ -484,10 +470,8 @@ if __name__ == "__main__":
     parser.add_argument("--zero_cpu_offload", default=False, action="store_true")
     parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
     parser.add_argument("--pretrain", type=str, default=None)
-    parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=str, default=None)
     parser.add_argument("--critic_checkpoint_path", type=str, default=None)
-    parser.add_argument("--rm_checkpoint_path", type=str, help="Reward model checkpoint path")
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument("--num_collect_steps", type=int, default=2)
@@ -499,13 +483,14 @@ if __name__ == "__main__":
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--accumulation_steps", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=9e-6)
+    parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--critic_lr", type=float, default=9e-6)
-    parser.add_argument("--kl_coef", type=float, default=0.1)
+    parser.add_argument("--kl_coef", type=float, default=0.7)
     parser.add_argument("--ptx_coef", type=float, default=0.0)
     parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--temperature", type=float, default=0.9)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")

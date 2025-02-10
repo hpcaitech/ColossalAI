@@ -212,5 +212,6 @@ class OLTrainer(ABC):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
+                
                 if self.save_interval > 0 and (episode + 1) % (self.save_interval) == 0:
                     self._save_checkpoint(episode + 1)

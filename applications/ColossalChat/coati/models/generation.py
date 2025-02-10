@@ -3,6 +3,8 @@ from typing import Any, Callable, List, Optional
 import torch
 import torch.distributed as dist
 from transformers import PreTrainedTokenizer
+from .utils import repad_to_left
+import torch.nn.functional as F
 
 try:
     from transformers.generation_logits_process import (
@@ -88,13 +90,14 @@ def update_model_kwargs_fn(outputs: dict, new_mask, **model_kwargs) -> dict:
     return model_kwargs
 
 
-def prepare_inputs_fn(input_ids: torch.Tensor, pad_token_id: int, **model_kwargs) -> dict:
+def prepare_inputs_fn(input_ids: torch.Tensor, **model_kwargs) -> dict:
     model_kwargs["input_ids"] = input_ids
     return model_kwargs
 
 
 def _sample(
     model: Any,
+    tokenizer: Any,
     input_ids: torch.Tensor,
     max_length: int,
     early_stopping: bool = True,
@@ -138,7 +141,6 @@ def _sample(
         max_new_tokens = max_length - context_length
     if context_length + max_new_tokens > max_length or max_new_tokens == 0:
         return input_ids
-
     logits_processor = _prepare_logits_processor(top_k, top_p, temperature)
     unfinished_sequences = input_ids.new(input_ids.shape[0]).fill_(1)
     past = None
@@ -165,7 +167,9 @@ def _sample(
         # Sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-
+        # if dist.get_rank() == 0:
+        #     print(next_tokens[:1], tokenizer.decode(next_tokens[:1], skip_special_tokens=False), end=' ')
+        
         # Finished sentences should have their next token be a padding token
         if eos_token_id is not None:
             assert pad_token_id is not None, "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
@@ -239,6 +243,7 @@ def generate(
         # Run sample
         res = _sample(
             model,
+            tokenizer,
             input_ids,
             max_length,
             early_stopping=early_stopping,
@@ -426,3 +431,84 @@ def generate_streaming(
         raise NotImplementedError
     else:
         raise ValueError("Unsupported generation mode")
+
+
+@torch.inference_mode()
+def generate_tts(
+    model: Any,
+    input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
+    max_length: int,
+    num_beams: int = 1,
+    do_sample: bool = True,
+    early_stopping: bool = True,
+    top_k: Optional[int] = None,
+    top_p: Optional[float] = None,
+    temperature: Optional[float] = None,
+    prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
+    update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
+    think_prefix: List[int] = None, 
+    final_answer_prefix: List[int] = None, 
+    stop_token_ids_thought: List[int] = None,
+    stop_token_ids_final_answer: List[int] = None,
+    num_ignore: int = 1,
+    ignore_tokens: torch.Tensor = None,
+    max_tokens_thinking: int = 12000,
+    **model_kwargs,
+) -> torch.Tensor:
+    o = torch.cat([
+            input_ids, 
+            think_prefix.unsqueeze(dim=0).repeat_interleave(input_ids.size(0), dim=0)
+        ], dim=-1)
+    
+    model_kwargs["stop_token_ids"] = stop_token_ids_thought
+    o = generate(
+        model, o, tokenizer, max_tokens_thinking, num_beams, do_sample, early_stopping, top_k, top_p, 
+        temperature, prepare_inputs_fn, update_model_kwargs_fn, max_new_tokens=1500, **model_kwargs
+    )
+    # if dist.get_rank() == 0:
+    #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
+    #     print("###########\nfirst thought:\n",decoded)
+    # Num of times to skip stop token
+    for i in range(num_ignore):
+        o = repad_to_left(o, tokenizer, to_remove_tokens = stop_token_ids_thought, to_append_tokens = ignore_tokens)  # repad and add ignore tokens
+        o = generate(
+            model, o, tokenizer, max_tokens_thinking, 
+            num_beams, do_sample, early_stopping, top_k, top_p, 
+            temperature, prepare_inputs_fn, update_model_kwargs_fn, 
+             max_new_tokens=1500, **model_kwargs
+        )
+        # if dist.get_rank() == 0:
+        #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
+        #     print(f"###########\n{i} thought:\n",decoded)
+    o = repad_to_left(o, tokenizer, to_remove_tokens = stop_token_ids_thought, to_append_tokens = final_answer_prefix)  # final answer don't contain ignore tokens
+    model_kwargs["stop_token_ids"] = stop_token_ids_final_answer
+    o = generate(
+            model, o, tokenizer, max_tokens_thinking, 
+            num_beams, do_sample, early_stopping, top_k, top_p, 
+            temperature, prepare_inputs_fn, update_model_kwargs_fn, 
+             max_new_tokens=1500, **model_kwargs
+        )
+    # if dist.get_rank() == 0:
+    #     decoded = tokenizer.decode(o[0],skip_special_tokens=True)
+    #     print(f"###########\nFinal Answer:\n",decoded)
+    # repad to aligh with the left padding of input id
+
+    max_left_padded_seq_len = 0
+    padding_left = []
+    starts_o = []
+    ends_o = []
+    for i in range(o.size(0)):
+        non_pad_indices_o = (o[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0]
+        non_pad_indices_input_ids = (input_ids[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0]
+        start_o, end_o = non_pad_indices_o.min(), non_pad_indices_o.max()
+        start_input_ids = non_pad_indices_input_ids.min()
+        padding_left.append(start_input_ids)
+        starts_o.append(start_o)
+        ends_o.append(end_o)
+        max_left_padded_seq_len = max(max_left_padded_seq_len, start_input_ids - start_o + end_o + 1)
+    repaded_output = []
+    for i,s,e,p in zip(range(o.size(0)), starts_o, ends_o, padding_left):
+        repaded_output.append(F.pad(o[i][s:e+1], (p, max_left_padded_seq_len - (p + e - s + 1)), value=tokenizer.pad_token_id))
+    repaded_output = torch.stack(repaded_output) 
+    return repaded_output

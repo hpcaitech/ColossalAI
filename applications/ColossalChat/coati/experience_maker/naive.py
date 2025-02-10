@@ -3,10 +3,11 @@ experience maker.
 """
 
 import torch
+from typing import Any
 import torch.nn.functional as F
 from coati.dataset.utils import find_first_occurrence_subsequence
 from coati.models import Critic, RewardModel
-from coati.models.generation import generate
+from coati.models.generation import generate, generate_tts
 from coati.models.utils import calc_action_log_probs, compute_reward
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
@@ -38,13 +39,42 @@ class NaiveExperienceMaker(ExperienceMaker):
         kl_coef: float = 0.01,
         gamma: float = 1.0,
         lam: float = 0.95,
+        use_grpo: bool = False,
+        num_generation: int = 8,
+        inference_batch_size: int = 8,
+        use_tts_inference: bool = False,
+        tts_thought_stop: str = None, 
+        tts_final_answer_stop: str = None,
+        tts_think_prefix: str = None,
+        tts_final_answer_prefix: str = None,
+        tts_reflexion_prefix: str = None     
     ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
         self.kl_coef = kl_coef
         self.gamma = gamma
         self.lam = lam
-
+        self.use_grpo = use_grpo
+        self.num_generation = num_generation
+        self.inference_batch_size = inference_batch_size
+        self.use_tts_inference = use_tts_inference
+        if self.use_tts_inference:
+            assert tts_thought_stop is not None, "Test time scaling requires thought stop identifier"
+            assert tts_final_answer_stop is not None, "Test time scaling requires final answer stop identifier"
+            assert tts_think_prefix is not None, "Test time scaling requires thought prefix"
+            assert tts_reflexion_prefix is not None, "Test time scaling requires reflexion prefix"
+            assert tts_final_answer_prefix is not None, "Test time scaling requires final answer prefix"
+            self.tts_thought_stop_tokens = tokenizer.encode(tts_thought_stop, add_special_tokens=False)
+            self.tts_final_answer_stop = tokenizer.encode(tts_final_answer_stop, add_special_tokens=False)
+            self.tts_think_prefix = torch.tensor(tokenizer.encode(tts_think_prefix, add_special_tokens=False))
+            self.tts_reflexion_prefix = torch.tensor(tokenizer.encode(tts_reflexion_prefix, add_special_tokens=False))
+            self.tts_final_answer_prefix = torch.tensor(tokenizer.encode(tts_final_answer_prefix, add_special_tokens=False))
+        if not self.use_grpo:
+            assert self.critic is not None, "Critic model is required for PPO training."
+        else:
+            assert self.critic is None, "Critic model is not required for GRPO training."
+            assert self.num_generation > 1, "Number of generations should be greater than 1 for GRPO training."
+            
     @torch.no_grad()
     def calculate_advantage(self, value: torch.Tensor, reward: torch.Tensor, num_actions: int) -> torch.Tensor:
         """
@@ -69,7 +99,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         return advantages
 
     @torch.no_grad()
-    def make_experience(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **generate_kwargs) -> Experience:
+    def make_experience(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, gt_answer: Any =None, **generate_kwargs) -> Experience:
         """
         Generates an experience using the given input_ids and attention_mask.
 
@@ -83,16 +113,39 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         """
         self.actor.eval()
-        self.critic.eval()
+        if self.critic:
+            self.critic.eval()
         self.initial_model.eval()
         self.reward_model.eval()
         pad_token_id = self.tokenizer.pad_token_id
-
         stop_token_ids = generate_kwargs.get("stop_token_ids", None)
         torch.manual_seed(41)  # for tp, gurantee the same input for reward model
+        
+        if self.use_grpo and self.num_generation > 1:
+            # Generate multiple responses for each prompt
+            input_ids = input_ids.repeat_interleave(self.num_generation, dim=0)
+            gt_answer_tmp = []
+            for t in gt_answer:
+                gt_answer_tmp.extend([t]*self.num_generation)
+            gt_answer = gt_answer_tmp
 
-        sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
-
+        if not self.use_tts_inference:
+            sequences = generate(self.actor, input_ids, self.tokenizer, **generate_kwargs)
+        else:
+            sequences = generate_tts(
+                self.actor, input_ids, self.tokenizer,
+                think_prefix = self.tts_think_prefix.to(input_ids.device),
+                final_answer_prefix = self.tts_final_answer_prefix.to(input_ids.device),
+                stop_token_ids_thought=self.tts_thought_stop_tokens,
+                stop_token_ids_final_answer=self.tts_final_answer_stop,
+                num_ignore = 0,
+                ignore_tokens = self.tts_reflexion_prefix.to(input_ids.device),
+                **generate_kwargs
+            )
+        # if dist.get_rank() == 0:
+        #     decoded = self.tokenizer.decode(sequences[0])
+        #     print(decoded)
+        
         # Pad to max length
         sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
         sequence_length = sequences.size(1)
@@ -144,12 +197,16 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         # Convert to right padding for the reward model and the critic model
         input_ids_rm = torch.zeros_like(sequences, device=sequences.device)
+        response_start = []
+        response_end = []
         attention_mask_rm = torch.zeros_like(sequences, device=sequences.device)
         for i in range(sequences.size(0)):
             sequence = sequences[i]
             bos_index = (sequence != pad_token_id).nonzero().reshape([-1])[0]
             eos_index = generation_end_index[i]
             sequence_to_pad = sequence[bos_index:eos_index]
+            response_start.append(input_len - bos_index)
+            response_end.append(eos_index-bos_index)
             sequence_padded = F.pad(
                 sequence_to_pad, (0, sequence_length - sequence_to_pad.size(0)), value=self.tokenizer.pad_token_id
             )
@@ -163,18 +220,29 @@ class NaiveExperienceMaker(ExperienceMaker):
         r = self.reward_model(
             input_ids=input_ids_rm.to(dtype=torch.long, device=sequences.device),
             attention_mask=attention_mask_rm.to(device=sequences.device),
+            response_start = response_start,
+            response_end = response_end,
+            gt_answer = gt_answer            
         )
-
-        value = self.critic(
-            input_ids=input_ids_rm.to(dtype=torch.long, device=sequences.device),
-            attention_mask=attention_mask_rm.to(device=sequences.device),
-        )
-        reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
-        value = value[:, -num_actions:] * action_mask
-        advantages = self.calculate_advantage(value, reward, num_actions)
-
-        advantages = advantages.detach()
-        value = value.detach()
+        if not self.use_grpo:
+            value = self.critic(
+                input_ids=input_ids_rm.to(dtype=torch.long, device=sequences.device),
+                attention_mask=attention_mask_rm.to(device=sequences.device),
+            )
+            value = value[:, -num_actions:] * action_mask
+            reward, kl = compute_reward(r, self.kl_coef, action_log_probs, base_action_log_probs, action_mask=action_mask)
+            advantages = self.calculate_advantage(value, reward, num_actions)
+            advantages = advantages.detach()  
+            value = value.detach()
+        else:
+            # GRPO advantage calculation
+            kl = torch.sum(-self.kl_coef * (action_log_probs - base_action_log_probs) * action_mask, dim=-1)/torch.sum(action_mask, dim=-1)     # address numerical instability issue
+            r = kl + r
+            mean_gr = r.view(-1, self.num_generation).mean(dim=1)
+            std_gr = r.view(-1, self.num_generation).std(dim=1)
+            mean_gr = mean_gr.repeat_interleave(self.num_generation, dim=0)
+            std_gr = std_gr.repeat_interleave(self.num_generation, dim=0)       
+            advantages = (r - mean_gr) / (std_gr + 1e-4)
+            value = r.detach()   # dummy value 
         r = r.detach()
-
         return Experience(sequences, action_log_probs, value, r, kl, advantages, attention_mask, action_mask)
