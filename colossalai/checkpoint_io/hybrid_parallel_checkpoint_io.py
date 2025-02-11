@@ -755,8 +755,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dtype=dtype,
                     inplace=True,
                 )
-            get_accelerator().synchronize()
-            optimizer.optim.state.update(new_states)
+        get_accelerator().synchronize()
+        optimizer.optim.state.update(new_states)
 
     def save_unsharded_model(
         self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
