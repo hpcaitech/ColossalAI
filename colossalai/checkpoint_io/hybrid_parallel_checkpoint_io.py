@@ -40,7 +40,6 @@ from .utils import (
     load_shard_state_dict,
     load_state_dict,
     load_state_dict_into_model,
-    load_states_into_optimizer,
     save_config_file,
     save_param_groups,
     save_state_dict,
@@ -727,7 +726,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
                 if not low_cpu_mem_mode:
                     state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
-                self.load_states_into_optimizer(optimizer.optim, state_dict, id_map)
+                self.load_states_into_optimizer(optimizer, state_dict, id_map)
                 loaded_file.add(filename)
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
@@ -752,7 +751,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 state, current_shape=working_param.shape, original_shape=original_shape, device=device, dtype=dtype, inplace=True
             )
             get_accelerator().synchronize()
-            optimizer.state.update(new_states)
+            optimizer.optim.state.update(new_states)
 
     def save_unsharded_model(
         self, model: ModelWrapper, checkpoint: str, gather_dtensor: bool, use_safetensors: bool, use_async: bool = False
@@ -998,7 +997,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             for param in pg["params"]:
                 param_id = _get_param_id_from_optimizer_param(param, master_to_working_map)
                 id_map[param_id] = param
-        self.load_states_into_optimizer(optimizer.optim, state_dict["state"], id_map)
+        self.load_states_into_optimizer(optimizer, state_dict["state"], id_map)
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
 
