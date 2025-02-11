@@ -1,21 +1,21 @@
 import copy
 import logging
 import os
+from collections import defaultdict
 from functools import reduce
 from pathlib import Path
 from shutil import rmtree
 from typing import Dict, Iterator, Optional, OrderedDict, Tuple
-from collections import defaultdict
 
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
-from colossalai.accelerator import get_accelerator
-from torch.optim import Optimizer
 
+from colossalai.accelerator import get_accelerator
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.padded_tensor import (
@@ -748,8 +748,13 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     working_param = param
                 original_shape = optimizer.param_info["param2shape"][id(working_param)]
                 new_states[param] = self.shard_from_complete_optimizer_state(
-                state, current_shape=working_param.shape, original_shape=original_shape, device=device, dtype=dtype, inplace=True
-            )
+                    state,
+                    current_shape=working_param.shape,
+                    original_shape=original_shape,
+                    device=device,
+                    dtype=dtype,
+                    inplace=True,
+                )
             get_accelerator().synchronize()
             optimizer.optim.state.update(new_states)
 
