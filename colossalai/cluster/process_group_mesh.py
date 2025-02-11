@@ -64,7 +64,10 @@ class ProcessGroupMesh:
             system resources.
         """
         for group in self._ranks_to_group.values():
-            dist.destroy_process_group(group)
+            try:
+                dist.destroy_process_group(group)
+            except ValueError:
+                pass
 
         # Manually clear all process groups to save memory
         gc.collect()

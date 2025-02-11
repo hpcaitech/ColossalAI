@@ -223,7 +223,6 @@ def run_forward_backward_with_hybrid_plugin(
     for k, v in data.items():
         unshard_test_data[k] = data[k].clone()
 
-    sharded_model.train()
     if booster.plugin.stage_manager is not None:
         for k, v in shard_test_data.items():
             if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
@@ -248,7 +247,6 @@ def run_forward_backward_with_hybrid_plugin(
         sharded_loss = criterion(sharded_output)
         sharded_optimizer.backward(sharded_loss)
 
-    org_model.train()
     if booster.plugin.stage_manager is not None:
         for k, v in unshard_test_data.items():
             if torch.is_tensor(v) or "Tensor" in v.__class__.__name__:
