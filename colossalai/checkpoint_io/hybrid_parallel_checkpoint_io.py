@@ -15,7 +15,6 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 
-from colossalai.accelerator import get_accelerator
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.padded_tensor import (
@@ -755,7 +754,6 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dtype=dtype,
                     inplace=True,
                 )
-        get_accelerator().synchronize()
         optimizer.optim.state.update(new_states)
 
     def save_unsharded_model(
@@ -1135,7 +1133,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                         slice_size = v.numel() // self.global_dp_size
                         v = v.split(slice_size, dim=0)[self.dp_rank]
 
-                state_[k] = v.detach().clone().to(dtype).to(device)
+                state_[k] = v.detach().clone().to(device=device, dtype=dtype)
 
         return state_
 
