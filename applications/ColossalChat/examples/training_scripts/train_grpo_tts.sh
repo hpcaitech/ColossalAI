@@ -25,16 +25,16 @@ CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/Coloss
 LOGDIR="/home/yeanbang/experiments/rlhf/grpo_tts/log"
 
 declare -a prompt_dataset=(
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00000
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00001
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00002
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00003
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00004
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00005
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00006
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00007
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00008
-    /home/yeanbang/data/dataset/RLVR_dataset/rlvr_math_tulu/data/tokenized_CPM/arrow/part-00009
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00000
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00001
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00002
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00003
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00004
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00005
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00006
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00007
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00008
+    /home/yeanbang/data/dataset/RLVR_dataset/gsm8k/data/tokenized/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
@@ -65,11 +65,12 @@ colossalai run --nproc_per_node 4 --hostfile hostfile --master_port 31312 train_
     --save_interval 500 \
     --save_path $SAVE_DIR \
     --num_episodes 2000 \
-    --num_collect_steps 2 \
+    --num_collect_steps 8 \
     --num_update_steps 1 \
     --experience_batch_size 1 \
     --train_batch_size 2 \
-    --accumulation_steps 1 \
+    --accumulation_steps 8 \
+    --inference_batch_size 4 \
     --lr 1e-6 \
     --mixed_precision "bf16" \
     --grad_clip 0.1\

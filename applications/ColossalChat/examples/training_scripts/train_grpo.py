@@ -46,21 +46,30 @@ def reward_fn(input_ids, attention_mask, **kwargs):
     reward = torch.tensor(0.0).to(input_ids.device)
     if gt_answer is None:
         return reward
-    decoded_final_answer = tokenizer.decode(input_ids)
+    decoded_final_answer = tokenizer.decode(input_ids, skip_special_tokens=True)
     if not "Final Answer:" in decoded_final_answer:
         return reward
-    think_part = "Final Answer:".join("Think".join(decoded_final_answer.split("Think")[1:]).split("Final Answer:")[:-1])
+    think_part = "Final Answer:".join(
+        "Step by Step Explanation:".join(decoded_final_answer.split("Step by Step Explanation:")[1:]).split(
+            "Final Answer:"
+        )[:-1]
+    )
     final_answer = decoded_final_answer.split("Final Answer:")[-1]
     final_answer = final_answer.replace(" ", "").lower()
-    if (
-        gt_answer.replace(" ", "").lower() in final_answer
-        and len(think_part.split(" ")) > 3 * len(final_answer.split(" "))
-        and len(think_part.split(" ")) > 100
-        and len(final_answer.split(" ")) < 200
-    ):
-        # to prevent reward hacking that stack response at the final answer part
-        reward = reward + 10.0
-    return reward
+
+    # print(f"${final_answer}$", "$"+gt_answer.replace(" ", "").lower()+"$")
+    is_valid = True
+    try:
+        int(final_answer)
+    except Exception:
+        is_valid = False
+    if not is_valid:
+        reward = reward - 10.0
+        return reward
+    else:
+        if gt_answer.replace(" ", "").lower() in final_answer:
+            reward = reward + 10.0
+        return reward
 
 
 def train(args):
@@ -363,7 +372,7 @@ def train(args):
     tts_config = {
         "tts_thought_stop": "<|im_end|>",
         "tts_final_answer_stop": "<|im_end|>",
-        "tts_think_prefix": "Think:",
+        "tts_think_prefix": "Step by Step Explanation:\n",
         "tts_final_answer_prefix": "\nFinal Answer:",
         "tts_reflexion_prefix": "\nWait",
     }
@@ -398,7 +407,7 @@ def train(args):
         tts_config=tts_config,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
-        max_tokens_thinking=args.max_length - 500,
+        max_tokens_thinking=args.max_length - 100,
         # Hack: overwrite CPM's default update_model_kwargs_fn, the default doesn't work due to version conflict
         update_model_kwargs_fn=update_model_kwargs_fn,
         # prepare_inputs_fn = None
@@ -463,7 +472,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_collect_steps", type=int, default=2)
     parser.add_argument("--num_update_steps", type=int, default=5)
     parser.add_argument("--num_generations", type=int, default=8)
-    parser.add_argument("--inference_batch_size", type=int, default=8)
+    parser.add_argument("--inference_batch_size", type=int, default=None)
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--experience_batch_size", type=int, default=16)
