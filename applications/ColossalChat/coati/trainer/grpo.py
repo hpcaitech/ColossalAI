@@ -10,7 +10,7 @@ import wandb
 from coati.experience_buffer import NaiveExperienceBuffer
 from coati.experience_maker import Experience, NaiveExperienceMaker
 from coati.models import RewardModel, RLVRRewardModel
-from coati.models.loss import GPTLMLoss, PolicyLoss, ValueLoss
+from coati.models.loss import GPTLMLoss, PolicyLoss
 from coati.models.utils import calc_action_log_probs
 from coati.trainer.callbacks import Callback
 from coati.trainer.utils import all_reduce_mean
@@ -101,7 +101,7 @@ class GRPOTrainer(OLTrainer):
         save_dir: str = None,
         use_tp: bool = False,
         num_generation: int = 8,
-        inference_batch_size: int = 8,
+        inference_batch_size: int = None,
         use_tts_inference: bool = False,
         tts_config: Optional[Dict[str, str]] = None,
         coordinator: DistCoordinator = None,
@@ -112,9 +112,7 @@ class GRPOTrainer(OLTrainer):
             assert not offload_inference_models, "GeminiPlugin is not compatible with manual model.to('cpu')"
 
         data_buffer = NaiveExperienceBuffer(train_batch_size, buffer_limit, buffer_cpu_offload)
-        super().__init__(
-            actor_booster, None, data_buffer, sample_buffer, dataloader_pin_memory, callbacks=callbacks
-        )
+        super().__init__(actor_booster, None, data_buffer, sample_buffer, dataloader_pin_memory, callbacks=callbacks)
         self.generate_kwargs = _set_default_generate_kwargs(actor)
         self.generate_kwargs.update(generate_kwargs)
 
@@ -124,15 +122,29 @@ class GRPOTrainer(OLTrainer):
         self.tokenizer = tokenizer
         if not use_tts_inference:
             self.experience_maker = NaiveExperienceMaker(
-                self.actor, None, reward_model, initial_model, self.tokenizer, kl_coef,
-                use_grpo=True, num_generation=num_generation, 
-                inference_batch_size=inference_batch_size
+                self.actor,
+                None,
+                reward_model,
+                initial_model,
+                self.tokenizer,
+                kl_coef,
+                use_grpo=True,
+                num_generation=num_generation,
+                inference_batch_size=inference_batch_size,
             )
         else:
             self.experience_maker = NaiveExperienceMaker(
-                self.actor, None, reward_model, initial_model, self.tokenizer, kl_coef,
-                use_grpo=True, num_generation=num_generation, 
-                inference_batch_size=inference_batch_size, use_tts_inference=use_tts_inference, **tts_config
+                self.actor,
+                None,
+                reward_model,
+                initial_model,
+                self.tokenizer,
+                kl_coef,
+                use_grpo=True,
+                num_generation=num_generation,
+                inference_batch_size=inference_batch_size,
+                use_tts_inference=use_tts_inference,
+                **tts_config,
             )
         self.train_batch_size = train_batch_size
 
@@ -232,7 +244,7 @@ class GRPOTrainer(OLTrainer):
         actor_loss, to_skip, max_ratio = self.actor_loss_fn(
             action_log_probs,
             experience.action_log_probs,
-            experience.advantages.unsqueeze(dim=-1).repeat_interleave(action_log_probs.size(-1),dim=-1),
+            experience.advantages.unsqueeze(dim=-1).repeat_interleave(action_log_probs.size(-1), dim=-1),
             action_mask=experience.action_mask if self.apply_loss_mask else None,
         )
         token_cost = torch.tensor(num_actions, dtype=action_log_probs.dtype).to(actor_logits.device)
@@ -309,6 +321,9 @@ class GRPOTrainer(OLTrainer):
                         "train/ptx_loss", self.accumulative_meter.get("ptx_loss"), self.num_train_step
                     )
                 self.writer.add_scalar("reward", self.accumulative_meter.get("reward"), self.num_train_step)
+                self.writer.add_scalar(
+                    "token_cost", self.accumulative_meter.get("mean_token_cost"), self.num_train_step
+                )
                 self.writer.add_scalar("approx_kl", self.accumulative_meter.get("kl"), self.num_train_step)
                 self.writer.add_scalar("advantages", self.accumulative_meter.get("advantages"), self.num_train_step)
             self.accumulative_meter.reset()
