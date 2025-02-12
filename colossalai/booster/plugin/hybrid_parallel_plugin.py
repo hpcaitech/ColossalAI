@@ -1509,7 +1509,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         from peft import PeftModel, get_peft_model
 
         assert not isinstance(model, HybridParallelModule), "Lora should be enabled before boosting the model."
-        assert self.pp_size == 1 and self.tp_size == 1
+        assert self.tp_size == 1
         self.lora_enabled = True
         self.logger.warning("You have enabled LoRa training. Please check the hyperparameters such as lr", ranks=[0])
 

@@ -210,14 +210,14 @@ def main():
             config, trust_remote_code=True, attn_implementation=attn_impl, torch_dtype=torch.bfloat16
         ).to(torch.bfloat16)
         if args.enable_lora:
-            booster.enable_lora(
+            model = booster.enable_lora(
                 model,
                 lora_config=LoraConfig(task_type="CAUSAL_LM", target_modules=["gate_proj", "up_proj", "down_proj"]),
             )
 
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()
-    if model.__class__.__name__.startswith("DeepseekV3"):
+    if config.__class__.__name__.startswith("DeepseekV3"):
         model.config.use_cache = False
         model.eval()
         # enable grad for moe layers

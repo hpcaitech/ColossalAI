@@ -103,10 +103,12 @@ class DeepseekV3Policy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "DeepseekV3Model":
-            module = self.model
-        else:
-            module = self.model.model
+        module = self.model
+        if module.__class__.__name__.startswith("PeftModel"):
+            module = module.get_base_model()
+        if module.__class__.__name__ != "DeepseekV3Model":
+            module = module.model
+
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
