@@ -126,6 +126,7 @@ def run_fn(stage, shard, offload, model_fn, data_gen_fn, output_transform_fn, lo
 
             booster.save_lora_as_pretrained(model, model_ckpt_path)
             booster.save_optimizer(optimizer, optimizer_ckpt_path, shard=False)
+            dist.barrier()
             new_model = new_booster.enable_lora(new_model, pretrained_dir=model_ckpt_path, lora_config=lora_config)
             new_model, new_optimizer, criterion, _, _ = new_booster.boost(new_model, new_optimizer, criterion)
             check_state_dict_equal(model.state_dict(), new_model.state_dict())
