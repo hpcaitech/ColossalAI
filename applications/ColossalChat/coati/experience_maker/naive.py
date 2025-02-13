@@ -145,14 +145,16 @@ class NaiveExperienceMaker(ExperienceMaker):
         batch_base_action_log_probs = []
         batch_action_mask = []
         num_actions = 0
-        # print("input_ids", input_ids.size())
+        # print("input_ids", input_ids[0])
+        
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
             s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
             # print(s,e,self.inference_batch_size)
+
             if input_ids[s:e].size(0) == 0:
                 break
             if not self.use_tts_inference:
-                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
+                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)   
             else:
                 sequences = generate_tts(
                     self.actor,
@@ -166,12 +168,12 @@ class NaiveExperienceMaker(ExperienceMaker):
                     ignore_tokens=self.tts_reflexion_prefix.to(input_ids.device),
                     **generate_kwargs,
                 )
+            sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
             # if dist.get_rank() == 0:
             #     decoded = self.tokenizer.decode(sequences[0])
             #     print(decoded)
 
             # Pad to max length
-            sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
             sequence_length = sequences.size(1)
 
             # Calculate auxiliary tensors
@@ -197,10 +199,22 @@ class NaiveExperienceMaker(ExperienceMaker):
                         sequences[i][input_len:], torch.tensor(stop_token_ids).to(sequences.device)
                     )
                     if stop_index == -1:
+                        # use tokenizer.pad_token_id to stop
+                        stop_index = find_first_occurrence_subsequence(
+                            sequences[i][input_len:], torch.tensor([self.tokenizer.pad_token_id]).to(sequences.device)
+                        )
+                        # replace with stop token ids
+                        if stop_index != -1:
+                            padding_len = generate_kwargs["max_length"] - stop_index - 1
+                            sequences[i][input_len + stop_index:input_len + stop_index + len(stop_token_ids)] = torch.tensor(stop_token_ids).to(sequences.device)[:padding_len]
+                    if stop_index == -1:
                         # Sequence does not contain stop_token_ids, this should never happen BTW
                         logger.warning(
                             "Generated sequence does not contain stop_token_ids. Please check your chat template config"
                         )
+                        # torch.set_printoptions(threshold=10_000)
+                        # print(sequences[i][input_len:500], stop_token_ids)
+                        print(self.tokenizer.decode(sequences[i], skip_special_tokens=True))
                     else:
                         # Keep stop tokens
                         stop_index = input_len + stop_index
@@ -246,7 +260,7 @@ class NaiveExperienceMaker(ExperienceMaker):
                 attention_mask=attention_mask_rm.to(device=sequences.device),
                 response_start=response_start,
                 response_end=response_end,
-                gt_answer=gt_answer,
+                gt_answer=gt_answer[s:e],
             )
 
             batch_sequences.append(sequences)

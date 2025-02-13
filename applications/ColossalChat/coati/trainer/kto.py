@@ -217,25 +217,25 @@ class KTOTrainer(SLTrainer):
             self.accumulative_meter.add("rejected_rewards", rejected_rewards_mean.to(torch.float16).mean().item())
             self.accumulative_meter.add("loss", loss_mean.to(torch.float16).detach().item())
 
-            if i % self.accumulation_steps == self.accumulation_steps - 1:
-                self.num_train_step += 1
+            if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
                 step_bar.update()
                 # logging
                 if self.writer and is_rank_0():
-                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                    global_step = (self.num_train_step + 1)/self.accumulation_steps
+                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], global_step)
                     self.writer.add_scalar(
-                        "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                        "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), global_step
                     )
                     self.writer.add_scalar(
                         "train/rejected_rewards",
                         self.accumulative_meter.get("rejected_rewards"),
-                        self.num_train_step,
+                        global_step,
                     )
                     self.writer.add_scalar(
                         "train/margin",
                         self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
-                        self.num_train_step,
+                        global_step,
                     )
                 self.accumulative_meter.reset()
 
@@ -256,6 +256,7 @@ class KTOTrainer(SLTrainer):
                     self.coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
                     )
+                self.num_train_step += 1
 
         step_bar.close()
 

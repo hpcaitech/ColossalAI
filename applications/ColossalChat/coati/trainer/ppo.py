@@ -210,6 +210,7 @@ class PPOTrainer(OLTrainer):
         return self.experience_maker.make_experience(
             input_ids=prompts["input_ids"].to(get_current_device()),
             attention_mask=prompts["attention_mask"].to(get_current_device()),
+            gt_answer=prompts["gt_answer"],
             **self.generate_kwargs,
         )
 

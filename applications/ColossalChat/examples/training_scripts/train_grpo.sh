@@ -13,28 +13,28 @@ set_n_least_used_CUDA_VISIBLE_DEVICES() {
     echo "Now CUDA_VISIBLE_DEVICES is set to:"
     echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 }
-set_n_least_used_CUDA_VISIBLE_DEVICES 3
+set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
 PROJECT_NAME="PPO-RLVR"
 
-PARENT_SAVE_DIR="/home/yeanbang/experiments/rlhf/grpo/model" # Path to a folder to save checkpoints
-PARENT_CONFIG_FILE="/home/yeanbang/experiments/rlhf/grpo/model" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/home/yeanbang/data/model/MiniCPM-2B-128k" # local pretrained model path (from RLHF step 1: SFT)
-PRETRAINED_TOKENIZER_PATH="/home/yeanbang/data/model/MiniCPM-2B-128k" # huggingface or local tokenizer path
-CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/ColossalChat/conversation_template/MiniCPM-2b.json" # path to the conversation config file
-LOGDIR="/home/yeanbang/experiments/rlhf/grpo/log"
+PARENT_SAVE_DIR="/home/yeanbang/experiments/grpo/model" # Path to a folder to save checkpoints
+PARENT_CONFIG_FILE="/home/yeanbang/experiments/grpo" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-7B-Instruct-1M" # local pretrained model path (from RLHF step 1: SFT)
+PRETRAINED_TOKENIZER_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-7B-Instruct-1M" # huggingface or local tokenizer path
+CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/ColossalChat/conversation_template/Qwen_Qwen2.5-7B-Instruct.json" # path to the conversation config file
+LOGDIR="/home/yeanbang/experiments/grpo/log"
 
 declare -a prompt_dataset=(
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00000
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00001
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00002
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00003
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00004
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00005
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00006
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00007
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00008
-    /home/yeanbang/data/dataset/tool_dataset_for_testing/tldr/data/tokenized/arrow/part-00009
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00000
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00001
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00002
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00003
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00004
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00005
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00006
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00007
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00008
+    /home/yeanbang/data/gsm8k/data/tokenized/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
@@ -55,27 +55,30 @@ FULL_PROJECT_NAME="${PROJECT_NAME}-${TIMESTAMP}"
 SAVE_DIR="${PARENT_SAVE_DIR}${FULL_PROJECT_NAME}"
 CONFIG_FILE="${PARENT_CONFIG_FILE}${FULL_PROJECT_NAME}.json"
 
-colossalai run --nproc_per_node 3 --hostfile hostfile --master_port 31312 train_grpo.py \
+colossalai run --nproc_per_node 8 --hostfile hostfile --master_port 31312 train_grpo.py \
     --pretrain $PRETRAINED_MODEL_PATH \
     --tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
     --prompt_dataset ${prompt_dataset[@]} \
     --conversation_template_config $CONVERSATION_TEMPLATE_CONFIG_PATH \
     --ptx_coef 0.0 \
-    --plugin "zero2" \
+    --plugin "zero2_cpu" \
     --save_interval 500 \
     --save_path $SAVE_DIR \
     --num_episodes 2000 \
-    --num_collect_steps 16 \
+    --num_collect_steps 8 \
     --num_update_steps 1 \
     --experience_batch_size 1 \
     --train_batch_size 4 \
+    --inference_batch_size 1 \
     --accumulation_steps 4 \
     --lr 1e-6 \
     --mixed_precision "bf16" \
     --grad_clip 0.1\
     --weight_decay 0.01 \
-    --kl_coef 0.5 \
+    --kl_coef 0.01 \
     --warmup_steps 40 \
+    --max_length 2500 \
+    --max_seq_len 2300 \
     --log_dir $LOGDIR \
     --use_flash_attn \
     --grad_checkpoint
