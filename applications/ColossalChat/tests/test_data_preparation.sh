@@ -24,7 +24,12 @@ if [ -z "$SFT_DATASET" ]; then
 fi
 
 if [ -z "$PROMPT_DATASET" ]; then
-    echo "Please set \$PROMPT_DATASET to the path to prompts."
+    echo "Please set \$PROMPT_DATASET to the path to prompts dataset."
+    exit 1
+fi
+
+if [ -z "$PROMPT_RLVR_DATASET" ]; then
+    echo "Please set \$PROMPT_RLVR_DATASET to the path to prompts dataset with gt_answer labels."
     exit 1
 fi
 
@@ -69,6 +74,8 @@ get_data_input_dirs() {
         echo "$SFT_DATASET"
     elif [[ $data_type == "prompt" ]]; then
         echo "$PROMPT_DATASET"
+    elif [[ $data_type == "prompt_rlvr" ]]; then
+        echo "$PROMPT_RLVR_DATASET"
     elif [[ $data_type == "preference" ]]; then
         echo "$PREFERENCE_DATASET"
     elif [[ $data_type == "kto" ]]; then
@@ -122,6 +129,10 @@ python $TEST_DIR/generate_dummy_datasets_for_testing.py \
 python $TEST_DIR/generate_dummy_datasets_for_testing.py \
     --data_dir $(get_data_input_dirs prompt) \
     --data_type "prompt"
+
+python $TEST_DIR/generate_dummy_datasets_for_testing.py \
+    --data_dir $(get_data_input_dirs prompt_rlvr) \
+    --data_type "prompt_rlvr"
 
 python $TEST_DIR/generate_dummy_datasets_for_testing.py \
     --data_dir $(get_data_input_dirs kto) \
@@ -265,6 +276,52 @@ for model in ${MODELS[@]}; do
     fi
 done
 
+
+echo "[Test]: testing prepare_prompt_dataset.py (with verifiable reward)..."
+
+# FIXME: This is a hack to skip tests that are not working
+SKIPPED_TESTS=(
+)
+
+# test prepare_prompt_dataset
+for model in ${MODELS[@]}; do
+    data_type="prompt_rlvr"
+    if [[ " ${SKIPPED_TESTS[*]} " =~ " $model-$data_type " ]]; then
+        echo "[Test]: Skipped $model-$data_type"
+        continue
+    fi
+    cache_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/cache
+    jsonl_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/jsonl
+    arrow_dir=$DATA_SAVE_PATH/tokenized_${model}_${data_type}/arrow
+    data_input_dirs=$(get_data_input_dirs $data_type)
+    tokenizer_dir=$(get_tokenizer_dirs $model)
+    conversation_template=$(get_conversation_template_config $model)
+    for i in $(seq $NUM_RETRY); do
+        rm -rf $cache_dir
+        rm -rf $jsonl_dir
+        rm -rf $arrow_dir
+        echo "[Test]: $model-$data_type, attempt $i"
+        python $EXAMPLES_DIR/data_preparation_scripts/prepare_dataset.py \
+            --type prompt \
+            --data_input_dirs $data_input_dirs \
+            --conversation_template_config $conversation_template \
+            --tokenizer_dir $tokenizer_dir \
+            --data_cache_dir $cache_dir \
+            --data_jsonl_output_dir $jsonl_dir \
+            --data_arrow_output_dir $arrow_dir \
+            --max_length 400 \
+            --num_samples_per_datafile 100 \
+            --num_spliced_dataset_bins 1
+        passed=$?
+        if [ $passed -eq 0 ]; then
+            break
+        fi
+    done
+    if [ $passed -ne 0 ]; then
+        echo "[Test]: Failed $model-$data_type"
+        exit 1
+    fi
+done
 
 echo "[Test]: testing prepare_kto_dataset.py ..."
 

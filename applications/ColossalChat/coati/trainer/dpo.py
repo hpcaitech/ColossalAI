@@ -343,11 +343,11 @@ class DPOTrainer(SLTrainer):
                 self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
                 self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
 
-                if (i + 1) % self.accumulation_steps == 0:
+                if (self.num_train_step + 1) % self.accumulation_steps == 0:
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     self.actor_scheduler.step()
-
+                    
                     step_bar.set_postfix(
                         {
                             "train/loss": self.accumulative_meter.get("loss"),
@@ -358,26 +358,27 @@ class DPOTrainer(SLTrainer):
                     )
                     step_bar.update()
                     if self.writer and is_rank_0():
-                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                        self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                        global_step = (self.num_train_step + 1)/self.accumulation_steps
+                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
+                        self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], global_step)
                         self.writer.add_scalar(
-                            "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                            "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), global_step
                         )
                         self.writer.add_scalar(
                             "train/rejected_rewards",
                             self.accumulative_meter.get("rejected_rewards"),
-                            self.num_train_step,
+                            global_step,
                         )
                         self.writer.add_scalar(
                             "train/margin",
                             self.accumulative_meter.get("chosen_rewards")
                             - self.accumulative_meter.get("rejected_rewards"),
-                            self.num_train_step,
+                            global_step,
                         )
                         self.writer.add_scalar(
                             "train/accuracy",
                             self.accumulative_meter.get("accuracy"),
-                            self.num_train_step,
+                            global_step,
                         )
                     self.num_train_step += 1
                     self.accumulative_meter.reset()

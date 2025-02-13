@@ -184,35 +184,35 @@ class ORPOTrainer(SLTrainer):
             self.accumulative_meter.add("log_odds_ratio", log_odds_ratio.to(torch.float16).mean().item())
             self.accumulative_meter.add("accuracy", reward_accuracies_mean.to(torch.float16).item())
 
-            if i % self.accumulation_steps == self.accumulation_steps - 1:
-                self.num_train_step += 1
+            if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
                 step_bar.update()
+                global_step = (self.num_train_step + 1)/self.accumulation_steps
                 # logging
                 if self.writer and is_rank_0():
-                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], self.num_train_step)
+                    self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], global_step)
                     self.writer.add_scalar(
-                        "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), self.num_train_step
+                        "train/chosen_rewards", self.accumulative_meter.get("chosen_rewards"), global_step
                     )
                     self.writer.add_scalar(
                         "train/rejected_rewards",
                         self.accumulative_meter.get("rejected_rewards"),
-                        self.num_train_step,
+                        global_step,
                     )
                     self.writer.add_scalar(
                         "train/margin",
                         self.accumulative_meter.get("chosen_rewards") - self.accumulative_meter.get("rejected_rewards"),
-                        self.num_train_step,
+                        global_step,
                     )
                     self.writer.add_scalar(
                         "train/accuracy",
                         self.accumulative_meter.get("accuracy"),
-                        self.num_train_step,
+                        global_step,
                     )
                     self.writer.add_scalar(
                         "train/log_odds_ratio",
                         self.accumulative_meter.get("log_odds_ratio"),
-                        self.num_train_step,
+                        global_step,
                     )
                 self.accumulative_meter.reset()
 
@@ -233,6 +233,7 @@ class ORPOTrainer(SLTrainer):
                     self.coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
                     )
+                self.num_train_step += 1
 
         step_bar.close()
 

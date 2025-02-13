@@ -27,6 +27,8 @@ class NaiveExperienceBuffer(ExperienceBuffer):
         self.target_device = torch.device(f"cuda:{torch.cuda.current_device()}")
         # TODO(ver217): add prefetch
         self.items: List[BufferItem] = []
+        self.rng_sequence = []
+        self.ptr = 0
 
     @torch.no_grad()
     def append(self, experience: Experience) -> None:
@@ -40,6 +42,9 @@ class NaiveExperienceBuffer(ExperienceBuffer):
             if samples_to_remove > 0:
                 logger.warning(f"Experience buffer is full. Removing {samples_to_remove} samples.")
                 self.items = self.items[samples_to_remove:]
+        self.rng_sequence = [i for i in range(len(self.items))]
+        random.shuffle(self.rng_sequence)
+        self.ptr = 0
 
     def clear(self) -> None:
         self.items.clear()
@@ -52,7 +57,10 @@ class NaiveExperienceBuffer(ExperienceBuffer):
         Returns:
             A batch of sampled experiences.
         """
-        items = random.sample(self.items, self.sample_batch_size)
+        items = []
+        for _ in range(self.sample_batch_size):
+            self.ptr = (self.ptr + 1) % len(self.items)
+            items.append(self.items[self.rng_sequence[self.ptr]])
         experience = make_experience_batch(items)
         if self.cpu_offload:
             experience.to_device(self.target_device)

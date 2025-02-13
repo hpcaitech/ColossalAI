@@ -143,15 +143,15 @@ class SFTTrainer(SLTrainer):
                 self.accumulative_meter.add("loss", loss_mean.to(torch.float16).item())
 
                 # Gradient accumulation
-                if (i + 1) % self.accumulation_steps == 0:
+                if (self.num_train_step + 1) % self.accumulation_steps == 0:
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     self.scheduler.step()
-
+                    global_step = (self.num_train_step + 1)/self.accumulation_steps
                     step_bar.set_postfix({"train/loss": self.accumulative_meter.get("loss")})
                     if self.writer:
-                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), self.num_train_step)
-                        self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], self.num_train_step)
+                        self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
+                        self.writer.add_scalar("train/lr", self.scheduler.get_last_lr()[0], global_step)
                     self.num_train_step += 1
                     self.accumulative_meter.reset()
                     step_bar.update()
