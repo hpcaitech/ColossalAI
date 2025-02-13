@@ -22,9 +22,12 @@ prompt_seed = {
 }
 prompt_rlvr_seed = {
     "messages": [
-        {"from": "user", "content": "What is the degree of the polynomial $(4 +5x^3 +100 +2\pi x^4 + \sqrt{10}x^4 +9)$?"},
+        {
+            "from": "user",
+            "content": "What is the degree of the polynomial $(4 +5x^3 +100 +2\pi x^4 + \sqrt{10}x^4 +9)$?",
+        },
     ],
-    "gt_answer": "4"
+    "gt_answer": "4",
 }
 preference_seed = {
     "context": [

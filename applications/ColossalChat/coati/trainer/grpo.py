@@ -27,7 +27,7 @@ from colossalai.cluster import DistCoordinator
 from colossalai.utils import get_current_device
 
 from .base import OLTrainer
-from .utils import CycledDataLoader, is_rank_0, to_device, AnnealingScheduler
+from .utils import AnnealingScheduler, CycledDataLoader, is_rank_0, to_device
 
 
 def _set_default_generate_kwargs(actor: PreTrainedModel) -> Dict:
@@ -103,7 +103,7 @@ class GRPOTrainer(OLTrainer):
         num_generation: int = 8,
         inference_batch_size: int = None,
         use_tts_inference: bool = False,
-        temperature_annealing_config: Optional[Dict] = None, 
+        temperature_annealing_config: Optional[Dict] = None,
         tts_config: Optional[Dict[str, str]] = None,
         coordinator: DistCoordinator = None,
         callbacks: List[Callback] = [],
@@ -153,10 +153,11 @@ class GRPOTrainer(OLTrainer):
                 temperature_annealing_config["start_temperature"],
                 temperature_annealing_config["end_temperature"],
                 temperature_annealing_config["annealing_warmup_steps"],
-                temperature_annealing_config["annealing_steps"])
+                temperature_annealing_config["annealing_steps"],
+            )
         else:
             self.temperature_annealing_scheduler = None
-            
+
         self.train_batch_size = train_batch_size
 
         self.actor_loss_fn = PolicyLoss(eps_clip)
@@ -260,7 +261,9 @@ class GRPOTrainer(OLTrainer):
             experience.advantages.unsqueeze(dim=-1).repeat_interleave(action_log_probs.size(-1), dim=-1),
             action_mask=experience.action_mask if self.apply_loss_mask else None,
         )
-        token_cost = torch.sum((experience.sequences[:,-num_actions:] != self.tokenizer.pad_token_id).to(torch.float), axis=-1).to(actor_logits.device)
+        token_cost = torch.sum(
+            (experience.sequences[:, -num_actions:] != self.tokenizer.pad_token_id).to(torch.float), axis=-1
+        ).to(actor_logits.device)
         actor_loss = (1 - self.ptx_coef) * actor_loss
         if not to_skip:
             self.actor_booster.backward(loss=actor_loss, optimizer=self.actor_optim)
@@ -298,7 +301,7 @@ class GRPOTrainer(OLTrainer):
             self.actor_optim.step()
             self.actor_optim.zero_grad()
             self.actor_scheduler.step()
-            
+
             if self.temperature_annealing_scheduler:
                 self.temperature_annealing_scheduler.step_forward()
 
@@ -324,23 +327,15 @@ class GRPOTrainer(OLTrainer):
                         self.coordinator.print_on_master(line)
 
             if self.writer and is_rank_0():
-                global_step = (self.num_train_step + 1)/self.accumulation_steps
+                global_step = (self.num_train_step + 1) / self.accumulation_steps
                 self.writer.add_scalar("train/max_ratio", self.accumulative_meter.get("max_ratio"), global_step)
-                self.writer.add_scalar(
-                    "train/skip_ratio", self.accumulative_meter.get("skip_ratio"), global_step
-                )
-                self.writer.add_scalar(
-                    "train/actor_loss", self.accumulative_meter.get("actor_loss"), global_step
-                )
+                self.writer.add_scalar("train/skip_ratio", self.accumulative_meter.get("skip_ratio"), global_step)
+                self.writer.add_scalar("train/actor_loss", self.accumulative_meter.get("actor_loss"), global_step)
                 self.writer.add_scalar("train/lr_actor", self.actor_optim.param_groups[0]["lr"], global_step)
                 if self.ptx_coef != 0:
-                    self.writer.add_scalar(
-                        "train/ptx_loss", self.accumulative_meter.get("ptx_loss"), global_step
-                    )
+                    self.writer.add_scalar("train/ptx_loss", self.accumulative_meter.get("ptx_loss"), global_step)
                 self.writer.add_scalar("reward", self.accumulative_meter.get("reward"), global_step)
-                self.writer.add_scalar(
-                    "token_cost", self.accumulative_meter.get("mean_token_cost"), global_step
-                )
+                self.writer.add_scalar("token_cost", self.accumulative_meter.get("mean_token_cost"), global_step)
                 self.writer.add_scalar("approx_kl", self.accumulative_meter.get("kl"), global_step)
                 self.writer.add_scalar("advantages", self.accumulative_meter.get("advantages"), global_step)
             self.accumulative_meter.reset()

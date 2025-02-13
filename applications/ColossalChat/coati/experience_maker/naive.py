@@ -146,7 +146,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         batch_action_mask = []
         num_actions = 0
         # print("input_ids", input_ids[0])
-        
+
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
             s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
             # print(s,e,self.inference_batch_size)
@@ -154,7 +154,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             if input_ids[s:e].size(0) == 0:
                 break
             if not self.use_tts_inference:
-                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)   
+                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
             else:
                 sequences = generate_tts(
                     self.actor,
@@ -206,7 +206,9 @@ class NaiveExperienceMaker(ExperienceMaker):
                         # replace with stop token ids
                         if stop_index != -1:
                             padding_len = generate_kwargs["max_length"] - stop_index - 1
-                            sequences[i][input_len + stop_index:input_len + stop_index + len(stop_token_ids)] = torch.tensor(stop_token_ids).to(sequences.device)[:padding_len]
+                            sequences[i][input_len + stop_index : input_len + stop_index + len(stop_token_ids)] = (
+                                torch.tensor(stop_token_ids).to(sequences.device)[:padding_len]
+                            )
                     if stop_index == -1:
                         # Sequence does not contain stop_token_ids, this should never happen BTW
                         logger.warning(

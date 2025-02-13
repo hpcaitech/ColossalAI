@@ -186,7 +186,7 @@ class ORPOTrainer(SLTrainer):
 
             if self.num_train_step % self.accumulation_steps == self.accumulation_steps - 1:
                 step_bar.update()
-                global_step = (self.num_train_step + 1)/self.accumulation_steps
+                global_step = (self.num_train_step + 1) / self.accumulation_steps
                 # logging
                 if self.writer and is_rank_0():
                     self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
