@@ -18,6 +18,7 @@ from colossalai.checkpoint_io.index_file import CheckpointIndexFile
 from colossalai.checkpoint_io.utils import (
     StateDictSharder,
     gather_distributed_param,
+    gather_state_dict_fast,
     get_lora_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
@@ -900,7 +901,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
         model._force_wait_all_gather()
-        peft_model = model.unwrap()
+        peft_model = model.unwrap(unwrap_peft=False)
         assert isinstance(
             peft_model, PeftModel
         ), "The model doesn't have lora adapters, please enable lora before saving."
@@ -910,12 +911,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             lora_state_dict = get_lora_state_dict(peft_model, state_dict)
             moe_params = set(n for n, p in peft_model.named_parameters() if is_moe_tensor(p))
             expert_state_dict = {n: p for n, p in lora_state_dict.items() if n in moe_params}
-            gatherd_expert_state_dict = [None] * self.ep_size
-            dist.all_gather_object(
-                gatherd_expert_state_dict,
-                expert_state_dict,
-                group=self.ep_group,
-            )
-            for sd in gatherd_expert_state_dict:
-                state_dict.update(sd)
+            gathered_expert_state_dict = gather_state_dict_fast(expert_state_dict, self.ep_group)
+            if self.ep_rank == 0:
+                state_dict.update(gathered_expert_state_dict)
         return super().save_lora_as_pretrained(model, checkpoint, use_safetensors, state_dict)

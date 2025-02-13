@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Generator, Iterator, List, Mapping, Optional, OrderedDict, Tuple, Union
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from packaging.version import Version
 from peft import PeftModel, PeftType
@@ -25,6 +26,7 @@ from colossalai.tensor.d_tensor import (
     to_global,
     to_global_for_customized_distributed_tensor,
 )
+from colossalai.utils import get_current_device
 from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
@@ -1105,3 +1107,41 @@ def get_lora_state_dict(
         warnings.warn("Could not identify embedding layer(s) because the model is not a 🤗 transformers model.")
 
     return to_return
+
+
+def gather_state_dict_fast(
+    state_dict: Dict[str, torch.Tensor],
+    group: dist.ProcessGroup,
+    device: Optional[Union[torch.device, str]] = None,
+    dst: int = 0,
+) -> Optional[Dict[str, torch.Tensor]]:
+    if device is None:
+        device = get_current_device()
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+    metadata = [(k, v.shape, v.dtype) for k, v in state_dict.items()]
+    all_meta_data = [None] * world_size
+    if rank == dst:
+        returned_state_dict = state_dict.copy()
+        dist.gather_object(metadata, all_meta_data, dst=dist.get_global_rank(group, rank), group=group)
+        for i, target_metadata in enumerate(all_meta_data):
+            if i == dst:
+                continue
+            ops = []
+            for k, shape, dtype in target_metadata:
+                buffer = torch.empty(shape, dtype=dtype, device=get_current_device())
+                returned_state_dict[k] = buffer
+                ops.append(dist.P2POp(dist.irecv, buffer, dist.get_global_rank(group, i), group))
+            reqs = dist.batch_isend_irecv(ops)
+            for req, (k, *_) in zip(reqs, target_metadata):
+                req.wait()
+                returned_state_dict[k] = returned_state_dict[k].to(device)
+        return returned_state_dict
+    else:
+        dist.gather_object(metadata, dst=dist.get_global_rank(group, dst), group=group)
+        ops = []
+        for k, *_ in metadata:
+            ops.append(dist.P2POp(dist.isend, state_dict[k], dist.get_global_rank(group, dst), group))
+        reqs = dist.batch_isend_irecv(ops)
+        for req in reqs:
+            req.wait()
