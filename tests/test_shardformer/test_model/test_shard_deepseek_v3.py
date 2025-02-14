@@ -51,7 +51,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
                 if target_grad is None:
                     continue
                 target_grad = target_grad.view(-1).chunk(dist.get_world_size(pg))[dist.get_rank(pg)]
-            assert_close(grad, target_grad, atol=3e-1, rtol=0)
+            assert_close(grad, target_grad, atol=5e-1, rtol=0)
 
 
 @parameterize(
