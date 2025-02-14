@@ -158,6 +158,7 @@ temp/
 applications/ColossalChat/logs
 applications/ColossalChat/models
 applications/ColossalChat/sft_data
+applications/ColossalChat/kto_data
 applications/ColossalChat/prompt_data
 applications/ColossalChat/preference_data
 applications/ColossalChat/temp

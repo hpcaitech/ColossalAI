@@ -13,16 +13,8 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_conversation_template,
 )
-from coati.models import (
-    Critic,
-    LoraConfig,
-    RewardModel,
-    RLVRRewardModel,
-    convert_to_lora_module,
-    disable_dropout,
-    lora_manager,
-)
-from coati.trainer import PPOTrainer
+from coati.models import LoraConfig, RewardModel, RLVRRewardModel, convert_to_lora_module, disable_dropout, lora_manager
+from coati.trainer import GRPOTrainer
 from coati.utils import load_checkpoint
 from coati.utils.reward_score import *
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -38,6 +30,15 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 logger = get_dist_logger()
 
+# default settings for test time scaling inference (TTS), overwrite it in chat_template definition if doesn't work
+tts_config = {
+    "tts_thought_stop": " </think",  # Hack: some model's tokenizer use BPE leads to undeterminated behavior
+    "tts_final_answer_stop": " </answer>",
+    "tts_think_prefix": "<think>",
+    "tts_final_answer_prefix": " </think> <answer>",
+    "tts_reflexion_prefix": "\nWait",
+}
+
 # default settings for response format tags, overwrite it in chat_template definition if needed
 response_format_tags = {
     "think_start": {"text": "<think>", "num_occur": 1},
@@ -48,7 +49,7 @@ response_format_tags = {
 
 
 def train(args):
-    global response_format_tags
+    global response_format_tags, tts_config
     lora_config = None
     if args.lora_config is not None:
         lora_config = LoraConfig.from_file(args.lora_config)
@@ -88,47 +89,34 @@ def train(args):
                 local_files_only=True,
                 trust_remote_code=True,
             )
-            if not args.no_neural_reward_model:
+            if args.rm_pretrain:
                 reward_model = RewardModel(
                     args.rm_pretrain,
                     torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                     use_flash_attention_2=True,
                     trust_remote_code=True,
                 )
-            critic = Critic(
-                args.rm_pretrain,
-                torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
-                use_flash_attention_2=True,
-                trust_remote_code=True,
-            )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
+            if args.rm_pretrain:
+                reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
             ref_model = AutoModelForCausalLM.from_pretrained(
                 args.pretrain, local_files_only=True, trust_remote_code=True
             )
-            if not args.no_neural_reward_model:
-                reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
-            critic = Critic(args.rm_pretrain)
 
         if args.lora_config is not None:
             actor = convert_to_lora_module(actor, lora_config=lora_config)
-            critic = convert_to_lora_module(critic, lora_config=lora_config)
             for name, module in actor.named_modules():
-                if "norm" in name or "gate" in name:
-                    module = module.to(torch.float32)
-            for name, module in critic.named_modules():
                 if "norm" in name or "gate" in name:
                     module = module.to(torch.float32)
             lora_manager.able_to_merge = False
 
         # Disable dropout
         disable_dropout(actor)
-        disable_dropout(critic)
 
     if args.grad_checkpoint:
         actor.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        critic.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         coordinator.print_on_master(msg="Gradient checkpointing enabled successfully")
 
     # configure tokenizer
@@ -138,6 +126,9 @@ def train(args):
         with open(args.conversation_template_config, "r", encoding="utf8") as f:
             conversation_template_config = json.load(f)
         dist.barrier()
+        if "tts_config" in conversation_template_config:
+            logger.warning(f"Overwrite default TTS config with {args.conversation_template_config}")
+            tts_config = conversation_template_config.get("tts_config", tts_config)
         if "response_format_tags" in conversation_template_config:
             logger.warning(f"Overwrite default response format tags with {args.conversation_template_config}")
             response_format_tags = conversation_template_config.get("response_format_tags", response_format_tags)
@@ -177,28 +168,12 @@ def train(args):
         adamw_mode=True,
     )
 
-    coordinator.print_on_master(f"setting up optimizer for critic: lr={args.lr}, weight_decay={args.weight_decay}")
-    critic_optim = HybridAdam(
-        model_params=critic.parameters(),
-        lr=args.critic_lr,
-        betas=(0.9, 0.95),
-        weight_decay=args.weight_decay,
-        adamw_mode=True,
-    )
-
     if args.warmup_steps is None:
         args.warmup_steps = int(0.025 * args.num_episodes)
         coordinator.print_on_master(f"Warmup steps is set to {args.warmup_steps}")
 
     actor_lr_scheduler = CosineAnnealingWarmupLR(
         optimizer=actor_optim,
-        total_steps=args.num_episodes,
-        warmup_steps=args.warmup_steps,
-        eta_min=0.1 * args.lr,
-    )
-
-    critic_lr_scheduler = CosineAnnealingWarmupLR(
-        optimizer=critic_optim,
         total_steps=args.num_episodes,
         warmup_steps=args.warmup_steps,
         eta_min=0.1 * args.lr,
@@ -262,30 +237,32 @@ def train(args):
             max_norm=args.grad_clip,
             precision=args.mixed_precision,
         )
-        custom_plugin = HybridParallelPlugin(
-            tp_size=args.tp,
-            pp_size=args.pp,
-            sp_size=args.sp,
-            sequence_parallelism_mode=args.sp_mode,
-            zero_stage=args.zero_stage,
-            enable_flash_attention=args.use_flash_attn,
-            enable_sequence_parallelism=args.enable_sequence_parallelism,
-            cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
-            parallel_output=False,
-            max_norm=args.grad_clip,
-            precision=args.mixed_precision,
-            custom_policy=get_autopolicy(critic.model),
-        )
+        if args.rm_pretrain:
+            custom_plugin = HybridParallelPlugin(
+                tp_size=args.tp,
+                pp_size=args.pp,
+                sp_size=args.sp,
+                sequence_parallelism_mode=args.sp_mode,
+                zero_stage=args.zero_stage,
+                enable_flash_attention=args.use_flash_attn,
+                enable_sequence_parallelism=args.enable_sequence_parallelism,
+                cpu_offload=True if args.zero_stage >= 1 and args.zero_cpu_offload else False,
+                parallel_output=False,
+                max_norm=args.grad_clip,
+                precision=args.mixed_precision,
+                custom_policy=get_autopolicy(reward_model.model),
+            )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
 
-    if args.plugin != "3d":
+    if args.plugin != "3d" and args.rm_pretrain:
         custom_plugin = plugin
 
     # configure dataset
     coordinator.print_on_master(f"Load dataset: {args.prompt_dataset}")
     mode_map = {"train": "train", "valid": "validation", "test": "test"}
     train_prompt_dataset = load_tokenized_dataset(dataset_paths=args.prompt_dataset, mode="train", mode_map=mode_map)
+
     data_collator = DataCollatorForPromptDataset(tokenizer=tokenizer, max_length=args.max_length - args.max_seq_len)
 
     train_prompt_dataloader = plugin.prepare_dataloader(
@@ -313,9 +290,8 @@ def train(args):
 
     actor_booster = Booster(plugin=plugin)
     ref_booster = Booster(plugin=plugin)
-    if not args.no_neural_reward_model:
+    if args.rm_pretrain:
         rm_booster = Booster(plugin=custom_plugin)
-    critic_booster = Booster(plugin=custom_plugin)
 
     default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
     torch.set_default_dtype(default_dtype)
@@ -325,14 +301,7 @@ def train(args):
         lr_scheduler=actor_lr_scheduler,
         dataloader=train_prompt_dataloader,
     )
-
-    critic, critic_optim, _, _, critic_lr_scheduler = critic_booster.boost(
-        model=critic,
-        optimizer=critic_optim,
-        lr_scheduler=critic_lr_scheduler,
-        dataloader=train_prompt_dataloader,
-    )
-    if not args.no_neural_reward_model:
+    if args.rm_pretrain:
         reward_model, _, _, _, _ = rm_booster.boost(model=reward_model, dataloader=train_prompt_dataloader)
     else:
         if args.reward_functions:
@@ -378,7 +347,6 @@ def train(args):
                 lr_scheduler=None,
             )
         coordinator.print_on_master(f"Loaded reward model checkpoint {args.rm_checkpoint_path}")
-
     if args.checkpoint_path is not None:
         if "modeling" in args.checkpoint_path:
             actor_booster.load_model(actor, args.checkpoint_path)
@@ -392,13 +360,7 @@ def train(args):
                 optimizer=actor_optim,
                 lr_scheduler=actor_lr_scheduler,
             )
-            _, _, _ = load_checkpoint(
-                load_dir=args.checkpoint_path,
-                booster=ref_booster,
-                model=ref_model,
-                optimizer=critic_optim,
-                lr_scheduler=critic_lr_scheduler,
-            )
+            _, _, _ = load_checkpoint(load_dir=args.checkpoint_path, booster=ref_booster, model=ref_model)
             assert isinstance(train_prompt_dataloader.sampler, StatefulDistributedSampler)
             train_prompt_dataloader.sampler.set_start_index(start_index=sampler_start_idx)
 
@@ -417,59 +379,46 @@ def train(args):
             f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
         )
 
-    if args.critic_checkpoint_path is not None:
-        if "modeling" in args.critic_checkpoint_path:
-            critic_booster.load_model(critic, args.critic_checkpoint_path)
-        else:
-            _, _, _ = load_checkpoint(
-                load_dir=args.critic_checkpoint_path,
-                booster=critic_booster,
-                model=critic,
-                optimizer=critic_optim,
-                lr_scheduler=critic_lr_scheduler,
-            )
-        coordinator.print_on_master(f"Loaded critic checkpoint {args.critic_checkpoint_path}")
-        coordinator.print_on_master(
-            f"Checkpoint loaded max CUDA memory: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB"
-        )
-        coordinator.print_on_master(
-            f"Checkpoint loaded CUDA memory: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB"
-        )
-        coordinator.print_on_master(
-            f"Checkpoint loaded max CPU memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024:.2f} MB"
-        )
-
     # configure trainer
-    trainer = PPOTrainer(
+    trainer = GRPOTrainer(
         actor_booster,
-        critic_booster,
         actor,
-        critic,
         reward_model,
         ref_model,
         actor_optim,
-        critic_optim,
         actor_lr_scheduler,
-        critic_lr_scheduler,
         tokenizer=tokenizer,
         stop_token_ids=stop_ids,
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
-        buffer_limit=args.num_collect_steps * args.experience_batch_size,
+        buffer_limit=args.num_collect_steps * args.experience_batch_size * args.num_generations,
         max_length=args.max_length,
-        max_new_tokens=args.max_seq_len,
         use_cache=True,
         do_sample=True,
-        temperature=0.7,
+        temperature=args.temperature,
         apply_loss_mask=not args.disable_loss_mask,
         accumulation_steps=args.accumulation_steps,
         save_dir=args.save_path,
         save_interval=args.save_interval,
         top_k=50,
         use_tp=args.tp > 1,
+        num_generations=args.num_generations,
+        inference_batch_size=args.inference_batch_size,
+        use_tts_inference=args.use_tts_inference,
+        tts_config=tts_config if args.use_tts_inference else None,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
+        max_tokens_thinking=args.max_tokens_thinking if args.max_tokens_thinking else args.max_length - 100,
+        temperature_annealing_config={
+            "start_temperature": 1.2,
+            "end_temperature": args.temperature,
+            "annealing_warmup_steps": min(100, int(args.num_episodes / 6)),
+            "annealing_steps": min(600, int(args.num_episodes / 2)),
+        },
+        # Hack: some old model's default update_model_kwargs_fn/prepare_inputs_fn may doesn't work due to version conflict with transformers, you can overwrite them
+        # update_model_kwargs_fn=update_model_kwargs_fn,
+        # prepare_inputs_fn = None
     )
 
     trainer.fit(
@@ -486,17 +435,11 @@ def train(args):
         # NOTE: set model to eval to merge LoRA weights
         lora_manager.able_to_merge = True
         actor.eval()
-        critic.eval()
     # save model checkpoint after fitting on only rank0
     coordinator.print_on_master("Start saving final actor model checkpoint")
     actor_booster.save_model(actor, os.path.join(trainer.actor_save_dir, "modeling"), shard=True)
     coordinator.print_on_master(
         f"Saved final actor model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
-    )
-    coordinator.print_on_master("Start saving final critic model checkpoint")
-    critic_booster.save_model(critic, os.path.join(trainer.critic_save_dir, "modeling"), shard=True)
-    coordinator.print_on_master(
-        f"Saved final critic model checkpoint at episodes {args.num_episodes} at folder {args.save_path}"
     )
     coordinator.print_on_master(f"Max CUDA memory usage: {torch.cuda.max_memory_allocated()/1024**2:.2f} MB")
 
@@ -532,15 +475,15 @@ if __name__ == "__main__":
     parser.add_argument("--sp_mode", type=str, default="split_gather", choices=["split_gather", "ring", "all_to_all"])
     parser.add_argument("--pretrain", type=str, default=None)
     parser.add_argument("--rm_pretrain", type=str, default=None)
-    parser.add_argument("--no_neural_reward_model", default=False, action="store_true")
     parser.add_argument("--checkpoint_path", type=str, default=None)
-    parser.add_argument("--critic_checkpoint_path", type=str, default=None)
     parser.add_argument("--rm_checkpoint_path", type=str, help="Reward model checkpoint path")
     parser.add_argument("--reward_functions", type=str, nargs="+", default=None, help="Reward functions to use")
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument("--num_collect_steps", type=int, default=2)
     parser.add_argument("--num_update_steps", type=int, default=5)
+    parser.add_argument("--num_generations", type=int, default=8)
+    parser.add_argument("--inference_batch_size", type=int, default=None)
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--experience_batch_size", type=int, default=16)
@@ -548,16 +491,18 @@ if __name__ == "__main__":
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")
     parser.add_argument("--mixed_precision", type=str, default="fp16", choices=["fp16", "bf16"], help="Mixed precision")
     parser.add_argument("--accumulation_steps", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=9e-6)
-    parser.add_argument("--critic_lr", type=float, default=9e-6)
-    parser.add_argument("--kl_coef", type=float, default=0.1)
+    parser.add_argument("--lr", type=float, default=1e-6)
+    parser.add_argument("--kl_coef", type=float, default=0.7)
     parser.add_argument("--ptx_coef", type=float, default=0.0)
     parser.add_argument("--disable_loss_mask", default=False, action="store_true")
     parser.add_argument("--max_length", type=int, default=2048)
+    parser.add_argument("--max_tokens_thinking", type=int, default=2000)
     parser.add_argument("--max_seq_len", type=int, default=256)
+    parser.add_argument("--temperature", type=float, default=0.9)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
+    parser.add_argument("--use_tts_inference", default=False, action="store_true")
     args = parser.parse_args()
     train(args)
