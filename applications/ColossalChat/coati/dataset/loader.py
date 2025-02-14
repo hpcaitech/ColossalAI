@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Sequence, Union
 
+import jsonlines
 import torch
 import torch.nn.functional as F
 from coati.dataset.utils import chuncate_sequence, pad_to_max_len
@@ -344,3 +345,77 @@ class StatefulDistributedSampler(DistributedSampler):
 
     def set_start_index(self, start_index: int) -> None:
         self.start_index = start_index
+
+
+def apply_chat_template_and_mask(
+    tokenizer: PreTrainedTokenizer,
+    chat: List[Dict[str, str]],
+    max_length: Optional[int] = None,
+    padding: bool = True,
+    truncation: bool = True,
+    ignore_idx: int = -100,
+) -> Dict[str, torch.Tensor]:
+    tokens = []
+    assistant_mask = []
+    for i, msg in enumerate(chat):
+        msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True)
+        # remove unexpected bos token
+        if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
+            msg_tokens = msg_tokens[1:]
+        tokens.extend(msg_tokens)
+        if msg["role"] == "assistant":
+            assistant_mask.extend([True] * len(msg_tokens))
+        else:
+            assistant_mask.extend([False] * len(msg_tokens))
+    attention_mask = [1] * len(tokens)
+    if max_length is not None:
+        if padding and len(tokens) < max_length:
+            to_pad = max_length - len(tokens)
+            if tokenizer.padding_side == "right":
+                tokens.extend([tokenizer.pad_token_id] * to_pad)
+                assistant_mask.extend([False] * to_pad)
+                attention_mask.extend([0] * to_pad)
+            else:
+                tokens = [tokenizer.pad_token_id] * to_pad + tokens
+                assistant_mask = [False] * to_pad + assistant_mask
+                attention_mask = [0] * to_pad + attention_mask
+        if truncation and len(tokens) > max_length:
+            tokens = tokens[:max_length]
+            assistant_mask = assistant_mask[:max_length]
+            attention_mask = attention_mask[:max_length]
+    input_ids = torch.tensor(tokens, dtype=torch.long)
+    attention_mask = torch.tensor(attention_mask, dtype=torch.long)
+    labels = input_ids.clone()
+    labels[~torch.tensor(assistant_mask, dtype=torch.bool)] = ignore_idx
+
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": labels,
+    }
+
+
+class RawConversationDataset(Dataset):
+    """
+    Raw conversation dataset.
+    Each instance is a dictionary with fields `system`, `roles`, `messages`, `offset`, `sep_style`, `seps`.
+    """
+
+    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int) -> None:
+        self.tokenizer = tokenizer
+        self.raw_texts = []
+        with jsonlines.open(input_file) as f:
+            for line in f:
+                self.raw_texts.append(line)
+        self.tokenized_texts = [None] * len(self.raw_texts)
+        self.max_length = max_length
+
+    def __len__(self) -> int:
+        return len(self.raw_texts)
+
+    def __getitem__(self, index: int):
+        if self.tokenized_texts[index] is None:
+            message = self.raw_texts[index]
+            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
+            self.tokenized_texts[index] = dict(tokens)
+        return self.tokenized_texts[index]
