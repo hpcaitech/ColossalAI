@@ -437,9 +437,6 @@ class TorchFSDPModel(ModelWrapper):
         super().__init__(module)
         self.module = FSDP(module, *args, **kwargs)
 
-    def unwrap(self):
-        return self.module
-
 
 class FSDPOptimizerWrapper(OptimizerWrapper):
     def __init__(self, optimizer: Optimizer, model: nn.Module):

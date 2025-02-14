@@ -10,6 +10,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.distributed import ProcessGroup
 from torch.distributed.distributed_c10d import get_global_rank
+from torch.utils._pytree import tree_map
 
 from colossalai.checkpoint_io import CheckpointIndexFile
 from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParallelCheckpointIO
@@ -17,6 +18,8 @@ from colossalai.checkpoint_io.index_file import CheckpointIndexFile
 from colossalai.checkpoint_io.utils import (
     StateDictSharder,
     gather_distributed_param,
+    gather_state_dict_fast,
+    get_lora_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
     load_shard_state_dict,
@@ -889,3 +892,26 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             optimizer.optim.state[param] = sharded_state
         sharded_optimizer_loading_epilogue(optimizer.optim)
         dist.barrier()
+
+    def save_lora_as_pretrained(self, model, checkpoint, use_safetensors, state_dict=None):
+        if os.path.isfile(checkpoint):
+            logging.error(f"Provided path ({checkpoint}) should be a directory, not a file")
+            return
+        from peft import PeftModel
+
+        assert isinstance(model, ModelWrapper), "Please boost the model before saving!"
+        model._force_wait_all_gather()
+        peft_model = model.unwrap(unwrap_peft=False)
+        assert isinstance(
+            peft_model, PeftModel
+        ), "The model doesn't have lora adapters, please enable lora before saving."
+        if state_dict is None:
+            state_dict = tree_map(lambda x: x.data if torch.is_tensor(x) else x, peft_model.state_dict())
+        if self.ep_size > 1:
+            lora_state_dict = get_lora_state_dict(peft_model, state_dict)
+            moe_params = set(n for n, p in peft_model.named_parameters() if is_moe_tensor(p))
+            expert_state_dict = {n: p for n, p in lora_state_dict.items() if n in moe_params}
+            gathered_expert_state_dict = gather_state_dict_fast(expert_state_dict, self.ep_group)
+            if self.ep_rank == 0:
+                state_dict.update(gathered_expert_state_dict)
+        return super().save_lora_as_pretrained(model, checkpoint, use_safetensors, state_dict)

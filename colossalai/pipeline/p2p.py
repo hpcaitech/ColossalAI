@@ -156,7 +156,9 @@ def _check_for_nccl_hccl_backend(group):
         while isinstance(pg, c10d._ProcessGroupWrapper):
             pg = pg.wrapped_pg
 
-    return (c10d.is_nccl_available() or torch.distributed.is_hccl_available()) and pg.name() == c10d.Backend.NCCL
+    return (c10d.is_nccl_available() or torch.distributed.is_hccl_available()) and (
+        pg.name() == c10d.Backend.NCCL or pg.name() == c10d.Backend.HCCL
+    )
 
 
 def _check_device(group):

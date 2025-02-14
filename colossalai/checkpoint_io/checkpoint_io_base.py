@@ -437,7 +437,11 @@ class CheckpointIO(ABC):
 
     @abstractmethod
     def save_lora_as_pretrained(
-        self, model: Union[nn.Module, ModelWrapper], checkpoint: str, use_safetensors: bool = False
+        self,
+        model: Union[nn.Module, ModelWrapper],
+        checkpoint: str,
+        use_safetensors: bool = False,
+        state_dict: Optional[dict] = None,
     ) -> None:
         """
         Save the lora adapters and adapter configuration file to a pretrained checkpoint directory.
@@ -446,4 +450,5 @@ class CheckpointIO(ABC):
             model (Union[nn.Module, ModelWrapper]): A model boosted by Booster.
             checkpoint (str): Path to the checkpoint directory. It must be a local path.
             use_safetensors (bool, optional): Whether to use safe tensors when saving. Defaults to False.
+            state_dict (Optional[dict], optional): The state dict to save. Defaults to None.
         """
