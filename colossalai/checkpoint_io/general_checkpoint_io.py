@@ -308,5 +308,7 @@ class GeneralCheckpointIO(CheckpointIO):
                     )
                 )
 
-    def save_lora_as_pretrained(self, model: nn.Module, checkpoint: str, use_safetensors: bool = False) -> None:
+    def save_lora_as_pretrained(
+        self, model: nn.Module, checkpoint: str, use_safetensors: bool = False, state_dict: Optional[dict] = None
+    ) -> None:
         raise NotImplementedError
