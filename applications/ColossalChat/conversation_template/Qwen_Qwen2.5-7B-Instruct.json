@@ -1,15 +1,15 @@
 {
-    "chat_template": "{% for message in messages %}{{"<|im_start|>" + message["role"] + "\n" + message["content"] + "<|im_end|>" + "\n"}}{% endfor %}{% if add_generation_prompt %}{{ "<|im_start|>assistant\n" }}{% endif %}",
-    "system_message": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>.  Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, your final answer should be a integer without unit, currency mark, thousands separator or other text. i.e., <answer> 123 </answer>.\n",
+    "chat_template": "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "system_message": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem. You should think first, reasoning step by step and verify the correctness of your answer. After you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, your final answer should be a single mathematical expression without unit, currency mark, thousands separator or other text. i.e., <answer> 123 </answer>.\n",
     "stop_ids": [
         151643
     ],
     "end_of_assistant": "<|endoftext|>",
-    "tts_config" : {
-        "tts_thought_stop": " </think",
-        "tts_final_answer_stop": " </answer>",
+    "tts_config": {
+        "tts_thought_stop": "</think>",
+        "tts_final_answer_stop": "</answer>",
         "tts_think_prefix": "<think>",
-        "tts_final_answer_prefix": " </think> <answer>",
+        "tts_final_answer_prefix": "<answer>",
         "tts_reflexion_prefix": "\nWait"
     },
     "response_format_tags": {

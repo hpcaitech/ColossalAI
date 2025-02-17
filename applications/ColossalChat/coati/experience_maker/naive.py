@@ -43,6 +43,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         use_grpo: bool = False,
         num_generation: int = 8,
         inference_batch_size: int = None,
+        logits_forward_batch_size: int = 2,
         use_tts_inference: bool = False,
         tts_thought_stop: str = None,
         tts_final_answer_stop: str = None,
@@ -58,6 +59,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.use_grpo = use_grpo
         self.num_generation = num_generation
         self.inference_batch_size = inference_batch_size
+        self.logits_forward_batch_size = logits_forward_batch_size
         self.use_tts_inference = use_tts_inference
         if self.use_tts_inference:
             assert tts_thought_stop is not None, "Test time scaling requires thought stop identifier"
@@ -65,20 +67,18 @@ class NaiveExperienceMaker(ExperienceMaker):
             assert tts_think_prefix is not None, "Test time scaling requires thought prefix"
             assert tts_reflexion_prefix is not None, "Test time scaling requires reflexion prefix"
             assert tts_final_answer_prefix is not None, "Test time scaling requires final answer prefix"
-            self.tts_thought_stop_tokens = tokenizer.encode(tts_thought_stop, add_special_tokens=False)
-            self.tts_final_answer_stop = tokenizer.encode(tts_final_answer_stop, add_special_tokens=False)
+            self.tts_thought_stop = tts_thought_stop
+            self.tts_final_answer_stop = tts_final_answer_stop
             self.tts_think_prefix = torch.tensor(tokenizer.encode(tts_think_prefix, add_special_tokens=False))
-            self.tts_reflexion_prefix = torch.tensor(tokenizer.encode(tts_reflexion_prefix, add_special_tokens=False))
-            self.tts_final_answer_prefix = torch.tensor(
-                tokenizer.encode(tts_final_answer_prefix, add_special_tokens=False)
-            )
+            self.tts_reflexion_prefix = tts_reflexion_prefix
+            self.tts_final_answer_prefix = tts_final_answer_prefix
         if not self.use_grpo:
             assert self.critic is not None, "Critic model is required for PPO training."
         else:
             assert self.critic is None, "Critic model is not required for GRPO training."
             assert self.num_generation > 1, "Number of generations should be greater than 1 for GRPO training."
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def calculate_advantage(self, value: torch.Tensor, reward: torch.Tensor, num_actions: int) -> torch.Tensor:
         """
         Calculates the advantage values for each action based on the value and reward tensors.
@@ -146,26 +146,45 @@ class NaiveExperienceMaker(ExperienceMaker):
         batch_action_mask = []
         num_actions = 0
         # print("input_ids", input_ids[0])
-        
+
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
             s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
             # print(s,e,self.inference_batch_size)
-
+            num_ignore = 0  # 1 # random.choices([0,1,2], weights=[0.5,0.3,0.2])[0]
             if input_ids[s:e].size(0) == 0:
                 break
-            if not self.use_tts_inference:
-                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)   
+            if not self.use_tts_inference or num_ignore == 0:
+                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
+
+                # prompt_len = input_ids[s:e].size(1)
+                # generate_kwargs["stops"] = ['<|endoftext|>', '</answer>']
+                # res = vllm_style_generate(
+                #     self.actor,
+                #     input_ids[s:e],
+                #     self.tokenizer,
+                #     **generate_kwargs,
+                # )
+                # self.tokenizer.padding_side = 'right'
+                # new_tokens = self.tokenizer(res, padding=True,
+                #                     add_special_tokens=False, return_tensors='pt')["input_ids"].to(input_ids.device)
+                # self.tokenizer.padding_side = 'left'
+                # sequences = torch.cat([input_ids[s:e,:prompt_len], new_tokens], dim=-1)
+
+                # sequences = torch.cat([input_ids[s:e].clone(), input_ids[s:e].clone().flip([-1])], dim=-1) # get dummy output for testing
+                # if dist.get_rank() == 0:
+                #     print(sequences[0])
+                #     print(self.tokenizer.decode(sequences[0]))
             else:
                 sequences = generate_tts(
                     self.actor,
                     input_ids[s:e],
                     self.tokenizer,
                     think_prefix=self.tts_think_prefix.to(input_ids.device),
-                    final_answer_prefix=self.tts_final_answer_prefix.to(input_ids.device),
-                    stop_token_ids_thought=self.tts_thought_stop_tokens,
-                    stop_token_ids_final_answer=self.tts_final_answer_stop,
-                    num_ignore=0,
-                    ignore_tokens=self.tts_reflexion_prefix.to(input_ids.device),
+                    final_answer_prefix=self.tts_final_answer_prefix,
+                    thought_stop=self.tts_thought_stop,
+                    final_answer_stop=self.tts_final_answer_stop,
+                    num_ignore=num_ignore,
+                    ignore_prefix=self.tts_reflexion_prefix,
                     **generate_kwargs,
                 )
             sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
@@ -195,18 +214,23 @@ class NaiveExperienceMaker(ExperienceMaker):
                 # stop_token_ids are given, generation ends with stop_token_ids
                 action_mask = torch.ones_like(sequences, dtype=torch.bool)
                 for i in range(sequences.size(0)):
-                    stop_index = find_first_occurrence_subsequence(
-                        sequences[i][input_len:], torch.tensor(stop_token_ids).to(sequences.device)
-                    )
-                    if stop_index == -1:
-                        # use tokenizer.pad_token_id to stop
-                        stop_index = find_first_occurrence_subsequence(
-                            sequences[i][input_len:], torch.tensor([self.tokenizer.pad_token_id]).to(sequences.device)
+                    stop_token_pos = [
+                        find_first_occurrence_subsequence(
+                            sequences[i][input_len:], torch.tensor(stop_token_id).to(sequences.device)
                         )
-                        # replace with stop token ids
-                        if stop_index != -1:
-                            padding_len = generate_kwargs["max_length"] - stop_index - 1
-                            sequences[i][input_len + stop_index:input_len + stop_index + len(stop_token_ids)] = torch.tensor(stop_token_ids).to(sequences.device)[:padding_len]
+                        for stop_token_id in stop_token_ids
+                    ]
+                    stop_index = min([i for i in stop_token_pos if i != -1], default=-1)
+                    stop_token_id = stop_token_ids[stop_token_pos.index(stop_index)]
+                    # if stop_index == -1:
+                    #     # use tokenizer.pad_token_id to stop
+                    #     stop_index = find_first_occurrence_subsequence(
+                    #         sequences[i][input_len:], torch.tensor([self.tokenizer.pad_token_id]).to(sequences.device)
+                    #     )
+                    #     # replace with stop token ids
+                    #     if stop_index != -1:
+                    #         padding_len = generate_kwargs["max_length"] - stop_index - 1
+                    #         sequences[i][input_len + stop_index:input_len + stop_index + len(stop_token_id)] = torch.tensor(stop_token_id).to(sequences.device)[:padding_len]
                     if stop_index == -1:
                         # Sequence does not contain stop_token_ids, this should never happen BTW
                         logger.warning(
@@ -218,20 +242,43 @@ class NaiveExperienceMaker(ExperienceMaker):
                     else:
                         # Keep stop tokens
                         stop_index = input_len + stop_index
-                        action_mask[i, stop_index + len(stop_token_ids) :] = False
+                        action_mask[i, stop_index + len(stop_token_id) :] = False
 
             generation_end_index = (action_mask == True).sum(dim=-1) - 1
             action_mask[:, :input_len] = False
             action_mask = action_mask[:, 1:]
             action_mask = action_mask[:, -(sequences.size(1) - input_len) :]
             num_actions = action_mask.size(1)
+            torch.cuda.empty_cache()
+            with torch.inference_mode():
+                actor_output = []
+                base_model_output = []
+                for i in range(0, sequences.size(0), self.logits_forward_batch_size):
+                    # print(sequences[i:i+self.logits_forward_batch_size].size(), attention_mask[i:i+self.logits_forward_batch_size].size())
+                    actor_output.append(
+                        self.actor(
+                            input_ids=sequences[i : i + self.logits_forward_batch_size],
+                            attention_mask=attention_mask[i : i + self.logits_forward_batch_size],
+                        )["logits"]
+                    )
+                    base_model_output.append(
+                        self.initial_model(
+                            input_ids=sequences[i : i + self.logits_forward_batch_size],
+                            attention_mask=attention_mask[i : i + self.logits_forward_batch_size],
+                        )["logits"]
+                    )
+                actor_output = torch.cat(actor_output, dim=0)
+                base_model_output = torch.cat(base_model_output, dim=0)
+                # torch.cat([self.actor(input_ids=sequences[i:i+self.logits_forward_batch_size],
+                #                                     attention_mask=attention_mask[i:i+self.logits_forward_batch_size])["logits"] \
+                #                                         for i in range(0, sequences.size(0), self.logits_forward_batch_size)], dim=0)
+                action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
 
-            actor_output = self.actor(input_ids=sequences, attention_mask=attention_mask)["logits"]
-            action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
+                # base_model_output = torch.cat([self.initial_model(input_ids=sequences[i:i+self.logits_forward_batch_size],
+                #                                     attention_mask=attention_mask[i:i+self.logits_forward_batch_size])["logits"] \
+                #                                         for i in range(0, sequences.size(0), self.logits_forward_batch_size)], dim=0)
 
-            base_model_output = self.initial_model(input_ids=sequences, attention_mask=attention_mask)["logits"]
-
-            base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
+                base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
 
             # Convert to right padding for the reward model and the critic model
             input_ids_rm = torch.zeros_like(sequences, device=sequences.device)
@@ -241,7 +288,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             for i in range(sequences.size(0)):
                 sequence = sequences[i]
                 bos_index = (sequence != pad_token_id).nonzero().reshape([-1])[0]
-                eos_index = generation_end_index[i]
+                eos_index = generation_end_index[i] + 1  # include the stop token
                 sequence_to_pad = sequence[bos_index:eos_index]
                 response_start.append(input_len - bos_index)
                 response_end.append(eos_index - bos_index)
@@ -309,4 +356,13 @@ class NaiveExperienceMaker(ExperienceMaker):
             advantages = (r - mean_gr) / (std_gr + 1e-4)
             value = r.detach()  # dummy value
         r = r.detach()
-        return Experience(sequences, action_log_probs, value, r, kl, advantages, attention_mask, action_mask)
+        return Experience(
+            sequences.cpu(),
+            action_log_probs.cpu(),
+            value.cpu(),
+            r.cpu(),
+            kl.cpu(),
+            advantages.cpu(),
+            attention_mask.cpu(),
+            action_mask.cpu(),
+        )

@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Callable, List, Optional
 
 import torch
@@ -189,18 +190,20 @@ def _sample(
 
         if stop_token_ids is not None:
             # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
-            tokens_to_check = input_ids[:, -len(stop_token_ids) :]
-            unfinished_sequences = unfinished_sequences.mul(
-                torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long()
-            )
+            for stop_token_id in stop_token_ids:
+                tokens_to_check = input_ids[:, -len(stop_token_id) :]
+                unfinished_sequences = unfinished_sequences.mul(
+                    torch.any(tokens_to_check != torch.LongTensor(stop_token_id).to(input_ids.device), dim=1).long()
+                )
 
         # Stop when each sentence is finished if early_stopping=True
         if (early_stopping and _is_sequence_finished(unfinished_sequences)) or i == context_length + max_new_tokens - 1:
-            if i == context_length + max_new_tokens - 1:
-                # Force to end with stop token ids
-                input_ids[input_ids[:, -1] != pad_token_id, -len(stop_token_ids) :] = (
-                    torch.LongTensor(stop_token_ids).to(input_ids.device).long()
-                )
+            # if i == context_length + max_new_tokens - 1:
+            #     # Force to end with stop token ids
+            #     stop_token_id = stop_token_ids[0]
+            #     input_ids[input_ids[:, -1] != pad_token_id, -len(stop_token_id) :] = (
+            #         torch.LongTensor(stop_token_id).to(input_ids.device).long()
+            #     )
             return input_ids
 
 
@@ -243,6 +246,7 @@ def generate(
         raise NotImplementedError
     elif is_sample_gen_mode:
         # Run sample
+        generation_kwargs = copy.deepcopy(model_kwargs)
         res = _sample(
             model,
             tokenizer,
@@ -256,8 +260,9 @@ def generate(
             temperature=temperature,
             prepare_inputs_fn=prepare_inputs_fn,
             update_model_kwargs_fn=update_model_kwargs_fn,
-            **model_kwargs,
+            **generation_kwargs,
         )
+        del generation_kwargs
         return res
     elif is_beam_gen_mode:
         raise NotImplementedError
@@ -357,11 +362,17 @@ def _sample_streaming(
             unfinished_sequences = unfinished_sequences.mul((next_tokens != eos_token_id).long())
 
         if stop_token_ids is not None:
-            # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
             tokens_to_check = input_ids[:, -len(stop_token_ids) :]
-            unfinished_sequences = unfinished_sequences.mul(
-                torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long()
-            )
+            if isinstance(stop_token_ids[0], int):
+                # If the last len(stop_token_ids) tokens of input_ids are equal to stop_token_ids, set sentence to finished.
+                unfinished_sequences = unfinished_sequences.mul(
+                    torch.any(tokens_to_check != torch.LongTensor(stop_token_ids).to(input_ids.device), dim=1).long()
+                )
+            else:
+                for stop_token_id in stop_token_ids:
+                    unfinished_sequences = unfinished_sequences.mul(
+                        torch.any(tokens_to_check != torch.LongTensor(stop_token_id).to(input_ids.device), dim=1).long()
+                    )
 
         # Stop when each sentence is finished if early_stopping=True
         if (
@@ -435,6 +446,35 @@ def generate_streaming(
         raise ValueError("Unsupported generation mode")
 
 
+def vllm_style_generate(*args, **kwargs):
+    # passing stop token ids may not stop the generation properly due to BPE
+    # Hack: decode first
+    stops = kwargs.pop("stops")
+    bs = args[1].size(0)
+    stopped = []
+    offset = args[1].size(1)
+    tokenizer = args[2]
+    decoded_response = ["" for _ in range(bs)]
+    for output in generate_streaming(*args, **kwargs):
+        res = tokenizer.batch_decode(output[:, offset:], skip_special_tokens=False)
+        offset = output.size(1)
+        for i in range(bs):
+            if i in stopped:
+                continue
+            decoded_response[i] = decoded_response[i] + res[i]
+            stop_detected = [stop for stop in stops if stop in decoded_response[i][-30:]]
+            if len(stop_detected) > 0:
+                stopped.append(i)
+                decoded_response[i] = sorted(
+                    [decoded_response[i].split(stop)[0] + stop for stop in stop_detected], key=lambda x: len(x)
+                )[
+                    0
+                ]  # stop at the first met stopping condition
+        if len(stopped) == bs:
+            break
+    return decoded_response
+
+
 @torch.inference_mode()
 def generate_tts(
     model: Any,
@@ -449,23 +489,30 @@ def generate_tts(
     temperature: Optional[float] = None,
     prepare_inputs_fn: Optional[Callable[[torch.Tensor, Any], dict]] = None,
     update_model_kwargs_fn: Optional[Callable[[dict, Any], dict]] = None,
-    think_prefix: List[int] = None,
-    final_answer_prefix: List[int] = None,
-    stop_token_ids_thought: List[int] = None,
-    stop_token_ids_final_answer: List[int] = None,
+    think_prefix: torch.Tensor = None,
+    final_answer_prefix: str = None,
+    thought_stop: str = None,
+    final_answer_stop: str = None,
     num_ignore: int = 1,
-    ignore_tokens: torch.Tensor = None,
-    max_tokens_thinking: int = 12000,
+    ignore_prefix: str = None,
+    max_tokens_thinking: int = None,
+    max_new_token_think: int = 1500,
+    max_new_token_final_answer: int = 100,
     **model_kwargs,
 ) -> torch.Tensor:
-    o = torch.cat([input_ids, think_prefix.unsqueeze(dim=0).repeat_interleave(input_ids.size(0), dim=0)], dim=-1)
+    non_pad_indices_input_ids = []
+    assert max_tokens_thinking < max_length
+    for i in range(input_ids.size(0)):
+        non_pad_indices_input_ids.append((input_ids[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0].min())
 
-    model_kwargs["stop_token_ids"] = stop_token_ids_thought
-    o = generate(
+    o = torch.cat([input_ids, think_prefix.unsqueeze(dim=0).repeat_interleave(input_ids.size(0), dim=0)], dim=-1)
+    prompt_len = o.size(1)
+    model_kwargs["stops"] = [thought_stop]
+    res = vllm_style_generate(
         model,
         o,
         tokenizer,
-        max_length,
+        max_tokens_thinking,
         num_beams,
         do_sample,
         early_stopping,
@@ -474,18 +521,26 @@ def generate_tts(
         temperature,
         prepare_inputs_fn,
         update_model_kwargs_fn,
-        max_new_tokens=1500,
+        max_new_tokens=max_new_token_think,
         **model_kwargs,
     )
+    if num_ignore > 0:
+        res = [(r[: -len(thought_stop)] if r.endswith(thought_stop) else r) + ignore_prefix for r in res]
+    else:
+        res = [r + final_answer_prefix for r in res]
+    tokenizer.padding_side = "right"
+    new_tokens = tokenizer(res, padding=True, add_special_tokens=False, return_tensors="pt")["input_ids"].to(o.device)
+    tokenizer.padding_side = "left"
+    o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
     # if dist.get_rank() == 0:
     #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
     #     print("###########\nfirst thought:\n",decoded)
     # Num of times to skip stop token
     for i in range(num_ignore):
-        o = repad_to_left(
-            o, tokenizer, to_remove_tokens=stop_token_ids_thought, to_append_tokens=ignore_tokens
-        )  # repad and add ignore tokens
-        o = generate(
+        # add ignore prefix
+        o = repad_to_left(o, tokenizer)  # repad for generation
+        prompt_len = o.size(1)
+        res = vllm_style_generate(
             model,
             o,
             tokenizer,
@@ -498,17 +553,26 @@ def generate_tts(
             temperature,
             prepare_inputs_fn,
             update_model_kwargs_fn,
-            max_new_tokens=1500,
+            max_new_tokens=max_new_token_think,
             **model_kwargs,
         )
+        if i != num_ignore - 1:
+            res = [(r[: -len(thought_stop)] if r.endswith(thought_stop) else r) + ignore_prefix for r in res]
+        else:
+            res = [r + final_answer_prefix for r in res]
+        tokenizer.padding_side = "right"
+        new_tokens = tokenizer(res, padding=True, add_special_tokens=False, return_tensors="pt")["input_ids"].to(
+            o.device
+        )
+        tokenizer.padding_side = "left"
+        o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
         # if dist.get_rank() == 0:
         #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
         #     print(f"###########\n{i} thought:\n",decoded)
-    o = repad_to_left(
-        o, tokenizer, to_remove_tokens=stop_token_ids_thought, to_append_tokens=final_answer_prefix
-    )  # final answer don't contain ignore tokens
-    model_kwargs["stop_token_ids"] = stop_token_ids_final_answer
-    o = generate(
+    o = repad_to_left(o, tokenizer)  # repad for generation
+    prompt_len = o.size(1)
+    model_kwargs["stops"] = [final_answer_stop]
+    res = vllm_style_generate(
         model,
         o,
         tokenizer,
@@ -521,23 +585,26 @@ def generate_tts(
         temperature,
         prepare_inputs_fn,
         update_model_kwargs_fn,
-        max_new_tokens=100,
+        max_new_tokens=max_new_token_final_answer,
         **model_kwargs,
     )
+    tokenizer.padding_side = "right"
+    new_tokens = tokenizer(res, padding=True, add_special_tokens=False, return_tensors="pt")["input_ids"].to(o.device)
+    tokenizer.padding_side = "left"
+    o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
     # if dist.get_rank() == 0:
     #     decoded = tokenizer.decode(o[0],skip_special_tokens=True)
     #     print(f"###########\nFinal Answer:\n",decoded)
-    # repad to aligh with the left padding of input id
 
+    # repad to aligh with the left padding of input id
     max_left_padded_seq_len = 0
     padding_left = []
     starts_o = []
     ends_o = []
     for i in range(o.size(0)):
         non_pad_indices_o = (o[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0]
-        non_pad_indices_input_ids = (input_ids[i] != tokenizer.pad_token_id).nonzero(as_tuple=True)[0]
         start_o, end_o = non_pad_indices_o.min(), non_pad_indices_o.max()
-        start_input_ids = non_pad_indices_input_ids.min()
+        start_input_ids = non_pad_indices_input_ids[i]
         padding_left.append(start_input_ids)
         starts_o.append(start_o)
         ends_o.append(end_o)

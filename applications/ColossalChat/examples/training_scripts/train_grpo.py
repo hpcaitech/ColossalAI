@@ -13,18 +13,10 @@ from coati.dataset import (
     load_tokenized_dataset,
     setup_conversation_template,
 )
-from coati.models import (
-    LoraConfig,
-    RewardModel,
-    RLVRRewardModel,
-    convert_to_lora_module,
-    disable_dropout,
-    lora_manager,
-    update_model_kwargs_fn,
-)
+from coati.models import LoraConfig, RewardModel, RLVRRewardModel, convert_to_lora_module, disable_dropout, lora_manager
 from coati.trainer import GRPOTrainer
 from coati.utils import load_checkpoint
-from coati.utils.reward_score import * # import all built-in reward function, supported: gsm8k_reward_fn, math_competition_reward_fn
+from coati.utils.reward_score import *
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import colossalai
@@ -40,32 +32,21 @@ logger = get_dist_logger()
 
 # default settings for test time scaling inference (TTS), overwrite it in chat_template definition if doesn't work
 tts_config = {
-    "tts_thought_stop": " </think", # Hack: some model's tokenizer use BPE leads to undeterminated behavior
-    "tts_final_answer_stop": " </answer>",
+    "tts_thought_stop": "</think>",  # Hack: some model's tokenizer use BPE leads to undeterminated behavior
+    "tts_final_answer_stop": "</answer>",
     "tts_think_prefix": "<think>",
-    "tts_final_answer_prefix": " </think> <answer>",
+    "tts_final_answer_prefix": "<answer>",
     "tts_reflexion_prefix": "\nWait",
 }
 
 # default settings for response format tags, overwrite it in chat_template definition if needed
 response_format_tags = {
-    "think_start": {
-        "text": "<think>",
-        "num_occur": 1
-    },
-    "think_end": {
-        "text": "</think>",
-        "num_occur": 1
-    },
-    "answer_start": {
-        "text": "<answer>",
-        "num_occur": 1
-    },
-    "answer_end": {
-        "text": "</answer>",
-        "num_occur": 1
-    }
+    "think_start": {"text": "<think>", "num_occur": 1},
+    "think_end": {"text": "</think>", "num_occur": 1},
+    "answer_start": {"text": "<answer>", "num_occur": 1},
+    "answer_end": {"text": "</answer>", "num_occur": 1},
 }
+
 
 def train(args):
     global response_format_tags, tts_config
@@ -113,7 +94,7 @@ def train(args):
                     args.rm_pretrain,
                     torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                     use_flash_attention_2=True,
-                    trust_remote_code=True
+                    trust_remote_code=True,
                 )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
@@ -273,7 +254,7 @@ def train(args):
             )
     else:
         raise ValueError(f"Unknown plugin {args.plugin}")
-    
+
     if args.plugin != "3d" and args.rm_pretrain:
         custom_plugin = plugin
 
@@ -337,8 +318,9 @@ def train(args):
                     reward_fn_list.append(math_competition_reward_fn)
                 else:
                     raise ValueError(f"Unknown reward function {reward_fn}")
-                reward_fn_list.append(eval(reward_fn))
-            reward_model = RLVRRewardModel(reward_fn_list=reward_fn_list, tokenizer=tokenizer, tags=response_format_tags)
+            reward_model = RLVRRewardModel(
+                reward_fn_list=reward_fn_list, tokenizer=tokenizer, tags=response_format_tags
+            )
 
     ref_model, _, _, _, _ = ref_booster.boost(model=ref_model, dataloader=train_prompt_dataloader)
 
@@ -405,7 +387,7 @@ def train(args):
         actor_optim,
         actor_lr_scheduler,
         tokenizer=tokenizer,
-        stop_token_ids=stop_ids,
+        stop_token_ids=[stop_ids],
         kl_coef=args.kl_coef,
         ptx_coef=args.ptx_coef,
         train_batch_size=args.train_batch_size,
@@ -413,7 +395,6 @@ def train(args):
         max_length=args.max_length,
         use_cache=True,
         do_sample=True,
-        temperature=args.temperature,
         apply_loss_mask=not args.disable_loss_mask,
         accumulation_steps=args.accumulation_steps,
         save_dir=args.save_path,
@@ -422,16 +403,17 @@ def train(args):
         use_tp=args.tp > 1,
         num_generations=args.num_generations,
         inference_batch_size=args.inference_batch_size,
+        logits_forward_batch_size=args.logits_forward_batch_size,
         use_tts_inference=args.use_tts_inference,
         tts_config=tts_config if args.use_tts_inference else None,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
         max_tokens_thinking=args.max_tokens_thinking if args.max_tokens_thinking else args.max_length - 100,
-        temperature_annealing_config = {
-            "start_temperature": 1.2,
+        temperature_annealing_config={
+            "start_temperature": 1.0,
             "end_temperature": args.temperature,
-            "annealing_warmup_steps": min(100, int(args.num_episodes/6)),
-            "annealing_steps": min(600, int(args.num_episodes/2))
+            "annealing_warmup_steps": min(100, int(args.num_episodes / 6)),
+            "annealing_steps": min(600, int(args.num_episodes / 2)),
         },
         # Hack: some old model's default update_model_kwargs_fn/prepare_inputs_fn may doesn't work due to version conflict with transformers, you can overwrite them
         # update_model_kwargs_fn=update_model_kwargs_fn,
@@ -494,7 +476,7 @@ if __name__ == "__main__":
     parser.add_argument("--rm_pretrain", type=str, default=None)
     parser.add_argument("--checkpoint_path", type=str, default=None)
     parser.add_argument("--rm_checkpoint_path", type=str, help="Reward model checkpoint path")
-    parser.add_argument("--reward_functions", type=str, nargs='+', default=None, help="Reward functions to use")
+    parser.add_argument("--reward_functions", type=str, nargs="+", default=None, help="Reward functions to use")
     parser.add_argument("--save_path", type=str, default="actor_checkpoint_prompts")
     parser.add_argument("--num_episodes", type=int, default=1)
     parser.add_argument("--num_collect_steps", type=int, default=2)
@@ -503,6 +485,7 @@ if __name__ == "__main__":
     parser.add_argument("--inference_batch_size", type=int, default=None)
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--train_batch_size", type=int, default=16)
+    parser.add_argument("--logits_forward_batch_size", type=int, default=1)
     parser.add_argument("--experience_batch_size", type=int, default=16)
     parser.add_argument("--ptx_batch_size", type=int, default=4)
     parser.add_argument("--lora_config", type=str, default=None, help="low-rank adaptation config file path")

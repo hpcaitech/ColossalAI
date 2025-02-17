@@ -96,6 +96,7 @@ class OLTrainer(ABC):
         self.sample_buffer = sample_buffer
         self.dataloader_pin_memory = dataloader_pin_memory
         self.callbacks = callbacks
+        self.num_train_step = 0
 
     @contextmanager
     def _fit_ctx(self) -> None:
@@ -212,6 +213,6 @@ class OLTrainer(ABC):
                         self._update_phase(update_step)
                     # NOTE: this is for on-policy algorithms
                     self.data_buffer.clear()
-                
-                if self.save_interval > 0 and (episode + 1) % (self.save_interval) == 0:
-                    self._save_checkpoint(episode + 1)
+
+                if self.num_train_step > 0 and (self.num_train_step + 1) % (self.save_interval) == 0:
+                    self._save_checkpoint(self.num_train_step + 1)
