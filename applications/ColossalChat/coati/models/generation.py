@@ -167,8 +167,6 @@ def _sample(
         # Sample
         probs = torch.softmax(next_token_logits, dim=-1, dtype=torch.float)
         next_tokens = torch.multinomial(probs, num_samples=1).squeeze(1)
-        # if dist.get_rank() == 0:
-        #     print(next_tokens[:1], tokenizer.decode(next_tokens[:1], skip_special_tokens=False), end=' ')
 
         # Finished sentences should have their next token be a padding token
         if eos_token_id is not None:
@@ -195,12 +193,6 @@ def _sample(
 
         # Stop when each sentence is finished if early_stopping=True
         if (early_stopping and _is_sequence_finished(unfinished_sequences)) or i == context_length + max_new_tokens - 1:
-            # if i == context_length + max_new_tokens - 1:
-            #     # Force to end with stop token ids
-            #     stop_token_id = stop_token_ids[0]
-            #     input_ids[input_ids[:, -1] != pad_token_id, -len(stop_token_id) :] = (
-            #         torch.LongTensor(stop_token_id).to(input_ids.device).long()
-            #     )
             return input_ids
 
 
