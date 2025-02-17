@@ -347,7 +347,7 @@ class DPOTrainer(SLTrainer):
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     self.actor_scheduler.step()
-                    
+
                     step_bar.set_postfix(
                         {
                             "train/loss": self.accumulative_meter.get("loss"),
@@ -358,7 +358,7 @@ class DPOTrainer(SLTrainer):
                     )
                     step_bar.update()
                     if self.writer and is_rank_0():
-                        global_step = (self.num_train_step + 1)/self.accumulation_steps
+                        global_step = (self.num_train_step + 1) / self.accumulation_steps
                         self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
                         self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]["lr"], global_step)
                         self.writer.add_scalar(

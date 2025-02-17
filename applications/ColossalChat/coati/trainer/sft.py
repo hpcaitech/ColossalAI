@@ -147,7 +147,7 @@ class SFTTrainer(SLTrainer):
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     self.scheduler.step()
-                    global_step = (self.num_train_step + 1)/self.accumulation_steps
+                    global_step = (self.num_train_step + 1) / self.accumulation_steps
                     step_bar.set_postfix({"train/loss": self.accumulative_meter.get("loss")})
                     if self.writer:
                         self.writer.add_scalar("train/loss", self.accumulative_meter.get("loss"), global_step)
