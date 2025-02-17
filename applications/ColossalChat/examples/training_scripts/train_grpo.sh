@@ -17,24 +17,24 @@ set_n_least_used_CUDA_VISIBLE_DEVICES 8
 
 PROJECT_NAME="PPO-RLVR"
 
-PARENT_SAVE_DIR="/home/yeanbang/experiments/grpo/model_extend" # Path to a folder to save checkpoints
-PARENT_CONFIG_FILE="/home/yeanbang/experiments/grpo" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-3B" # local pretrained model path (from RLHF step 1: SFT)
-PRETRAINED_TOKENIZER_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-3B" # huggingface or local tokenizer path
-CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/ColossalChat/conversation_template/Qwen_Qwen2.5-3B.json" # path to the conversation config file
-LOGDIR="/home/yeanbang/experiments/grpo/log_model_extend"
+PARENT_SAVE_DIR="" # Path to a folder to save checkpoints
+PARENT_CONFIG_FILE="" # Path to a folder to save training config logs
+PRETRAINED_MODEL_PATH="" # local pretrained model path (from RLHF step 1: SFT)
+PRETRAINED_TOKENIZER_PATH="" # huggingface or local tokenizer path
+CONVERSATION_TEMPLATE_CONFIG_PATH="" # path to the conversation config file
+LOGDIR=""
 
 declare -a prompt_dataset=(
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00000
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00001
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00002
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00003
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00004
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00005
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00006
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00007
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00008
-    /home/yeanbang/data/competition_math/data/tokenized/prompt_new/arrow/part-00009
+    YOUR/PROMPT/DATA/DIR/arrow/part-00000
+    YOUR/PROMPT/DATA/DIR/arrow/part-00001
+    YOUR/PROMPT/DATA/DIR/arrow/part-00002
+    YOUR/PROMPT/DATA/DIR/arrow/part-00003
+    YOUR/PROMPT/DATA/DIR/arrow/part-00004
+    YOUR/PROMPT/DATA/DIR/arrow/part-00005
+    YOUR/PROMPT/DATA/DIR/arrow/part-00006
+    YOUR/PROMPT/DATA/DIR/arrow/part-00007
+    YOUR/PROMPT/DATA/DIR/arrow/part-00008
+    YOUR/PROMPT/DATA/DIR/arrow/part-00009
 )
 
 declare -a ptx_dataset=(
