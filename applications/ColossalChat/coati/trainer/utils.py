@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from colossalai.booster import Plugin
 
+
 class AnnealingScheduler:
     def __init__(self, start, end, warmup_steps=100, annealing_step=2000):
         self.start = start
@@ -30,6 +31,7 @@ class AnnealingScheduler:
 
     def step_forward(self):
         self.step += 1
+
 
 class CycledDataLoader:
     """

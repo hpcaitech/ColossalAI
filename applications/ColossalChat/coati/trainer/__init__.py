@@ -1,11 +1,11 @@
 from .base import OLTrainer, SLTrainer
 from .dpo import DPOTrainer
+from .grpo import GRPOTrainer
 from .kto import KTOTrainer
 from .orpo import ORPOTrainer
 from .ppo import PPOTrainer
 from .rm import RewardModelTrainer
 from .sft import SFTTrainer
-from .grpo import GRPOTrainer
 
 __all__ = [
     "SLTrainer",
@@ -16,5 +16,5 @@ __all__ = [
     "DPOTrainer",
     "ORPOTrainer",
     "KTOTrainer",
-    "GRPOTrainer"
+    "GRPOTrainer",
 ]
