@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Continual Pre-training/Supervised fine-tuning of Colossal-LLaMA-2 developed by Colossal-AI Team
+Supervised fine-tuning of MoE models like Deepseek V3/R1 on a downstream task.
 """
 
 import argparse
