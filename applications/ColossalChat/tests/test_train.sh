@@ -575,7 +575,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='2'
-                bs='8'
+                bs='2'
             fi
             if [[ $plugin == "zero2" ]]; then
                 lora_config=$LORA_CONFIG_ENABLE
@@ -658,7 +658,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='2'
-                bs='8'
+                bs='2'
             fi
             if [[ $plugin == "zero2" ]]; then
                 lora_config=$LORA_CONFIG_ENABLE
@@ -739,7 +739,7 @@ for lora_rank in ${LORA_RANK[@]}; do
             bs='2'
             if [[ $plugin == "3d" ]]; then
                 tp='2'
-                bs='8'
+                bs='2'
             fi
             if [[ $plugin == "zero2" ]]; then
                 lora_config=$LORA_CONFIG_ENABLE
