@@ -1,5 +1,6 @@
 import torch
-from coati.utils.reward_score import extract_solution, validate_response_structure
+
+from .utils import extract_solution, validate_response_structure
 
 
 def math_competition_reward_fn(input_ids, attention_mask, **kwargs):
