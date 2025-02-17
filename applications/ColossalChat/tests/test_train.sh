@@ -116,8 +116,8 @@ for reward_type in ${REWARD_FLAG[@]}; do
                 tokenizer_dir=$(get_tokenizer_dirs $model)
                 grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
                 tp='1'
-                bs='4'
-                ebs='8'
+                bs='2'
+                ebs='1'
                 conversation_template=$(get_conversation_template_config $model)
                 if [[ $plugin == "zero2" ]]; then
                     lora_config=$LORA_CONFIG_ENABLE
@@ -126,8 +126,8 @@ for reward_type in ${REWARD_FLAG[@]}; do
                 fi
                 if [[ $plugin == "3d" ]]; then
                     tp='2'
-                    bs='16'
-                    ebs='32'
+                    bs='2'
+                    ebs='1'
                 fi
                 grad_accu='2'
                 # gemini_auto and gemini doesn't support gradient accumulation
@@ -179,8 +179,7 @@ for reward_type in ${REWARD_FLAG[@]}; do
                         --tp $tp \
                         --lr 2e-5 \
                         $grad_ckpt \
-                        --max_len 400 \
-                        --max_tokens_thinking 350 \
+                        --max_len 200 \ \
                         --max_seq_len 10 \
                         $reward_fn
                         # --use_flash_attn
@@ -236,8 +235,8 @@ for reward_type in ${REWARD_FLAG[@]}; do
                 tokenizer_dir=$(get_tokenizer_dirs $model)
                 grad_ckpt=$(random_choice "${GRAD_CKPTS[@]}")
                 tp='1'
-                bs='4'
-                ebs='8'
+                bs='2'
+                ebs='2'
                 conversation_template=$(get_conversation_template_config $model)
                 if [[ $plugin == "zero2" ]]; then
                     lora_config=$LORA_CONFIG_ENABLE
@@ -246,8 +245,8 @@ for reward_type in ${REWARD_FLAG[@]}; do
                 fi
                 if [[ $plugin == "3d" ]]; then
                     tp='2'
-                    bs='16'
-                    ebs='32'
+                    bs='2'
+                    ebs='2'
                 fi
                 grad_accu='2'
                 # gemini_auto and gemini doesn't support gradient accumulation
