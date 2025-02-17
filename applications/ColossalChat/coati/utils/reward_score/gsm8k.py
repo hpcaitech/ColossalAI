@@ -1,5 +1,6 @@
-from coati.utils.reward_score import validate_response_structure, extract_solution
 import torch
+from coati.utils.reward_score import extract_solution, validate_response_structure
+
 
 def gsm8k_reward_fn(input_ids, attention_mask, **kwargs):
     # apply varifiable reward
@@ -7,20 +8,19 @@ def gsm8k_reward_fn(input_ids, attention_mask, **kwargs):
 
     gt_answer = kwargs["gt_answer"]
     tokenizer = kwargs["tokenizer"]
-    s,e = kwargs["response_start"], kwargs["response_end"]
+    s, e = kwargs["response_start"], kwargs["response_end"]
     reward = torch.tensor(0.0).to(input_ids.device)
     if gt_answer is None:
         return reward
-    decoded_final_answer = tokenizer.decode(input_ids[s:e], skip_special_tokens=True)    
+    decoded_final_answer = tokenizer.decode(input_ids[s:e], skip_special_tokens=True)
     final_answer, processed_str = extract_solution(decoded_final_answer)
     is_valid = True
     try:
         int(final_answer.strip())
     except Exception:
         is_valid = False
-    
-    format_valid = validate_response_structure(processed_str, kwargs['tags'])
-    # print(f"${final_answer}$", f"${processed_str}$", is_valid, format_valid)
+
+    format_valid = validate_response_structure(processed_str, kwargs["tags"])
     if not is_valid or not format_valid:
         return reward
     else:

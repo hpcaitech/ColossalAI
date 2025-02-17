@@ -145,35 +145,14 @@ class NaiveExperienceMaker(ExperienceMaker):
         batch_base_action_log_probs = []
         batch_action_mask = []
         num_actions = 0
-        # print("input_ids", input_ids[0])
 
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
             s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
-            # print(s,e,self.inference_batch_size)
             num_ignore = 0  # 1 # random.choices([0,1,2], weights=[0.5,0.3,0.2])[0]
             if input_ids[s:e].size(0) == 0:
                 break
             if not self.use_tts_inference or num_ignore == 0:
                 sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
-
-                # prompt_len = input_ids[s:e].size(1)
-                # generate_kwargs["stops"] = ['<|endoftext|>', '</answer>']
-                # res = vllm_style_generate(
-                #     self.actor,
-                #     input_ids[s:e],
-                #     self.tokenizer,
-                #     **generate_kwargs,
-                # )
-                # self.tokenizer.padding_side = 'right'
-                # new_tokens = self.tokenizer(res, padding=True,
-                #                     add_special_tokens=False, return_tensors='pt')["input_ids"].to(input_ids.device)
-                # self.tokenizer.padding_side = 'left'
-                # sequences = torch.cat([input_ids[s:e,:prompt_len], new_tokens], dim=-1)
-
-                # sequences = torch.cat([input_ids[s:e].clone(), input_ids[s:e].clone().flip([-1])], dim=-1) # get dummy output for testing
-                # if dist.get_rank() == 0:
-                #     print(sequences[0])
-                #     print(self.tokenizer.decode(sequences[0]))
             else:
                 sequences = generate_tts(
                     self.actor,
@@ -269,15 +248,7 @@ class NaiveExperienceMaker(ExperienceMaker):
                     )
                 actor_output = torch.cat(actor_output, dim=0)
                 base_model_output = torch.cat(base_model_output, dim=0)
-                # torch.cat([self.actor(input_ids=sequences[i:i+self.logits_forward_batch_size],
-                #                                     attention_mask=attention_mask[i:i+self.logits_forward_batch_size])["logits"] \
-                #                                         for i in range(0, sequences.size(0), self.logits_forward_batch_size)], dim=0)
                 action_log_probs = calc_action_log_probs(actor_output, sequences, num_actions)
-
-                # base_model_output = torch.cat([self.initial_model(input_ids=sequences[i:i+self.logits_forward_batch_size],
-                #                                     attention_mask=attention_mask[i:i+self.logits_forward_batch_size])["logits"] \
-                #                                         for i in range(0, sequences.size(0), self.logits_forward_batch_size)], dim=0)
-
                 base_action_log_probs = calc_action_log_probs(base_model_output, sequences, num_actions)
 
             # Convert to right padding for the reward model and the critic model
@@ -327,8 +298,6 @@ class NaiveExperienceMaker(ExperienceMaker):
         action_log_probs = torch.cat(batch_action_log_probs, dim=0).to(sequences.device)
         base_action_log_probs = torch.cat(batch_base_action_log_probs, dim=0).to(sequences.device)
         action_mask = torch.cat(batch_action_mask, dim=0).to(sequences.device)
-        # print(sequences.size(), input_ids_rm.size(), attention_mask_rm.size(), r.size(), action_log_probs.size(),
-        #       base_action_log_probs.size(), action_mask.size())
         if not self.use_grpo:
             value = self.critic(
                 input_ids=input_ids_rm.to(dtype=torch.long, device=sequences.device),

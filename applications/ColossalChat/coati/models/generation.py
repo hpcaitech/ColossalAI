@@ -532,9 +532,6 @@ def generate_tts(
     new_tokens = tokenizer(res, padding=True, add_special_tokens=False, return_tensors="pt")["input_ids"].to(o.device)
     tokenizer.padding_side = "left"
     o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
-    # if dist.get_rank() == 0:
-    #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
-    #     print("###########\nfirst thought:\n",decoded)
     # Num of times to skip stop token
     for i in range(num_ignore):
         # add ignore prefix
@@ -566,9 +563,6 @@ def generate_tts(
         )
         tokenizer.padding_side = "left"
         o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
-        # if dist.get_rank() == 0:
-        #     decoded = tokenizer.decode(o[0],skip_special_tokens=False)
-        #     print(f"###########\n{i} thought:\n",decoded)
     o = repad_to_left(o, tokenizer)  # repad for generation
     prompt_len = o.size(1)
     model_kwargs["stops"] = [final_answer_stop]
@@ -592,9 +586,6 @@ def generate_tts(
     new_tokens = tokenizer(res, padding=True, add_special_tokens=False, return_tensors="pt")["input_ids"].to(o.device)
     tokenizer.padding_side = "left"
     o = torch.cat([o[:, :prompt_len], new_tokens], dim=-1)
-    # if dist.get_rank() == 0:
-    #     decoded = tokenizer.decode(o[0],skip_special_tokens=True)
-    #     print(f"###########\nFinal Answer:\n",decoded)
 
     # repad to aligh with the left padding of input id
     max_left_padded_seq_len = 0

@@ -358,7 +358,6 @@ class GRPOTrainer(OLTrainer):
         if self.offload_inference_models:
             self.experience_maker.initial_model.to("cpu")
             self.experience_maker.reward_model.to("cpu")
-        # print("data buffer size: ", len(self.data_buffer))
         # buffer may be empty at first, we should rebuild at each training
         if self.sample_buffer:
             experience = self.data_buffer.sample()

@@ -16,16 +16,6 @@ def math_competition_reward_fn(input_ids, attention_mask, **kwargs):
     final_answer, processed_str = extract_solution(decoded_final_answer)
 
     format_valid = validate_response_structure(processed_str, kwargs["tags"])
-    # if dist.get_rank()==0:
-    #     print(f"input_ids: {tokenizer.decode(input_ids, skip_special_tokens=True)}")
-    #     print(f"final answer: {decoded_final_answer}")
-    #     print(f"gt answer: {gt_answer}")
-    #     if format_valid:
-    #         answer_reward = gt_answer.strip().replace(" ", "").lower() == final_answer.strip().replace(" ", "").lower()
-    #         print(f"format_valid: {format_valid}, final_answer_valid: {answer_reward}")
-    #     else:
-    #         print(f"format_valid: {format_valid}")
-    # print(f"${final_answer}$", f"${processed_str}$", is_valid, format_valid)
     if not format_valid:
         return reward
     else:
