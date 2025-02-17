@@ -5,13 +5,6 @@
         151643
     ],
     "end_of_assistant": "<|endoftext|>",
-    "tts_config": {
-        "tts_thought_stop": "</think>",
-        "tts_final_answer_stop": "</answer>",
-        "tts_think_prefix": "<think>",
-        "tts_final_answer_prefix": "<answer>",
-        "tts_reflexion_prefix": "\nWait"
-    },
     "response_format_tags": {
         "think_start": {
             "text": "<think>",

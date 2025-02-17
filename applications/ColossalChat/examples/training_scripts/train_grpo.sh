@@ -19,9 +19,9 @@ PROJECT_NAME="PPO-RLVR"
 
 PARENT_SAVE_DIR="/home/yeanbang/experiments/grpo/model_extend" # Path to a folder to save checkpoints
 PARENT_CONFIG_FILE="/home/yeanbang/experiments/grpo" # Path to a folder to save training config logs
-PRETRAINED_MODEL_PATH="/home/yeanbang/experiments/grpo/sft/modelSFT-2025-02-16-18-28-49/modeling" # local pretrained model path (from RLHF step 1: SFT)
+PRETRAINED_MODEL_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-3B" # local pretrained model path (from RLHF step 1: SFT)
 PRETRAINED_TOKENIZER_PATH="/mnt/jfs-hdd/share/models/Qwen2.5-3B" # huggingface or local tokenizer path
-CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/ColossalChat/conversation_template/Qwen_Qwen2.5-7B-Instruct.json" # path to the conversation config file
+CONVERSATION_TEMPLATE_CONFIG_PATH="/home/yeanbang/ColossalAI/applications/ColossalChat/conversation_template/Qwen_Qwen2.5-3B.json" # path to the conversation config file
 LOGDIR="/home/yeanbang/experiments/grpo/log_model_extend"
 
 declare -a prompt_dataset=(
@@ -70,8 +70,8 @@ colossalai run --nproc_per_node 8 --num_nodes 1 --hostfile ./hostfile train_grpo
     --num_update_steps 1 \
     --experience_batch_size 1 \
     --train_batch_size 4 \
-    --inference_batch_size 4 \
-    --logits_forward_batch_size 1 \
+    --inference_batch_size 8 \
+    --logits_forward_batch_size 2 \
     --accumulation_steps 4 \
     --lr 1e-6 \
     --mixed_precision "bf16" \
@@ -79,8 +79,8 @@ colossalai run --nproc_per_node 8 --num_nodes 1 --hostfile ./hostfile train_grpo
     --weight_decay 0.01 \
     --kl_coef 0.01 \
     --warmup_steps 40 \
-    --max_length 4000 \
-    --max_seq_len 3700 \
+    --max_length 2000 \
+    --max_seq_len 1700 \
     --log_dir $LOGDIR \
     --use_flash_attn \
     --grad_checkpoint

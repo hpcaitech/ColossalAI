@@ -103,9 +103,7 @@ class GRPOTrainer(OLTrainer):
         num_generation: int = 8,
         inference_batch_size: int = None,
         logits_forward_batch_size: int = None,
-        use_tts_inference: bool = False,
         temperature_annealing_config: Optional[Dict] = None,
-        tts_config: Optional[Dict[str, str]] = None,
         coordinator: DistCoordinator = None,
         callbacks: List[Callback] = [],
         **generate_kwargs,
@@ -122,33 +120,18 @@ class GRPOTrainer(OLTrainer):
         self.actor_booster = actor_booster
         self.actor_scheduler = actor_lr_scheduler
         self.tokenizer = tokenizer
-        if not use_tts_inference:
-            self.experience_maker = NaiveExperienceMaker(
-                self.actor,
-                None,
-                reward_model,
-                initial_model,
-                self.tokenizer,
-                kl_coef,
-                use_grpo=True,
-                num_generation=num_generation,
-                inference_batch_size=inference_batch_size,
-                logits_forward_batch_size=logits_forward_batch_size,
-            )
-        else:
-            self.experience_maker = NaiveExperienceMaker(
-                self.actor,
-                None,
-                reward_model,
-                initial_model,
-                self.tokenizer,
-                kl_coef,
-                use_grpo=True,
-                num_generation=num_generation,
-                inference_batch_size=inference_batch_size,
-                use_tts_inference=use_tts_inference,
-                **tts_config,
-            )
+        self.experience_maker = NaiveExperienceMaker(
+            self.actor,
+            None,
+            reward_model,
+            initial_model,
+            self.tokenizer,
+            kl_coef,
+            use_grpo=True,
+            num_generation=num_generation,
+            inference_batch_size=inference_batch_size,
+            logits_forward_batch_size=logits_forward_batch_size,
+        )
         if temperature_annealing_config:
             # use annealing
             self.temperature_annealing_scheduler = AnnealingScheduler(

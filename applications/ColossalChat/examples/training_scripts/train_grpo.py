@@ -29,16 +29,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 logger = get_dist_logger()
-
-# default settings for test time scaling inference (TTS), overwrite it in chat_template definition if doesn't work
-tts_config = {
-    "tts_thought_stop": "</think>",  # Hack: some model's tokenizer use BPE leads to undeterminated behavior
-    "tts_final_answer_stop": "</answer>",
-    "tts_think_prefix": "<think>",
-    "tts_final_answer_prefix": "<answer>",
-    "tts_reflexion_prefix": "\nWait",
-}
-
 # default settings for response format tags, overwrite it in chat_template definition if needed
 response_format_tags = {
     "think_start": {"text": "<think>", "num_occur": 1},
@@ -49,7 +39,7 @@ response_format_tags = {
 
 
 def train(args):
-    global response_format_tags, tts_config
+    global response_format_tags
     lora_config = None
     if args.lora_config is not None:
         lora_config = LoraConfig.from_file(args.lora_config)
@@ -126,9 +116,6 @@ def train(args):
         with open(args.conversation_template_config, "r", encoding="utf8") as f:
             conversation_template_config = json.load(f)
         dist.barrier()
-        if "tts_config" in conversation_template_config:
-            logger.warning(f"Overwrite default TTS config with {args.conversation_template_config}")
-            tts_config = conversation_template_config.get("tts_config", tts_config)
         if "response_format_tags" in conversation_template_config:
             logger.warning(f"Overwrite default response format tags with {args.conversation_template_config}")
             response_format_tags = conversation_template_config.get("response_format_tags", response_format_tags)
@@ -404,14 +391,12 @@ def train(args):
         num_generations=args.num_generations,
         inference_batch_size=args.inference_batch_size,
         logits_forward_batch_size=args.logits_forward_batch_size,
-        use_tts_inference=args.use_tts_inference,
-        tts_config=tts_config if args.use_tts_inference else None,
         offload_inference_models="gemini" not in args.plugin,
         coordinator=coordinator,
         max_tokens_thinking=args.max_tokens_thinking if args.max_tokens_thinking else args.max_length - 100,
         temperature_annealing_config={
-            "start_temperature": 1.0,
-            "end_temperature": args.temperature,
+            "start_temperature": args.initial_temperature,
+            "end_temperature": args.final_temperature,
             "annealing_warmup_steps": min(100, int(args.num_episodes / 6)),
             "annealing_steps": min(600, int(args.num_episodes / 2)),
         },
@@ -498,11 +483,12 @@ if __name__ == "__main__":
     parser.add_argument("--max_length", type=int, default=2048)
     parser.add_argument("--max_tokens_thinking", type=int, default=2000)
     parser.add_argument("--max_seq_len", type=int, default=256)
-    parser.add_argument("--temperature", type=float, default=0.9)
+    parser.add_argument("--initial_temperature", type=float, default=1.0)
+    parser.add_argument("--final_temperature", type=float, default=0.9)
     parser.add_argument("--log_dir", default=None, type=str)
     parser.add_argument("--use_wandb", default=False, action="store_true")
     parser.add_argument("--grad_checkpoint", default=False, action="store_true")
     parser.add_argument("--use_flash_attn", default=False, action="store_true")
-    parser.add_argument("--use_tts_inference", default=False, action="store_true")
+
     args = parser.parse_args()
     train(args)

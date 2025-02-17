@@ -27,6 +27,7 @@
     - [Reward](#reward)
     - [KL Divergence](#approximate-kl-divergence)
   - [Note on PPO Training](#note-on-ppo-training)
+  - [GRPO Training and DeepSeek R1 reproduction]
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
@@ -725,6 +726,75 @@ Answer: The causes of this problem are two-fold. Check your reward model, make s
 #### Q4: Generation is garbage
 Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add supervised loss during PPO. Set ptx_coef to an non-zero value (between 0 and 1), which balances PPO loss and sft loss.
 
+## GRPO Training and DeepSeek R1 reproduction
+We support GRPO (Group Relative Policy Optimization), which is the reinforcement learning algorithm used in DeepSeek R1 paper. In this section, we will walk through GRPO training with an example trying to reproduce Deepseek R1's results in mathematical problem solving.
+
+### GRPO Model Selection
+We finally select the base version of [Qwen2.5-3B](https://huggingface.co/Qwen/Qwen2.5-3B). We also did experiments on the instruct version [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) but the later one fails to explore more diversed output. We recommend to use base models (without SFT) and use a few SFT steps (see [SFT section](#rlhf-training-stage1---supervised-instructs-tuning)) to correct the base model's output format before GRPO.
+
+### Reinforcement Learning with Verifiable Reward
+Both the PPO and the GRPO support reinforcement learning with verifiable reward (RLVR). In this experiment on mathematical problem solving, we define the reward function as following, in the following definition, forward is correct if there are exactly one pair of <think></think>, <answer></answer> tags in the response and the order of the tags is correct.
+
+- reward=0, if format is incorrect.
+- reward=1, if format is correct but the answer doesn't match the ground truth answer exactly.
+- reward=10, if format is correct and the answer match the ground truth answer exactly.
+
+### Step 1: Data Collection & Preparation
+For GPRO training, you only need the prompt dataset. Please follow the instruction in the [prompt dataset preparation](#rlhf-training-stage3---proximal-policy-optimization) to prepare the prompt data for GPRO training. In our reproduction experiment, we use the [qwedsacf/competition_math dataset](https://huggingface.co/datasets/qwedsacf/competition_math), which is available on Huggingface.
+
+### Step 2: Training
+You can run the [train_grpo.sh](./training_scripts/train_grpo.sh) to start GRPO training. The script share most of its arguments with the PPO script (please refer to the [PPO training section](#step-3-training) for more details). Here are some unique arguments for GRPO.
+
+```bash
+--num_generations 8 \ # number of roll outs to collect for each prompt
+--inference_batch_size 8 \ # batch size used during roll out
+--logits_forward_batch_size 1 \ # batch size used to calculate logits for GRPO training
+--initial_temperature \ # initial temperature for annealing algorithm
+--final_temperature \ # final temperature for annealing algorithm
+```
+
+As the GRPO requires to collect a group of response from each prompt (usually greater than 8), the effective batch size will satisfy the following constraints,
+
+- Without tensor parallelism,
+```
+experience buffer size
+= num_process * num_collect_steps * experience_batch_size * num_generations
+= train_batch_size * accumulation_steps * num_process
+```
+
+- With tensor parallelism,
+```
+num_tp_group = num_process / tp
+experience buffer size
+= num_tp_group * num_collect_steps * experience_batch_size * num_generations
+= train_batch_size * accumulation_steps * num_tp_group
+```
+
+During roll out, we perform rebatching to prevent out of memory both before roll out and before calculating logits. Please choose a proper setting for the "inference_batch_size" and the "logits_forward_batch_size" based on your device.
+
+### GRPO Result
+#### Reward
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png">
+</p>
+
+#### Response Length
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png">
+</p>
+
+#### Response Length Distribution (After Training)
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png">
+</p>
+
+#### Sample Response
+<p align="center">
+<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/res.png">
+</p>
+
+#### Note of Speed
+Currently, our PPO and GRPO pipeline are still under development. The speed is largely limited by the roll out speed as we use naive generation without any acceleration.
 
 ## Alternative Option For RLHF: Direct Preference Optimization
 

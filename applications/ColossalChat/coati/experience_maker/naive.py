@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from coati.dataset.utils import find_first_occurrence_subsequence
 from coati.models import Critic, RewardModel
-from coati.models.generation import generate, generate_tts
+from coati.models.generation import generate
 from coati.models.utils import calc_action_log_probs, compute_reward
 from transformers import PreTrainedModel, PreTrainedTokenizer
 
@@ -44,12 +44,6 @@ class NaiveExperienceMaker(ExperienceMaker):
         num_generation: int = 8,
         inference_batch_size: int = None,
         logits_forward_batch_size: int = 2,
-        use_tts_inference: bool = False,
-        tts_thought_stop: str = None,
-        tts_final_answer_stop: str = None,
-        tts_think_prefix: str = None,
-        tts_final_answer_prefix: str = None,
-        tts_reflexion_prefix: str = None,
     ) -> None:
         super().__init__(actor, critic, reward_model, initial_model)
         self.tokenizer = tokenizer
@@ -60,18 +54,6 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.num_generation = num_generation
         self.inference_batch_size = inference_batch_size
         self.logits_forward_batch_size = logits_forward_batch_size
-        self.use_tts_inference = use_tts_inference
-        if self.use_tts_inference:
-            assert tts_thought_stop is not None, "Test time scaling requires thought stop identifier"
-            assert tts_final_answer_stop is not None, "Test time scaling requires final answer stop identifier"
-            assert tts_think_prefix is not None, "Test time scaling requires thought prefix"
-            assert tts_reflexion_prefix is not None, "Test time scaling requires reflexion prefix"
-            assert tts_final_answer_prefix is not None, "Test time scaling requires final answer prefix"
-            self.tts_thought_stop = tts_thought_stop
-            self.tts_final_answer_stop = tts_final_answer_stop
-            self.tts_think_prefix = torch.tensor(tokenizer.encode(tts_think_prefix, add_special_tokens=False))
-            self.tts_reflexion_prefix = tts_reflexion_prefix
-            self.tts_final_answer_prefix = tts_final_answer_prefix
         if not self.use_grpo:
             assert self.critic is not None, "Critic model is required for PPO training."
         else:
@@ -124,6 +106,17 @@ class NaiveExperienceMaker(ExperienceMaker):
         self.reward_model.eval()
         pad_token_id = self.tokenizer.pad_token_id
         stop_token_ids = generate_kwargs.get("stop_token_ids", None)
+        if isinstance(stop_token_ids, int):
+            stop_token_ids = [[stop_token_ids]]
+        elif isinstance(stop_token_ids[0], int):
+            stop_token_ids = [stop_token_ids]
+        elif isinstance(stop_token_ids[0], list):
+            pass
+        else:
+            raise ValueError(
+                f"stop_token_ids should be a list of list of integers, a list of integers or an integers. got {stop_token_ids}"
+            )
+        generate_kwargs["stop_token_ids"] = stop_token_ids
         torch.manual_seed(41)  # for tp, gurantee the same input for reward model
 
         if self.use_grpo and self.num_generation > 1:
@@ -148,28 +141,10 @@ class NaiveExperienceMaker(ExperienceMaker):
 
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
             s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
-            num_ignore = 0  # 1 # random.choices([0,1,2], weights=[0.5,0.3,0.2])[0]
             if input_ids[s:e].size(0) == 0:
                 break
-            if not self.use_tts_inference or num_ignore == 0:
-                sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
-            else:
-                sequences = generate_tts(
-                    self.actor,
-                    input_ids[s:e],
-                    self.tokenizer,
-                    think_prefix=self.tts_think_prefix.to(input_ids.device),
-                    final_answer_prefix=self.tts_final_answer_prefix,
-                    thought_stop=self.tts_thought_stop,
-                    final_answer_stop=self.tts_final_answer_stop,
-                    num_ignore=num_ignore,
-                    ignore_prefix=self.tts_reflexion_prefix,
-                    **generate_kwargs,
-                )
+            sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
             sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
-            # if dist.get_rank() == 0:
-            #     decoded = self.tokenizer.decode(sequences[0])
-            #     print(decoded)
 
             # Pad to max length
             sequence_length = sequences.size(1)
@@ -201,22 +176,11 @@ class NaiveExperienceMaker(ExperienceMaker):
                     ]
                     stop_index = min([i for i in stop_token_pos if i != -1], default=-1)
                     stop_token_id = stop_token_ids[stop_token_pos.index(stop_index)]
-                    # if stop_index == -1:
-                    #     # use tokenizer.pad_token_id to stop
-                    #     stop_index = find_first_occurrence_subsequence(
-                    #         sequences[i][input_len:], torch.tensor([self.tokenizer.pad_token_id]).to(sequences.device)
-                    #     )
-                    #     # replace with stop token ids
-                    #     if stop_index != -1:
-                    #         padding_len = generate_kwargs["max_length"] - stop_index - 1
-                    #         sequences[i][input_len + stop_index:input_len + stop_index + len(stop_token_id)] = torch.tensor(stop_token_id).to(sequences.device)[:padding_len]
                     if stop_index == -1:
                         # Sequence does not contain stop_token_ids, this should never happen BTW
                         logger.warning(
                             "Generated sequence does not contain stop_token_ids. Please check your chat template config"
                         )
-                        # torch.set_printoptions(threshold=10_000)
-                        # print(sequences[i][input_len:500], stop_token_ids)
                         print(self.tokenizer.decode(sequences[i], skip_special_tokens=True))
                     else:
                         # Keep stop tokens
@@ -233,7 +197,6 @@ class NaiveExperienceMaker(ExperienceMaker):
                 actor_output = []
                 base_model_output = []
                 for i in range(0, sequences.size(0), self.logits_forward_batch_size):
-                    # print(sequences[i:i+self.logits_forward_batch_size].size(), attention_mask[i:i+self.logits_forward_batch_size].size())
                     actor_output.append(
                         self.actor(
                             input_ids=sequences[i : i + self.logits_forward_batch_size],
