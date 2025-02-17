@@ -717,6 +717,7 @@ done
 echo "[Test]: testing KTO ..."
 
 SKIPPED_TESTS=(
+    llama-3d-0
     llama-3d-20 # 3d plugin doesn't support lora
     llama-gemini_auto-20  # gemini_auto plugin doesn't support lora
     llama-gemini-20 # gemini doesn't support lora

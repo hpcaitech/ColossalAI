@@ -144,6 +144,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             if input_ids[s:e].size(0) == 0:
                 break
             sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
+            # pad to max_len, you don't want to get an OOM error after a thousands of steps
             sequences = F.pad(sequences, (0, generate_kwargs["max_length"] - sequences.size(1)), value=pad_token_id)
 
             # Pad to max length
@@ -201,12 +202,14 @@ class NaiveExperienceMaker(ExperienceMaker):
                         self.actor(
                             input_ids=sequences[i : i + self.logits_forward_batch_size],
                             attention_mask=attention_mask[i : i + self.logits_forward_batch_size],
+                            use_cache=False,
                         )["logits"]
                     )
                     base_model_output.append(
                         self.initial_model(
                             input_ids=sequences[i : i + self.logits_forward_batch_size],
                             attention_mask=attention_mask[i : i + self.logits_forward_batch_size],
+                            use_cache=False,
                         )["logits"]
                     )
                 actor_output = torch.cat(actor_output, dim=0)
