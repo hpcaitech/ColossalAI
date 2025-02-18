@@ -2,8 +2,6 @@
 
 
 ## Table of Contents
-
-
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
   - [Install Requirements](#install-requirements)
@@ -27,14 +25,14 @@
     - [Reward](#reward)
     - [KL Divergence](#approximate-kl-divergence)
   - [Note on PPO Training](#note-on-ppo-training)
-  - [GRPO Training and DeepSeek R1 reproduction]
+  - [GRPO Training and DeepSeek R1 reproduction](#grpo-training-and-deepseek-r1-reproduction)
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
   - [Alternative Option For RLHF: Simple Preference Optimization](#alternative-option-for-rlhf-simple-preference-optimization)
   - [Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
   - [Alternative Option For RLHF: Odds Ratio Preference Optimization](#alternative-option-for-rlhf-odds-ratio-preference-optimization)
-  - [List of Supported Models](#list-of-supported-models)
+  - [SFT for DeepSeek V3](#sft-for-deepseek-v3)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
@@ -729,6 +727,8 @@ Answer: Yes, this happens and is well documented by other implementations. After
 ## GRPO Training and DeepSeek R1 reproduction
 We support GRPO (Group Relative Policy Optimization), which is the reinforcement learning algorithm used in DeepSeek R1 paper. In this section, we will walk through GRPO training with an example trying to reproduce Deepseek R1's results in mathematical problem solving.
 
+**Note: Currently, our PPO and GRPO pipelines are still under extensive development (integration with Ray and the inference engine). The speed is primarily limited by the rollout process, as we are using a naive generation approach without any acceleration. This experiment is focused solely on verifying the correctness of the GRPO algorithm. We will open-source the new version of code as soon as possible, so please stay tuned.**
+
 ### GRPO Model Selection
 We finally select the base version of [Qwen2.5-3B](https://huggingface.co/Qwen/Qwen2.5-3B). We also did experiments on the instruct version [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) but the later one fails to explore more diversed output. We recommend to use base models (without SFT) and use a few SFT steps (see [SFT section](#rlhf-training-stage1---supervised-instructs-tuning)) to correct the base model's output format before GRPO.
 
@@ -773,32 +773,20 @@ experience buffer size
 During roll out, we perform rebatching to prevent out of memory both before roll out and before calculating logits. Please choose a proper setting for the "inference_batch_size" and the "logits_forward_batch_size" based on your device.
 
 ### GRPO Result
-#### Reward
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png">
-</p>
+#### Reward and Response Length
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png" style="width: 48%;" />
+</div>
 
-#### Response Length
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png">
-</p>
+#### Response Length Distribution (After Training) and Sample response
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/sample.png" style="width: 48%;" />
+</div>
 
-#### Response Length Distribution (After Training)
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png">
-</p>
-
-#### Sample Response
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/res.png">
-</p>
-
-#### Note of Speed
-Currently, our PPO and GRPO pipeline are still under development. The speed is largely limited by the roll out speed as we use naive generation without any acceleration.
 
 ## Alternative Option For RLHF: Direct Preference Optimization
-
-
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
 
 
@@ -884,8 +872,38 @@ For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) 
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/KTO.png">
 </p>
 
-## Hardware Requirements
 
+### SFT for DeepSeek V3
+We add a script to supervised-fintune the DeepSeek V3/R1 model with LoRA. The script is located in `examples/training_scripts/lora_fintune.py`. The script is similar to the SFT script for Coati7B, but with a few differences. This script is compatible with Peft.
+
+#### Dataset preparation
+
+This script receives JSONL format file as input dataset. Each line of dataset should be a list of chat dialogues. E.g.
+```json
+[{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing great. How can I help you today?"}]
+```
+```json
+[{"role": "user", "content": "火烧赤壁 曹操为何不拨打119求救？"}, {"role": "assistant", "content": "因为在三国时期，还没有电话和现代的消防系统，所以曹操无法拨打119求救。"}]
+```
+
+The dialogues can by multiple turns and it can contain system prompt. For more details, see the [chat_templating](https://huggingface.co/docs/transformers/main/chat_templating).
+
+#### Model weights preparation
+
+We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
+
+#### Usage
+
+After preparing the dataset and model weights, you can run the script with the following command:
+```bash
+colossalai run --hostfile path-to-host-file --nproc_per_node 8 lora_finetune.py --pretrained path-to-DeepSeek-R1-bf16 --dataset path-to-dataset.jsonl --plugin moe --lr 2e-5 --max_length 256 -g --ep 8 --pp 3 --batch_size 24 --lora_rank 8 --lora_alpha 16 --num_epochs 2 --warmup_steps 8 --tensorboard_dir logs --save_dir DeepSeek-R1-bf16-lora
+```
+
+For more details of each argument, you can run `python lora_finetune.py --help`.
+
+The sample command does not use CPU offload to get better throughput. The minimum hardware requirement for sample command is 32 ascend 910B NPUs (with `ep=8,pp=4`) or 24 H100/H800 GPUs (with `ep=8,pp=3`). If you enable CPU offload by `--zero_cpu_offload`, the hardware requirement can be further reduced.
+
+## Hardware Requirements
 For SFT, we recommend using zero2 or zero2-cpu for 7B model and tp is your model is extra large. We tested the VRAM consumption on a dummy dataset with a sequence length of 2048. In all experiments, we use H800 GPUs with 80GB VRAM and enable gradient checkpointing and flash attention.
 - 2 H800 GPU
   - zero2-cpu, micro batch size=4, VRAM Usage=22457.98 MB
@@ -942,35 +960,9 @@ For KTO, we recommend using zero2-cpu or zero2 plugin, We tested the VRAM consum
   - zero2_cpu, micro batch size=2, VRAM_USAGE=32443.22 MB
   - zero2, micro batch size=4, VRAM_USAGE=59307.97 MB
 
-## List of Supported Models
-
-For SFT, we support the following models/series:
-- Colossal-LLaMA-2
-- ChatGLM2
-- ChatGLM3 (only with zero2, zero2_cpu plugin)
-- Baichuan2
-- LLaMA2
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-For PPO and DPO, we theoratically support the following models/series (without guarantee):
-- Colossal-LLaMA-2 (tested)
-- ChatGLM2
-- Baichuan2
-- LLaMA2 (tested)
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-*-* The zero2, zero2_cpu plugin also support a wide range of chat models not listed above.
-
 ## Inference example
-
-
 We support different inference options, including int8 and int4 quantization.
 For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-
 ## Attention
-
-
 The examples are demos for the whole training process. You need to change the hyper-parameters to reach great performance.

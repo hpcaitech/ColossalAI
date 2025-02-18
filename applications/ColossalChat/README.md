@@ -7,32 +7,23 @@
 ## Table of Contents
 
 - [Table of Contents](#table-of-contents)
-- [What is ColossalChat and Coati ?](#what-is-colossalchat-and-coati-)
+- [What is ColossalChat?](#what-is-colossalchat)
 - [Online demo](#online-demo)
 - [Install](#install)
   - [Install the environment](#install-the-environment)
   - [Install the Transformers](#install-the-transformers)
-- [How to use?](#how-to-use)
+- [Introduction](#introduction)
   - [Supervised datasets collection](#step-1-data-collection)
   - [RLHF Training Stage1 - Supervised instructs tuning](#rlhf-training-stage1---supervised-instructs-tuning)
   - [RLHF Training Stage2 - Training reward model](#rlhf-training-stage2---training-reward-model)
   - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#rlhf-training-stage3---proximal-policy-optimization)
+  - [Alternative Option for RLHF: GRPO](#alternative-option-for-rlhf-group-relative-policy-optimization-grpo)
+  - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
+  - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
+  - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
+  - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
+  - [SFT for DeepSeek V3/R1](#sft-for-deepseek-v3)
   - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
-- [Coati7B examples](#coati7b-examples)
-  - [Generation](#generation)
-  - [Open QA](#open-qa)
-  - [Limitation for LLaMA-finetuned models](#limitation)
-  - [Limitation of dataset](#limitation)
-- [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
-- [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
-- [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
-- [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
-- [O1 Journey](#o1-journey)
-  - [Inference with Self-refined MCTS](#inference-with-self-refined-mcts)
-- [SFT for DeepSeek V3/R1](#sft-for-deepseek-v3)
-- [FAQ](#faq)
-  - [How to save/load checkpoint](#faq)
-  - [How to train with limited resources](#faq)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
@@ -41,9 +32,9 @@
 
 ---
 
-## What Is ColossalChat And Coati ?
+## What is ColossalChat?
 
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalChat) is a project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI).
 
 Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
 
@@ -54,8 +45,6 @@ The Coati package provides a unified large language model framework that has imp
 - Supervised instructions fine-tuning
 - Training reward model
 - Reinforcement learning with human feedback
-- Quantization inference
-- Fast model deploying
 - Perfectly integrated with the Hugging Face ecosystem, a high degree of model customization
 
 <div align="center">
@@ -115,76 +104,15 @@ cd $COLOSSAL_AI_ROOT/applications/ColossalChat
 pip install .
 ```
 
-## How To Use?
+## Introduction
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [example guideline](./examples/README.md).
-
-#### Step 1: Data Collection
-The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
-
-```json
-[
-    {"messages":
-      [
-        {
-          "from": "user",
-          "content": "what are some pranks with a pen i can do?"
-        },
-        {
-          "from": "assistant",
-          "content": "Are you looking for practical joke ideas?"
-        },
-      ]
-    },
-]
-```
-
-#### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formatting and tokenization. In this section, we will focus on formatting and tokenization.
-
-In this code, we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the [example guideline](./examples/README.md) on how to format and tokenize data.
-
-#### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More details can be found in [example guideline](./examples/README.md).
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage2 - Training Reward Model
 
 Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
-
-#### Step 1: Data Collection
-Below shows the preference dataset format used in training the reward model.
-
-```json
-[
-    {"context": [
-        {
-          "from": "human",
-          "content": "Introduce butterflies species in Oregon."
-        }
-      ],
-      "chosen": [
-        {
-          "from": "assistant",
-          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
-        },
-      ],
-      "rejected": [
-        {
-          "from": "assistant",
-          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
-        },
-      ]
-    },
-]
-```
-
-#### Step 2: Preprocessing
-Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
-
-#### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
 
@@ -194,86 +122,26 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
-#### Step 1: Data Collection
-PPO uses two kind of training data--- the prompt data and the sft data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
-```json
-[
-    {"messages":
-      [
-        {
-          "from": "human",
-          "content": "what are some pranks with a pen i can do?"
-        }
-      ]
-    },
-]
-```
-
-#### Step 2: Data Preprocessing
-To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
-
-#### Step 3: Training
-You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [example guideline](./examples/README.md).
-
-```bash
---pretrain $PRETRAINED_MODEL_PATH \
---rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
---tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
---rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
---prompt_dataset ${prompt_dataset[@]} \ # List of string, the prompt dataset
---ptx_dataset ${ptx_dataset[@]} \ # List of string, the SFT data used in the SFT stage
---ptx_batch_size 1 \ # batch size for calculate ptx loss
---ptx_coef 0.0 \ # none-zero if ptx loss is enable
---num_episodes 2000 \ # number of episodes to train
---num_collect_steps 1 \
---num_update_steps 1 \
---experience_batch_size 8 \
---train_batch_size 4 \
---accumulation_steps 2
-```
-
-Each episode has two phases, the collect phase and the update phase. During the collect phase, we will collect experiences (answers generated by actor), store those in ExperienceBuffer. Then data in ExperienceBuffer is used during the update phase to update parameter of actor and critic.
-
-- Without tensor parallelism,
-```
-experience buffer size
-= num_process * num_collect_steps * experience_batch_size
-= train_batch_size * accumulation_steps * num_process
-```
-
-- With tensor parallelism,
-```
-num_tp_group = num_process / tp
-experience buffer size
-= num_tp_group * num_collect_steps * experience_batch_size
-= train_batch_size * accumulation_steps * num_tp_group
-```
-
-## Alternative Option For RLHF: Direct Preference Optimization (DPO)
+### Alternative Option For RLHF: Direct Preference Optimization (DPO)
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in this [paper](https://arxiv.org/abs/2305.18290), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO. Read this [README](./examples/README.md) for more information.
 
-### DPO Training Stage1 - Supervised Instructs Tuning
-
-Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tuning) in the PPO part.
-
-### DPO Training Stage2 - DPO Training
-#### Step 1: Data Collection & Preparation
-For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
-
-#### Step 2: Training
-You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [example guideline](./examples/README.md).
-
-## Alternative Option For RLHF: Simple Preference Optimization (SimPO)
+### Alternative Option For RLHF: Simple Preference Optimization (SimPO)
 Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2405.14734) is similar to DPO but it abandons the use of the reference model, which makes the training more efficient. It also adds a reward shaping term called target reward margin to enhance training stability. It also use length normalization to better align with the inference process. Read this [README](./examples/README.md) for more information.
 
-## Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
+### Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
 Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pdf/2403.07691) is a reference model free alignment method that use a mixture of SFT loss and a reinforcement leanring loss calculated based on odds-ratio-based implicit reward to makes the training more efficient and stable. Read this [README](./examples/README.md) for more information.
 
-## Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
 We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
 
-## Inference Quantization and Serving - After Training
+### Alternative Option For RLHF: Group Relative Policy Optimization (GRPO)
+We support the main algorithm used to train DeepSeek R1 model, a variant of Proximal Policy Optimization (PPO), that enhances mathematical reasoning abilities while concurrently optimizing the memory usage of PPO. Read this [README](./examples/README.md) for more information.
+
+### SFT for DeepSeek V3
+We support fine-tuning DeepSeek V3/R1 model with LoRA. Read this [README](./examples/README.md) for more information.
+
+### Inference Quantization and Serving - After Training
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
@@ -282,213 +150,7 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-## O1 Journey
-### Inference with Self-refined MCTS
-We provide the implementation of MCT Self-Refine (MCTSr) algorithm, an innovative integration of Large Language Models with Monte Carlo Tree Search.
-You can serve model using vLLM and update the config file in `Qwen32B_prompt_CFG` and then run the following script.
-```python
-from coati.reasoner.guided_search.mcts import MCTS
-from coati.reasoner.guided_search.prompt_store.qwen import Qwen32B_prompt_CFG
-
-problem = "How Many R in 'Strawberry'"
-
-search_tree = MCTS(problem=problem, max_simulations=8, cfg=Qwen32B_prompt_CFG)
-answer = search_tree.simulate()
-print(answer)
-```
-
-## Coati7B examples
-
-### Generation
-
-<details><summary><b>E-mail</b></summary>
-
-![phd](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Phd.png)
-
-</details>
-
-<details><summary><b>coding</b></summary>
-
-![sort](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/quick_sort.png)
-
-</details>
-
-<details><summary><b>regex</b></summary>
-
-![regex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/regex.png)
-
-</details>
-
-<details><summary><b>Tex</b></summary>
-
-![tex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/tex.png)
-
-</details>
-
-<details><summary><b>writing</b></summary>
-
-![writing](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/writing.png)
-
-</details>
-
-<details><summary><b>Table</b></summary>
-
-![Table](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/table.png)
-
-</details>
-
-### Open QA
-
-<details><summary><b>Game</b></summary>
-
-![Game](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/game.png)
-
-</details>
-
-<details><summary><b>Travel</b></summary>
-
-![Travel](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/travel.png)
-
-</details>
-
-<details><summary><b>Physical</b></summary>
-
-![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/physical.png)
-
-</details>
-
-<details><summary><b>Chemical</b></summary>
-
-![Chemical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/chemical.png)
-
-</details>
-
-<details><summary><b>Economy</b></summary>
-
-![Economy](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/economy.png)
-
-</details>
-
-You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
-
-### Limitation
-
-<details><summary><b>Limitation for LLaMA-finetuned models</b></summary>
-- Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
-- Lack of counting ability: Cannot count the number of items in a list.
-- Lack of Logics (reasoning and calculation)
-- Tend to repeat the last sentence (fail to produce the end token).
-- Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
-</details>
-
-<details><summary><b>Limitation of dataset</b></summary>
-- Lack of summarization ability: No such instructions in finetune datasets.
-- Lack of multi-turn chat: No such instructions in finetune datasets
-- Lack of self-recognition: No such instructions in finetune datasets
-- Lack of Safety:
-  - When the input contains fake facts, the model makes up false facts and explanations.
-  - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
-</details>
-
-## SFT for DeepSeek V3
-
-We add a script to supervised-fintune the DeepSeek V3/R1 model with LoRA. The script is located in `examples/training_scripts/lora_fintune.py`. The script is similar to the SFT script for Coati7B, but with a few differences. This script is compatible with Peft.
-
-### Dataset preparation
-
-This script receives JSONL format file as input dataset. Each line of dataset should be a list of chat dialogues. E.g.
-```json
-[{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing great. How can I help you today?"}]
-```
-```json
-[{"role": "user", "content": "火烧赤壁 曹操为何不拨打119求救？"}, {"role": "assistant", "content": "因为在三国时期，还没有电话和现代的消防系统，所以曹操无法拨打119求救。"}]
-```
-
-The dialogues can by multiple turns and it can contain system prompt. For more details, see the [chat_templating](https://huggingface.co/docs/transformers/main/chat_templating).
-
-### Model weights preparation
-
-We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
-
-### Usage
-
-After preparing the dataset and model weights, you can run the script with the following command:
-```bash
-colossalai run --hostfile path-to-host-file --nproc_per_node 8 lora_finetune.py --pretrained path-to-DeepSeek-R1-bf16 --dataset path-to-dataset.jsonl --plugin moe --lr 2e-5 --max_length 256 -g --ep 8 --pp 3 --batch_size 24 --lora_rank 8 --lora_alpha 16 --num_epochs 2 --warmup_steps 8 --tensorboard_dir logs --save_dir DeepSeek-R1-bf16-lora
-```
-
-For more details of each argument, you can run `python lora_finetune.py --help`.
-
-The sample command does not use CPU offload to get better throughput. The minimum hardware requirement for sample command is 32 ascend 910B NPUs (with `ep=8,pp=4`) or 24 H100/H800 GPUs (with `ep=8,pp=3`). If you enable CPU offload by `--zero_cpu_offload`, the hardware requirement can be further reduced.
-
-## FAQ
-
-<details><summary><b>How to save/load checkpoint</b></summary>
-
-We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
-
-- Option 1: Save the model weights, model config and generation config (Note: tokenizer will not be saved) which can be loaded using HF's from_pretrained method.
-```python
-# if use lora, you can choose to merge lora weights before saving
-if args.lora_rank > 0 and args.merge_lora_weights:
-        from coati.models.lora import LORA_MANAGER
-
-        # NOTE: set model to eval to merge LoRA weights
-        LORA_MANAGER.merge_weights = True
-        model.eval()
-# save model checkpoint after fitting on only rank0
-booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-
-```
-
-- Option 2: Save the model weights, model config, generation config, as well as the optimizer, learning rate scheduler, running states (Note: tokenizer will not be saved) which are needed for resuming training.
-```python
-from coati.utils import save_checkpoint
-# save model checkpoint after fitting on only rank0
-save_checkpoint(
-        save_dir=actor_save_dir,
-        booster=actor_booster,
-        model=model,
-        optimizer=optim,
-        lr_scheduler=lr_scheduler,
-        epoch=0,
-        step=step,
-        batch_size=train_batch_size,
-        coordinator=coordinator,
-    )
-```
-To load the saved checkpoint
-```python
-from coati.utils import load_checkpoint
-start_epoch, start_step, sampler_start_idx = load_checkpoint(
-        load_dir=checkpoint_path,
-        booster=booster,
-        model=model,
-        optimizer=optim,
-        lr_scheduler=lr_scheduler,
-    )
-```
-</details>
-
-<details><summary><b>How to train with limited resources</b></summary>
-
-Here are some suggestions that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
-
-`batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model. To maintain a descent batch size for gradient calculation, consider increase the accumulation_step and reduce the batch_size on each rank.
-
-If you only have a single 24G GPU. Generally, using lora and "zero2-cpu" will be sufficient.
-
-`gemini` and `gemini-auto` can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. But that strategy doesn't support gradient accumulation.
-
-If you have multiple GPUs each has very limited VRAM, say 8GB. You can try the `3d` for the plugin option, which supports tensor parellelism, set `--tp` to the number of GPUs that you have.
-</details>
-
-### Real-time progress
-
-You will find our progress in github [project broad](https://github.com/orgs/hpcaitech/projects/17/views/1).
-
 ## Invitation to open-source contribution
-
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
 
 You may contact us or participate in the following ways:
@@ -532,25 +194,17 @@ Thanks so much to all of our amazing contributors!
 - Increase the capacity of the fine-tuning model by up to 3.7 times on a single GPU
 - Keep in a sufficiently high running speed
 
-|  Model Pair   | Alpaca-7B ⚔ Coati-7B | Coati-7B ⚔ Alpaca-7B |
-|:-------------:|:--------------------:|:--------------------:|
-| Better Cases  |     38 ⚔ **41**      |     **45** ⚔ 33      |
-|   Win Rate    |    48% ⚔ **52%**     |    **58%** ⚔ 42%     |
-| Average Score |   7.06 ⚔ **7.13**    |   **7.31** ⚔ 6.82    |
-
-- Our Coati-7B model performs better than Alpaca-7B when using GPT-4 to evaluate model performance. The Coati-7B model we evaluate is an old version we trained a few weeks ago and the new version is around the corner.
-
 ## Authors
 
 Coati is developed by ColossalAI Team:
-
-- [ver217](https://github.com/ver217) Leading the project while contributing to the main framework.
+- [ver217](https://github.com/ver217) Leading the project while contributing to the main framework (System Lead).
+- [Tong Li](https://github.com/TongLi3701) Leading the project while contributing to the main framework (Algorithm Lead).
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 - [FrankLeeeee](https://github.com/FrankLeeeee) Providing ML infra support and also taking charge of both front-end and back-end development.
 - [htzhou](https://github.com/ht-zhou) Contributing to the algorithm and development for RM and PPO training.
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
@@ -559,7 +213,6 @@ The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contribute
 We also appreciate the valuable suggestions provided by [Jian Hu](https://github.com/hijkzzz) regarding the convergence of the PPO algorithm.
 
 ## Citations
-
 ```bibtex
 @article{Hu2021LoRALA,
     title   = {LoRA: Low-Rank Adaptation of Large Language Models},
@@ -630,8 +283,22 @@ We also appreciate the valuable suggestions provided by [Jian Hu](https://github
       primaryClass={cs.CL},
       url={https://arxiv.org/abs/2403.07691},
 }
+@misc{shao2024deepseekmathpushinglimitsmathematical,
+      title={DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models},
+      author={Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Xiao Bi and Haowei Zhang and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
+      year={2024},
+      eprint={2402.03300},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2402.03300},
+}
+@misc{logic-rl,
+author       = {Tian Xie and Qingnan Ren and Yuqian Hong and Zitian Gao and Haoming Luo},
+title        = {Logic-RL},
+howpublished = {https://github.com/Unakar/Logic-RL},
+note         = {Accessed: 2025-02-03},
+year         = {2025}
+}
 ```
-
 ## Licenses
-
 Coati is licensed under the [Apache 2.0 License](LICENSE).
