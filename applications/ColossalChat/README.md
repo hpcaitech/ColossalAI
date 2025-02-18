@@ -197,8 +197,8 @@ Thanks so much to all of our amazing contributors!
 ## Authors
 
 Coati is developed by ColossalAI Team:
-
 - [ver217](https://github.com/ver217) Leading the project while contributing to the main framework.
+- [Tong Li](https://github.com/TongLi3701) Leading the project while contributing to the main framework.
 - [FrankLeeeee](https://github.com/FrankLeeeee) Providing ML infra support and also taking charge of both front-end and back-end development.
 - [htzhou](https://github.com/ht-zhou) Contributing to the algorithm and development for RM and PPO training.
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
