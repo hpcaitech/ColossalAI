@@ -17,7 +17,7 @@
   - [RLHF Training Stage1 - Supervised instructs tuning](#rlhf-training-stage1---supervised-instructs-tuning)
   - [RLHF Training Stage2 - Training reward model](#rlhf-training-stage2---training-reward-model)
   - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#rlhf-training-stage3---proximal-policy-optimization)
-  - [Alternative Option for RLHF: GRPO]
+  - [Alternative Option for RLHF: GRPO](#alternative-option-for-rlhf-group-relative-policy-optimization-grpo)
   - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
   - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
   - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
@@ -140,7 +140,7 @@ We support the method introduced in the paper [KTO:Model Alignment as Prospect T
 We support the main algorithm used to train DeepSeek R1 model, a variant of Proximal Policy Optimization (PPO), that enhances mathematical reasoning abilities while concurrently optimizing the memory usage of PPO. Read this [README](./examples/README.md) for more information.
 
 ### SFT for DeepSeek V3
-We support fine-tuning DeepSeek V3/R1 model with LoRA.
+We support fine-tuning DeepSeek V3/R1 model with LoRA. Read this [README](./examples/README.md) for more information.
 
 ### Inference Quantization and Serving - After Training
 
