@@ -27,8 +27,6 @@
 - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
 - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
 - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
-- [O1 Journey](#o1-journey)
-  - [Inference with Self-refined MCTS](#inference-with-self-refined-mcts)
 - [FAQ](#faq)
   - [How to save/load checkpoint](#faq)
   - [How to train with limited resources](#faq)
@@ -40,9 +38,9 @@
 
 ---
 
-## What Is ColossalChat And Coati ?
+## What Is ColossalChat?
 
-[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat) is the project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI) project.
+[ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalChat) is a project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI).
 
 Coati stands for `ColossalAI Talking Intelligence`. It is the name for the module implemented in this project and is also the name of the large language model developed by the ColossalChat project.
 
@@ -53,8 +51,6 @@ The Coati package provides a unified large language model framework that has imp
 - Supervised instructions fine-tuning
 - Training reward model
 - Reinforcement learning with human feedback
-- Quantization inference
-- Fast model deploying
 - Perfectly integrated with the Hugging Face ecosystem, a high degree of model customization
 
 <div align="center">
@@ -280,114 +276,6 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
-
-## O1 Journey
-### Inference with Self-refined MCTS
-We provide the implementation of MCT Self-Refine (MCTSr) algorithm, an innovative integration of Large Language Models with Monte Carlo Tree Search.
-You can serve model using vLLM and update the config file in `Qwen32B_prompt_CFG` and then run the following script.
-```python
-from coati.reasoner.guided_search.mcts import MCTS
-from coati.reasoner.guided_search.prompt_store.qwen import Qwen32B_prompt_CFG
-
-problem = "How Many R in 'Strawberry'"
-
-search_tree = MCTS(problem=problem, max_simulations=8, cfg=Qwen32B_prompt_CFG)
-answer = search_tree.simulate()
-print(answer)
-```
-
-## Coati7B examples
-
-### Generation
-
-<details><summary><b>E-mail</b></summary>
-
-![phd](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/Phd.png)
-
-</details>
-
-<details><summary><b>coding</b></summary>
-
-![sort](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/quick_sort.png)
-
-</details>
-
-<details><summary><b>regex</b></summary>
-
-![regex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/regex.png)
-
-</details>
-
-<details><summary><b>Tex</b></summary>
-
-![tex](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/tex.png)
-
-</details>
-
-<details><summary><b>writing</b></summary>
-
-![writing](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/writing.png)
-
-</details>
-
-<details><summary><b>Table</b></summary>
-
-![Table](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/table.png)
-
-</details>
-
-### Open QA
-
-<details><summary><b>Game</b></summary>
-
-![Game](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/game.png)
-
-</details>
-
-<details><summary><b>Travel</b></summary>
-
-![Travel](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/travel.png)
-
-</details>
-
-<details><summary><b>Physical</b></summary>
-
-![Physical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/physical.png)
-
-</details>
-
-<details><summary><b>Chemical</b></summary>
-
-![Chemical](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/chemical.png)
-
-</details>
-
-<details><summary><b>Economy</b></summary>
-
-![Economy](https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/economy.png)
-
-</details>
-
-You can find more examples in this [repo](https://github.com/XueFuzhao/InstructionWild/blob/main/comparison.md).
-
-### Limitation
-
-<details><summary><b>Limitation for LLaMA-finetuned models</b></summary>
-- Both Alpaca and ColossalChat are based on LLaMA. It is hard to compensate for the missing knowledge in the pre-training stage.
-- Lack of counting ability: Cannot count the number of items in a list.
-- Lack of Logics (reasoning and calculation)
-- Tend to repeat the last sentence (fail to produce the end token).
-- Poor multilingual results: LLaMA is mainly trained on English datasets (Generation performs better than QA).
-</details>
-
-<details><summary><b>Limitation of dataset</b></summary>
-- Lack of summarization ability: No such instructions in finetune datasets.
-- Lack of multi-turn chat: No such instructions in finetune datasets
-- Lack of self-recognition: No such instructions in finetune datasets
-- Lack of Safety:
-  - When the input contains fake facts, the model makes up false facts and explanations.
-  - Cannot abide by OpenAI's policy: When generating prompts from OpenAI API, it always abides by its policy. So no violation case is in the datasets.
-</details>
 
 ## FAQ
 
