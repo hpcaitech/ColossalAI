@@ -780,7 +780,7 @@ During roll out, we perform rebatching to prevent out of memory both before roll
 #### Response Length Distribution (After Training) and Sample response
 <div style="display: flex; justify-content: space-between;">
   <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png" style="width: 48%;" />
-  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/res.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/sample.png" style="width: 48%;" />
 </div>
 
 
