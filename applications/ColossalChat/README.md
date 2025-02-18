@@ -214,7 +214,6 @@ The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contribute
 We also appreciate the valuable suggestions provided by [Jian Hu](https://github.com/hijkzzz) regarding the convergence of the PPO algorithm.
 
 ## Citations
-
 ```bibtex
 @article{Hu2021LoRALA,
     title   = {LoRA: Low-Rank Adaptation of Large Language Models},
@@ -285,8 +284,22 @@ We also appreciate the valuable suggestions provided by [Jian Hu](https://github
       primaryClass={cs.CL},
       url={https://arxiv.org/abs/2403.07691},
 }
+@misc{shao2024deepseekmathpushinglimitsmathematical,
+      title={DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}, 
+      author={Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Xiao Bi and Haowei Zhang and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
+      year={2024},
+      eprint={2402.03300},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2402.03300}, 
+}
+@misc{logic-rl,
+author       = {Tian Xie and Qingnan Ren and Yuqian Hong and Zitian Gao and Haoming Luo},
+title        = {Logic-RL},
+howpublished = {https://github.com/Unakar/Logic-RL},
+note         = {Accessed: 2025-02-03},
+year         = {2025}
+}
 ```
-
 ## Licenses
-
 Coati is licensed under the [Apache 2.0 License](LICENSE).
