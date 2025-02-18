@@ -22,6 +22,7 @@
   - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
   - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
   - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
+  - [Alternative Option for RLHF: GRPO]()
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
@@ -132,6 +133,9 @@ Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pd
 
 ### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
 We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
+
+### Alternative Option For RLHF: Group Relative Policy Optimization (GRPO)
+We support the main algorithm used to train DeepSeek R1 model, a variant of Proximal Policy Optimization (PPO), that enhances mathematical reasoning abilities while concurrently optimizing the memory usage of PPO. Read this [README](./examples/README.md) for more information.
 
 ### Inference Quantization and Serving - After Training
 
