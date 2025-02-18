@@ -139,6 +139,9 @@ We support the method introduced in the paper [KTO:Model Alignment as Prospect T
 ### Alternative Option For RLHF: Group Relative Policy Optimization (GRPO)
 We support the main algorithm used to train DeepSeek R1 model, a variant of Proximal Policy Optimization (PPO), that enhances mathematical reasoning abilities while concurrently optimizing the memory usage of PPO. Read this [README](./examples/README.md) for more information.
 
+### SFT for DeepSeek V3
+We support fine-tuning DeepSeek V3/R1 model with LoRA.
+
 ### Inference Quantization and Serving - After Training
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
@@ -148,39 +151,7 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-## SFT for DeepSeek V3
-
-We add a script to supervised-fintune the DeepSeek V3/R1 model with LoRA. The script is located in `examples/training_scripts/lora_fintune.py`. The script is similar to the SFT script for Coati7B, but with a few differences. This script is compatible with Peft.
-
-### Dataset preparation
-
-This script receives JSONL format file as input dataset. Each line of dataset should be a list of chat dialogues. E.g.
-```json
-[{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing great. How can I help you today?"}]
-```
-```json
-[{"role": "user", "content": "火烧赤壁 曹操为何不拨打119求救？"}, {"role": "assistant", "content": "因为在三国时期，还没有电话和现代的消防系统，所以曹操无法拨打119求救。"}]
-```
-
-The dialogues can by multiple turns and it can contain system prompt. For more details, see the [chat_templating](https://huggingface.co/docs/transformers/main/chat_templating).
-
-### Model weights preparation
-
-We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
-
-### Usage
-
-After preparing the dataset and model weights, you can run the script with the following command:
-```bash
-colossalai run --hostfile path-to-host-file --nproc_per_node 8 lora_finetune.py --pretrained path-to-DeepSeek-R1-bf16 --dataset path-to-dataset.jsonl --plugin moe --lr 2e-5 --max_length 256 -g --ep 8 --pp 3 --batch_size 24 --lora_rank 8 --lora_alpha 16 --num_epochs 2 --warmup_steps 8 --tensorboard_dir logs --save_dir DeepSeek-R1-bf16-lora
-```
-
-For more details of each argument, you can run `python lora_finetune.py --help`.
-
-The sample command does not use CPU offload to get better throughput. The minimum hardware requirement for sample command is 32 ascend 910B NPUs (with `ep=8,pp=4`) or 24 H100/H800 GPUs (with `ep=8,pp=3`). If you enable CPU offload by `--zero_cpu_offload`, the hardware requirement can be further reduced.
-
 ## Invitation to open-source contribution
-
 Referring to the successful attempts of [BLOOM](https://bigscience.huggingface.co/) and [Stable Diffusion](https://en.wikipedia.org/wiki/Stable_Diffusion), any and all developers and partners with computing powers, datasets, models are welcome to join and build the Colossal-AI community, making efforts towards the era of big AI models from the starting point of replicating ChatGPT!
 
 You may contact us or participate in the following ways:
