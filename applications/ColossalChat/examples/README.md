@@ -773,32 +773,23 @@ experience buffer size
 During roll out, we perform rebatching to prevent out of memory both before roll out and before calculating logits. Please choose a proper setting for the "inference_batch_size" and the "logits_forward_batch_size" based on your device.
 
 ### GRPO Result
-#### Reward
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png">
-</p>
+#### Reward and Response Length
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png" style="width: 48%;" />
+</div>
 
-#### Response Length
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png">
-</p>
+#### Response Length Distribution (After Training) and Sample response
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/res.png" style="width: 48%;" />
+</div>
 
-#### Response Length Distribution (After Training)
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png">
-</p>
-
-#### Sample Response
-<p align="center">
-<img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/res.png">
-</p>
 
 #### Note of Speed
-Currently, our PPO and GRPO pipeline are still under development. The speed is largely limited by the roll out speed as we use naive generation without any acceleration.
+Currently, our PPO and GRPO pipeline are still under entensive development. The speed is largely limited by the roll out speed as we use naive generation without any acceleration.
 
 ## Alternative Option For RLHF: Direct Preference Optimization
-
-
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
 
 
@@ -885,7 +876,6 @@ For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) 
 </p>
 
 ## Hardware Requirements
-
 For SFT, we recommend using zero2 or zero2-cpu for 7B model and tp is your model is extra large. We tested the VRAM consumption on a dummy dataset with a sequence length of 2048. In all experiments, we use H800 GPUs with 80GB VRAM and enable gradient checkpointing and flash attention.
 - 2 H800 GPU
   - zero2-cpu, micro batch size=4, VRAM Usage=22457.98 MB
@@ -942,35 +932,9 @@ For KTO, we recommend using zero2-cpu or zero2 plugin, We tested the VRAM consum
   - zero2_cpu, micro batch size=2, VRAM_USAGE=32443.22 MB
   - zero2, micro batch size=4, VRAM_USAGE=59307.97 MB
 
-## List of Supported Models
-
-For SFT, we support the following models/series:
-- Colossal-LLaMA-2
-- ChatGLM2
-- ChatGLM3 (only with zero2, zero2_cpu plugin)
-- Baichuan2
-- LLaMA2
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-For PPO and DPO, we theoratically support the following models/series (without guarantee):
-- Colossal-LLaMA-2 (tested)
-- ChatGLM2
-- Baichuan2
-- LLaMA2 (tested)
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-*-* The zero2, zero2_cpu plugin also support a wide range of chat models not listed above.
-
 ## Inference example
-
-
 We support different inference options, including int8 and int4 quantization.
 For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-
 ## Attention
-
-
 The examples are demos for the whole training process. You need to change the hyper-parameters to reach great performance.
