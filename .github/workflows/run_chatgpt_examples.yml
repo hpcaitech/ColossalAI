@@ -61,5 +61,6 @@ jobs:
           PRETRAINED_MODEL_PATH: ./models
           SFT_DATASET: ./sft_data
           PROMPT_DATASET: ./prompt_data
+          PROMPT_RLVR_DATASET: ./prompt_data
           PREFERENCE_DATASET: ./preference_data
           KTO_DATASET: ./kto_data

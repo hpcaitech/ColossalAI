@@ -1,0 +1,26 @@
+{
+    "chat_template": "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+    "system_message": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, your final answer should be a integer without unit, currency mark, thousands separator or other text. i.e., <answer> 123 </answer>.\n",
+    "stop_ids": [
+        151643
+    ],
+    "end_of_assistant": "<|endoftext|>",
+    "response_format_tags": {
+        "think_start": {
+            "text": "<think>",
+            "num_occur": 1
+        },
+        "think_end": {
+            "text": "</think>",
+            "num_occur": 1
+        },
+        "answer_start": {
+            "text": "<answer>",
+            "num_occur": 1
+        },
+        "answer_end": {
+            "text": "</answer>",
+            "num_occur": 1
+        }
+    }
+}

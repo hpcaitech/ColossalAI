@@ -4,12 +4,14 @@ from .generation import generate, generate_streaming, prepare_inputs_fn, update_
 from .lora import LoraConfig, convert_to_lora_module, lora_manager
 from .loss import DpoLoss, KTOLoss, LogExpLoss, LogSigLoss, PolicyLoss, ValueLoss
 from .reward_model import RewardModel
+from .rlvr_reward_model import RLVRRewardModel
 from .utils import disable_dropout
 
 __all__ = [
     "BaseModel",
     "Critic",
     "RewardModel",
+    "RLVRRewardModel",
     "PolicyLoss",
     "ValueLoss",
     "LogSigLoss",
