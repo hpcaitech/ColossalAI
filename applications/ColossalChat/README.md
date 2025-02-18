@@ -12,24 +12,16 @@
 - [Install](#install)
   - [Install the environment](#install-the-environment)
   - [Install the Transformers](#install-the-transformers)
-- [How to use?](#how-to-use)
+- [Introduction](#introduction)
   - [Supervised datasets collection](#step-1-data-collection)
   - [RLHF Training Stage1 - Supervised instructs tuning](#rlhf-training-stage1---supervised-instructs-tuning)
   - [RLHF Training Stage2 - Training reward model](#rlhf-training-stage2---training-reward-model)
   - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#rlhf-training-stage3---proximal-policy-optimization)
   - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
-- [Coati7B examples](#coati7b-examples)
-  - [Generation](#generation)
-  - [Open QA](#open-qa)
-  - [Limitation for LLaMA-finetuned models](#limitation)
-  - [Limitation of dataset](#limitation)
 - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
 - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
 - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
 - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
-- [FAQ](#faq)
-  - [How to save/load checkpoint](#faq)
-  - [How to train with limited resources](#faq)
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
@@ -110,76 +102,15 @@ cd $COLOSSAL_AI_ROOT/applications/ColossalChat
 pip install .
 ```
 
-## How To Use?
+## Introduction
 
 ### RLHF Training Stage1 - Supervised Instructs Tuning
 
-Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. Here's a detailed guide on how to SFT your LLM with ColossalChat. More details can be found in [example guideline](./examples/README.md).
-
-#### Step 1: Data Collection
-The first step in Stage 1 is to collect a dataset of human demonstrations of the following format.
-
-```json
-[
-    {"messages":
-      [
-        {
-          "from": "user",
-          "content": "what are some pranks with a pen i can do?"
-        },
-        {
-          "from": "assistant",
-          "content": "Are you looking for practical joke ideas?"
-        },
-      ]
-    },
-]
-```
-
-#### Step 2: Preprocessing
-Once you have collected your SFT dataset, you will need to preprocess it. This involves four steps: data cleaning, data deduplication, formatting and tokenization. In this section, we will focus on formatting and tokenization.
-
-In this code, we provide a flexible way for users to set the conversation template for formatting chat data using Huggingface's newest feature--- chat template. Please follow the [example guideline](./examples/README.md) on how to format and tokenize data.
-
-#### Step 3: Training
-Choose a suitable model architecture for your task. Note that your model should be compatible with the tokenizer that you used to tokenize the SFT dataset. You can run [train_sft.sh](./examples/training_scripts/train_sft.sh) to start a supervised instructs fine-tuning. More details can be found in [example guideline](./examples/README.md).
+Stage1 is supervised instructs fine-tuning (SFT). This step is a crucial part of the RLHF training process, as it involves training a machine learning model using human-provided instructions to learn the initial behavior for the task at hand. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage2 - Training Reward Model
 
 Stage2 trains a reward model, which obtains corresponding scores by manually ranking different outputs for the same prompt and supervises the training of the reward model.
-
-#### Step 1: Data Collection
-Below shows the preference dataset format used in training the reward model.
-
-```json
-[
-    {"context": [
-        {
-          "from": "human",
-          "content": "Introduce butterflies species in Oregon."
-        }
-      ],
-      "chosen": [
-        {
-          "from": "assistant",
-          "content": "About 150 species of butterflies live in Oregon, with about 100 species are moths..."
-        },
-      ],
-      "rejected": [
-        {
-          "from": "assistant",
-          "content": "Are you interested in just the common butterflies?  There are a few common ones which will be easy to find..."
-        },
-      ]
-    },
-]
-```
-
-#### Step 2: Preprocessing
-Similar to the second step in the previous stage, we format the reward data into the same structured format as used in step 2 of the SFT stage. You can run [prepare_preference_dataset.sh](./examples/data_preparation_scripts/prepare_preference_dataset.sh) to prepare the preference data for reward model training.
-
-#### Step 3: Training
-You can run [train_rm.sh](./examples/training_scripts/train_rm.sh) to start the reward model training. More details can be found in [example guideline](./examples/README.md).
 
 ### RLHF Training Stage3 - Proximal Policy Optimization
 
@@ -189,86 +120,20 @@ In stage3 we will use reinforcement learning algorithm--- Proximal Policy Optimi
 <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/stage-3.jpeg" width=800/>
 </p>
 
-#### Step 1: Data Collection
-PPO uses two kind of training data--- the prompt data and the sft data (optional). The first dataset is mandatory, data samples within the prompt dataset ends with a line from "human" and thus the "assistant" needs to generate a response to answer to the "human". Note that you can still use conversation that ends with a line from the "assistant", in that case, the last line will be dropped. Here is an example of the prompt dataset format.
 
-```json
-[
-    {"messages":
-      [
-        {
-          "from": "human",
-          "content": "what are some pranks with a pen i can do?"
-        }
-      ]
-    },
-]
-```
-
-#### Step 2: Data Preprocessing
-To prepare the prompt dataset for PPO training, simply run [prepare_prompt_dataset.sh](./examples/data_preparation_scripts/prepare_prompt_dataset.sh)
-
-#### Step 3: Training
-You can run the [train_ppo.sh](./examples/training_scripts/train_ppo.sh) to start PPO training. Here are some unique arguments for PPO, please refer to the training configuration section for other training configuration. More detais can be found in [example guideline](./examples/README.md).
-
-```bash
---pretrain $PRETRAINED_MODEL_PATH \
---rm_pretrain $PRETRAINED_MODEL_PATH \ # reward model architectual
---tokenizer_dir $PRETRAINED_TOKENIZER_PATH \
---rm_checkpoint_path $REWARD_MODEL_PATH \ # reward model checkpoint path
---prompt_dataset ${prompt_dataset[@]} \ # List of string, the prompt dataset
---ptx_dataset ${ptx_dataset[@]} \ # List of string, the SFT data used in the SFT stage
---ptx_batch_size 1 \ # batch size for calculate ptx loss
---ptx_coef 0.0 \ # none-zero if ptx loss is enable
---num_episodes 2000 \ # number of episodes to train
---num_collect_steps 1 \
---num_update_steps 1 \
---experience_batch_size 8 \
---train_batch_size 4 \
---accumulation_steps 2
-```
-
-Each episode has two phases, the collect phase and the update phase. During the collect phase, we will collect experiences (answers generated by actor), store those in ExperienceBuffer. Then data in ExperienceBuffer is used during the update phase to update parameter of actor and critic.
-
-- Without tensor parallelism,
-```
-experience buffer size
-= num_process * num_collect_steps * experience_batch_size
-= train_batch_size * accumulation_steps * num_process
-```
-
-- With tensor parallelism,
-```
-num_tp_group = num_process / tp
-experience buffer size
-= num_tp_group * num_collect_steps * experience_batch_size
-= train_batch_size * accumulation_steps * num_tp_group
-```
-
-## Alternative Option For RLHF: Direct Preference Optimization (DPO)
+### Alternative Option For RLHF: Direct Preference Optimization (DPO)
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in this [paper](https://arxiv.org/abs/2305.18290), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO. Read this [README](./examples/README.md) for more information.
 
-### DPO Training Stage1 - Supervised Instructs Tuning
-
-Please refer the [sft section](#dpo-training-stage1---supervised-instructs-tuning) in the PPO part.
-
-### DPO Training Stage2 - DPO Training
-#### Step 1: Data Collection & Preparation
-For DPO training, you only need the preference dataset. Please follow the instruction in the [preference dataset preparation section](#rlhf-training-stage2---training-reward-model) to prepare the preference data for DPO training.
-
-#### Step 2: Training
-You can run the [train_dpo.sh](./examples/training_scripts/train_dpo.sh) to start DPO training. More detais can be found in [example guideline](./examples/README.md).
-
-## Alternative Option For RLHF: Simple Preference Optimization (SimPO)
+### Alternative Option For RLHF: Simple Preference Optimization (SimPO)
 Simple Preference Optimization (SimPO) from this [paper](https://arxiv.org/pdf/2405.14734) is similar to DPO but it abandons the use of the reference model, which makes the training more efficient. It also adds a reward shaping term called target reward margin to enhance training stability. It also use length normalization to better align with the inference process. Read this [README](./examples/README.md) for more information.
 
-## Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
+### Alternative Option For RLHF: Odds Ratio Preference Optimization (ORPO)
 Odds Ratio Preference Optimization (ORPO) from this [paper](https://arxiv.org/pdf/2403.07691) is a reference model free alignment method that use a mixture of SFT loss and a reinforcement leanring loss calculated based on odds-ratio-based implicit reward to makes the training more efficient and stable. Read this [README](./examples/README.md) for more information.
 
-## Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
+### Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)
 We support the method introduced in the paper [KTO:Model Alignment as Prospect Theoretic Optimization](https://arxiv.org/pdf/2402.01306) (KTO). Which is a aligment method that directly maximize "human utility" of generation results. Read this [README](./examples/README.md) for more information.
 
-## Inference Quantization and Serving - After Training
+### Inference Quantization and Serving - After Training
 
 We provide an online inference server and a benchmark. We aim to run inference on single GPU, so quantization is essential when using large models.
 
@@ -276,72 +141,6 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
-
-## FAQ
-
-<details><summary><b>How to save/load checkpoint</b></summary>
-
-We have integrated the Transformers save and load pipeline, allowing users to freely call Hugging Face's language models and save them in the HF format.
-
-- Option 1: Save the model weights, model config and generation config (Note: tokenizer will not be saved) which can be loaded using HF's from_pretrained method.
-```python
-# if use lora, you can choose to merge lora weights before saving
-if args.lora_rank > 0 and args.merge_lora_weights:
-        from coati.models.lora import LORA_MANAGER
-
-        # NOTE: set model to eval to merge LoRA weights
-        LORA_MANAGER.merge_weights = True
-        model.eval()
-# save model checkpoint after fitting on only rank0
-booster.save_model(model, os.path.join(args.save_dir, "modeling"), shard=True)
-
-```
-
-- Option 2: Save the model weights, model config, generation config, as well as the optimizer, learning rate scheduler, running states (Note: tokenizer will not be saved) which are needed for resuming training.
-```python
-from coati.utils import save_checkpoint
-# save model checkpoint after fitting on only rank0
-save_checkpoint(
-        save_dir=actor_save_dir,
-        booster=actor_booster,
-        model=model,
-        optimizer=optim,
-        lr_scheduler=lr_scheduler,
-        epoch=0,
-        step=step,
-        batch_size=train_batch_size,
-        coordinator=coordinator,
-    )
-```
-To load the saved checkpoint
-```python
-from coati.utils import load_checkpoint
-start_epoch, start_step, sampler_start_idx = load_checkpoint(
-        load_dir=checkpoint_path,
-        booster=booster,
-        model=model,
-        optimizer=optim,
-        lr_scheduler=lr_scheduler,
-    )
-```
-</details>
-
-<details><summary><b>How to train with limited resources</b></summary>
-
-Here are some suggestions that can allow you to train a 7B model on a single or multiple consumer-grade GPUs.
-
-`batch_size`, `lora_rank` and `grad_checkpoint` are the most important parameters to successfully train the model. To maintain a descent batch size for gradient calculation, consider increase the accumulation_step and reduce the batch_size on each rank.
-
-If you only have a single 24G GPU. Generally, using lora and "zero2-cpu" will be sufficient.
-
-`gemini` and `gemini-auto` can enable a single 24G GPU to train the whole model without using LoRA if you have sufficient CPU memory. But that strategy doesn't support gradient accumulation.
-
-If you have multiple GPUs each has very limited VRAM, say 8GB. You can try the `3d` for the plugin option, which supports tensor parellelism, set `--tp` to the number of GPUs that you have.
-</details>
-
-### Real-time progress
-
-You will find our progress in github [project broad](https://github.com/orgs/hpcaitech/projects/17/views/1).
 
 ## Invitation to open-source contribution
 
