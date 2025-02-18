@@ -24,7 +24,6 @@
   - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
   - [SFT for DeepSeek V3/R1](#sft-for-deepseek-v3)
   - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
-
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
