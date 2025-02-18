@@ -197,14 +197,14 @@ Thanks so much to all of our amazing contributors!
 ## Authors
 
 Coati is developed by ColossalAI Team:
-- [ver217](https://github.com/ver217) Leading the project while contributing to the main framework.
-- [Tong Li](https://github.com/TongLi3701) Leading the project while contributing to the main framework.
+- [ver217](https://github.com/ver217) Leading the project while contributing to the main framework (System Lead).
+- [Tong Li](https://github.com/TongLi3701) Leading the project while contributing to the main framework (Algorithm Lead).
+- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 - [FrankLeeeee](https://github.com/FrankLeeeee) Providing ML infra support and also taking charge of both front-end and back-end development.
 - [htzhou](https://github.com/ht-zhou) Contributing to the algorithm and development for RM and PPO training.
 - [Fazzie](https://fazzie-key.cool/about/index.html) Contributing to the algorithm and development for SFT.
 - [ofey404](https://github.com/ofey404) Contributing to both front-end and back-end development.
 - [Wenhao Chen](https://github.com/CWHer) Contributing to subsequent code enhancements and performance improvements.
-- [Anbang Ye](https://github.com/YeAnbang) Contributing to the refactored PPO version with updated acceleration framework. Add support for DPO, SimPO, ORPO.
 
 The PhD student from [(HPC-AI) Lab](https://ai.comp.nus.edu.sg/) also contributed a lot to this project.
 - [Zangwei Zheng](https://github.com/zhengzangw)
