@@ -2,8 +2,6 @@
 
 
 ## Table of Contents
-
-
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
   - [Install Requirements](#install-requirements)
@@ -34,7 +32,7 @@
   - [Alternative Option For RLHF: Simple Preference Optimization](#alternative-option-for-rlhf-simple-preference-optimization)
   - [Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
   - [Alternative Option For RLHF: Odds Ratio Preference Optimization](#alternative-option-for-rlhf-odds-ratio-preference-optimization)
-  - [List of Supported Models](#list-of-supported-models)
+  - [SFT for DeepSeek V3](#sft-for-deepseek-v3)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
