@@ -284,13 +284,13 @@ We also appreciate the valuable suggestions provided by [Jian Hu](https://github
       url={https://arxiv.org/abs/2403.07691},
 }
 @misc{shao2024deepseekmathpushinglimitsmathematical,
-      title={DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models}, 
+      title={DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models},
       author={Zhihong Shao and Peiyi Wang and Qihao Zhu and Runxin Xu and Junxiao Song and Xiao Bi and Haowei Zhang and Mingchuan Zhang and Y. K. Li and Y. Wu and Daya Guo},
       year={2024},
       eprint={2402.03300},
       archivePrefix={arXiv},
       primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2402.03300}, 
+      url={https://arxiv.org/abs/2402.03300},
 }
 @misc{logic-rl,
 author       = {Tian Xie and Qingnan Ren and Yuqian Hong and Zitian Gao and Haoming Luo},
