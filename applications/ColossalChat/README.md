@@ -17,12 +17,14 @@
   - [RLHF Training Stage1 - Supervised instructs tuning](#rlhf-training-stage1---supervised-instructs-tuning)
   - [RLHF Training Stage2 - Training reward model](#rlhf-training-stage2---training-reward-model)
   - [RLHF Training Stage3 - Training model with reinforcement learning by human feedback](#rlhf-training-stage3---proximal-policy-optimization)
-  - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
-  - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization-dpo)
+  - [Alternative Option for RLHF: GRPO]
+  - [Alternative Option For RLHF: DPO](#alternative-option-for-rlhf-direct-preference-optimization)
   - [Alternative Option For RLHF: SimPO](#alternative-option-for-rlhf-simple-preference-optimization-simpo)
   - [Alternative Option For RLHF: ORPO](#alternative-option-for-rlhf-odds-ratio-preference-optimization-orpo)
   - [Alternative Option For RLHF: KTO](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
-  - [Alternative Option for RLHF: GRPO]()
+  - [SFT for DeepSeek V3/R1](#sft-for-deepseek-v3)
+  - [Inference Quantization and Serving - After Training](#inference-quantization-and-serving---after-training)
+
 - [Invitation to open-source contribution](#invitation-to-open-source-contribution)
 - [Quick Preview](#quick-preview)
 - [Authors](#authors)
@@ -145,6 +147,37 @@ We support 8-bit quantization (RTN), 4-bit quantization (GPTQ), and FP16 inferen
 
 Online inference server scripts can help you deploy your own services.
 For more details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
+
+## SFT for DeepSeek V3
+
+We add a script to supervised-fintune the DeepSeek V3/R1 model with LoRA. The script is located in `examples/training_scripts/lora_fintune.py`. The script is similar to the SFT script for Coati7B, but with a few differences. This script is compatible with Peft.
+
+### Dataset preparation
+
+This script receives JSONL format file as input dataset. Each line of dataset should be a list of chat dialogues. E.g.
+```json
+[{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing great. How can I help you today?"}]
+```
+```json
+[{"role": "user", "content": "火烧赤壁 曹操为何不拨打119求救？"}, {"role": "assistant", "content": "因为在三国时期，还没有电话和现代的消防系统，所以曹操无法拨打119求救。"}]
+```
+
+The dialogues can by multiple turns and it can contain system prompt. For more details, see the [chat_templating](https://huggingface.co/docs/transformers/main/chat_templating).
+
+### Model weights preparation
+
+We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
+
+### Usage
+
+After preparing the dataset and model weights, you can run the script with the following command:
+```bash
+colossalai run --hostfile path-to-host-file --nproc_per_node 8 lora_finetune.py --pretrained path-to-DeepSeek-R1-bf16 --dataset path-to-dataset.jsonl --plugin moe --lr 2e-5 --max_length 256 -g --ep 8 --pp 3 --batch_size 24 --lora_rank 8 --lora_alpha 16 --num_epochs 2 --warmup_steps 8 --tensorboard_dir logs --save_dir DeepSeek-R1-bf16-lora
+```
+
+For more details of each argument, you can run `python lora_finetune.py --help`.
+
+The sample command does not use CPU offload to get better throughput. The minimum hardware requirement for sample command is 32 ascend 910B NPUs (with `ep=8,pp=4`) or 24 H100/H800 GPUs (with `ep=8,pp=3`). If you enable CPU offload by `--zero_cpu_offload`, the hardware requirement can be further reduced.
 
 ## Invitation to open-source contribution
 

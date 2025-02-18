@@ -21,3 +21,4 @@ ninja==1.11.1
 sentencepiece==0.1.99
 flash-attn
 tiktoken
+jsonlines
