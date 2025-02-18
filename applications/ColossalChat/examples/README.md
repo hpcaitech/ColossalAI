@@ -27,7 +27,7 @@
     - [Reward](#reward)
     - [KL Divergence](#approximate-kl-divergence)
   - [Note on PPO Training](#note-on-ppo-training)
-  - [GRPO Training and DeepSeek R1 reproduction]
+  - [GRPO Training and DeepSeek R1 reproduction](#grpo-training-and-deepseek-r1-reproduction)
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
