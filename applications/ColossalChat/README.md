@@ -7,7 +7,7 @@
 ## Table of Contents
 
 - [Table of Contents](#table-of-contents)
-- [What is ColossalChat and Coati ?](#what-is-colossalchat-and-coati-)
+- [What is ColossalChat?](#what-is-colossalchat)
 - [Online demo](#online-demo)
 - [Install](#install)
   - [Install the environment](#install-the-environment)
@@ -32,7 +32,7 @@
 
 ---
 
-## What Is ColossalChat?
+## What is ColossalChat?
 
 [ColossalChat](https://github.com/hpcaitech/ColossalAI/tree/main/applications/ColossalChat) is a project to implement LLM with RLHF, powered by the [Colossal-AI](https://github.com/hpcaitech/ColossalAI).
 
