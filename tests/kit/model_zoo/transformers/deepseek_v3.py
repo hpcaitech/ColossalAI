@@ -5,8 +5,6 @@ import torch
 import transformers
 from transformers import AutoConfig
 
-from ..registry import ModelAttribute, model_zoo
-
 # ===============================
 # Register single-sentence Mixtral
 # ===============================
@@ -75,13 +73,3 @@ def init_deepseek():
         if m.__class__.__name__ == "DeepseekV3MoE":
             m.moe_infer = MethodType(m.moe_infer.__wrapped__, m)
     return model
-
-
-model_zoo.register(
-    name="transformers_deepseek_v3",
-    model_fn=init_deepseek,
-    data_gen_fn=data_gen_for_lm,
-    output_transform_fn=output_transform_fn,
-    loss_fn=loss_fn_for_lm,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
