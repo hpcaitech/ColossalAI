@@ -11,7 +11,12 @@ from colossalai.booster.plugin import MoeHybridParallelPlugin
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.kit.model_zoo import model_zoo
+from tests.kit.model_zoo.transformers.deepseek_v3 import (
+    data_gen_for_lm,
+    init_deepseek,
+    loss_fn_for_lm,
+    output_transform_fn,
+)
 from tests.test_shardformer.test_model._utils import (
     build_model_from_hybrid_plugin,
     run_forward_backward_with_hybrid_plugin,
@@ -74,16 +79,13 @@ def run_deepseek_v3_test(config: Tuple[int, ...]):
         find_unused_parameters=True,
     )
 
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_deepseek_v3")
-    for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
-
-        check_forward_backward(
-            model_fn,
-            data_gen_fn,
-            output_transform_fn,
-            loss_fn,
-            plugin_config,
-        )
+    check_forward_backward(
+        init_deepseek,
+        data_gen_for_lm,
+        output_transform_fn,
+        loss_fn_for_lm,
+        plugin_config,
+    )
 
 
 def check_deepseek_v3(rank, world_size, port):

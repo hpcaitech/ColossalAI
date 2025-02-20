@@ -5,7 +5,6 @@ from .bloom import *
 from .chatglm2 import *
 from .command import *
 from .deepseek import *
-from .deepseek_v3 import *
 from .falcon import *
 from .gpt import *
 from .gptj import *
