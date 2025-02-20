@@ -380,9 +380,9 @@ class DPOTrainer(SLTrainer):
                             self.accumulative_meter.get("accuracy"),
                             global_step,
                         )
-                    self.num_train_step += 1
                     self.accumulative_meter.reset()
-
+                self.num_train_step += 1
+                
             if self.save_dir is not None and self.num_train_step > 0 and self.num_train_step % self.save_interval == 0:
                 # save checkpoint
                 self.coordinator.print_on_master("\nStart saving model checkpoint with running states")
