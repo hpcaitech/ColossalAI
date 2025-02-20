@@ -193,7 +193,7 @@ class RewardModelTrainer(SLTrainer):
                     self.coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {(i + 1)/self.accumulation_steps} at folder {self.save_dir}"
                     )
-                self.num_train_step += 1
+            self.num_train_step += 1
         step_bar.close()
 
     def _eval(self, epoch):

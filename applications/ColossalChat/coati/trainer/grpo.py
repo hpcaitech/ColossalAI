@@ -231,7 +231,6 @@ class GRPOTrainer(OLTrainer):
             experience:
                 sequences: [batch_size, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>
         """
-        self.num_train_step += 1
         self.actor.train()
         num_actions = experience.action_log_probs.size(1)
         # policy loss
@@ -294,7 +293,7 @@ class GRPOTrainer(OLTrainer):
                 self.temperature_annealing_scheduler.step_forward()
 
             # preparing logging model output and corresponding rewards.
-            if self.num_train_step % 10 == 1:
+            if self.num_train_step % 10 == 0:
                 response_text = self.experience_maker.tokenizer.batch_decode(
                     experience.sequences, skip_special_tokens=True
                 )
@@ -327,6 +326,7 @@ class GRPOTrainer(OLTrainer):
                 self.writer.add_scalar("approx_kl", self.accumulative_meter.get("kl"), global_step)
                 self.writer.add_scalar("advantages", self.accumulative_meter.get("advantages"), global_step)
             self.accumulative_meter.reset()
+        self.num_train_step += 1
 
     def _learn(self, update_step: int):
         """

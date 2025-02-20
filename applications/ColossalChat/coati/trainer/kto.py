@@ -256,7 +256,7 @@ class KTOTrainer(SLTrainer):
                     self.coordinator.print_on_master(
                         f"Saved checkpoint at epoch {epoch} step {self.save_interval} at folder {self.save_dir}"
                     )
-                self.num_train_step += 1
+            self.num_train_step += 1
 
         step_bar.close()
 
