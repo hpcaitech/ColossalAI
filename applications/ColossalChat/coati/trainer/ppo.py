@@ -220,7 +220,6 @@ class PPOTrainer(OLTrainer):
             experience:
                 sequences: [batch_size, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>
         """
-        self.num_train_step += 1
         self.actor.train()
         self.critic.train()
         num_actions = experience.action_log_probs.size(1)
@@ -294,7 +293,7 @@ class PPOTrainer(OLTrainer):
             self.critic_scheduler.step()
 
             # preparing logging model output and corresponding rewards.
-            if self.num_train_step % 10 == 1:
+            if self.num_train_step % 10 == 0:
                 response_text = self.experience_maker.tokenizer.batch_decode(
                     experience.sequences, skip_special_tokens=True
                 )
@@ -336,6 +335,7 @@ class PPOTrainer(OLTrainer):
                 self.writer.add_scalar("value", self.accumulative_meter.get("value"), self.num_train_step)
                 self.writer.add_scalar("advantages", self.accumulative_meter.get("advantages"), self.num_train_step)
             self.accumulative_meter.reset()
+        self.num_train_step += 1
 
     def _learn(self, update_step: int):
         """

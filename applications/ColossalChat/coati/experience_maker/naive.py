@@ -140,7 +140,7 @@ class NaiveExperienceMaker(ExperienceMaker):
         num_actions = 0
 
         for inference_mini_batch_id in range(0, input_ids.size(0), self.inference_batch_size):
-            s, e = inference_mini_batch_id, (inference_mini_batch_id + 1) * self.inference_batch_size
+            s, e = inference_mini_batch_id, inference_mini_batch_id + self.inference_batch_size
             if input_ids[s:e].size(0) == 0:
                 break
             sequences = generate(self.actor, input_ids[s:e], self.tokenizer, **generate_kwargs)
