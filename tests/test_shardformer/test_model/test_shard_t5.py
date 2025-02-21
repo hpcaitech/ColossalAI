@@ -51,7 +51,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     if test_config["precision"] == "fp32":
         atol, rtol = 1e-5, 1e-3
     else:
-        atol, rtol = 5e-2, 5e-2
+        atol, rtol = 6e-2, 0
     if (stage_manager is None or stage_manager.is_first_stage()) and booster.plugin.zero_stage == 0:
         row_layer_grads = get_grad_tensors_for_check(
             t5, sharded_t5, row_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=0
@@ -79,7 +79,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         # TODO he precision in weight checking is too significant.
         atol, rtol = 1e-3, 1e-3
     else:
-        atol, rtol = 6e-3, 0
+        atol, rtol = 5e-3, 5e-3
     if stage_manager is None or stage_manager.is_first_stage():
         check_weight(
             t5,
