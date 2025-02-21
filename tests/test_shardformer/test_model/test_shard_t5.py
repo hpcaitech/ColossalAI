@@ -79,7 +79,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         # TODO he precision in weight checking is too significant.
         atol, rtol = 1e-3, 1e-3
     else:
-        atol, rtol = 5e-3, 5e-3
+        atol, rtol = 6e-3, 0
     if stage_manager is None or stage_manager.is_first_stage():
         check_weight(
             t5,
