@@ -36,7 +36,7 @@ class BaseInferenceBackend:
                 - attention_mask (torch.Tensor): shape [B, S+N]
                 - action_log_probs (torch.Tensor): shape [B, N]
                 - action_mask (torch.Tensor): shape [B, N]
-                where N is the number of generated tokens.
+                where N is the number of generated tokens. And all tensors should be on CUDA.
         """
 
     def load_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> None:
