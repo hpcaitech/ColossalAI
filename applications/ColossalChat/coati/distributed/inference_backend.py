@@ -210,6 +210,8 @@ class VLLMInferenceBackend(BaseInferenceBackend):
             "action_log_probs": log_probs,
             "action_mask": action_mask,
         }
+        if "gt_answer" in kwargs:
+            data["gt_answer"] = kwargs["gt_answer"]
         data = {k: v.to(get_current_device()) for k, v in data.items()}
         return data
 
