@@ -10,16 +10,15 @@ import os
 import resource
 from contextlib import nullcontext
 from types import MethodType
+
 import torch
 import torch.distributed as dist
-
 from coati.dataset.loader import RawConversationDataset
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from itertools import islice
-import colossalai
 
+import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import (
@@ -37,7 +36,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 
-
 def all_reduce_mean(loss: torch.Tensor, plugin: Plugin) -> torch.Tensor:
     loss = loss.data
     group = getattr(plugin, "dp_group", None)
@@ -47,26 +45,28 @@ def all_reduce_mean(loss: torch.Tensor, plugin: Plugin) -> torch.Tensor:
 
 def get_second_latest_subfolder_and_optimizer_file(folder_path):
     os.path.exists(folder_path) or os.makedirs(folder_path)
-    
+
     # 获取所有以"lora"开头的子文件夹
-    subfolders = [f for f in os.listdir(folder_path) 
-                  if os.path.isdir(os.path.join(folder_path, f)) and f.startswith("lora")]
-    
+    subfolders = [
+        f for f in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, f)) and f.startswith("lora")
+    ]
+
     # 检查子文件夹数量是否大于等于2
     if len(subfolders) < 2:
         return None, None  # 如果子文件夹数量小于2，返回None
-    
+
     # 按最后修改时间排序，最新的排在前面
     subfolders.sort(key=lambda x: os.path.getmtime(os.path.join(folder_path, x)), reverse=True)
-    
+
     # 获取倒数第二新的子文件夹路径
     second_latest_subfolder = subfolders[1] if len(subfolders) >= 2 else None
     second_latest_lora_subfolder_path = os.path.join(folder_path, second_latest_subfolder)
 
     # 获取所有以"optimizer"开头且".pth"为后缀的文件
     # 获取倒数第二新的optimizer文件
-    second_latest_optimizer_subfolder_path = os.path.join(folder_path, second_latest_subfolder.replace("lora_", "optimizer_")+".pth")
-    
+    second_latest_optimizer_subfolder_path = os.path.join(
+        folder_path, second_latest_subfolder.replace("lora_", "optimizer_") + ".pth"
+    )
 
     return second_latest_lora_subfolder_path, second_latest_optimizer_subfolder_path
 
@@ -280,7 +280,6 @@ def train(args) -> None:
         eta_min=0.1 * args.lr,
     )
 
-
     # Flash attention will be disabled because it does NOT support fp32.
     default_dtype = torch.float16 if args.mixed_precision == "fp16" else torch.bfloat16
     torch.set_default_dtype(default_dtype)
@@ -323,7 +322,6 @@ def train(args) -> None:
             coordinator.print_on_master("optimizer checkpoint not found, starting training from scratch")
     else:
         coordinator.print_on_master("Starting training from optimizer scratch")
-
 
     num_steps_per_epoch = len(dataloader) // args.accumulation_steps
 
@@ -376,7 +374,7 @@ def train(args) -> None:
             )
             total_loss = torch.tensor(0.0, device=get_current_device())
             for step, batch in enumerate(pbar, start=start_step // args.accumulation_steps):
-                if step>num_steps_per_epoch:
+                if step > num_steps_per_epoch:
                     break
                 batch = {k: v.to(get_current_device()) for k, v in batch.items() if isinstance(v, torch.Tensor)}
 
@@ -410,15 +408,17 @@ def train(args) -> None:
 
                     total_loss.fill_(0.0)
 
-                if (step+1) % args.save_interval == 0:
+                if (step + 1) % args.save_interval == 0:
                     if args.lora_rank > 0:
-                        booster.save_lora_as_pretrained(model, os.path.join(args.save_dir, f"lora_epoch{epoch}_step{step}"))
+                        booster.save_lora_as_pretrained(
+                            model, os.path.join(args.save_dir, f"lora_epoch{epoch}_step{step}")
+                        )
                         checkpoint = {
-                        "epoch": epoch,
-                        "step": step + 1,
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "lr_scheduler_state_dict": lr_scheduler.state_dict(),
-                    }
+                            "epoch": epoch,
+                            "step": step + 1,
+                            "optimizer_state_dict": optimizer.state_dict(),
+                            "lr_scheduler_state_dict": lr_scheduler.state_dict(),
+                        }
                         torch.save(checkpoint, os.path.join(args.save_dir, f"optimizer_epoch{epoch}_step{step}.pth"))
                         coordinator.print_on_master(f"Saved checkpoint at epoch {epoch}, step {step + 1}")
 
@@ -469,12 +469,7 @@ if __name__ == "__main__":
         default=None,
         help="Checkpoint directory",
     )
-    parser.add_argument(
-        "--save_interval",
-        type=int,
-        default=100,
-        help="Save interval"
-    )
+    parser.add_argument("--save_interval", type=int, default=100, help="Save interval")
     parser.add_argument(
         "--lora_path",
         type=str,
