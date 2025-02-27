@@ -1,3 +1,5 @@
+from math import ceil, floor
+from queue import Queue
 from typing import List
 
 from .v_schedule import ScheduledNode
@@ -88,6 +90,21 @@ class DualPipeGraph(object):
             schedule_str += "\n" + stage_str
         print(schedule_str)
 
+    # def get_pipe_stage(self, stage_pipe: List[ScheduledNode]):
+    #     # get first d, last d, first u, last u B node in range[first B, first W]
+    #     cut_index = 0
+    #     first_d, last_d, first_u, last_u = self.n_micro, 0, self.n_micro, 0
+    #     for i in range(len(stage_pipe)):
+    #         if stage_pipe[i].type ==  'Full_B':
+    #             cut_index = i
+    #             break
+    #     stage_pipe = stage_pipe[cut_index:] # node from last fully B to ...
+
+    #     for node in stage_pipe:
+    #         if node.type ==  'B':
+    #             first_d = node.minibatch + 1
+
+    #     return 0, 0, 0, 0
     ################
     # Pipe_Stage 1
     ################
@@ -920,21 +937,123 @@ class DualPipeGraph(object):
                             curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                             ###### Empty Bubble ######
                             # Stage i in [r - 1, pp/2), Empty bubble
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="EMPTY_BUBBLE",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=0,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
+                            ###### Fully bwd ######
+                            # Stage i in [r - 1, pp/2), mbs pp + r - i model chunk 1 fully bwd
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="Full_B",
+                                    chunk=1,
+                                    stage=stage,
+                                    minibatch=self.n_stage + ceil(r / 2) - stage,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
                         for stage in range(self.n_stage // 2, self.n_stage - r + 1):
                             curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                             ###### Empty Bubble ######
                             # Stage i in [pp/2, pp - r + 1), Empty bubble
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="EMPTY_BUBBLE",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=0,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
+                            ###### Fully bwd ######
+                            # Stage i in [pp/2, pp - r + 1)  压入mbs i + 1 + r model chunk chunk 0  fully bwd
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="Full_B",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=stage + 1 + ceil(r / 2),
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
 
                     else:  # even round: 2, 4, 6, 8
                         for stage in range(r - 1, self.n_stage // 2):
                             curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                             ###### Empty Bubble ######
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="EMPTY_BUBBLE",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=0,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
+                            ###### Fully bwd ######
+                            # Stage i in [r - 1, pp/2), mbs pp//2 + r model chunk 0 fully bwd
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="Full_B",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=self.n_stage // 2 + floor(r / 2) + 1,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
                         for stage in range(self.n_stage // 2, self.n_stage - r + 1):
                             curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                             ###### Empty Bubble ######
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="EMPTY_BUBBLE",
+                                    chunk=0,
+                                    stage=stage,
+                                    minibatch=0,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
 
-        # mid_rhombic(pipeline_schedule)
-        # mid_butterfly(pipeline_schedule)
+                            ###### Fully bwd ######
+                            # Stage i in [pp/2, pp - r + 1), mbs  pp//2 + r model chunk chunk 1 fully bwd
+                            pipeline_schedule[stage].append(
+                                ScheduledNode(
+                                    type="Full_B",
+                                    chunk=1,
+                                    stage=stage,
+                                    minibatch=self.n_stage // 2 + floor(r / 2) + 1,
+                                    start_time=curr_time,
+                                    completion_time=curr_time + self.one_time_unit,
+                                )
+                            )
+                            curr_time += self.one_time_unit
+
+        mid_rhombic(pipeline_schedule)
+        mid_butterfly(pipeline_schedule)
         mid_transitions(pipeline_schedule)
 
     ################
@@ -944,15 +1063,206 @@ class DualPipeGraph(object):
 
         ########### Pipe_Stage 3.1 ###########
         def bwdB_step(pipeline_schedule: List[List[ScheduledNode]]):
-            pass
+            # for each stage, pp/2 round（total 8 round）Schedule Nodes，
+            for r in range(0, self.n_stage // 2):
+                if r % 2 == 0:
+                    # Stage i in [pp/2 - r - 1, pp/2)
+                    for stage in range(self.n_stage // 2 - r - 1, self.n_stage // 2):
+                        # Stage i in [pp/2 - r - 1, pp/2), mbs (pp/2 - 1）*2 + r/2 model chunk 1  bwd B
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="B",
+                                chunk=1,
+                                stage=stage,
+                                minibatch=(self.n_stage // 2 - 1) * 2 + r // 2,
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+                    # Stage i in [pp/2, pp/2 + r + 1)
+                    for stage in range(self.n_stage // 2, self.n_stage // 2 + r + 1):
+                        # Stage i in [pp/2, pp/2 + r+ 1), mbs (pp/2 - 1）*2 + r/2 model chunk 0 bwd B
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="B",
+                                chunk=0,
+                                stage=stage,
+                                minibatch=(self.n_stage // 2 - 1) * 2 + r // 2,
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+                else:
+                    # Stage i in [pp/2 - r - 1, pp/2)
+                    for stage in range(self.n_stage // 2 - r - 1, self.n_stage // 2):
+                        # Stage i in [pp/2 - r - 1, pp/2), mbs pp-1-(pp/2 - i)+ floor(r/2)  model chunk 0 bwd B  # [6:13,7:14]
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="B",
+                                chunk=0,
+                                stage=stage,
+                                minibatch=self.n_stage - 1 - (self.n_stage // 2 - stage) + floor(r / 2),
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+                    # Stage i in [pp/2, pp/2 + r+ 1)
+                    for stage in range(self.n_stage // 2, self.n_stage // 2 + r + 1):
+                        # Stage i in [pp/2, pp/2 + r+ 1), mbs pp-1-(i - pp/2 + 1) + floor(r/2) model chunk 1 bwd B # [8:14,9:13]
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="B",
+                                chunk=1,
+                                stage=stage,
+                                minibatch=self.n_stage - 1 - (stage - self.n_stage // 2 + 1) + floor(r / 2),
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
 
         ########### Pipe_Stage 3.2 ###########
         def cross_bwdB_bwdW(pipeline_schedule: List[List[ScheduledNode]]):
-            pass
+
+            for stage in range(0, self.n_stage // 2):
+                B_queue, W_queue = Queue(), Queue()
+                last_down_of_B, last_up_of_B = self.n_micro, self.n_micro
+
+            for stage in range(self.n_stage // 2, self.n_stage):
+                pass
+
+            # for r in range(0, self.n_stage // 2 - 1):
+
+            # # Stage i in [0, pp/2 - r - 1)
+            # for stage in range(0, self.n_stage // 2 - r - 1):
+            #     ###### Bwd W ######
+
+            #     ###### Bwd B ######
+            #     # Stage i in [0, pp/2 - r - 1), mbs  bs/2-pp/2+1+i+r  model chunk 0 bwd B
+            #     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+            #     pipeline_schedule[stage].append(
+            #         ScheduledNode(
+            #             type="B",
+            #             chunk=0,
+            #             stage=stage,
+            #             minibatch=self.n_micro // 2 - self.n_stage // 2 + 1 + stage + r,
+            #             start_time=curr_time,
+            #             completion_time=curr_time + self.one_time_unit,
+            #         )
+            #     )
+            #     curr_time += self.one_time_unit
+            #     pass
+
+            # # Stage i in [pp/2 + r + 1, pp)
+            # for stage in range(self.n_stage // 2 + r + 1, self.n_stage):
+            #     ###### Bwd W ######
+
+            #     ###### Bwd B ######
+            #     # Stage i in [pp/2 + r + 1, pp)  压入mbs (bs/2+pp/2)-i+r model chunk chunk 1 bwd B
+            #     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+            #     pipeline_schedule[stage].append(
+            #         ScheduledNode(
+            #             type="B",
+            #             chunk=1,
+            #             stage=stage,
+            #             minibatch=self.n_micro // 2 + self.n_stage // 2 - stage + r,
+            #             start_time=curr_time,
+            #             completion_time=curr_time + self.one_time_unit,
+            #         )
+            #     )
+            #     curr_time += self.one_time_unit
 
         ########### Pipe_Stage 3.3 ###########
         def bwdW_step(pipeline_schedule: List[List[ScheduledNode]]):
-            pass
+            # for each stage, add pp/2 round（total 8 round）Schedule Nodes
+            for r in range(0, self.n_stage // 2):
+                for stage in range(0, self.n_stage // 2):
+                    # Red up # [0, 7]
+                    if stage in range(self.n_stage // 2 - r - 1, self.n_stage // 2 - 1):
+                        # Stage i in [pp/2 - r, pp/2 - 1), mbs(pp/2 - 1）*2 + 向下取整(r/2) + 1 model chunk Chunk_num   bwd W  # None
+                        # mbs_num = (pp/2 - 1）*2 + 向下取整(r/2)  if r < pp //2 // 2 else  (pp/2 - 1）*2 + (r -  pp //2 // 2)
+                        # chunk_num   = 1 if r < pp //2 else 0
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        chunk_num = 1 if r < self.n_stage // 2 // 2 else 0
+                        mbs_num = (
+                            (self.n_stage // 2 - 1) * 2 + r
+                            if r < self.n_stage // 2 // 2
+                            else (self.n_stage // 2 - 1) * 2 + (r - self.n_stage // 2 // 2)
+                        )
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="W",
+                                chunk=chunk_num,
+                                stage=stage,
+                                minibatch=mbs_num,
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+                    # Blue up [7, 8]
+                    if stage in range(self.n_stage // 2 - 1, self.n_stage // 2):
+                        # Stage i in [pp/2 - 1, pp/2), mbs (pp/2 - 1）*2 + floor(r/2) model chunk 1  bwd W
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="W",
+                                chunk=1 if r % 2 == 0 else 0,
+                                stage=stage,
+                                minibatch=(self.n_stage // 2 - 1) * 2 + floor(r / 2),
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+
+                for stage in range(self.n_stage // 2, self.n_stage):
+                    # Blue down [8, 9]
+                    if stage in range(self.n_stage // 2, self.n_stage // 2 + 1):
+                        # Stage i in [pp/2, pp/2 + 1), mbs (pp/2 - 1）*2 + 向下取整(r/2) - 1 model chunk chunk 0  bwd W
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="W",
+                                chunk=0 if r % 2 == 0 else 1,
+                                stage=stage,
+                                minibatch=(self.n_stage // 2 - 1) * 2 + floor(r / 2),
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
+
+                    # Red Down # [9, 16]
+                    if stage in range(self.n_stage // 2 + 1, self.n_stage // 2 + r + 1):
+                        # Stage i in [pp/2 + 1, pp/2 + r+ 1), mbs(pp/2 - 1）*2 + floor(r/2)  model chunk  0  bwd W
+                        # mbs_num = (pp/2 - 1）*2 + 向下取整(r/2)  if r < pp //2 // 2 else  (pp/2 - 1）*2 + (r -  pp //2 // 2)
+                        # chunk_num   = 1 if r < pp //2 else 0
+                        curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                        chunk_num = 0 if r < self.n_stage // 2 // 2 else 1
+                        mbs_num = (
+                            (self.n_stage // 2 - 1) * 2 + r
+                            if r < self.n_stage // 2 // 2
+                            else (self.n_stage // 2 - 1) * 2 + (r - self.n_stage // 2 // 2)
+                        )
+                        pipeline_schedule[stage].append(
+                            ScheduledNode(
+                                type="W",
+                                chunk=chunk_num,
+                                stage=stage,
+                                minibatch=mbs_num,
+                                start_time=curr_time,
+                                completion_time=curr_time + self.one_time_unit,
+                            )
+                        )
+                        curr_time += self.one_time_unit
 
         bwdB_step(pipeline_schedule)
         cross_bwdB_bwdW(pipeline_schedule)
