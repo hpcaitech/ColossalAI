@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, Optional
 
 import ray
@@ -154,7 +155,12 @@ class SimpleProducer(BaseProducer):
 
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
-        return self.model.generate(input_ids, attention_mask, **kwargs)
+        rollout = self.model.generate(input_ids, attention_mask, **kwargs)
+        input_ids[0][attention_mask[0] == 0] = 151643
+        debug = json.dumps(self.tokenizer.decode(input_ids[0], skip_special_tokens=False), ensure_ascii=False)
+        # if dist.get_rank() == 0:
+        #     print(f"debug vllm generation:\ninput_ids: {debug}, ")
+        return rollout
 
     def load_state_dict(self, state_dict):
         self.model.load_state_dict(state_dict)

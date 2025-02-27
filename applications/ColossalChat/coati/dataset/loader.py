@@ -348,6 +348,72 @@ class StatefulDistributedSampler(DistributedSampler):
         self.start_index = start_index
 
 
+# def apply_chat_template_and_mask(
+#     tokenizer: PreTrainedTokenizer,
+#     chat: List[Dict[str, str]],
+#     max_length: Optional[int] = None,
+#     padding: bool = True,
+#     truncation: bool = True,
+#     ignore_idx: int = -100,
+#     **kwargs,
+# ) -> Dict[str, torch.Tensor]:
+#     # Format for RL.
+#     # TODO: buggy
+#     gt_answer = None
+#     if "messages" in chat and "gt_answer" in chat:
+#         gt_answer = chat["gt_answer"]
+#         chat = [chat["messages"]]
+#         if "system_message" in kwargs and chat[0]["role"]!="system":
+#             chat = [{"role": "system", "content": kwargs["system_message"]}] + chat
+#     add_generation_prompt = kwargs.get("add_generation_prompt", False)
+#     tokens = []
+#     assistant_mask = []
+#     print("debug chat", chat)
+#     for i, msg in enumerate(chat):
+#         msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True, add_generation_prompt=add_generation_prompt)
+#         # remove unexpected bos token
+#         if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
+#             msg_tokens = msg_tokens[1:]
+#         tokens.extend(msg_tokens)
+#         if msg["role"] == "assistant":
+#             assistant_mask.extend([True] * len(msg_tokens))
+#         else:
+#             assistant_mask.extend([False] * len(msg_tokens))
+#     attention_mask = [1] * len(tokens)
+#     if max_length is not None:
+#         if padding and len(tokens) < max_length:
+#             to_pad = max_length - len(tokens)
+#             if tokenizer.padding_side == "right":
+#                 tokens.extend([tokenizer.pad_token_id] * to_pad)
+#                 assistant_mask.extend([False] * to_pad)
+#                 attention_mask.extend([0] * to_pad)
+#             else:
+#                 tokens = [tokenizer.pad_token_id] * to_pad + tokens
+#                 assistant_mask = [False] * to_pad + assistant_mask
+#                 attention_mask = [0] * to_pad + attention_mask
+#         if truncation and len(tokens) > max_length:
+#             tokens = tokens[:max_length]
+#             assistant_mask = assistant_mask[:max_length]
+#             attention_mask = attention_mask[:max_length]
+#     input_ids = torch.tensor(tokens, dtype=torch.long)
+#     attention_mask = torch.tensor(attention_mask, dtype=torch.long)
+#     labels = input_ids.clone()
+#     labels[~torch.tensor(assistant_mask, dtype=torch.bool)] = ignore_idx
+#     decoded = tokenizer.decode(input_ids, skip_special_tokens=True)
+#     print(f"debug input_ids: {decoded}")
+#     exit()
+#     if gt_answer is not None:
+#         gt_answer = tokenizer.encode(gt_answer, padding="max_length", max_length=64, return_tensors="pt")
+#         gt_answer = gt_answer.squeeze(1)
+#         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "gt_answer": gt_answer}
+
+#     return {
+#         "input_ids": input_ids,
+#         "attention_mask": attention_mask,
+#         "labels": labels,
+#     }
+
+
 def apply_chat_template_and_mask(
     tokenizer: PreTrainedTokenizer,
     chat: List[Dict[str, str]],
@@ -355,55 +421,42 @@ def apply_chat_template_and_mask(
     padding: bool = True,
     truncation: bool = True,
     ignore_idx: int = -100,
+    **kwargs,
 ) -> Dict[str, torch.Tensor]:
     # Format for RL.
+    # TODO: buggy
     gt_answer = None
     if "messages" in chat and "gt_answer" in chat:
         gt_answer = chat["gt_answer"]
         chat = [chat["messages"]]
-
-    tokens = []
-    assistant_mask = []
-    for i, msg in enumerate(chat):
-        msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True)
-        # remove unexpected bos token
-        if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
-            msg_tokens = msg_tokens[1:]
-        tokens.extend(msg_tokens)
-        if msg["role"] == "assistant":
-            assistant_mask.extend([True] * len(msg_tokens))
-        else:
-            assistant_mask.extend([False] * len(msg_tokens))
-    attention_mask = [1] * len(tokens)
+        if "system_message" in kwargs and chat[0]["role"] != "system":
+            chat = [{"role": "system", "content": kwargs["system_message"]}] + chat
+    add_generation_prompt = kwargs.get("add_generation_prompt", False)
+    tokens = tokenizer.apply_chat_template(chat, tokenize=True, add_generation_prompt=add_generation_prompt)
+    # remove unexpected bos token
+    if tokens[0] == tokenizer.bos_token_id:
+        tokens = tokens[1:]
+    tokens = tokens[:max_length]
     if max_length is not None:
         if padding and len(tokens) < max_length:
             to_pad = max_length - len(tokens)
-            if tokenizer.padding_side == "right":
-                tokens.extend([tokenizer.pad_token_id] * to_pad)
-                assistant_mask.extend([False] * to_pad)
-                attention_mask.extend([0] * to_pad)
-            else:
-                tokens = [tokenizer.pad_token_id] * to_pad + tokens
-                assistant_mask = [False] * to_pad + assistant_mask
-                attention_mask = [0] * to_pad + attention_mask
-        if truncation and len(tokens) > max_length:
-            tokens = tokens[:max_length]
-            assistant_mask = assistant_mask[:max_length]
-            attention_mask = attention_mask[:max_length]
+            tokens = [tokenizer.pad_token_id] * to_pad + tokens
     input_ids = torch.tensor(tokens, dtype=torch.long)
-    attention_mask = torch.tensor(attention_mask, dtype=torch.long)
-    labels = input_ids.clone()
-    labels[~torch.tensor(assistant_mask, dtype=torch.bool)] = ignore_idx
-
     if gt_answer is not None:
-        gt_answer = tokenizer.encode(gt_answer, padding="max_length", max_length=64, return_tensors="pt")
+        gt_answer = tokenizer.encode(
+            gt_answer, padding="max_length", max_length=64, return_tensors="pt", truncation=True
+        )
         gt_answer = gt_answer.squeeze(1)
-        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "gt_answer": gt_answer}
-
+        return {
+            "input_ids": input_ids,
+            "attention_mask": (input_ids != tokenizer.pad_token_id).bool(),
+            "labels": input_ids,
+            "gt_answer": gt_answer,
+        }
     return {
         "input_ids": input_ids,
-        "attention_mask": attention_mask,
-        "labels": labels,
+        "attention_mask": (input_ids != tokenizer.pad_token_id).bool(),
+        "labels": input_ids.clone(),
     }
 
 
@@ -413,7 +466,7 @@ class RawConversationDataset(Dataset):
     Each instance is a dictionary with fields `system`, `roles`, `messages`, `offset`, `sep_style`, `seps`.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int, **kwargs) -> None:
         self.tokenizer = tokenizer
         self.raw_texts = []
         with jsonlines.open(input_file) as f:
@@ -421,6 +474,9 @@ class RawConversationDataset(Dataset):
                 self.raw_texts.append(line)
         self.tokenized_texts = [None] * len(self.raw_texts)
         self.max_length = max_length
+        self.kwargs = kwargs
+        if "chat_template" in kwargs:
+            self.tokenizer.chat_template = kwargs["chat_template"]
 
     def __len__(self) -> int:
         return len(self.raw_texts)
@@ -428,6 +484,6 @@ class RawConversationDataset(Dataset):
     def __getitem__(self, index: int):
         if self.tokenized_texts[index] is None:
             message = self.raw_texts[index]
-            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
+            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length, **self.kwargs)
             self.tokenized_texts[index] = dict(tokens)
         return self.tokenized_texts[index]

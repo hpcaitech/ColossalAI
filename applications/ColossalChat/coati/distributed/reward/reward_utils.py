@@ -50,7 +50,7 @@ def validate_response_structure(processed_str: str, tags: Dict = None) -> bool:
         or positions["answer_start"] > positions["answer_end"]
     ):
         validation_passed = False
-    if len(processed_str) - positions["answer_end"] != len(tags["answer_end"]["text"]):
+    if len(processed_str) - positions["answer_end"] > 20:
         validation_passed = False
     return validation_passed
 

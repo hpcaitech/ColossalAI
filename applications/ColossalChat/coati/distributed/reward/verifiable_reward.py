@@ -12,11 +12,7 @@ class VerifiableReward:
         self.reward_fns = reward_fns
         self.kwargs = kwargs
 
-    def __call__(
-        self,
-        input_ids: torch.LongTensor,
-        gt_answer: List[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    def __call__(self, input_ids: torch.LongTensor, gt_answer: List[torch.Tensor] = None, **kwargs) -> torch.Tensor:
         # Get batch size
         bs = input_ids.size(0)
         # Initialize reward
@@ -31,6 +27,7 @@ class VerifiableReward:
                         input_ids[i],
                         gt_answer=gt_answer[i],
                         **self.kwargs,
+                        **{k: v[i] for k, v in kwargs.items()} if kwargs else {},
                     )
                     for i in range(bs)
                 ],
