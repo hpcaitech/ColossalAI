@@ -28,6 +28,5 @@ def test_dualpipe_schedule(test_config):
     )
 
 
-# 我们是n方，四维dp是n3方logN
 if __name__ == "__main__":
     test_dualpipe_schedule()
