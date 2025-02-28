@@ -1,5 +1,4 @@
 from math import ceil, floor
-from queue import Queue
 from typing import List
 
 from .v_schedule import ScheduledNode
@@ -90,21 +89,93 @@ class DualPipeGraph(object):
             schedule_str += "\n" + stage_str
         print(schedule_str)
 
-    # def get_pipe_stage(self, stage_pipe: List[ScheduledNode]):
-    #     # get first d, last d, first u, last u B node in range[first B, first W]
-    #     cut_index = 0
-    #     first_d, last_d, first_u, last_u = self.n_micro, 0, self.n_micro, 0
-    #     for i in range(len(stage_pipe)):
-    #         if stage_pipe[i].type ==  'Full_B':
-    #             cut_index = i
-    #             break
-    #     stage_pipe = stage_pipe[cut_index:] # node from last fully B to ...
+    def get_pipe_first_b_w(self, stage_pipe: List[ScheduledNode], chunk: int = 0):
+        # get first d, last d, first u, last u B node in range[first B, first W]
+        first_d, last_d, first_u, last_u = self.n_micro // 2, 0, self.n_micro // 2, 0
+        stage_pipe_temp = []
+        for node in stage_pipe[::-1]:
+            if node.type == "Full_B":
+                break
+            else:
+                stage_pipe_temp.append(node)
+        stage_pipe = stage_pipe_temp[::-1]  # node from last fully B to ...
+        if chunk == 0:
+            # get first d
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 1:
+                    first_d = node.minibatch
+                    break
 
-    #     for node in stage_pipe:
-    #         if node.type ==  'B':
-    #             first_d = node.minibatch + 1
+            # get first u
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 0:
+                    first_u = node.minibatch
+                    break
 
-    #     return 0, 0, 0, 0
+            # get last_d
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 1:
+                    last_d = node.minibatch
+                    break
+
+            # get last_u
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 0:
+                    last_u = node.minibatch
+                    break
+        else:
+            # get first d
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 0:
+                    first_d = node.minibatch
+                    break
+
+            # get first u
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 1:
+                    first_u = node.minibatch
+                    break
+
+            # get last_d
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 0:
+                    last_d = node.minibatch
+                    break
+
+            # get last_u
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 1:
+                    last_u = node.minibatch
+                    break
+        return first_d, last_d, first_u, last_u
+
+    def cross_merge_nodes(
+        self, node_list1: List[ScheduledNode], node_list2: List[ScheduledNode]
+    ) -> List[ScheduledNode]:
+        """
+        corss merge node in Step: get_end_schedule-->cross_bwdB_bwdW
+        example 1:
+        inputs:
+            node_list1:[Node 1, Node 3, Node 5]
+            node_list2:[Node 2, Node 4, Node 6]
+        return:
+            node_list3:[Node 1, Node 2, Node 3, Node 4, Node 5, Node 6]
+
+        example 2:
+        inputs:
+            node_list1:[Node 1, Node 3, Node 5]
+            node_list2:[Node 2,]
+        return:
+            node_list3:[Node 1, Node 2, Node 3, Node 5]
+        """
+        merged = []
+        for x, y in zip(node_list1, node_list2):
+            merged.append(x)
+            merged.append(y)
+        merged += node_list1[len(node_list2) :]  # deal list1 rest ele
+        merged += node_list2[len(node_list1) :]  # deal list2 rest ele
+        return merged
+
     ################
     # Pipe_Stage 1
     ################
@@ -1060,7 +1131,6 @@ class DualPipeGraph(object):
     # Pipe_Stage 3
     ################
     def get_end_schedule(self, pipeline_schedule: List[List[ScheduledNode]]):
-
         ########### Pipe_Stage 3.1 ###########
         def bwdB_step(pipeline_schedule: List[List[ScheduledNode]]):
             # for each stage, pp/2 round（total 8 round）Schedule Nodes，
@@ -1130,54 +1200,167 @@ class DualPipeGraph(object):
 
         ########### Pipe_Stage 3.2 ###########
         def cross_bwdB_bwdW(pipeline_schedule: List[List[ScheduledNode]]):
-
             for stage in range(0, self.n_stage // 2):
-                B_queue, W_queue = Queue(), Queue()
-                last_down_of_B, last_up_of_B = self.n_micro, self.n_micro
+                first_d, last_d, first_u, last_u = self.get_pipe_first_b_w(pipeline_schedule[stage], chunk=0)
+                # print(f"Up first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
+                u_queue_w, u_queue_b, d_queue_w = [], [], []
+                ### 1.Get W nodes, then merge up/down W nodes ###
+                # get up W nodes: [first_u: mbs//2]
+                for _ in range(first_u, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    u_queue_w.append(
+                        ScheduledNode(
+                            type="W",
+                            chunk=0,
+                            stage=stage,
+                            minibatch=_,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                # get down W nodes: [first_d: mbs//2] Bwd W to W Queue
+                for _ in range(first_d, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    d_queue_w.append(
+                        ScheduledNode(
+                            type="W",
+                            chunk=1,
+                            stage=stage,
+                            minibatch=_,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                ### 2.Get B nodes, then cross with W ###
+                for _ in range(last_u, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    u_queue_b.append(
+                        ScheduledNode(
+                            type="B",
+                            chunk=0,
+                            stage=stage,
+                            minibatch=_ + 1,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                # if stage % 2 == 0: u_queue_w first, then d_queue_w
+                if stage % 2 == 0:
+                    w_nodes = self.cross_merge_nodes(u_queue_w, d_queue_w)
+                    wb_nodes = self.cross_merge_nodes(w_nodes, u_queue_b)
+                    # clean w nodes, let it stop at mbs // 2 - 1, chunk 0, type 'B'
+                    cut_idx = len(wb_nodes)
+                    for _ in range(len(wb_nodes)):
+                        if (
+                            wb_nodes[_].minibatch == (self.n_micro // 2 - 1)
+                            and wb_nodes[_].type == "B"
+                            and wb_nodes[_].chunk == 0
+                        ):
+                            cut_idx = _
+                            break
+                    wb_nodes = wb_nodes[: cut_idx + 1]
+                    # print(f"stage {stage} cut_idx {cut_idx} wb_nodes {[str(_.minibatch) + _.type + ('u' if _.chunk == 0 else 'd') for _ in wb_nodes]}")
+                # else: d_queue_w first, then u_queue_w
+                else:
+                    w_nodes = self.cross_merge_nodes(d_queue_w, u_queue_w)
+                    wb_nodes = self.cross_merge_nodes(w_nodes, u_queue_b)
+                    # clean w nodes, let it stop at mbs // 2 - 1, chunk 0, type 'B'
+                    cut_idx = len(wb_nodes)
+                    for _ in range(len(wb_nodes)):
+                        if (
+                            wb_nodes[_].minibatch == (self.n_micro // 2 - 1)
+                            and wb_nodes[_].type == "B"
+                            and wb_nodes[_].chunk == 0
+                        ):
+                            cut_idx = _
+                            break
+                    wb_nodes = wb_nodes[: cut_idx + 1]
+                    # print(f"stage {stage} cut_idx {cut_idx} wb_nodes {[str(_.minibatch) + _.type + ('u' if _.chunk == 0 else 'd') for _ in wb_nodes]}")
 
             for stage in range(self.n_stage // 2, self.n_stage):
-                pass
-
-            # for r in range(0, self.n_stage // 2 - 1):
-
-            # # Stage i in [0, pp/2 - r - 1)
-            # for stage in range(0, self.n_stage // 2 - r - 1):
-            #     ###### Bwd W ######
-
-            #     ###### Bwd B ######
-            #     # Stage i in [0, pp/2 - r - 1), mbs  bs/2-pp/2+1+i+r  model chunk 0 bwd B
-            #     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
-            #     pipeline_schedule[stage].append(
-            #         ScheduledNode(
-            #             type="B",
-            #             chunk=0,
-            #             stage=stage,
-            #             minibatch=self.n_micro // 2 - self.n_stage // 2 + 1 + stage + r,
-            #             start_time=curr_time,
-            #             completion_time=curr_time + self.one_time_unit,
-            #         )
-            #     )
-            #     curr_time += self.one_time_unit
-            #     pass
-
-            # # Stage i in [pp/2 + r + 1, pp)
-            # for stage in range(self.n_stage // 2 + r + 1, self.n_stage):
-            #     ###### Bwd W ######
-
-            #     ###### Bwd B ######
-            #     # Stage i in [pp/2 + r + 1, pp)  压入mbs (bs/2+pp/2)-i+r model chunk chunk 1 bwd B
-            #     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
-            #     pipeline_schedule[stage].append(
-            #         ScheduledNode(
-            #             type="B",
-            #             chunk=1,
-            #             stage=stage,
-            #             minibatch=self.n_micro // 2 + self.n_stage // 2 - stage + r,
-            #             start_time=curr_time,
-            #             completion_time=curr_time + self.one_time_unit,
-            #         )
-            #     )
-            #     curr_time += self.one_time_unit
+                first_d, last_d, first_u, last_u = self.get_pipe_first_b_w(pipeline_schedule[stage], chunk=1)
+                print(f"Up first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
+                d_queue_w, d_queue_b, u_queue_w = [], [], []
+                ### 1.Get W nodes, then merge down/up W nodes ###
+                # get down W nodes: [first_d: mbs//2] chunk 1
+                for _ in range(first_d, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    d_queue_w.append(
+                        ScheduledNode(
+                            type="W",
+                            chunk=1,
+                            stage=stage,
+                            minibatch=_,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                # get up W nodes: [first_u: mbs//2] chunk 0
+                for _ in range(first_u, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    d_queue_w.append(
+                        ScheduledNode(
+                            type="W",
+                            chunk=0,
+                            stage=stage,
+                            minibatch=_,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                ### 2.Get B nodes, then cross with W ###
+                for _ in range(last_d, self.n_micro // 2):
+                    curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
+                    u_queue_b.append(
+                        ScheduledNode(
+                            type="B",
+                            chunk=1,
+                            stage=stage,
+                            minibatch=_ + 1,
+                            start_time=curr_time,
+                            completion_time=curr_time + self.one_time_unit,
+                        )
+                    )
+                    curr_time += self.one_time_unit
+                print(
+                    f"stage {stage} d_queue_w {[_.minibatch for _ in d_queue_w]} d_queue_b {[_.minibatch for _ in d_queue_b]} u_queue_w {[_.minibatch for _ in u_queue_w]}"
+                )
+                if stage % 2 == 0:
+                    w_nodes = self.cross_merge_nodes(d_queue_w, u_queue_w)
+                    wb_nodes = self.cross_merge_nodes(w_nodes, d_queue_b)
+                    # clean w nodes, let it stop at mbs // 2 - 1, chunk 1, type 'B'
+                    cut_idx = len(wb_nodes)
+                    for _ in range(len(wb_nodes)):
+                        if (
+                            wb_nodes[_].minibatch == (self.n_micro // 2 - 1)
+                            and wb_nodes[_].type == "B"
+                            and wb_nodes[_].chunk == 1
+                        ):
+                            cut_idx = _
+                            break
+                    wb_nodes = wb_nodes[: cut_idx + 1]
+                    # print(f"stage {stage} cut_idx {cut_idx} wb_nodes {[str(_.minibatch) + _.type + ('u' if _.chunk == 0 else 'd') for _ in wb_nodes]}")
+                # else: d_queue_w first, then u_queue_w
+                else:
+                    w_nodes = self.cross_merge_nodes(u_queue_w, d_queue_w)
+                    wb_nodes = self.cross_merge_nodes(w_nodes, d_queue_b)
+                    # clean w nodes, let it stop at mbs // 2 - 1, chunk 0, type 'B'
+                    cut_idx = len(wb_nodes)
+                    for _ in range(len(wb_nodes)):
+                        if (
+                            wb_nodes[_].minibatch == (self.n_micro // 2 - 1)
+                            and wb_nodes[_].type == "B"
+                            and wb_nodes[_].chunk == 1
+                        ):
+                            cut_idx = _
+                            break
+                    wb_nodes = wb_nodes[: cut_idx + 1]
+                    # print(f"stage {stage} cut_idx {cut_idx} wb_nodes {[str(_.minibatch) + _.type + ('u' if _.chunk == 0 else 'd') for _ in wb_nodes]}")
 
         ########### Pipe_Stage 3.3 ###########
         def bwdW_step(pipeline_schedule: List[List[ScheduledNode]]):
@@ -1266,13 +1449,13 @@ class DualPipeGraph(object):
 
         bwdB_step(pipeline_schedule)
         cross_bwdB_bwdW(pipeline_schedule)
-        bwdW_step(pipeline_schedule)
+        # bwdW_step(pipeline_schedule)
 
     def get_dualpipe_schedule(
         self,
     ):
         pipeline_schedule = [[] for _ in range(self.n_stage)]
-        self.get_warmup_schedule(pipeline_schedule)
-        self.get_middle_schedule(pipeline_schedule)
+        # self.get_warmup_schedule(pipeline_schedule)
+        # self.get_middle_schedule(pipeline_schedule)
         self.get_end_schedule(pipeline_schedule)
         return pipeline_schedule

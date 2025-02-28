@@ -447,3 +447,34 @@ class PipelineGraph(object):
             assert len(rollback_comm) == 0
 
         return local_order_with_rollback
+
+
+class DualVPipelineGraph(object):
+    """DualVPipelineGraph: A cut-in-half combination of DualPipe and Zerobubble V"""
+
+    def __init__(
+        self,
+        n_stage,
+        n_micro,
+        f_cost,
+        b_cost,
+        w_cost,
+        c_cost,
+        f_mem,
+        b_mem,
+        w_mem,
+        max_mem=None,
+    ):
+        self.n_node = 6 * n_stage * n_micro
+        self.n_stage = n_stage
+        self.n_micro = n_micro
+        self.f_cost = f_cost
+        self.b_cost = b_cost
+        self.w_cost = w_cost
+        self.c_cost = c_cost
+        self.f_mem = f_mem
+        self.b_mem = b_mem
+        self.w_mem = w_mem
+        self.fbw_cost = [f_cost, b_cost, w_cost]
+        self.fbw_mem = [f_mem, b_mem, w_mem]
+        self.max_mem = max_mem or f_mem * self.n_stage * 2
