@@ -356,6 +356,14 @@ def apply_chat_template_and_mask(
     truncation: bool = True,
     ignore_idx: int = -100,
 ) -> Dict[str, torch.Tensor]:
+
+    system_prompt = "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, your final answer should be a integer without unit, currency mark, thousands separator or other text. i.e., <answer> 123 </answer>.\n"
+
+    system_element = {
+        "role": "system",
+        "content": system_prompt,
+    }
+
     # Format for RL.
     gt_answer = None
     if "messages" in chat and "gt_answer" in chat:
@@ -365,7 +373,7 @@ def apply_chat_template_and_mask(
     tokens = []
     assistant_mask = []
     for i, msg in enumerate(chat):
-        msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True)
+        msg_tokens = tokenizer.apply_chat_template([system_element, msg], tokenize=True, add_generation_prompt=True)
         # remove unexpected bos token
         if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
             msg_tokens = msg_tokens[1:]
@@ -378,14 +386,15 @@ def apply_chat_template_and_mask(
     if max_length is not None:
         if padding and len(tokens) < max_length:
             to_pad = max_length - len(tokens)
-            if tokenizer.padding_side == "right":
-                tokens.extend([tokenizer.pad_token_id] * to_pad)
-                assistant_mask.extend([False] * to_pad)
-                attention_mask.extend([0] * to_pad)
-            else:
-                tokens = [tokenizer.pad_token_id] * to_pad + tokens
-                assistant_mask = [False] * to_pad + assistant_mask
-                attention_mask = [0] * to_pad + attention_mask
+            # Left padding for generation.
+            # if tokenizer.padding_side == "right":
+            #     tokens.extend([tokenizer.pad_token_id] * to_pad)
+            #     assistant_mask.extend([False] * to_pad)
+            #     attention_mask.extend([0] * to_pad)
+            # else:
+            tokens = [tokenizer.pad_token_id] * to_pad + tokens
+            assistant_mask = [False] * to_pad + assistant_mask
+            attention_mask = [0] * to_pad + attention_mask
         if truncation and len(tokens) > max_length:
             tokens = tokens[:max_length]
             assistant_mask = assistant_mask[:max_length]
