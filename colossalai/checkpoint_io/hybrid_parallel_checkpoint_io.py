@@ -392,7 +392,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
-        # strict = False
+        strict = False
 
         # Load params & buffers to model.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
@@ -843,7 +843,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
         model._force_wait_all_gather()
-        # strict = False
+        strict = False
         model_before_wrapping = model
         model = model.unwrap()
 
