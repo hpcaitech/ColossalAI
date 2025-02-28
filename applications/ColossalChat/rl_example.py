@@ -51,13 +51,17 @@ if __name__ == "__main__":
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.6,
+                gpu_memory_utilization=0.7,
             )
         )
         generate_config.update(
             dict(
-                max_tokens=256,
+                max_tokens=2048,
                 ignore_eos=True,
+                include_stop_str_in_output=True,
+                stop=["</answer>"],
+                temperature=0.2,
+                top_p=0.95,
             )
         )
     else:
