@@ -85,11 +85,11 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
             if use_async:
                 from colossalai.utils.safetensors import save
 
-                if id(model) not in self.pinned_state_dicts:
-                    self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
+                if hash(model) not in self.pinned_state_dicts:
+                    self.pinned_state_dicts[hash(model)] = create_pinned_state_dict(state_dict)
                 for k, v in state_dict.items():
-                    self.pinned_state_dicts[id(model)][k].copy_(v)
-                    state_dict[k] = self.pinned_state_dicts[id(model)][k]
+                    self.pinned_state_dicts[hash(model)][k].copy_(v)
+                    state_dict[k] = self.pinned_state_dicts[hash(model)][k]
                 writer = save(checkpoint, state_dict)
                 self.async_writers.append(writer)
             else:
@@ -172,9 +172,9 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
 
         if use_async and self.coordinator.is_master():
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = {}
-            pinned_state_dicts = self.pinned_state_dicts[id(model)]
+            if hash(model) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[hash(model)] = {}
+            pinned_state_dicts = self.pinned_state_dicts[hash(model)]
         else:
             pinned_state_dicts = None
         state_dict_shard = model.state_dict_shard(

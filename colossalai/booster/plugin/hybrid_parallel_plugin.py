@@ -26,6 +26,7 @@ from colossalai.amp.naive_amp.mixed_precision_optimizer import MixedPrecisionOpt
 from colossalai.checkpoint_io import CheckpointIO, HybridParallelCheckpointIO
 from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
+from colossalai.interface.model import PeftUnwrapMixin
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
@@ -225,7 +226,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         if isinstance(model, DDP):
             model = model.module
         if unwrap_peft and isinstance(model, PeftModel):
-            model = model.get_base_model()
+            model = PeftUnwrapMixin(model)
         return model
 
     def _force_wait_all_gather(self):

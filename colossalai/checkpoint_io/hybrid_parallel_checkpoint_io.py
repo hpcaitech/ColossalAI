@@ -249,9 +249,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Only devices with tp_rank == 0 are responsible for model saving.
         control_saving = self.tp_rank == 0 and self.sp_rank == 0
         if control_saving and use_async:
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = {}
-            pinned_state_dicts = self.pinned_state_dicts[id(model)]
+            if hash(model) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[hash(model)] = {}
+            pinned_state_dicts = self.pinned_state_dicts[hash(model)]
         else:
             pinned_state_dicts = None
         state_dict_shard = HybridParallelCheckpointIO._model_sharder(
@@ -392,7 +392,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
-        strict = False
+        # strict = False
 
         # Load params & buffers to model.
         # Keep a record of loaded files so that file will not be repeatedly loaded.
@@ -789,11 +789,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 if use_async:
                     from colossalai.utils.safetensors import save
 
-                    if id(model) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
+                    if hash(model) not in self.pinned_state_dicts:
+                        self.pinned_state_dicts[hash(model)] = create_pinned_state_dict(state_dict)
                     for name, param in state_dict.items():
-                        self.pinned_state_dicts[id(model)][name].copy_(param)
-                        state_dict[name] = self.pinned_state_dicts[id(model)][name]
+                        self.pinned_state_dicts[hash(model)][name].copy_(param)
+                        state_dict[name] = self.pinned_state_dicts[hash(model)][name]
                     writer = save(path=checkpoint, state_dict=state_dict)
                     self.async_writers.append(writer)
                 else:
@@ -811,11 +811,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 if use_async:
                     from colossalai.utils.safetensors import save
 
-                    if id(model) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts[id(model)] = create_pinned_state_dict(complete_state_dict)
+                    if hash(model) not in self.pinned_state_dicts:
+                        self.pinned_state_dicts[hash(model)] = create_pinned_state_dict(complete_state_dict)
                     for name, param in complete_state_dict.items():
-                        self.pinned_state_dicts[id(model)][name].copy_(param)
-                        complete_state_dict[name] = self.pinned_state_dicts[id(model)][name]
+                        self.pinned_state_dicts[hash(model)][name].copy_(param)
+                        complete_state_dict[name] = self.pinned_state_dicts[hash(model)][name]
                     writer = save(path=checkpoint, state_dict=complete_state_dict)
                     self.async_writers.append(writer)
                 else:
@@ -843,7 +843,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         assert isinstance(model, ModelWrapper), "Please boost the model before loading!"
         model._force_wait_all_gather()
-        strict = False
+        # strict = False
         model_before_wrapping = model
         model = model.unwrap()
 
