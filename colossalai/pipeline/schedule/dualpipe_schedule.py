@@ -99,6 +99,7 @@ class DualPipeGraph(object):
             else:
                 stage_pipe_temp.append(node)
         stage_pipe = stage_pipe_temp[::-1]  # node from last fully B to ...
+
         if chunk == 0:
             # get first d
             for node in stage_pipe:
@@ -125,26 +126,26 @@ class DualPipeGraph(object):
                     break
         else:
             # get first d
-            for node in stage_pipe[::-1]:
-                if node.type == "B" and node.chunk == 0:
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 1:
                     first_d = node.minibatch
                     break
 
             # get first u
-            for node in stage_pipe[::-1]:
-                if node.type == "B" and node.chunk == 1:
+            for node in stage_pipe:
+                if node.type == "B" and node.chunk == 0:
                     first_u = node.minibatch
                     break
 
             # get last_d
-            for node in stage_pipe:
-                if node.type == "B" and node.chunk == 0:
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 1:
                     last_d = node.minibatch
                     break
 
             # get last_u
-            for node in stage_pipe:
-                if node.type == "B" and node.chunk == 1:
+            for node in stage_pipe[::-1]:
+                if node.type == "B" and node.chunk == 0:
                     last_u = node.minibatch
                     break
         return first_d, last_d, first_u, last_u
@@ -1202,7 +1203,7 @@ class DualPipeGraph(object):
         def cross_bwdB_bwdW(pipeline_schedule: List[List[ScheduledNode]]):
             for stage in range(0, self.n_stage // 2):
                 first_d, last_d, first_u, last_u = self.get_pipe_first_b_w(pipeline_schedule[stage], chunk=0)
-                # print(f"Up first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
+                # print(f"stage {stage} Up first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
                 u_queue_w, u_queue_b, d_queue_w = [], [], []
                 ### 1.Get W nodes, then merge up/down W nodes ###
                 # get up W nodes: [first_u: mbs//2]
@@ -1282,11 +1283,11 @@ class DualPipeGraph(object):
 
             for stage in range(self.n_stage // 2, self.n_stage):
                 first_d, last_d, first_u, last_u = self.get_pipe_first_b_w(pipeline_schedule[stage], chunk=1)
-                print(f"Up first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
+                print(f"stage {stage} Down first_d {first_d}, last_d {last_d}, first_u {first_u}, last_u {last_u} ")
                 d_queue_w, d_queue_b, u_queue_w = [], [], []
                 ### 1.Get W nodes, then merge down/up W nodes ###
                 # get down W nodes: [first_d: mbs//2] chunk 1
-                for _ in range(first_d, self.n_micro // 2):
+                for _ in range(self.n_micro // 2, first_d):
                     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                     d_queue_w.append(
                         ScheduledNode(
@@ -1300,7 +1301,7 @@ class DualPipeGraph(object):
                     )
                     curr_time += self.one_time_unit
                 # get up W nodes: [first_u: mbs//2] chunk 0
-                for _ in range(first_u, self.n_micro // 2):
+                for _ in range(self.n_micro // 2, first_u):
                     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                     d_queue_w.append(
                         ScheduledNode(
@@ -1314,7 +1315,7 @@ class DualPipeGraph(object):
                     )
                     curr_time += self.one_time_unit
                 ### 2.Get B nodes, then cross with W ###
-                for _ in range(last_d, self.n_micro // 2):
+                for _ in range(self.n_micro // 2, last_d):
                     curr_time = pipeline_schedule[stage][-1].completion_time if pipeline_schedule[stage] else 0
                     u_queue_b.append(
                         ScheduledNode(
@@ -1327,9 +1328,10 @@ class DualPipeGraph(object):
                         )
                     )
                     curr_time += self.one_time_unit
-                print(
-                    f"stage {stage} d_queue_w {[_.minibatch for _ in d_queue_w]} d_queue_b {[_.minibatch for _ in d_queue_b]} u_queue_w {[_.minibatch for _ in u_queue_w]}"
-                )
+                print(f"stage {stage} d_queue_w {[_.minibatch for _ in d_queue_w]}")
+                # print(
+                #     f"stage {stage} d_queue_w {[_.minibatch for _ in d_queue_w]} d_queue_b {[_.minibatch for _ in d_queue_b]} u_queue_w {[_.minibatch for _ in u_queue_w]}"
+                # )
                 if stage % 2 == 0:
                     w_nodes = self.cross_merge_nodes(d_queue_w, u_queue_w)
                     wb_nodes = self.cross_merge_nodes(w_nodes, d_queue_b)
