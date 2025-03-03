@@ -1,7 +1,7 @@
 from colossalai.cluster.device_mesh_manager import DeviceMeshInfo, DeviceMeshManager
 from colossalai.initialize import launch
 from colossalai.logging import disable_existing_loggers
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def check_device_mesh_manager(rank, world_size, port):
@@ -24,6 +24,7 @@ def check_device_mesh_manager(rank, world_size, port):
     assert device_mesh_with_shape._logical_mesh_id.tolist() == [[0, 1], [2, 3]]
 
 
+@rerun_if_address_is_in_use()
 def test_device_mesh_manager():
     spawn(check_device_mesh_manager, 4)
 

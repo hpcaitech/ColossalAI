@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
+from colossalai.interface.model import PeftUnwrapMixin
 from colossalai.logging import get_dist_logger
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.utils import get_current_device
@@ -201,7 +202,7 @@ class TorchDDPModel(ModelWrapper):
     def unwrap(self, unwrap_peft: bool = True) -> nn.Module:
         model = self.module.module
         if unwrap_peft and isinstance(model, PeftModel):
-            model = model.get_base_model()
+            model = PeftUnwrapMixin(model)
         return model
 
 
