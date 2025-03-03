@@ -5,9 +5,6 @@ from colossalai.testing import parameterize
 @parameterize(
     "test_config",
     [
-        # {
-        #     "n_stage": 8,
-        # },
         {
             "n_stage": 16,
         },
