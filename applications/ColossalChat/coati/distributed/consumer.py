@@ -12,6 +12,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.initialize import launch
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.shardformer.policies.auto_policy import get_autopolicy
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
@@ -71,6 +72,10 @@ class BaseConsumer:
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)
+        if hasattr(self, "critic_model"):
+            plugin_config.update({"custom_policy": get_autopolicy(self.critic_model.model)})
+            self.critic_plugin = HybridParallelPlugin(**plugin_config)
+            self.critic_booster = Booster(plugin=self.critic_plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
 

@@ -164,6 +164,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         self.llm = LLM(path, **model_config)
         generate_config = generate_config.copy()
         generate_config.update(self.FORCE_GENERATE_CONFIG)
+        # print("Generation Config:", generate_config)
         self.generate_config = SamplingParams(**generate_config)
         self.tokenizer = tokenizer
 
@@ -210,6 +211,8 @@ class VLLMInferenceBackend(BaseInferenceBackend):
             "action_log_probs": log_probs,
             "action_mask": action_mask,
         }
+        if "gt_answer" in kwargs:
+            data["gt_answer"] = kwargs["gt_answer"]
         data = {k: v.to(get_current_device()) for k, v in data.items()}
         return data
 

@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 
 import ray
 
-from .grpo_consumer import GRPOConsumer
+from .ppo_consumer import PPOConsumer
 from .producer import SimpleProducer
 
 
@@ -68,7 +68,7 @@ def launch_distributed(
         )
         procs.append(producer)
     for i in range(num_consumer_procs):
-        consumer = GRPOConsumer.options(num_gpus=1).remote(
+        consumer = PPOConsumer.options(num_gpus=1).remote(
             num_producers=num_producers,
             num_episodes=num_episodes,
             rank=i,
