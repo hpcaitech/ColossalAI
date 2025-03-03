@@ -30,6 +30,7 @@
 
 from collections import deque
 from dataclasses import dataclass
+from typing import List
 
 
 @dataclass(eq=True, frozen=True)
@@ -449,7 +450,7 @@ class PipelineGraph(object):
         return local_order_with_rollback
 
 
-class DualVPipelineGraph(object):
+class DualVPipelineGraph(PipelineGraph):
     """DualVPipelineGraph: A cut-in-half combination of DualPipe and Zerobubble V"""
 
     def __init__(
@@ -478,3 +479,51 @@ class DualVPipelineGraph(object):
         self.fbw_cost = [f_cost, b_cost, w_cost]
         self.fbw_mem = [f_mem, b_mem, w_mem]
         self.max_mem = max_mem or f_mem * self.n_stage * 2
+
+    def convert_to_dualV(self, pipeline_schedule: List[List[ScheduledNode]]) -> List[List[ScheduledNode]]:
+        """
+        convert zbv to dualV, spec convert parital B&W to Fully Backward. To save memory for caching dx
+        """
+        dualV_schedules = [[] for _ in range(self.n_stage)]
+        for stage in range(self.n_stage):
+            for node in pipeline_schedule[stage]:
+                if node.type == "B":
+                    if node.chunk == 1 and node.minibatch in range(self.n_stage - 1 - stage, self.n_micro - 1 - stage):
+                        dualV_schedules[stage].append(
+                            ScheduledNode(
+                                type="Full_B",
+                                chunk=node.chunk,
+                                stage=node.stage,
+                                minibatch=node.minibatch,
+                                start_time=node.start_time,
+                                completion_time=node.completion_time,
+                            )
+                        )
+                    elif node.chunk == 0 and node.minibatch in range(
+                        self.n_micro - self.n_stage - self.n_stage + stage
+                    ):
+                        dualV_schedules[stage].append(
+                            ScheduledNode(
+                                type="Full_B",
+                                chunk=node.chunk,
+                                stage=node.stage,
+                                minibatch=node.minibatch,
+                                start_time=node.start_time,
+                                completion_time=node.completion_time,
+                            )
+                        )
+                    else:
+                        dualV_schedules[stage].append(node)
+                elif node.type == "W":
+                    if node.chunk == 1 and node.minibatch in range(self.n_stage - 1 - stage, self.n_micro - 1 - stage):
+                        pass
+                    elif node.chunk == 0 and node.minibatch in range(
+                        self.n_micro - self.n_stage - self.n_stage + stage
+                    ):
+                        pass
+                    else:
+                        dualV_schedules[stage].append(node)
+                else:
+                    dualV_schedules[stage].append(node)
+
+        return dualV_schedules
