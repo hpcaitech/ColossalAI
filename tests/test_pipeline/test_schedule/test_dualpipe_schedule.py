@@ -19,8 +19,8 @@ def test_dualpipe_schedule(test_config):
     # print(dualpipe_schedule)
     dualpipe.print_details(
         dualpipe_schedule,
-        # chunk_mode=True,
-        mbs_mode=True,
+        chunk_mode=True,
+        # mbs_mode=True,
         empty_bubble_str_mode=True,
     )
 
