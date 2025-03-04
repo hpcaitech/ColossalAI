@@ -126,7 +126,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
         # split dx & dw
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -146,7 +146,7 @@ class MatmulWithAsyncCommunication(torch.autograd.Function):
                 else:
                     grad_weight = total_input.t().matmul(grad_output)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -209,7 +209,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
 
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -229,7 +229,7 @@ class MatmulWithGradAccum(torch.autograd.Function):
                 else:
                     grad_weight = total_input.t().matmul(grad_output)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -297,7 +297,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
             # all-reduce scheduled first and have GPU resources allocated, CUDA_DEVICE_MAX_CONNECTIONS=1 is set in shardformer.py
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -317,7 +317,7 @@ class LinearWithAsyncCommunication(torch.autograd.Function):
                 else:
                     grad_weight = grad_output.t().matmul(total_input)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -376,7 +376,7 @@ class LinearWithGradAccum(torch.autograd.Function):
 
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -396,7 +396,7 @@ class LinearWithGradAccum(torch.autograd.Function):
                 else:
                     grad_weight = grad_output.t().matmul(total_input)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -601,7 +601,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
 
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -621,7 +621,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 else:
                     grad_weight = grad_output.t().matmul(total_input)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -776,7 +776,7 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
 
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -796,7 +796,7 @@ class _LinearWithReduceScatterForwardGatherBackward(torch.autograd.Function):
                 else:
                     grad_weight = grad_output.t().matmul(total_input)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -937,7 +937,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
         # split dx & dw
         if _grad_accum_fusion_available and weight.grad is not None:
             grad = weight.grad
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,
@@ -957,7 +957,7 @@ class _MatmulWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 else:
                     grad_weight = total_input.t().matmul(grad_output)
         else:
-            if use_zbv:
+            if use_zbv and WeightGradStore.enabled:
                 WeightGradStore.put(
                     total_input,
                     grad_output,

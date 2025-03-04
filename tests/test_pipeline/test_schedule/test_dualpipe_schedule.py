@@ -74,10 +74,10 @@ def test_dualpipeV_schedule(test_config):
     # zbv
     zbv_schedule = PipelineGraph(
         n_stage=test_config["n_stage"],
-        n_micro=8,
-        f_cost=1000,
-        b_cost=1000,
-        w_cost=1000,
+        n_micro=10,
+        f_cost=1,
+        b_cost=1,
+        w_cost=1,
         c_cost=1,
         f_mem=mem_f * 1.5,
         b_mem=mem_b * 1.5,
@@ -91,10 +91,10 @@ def test_dualpipeV_schedule(test_config):
     # dual V
     dualV_graph = DualVPipelineGraph(
         n_stage=test_config["n_stage"],
-        n_micro=8,
-        f_cost=1000,
-        b_cost=1000,
-        w_cost=1000,
+        n_micro=10,
+        f_cost=1,
+        b_cost=1,
+        w_cost=1,
         c_cost=1,
         f_mem=mem_f * 1.5,
         b_mem=mem_b * 1.5,

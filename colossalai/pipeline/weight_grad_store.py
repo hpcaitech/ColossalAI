@@ -2,7 +2,9 @@ import queue
 
 
 class WeightGradStore:
-
+    enabled: bool = (
+        True  # if True: cache W in Layer, and pop to cal W; else: do not cache W, perform a full Bwd in pipeline;
+    )
     cache = []
     weight_grad_queue = [queue.Queue(), queue.Queue()]
 
