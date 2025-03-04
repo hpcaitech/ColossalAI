@@ -701,15 +701,18 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                         all_param = None
                     # gather param from every ep rank
                     # dist.all_gather(all_param, param, group=ep_group)
-                    dist.gather(param, all_param, group=ep_group)
+                    dist.gather(param, all_param, dst=dist.get_global_rank(ep_group, 0), group=ep_group)
                     if ep_rank == 0:
                         all_param = torch.cat(all_param, dim=0)
                         state_dict[name] = all_param.cpu()
 
         if self.pp_size > 1:
             if self.dp_rank == 0:
-                out = [None for _ in range(self.pp_size)]
-                dist.gather_object(state_dict, out, group=self.pp_group)
+                if self.pp_rank == 0:
+                    out = [None for _ in range(self.pp_size)]
+                else:
+                    out = None
+                dist.gather_object(state_dict, out, dst=dist.get_global_rank(self.pp_group, 0), group=self.pp_group)
                 if self.pp_rank == 0:
                     new_state_dict = {}
                     for o in out:

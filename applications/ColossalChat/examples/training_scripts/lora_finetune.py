@@ -257,7 +257,7 @@ def train(args) -> None:
     )
 
     torch.set_default_dtype(torch.float)
-    booster.load_model(model, args.pretrained)
+    booster.load_model(model, args.pretrained, low_cpu_mem_mode=False, num_threads=8)
 
     coordinator.print_on_master(
         f"Booster init max device memory: {accelerator.max_memory_allocated() / 1024 ** 2:.2f} MB"

@@ -588,6 +588,81 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                     input_obj_grad[k] = v.grad
         return input_obj_grad
 
+    def backward_full_b_step(
+        self,
+        model_chunk: Union[ModuleList, Module],
+        model_chunk_id: int,
+        optimizer: OptimizerWrapper,
+        # micro_batch: Optional[dict],
+        input_obj: Optional[dict],
+        output_obj: Union[dict, torch.Tensor],
+        output_obj_grad: Optional[dict],
+    ) -> Optional[dict]:
+        """Fully Backward step of the pipeline; we calculate "dx = w*dy & dw = x*dy" here;
+
+        Args:
+            model_chunk (ModuleList or Module): Model Chunk to be run;
+            model_chunk_id (int): The current model chunk idx;
+            optimizer (OptimizerWrapper): Optimizer to update the model
+            input_obj (Optional[Tuple(dict)]): x. (microbatch, input_obj)
+            output_obj (Union[dict, torch.Tensor]): y.
+            output_obj_grad (dict): dy.
+
+        Returns:
+            Optional[dict]: dx.
+        """
+        # calculate fully step ; include dx = w*dy & dw = x*dy;
+
+        # Retain the grad on the input_obj. No need retain_grad microbatch
+        if input_obj is not None:
+            tree_map(retain_grad, input_obj)
+
+        # x, y, dy list for backward_by_grad; Type: list[tensor];
+        input_obj_ = []
+        output_obj_ = []
+        output_obj_grad_ = []
+
+        # For chunk 0 stage 0, use micro_batch as input_obj_; and we don't have to cal microbatch dx.
+
+        # For loss backward; output_obj is loss; output_obj_grad should be None
+        if model_chunk_id == 1 and self.stage_manager.is_first_stage(ignore_chunk=True):
+            assert output_obj_grad is None
+            input_obj_, _ = tree_flatten(input_obj)
+            output_obj_.append(output_obj)  # LOSS
+            output_obj_grad_.append(output_obj_grad)  # None
+
+        # For other chunk stage, use input_obj as input_obj_;
+        else:
+            input_obj_, _ = tree_flatten(input_obj)
+            output_obj_, _ = tree_flatten(output_obj)  # y
+            output_obj_grad_, _ = tree_flatten(output_obj_grad)  # dy
+
+        # filter item which is not torch.Tensor
+        input_obj_ = [v for v in input_obj_ if isinstance(v, torch.Tensor) or v is None]
+        output_obj_ = [v for v in output_obj_ if isinstance(v, torch.Tensor) or v is None]
+        output_obj_grad_ = [v for v in output_obj_grad_ if isinstance(v, torch.Tensor) or v is None]
+
+        try:
+            ctx = optimizer.no_sync()
+        except AttributeError:
+            ctx = model_chunk.no_sync()
+        with ctx:
+            optimizer.backward_by_grad(
+                tensor=output_obj_,
+                grad=output_obj_grad_,
+                # inputs=input_obj_,
+                retain_graph=False,
+            )
+        # Format output_obj_grad
+        input_obj_grad = dict()
+        if model_chunk_id == 0 and self.stage_manager.is_first_stage(ignore_chunk=True):
+            pass
+        else:
+            for k, v in input_obj.items():
+                if isinstance(v, torch.Tensor) and v.grad is not None:
+                    input_obj_grad[k] = v.grad
+        return input_obj_grad
+
     def backward_w_step(
         self,
         model_chunk: Union[ModuleList, Module],
@@ -806,6 +881,74 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                 self.send_backward_buffer[model_chunk_id].append(input_object_grad)
         WeightGradStore.flush(chunk=model_chunk_id)
 
+    def schedule_full_b(
+        self,
+        scheduled_node,
+        model_chunk: Union[ModuleList, Module],
+        model_chunk_id: int,
+        optimizer: OptimizerWrapper,
+    ):
+        """A Fully backward schedule; Include recv bwd --> cal fully bwd step --> send bwd;
+
+        Args:
+            scheduled_node:
+            model_chunk (ModuleList or Module): Model Chunk to be run;
+            model_chunk_id (int): The current model chunk idx;
+        Returns:
+            Nothing.
+        """
+        # Step1: recv bwd
+        if model_chunk_id == 0:
+            # chunk0 is last stage; recv output_grad from local_send_backward_buffer
+            if self.stage_manager.is_last_stage(ignore_chunk=True):
+                output_tensor_grad = self.local_send_backward_buffer.pop(0)
+            # chunk0 not last stage; recv output_grad from recv_backward_buffer
+            else:
+                output_tensor_grad = self.recv_backward_buffer[model_chunk_id].pop(0)
+                for h in output_tensor_grad[1]:
+                    h.wait()
+                output_tensor_grad = output_tensor_grad[0]
+        else:
+            # chunk1, is first stage; recv LOSS from local send bwd buffer
+            if self.stage_manager.is_first_stage(ignore_chunk=True):
+                output_tensor_grad = None
+            # chunk1, not first stage; recv output_grad from recv_backward_buffer
+            else:
+                output_tensor_grad = self.recv_backward_buffer[model_chunk_id].pop(0)
+                for h in output_tensor_grad[1]:
+                    h.wait()
+                output_tensor_grad = output_tensor_grad[0]
+
+        # get input and output object from buffer;
+        input_obj = self.input_tensors[model_chunk_id].pop(0)
+        output_obj = self.output_tensors[model_chunk_id].pop(0)
+
+        input_object_grad = self.backward_full_b_step(
+            model_chunk=model_chunk,
+            model_chunk_id=model_chunk_id,
+            optimizer=optimizer,
+            input_obj=input_obj,
+            output_obj=output_obj,
+            output_obj_grad=output_tensor_grad,
+        )
+
+        # Step3: send bwd
+        if model_chunk_id == 0:
+            # do nothing; end of bwd;
+            if self.stage_manager.is_first_stage(ignore_chunk=True):
+                pass
+            # save input_object_grad to send_backward_buffer
+            else:
+                self.send_backward_buffer[model_chunk_id].append(input_object_grad)
+        else:
+            # send to local_send_backward_buffer
+            if self.stage_manager.is_last_stage(ignore_chunk=True):
+                self.local_send_backward_buffer.append(input_object_grad)
+            # send to next
+            else:
+                self.send_backward_buffer[model_chunk_id].append(input_object_grad)
+        # WeightGradStore.flush(chunk=model_chunk_id)
+
     def schedule_w(
         self,
         scheduled_node,
@@ -919,6 +1062,15 @@ class ZeroBubbleVPipeScheduler(PipelineSchedule):
                     model_chunk_id=scheduled_node.chunk,
                     optimizer=optimizer,
                 )
+            elif scheduled_node.type == "Full_B":
+                WeightGradStore.enabled = False
+                self.schedule_full_b(
+                    scheduled_node=scheduled_node,
+                    model_chunk=model_chunk,
+                    model_chunk_id=scheduled_node.chunk,
+                    optimizer=optimizer,
+                )
+                WeightGradStore.enabled = True
             elif scheduled_node.type == "W":
                 self.schedule_w(
                     scheduled_node=scheduled_node,

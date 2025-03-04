@@ -20,6 +20,7 @@ from torch.optim import Optimizer
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 from colossalai.accelerator import get_accelerator
+from colossalai.interface.model import PeftUnwrapMixin
 from colossalai.tensor.d_tensor import (
     is_customized_distributed_tensor,
     is_distributed_tensor,
@@ -554,6 +555,8 @@ def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = T
         from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
     except ImportError:
         return
+    if isinstance(model, PeftUnwrapMixin):
+        model = model.base_model
     if not isinstance(model, PreTrainedModel):
         return
 
@@ -692,6 +695,9 @@ def load_state_dict_into_model(
         state_dict (dict): a dict containing parameters and
             persistent buffers.
     """
+    if isinstance(model, PeftUnwrapMixin):
+        state_dict = model.patch_state_dict(state_dict)
+        model = model.base_model
     if not isinstance(state_dict, Mapping):
         raise TypeError("Expected state_dict to be dict-like, got {}.".format(type(state_dict)))
 

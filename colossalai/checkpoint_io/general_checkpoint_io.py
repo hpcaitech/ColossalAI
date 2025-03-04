@@ -60,9 +60,9 @@ class GeneralCheckpointIO(CheckpointIO):
         if use_async:
             from colossalai.utils.safetensors import move_and_save
 
-            if id(model) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(model)] = create_pinned_state_dict(state_dict)
-            writer = move_and_save(checkpoint, state_dict, self.pinned_state_dicts[id(model)])
+            if hash(model) not in self.pinned_state_dicts:
+                self.pinned_state_dicts[hash(model)] = create_pinned_state_dict(state_dict)
+            writer = move_and_save(checkpoint, state_dict, self.pinned_state_dicts[hash(model)])
             self.async_writers.append(writer)
         else:
             # save the checkpoint
@@ -234,7 +234,7 @@ class GeneralCheckpointIO(CheckpointIO):
         index_file = CheckpointIndexFile(checkpoint_path)
 
         if use_async:
-            pinned_state_dict = self.pinned_state_dicts.get(id(model), None)
+            pinned_state_dict = self.pinned_state_dicts.get(hash(model), None)
             total_size, new_pinned_state_dict, writers = async_move_save_state_dict_shards(
                 sharded_state_dict=state_dict_shard,
                 checkpoint=checkpoint_path,
@@ -243,7 +243,7 @@ class GeneralCheckpointIO(CheckpointIO):
                 is_master=True,
                 pinned_state_dict=pinned_state_dict,
             )
-            self.pinned_state_dicts[id(model)] = new_pinned_state_dict
+            self.pinned_state_dicts[hash(model)] = new_pinned_state_dict
             self.async_writers.extend(writers)
         else:
             # Save shards of optimizer states.
