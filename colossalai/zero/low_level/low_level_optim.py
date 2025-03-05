@@ -237,6 +237,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         elif self._dtype is torch.bfloat16:
             self.mixed_precision_mixin = BF16MixedPrecisionMixin()
         self._current_grad_norm: Optional[float] = None
+        self._all_gather_async_in_bucket = False
+        self._2d_allgather = False
 
     def __del__(self):
         for hook in self.grad_handles:
@@ -594,8 +596,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for group_id in range(self.num_param_groups):
             release_param_grad(self._master_param_groups_of_current_rank[group_id])
 
+        import os
+
+        scale = int(os.environ.get("ALL_GATHER_BUCKET_SCALE", 1))
         self.pg_to_tensor_bucket = {
-            pg: TensorBucket(self.pg_to_bucket_store[pg].reduce_bucket_size) for pg in self.pg_to_param_list
+            pg: TensorBucket(self.pg_to_bucket_store[pg].reduce_bucket_size * scale) for pg in self.pg_to_param_list
         }
 
         device = get_accelerator().get_current_device()
@@ -641,9 +646,24 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if not self._overlap_allgather:
             for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
                 if not tensor_bucket.is_empty():
-                    tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
+                    if self._all_gather_async_in_bucket:
+                        if self._2d_allgather:
+                            tensor_bucket.internode_all_gather_async(pg, fp8_communication=self._fp8_communication)
+                        else:
+                            tensor_bucket.all_gather_async(pg, fp8_communication=self._fp8_communication)
+                    else:
+                        tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
         del params_to_gather_buffer
+
+    def params_all_gather_write_back(self):
+        if self._all_gather_async_in_bucket and hasattr(self, "pg_to_tensor_bucket"):
+            for pg, tensor_bucket in self.pg_to_tensor_bucket.items():
+                if not tensor_bucket.is_empty():
+                    if self._2d_allgather:
+                        tensor_bucket.intranode_allgather_and_write_back(pg)
+                    else:
+                        tensor_bucket.write_back_and_empty(pg)
 
     def _compute_grad_norm(
         self, dp_pg: Union[ProcessGroup, Tuple[ProcessGroup, ...]], gradients: List[Tensor], norm_type: int = 2
