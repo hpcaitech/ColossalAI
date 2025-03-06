@@ -892,6 +892,76 @@ The dialogues can by multiple turns and it can contain system prompt. For more d
 
 We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
 
+We also add details on how to load lora models using booster.
+```python
+import os
+import torch
+from peft import LoraConfig
+from torch import distributed as dist
+from torch.optim import AdamW
+import colossalai
+from colossalai.booster import Booster
+from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin
+from transformers import AutoModelForCausalLM
+from peft import LoraConfig, prepare_model_for_kbit_training
+from tests.test_checkpoint_io.utils import shared_tempdir
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+
+@clear_cache_before_run()
+def run_load_lora():
+    model_name = "Qwen/Qwen2.5-3B"
+
+    # 1.Load base model
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        # quantization_config=bnb_config,
+        device_map="auto",
+        trust_remote_code=True
+    )
+
+    # 2.Set LoRA Config
+    peft_config = LoraConfig(
+        r=2,
+        lora_alpha=16,
+        target_modules=["q_proj", "o_proj", "k_proj", "v_proj","c_attn", "c_proj", "w1", "w2"],
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+        modules_to_save=["lm_head"]  # 保留语言模型头可训练
+    )
+    test_config = {
+        "lora_config": peft_config,
+        "quantize": False,
+    }
+
+    # 3.Init Optimizer, criterion, plugin
+    optimizer = AdamW(base_model.parameters(), lr=0.001)
+    def loss_fn(x):
+        (x * x).mean()
+    criterion = loss_fn
+    plugin=HybridParallelPlugin(tp_size=1,pp_size=1)
+    booster = Booster(plugin=plugin)
+
+    # 4.Load lora model via booster
+    peft_model = booster.enable_lora(base_model, **test_config)
+    model_save, optimizer, criterion, _, _ = booster.boost(peft_model, optimizer, criterion)
+
+    # 5.Save lora model
+    with shared_tempdir() as tempdir:
+        lora_ckpt_path = os.path.join(tempdir, "ckpt")
+        booster.save_lora_as_pretrained(model_save, lora_ckpt_path)
+        dist.barrier()
+
+def run_dist(rank, world_size, port):
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
+    run_load_lora()
+
+
+@rerun_if_address_is_in_use()
+def test_torch_ddp_lora():
+    spawn(run_dist, 2)
+```
+
 #### Usage
 
 After preparing the dataset and model weights, you can run the script with the following command:
