@@ -96,5 +96,5 @@ if __name__ == "__main__":
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29504,
-        core_algo=args.algo
+        core_algo=args.algo,
     )
