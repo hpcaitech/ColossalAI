@@ -15,7 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("-tbs", "--train-batch-size", type=int, default=16)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
-    parser.add_argument("-a", "--algo", type=str, default="GPRO", choices=["Simple, GPRO"])
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple, GPRO"])
     args = parser.parse_args()
 
     ray.init(address="local", namespace="ray-example")
