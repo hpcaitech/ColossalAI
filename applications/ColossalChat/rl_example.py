@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 ignore_eos=True,
                 include_stop_str_in_output=True,
                 stop=["</answer>"],
-                temperature=0.2,
+                temperature=0.7,
                 top_p=0.95,
             )
         )
