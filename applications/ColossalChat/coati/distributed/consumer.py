@@ -1,6 +1,7 @@
+import os
 from contextlib import nullcontext
 from typing import Any, Dict, Optional
-import os
+
 import ray
 import ray.util.collective as cc
 import torch
@@ -34,7 +35,7 @@ class BaseConsumer:
         plugin_config: Dict[str, Any],
         microbatch_size: int = 1,
         save_interval: int = 100,
-        save_dir: str = "./model"
+        save_dir: str = "./model",
     ):
         self.num_producers = num_producers
         self.num_episodes = num_episodes
