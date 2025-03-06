@@ -32,7 +32,7 @@ class GRPOConsumer(BaseConsumer):
         plugin_config,
         microbatch_size=1,
         num_generations=4,
-        use_wandb=False,
+        use_wandb=True,
     ):
         super().__init__(
             num_producers,
@@ -79,7 +79,7 @@ class GRPOConsumer(BaseConsumer):
 
         self.policy_loss_fn = PolicyLoss()
         self.global_step = 0
-        if self.rank == 0:
+        if use_wandb and  self.rank == 0:
             self.wandb_run = wandb.init(project="GRPO-Test", sync_tensorboard=True)
 
     def setup(self):
