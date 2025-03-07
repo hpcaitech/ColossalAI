@@ -892,6 +892,63 @@ The dialogues can by multiple turns and it can contain system prompt. For more d
 
 We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
 
+We have also added details on how to load and reason with lora models.
+```python
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)
+from peft import (
+    PeftModel
+)
+import torch
+
+# Set model path
+model_name = "Qwen/Qwen2.5-3B"
+lora_adapter = "Qwen2.5-3B_lora" # Your lora model Path
+merged_model_path = "Qwen2.5-3B_merged"
+
+######
+# How to Load lora Model
+######
+# 1.Load base model
+base_model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    trust_remote_code=True
+)
+
+# 2.Load lora model
+peft_model = PeftModel.from_pretrained(
+    base_model,
+    lora_adapter,
+    torch_dtype=torch.bfloat16
+)
+
+# 3.Merge lora model
+merged_model = peft_model.merge_and_unload()
+
+# 4.Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    model_name,
+    trust_remote_code=True,
+    pad_token="<|endoftext|>"
+)
+
+# 5.Save merged lora model
+merged_model.save_pretrained(
+    merged_model_path,
+    safe_serialization=True
+)
+tokenizer.save_pretrained(merged_model_path)
+
+# 6.Run Inference
+test_input = tokenizer("Instruction: Finding prime numbers up to 100\nAnswer:", return_tensors="pt").to("cuda")
+output = merged_model.generate(**test_input, max_new_tokens=100)
+print(tokenizer.decode(output[0], skip_special_tokens=True))
+```
+
 #### Usage
 
 After preparing the dataset and model weights, you can run the script with the following command:
