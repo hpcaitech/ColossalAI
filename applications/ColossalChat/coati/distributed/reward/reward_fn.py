@@ -19,8 +19,8 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         return reward
     else:
         reward += 1.0
-        if gt_answer.strip().replace(" ", "").lower() == final_answer.strip().replace(" ", "").lower():
-            reward = reward + 2.0
+        # if gt_answer.strip().replace(" ", "").lower() == final_answer.strip().replace(" ", "").lower():
+        #     reward = reward + 2.0
         return reward
 
 

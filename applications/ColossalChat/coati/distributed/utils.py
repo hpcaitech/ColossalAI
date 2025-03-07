@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 
@@ -99,3 +99,30 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
     mask_sum = mask.sum(dim=dim)
     mean = tensor / (mask_sum + 1e-8)
     return mean
+
+def compute_reward_ppo(
+    r: Union[torch.Tensor, float],
+    kl_coef: float,
+    log_probs: torch.Tensor,
+    log_probs_base: torch.Tensor,
+    action_mask: Optional[torch.Tensor] = None,
+    reward_eps=5,
+) -> torch.Tensor:
+    """
+    Args:
+        log_probs: [batch_size, response_length]
+        log_probs_base: [batch_size, response_length]
+        action_mask: [batch_size, response_length]
+        r: float
+    Returns:
+        reward: [batch_size, response_length]
+    """
+    log_ratio = log_probs - log_probs_base  # address numerical instability issue
+    kl = -kl_coef * log_ratio * action_mask
+    reward = kl
+    r_clip = torch.clamp(r, -reward_eps, reward_eps)
+    for i in range(action_mask.size(0)):
+        assert action_mask[i].sum() > 0
+        reward[i, : action_mask[i].sum()] += r_clip[i]
+        reward[i, action_mask[i].sum() :] *= 0
+    return reward, ((log_ratio * (log_ratio < 10)).exp() - 1 - log_ratio) * action_mask

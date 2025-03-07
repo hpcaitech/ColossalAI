@@ -60,6 +60,7 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         self.model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.generate_config = generate_config.copy()
         self.generate_config.update(self.FORCE_GENERATE_CONFIG)
+        self.generate_config["tokenizer"] = tokenizer
         self.tokenizer = tokenizer
 
     @torch.no_grad()
@@ -76,21 +77,26 @@ class TransformersInferenceBackend(BaseInferenceBackend):
             action_log_probs.append(log_probs_from_logits(logits[:, None, :], new_token_ids[:, i : i + 1]))
         action_log_probs = torch.cat(action_log_probs, dim=1)
         # get action mask
+        response_idx = torch.zeros((new_token_ids.size(0), 2), dtype=torch.int).to(get_current_device())
         action_mask = torch.ones_like(new_token_ids, dtype=attention_mask.dtype)
         if self.tokenizer.eos_token_id is not None:
             for indices in torch.nonzero(new_token_ids == self.tokenizer.eos_token_id):
                 action_mask[indices[0], indices[1] + 1 :] = 0
+        response_idx[:, 0] = input_len
+        response_idx[:, 1] = input_len + action_mask.sum(dim=1) - 1
 
         if attention_mask.size(0) != action_mask.size(0):
             assert action_mask.size(0) % attention_mask.size(0) == 0
             attention_mask = attention_mask.repeat_interleave(action_mask.size(0) // attention_mask.size(0), dim=0)
 
         attention_mask = torch.cat((attention_mask, action_mask), dim=1)
+        
         data = {
             "input_ids": out.sequences,
             "attention_mask": attention_mask,
             "action_log_probs": action_log_probs,
             "action_mask": action_mask,
+            "response_idx": response_idx
         }
         return data
 
@@ -154,7 +160,6 @@ class VLLMInferenceBackend(BaseInferenceBackend):
     )
     FORCE_GENERATE_CONFIG = dict(
         logprobs=0,
-        n=4,
     )
 
     def __init__(self, model_config: Dict[str, Any], generate_config: Dict[str, Any], tokenizer: PreTrainedTokenizer):
@@ -167,7 +172,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         generate_config.update(self.FORCE_GENERATE_CONFIG)
         self.generate_config = SamplingParams(**generate_config)
         self.tokenizer = tokenizer
-        self.num_generations = self.FORCE_GENERATE_CONFIG["n"]
+        self.num_generations = generate_config["n"]
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:

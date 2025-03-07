@@ -162,4 +162,5 @@ coverage.xml
 
 # log, test files - ColossalChat
 applications/ColossalChat/logs
+applications/ColossalChat/wandb
 applications/ColossalChat/tests/logs

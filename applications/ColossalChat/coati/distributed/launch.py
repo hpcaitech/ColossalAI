@@ -4,11 +4,13 @@ import ray
 
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
+from .ppo_consumer import PPOConsumer
 from .producer import SimpleProducer
 
 ALGO_MAP = {
     "Simple": SimpleConsumer,
     "GRPO": GRPOConsumer,
+    "PPO": PPOConsumer
 }
 
 
