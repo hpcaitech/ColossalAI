@@ -98,7 +98,7 @@ class BaseProducer:
             self.dataloader.sampler.set_epoch(episode)
             for i, batch in enumerate(self.dataloader):
                 if i >= num_valid_microbatches:
-                    break
+                    break 
                 outputs = self.rollout(**batch)
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs = pre_send(outputs)
