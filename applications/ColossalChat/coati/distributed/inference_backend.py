@@ -60,6 +60,7 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         self.model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.generate_config = generate_config.copy()
         self.generate_config.update(self.FORCE_GENERATE_CONFIG)
+        self.generate_config["tokenizer"] = tokenizer
         self.tokenizer = tokenizer
 
     @torch.no_grad()
@@ -76,21 +77,26 @@ class TransformersInferenceBackend(BaseInferenceBackend):
             action_log_probs.append(log_probs_from_logits(logits[:, None, :], new_token_ids[:, i : i + 1]))
         action_log_probs = torch.cat(action_log_probs, dim=1)
         # get action mask
+        response_idx = torch.zeros((new_token_ids.size(0), 2), dtype=torch.int).to(get_current_device())
         action_mask = torch.ones_like(new_token_ids, dtype=attention_mask.dtype)
         if self.tokenizer.eos_token_id is not None:
             for indices in torch.nonzero(new_token_ids == self.tokenizer.eos_token_id):
                 action_mask[indices[0], indices[1] + 1 :] = 0
+        response_idx[:, 0] = input_len
+        response_idx[:, 1] = input_len + action_mask.sum(dim=1) - 1
 
         if attention_mask.size(0) != action_mask.size(0):
             assert action_mask.size(0) % attention_mask.size(0) == 0
             attention_mask = attention_mask.repeat_interleave(action_mask.size(0) // attention_mask.size(0), dim=0)
 
         attention_mask = torch.cat((attention_mask, action_mask), dim=1)
+
         data = {
             "input_ids": out.sequences,
             "attention_mask": attention_mask,
             "action_log_probs": action_log_probs,
             "action_mask": action_mask,
+            "response_idx": response_idx,
         }
         return data
 
@@ -166,19 +172,24 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         generate_config.update(self.FORCE_GENERATE_CONFIG)
         self.generate_config = SamplingParams(**generate_config)
         self.tokenizer = tokenizer
+        self.num_generations = generate_config["n"]
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
+        micro_batch_size = input_ids.size(0)
+        response_start_idx = input_ids.size(1)
         outputs = self.llm.generate(
             prompt_token_ids=input_ids.tolist(), sampling_params=self.generate_config, use_tqdm=False
         )
         out_tokens = []
         out_len = []
         log_probs = []
+        response_idx = []
         for out in outputs:
             for output_i in out.outputs:
                 out_len.append(len(output_i.token_ids))
                 out_tokens.append(list(output_i.token_ids))
+                response_idx.append((response_start_idx, response_start_idx + len(output_i.token_ids) - 1))
                 assert len(output_i.logprobs) == len(output_i.token_ids)
                 p = [m[t].logprob for m, t in zip(output_i.logprobs, output_i.token_ids)]
                 log_probs.append(p)
@@ -195,6 +206,8 @@ class VLLMInferenceBackend(BaseInferenceBackend):
 
         out_tokens = torch.tensor(out_tokens)
         log_probs = torch.tensor(log_probs)
+        response_idx = torch.tensor(response_idx)
+
         if attention_mask.size(0) != action_mask.size(0):
             assert action_mask.size(0) % attention_mask.size(0) == 0
             num_returns = action_mask.size(0) // attention_mask.size(0)
@@ -209,7 +222,14 @@ class VLLMInferenceBackend(BaseInferenceBackend):
             "attention_mask": attention_mask,
             "action_log_probs": log_probs,
             "action_mask": action_mask,
+            "response_idx": response_idx,
         }
+
+        data = {k: v.view(micro_batch_size, self.num_generations, v.size(-1)) for k, v in data.items()}
+
+        if "gt_answer" in kwargs:
+            # repeat gt_answer for each prompt.
+            data["gt_answer"] = kwargs["gt_answer"].repeat_interleave(self.num_generations, dim=1)
         data = {k: v.to(get_current_device()) for k, v in data.items()}
         return data
 

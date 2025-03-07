@@ -154,6 +154,11 @@ class SimpleProducer(BaseProducer):
 
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
+        if self.backend_cls.__name__ == "TransformersInferenceBackend":
+            gt_answer = kwargs.pop("gt_answer")
+            out = self.model.generate(input_ids, attention_mask, **kwargs)
+            out["gt_answer"] = gt_answer.to(out["input_ids"].device)
+            return out
         return self.model.generate(input_ids, attention_mask, **kwargs)
 
     def load_state_dict(self, state_dict):

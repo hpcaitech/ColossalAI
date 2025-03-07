@@ -7,6 +7,7 @@ from coati.distributed.launch import launch_distributed
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
+    parser.add_argument("-rm", "--reward_model", type=str, default="Qwen/Qwen2.5-7B")
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
     parser.add_argument("-t", "--num-trainers", type=int, default=2)
     parser.add_argument("-i", "--num-inferencer", type=int, default=2)
@@ -15,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument("-tbs", "--train-batch-size", type=int, default=16)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GPRO", "PPO"])
     args = parser.parse_args()
 
     ray.init(address="local", namespace="ray-example")
@@ -29,35 +31,35 @@ if __name__ == "__main__":
     if args.backend == "transformers":
         inference_model_config.update(
             dict(
-                attn_implementation="flash_attention_2",
+                use_flash_attention_2=True,
                 torch_dtype=torch.bfloat16,
             )
         )
         train_model_config.update(
             dict(
-                attn_implementation="flash_attention_2",
+                use_flash_attention_2=True,
                 torch_dtype=torch.bfloat16,
                 use_cache=False,
             )
         )
         generate_config.update(
-            dict(
-                max_length=512,
-                do_sample=True,
-                max_new_tokens=None,
-                early_stopping=False,
-            )
+            dict(max_length=768, do_sample=True, max_new_tokens=None, early_stopping=False, stop_strings=["</answer>"])
         )
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.6,
+                gpu_memory_utilization=0.7,
             )
         )
         generate_config.update(
             dict(
-                max_tokens=256,
+                max_tokens=512,
                 ignore_eos=True,
+                include_stop_str_in_output=True,
+                stop=["</answer>"],
+                temperature=0.5,
+                top_p=0.95,
+                n=1,
             )
         )
     else:
@@ -91,4 +93,5 @@ if __name__ == "__main__":
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29504,
+        core_algo=args.algo,
     )
