@@ -94,11 +94,11 @@ class BaseProducer:
         print(
             f"[P{self.producer_idx}] num_valid_microbatches {num_valid_microbatches}, nmb: {self.num_microbatches}, dl: {len(self.dataloader)}"
         )
-        for episode in range(self.num_episodes): 
+        for episode in range(self.num_episodes):
             self.dataloader.sampler.set_epoch(episode)
             for i, batch in enumerate(self.dataloader):
                 if i >= num_valid_microbatches:
-                    break 
+                    break
                 outputs = self.rollout(**batch)
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs = pre_send(outputs)

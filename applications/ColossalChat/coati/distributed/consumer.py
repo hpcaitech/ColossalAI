@@ -13,8 +13,8 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.initialize import launch
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 from colossalai.shardformer.policies.auto_policy import get_autopolicy
+from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
 from .utils import bind_batch, post_recv, unbind_batch

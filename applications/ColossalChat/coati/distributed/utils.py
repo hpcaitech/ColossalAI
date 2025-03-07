@@ -100,6 +100,7 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
     mean = tensor / (mask_sum + 1e-8)
     return mean
 
+
 def compute_reward_ppo(
     r: Union[torch.Tensor, float],
     kl_coef: float,

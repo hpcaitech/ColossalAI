@@ -90,13 +90,13 @@ class TransformersInferenceBackend(BaseInferenceBackend):
             attention_mask = attention_mask.repeat_interleave(action_mask.size(0) // attention_mask.size(0), dim=0)
 
         attention_mask = torch.cat((attention_mask, action_mask), dim=1)
-        
+
         data = {
             "input_ids": out.sequences,
             "attention_mask": attention_mask,
             "action_log_probs": action_log_probs,
             "action_mask": action_mask,
-            "response_idx": response_idx
+            "response_idx": response_idx,
         }
         return data
 

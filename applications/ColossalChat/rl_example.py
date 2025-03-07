@@ -28,7 +28,7 @@ if __name__ == "__main__":
         top_p=0.8,
     )
 
-    if args.backend == "transformers":            
+    if args.backend == "transformers":
         inference_model_config.update(
             dict(
                 use_flash_attention_2=True,
@@ -43,13 +43,7 @@ if __name__ == "__main__":
             )
         )
         generate_config.update(
-            dict(
-                max_length=768,
-                do_sample=True,
-                max_new_tokens=None,
-                early_stopping=False,
-                stop_strings=["</answer>"]
-            )
+            dict(max_length=768, do_sample=True, max_new_tokens=None, early_stopping=False, stop_strings=["</answer>"])
         )
     elif args.backend == "vllm":
         inference_model_config.update(
