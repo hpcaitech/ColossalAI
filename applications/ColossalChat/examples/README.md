@@ -892,80 +892,26 @@ The dialogues can by multiple turns and it can contain system prompt. For more d
 
 We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
 
-We have also added details on how to save and load lora models and reason with lora models.
+We have also added details on how to load and reason with lora models.
 ```python
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig
 )
 from peft import (
-    LoraConfig,
-    get_peft_model,
-    prepare_model_for_kbit_training,
     PeftModel
 )
 import torch
 
-######
-# How to Create and Save a Lora Model
-######
-# 1.Set model path
+# Set model path
 model_name = "Qwen/Qwen2.5-3B"
-lora_adapter = "./Qwen2.5-3B_lora"
-merged_model_path = "./qQwen2.5-3B_merged"
-
-# 2.Set quant config (optional)
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16
-)
-
-# 3.Load base model
-base_model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    quantization_config=bnb_config,
-    device_map="auto",
-    trust_remote_code=True
-)
-
-# 4.Quant base model
-base_model = prepare_model_for_kbit_training(
-    base_model,
-    use_gradient_checkpointing=True
-)
-
-# 5.Set Lora Config
-peft_config = LoraConfig(
-    r=2,
-    lora_alpha=16,
-    target_modules=["q_proj", "o_proj", "k_proj", "v_proj","c_attn", "c_proj", "w1", "w2"],
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM",
-    modules_to_save=["lm_head"]
-)
-
-# 6.Create Lora model via base model
-peft_model = get_peft_model(base_model, peft_config)
-peft_model.print_trainable_parameters()
-
-# 7.Init Tokenizer
-tokenizer = AutoTokenizer.from_pretrained(
-    model_name,
-    trust_remote_code=True,
-    pad_token="<|endoftext|>"
-)
-
-# 8.Save lora model
-peft_model.save_pretrained(lora_adapter)
+lora_adapter = "Qwen2.5-3B_lora" # Your lora model Path
+merged_model_path = "Qwen2.5-3B_merged"
 
 ######
 # How to Load lora Model
 ######
-# 9.Load base model and lora model
+# 1.Load base model
 base_model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.bfloat16,
@@ -973,23 +919,31 @@ base_model = AutoModelForCausalLM.from_pretrained(
     trust_remote_code=True
 )
 
+# 2.Load lora model
 peft_model = PeftModel.from_pretrained(
     base_model,
     lora_adapter,
     torch_dtype=torch.bfloat16
 )
 
-# 10.merge lora model
+# 3.Merge lora model
 merged_model = peft_model.merge_and_unload()
 
-# 11. Save merged lora model
+# 4.Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    model_name,
+    trust_remote_code=True,
+    pad_token="<|endoftext|>"
+)
+
+# 5.Save merged lora model
 merged_model.save_pretrained(
     merged_model_path,
     safe_serialization=True
 )
 tokenizer.save_pretrained(merged_model_path)
 
-# 12. test lora model output
+# 6.Run Inference
 test_input = tokenizer("Instruction: Finding prime numbers up to 100\nAnswer:", return_tensors="pt").to("cuda")
 output = merged_model.generate(**test_input, max_new_tokens=100)
 print(tokenizer.decode(output[0], skip_special_tokens=True))
