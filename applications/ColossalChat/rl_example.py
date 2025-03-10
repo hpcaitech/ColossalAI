@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument("-tbs", "--train-batch-size", type=int, default=16)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple, GPRO"])
     args = parser.parse_args()
 
     ray.init(address="local", namespace="ray-example")
@@ -51,13 +52,17 @@ if __name__ == "__main__":
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.6,
+                gpu_memory_utilization=0.7,
             )
         )
         generate_config.update(
             dict(
-                max_tokens=256,
+                max_tokens=2048,
                 ignore_eos=True,
+                include_stop_str_in_output=True,
+                stop=["</answer>"],
+                temperature=0.7,
+                top_p=0.95,
             )
         )
     else:
@@ -91,4 +96,5 @@ if __name__ == "__main__":
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29504,
+        core_algo=args.algo,
     )
