@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from packaging.version import Version
 from torch.distributed import ReduceOp
 
+from .deep_gemm_utils import deepgemm_fp8_gemm, per_block_cast_to_fp8, per_token_cast_to_fp8
 from .fp8_config import dynamic_kernel
 
 SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
@@ -699,17 +700,11 @@ def all_gather_fp8_lagacy(
     ret = cur_buffer[SCALE_BYTES:].view(fp8_type)
     ret, scale = cast_to_fp8(input_.view(-1), fp8_format=fp8_format, out=ret)
     cur_buffer[:SCALE_BYTES].view(torch.float)[0] = scale
-    # cur_buffer[:SCALE_BYTES] = scale.unsqueeze(0).view(torch.uint8)
     dist.all_gather(combined_buffers, cur_buffer, group=group, async_op=async_op)
     for out, buf in zip(output_list, combined_buffers):
         scale = buf[:SCALE_BYTES].clone().view(scale.dtype)
         output = buf[SCALE_BYTES:].view(fp8_type)
         cast_from_fp8(output.view(shape), scale, input_type, out=out)
-    # output = combined_buffer.view(world_size, -1)[:, SCALE_BYTES:].view(fp8_type)
-    # scales = combined_buffer.view(world_size, -1)[:, :SCALE_BYTES].view(torch.float)
-    # output = output.float() * scales
-    # for i, out in enumerate(output_list):
-    #     out.copy_(output[i].view(shape))
 
 
 @torch.compile(mode="max-autotune-no-cudagraphs", dynamic=False, disable=cuda_arch < 89)
@@ -832,6 +827,50 @@ class _LinearFp8(torch.autograd.Function):
         if ctx.has_bias:
             bias_grad = out_grad.sum(0)
         return x_grad.reshape(ctx.x_shape), w_grad, bias_grad
+
+
+class _LinearFp8DeepGemm(torch.autograd.Function):
+    """
+    Behave similar to torch.nn.functional.linear
+    """
+
+    def forward(ctx: Any, x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+        if not (x.dim() == 2 and w.dim() == 2):
+            raise ValueError("Batched fp8 deep_gemm is not supported")
+        # x: (m, k), w: (n, k)
+        # x @ w_t -> (m, k) @ (k, n) -> deep_gemm((m, k), (n, k))
+        (m, k), (n, _) = x.shape, w.shape
+        x_per_tok, w_per_blk = per_token_cast_to_fp8(x), per_block_cast_to_fp8(w)
+
+        out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)  # NOTE: DeepGemm only supports bf16 output
+        deepgemm_fp8_gemm(x_per_tok, w_per_blk, out)
+
+        ctx.w_t_per_plk = per_block_cast_to_fp8(w.t())
+        ctx.x_t_per_blk = per_block_cast_to_fp8(x.t())
+        ctx.mnk = (m, n, k)
+        return out
+
+    def backward(ctx: Any, o_grad: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # o_grad: (m, n)
+        # x_grad: (m, k) -> (m, n) @ (n, k) -> deep_gemm((m, n), (k, n))
+        # w_grad: (n, k) -> (m, n).t() @ (m, k) -> deep_gemm((m, n).t(), (k, m))
+        m, n, k = ctx.mnk
+        o_per_tok = per_token_cast_to_fp8(o_grad)
+
+        x_grad = torch.empty((m, k), dtype=torch.bfloat16, device=o_grad.device)
+        deepgemm_fp8_gemm(o_per_tok, ctx.w_t_per_plk, x_grad)
+
+        o_grad_t_per_tok = per_token_cast_to_fp8(o_grad.t())
+        w_grad = torch.empty((n, k), dtype=torch.bfloat16, device=o_grad.device)
+        deepgemm_fp8_gemm(o_grad_t_per_tok, ctx.x_t_per_blk, w_grad)
+
+        return x_grad, w_grad
+
+
+def linear_fp8_deep_gemm(input: torch.Tensor, weight: torch.Tensor, bias: None = None) -> torch.Tensor:
+    if bias is not None:
+        raise ValueError("bias is not supported in deep_gemm")
+    return _LinearFp8DeepGemm.apply(input, weight)
 
 
 @torch.compile(mode="max-autotune-no-cudagraphs", disable=not SUPPORT_TORCH_COMPILE, dynamic=dynamic_kernel)
