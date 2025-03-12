@@ -66,10 +66,11 @@ class BaseConsumer:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
         plugin_config = dict(
-            tp_size=1,
+            tp_size=2,
             pp_size=1,
             precision="bf16",
-            zero_stage=1,
+            zero_stage=2,
+            parallel_output=False,
         )
         if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
             plugin_config["microbatch_size"] = self.microbatch_size
