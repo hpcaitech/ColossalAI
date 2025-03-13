@@ -10,7 +10,6 @@ from coati.distributed.reward.reward_fn import math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean
-from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -85,9 +84,6 @@ class GRPOConsumer(BaseConsumer):
 
     def setup(self):
         super().setup()
-        lora_config = LoraConfig(task_type="CAUSAL_LM", r=2, lora_alpha=8)
-        self.policy_model = self.booster.enable_lora(self.policy_model, lora_config=lora_config)
-        self.reference_model = self.booster.enable_lora(self.reference_model, lora_config=lora_config)
         self.policy_model, self.optimizer, *_ = self.booster.boost(self.policy_model, self.optimizer)
         self.reference_model, *_ = self.booster.boost(self.reference_model)
 
