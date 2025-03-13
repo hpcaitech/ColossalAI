@@ -72,7 +72,7 @@ class BaseConsumer:
             zero_stage=2,
             parallel_output=False,
         )
-        if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
+        if plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
             plugin_config["microbatch_size"] = self.microbatch_size
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)

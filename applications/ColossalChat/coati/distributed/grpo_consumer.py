@@ -10,6 +10,7 @@ from coati.distributed.reward.reward_fn import math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean
+from peft import LoraConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.nn.optimizer import HybridAdam
@@ -84,6 +85,9 @@ class GRPOConsumer(BaseConsumer):
 
     def setup(self):
         super().setup()
+        lora_config = LoraConfig(task_type="CAUSAL_LM", r=2, lora_alpha=8)
+        self.policy_model = self.booster.enable_lora(self.policy_model, lora_config=lora_config)
+        self.reference_model = self.booster.enable_lora(self.reference_model, lora_config=lora_config)
         self.policy_model, self.optimizer, *_ = self.booster.boost(self.policy_model, self.optimizer)
         self.reference_model, *_ = self.booster.boost(self.reference_model)
 
@@ -109,19 +113,21 @@ class GRPOConsumer(BaseConsumer):
 
         need_update = (step_idx + 1) % self.num_microbatches == 0
 
-        ctx = nullcontext() if need_update else self.booster.no_sync(self.policy_model, self.optimizer)
+        # ctx = nullcontext() if need_update else self.booster.no_sync(self.policy_model, self.optimizer)
+        ctx = nullcontext()
         with ctx:
             policy_model_logits = self.policy_model(
                 input_ids=data["input_ids"],
                 attention_mask=data["attention_mask"],
             )["logits"]
+            print(f"policy_model_logits {policy_model_logits.shape}")
             action_log_probs = calc_action_log_probs(policy_model_logits, data["input_ids"], num_action)
-
             with torch.no_grad():
                 reference_model_logits = self.reference_model(
                     input_ids=data["input_ids"],
                     attention_mask=data["attention_mask"],
                 )["logits"]
+            print(f"reference_model_logits {reference_model_logits.shape}")
             reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action)
 
             per_token_kl = (
