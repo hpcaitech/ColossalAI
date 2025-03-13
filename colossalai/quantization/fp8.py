@@ -867,10 +867,13 @@ class _LinearFp8DeepGemm(torch.autograd.Function):
         return x_grad, w_grad
 
 
-def linear_fp8_deep_gemm(input: torch.Tensor, weight: torch.Tensor, bias: None = None) -> torch.Tensor:
+def linear_fp8_deep_gemm(
+    input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    o = _LinearFp8DeepGemm.apply(input, weight)
     if bias is not None:
-        raise ValueError("bias is not supported in deep_gemm")
-    return _LinearFp8DeepGemm.apply(input, weight)
+        o += bias
+    return o
 
 
 @torch.compile(mode="max-autotune-no-cudagraphs", disable=not SUPPORT_TORCH_COMPILE, dynamic=dynamic_kernel)
