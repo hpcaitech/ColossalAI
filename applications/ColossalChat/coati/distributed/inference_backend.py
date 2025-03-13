@@ -154,7 +154,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
     )
     FORCE_GENERATE_CONFIG = dict(
         logprobs=0,
-        n=4,
+        n=8,
     )
 
     def __init__(self, model_config: Dict[str, Any], generate_config: Dict[str, Any], tokenizer: PreTrainedTokenizer):
