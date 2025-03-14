@@ -10,9 +10,9 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
     parser.add_argument("-t", "--num-trainers", type=int, default=2)
     parser.add_argument("-i", "--num-inferencer", type=int, default=2)
-    parser.add_argument("-ibs", "--inference-batch-size", type=int, default=32)
-    parser.add_argument("-imbs", "--inference-microbatch-size", type=int, default=16)
-    parser.add_argument("-tbs", "--train-batch-size", type=int, default=16)
+    parser.add_argument("-ibs", "--inference-batch-size", type=int, default=64)
+    parser.add_argument("-imbs", "--inference-microbatch-size", type=int, default=8)
+    parser.add_argument("-tbs", "--train-batch-size", type=int, default=32)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=1)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple, GRPO"])
@@ -24,29 +24,31 @@ if __name__ == "__main__":
     train_model_config = dict(path=args.model)
     generate_config = dict(
         top_k=50,
-        top_p=0.8,
+        top_p=0.9,
+        temperature=1.0,
     )
 
     if args.backend == "transformers":
         inference_model_config.update(
             dict(
-                attn_implementation="flash_attention_2",
+                use_flash_attention_2=True,
                 torch_dtype=torch.bfloat16,
             )
         )
         train_model_config.update(
             dict(
-                attn_implementation="flash_attention_2",
+                use_flash_attention_2=True,
                 torch_dtype=torch.bfloat16,
                 use_cache=False,
             )
         )
         generate_config.update(
             dict(
-                max_length=512,
+                max_length=1024 + 512,
                 do_sample=True,
                 max_new_tokens=None,
                 early_stopping=False,
+                stop_strings=["</answer>"],
             )
         )
     elif args.backend == "vllm":
@@ -82,12 +84,12 @@ if __name__ == "__main__":
         num_producers=args.num_inferencer,
         num_proc_per_producer=1,
         num_consumer_procs=args.num_trainers,
-        num_episodes=1,
+        num_episodes=10,
         inference_batch_size=args.inference_batch_size,
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_microbatch_size=args.train_microbatch_size,
-        dataset_config={"path": args.dataset, "max_length": 256},
+        dataset_config={"path": args.dataset, "max_length": 300},
         dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
