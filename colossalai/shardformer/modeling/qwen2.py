@@ -35,7 +35,7 @@ from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer._operation import all_to_all_comm, split_forward_gather_backward
 from colossalai.shardformer.shard import ShardConfig
 
-from ..layer import ColoAttention, dist_cross_entropy
+from ..layer import ColoAttention, dist_cross_entropy, dist_log_prob
 from ..layer._operation import gather_sp_output
 from ..layer.utils import is_share_sp_tp
 
@@ -779,6 +779,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        return_dist_log_prob: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
         r"""
         Args:
@@ -832,7 +833,8 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         loss = None
         if labels is not None:
             loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
-
+        if return_dist_log_prob:
+            logits = dist_log_prob(input_ids, logits, shard_config, self.lm_head.out_features, logits.dtype)
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output

@@ -2,6 +2,8 @@ from typing import Any, Dict, List
 
 import torch
 
+from colossalai.shardformer.layer.loss import dist_log_prob
+
 
 def unbind_batch(batch: Dict[str, torch.Tensor]) -> List[Dict[str, torch.Tensor]]:
     batches = []
@@ -66,18 +68,52 @@ def log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
     return per_label_logps.squeeze(-1)
 
 
-def calc_action_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
+# def calc_action_log_probs(logits: torch.Tensor, sequences: torch.LongTensor, num_actions: int) -> torch.Tensor:
+#     """Calculate action log probs.
+
+#     Args:
+#         output (torch.Tensor): Output tensor of Actor.forward.logits.
+#         sequences (torch.LongTensor): Input sequences.
+#         num_actions (int): Number of actions.
+
+#     Returns:
+#         torch.Tensor: Action log probs.
+#     """
+#     log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+#     return log_probs[:, -num_actions:]
+
+
+def calc_action_log_probs(
+    logits: torch.Tensor,
+    sequences: torch.LongTensor,
+    num_actions: int,
+    shard_config,
+    vocab_size: int,
+) -> torch.Tensor:
     """Calculate action log probs.
 
     Args:
-        output (torch.Tensor): Output tensor of Actor.forward.logits.
+        logits (torch.Tensor): Output tensor of Actor.forward.logits.
         sequences (torch.LongTensor): Input sequences.
         num_actions (int): Number of actions.
+        shard_config
+        vocab_size
+
 
     Returns:
         torch.Tensor: Action log probs.
     """
-    log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
+    print(f"sequences {sequences.shape} logits {logits.shape}")
+    log_probs = dist_log_prob(sequences, logits, shard_config, vocab_size, logits.dtype)
+
+    # log_probs = dist_log_prob(sequences[:, 1:], logits[:, :-1, :], shard_config, vocab_size, logits.dtype)
+    # # labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
+    # logits: torch.Tensor,  # [B, S, Vocab_size]
+    # shard_config: ShardConfig,
+    # vocab_size: int,
+    # dtype: torch.dtype,
+    # seq_dim: int = 1,
+    # log_probs = log_probs_from_logits(logits[:, :-1, :], sequences[:, 1:])
     return log_probs[:, -num_actions:]
 
 
