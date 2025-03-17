@@ -116,23 +116,6 @@ class GRPOConsumer(BaseConsumer):
 
         ctx = nullcontext() if need_update else self.booster.no_sync(self.policy_model, self.optimizer)
         with ctx:
-            # policy_model_log_probs = self.policy_model(
-            #     input_ids=data["input_ids"],
-            #     attention_mask=data["attention_mask"],
-            #     return_dist_log_prob=True,
-            # )["logits"]
-            # policy_model_log_probs = policy_model_log_probs.reshape(8, -1)
-            # action_log_probs = policy_model_log_probs[:, -num_action:]
-            # with torch.no_grad():
-            #     reference_model_log_probs = self.reference_model(
-            #         input_ids=data["input_ids"],
-            #         attention_mask=data["attention_mask"],
-            #         return_dist_log_prob=True,
-            #     )["logits"]
-            #     reference_model_log_probs = reference_model_log_probs.reshape(8, -1)
-            #     reference_action_log_probs = reference_model_log_probs[:, -num_action:]
-            # # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action)
-            # # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action, self.booster.shard_config, reference_model_logits.shape[-1])
             policy_model_logits = self.policy_model(
                 input_ids=data["input_ids"],
                 attention_mask=data["attention_mask"],
