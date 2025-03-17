@@ -8,6 +8,7 @@ from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
 from coati.distributed.reward.reward_fn import math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
+from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -115,23 +116,39 @@ class GRPOConsumer(BaseConsumer):
 
         ctx = nullcontext() if need_update else self.booster.no_sync(self.policy_model, self.optimizer)
         with ctx:
-            policy_model_log_probs = self.policy_model(
+            # policy_model_log_probs = self.policy_model(
+            #     input_ids=data["input_ids"],
+            #     attention_mask=data["attention_mask"],
+            #     return_dist_log_prob=True,
+            # )["logits"]
+            # policy_model_log_probs = policy_model_log_probs.reshape(8, -1)
+            # action_log_probs = policy_model_log_probs[:, -num_action:]
+            # with torch.no_grad():
+            #     reference_model_log_probs = self.reference_model(
+            #         input_ids=data["input_ids"],
+            #         attention_mask=data["attention_mask"],
+            #         return_dist_log_prob=True,
+            #     )["logits"]
+            #     reference_model_log_probs = reference_model_log_probs.reshape(8, -1)
+            #     reference_action_log_probs = reference_model_log_probs[:, -num_action:]
+            # # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action)
+            # # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action, self.booster.shard_config, reference_model_logits.shape[-1])
+            policy_model_logits = self.policy_model(
                 input_ids=data["input_ids"],
                 attention_mask=data["attention_mask"],
-                return_dist_log_prob=True,
             )["logits"]
-            policy_model_log_probs = policy_model_log_probs.reshape(8, -1)
-            action_log_probs = policy_model_log_probs[:, -num_action:]
+            action_log_probs = calc_action_log_probs(
+                policy_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+            )
+
             with torch.no_grad():
-                reference_model_log_probs = self.reference_model(
+                reference_model_logits = self.reference_model(
                     input_ids=data["input_ids"],
                     attention_mask=data["attention_mask"],
-                    return_dist_log_prob=True,
                 )["logits"]
-                reference_model_log_probs = reference_model_log_probs.reshape(8, -1)
-                reference_action_log_probs = reference_model_log_probs[:, -num_action:]
-            # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action)
-            # reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action, self.booster.shard_config, reference_model_logits.shape[-1])
+            reference_action_log_probs = calc_action_log_probs(
+                reference_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+            )
 
             per_token_kl = (
                 torch.exp(reference_action_log_probs - action_log_probs)

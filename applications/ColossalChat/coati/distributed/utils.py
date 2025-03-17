@@ -88,7 +88,7 @@ def calc_action_log_probs(
     sequences: torch.LongTensor,
     num_actions: int,
     shard_config,
-    vocab_size: int,
+    vocab_size: int = None,
 ) -> torch.Tensor:
     """Calculate action log probs.
 
@@ -105,7 +105,8 @@ def calc_action_log_probs(
     """
     print(f"sequences {sequences.shape} logits {logits.shape}")
     log_probs = dist_log_prob(sequences, logits, shard_config, vocab_size, logits.dtype)
-
+    print(f"log_probs {log_probs.shape}")
+    log_probs = log_probs.squeeze(-1)
     # log_probs = dist_log_prob(sequences[:, 1:], logits[:, :-1, :], shard_config, vocab_size, logits.dtype)
     # # labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
     # logits: torch.Tensor,  # [B, S, Vocab_size]
