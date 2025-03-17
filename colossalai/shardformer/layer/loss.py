@@ -384,8 +384,6 @@ def dist_log_prob(
             dtype=dtype,
         )
     else:
-        # NOTE if use TP and not parallel_output, the output is gathered in VocabParallelLMHead1D
-        logits = logits.view(-1, logits.size(-1))
         log_prob = loss_fct(logits)
 
     return log_prob

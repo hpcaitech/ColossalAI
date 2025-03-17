@@ -11,7 +11,6 @@ from colossalai.shardformer.layer import (
     Linear1D_Row,
     LinearWithGradAccum,
     PaddingEmbedding,
-    PaddingLMHead,
     RMSNorm,
     VocabParallelEmbedding1D,
     VocabParallelLMHead1D,
@@ -450,7 +449,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
-                            target_module=PaddingLMHead,
+                            target_module=LinearWithGradAccum,
                             kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
                         ),
                         SubModuleReplacementDescription(

@@ -35,21 +35,21 @@ def check_dist_log_prob(rank, world_size, port):
     pred = torch.randn(2, 4, 8, requires_grad=True).cuda()
     labels = torch.randint(8, (2, 4)).cuda()
 
-    loss = log_probs_from_logits(pred, labels)
+    logprob = log_probs_from_logits(pred, labels)
 
     pred.retain_grad()
-    loss.mean().backward()
+    logprob.mean().backward()
 
     dist_pred = pred.clone().chunk(world_size, -1)[rank].detach()
     dist_pred.requires_grad = True
-    dist_loss = dist_log_prob_1d(dist_pred, labels)
+    dist_logprob = dist_log_prob_1d(dist_pred, labels)
 
     dist_pred.retain_grad()
-    dist_loss.squeeze(-1).mean().backward()
+    dist_logprob.squeeze(-1).mean().backward()
 
     assert torch.allclose(
-        loss, dist_loss.squeeze(-1), atol=1e-5
-    ), f"dist cross entropy loss is not equal to orgin loss\n{loss}\n{dist_loss.squeeze(-1)}"
+        logprob, dist_logprob.squeeze(-1), atol=1e-5
+    ), f"dist cross entropy logprob is not equal to orgin logprob\n{logprob}\n{dist_logprob.squeeze(-1)}"
 
     pred_grad_partial = pred.grad.clone().chunk(world_size, -1)[rank].detach()
     assert torch.allclose(
