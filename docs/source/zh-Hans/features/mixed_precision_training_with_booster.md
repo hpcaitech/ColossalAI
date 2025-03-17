@@ -59,7 +59,7 @@ AMP 代表自动混合精度训练。
 
 我们支持三种 AMP 训练方法，并允许用户在没有改变代码的情况下使用 AMP 进行训练。booster 支持 amp 特性注入，如果您要使用混合精度训练，则在创建 booster 实例时指定`mixed_precision`参数; 后续将会拓展`bf16`.
 
-我们目前只支持`Linear`层的`fp8`混合精度训练，如果您需要使用，请在创建 plugin实例时指定`use_fp8`参数。
+我们目前只支持`Linear`层的`fp8`混合精度训练，如果您需要使用，请在创建 plugin实例时指定`use_fp8`参数，`deep_gemm`fp8矩阵乘法适配请指定`use_deep_gemm`参数。
 
 为了减少低带宽场景下多机之间的通讯负载，我们还支持了FP8通讯。如果您需要使用，请在创建 plugin实例时指定`fp8_communication`参数。
 

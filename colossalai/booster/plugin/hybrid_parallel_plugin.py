@@ -33,7 +33,7 @@ from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
-from colossalai.quantization.fp8_hook import FP8Hook
+from colossalai.quantization.fp8_hook import FP8DeepGemmHook, FP8Hook
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils, is_share_sp_tp
 from colossalai.shardformer.policies.base_policy import Policy
@@ -70,6 +70,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         custom_policy: Policy,
         overlap_allgather: bool = False,
         use_fp8: bool = False,
+        use_deep_gemm: bool = False,
     ) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
         self.shard_config = shard_config
@@ -80,6 +81,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         self.require_grad_sync = True
         self.overlap_allgather = overlap_allgather
         self.use_fp8 = use_fp8
+        self.use_deep_gemm = use_deep_gemm
 
         shardformer = ShardFormer(shard_config)
         if custom_policy is not None:
@@ -119,7 +121,10 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         super().__init__(module)
         self.op_hooks = []
         if use_fp8:
-            self.op_hooks.append(FP8Hook())
+            if use_deep_gemm:
+                self.op_hooks.append(FP8DeepGemmHook())
+            else:
+                self.op_hooks.append(FP8Hook())
         if overlap_allgather:
             self.op_hooks.append(ZeroOpHook())
         if use_fp8 or overlap_allgather:
@@ -1044,6 +1049,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
         use_fp8: bool = False,
+        use_deep_gemm: bool = False,
         inner_ring_size: int = None,
     ) -> None:
         super().__init__()
@@ -1097,6 +1103,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.use_fp8 = use_fp8
+        self.use_deep_gemm = use_deep_gemm
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
@@ -1323,6 +1330,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 custom_policy=self.custom_policy,
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
                 use_fp8=self.use_fp8,
+                use_deep_gemm=self.use_deep_gemm,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if zero_stage == 0:

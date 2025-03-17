@@ -15,7 +15,7 @@ from colossalai.checkpoint_io.utils import StateDictSharder, gather_distributed_
 from colossalai.interface import ModelWrapper
 from colossalai.lazy import LazyTensor
 from colossalai.logging import get_dist_logger
-from colossalai.quantization.fp8_hook import FP8Hook
+from colossalai.quantization.fp8_hook import FP8DeepGemmHook, FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.d_tensor import (
     distribute_tensor,
@@ -101,6 +101,7 @@ class GeminiDDP(ModelWrapper):
         enable_async_reduce: bool = True,
         fp8_communication: bool = False,
         use_fp8: bool = False,
+        use_deep_gemm: bool = False,
     ) -> None:
         assert mixed_precision in (torch.float16, torch.bfloat16)
         reuse_fp16_chunk = master_weights if not enable_gradient_accumulation else False
@@ -142,7 +143,10 @@ class GeminiDDP(ModelWrapper):
         self.param_op_hook = GeminiZeROHook(self.gemini_manager)
         self.hooks = [self.param_op_hook]
         if use_fp8:
-            self.hooks.append(FP8Hook())
+            if use_deep_gemm:
+                self.hooks.append(FP8DeepGemmHook())
+            else:
+                self.hooks.append(FP8Hook())
         self.fp32_params: List[torch.Tensor] = list()
         self.fp16_params: List[ColoParameter] = list()
         self.grads_device: Dict[torch.Tensor, torch.device] = dict()
