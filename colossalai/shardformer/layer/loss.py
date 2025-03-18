@@ -352,7 +352,7 @@ def dist_log_prob(
     seq_dim: int = 1,
 ) -> torch.Tensor:
     """
-    Helper to compute cross entropy loss for most shardformer models supporting PP, TP and SP.
+    Helper to compute log prob for most shardformer models supporting PP, TP. Will Support SP soon in feature
     """
     # Split labels if not gather output
     sp_group = shard_config.sequence_parallel_process_group
