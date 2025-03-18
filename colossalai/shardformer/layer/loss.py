@@ -161,23 +161,26 @@ class DistLogProb(Function):
         vocab_size: int,
         dtype=torch.float32,
     ):
-        ######
-        # 1.log softmax
-        ######
-        # local max for softmax
+
+        ##################
+        # Step1:Find the global maximum value of logits
+        ##################
         logits_max = torch.max(vocab_logits, dim=-1)[0]
         handle = dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group, async_op=True)
-        # get rank and worldsize
+
+        ##################
+        # Step2:Find the local mask. local mask will be use to select log_probs value in Step 4.
+        # For accleration, we overlap Step 2 and Step 3
+        ##################
         rank = dist.get_rank(group=process_group)
         world_size = dist.get_world_size(group=process_group)
-        # cal vocal size
         if vocab_size is None:
             partition_vocab_size = vocab_logits.size()[-1]
             global_vocab_size = partition_vocab_size * world_size
         else:
             global_vocab_size = vocab_size
             partition_vocab_size = global_vocab_size // world_size
-        # down and up threshold
+        # down and up threshold for local logits
         delta = (global_vocab_size + world_size - 1) // world_size
         down_threshold = rank * delta
         up_threshold = down_threshold + delta
@@ -188,27 +191,24 @@ class DistLogProb(Function):
         masked_target = target.clone() - down_threshold
         masked_target[mask] = 0
         masked_target_1d = masked_target.view(-1).contiguous()
-        # wait for allreduce
         handle.wait()
-        vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
-        # cal exp_logits
-        exp_logits = torch.exp(vocab_logits)
-        # cal local sum_exp_logits
-        sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)
-        # all_reduce get global sum_exp_logits
-        dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
-        # cal log_softmax
-        log_probs = vocab_logits - torch.log(sum_exp_logits.unsqueeze(dim=-1))
 
-        ######
-        # 2.gather via labels
-        ######
+        ##################
+        # Step3:Calculate global summation exp logits
+        ##################
+        vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
+        exp_logits = torch.exp(vocab_logits)
+        sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)  # local summation exp logits
+        dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
+
+        ##################
+        # Step4:Calculate local prob. We first cal log_softmax, them
+        ##################
+        log_probs = vocab_logits - torch.log(sum_exp_logits.unsqueeze(dim=-1))  # cal log_softmax
         log_probs = log_probs.gather(dim=-1, index=masked_target.unsqueeze(-1))
-        print(f"log_probs in ops {log_probs.shape}")
-        # set masked val to zero, then all reduce
-        log_probs[mask.unsqueeze(-1)] = 0
-        # allreduce log_probs with ops SUM
+        log_probs[mask.unsqueeze(-1)] = 0  # # set masked val to zero
         dist.all_reduce(log_probs, op=dist.ReduceOp.SUM, group=process_group)
+
         ctx.save_for_backward(exp_logits, mask, masked_target_1d, sum_exp_logits)
         ctx.dtype = dtype
         return log_probs
@@ -216,11 +216,22 @@ class DistLogProb(Function):
     @staticmethod
     def backward(ctx, grad_output):
         exp_logits, mask, masked_target_1d, sum_exp_logits = ctx.saved_tensors
+        ##################
+        # Step1:Find the global sofmax value
+        ##################
         softmax_logits = exp_logits / sum_exp_logits.unsqueeze(dim=-1)
+
+        ##################
+        # Step2:Update softmax value based on local target index
+        ##################
         partion_vocab_size = softmax_logits.shape[-1]
         softmax_logits_2d = softmax_logits.view(-1, partion_vocab_size)
         update = 1.0 - mask.view(-1).float().to(ctx.dtype)
         softmax_logits_2d[torch.arange(0, softmax_logits_2d.shape[0]), masked_target_1d] -= update
+
+        ##################
+        # Step3:Calculate grad_output, which is the gradient of the loss function with respect to the output of logsoftmax
+        ##################
         grad_logits = -softmax_logits.mul_(grad_output)
         return grad_logits, None, None, None, None, None, None
 
@@ -352,18 +363,11 @@ def dist_log_prob(
     seq_dim: int = 1,
 ) -> torch.Tensor:
     """
-    Helper to compute cross entropy loss for most shardformer models supporting PP, TP and SP.
+    Helper to compute log prob for most shardformer models supporting PP, TP.
     """
     # Split labels if not gather output
-    sp_group = shard_config.sequence_parallel_process_group
-    dist.get_rank(sp_group)
-    sp_size = shard_config.sequence_parallel_size
-    sp_mode = shard_config.sequence_parallelism_mode
     parallel_output = shard_config.parallel_output
     is_tp = shard_config.enable_tensor_parallelism
-
-    # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
-    sp_size > 1 and (not is_share_sp_tp(sp_mode))
 
     # TODO:support sp
     labels = labels[..., 1:]
