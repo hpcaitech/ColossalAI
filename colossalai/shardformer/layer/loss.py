@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
-from torch.nn import CrossEntropyLoss, LogSoftmax
+from torch.nn import CrossEntropyLoss
 
 from colossalai.shardformer.layer._operation import reduce_forward
 from colossalai.shardformer.shard import ShardConfig
@@ -359,8 +359,8 @@ def dist_log_prob(
     dist.get_rank(sp_group)
     sp_size = shard_config.sequence_parallel_size
     sp_mode = shard_config.sequence_parallelism_mode
-    parallel_output = shard_config.parallel_output
-    is_tp = shard_config.enable_tensor_parallelism
+    shard_config.parallel_output
+    shard_config.enable_tensor_parallelism
 
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     sp_size > 1 and (not is_share_sp_tp(sp_mode))
@@ -372,18 +372,12 @@ def dist_log_prob(
     logits = logits.contiguous()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 
-    # Flatten the tokens
-    loss_fct = LogSoftmax()
-
-    if is_tp and parallel_output:
-        log_prob = dist_log_prob_1d(
-            logits,
-            labels,
-            process_group=shard_config.tensor_parallel_process_group,
-            vocab_size=vocab_size,
-            dtype=dtype,
-        )
-    else:
-        log_prob = loss_fct(logits)
+    log_prob = dist_log_prob_1d(
+        logits,
+        labels,
+        process_group=shard_config.tensor_parallel_process_group,
+        vocab_size=vocab_size,
+        dtype=dtype,
+    )
 
     return log_prob
