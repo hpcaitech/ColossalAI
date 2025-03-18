@@ -146,7 +146,7 @@ class DistCrossEntropy(Function):
 
 class DistLogProb(Function):
     r"""
-    Overwrite the forward and backward function to calculate the cross entropy loss before gather
+    Overwrite the forward and backward function to calculate the log prob before gather
 
     Args:
         Function (:class:`torch.autograd.Function`): default
