@@ -2,7 +2,7 @@ import torch
 import torch.distributed as dist
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, LogSoftmax
 
 from colossalai.shardformer.layer._operation import reduce_forward
 from colossalai.shardformer.shard import ShardConfig
@@ -352,15 +352,15 @@ def dist_log_prob(
     seq_dim: int = 1,
 ) -> torch.Tensor:
     """
-    Helper to compute log prob for most shardformer models supporting PP, TP. Will Support SP soon in feature
+    Helper to compute cross entropy loss for most shardformer models supporting PP, TP and SP.
     """
     # Split labels if not gather output
     sp_group = shard_config.sequence_parallel_process_group
     dist.get_rank(sp_group)
     sp_size = shard_config.sequence_parallel_size
     sp_mode = shard_config.sequence_parallelism_mode
-    shard_config.parallel_output
-    shard_config.enable_tensor_parallelism
+    parallel_output = shard_config.parallel_output
+    is_tp = shard_config.enable_tensor_parallelism
 
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     sp_size > 1 and (not is_share_sp_tp(sp_mode))
@@ -372,12 +372,18 @@ def dist_log_prob(
     logits = logits.contiguous()
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 
-    log_prob = dist_log_prob_1d(
-        logits,
-        labels,
-        process_group=shard_config.tensor_parallel_process_group,
-        vocab_size=vocab_size,
-        dtype=dtype,
-    )
+    # Flatten the tokens
+    loss_fct = LogSoftmax()
+    if is_tp and parallel_output:
+        log_prob = dist_log_prob_1d(
+            logits,
+            labels,
+            process_group=shard_config.tensor_parallel_process_group,
+            vocab_size=vocab_size,
+            dtype=dtype,
+        )
+    else:
+        log_prob = loss_fct(logits)
+        log_prob = log_prob.gather(dim=-1, index=labels.unsqueeze(-1))
 
     return log_prob
