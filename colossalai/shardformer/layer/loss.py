@@ -2,7 +2,8 @@ import torch
 import torch.distributed as dist
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
-from torch.nn import CrossEntropyLoss, LogSoftmax
+from torch.nn import CrossEntropyLoss
+from torch.nn.functional import log_softmax
 
 from colossalai.shardformer.layer._operation import reduce_forward
 from colossalai.shardformer.shard import ShardConfig
@@ -202,11 +203,11 @@ class DistLogProb(Function):
         dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
 
         ##################
-        # Step4:Calculate local prob. We first cal log_softmax, them
+        # Step4:Calculate local prob. We first cal log_softmax, then select log probs via local mask
         ##################
         log_probs = vocab_logits - torch.log(sum_exp_logits.unsqueeze(dim=-1))  # cal log_softmax
         log_probs = log_probs.gather(dim=-1, index=masked_target.unsqueeze(-1))
-        log_probs[mask.unsqueeze(-1)] = 0  # # set masked val to zero
+        log_probs[mask.unsqueeze(-1)] = 0  # set masked val to zero
         dist.all_reduce(log_probs, op=dist.ReduceOp.SUM, group=process_group)
 
         ctx.save_for_backward(exp_logits, mask, masked_target_1d, sum_exp_logits)
@@ -377,7 +378,6 @@ def dist_log_prob(
     assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
 
     # Flatten the tokens
-    loss_fct = LogSoftmax()
     if is_tp and parallel_output:
         log_prob = dist_log_prob_1d(
             logits,
@@ -387,7 +387,7 @@ def dist_log_prob(
             dtype=dtype,
         )
     else:
-        log_prob = loss_fct(logits)
+        log_prob = log_softmax(logits)
         log_prob = log_prob.gather(dim=-1, index=labels.unsqueeze(-1))
 
     return log_prob
