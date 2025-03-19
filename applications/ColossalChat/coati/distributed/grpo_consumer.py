@@ -121,15 +121,18 @@ class GRPOConsumer(BaseConsumer):
                 input_ids=data["input_ids"],
                 attention_mask=data["attention_mask"],
             )["logits"]
-            print(f"policy_model_logits {policy_model_logits.shape}")
-            action_log_probs = calc_action_log_probs(policy_model_logits, data["input_ids"], num_action)
+            action_log_probs = calc_action_log_probs(
+                policy_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+            )
+
             with torch.no_grad():
                 reference_model_logits = self.reference_model(
                     input_ids=data["input_ids"],
                     attention_mask=data["attention_mask"],
                 )["logits"]
-            print(f"reference_model_logits {reference_model_logits.shape}")
-            reference_action_log_probs = calc_action_log_probs(reference_model_logits, data["input_ids"], num_action)
+            reference_action_log_probs = calc_action_log_probs(
+                reference_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+            )
 
             per_token_kl = (
                 torch.exp(reference_action_log_probs - action_log_probs)
