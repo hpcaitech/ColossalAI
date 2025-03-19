@@ -832,7 +832,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         loss = None
         if labels is not None:
             loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
-
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
