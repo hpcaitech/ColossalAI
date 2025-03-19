@@ -1,8 +1,11 @@
+import json
+import os
 from contextlib import nullcontext
 from typing import Optional
 
 import ray
 import torch
+import torch.distributed as dist
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
@@ -33,6 +36,8 @@ class GRPOConsumer(BaseConsumer):
         microbatch_size=1,
         num_generations=4,
         use_wandb=True,
+        generator_config=None,
+        filter_range=None,
     ):
         super().__init__(
             num_producers,
@@ -69,6 +74,9 @@ class GRPOConsumer(BaseConsumer):
         self.tokenizer = AutoTokenizer.from_pretrained(path)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.num_generations = num_generations
+        self.filter_range = filter_range
+        if self.filter_range is not None:
+            assert len(self.filter_range) == 2, "Filter range should have 2 values."
 
         # Initialize verifiable reward.
         response_format_tags = {
@@ -84,7 +92,11 @@ class GRPOConsumer(BaseConsumer):
         self.policy_loss_fn = PolicyLoss()
         self.global_step = 0
         if use_wandb and self.rank == 0:
-            self.wandb_run = wandb.init(project="GRPO-V1", sync_tensorboard=True)
+            if "repetition_penalty" in generator_config:
+                name = f"{generator_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generator_config['temperature']:.01f}_rep_penalty_{generator_config['repetition_penalty']:.01f}"
+            else:
+                name = f"{generator_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generator_config['temperature']:.01f}"
+            self.wandb_run = wandb.init(project="GRPO-V1", sync_tensorboard=True, dir="./wandb", name=name)
 
     def setup(self):
         super().setup()
@@ -121,7 +133,7 @@ class GRPOConsumer(BaseConsumer):
                 attention_mask=data["attention_mask"],
             )["logits"]
             action_log_probs = calc_action_log_probs(
-                policy_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+                policy_model_logits / generator_config["temperature"], data["input_ids"], num_action, self.plugin.shard_config
             )
 
             with torch.no_grad():
@@ -130,7 +142,7 @@ class GRPOConsumer(BaseConsumer):
                     attention_mask=data["attention_mask"],
                 )["logits"]
             reference_action_log_probs = calc_action_log_probs(
-                reference_model_logits, data["input_ids"], num_action, self.plugin.shard_config
+                reference_model_logits / generator_config["temperature"], data["input_ids"], num_action, self.plugin.shard_config
             )
 
             per_token_kl = (
@@ -149,7 +161,14 @@ class GRPOConsumer(BaseConsumer):
             acc_reward = torch.tensor([value[2] for value in reward_group]).to(data["input_ids"].device)
 
             # [batch_size, num_generations]
+            # filter out the reward that is too high (all sample gets full score) or too low (all sample gets 0 score),
+            loss_mask = (
+                None
+                if self.filter_range is None
+                else torch.logical_and(reward > self.filter_range[0], reward < self.filter_range[1])
+            )
             group_reward = reward.view(-1, self.num_generations)
+            reward_mean = group_reward.mean(dim=1)
 
             # [batch_size x num_generations]
             reward_mean = group_reward.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
@@ -164,6 +183,7 @@ class GRPOConsumer(BaseConsumer):
                 advantages.unsqueeze(dim=-1).repeat_interleave(action_log_probs.size(-1), dim=-1),
                 per_token_kl,
                 action_mask,
+                loss_mask=loss_mask,
             )
 
             if not skip_update:
@@ -226,6 +246,128 @@ class GRPOConsumer(BaseConsumer):
 
             self.accum_count = 0
             return loss_scalar
+
+    def state_dict(self):
+        self.policy_model._force_wait_all_gather()
+        model = self.policy_model.unwrap()
+        state_dict = model.state_dict()
+        return state_dict
+
+
+@ray.remote
+class GRPOEvalConsumer(BaseConsumer):
+    def __init__(
+        self,
+        num_producers,
+        num_episodes,
+        rank,
+        world_size,
+        master_addr,
+        master_port,
+        num_update_per_episode,
+        num_recv_per_update,
+        batch_size,
+        model_config,
+        plugin_config,
+        microbatch_size=1,
+        num_generations=4,
+        use_wandb=True,
+        log_dir="./results",
+    ):
+        super().__init__(
+            num_producers,
+            num_episodes,
+            rank,
+            world_size,
+            master_addr,
+            master_port,
+            num_update_per_episode,
+            num_recv_per_update,
+            batch_size,
+            model_config,
+            plugin_config,
+            microbatch_size,
+        )
+        path = model_config.pop("path")
+        self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
+        self.policy_model.train()
+        self.accum_reward = torch.zeros(1, device=self.device)
+        self.accum_format_reward = torch.zeros(1, device=self.device)
+        self.accum_acc_reward = torch.zeros(1, device=self.device)
+        self.accum_response_length = torch.zeros(1, device=self.device)
+        self.accum_count = torch.zeros(1, device=self.device)
+
+        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        self.pad_token_id = self.tokenizer.pad_token_id
+        self.num_generations = num_generations
+
+        # Initialize verifiable reward.
+        response_format_tags = {
+            "think_start": {"text": "<think>", "num_occur": 1},
+            "think_end": {"text": "</think>", "num_occur": 1},
+            "answer_start": {"text": "<answer>", "num_occur": 1},
+            "answer_end": {"text": "</answer>", "num_occur": 1},
+        }
+        self.reward_model = VerifiableReward(
+            reward_fns=[math_reward_fn], tokenizer=self.tokenizer, tags=response_format_tags
+        )
+
+        self.log_dir = log_dir
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.log_dir)
+        else:
+            os.system(f"rm -rf {self.log_dir}/*")
+
+    def setup(self):
+        super().setup()
+        self.policy_model, _, *_ = self.booster.boost(self.policy_model)
+
+    def step(self, step_idx: int, **kwargs) -> Optional[float]:
+        rank = dist.get_rank()
+        data = {k: v.view(-1, v.size(-1)).cpu() for k, v in kwargs.items()}
+        kwargs["input_ids"].size(0)
+        reward_group = self.reward_model(
+            data["input_ids"], gt_answer=data["gt_answer"], response_idx=data["response_idx"]
+        )
+        reward = [value[0].item() for value in reward_group]
+        format_reward = [value[1].item() for value in reward_group]
+        acc_reward = [value[2].item() for value in reward_group]
+        response_length = [(data["response_idx"][i][1] - data["response_idx"][i][0]).item() for i in range(len(reward))]
+
+        response = self.tokenizer.batch_decode(data["input_ids"], skip_special_tokens=True)
+        with open(f"{self.log_dir}/eval_results_rank_{rank}.jsonl", "a", encoding="utf8") as f:
+            for i in range(len(response)):
+                f.write(
+                    json.dumps(
+                        {
+                            "response": response[i],
+                            "reward": reward[i],
+                            "format_reward": format_reward[i],
+                            "acc_reward": acc_reward[i],
+                            "response_length": response_length[i],
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+
+        self.accum_reward += sum(reward)
+        self.accum_format_reward += sum(format_reward)
+        self.accum_acc_reward += sum(acc_reward)
+        self.accum_response_length += sum(response_length)
+        self.accum_count += len(reward)
+
+        # print results
+        total_count = all_reduce_mean(self.accum_count, self.plugin)
+        mean_reward = all_reduce_mean(self.accum_reward, self.plugin) / total_count
+        mean_format_reward = all_reduce_mean(self.accum_format_reward, self.plugin) / total_count
+        mean_acc_reward = all_reduce_mean(self.accum_acc_reward, self.plugin) / total_count
+        mean_response_length = all_reduce_mean(self.accum_response_length, self.plugin) / total_count
+        if rank == 0:
+            print(
+                f"Step {step_idx}: Mean Reward: {mean_reward}, Mean Format Reward: {mean_format_reward}, Mean Acc Reward: {mean_acc_reward}, Mean Response Length: {mean_response_length}"
+            )
+        return None
 
     def state_dict(self):
         self.policy_model._force_wait_all_gather()
