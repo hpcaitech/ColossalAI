@@ -387,7 +387,7 @@ def dist_log_prob(
             dtype=dtype,
         )
     else:
-        log_prob = log_softmax(logits)
+        log_prob = log_softmax(logits, dim=-1)
         log_prob = log_prob.gather(dim=-1, index=labels.unsqueeze(-1))
 
     return log_prob

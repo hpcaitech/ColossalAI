@@ -15,6 +15,7 @@ from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 
 
@@ -34,10 +35,10 @@ class GRPOConsumer(BaseConsumer):
         model_config,
         plugin_config,
         microbatch_size=1,
-        num_generations=4,
+        num_generations=8,
         use_wandb=True,
-        generator_config=None,
-        filter_range=None,
+        generate_config=None,
+        training_config={},
     ):
         super().__init__(
             num_producers,
@@ -57,7 +58,7 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
-        self.optimizer = HybridAdam(self.policy_model.parameters(), lr=1e-6)
+        self.optimizer = HybridAdam(self.policy_model.parameters(), lr=training_config.get("lr", 1e-6))
         self.accum_loss = torch.zeros(1, device=self.device)
         self.accum_reward = torch.zeros(1, device=self.device)
         self.accum_kl = torch.zeros(1, device=self.device)
@@ -66,6 +67,7 @@ class GRPOConsumer(BaseConsumer):
         self.accum_advantages = torch.zeros(1, device=self.device)
         self.accum_response_length = torch.zeros(1, device=self.device)
         self.accum_count = 0
+        self.generate_config = generate_config
 
         # Reference model is initialized from policy model.
         self.reference_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
@@ -74,7 +76,7 @@ class GRPOConsumer(BaseConsumer):
         self.tokenizer = AutoTokenizer.from_pretrained(path)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.num_generations = num_generations
-        self.filter_range = filter_range
+        self.filter_range = training_config.get("filter_range", None)
         if self.filter_range is not None:
             assert len(self.filter_range) == 2, "Filter range should have 2 values."
 
@@ -92,15 +94,21 @@ class GRPOConsumer(BaseConsumer):
         self.policy_loss_fn = PolicyLoss()
         self.global_step = 0
         if use_wandb and self.rank == 0:
-            if "repetition_penalty" in generator_config:
-                name = f"{generator_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generator_config['temperature']:.01f}_rep_penalty_{generator_config['repetition_penalty']:.01f}"
-            else:
-                name = f"{generator_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generator_config['temperature']:.01f}"
+            name = f"{generate_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
             self.wandb_run = wandb.init(project="GRPO-V1", sync_tensorboard=True, dir="./wandb", name=name)
+
+        self.lr_scheduler = CosineAnnealingWarmupLR(
+            optimizer=self.optimizer,
+            total_steps=min(self.num_episodes, 4) * self.num_update_per_episode,
+            warmup_steps=0,
+            eta_min=0.1 * training_config.get("lr", 1e-6),
+        )
 
     def setup(self):
         super().setup()
-        self.policy_model, self.optimizer, *_ = self.booster.boost(self.policy_model, self.optimizer)
+        self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
+            self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
+        )
         self.reference_model, *_ = self.booster.boost(self.reference_model)
 
     def step(self, step_idx: int, **kwargs) -> Optional[float]:
@@ -133,7 +141,10 @@ class GRPOConsumer(BaseConsumer):
                 attention_mask=data["attention_mask"],
             )["logits"]
             action_log_probs = calc_action_log_probs(
-                policy_model_logits / generator_config["temperature"], data["input_ids"], num_action, self.plugin.shard_config
+                policy_model_logits / self.generate_config["temperature"],
+                data["input_ids"],
+                num_action,
+                self.plugin.shard_config,
             )
 
             with torch.no_grad():
@@ -142,7 +153,10 @@ class GRPOConsumer(BaseConsumer):
                     attention_mask=data["attention_mask"],
                 )["logits"]
             reference_action_log_probs = calc_action_log_probs(
-                reference_model_logits / generator_config["temperature"], data["input_ids"], num_action, self.plugin.shard_config
+                reference_model_logits / self.generate_config["temperature"],
+                data["input_ids"],
+                num_action,
+                self.plugin.shard_config,
             )
 
             per_token_kl = (
@@ -161,22 +175,24 @@ class GRPOConsumer(BaseConsumer):
             acc_reward = torch.tensor([value[2] for value in reward_group]).to(data["input_ids"].device)
 
             # [batch_size, num_generations]
+
+            group_reward = reward.view(-1, self.num_generations)
+            reward_mean = group_reward.mean(dim=1)
             # filter out the reward that is too high (all sample gets full score) or too low (all sample gets 0 score),
             loss_mask = (
                 None
                 if self.filter_range is None
-                else torch.logical_and(reward > self.filter_range[0], reward < self.filter_range[1])
+                else torch.logical_and(
+                    reward_mean > self.filter_range[0], reward_mean < self.filter_range[1]
+                ).repeat_interleave(self.num_generations, dim=0)
             )
-            group_reward = reward.view(-1, self.num_generations)
-            reward_mean = group_reward.mean(dim=1)
 
             # [batch_size x num_generations]
-            reward_mean = group_reward.mean(dim=1).repeat_interleave(self.num_generations, dim=0)
+            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
             reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
             # [batch_size x num_generations]
             advantages = (reward - reward_mean) / (reward_std + 1e-4)
 
-            # Calculate Loss
             loss, skip_update, _ = self.policy_loss_fn(
                 action_log_probs,
                 old_action_log_probs,
