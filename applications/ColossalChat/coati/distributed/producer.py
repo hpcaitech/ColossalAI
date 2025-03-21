@@ -101,6 +101,9 @@ class BaseProducer:
                     break
                 outputs = self.rollout(**batch)
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
+                outputs["temperature"] = torch.tensor(
+                    [self.model.generate_config.temperature] * outputs["input_ids"].size(0)
+                ).to(outputs["input_ids"].device)
                 outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
