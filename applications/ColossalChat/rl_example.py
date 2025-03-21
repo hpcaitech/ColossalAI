@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(path=args.model)
-    generate_config = dict(top_k=50, top_p=0.9, temperature=0.7)
+    generate_config = dict(top_k=50, top_p=0.75, temperature=0.9)
 
     if args.backend == "transformers":
         inference_model_config.update(
