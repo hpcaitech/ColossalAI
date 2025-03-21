@@ -101,7 +101,7 @@ def launch_distributed(
             plugin_config=plugin_config,
             microbatch_size=train_microbatch_size,
             generate_config=generate_config_consumer,
-            training_config={"filter_range": [0.05, 9.0], "lr": 1e-6},
+            training_config={"filter_range": [0.05, 9.0], "lr": 1e-6, "forward_micro_batch_size": 4},
             num_generations=num_generations,
         )
         procs.append(consumer)
