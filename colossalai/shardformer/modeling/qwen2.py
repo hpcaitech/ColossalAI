@@ -131,7 +131,7 @@ class Qwen2PipelineForwards:
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
-        if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
+        if attention_mask is not None and self.config._attn_implementation == "flash_attention_2" and use_cache:
             is_padding_right = attention_mask[:, -1].sum().item() != batch_size
             if is_padding_right:
                 raise ValueError(
@@ -152,10 +152,10 @@ class Qwen2PipelineForwards:
                 is_causal=True,
             )
         else:
-            if self._attn_implementation == "flash_attention_2":
+            if self.config._attn_implementation == "flash_attention_2":
                 # 2d mask is passed through the layers
                 attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-            elif self._attn_implementation == "sdpa" and not output_attentions:
+            elif self.config._attn_implementation == "sdpa" and not output_attentions:
                 # output_attentions=True can not be supported when using SDPA, and we fall back on
                 # the manual implementation that requires a 4D causal mask in all cases.
                 attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
@@ -533,8 +533,9 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         # Because the input can be padded, the absolute sequence length depends on the max position id.
-        rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+        # rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
+        # cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+        cos, sin = self.rotary_emb(value_states, position_ids)  # if transformer version > 4.39.3
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:

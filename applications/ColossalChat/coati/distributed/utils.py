@@ -35,6 +35,43 @@ def pre_send(batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     return batch
 
 
+def split_into_microbatches(data_dict, microbatch_size):
+    """
+    将包含多个张量的字典根据 microbatch_size 切分成多个微批次字典。
+    :param data_dict: 包含多个张量的字典，input_ids 形状为 (batch_size, seq_len, hidden_dim)
+    :param microbatch_size: 每个微批次的大小
+    :return: 微批次字典列表
+    """
+    batch_size = next(iter(data_dict.values())).size(0)
+    microbatch_dicts = []
+
+    for start_idx in range(0, batch_size, microbatch_size):
+        end_idx = min(start_idx + microbatch_size, batch_size)
+        microbatch_dict = {}
+        for key, tensor in data_dict.items():
+            if tensor.size(0) == batch_size:
+                microbatch_dict[key] = tensor[start_idx:end_idx]
+            else:
+                microbatch_dict[key] = tensor
+        microbatch_dicts.append(microbatch_dict)
+
+    return microbatch_dicts
+
+
+def filter_microbatch_dicts(microbatch_dicts):
+    """
+    遍历 microbatch_dicts 列表，移除每个字典中键不在 ("input_ids", "attention_mask") 范围内的键值对
+    :param microbatch_dicts: 包含多个字典的列表
+    :return: 过滤后的 microbatch_dicts 列表
+    """
+    filtered_dicts = []
+    allowed_keys = ("input_ids", "attention_mask")
+    for microbatch_dict in microbatch_dicts:
+        filtered_dict = {key: value for key, value in microbatch_dict.items() if key in allowed_keys}
+        filtered_dicts.append(filtered_dict)
+    return filtered_dicts
+
+
 def post_recv(batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     # decompress mask
     if "attention_mask" in batch:

@@ -14,6 +14,7 @@ if __name__ == "__main__":
     parser.add_argument("-imbs", "--inference-microbatch-size", type=int, default=8)
     parser.add_argument("-tbs", "--train-batch-size", type=int, default=32)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=1)
+    parser.add_argument("-ppmbs", "--pp-batch-size", type=int, default=8)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
     args = parser.parse_args()
@@ -27,13 +28,15 @@ if __name__ == "__main__":
     if args.backend == "transformers":
         inference_model_config.update(
             dict(
-                use_flash_attention_2=True,
+                # use_flash_attention_2=True,
+                attn_implementation="flash_attention_2",
                 torch_dtype=torch.bfloat16,
             )
         )
         train_model_config.update(
             dict(
-                use_flash_attention_2=True,
+                # use_flash_attention_2=True,
+                attn_implementation="flash_attention_2",
                 torch_dtype=torch.bfloat16,
                 use_cache=False,
             )
@@ -79,12 +82,13 @@ if __name__ == "__main__":
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_microbatch_size=args.train_microbatch_size,
+        pp_batch_size=args.pp_batch_size,
         dataset_config={"path": args.dataset, "max_length": 300},
         dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
         train_model_config=train_model_config,
-        plugin_config={},
+        plugin_config={"tp_size": 1, "pp_size": 2},
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29503,

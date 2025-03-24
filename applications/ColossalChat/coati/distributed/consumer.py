@@ -34,6 +34,7 @@ class BaseConsumer:
         model_config: Dict[str, Any],
         plugin_config: Dict[str, Any],
         microbatch_size: int = 1,
+        pp_batch_size: int = 8,
         save_interval: int = 100,
         save_dir: str = "./model",
     ):
@@ -54,7 +55,14 @@ class BaseConsumer:
 
         self.model_config = model_config
         self.plugin_config = plugin_config
-        assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
+        # assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
+
+        # To support pipeline parallel,
+        # we use (train) microbatch_size as pp batch size.
+        # So, the pp microbatch size = microbatch_size// pp size
+        self.pp_microbatch_size = pp_batch_size // self.plugin_config.get("pp_size", 1)
+        self.pp_num_microbatches = pp_batch_size // self.pp_microbatch_size
+        # assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
 
         self.device = get_current_device()
         self.lr_scheduler = None
@@ -67,13 +75,16 @@ class BaseConsumer:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
         plugin_config = dict(
-            tp_size=1,
-            pp_size=1,
+            tp_size=self.plugin_config.get("tp_size", 1),
+            pp_size=self.plugin_config.get("pp_size", 1),
+            # microbatch_size=self.pp_microbatch_size,
+            num_microbatches=self.pp_num_microbatches,
             precision="bf16",
             zero_stage=1,
+            enable_flash_attention=True,
         )
-        if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
-            plugin_config["microbatch_size"] = self.microbatch_size
+        # if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
+        #     plugin_config["microbatch_size"] = self.microbatch_size
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)

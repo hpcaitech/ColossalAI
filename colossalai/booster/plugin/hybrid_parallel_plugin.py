@@ -1416,10 +1416,12 @@ class HybridParallelPlugin(PipelinePluginBase):
         ):
             return outputs
 
-        # Synchronize the grads of shared parameters of the model.
-        model.sync_shared_params()
-        # Synchronize sequence parallelism gradients of the model.
-        model.sync_sp_grads()
+        # sync only for train
+        if torch.is_grad_enabled():
+            # Synchronize the grads of shared parameters of the model.
+            model.sync_shared_params()
+            # Synchronize sequence parallelism gradients of the model.
+            model.sync_sp_grads()
 
         # Check if the optimizer is a HybridParallelZeroOptimizer and synchronize data parallelism gradients if so.
         # Otherwise, synchronize data parallelism gradients of the model.
