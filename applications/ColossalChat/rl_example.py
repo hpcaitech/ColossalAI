@@ -33,7 +33,6 @@ if __name__ == "__main__":
         )
         train_model_config.update(
             dict(
-                use_flash_attention_2=True,
                 torch_dtype=torch.bfloat16,
                 use_cache=False,
             )
@@ -49,6 +48,12 @@ if __name__ == "__main__":
         )
     elif args.backend == "vllm":
         inference_model_config.update(dict(gpu_memory_utilization=0.7, enforce_eager=True, enable_chunked_prefill=True))
+        train_model_config.update(
+            dict(
+                use_flash_attention_2=True,
+                use_cache=False,
+            )
+        )
         generate_config.update(
             dict(
                 max_tokens=2048,
@@ -87,6 +92,6 @@ if __name__ == "__main__":
         plugin_config={},
         inference_backend=args.backend,
         master_addr="localhost",
-        master_port=29503,
+        master_port=29505,
         core_algo=args.algo,
     )

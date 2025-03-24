@@ -113,20 +113,3 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
     mask_sum = mask.sum(dim=dim)
     mean = tensor / (mask_sum + 1e-8)
     return mean
-
-
-def get_logits_rebatched_forward(model, batch_size, input_ids, attention_mask):
-    """
-    Get logits from the model with rebatched forward.
-    Args:
-        model (torch.nn.Module): The model.
-        batch_size (int): The batch size.
-        input_ids (torch.Tensor): The input ids.
-        attention_mask (torch.Tensor): The attention mask.
-    """
-    logits = []
-    for i in range(0, input_ids.size(0), batch_size):
-        logits.append(
-            model(input_ids=input_ids[i : i + batch_size], attention_mask=attention_mask[i : i + batch_size])["logits"]
-        )
-    return torch.cat(logits, dim=0)
