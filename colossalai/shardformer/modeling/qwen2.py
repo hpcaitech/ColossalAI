@@ -824,7 +824,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            force_sp_output_gather=False,
+            # force_sp_output_gather=False,
         )
 
         hidden_states = outputs[0]

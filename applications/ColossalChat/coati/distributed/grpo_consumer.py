@@ -133,6 +133,7 @@ class GRPOConsumer(BaseConsumer):
 
         # Reshape to [batch_size x num_of_generation, prompt_length + response_length]
         data = {k: v.view(-1, v.size(-1)) for k, v in kwargs.items()}
+        print(f"Rank {dist.get_rank()} data {[(k, v.shape, v.dtype) for k, v in data.items()]}")
         input_ids = data["input_ids"]
         attention_mask = data["attention_mask"]
         action_mask = data["action_mask"]
@@ -249,7 +250,7 @@ class GRPOConsumer(BaseConsumer):
                         loss_mask=loss_mask,
                     )
 
-                    print(f"Rank {dist.get_rank()} loss {loss}")
+                    # print(f"Rank {dist.get_rank()} loss {loss}")
 
                     # if not skip_update:
                     #     self.booster.backward(loss, self.optimizer)
@@ -269,7 +270,7 @@ class GRPOConsumer(BaseConsumer):
                     self.accum_advantages.add_(advantages.data)
                     self.accum_response_length.add_(response_length.data)
                     self.accum_count += 1
-                if need_update:
+
                     self.optimizer.step()
                     self.optimizer.zero_grad()
                     loss_scalar = self.accum_loss.item()
@@ -312,9 +313,9 @@ class GRPOConsumer(BaseConsumer):
                     self.accum_response_length.zero_()
 
                     self.accum_count = 0
-                    print(
-                        f"Rank {dist.get_rank()} step {step} policy_model_logits {policy_model_logits.shape} {policy_model_logits} reference_model_logits {reference_model_logits.shape} {reference_model_logits}"
-                    )
+                    print(f"Rank {dist.get_rank()} step {step}")
+                    print(f"policy_model_logits {policy_model_logits.shape} {policy_model_logits}")
+                    print(f"reference_model_logits {reference_model_logits.shape} {reference_model_logits} ")
                     return loss_scalar
             else:
                 policy_model_logits = self.policy_model(
