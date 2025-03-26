@@ -14,6 +14,7 @@ if __name__ == "__main__":
     parser.add_argument("-imbs", "--inference-microbatch-size", type=int, default=8)
     parser.add_argument("-tbs", "--train-batch-size", type=int, default=32)
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=1)
+    parser.add_argument("-fmb", "--forward-micro-batch-size", type=int, default=2)
     parser.add_argument("-b", "--backend", type=str, default="transformers")
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
     args = parser.parse_args()
@@ -84,6 +85,7 @@ if __name__ == "__main__":
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_microbatch_size=args.train_microbatch_size,
+        forward_micro_batch_size=args.forward_micro_batch_size,
         dataset_config={"path": args.dataset, "max_length": 300},
         dataloaders_config={},
         inference_model_config=inference_model_config,
