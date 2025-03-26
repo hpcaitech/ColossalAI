@@ -96,7 +96,7 @@ class GRPOConsumer(BaseConsumer):
         self.global_step = 0
         if use_wandb and self.rank == 0:
             name = f"{generate_config['backend']}_bs_{self.batch_size*self.world_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
-            self.wandb_run = wandb.init(project="GRPO-V1-debug", sync_tensorboard=True, dir="./wandb", name=name)
+            self.wandb_run = wandb.init(project="GRPO-V1", sync_tensorboard=True, dir="./wandb", name=name)
 
         self.lr_scheduler = CosineAnnealingWarmupLR(
             optimizer=self.optimizer,
