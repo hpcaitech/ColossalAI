@@ -31,13 +31,12 @@ jobs:
 
       - name: Install Colossal-AI
         run: |
-          BUILD_EXT=1 pip install --no-cache-dir -v -e .
+          pip install --no-cache-dir -v -e .
 
       - name: Install ChatGPT
         run: |
           cd applications/ColossalChat
           pip install --no-cache-dir -v .
-          export BUILD_EXT=1
           pip install --no-cache-dir -r examples/requirements.txt
 
       - name: Install Transformers
@@ -61,5 +60,6 @@ jobs:
           PRETRAINED_MODEL_PATH: ./models
           SFT_DATASET: ./sft_data
           PROMPT_DATASET: ./prompt_data
+          PROMPT_RLVR_DATASET: ./prompt_data
           PREFERENCE_DATASET: ./preference_data
           KTO_DATASET: ./kto_data

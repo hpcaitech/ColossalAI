@@ -1,4 +1,4 @@
 pandas>=1.4.1
 sentencepiece
-colossalai==0.4.0
+colossalai==0.4.7
 prompt_toolkit

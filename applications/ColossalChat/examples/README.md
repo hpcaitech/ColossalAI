@@ -2,8 +2,6 @@
 
 
 ## Table of Contents
-
-
 - [Examples](#examples)
   - [Table of Contents](#table-of-contents)
   - [Install Requirements](#install-requirements)
@@ -27,13 +25,14 @@
     - [Reward](#reward)
     - [KL Divergence](#approximate-kl-divergence)
   - [Note on PPO Training](#note-on-ppo-training)
+  - [GRPO Training and DeepSeek R1 reproduction](#grpo-training-and-deepseek-r1-reproduction)
   - [Alternative Option For RLHF: Direct Preference Optimization](#alternative-option-for-rlhf-direct-preference-optimization)
     - [DPO Stage 1: Supervised Instruction Tuning](#dpo-training-stage1---supervised-instructs-tuning)
     - [DPO Stage 2: DPO Training](#dpo-training-stage2---dpo-training)
   - [Alternative Option For RLHF: Simple Preference Optimization](#alternative-option-for-rlhf-simple-preference-optimization)
   - [Alternative Option For RLHF: Kahneman-Tversky Optimization (KTO)](#alternative-option-for-rlhf-kahneman-tversky-optimization-kto)
   - [Alternative Option For RLHF: Odds Ratio Preference Optimization](#alternative-option-for-rlhf-odds-ratio-preference-optimization)
-  - [List of Supported Models](#list-of-supported-models)
+  - [SFT for DeepSeek V3](#sft-for-deepseek-v3)
   - [Hardware Requirements](#hardware-requirements)
   - [Inference example](#inference-example)
   - [Attention](#attention)
@@ -725,10 +724,69 @@ Answer: The causes of this problem are two-fold. Check your reward model, make s
 #### Q4: Generation is garbage
 Answer: Yes, this happens and is well documented by other implementations. After training for too many episodes, the actor gradually deviate from its original state, which may leads to decrease in language modeling capabilities. A way to fix this is to add supervised loss during PPO. Set ptx_coef to an non-zero value (between 0 and 1), which balances PPO loss and sft loss.
 
+## GRPO Training and DeepSeek R1 reproduction
+We support GRPO (Group Relative Policy Optimization), which is the reinforcement learning algorithm used in DeepSeek R1 paper. In this section, we will walk through GRPO training with an example trying to reproduce Deepseek R1's results in mathematical problem solving.
+
+**Note: Currently, our PPO and GRPO pipelines are still under extensive development (integration with Ray and the inference engine). The speed is primarily limited by the rollout process, as we are using a naive generation approach without any acceleration. This experiment is focused solely on verifying the correctness of the GRPO algorithm. We will open-source the new version of code as soon as possible, so please stay tuned.**
+
+### GRPO Model Selection
+We finally select the base version of [Qwen2.5-3B](https://huggingface.co/Qwen/Qwen2.5-3B). We also did experiments on the instruct version [Qwen2.5-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct) but the later one fails to explore more diversed output. We recommend to use base models (without SFT) and use a few SFT steps (see [SFT section](#rlhf-training-stage1---supervised-instructs-tuning)) to correct the base model's output format before GRPO.
+
+### Reinforcement Learning with Verifiable Reward
+Both the PPO and the GRPO support reinforcement learning with verifiable reward (RLVR). In this experiment on mathematical problem solving, we define the reward function as following, in the following definition, forward is correct if there are exactly one pair of <think></think>, <answer></answer> tags in the response and the order of the tags is correct.
+
+- reward=0, if format is incorrect.
+- reward=1, if format is correct but the answer doesn't match the ground truth answer exactly.
+- reward=10, if format is correct and the answer match the ground truth answer exactly.
+
+### Step 1: Data Collection & Preparation
+For GPRO training, you only need the prompt dataset. Please follow the instruction in the [prompt dataset preparation](#rlhf-training-stage3---proximal-policy-optimization) to prepare the prompt data for GPRO training. In our reproduction experiment, we use the [qwedsacf/competition_math dataset](https://huggingface.co/datasets/qwedsacf/competition_math), which is available on Huggingface.
+
+### Step 2: Training
+You can run the [train_grpo.sh](./training_scripts/train_grpo.sh) to start GRPO training. The script share most of its arguments with the PPO script (please refer to the [PPO training section](#step-3-training) for more details). Here are some unique arguments for GRPO.
+
+```bash
+--num_generations 8 \ # number of roll outs to collect for each prompt
+--inference_batch_size 8 \ # batch size used during roll out
+--logits_forward_batch_size 1 \ # batch size used to calculate logits for GRPO training
+--initial_temperature \ # initial temperature for annealing algorithm
+--final_temperature \ # final temperature for annealing algorithm
+```
+
+As the GRPO requires to collect a group of response from each prompt (usually greater than 8), the effective batch size will satisfy the following constraints,
+
+- Without tensor parallelism,
+```
+experience buffer size
+= num_process * num_collect_steps * experience_batch_size * num_generations
+= train_batch_size * accumulation_steps * num_process
+```
+
+- With tensor parallelism,
+```
+num_tp_group = num_process / tp
+experience buffer size
+= num_tp_group * num_collect_steps * experience_batch_size * num_generations
+= train_batch_size * accumulation_steps * num_tp_group
+```
+
+During roll out, we perform rebatching to prevent out of memory both before roll out and before calculating logits. Please choose a proper setting for the "inference_batch_size" and the "logits_forward_batch_size" based on your device.
+
+### GRPO Result
+#### Reward and Response Length
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/reward.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost.png" style="width: 48%;" />
+</div>
+
+#### Response Length Distribution (After Training) and Sample response
+<div style="display: flex; justify-content: space-between;">
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/token_cost_eval.png" style="width: 48%;" />
+  <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/grpo/sample.png" style="width: 48%;" />
+</div>
+
 
 ## Alternative Option For RLHF: Direct Preference Optimization
-
-
 For those seeking an alternative to Reinforcement Learning from Human Feedback (RLHF), Direct Preference Optimization (DPO) presents a compelling option. DPO, as detailed in the paper (available at [https://arxiv.org/abs/2305.18290](https://arxiv.org/abs/2305.18290)), DPO offers an low-cost way to perform RLHF and usually request less computation resources compares to PPO.
 
 
@@ -814,8 +872,95 @@ For training, use the [train_kto.sh](./examples/training_scripts/train_orpo.sh) 
 <img width="1000" alt="image" src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/KTO.png">
 </p>
 
-## Hardware Requirements
 
+### SFT for DeepSeek V3
+We add a script to supervised-fintune the DeepSeek V3/R1 model with LoRA. The script is located in `examples/training_scripts/lora_fintune.py`. The script is similar to the SFT script for Coati7B, but with a few differences. This script is compatible with Peft.
+
+#### Dataset preparation
+
+This script receives JSONL format file as input dataset. Each line of dataset should be a list of chat dialogues. E.g.
+```json
+[{"role": "user", "content": "Hello, how are you?"}, {"role": "assistant", "content": "I'm doing great. How can I help you today?"}]
+```
+```json
+[{"role": "user", "content": "火烧赤壁 曹操为何不拨打119求救？"}, {"role": "assistant", "content": "因为在三国时期，还没有电话和现代的消防系统，所以曹操无法拨打119求救。"}]
+```
+
+The dialogues can by multiple turns and it can contain system prompt. For more details, see the [chat_templating](https://huggingface.co/docs/transformers/main/chat_templating).
+
+#### Model weights preparation
+
+We use bf16 weights for finetuning. If you downloaded fp8 DeepSeek V3/R1 weights, you can use the [script](https://github.com/deepseek-ai/DeepSeek-V3/blob/main/inference/fp8_cast_bf16.py) to convert the weights to bf16 via GPU. For Ascend NPU, you can use this [script](https://gitee.com/ascend/ModelZoo-PyTorch/blob/master/MindIE/LLM/DeepSeek/DeepSeek-V2/NPU_inference/fp8_cast_bf16.py).
+
+We have also added details on how to load and reason with lora models.
+```python
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+)
+from peft import (
+    PeftModel
+)
+import torch
+
+# Set model path
+model_name = "Qwen/Qwen2.5-3B"
+lora_adapter = "Qwen2.5-3B_lora" # Your lora model Path
+merged_model_path = "Qwen2.5-3B_merged"
+
+######
+# How to Load lora Model
+######
+# 1.Load base model
+base_model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+    trust_remote_code=True
+)
+
+# 2.Load lora model
+peft_model = PeftModel.from_pretrained(
+    base_model,
+    lora_adapter,
+    torch_dtype=torch.bfloat16
+)
+
+# 3.Merge lora model
+merged_model = peft_model.merge_and_unload()
+
+# 4.Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    model_name,
+    trust_remote_code=True,
+    pad_token="<|endoftext|>"
+)
+
+# 5.Save merged lora model
+merged_model.save_pretrained(
+    merged_model_path,
+    safe_serialization=True
+)
+tokenizer.save_pretrained(merged_model_path)
+
+# 6.Run Inference
+test_input = tokenizer("Instruction: Finding prime numbers up to 100\nAnswer:", return_tensors="pt").to("cuda")
+output = merged_model.generate(**test_input, max_new_tokens=100)
+print(tokenizer.decode(output[0], skip_special_tokens=True))
+```
+
+#### Usage
+
+After preparing the dataset and model weights, you can run the script with the following command:
+```bash
+colossalai run --hostfile path-to-host-file --nproc_per_node 8 lora_finetune.py --pretrained path-to-DeepSeek-R1-bf16 --dataset path-to-dataset.jsonl --plugin moe --lr 2e-5 --max_length 256 -g --ep 8 --pp 3 --batch_size 24 --lora_rank 8 --lora_alpha 16 --num_epochs 2 --warmup_steps 8 --tensorboard_dir logs --save_dir DeepSeek-R1-bf16-lora
+```
+
+For more details of each argument, you can run `python lora_finetune.py --help`.
+
+The sample command does not use CPU offload to get better throughput. The minimum hardware requirement for sample command is 32 ascend 910B NPUs (with `ep=8,pp=4`) or 24 H100/H800 GPUs (with `ep=8,pp=3`). If you enable CPU offload by `--zero_cpu_offload`, the hardware requirement can be further reduced.
+
+## Hardware Requirements
 For SFT, we recommend using zero2 or zero2-cpu for 7B model and tp is your model is extra large. We tested the VRAM consumption on a dummy dataset with a sequence length of 2048. In all experiments, we use H800 GPUs with 80GB VRAM and enable gradient checkpointing and flash attention.
 - 2 H800 GPU
   - zero2-cpu, micro batch size=4, VRAM Usage=22457.98 MB
@@ -872,35 +1017,9 @@ For KTO, we recommend using zero2-cpu or zero2 plugin, We tested the VRAM consum
   - zero2_cpu, micro batch size=2, VRAM_USAGE=32443.22 MB
   - zero2, micro batch size=4, VRAM_USAGE=59307.97 MB
 
-## List of Supported Models
-
-For SFT, we support the following models/series:
-- Colossal-LLaMA-2
-- ChatGLM2
-- ChatGLM3 (only with zero2, zero2_cpu plugin)
-- Baichuan2
-- LLaMA2
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-For PPO and DPO, we theoratically support the following models/series (without guarantee):
-- Colossal-LLaMA-2 (tested)
-- ChatGLM2
-- Baichuan2
-- LLaMA2 (tested)
-- Qwen1.5-7B-Chat (with transformers==4.39.1)
-- Yi-1.5
-
-*-* The zero2, zero2_cpu plugin also support a wide range of chat models not listed above.
-
 ## Inference example
-
-
 We support different inference options, including int8 and int4 quantization.
 For details, see [`inference/`](https://github.com/hpcaitech/ColossalAI/tree/main/applications/Chat/inference).
 
-
 ## Attention
-
-
 The examples are demos for the whole training process. You need to change the hyper-parameters to reach great performance.

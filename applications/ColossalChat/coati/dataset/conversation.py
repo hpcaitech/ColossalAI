@@ -141,7 +141,7 @@ def setup_conversation_template(
                 pass
             except ValueError as e:
                 raise ValueError(e)
-    if not dist.is_initialized() or dist.get_rank() == 0:
+    if save_path is not None and (not dist.is_initialized() or dist.get_rank() == 0):
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, "w", encoding="utf8") as f:
             logger.info(f"Successfully generated a conversation tempalte config, save to {save_path}.")
