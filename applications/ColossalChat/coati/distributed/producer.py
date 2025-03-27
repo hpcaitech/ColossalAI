@@ -128,7 +128,7 @@ class BaseProducer:
                 if episode <= 0:
                     ratio = 1 - (len(self.dataloader) - i) / len(self.dataloader)
                     self.model.generate_config.temperature = (
-                        ratio * self.generate_config["temperature"] + (1 - ratio) * 0.7
+                        (1 - ratio) * self.generate_config["temperature"] + ratio * 0.7
                     )
 
 

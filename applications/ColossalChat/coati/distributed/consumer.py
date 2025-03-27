@@ -135,7 +135,6 @@ class BaseConsumer:
                                 state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                             )
 
-
 @ray.remote
 class SimpleConsumer(BaseConsumer):
     def __init__(
