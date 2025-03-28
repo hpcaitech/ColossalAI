@@ -100,6 +100,7 @@ class BaseProducer:
                 if i >= num_valid_microbatches:
                     break
                 outputs = self.rollout(**batch)
+
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config.temperature] * outputs["input_ids"].size(0)
@@ -116,16 +117,19 @@ class BaseProducer:
                     print(
                         f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                     )
+
                     state_dict = ray_broadcast_tensor_dict(
                         None, self.num_producers, device=self.device, group_name="sync_model"
                     )
                     self.load_state_dict(state_dict)
+                    del state_dict
+                    torch.cuda.empty_cache()
                 # linear annealing for 1 episode, temperature from initial to 0.7
                 if episode <= 0:
                     ratio = 1 - (len(self.dataloader) - i) / len(self.dataloader)
-                    self.model.generate_config.temperature = (
-                        ratio * self.generate_config["temperature"] + (1 - ratio) * 0.7
-                    )
+                    self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
+                        "temperature"
+                    ] + ratio * 0.7
 
 
 @ray.remote
