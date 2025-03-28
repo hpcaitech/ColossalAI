@@ -132,7 +132,7 @@ class GRPOConsumer(BaseConsumer):
         num_action = action_mask.shape[1]
         old_action_log_probs = data["action_log_probs"]
         response_length = torch.sum(action_mask, dim=1).to(torch.float32)
-        forward_batch_size = self.training_config.get("forward_micro_batch_size", data["input_ids"].size(0))
+        forward_batch_size = self.training_config.get("train_microbatch_size", data["input_ids"].size(0))
 
         need_update = (step_idx + 1) % self.num_microbatches == 0
         # Gradient must be synchronized if zero2 is enabled. https://github.com/hpcaitech/ColossalAI/blob/44d4053fec005fe0b06b6bc755fdc962463145df/colossalai/booster/plugin/hybrid_parallel_plugin.py#L1500
