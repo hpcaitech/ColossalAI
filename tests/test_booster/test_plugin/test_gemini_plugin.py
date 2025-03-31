@@ -67,7 +67,6 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
 # TODO(ver217): CI does not support lazy now
 # @parameterize('init_method', ['lazy', 'none', 'colo'])
 
-
 @parameterize("subset", [COMMON_MODELS] if IS_FAST_TEST else ["torchvision", "transformers", "diffusers"])
 @parameterize("init_method", ["none"])
 @parameterize("zero_size", [2])
