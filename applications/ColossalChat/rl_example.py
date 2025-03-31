@@ -11,10 +11,26 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--num-trainers", type=int, default=2)
     parser.add_argument("-i", "--num-inferencer", type=int, default=2)
     parser.add_argument("-g", "--num-generations", type=int, default=8, help="Number of generations per prompt.")
-    parser.add_argument("-ibs", "--inference-batch-size", type=int, default=64, help="Number of prompts to generate per step.")
-    parser.add_argument("-imbs", "--inference-microbatch-size", type=int, default=8, help="Number of prompts to send from the producer to the consumer.")
-    parser.add_argument("-tbs", "--train-batch-size", type=int, default=32, help="Number of prompts to update policy model.")
-    parser.add_argument("-tMbs", "--train-minibatch-size", type=int, default=1, help="Number of prompts per device. Number of samples = tMbs * num of generation per prompt.")
+    parser.add_argument(
+        "-ibs", "--inference-batch-size", type=int, default=64, help="Number of prompts to generate per step."
+    )
+    parser.add_argument(
+        "-imbs",
+        "--inference-microbatch-size",
+        type=int,
+        default=8,
+        help="Number of prompts to send from the producer to the consumer.",
+    )
+    parser.add_argument(
+        "-tbs", "--train-batch-size", type=int, default=32, help="Number of prompts to update policy model."
+    )
+    parser.add_argument(
+        "-tMbs",
+        "--train-minibatch-size",
+        type=int,
+        default=1,
+        help="Number of prompts per device. Number of samples = tMbs * num of generation per prompt.",
+    )
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2, help="Number of samples per device.")
     parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers, vllm"])
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
