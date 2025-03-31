@@ -32,7 +32,7 @@ if __name__ == "__main__":
         help="Number of prompts per device. Number of samples = tMbs * num of generation per prompt.",
     )
     parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2, help="Number of samples per device.")
-    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers, vllm"])
+    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers","vllm"])
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
     args = parser.parse_args()
 
