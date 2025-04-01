@@ -1,6 +1,6 @@
+import pytest
 import torch
 from torch.optim import Adam
-import pytest
 
 import colossalai
 from colossalai.booster.mixed_precision import FP16TorchMixedPrecision
