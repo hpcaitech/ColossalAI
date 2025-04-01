@@ -54,7 +54,6 @@ class BaseConsumer:
 
         self.model_config = model_config
         self.plugin_config = plugin_config
-        assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
 
         self.device = get_current_device()
         self.lr_scheduler = None

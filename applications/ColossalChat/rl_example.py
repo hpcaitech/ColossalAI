@@ -31,7 +31,13 @@ if __name__ == "__main__":
         default=1,
         help="Number of prompts per device. Number of samples = tMbs * num of generation per prompt.",
     )
-    parser.add_argument("-tmbs", "--train-microbatch-size", type=int, default=2, help="Number of samples per device.")
+    parser.add_argument(
+        "-tmbs",
+        "--train-microbatch-size",
+        type=int,
+        default=2,
+        help="Number of samples per device. PP micro batchsize when PP is activated.",
+    )
     parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
     args = parser.parse_args()
@@ -45,11 +51,7 @@ if __name__ == "__main__":
     ray.init(address="local", namespace="ray-example")
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(
-        path=args.model,
-        # use_flash_attention_2=True,
-        # use_cache=False
-    )
+    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
     generate_config = dict(top_k=50, top_p=0.75, temperature=0.9)
 
     if args.backend == "transformers":
@@ -107,7 +109,7 @@ if __name__ == "__main__":
         generate_config=generate_config,
         num_generations=args.num_generations,
         train_model_config=train_model_config,
-        plugin_config={},
+        plugin_config={"pp_size": 2, "tp_size": 1, "microbatch_size": 2, "zero_stage": 0},
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29505,
