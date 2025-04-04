@@ -164,3 +164,4 @@ coverage.xml
 applications/ColossalChat/logs
 applications/ColossalChat/tests/logs
 applications/ColossalChat/wandb
+applications/ColossalChat/model

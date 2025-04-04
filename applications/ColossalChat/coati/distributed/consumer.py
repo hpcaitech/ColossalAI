@@ -94,7 +94,6 @@ class BaseConsumer:
                     i = 0
                     for _ in range(self.num_recv_per_update):
                         # receive data from producers
-
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
                             self.buffer.extend(

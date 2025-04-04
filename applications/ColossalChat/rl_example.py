@@ -109,7 +109,14 @@ if __name__ == "__main__":
         generate_config=generate_config,
         num_generations=args.num_generations,
         train_model_config=train_model_config,
-        plugin_config={"pp_size": 2, "tp_size": 1, "microbatch_size": 2, "zero_stage": 0},
+        # plugin_config={}, # for zero
+        plugin_config={
+            "pp_size": 2,
+            "tp_size": 1,
+            "microbatch_size": args.train_microbatch_size // 2,
+            "zero_stage": 0,
+            "max_norm": 1.0,
+        },  # for pp
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29505,
