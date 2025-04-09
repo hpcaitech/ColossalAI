@@ -1412,8 +1412,10 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
 
         # run with gradients accumulation
-        if model.require_grad_sync == False or (
-            isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False
+        if (
+            not torch.is_grad_enabled()
+            or model.require_grad_sync == False
+            or (isinstance(optimizer, HybridParallelZeroOptimizer) and optimizer.require_grad_sync == False)
         ):
             return outputs
 

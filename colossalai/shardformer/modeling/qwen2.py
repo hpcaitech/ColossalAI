@@ -275,6 +275,7 @@ class Qwen2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
+        **kwargs,
     ):
         r"""
         Args:
