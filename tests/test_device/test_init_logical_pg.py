@@ -26,6 +26,7 @@ def check_layer(rank, world_size, port):
         dist.all_reduce(tensor, op=ReduceOp.SUM, group=pg)
         assert tensor.equal(tensor_to_check)
 
+
 @pytest.mark.skip("tested in corresponding sharderformer")
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
