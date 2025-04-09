@@ -1,5 +1,5 @@
-import torch
 import pytest
+import torch
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.testing import assert_close
