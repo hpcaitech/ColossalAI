@@ -72,6 +72,8 @@ class BaseConsumer:
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
+        self.tp_rank = dist.get_rank(self.plugin.tp_group)
+
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
 
         self.buffer = []
@@ -132,6 +134,8 @@ class BaseConsumer:
                             ray_broadcast_tensor_dict(
                                 state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                             )
+                        del state_dict
+                        torch.cuda.empty_cache()
 
 
 @ray.remote
