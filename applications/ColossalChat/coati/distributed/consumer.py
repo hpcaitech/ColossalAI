@@ -54,7 +54,6 @@ class BaseConsumer:
 
         self.model_config = model_config
         self.plugin_config = plugin_config
-        assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
 
         self.device = get_current_device()
         self.lr_scheduler = None
@@ -95,7 +94,6 @@ class BaseConsumer:
                     i = 0
                     for _ in range(self.num_recv_per_update):
                         # receive data from producers
-
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
                             self.buffer.extend(
