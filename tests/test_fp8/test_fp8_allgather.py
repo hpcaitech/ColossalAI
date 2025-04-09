@@ -1,4 +1,5 @@
 import torch
+import pytest
 import torch.distributed as dist
 from torch.distributed.distributed_c10d import _get_default_group
 from torch.testing import assert_close
@@ -36,6 +37,7 @@ def run_dist(rank, world_size, port):
     check_4gpu()
 
 
+@pytest.mark.skip("tested in corresponding sharderformer")
 @rerun_if_address_is_in_use()
 def test_all_gather():
     spawn(run_dist, 4)
