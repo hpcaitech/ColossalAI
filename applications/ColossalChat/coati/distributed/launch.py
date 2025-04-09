@@ -47,6 +47,7 @@ def launch_distributed(
     master_addr: str = "localhost",
     master_port: int = 29500,
     core_algo: str = "GRPO",
+    project_name: Optional[str] = None,
 ):
 
     if core_algo not in ALGO_MAP:
@@ -108,6 +109,7 @@ def launch_distributed(
                 "train_microbatch_size": train_microbatch_size,
             },
             num_generations=num_generations,
+            project_name=project_name,
         )
         procs.append(consumer)
     ray.get([p.setup.remote() for p in procs])

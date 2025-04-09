@@ -39,6 +39,7 @@ class GRPOConsumer(BaseConsumer):
         use_wandb=True,
         generate_config=None,
         training_config={},
+        project_name=None,
     ):
         super().__init__(
             num_producers,
@@ -69,6 +70,7 @@ class GRPOConsumer(BaseConsumer):
         self.accum_count = 0
         self.generate_config = generate_config
         self.training_config = training_config
+        self.project_name = project_name
 
         # Reference model is initialized from policy model.
         self.reference_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
@@ -111,7 +113,7 @@ class GRPOConsumer(BaseConsumer):
         ):
             # Initialize wandb.
             name = f"{self.generate_config['backend']}_bs_{self.batch_size*self.dp_size}_temp_{self.generate_config['temperature']:.01f}_top_p_{self.generate_config['top_p']:.02f}"
-            self.wandb_run = wandb.init(project="GRPO-V1-PP", sync_tensorboard=True, dir="./wandb", name=name)
+            self.wandb_run = wandb.init(project=self.project_name, sync_tensorboard=True, dir="./wandb", name=name)
 
         self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
             self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
@@ -239,6 +241,8 @@ class GRPOConsumer(BaseConsumer):
                         "source": self.rank,
                     }
 
+                    kl = []
+
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
                         action_log_probs = calc_action_log_probs(
@@ -252,6 +256,10 @@ class GRPOConsumer(BaseConsumer):
                             - (inputs["reference_action_log_probs"] - action_log_probs)
                             - 1
                         )
+                        appox_kl = torch.sum(per_token_kl * inputs["action_mask"], dim=-1) / torch.sum(
+                            inputs["action_mask"], dim=-1
+                        )
+                        kl.append(appox_kl.mean())
                         loss, skip_update, _ = self.policy_loss_fn(
                             action_log_probs,
                             action_log_probs,
@@ -273,26 +281,11 @@ class GRPOConsumer(BaseConsumer):
                     loss = policy_model_outputs["loss"]
 
                     if self.booster.plugin.stage_manager.is_last_stage():
-                        # calculate kl, as we cannot do this inside callback, kl needs be calculate again
-                        action_logits = policy_model_outputs["outputs"]["logits"]
-                        action_log_probs = calc_action_log_probs(
-                            action_logits / self.generate_config["temperature"],
-                            input_ids_forward_micro_batch,
-                            num_action,
-                            self.plugin.shard_config,
-                        )
-                        per_token_kl = (
-                            torch.exp(reference_action_log_probs - action_log_probs)
-                            - (reference_action_log_probs - action_log_probs)
-                            - 1
-                        )
-                        kl = torch.sum(per_token_kl * action_mask_forward_micro_batch, dim=-1) / torch.sum(
-                            action_mask_forward_micro_batch, dim=-1
-                        )
-                        kl = all_reduce_mean(kl.mean(), self.plugin)
+                        if len(kl) > 0:
+                            kl = all_reduce_mean(torch.mean(torch.stack(kl)).to(loss.device), self.plugin)
+                            mean_kl.append(kl)
                         loss = all_reduce_mean(loss, self.plugin)
                         mean_loss.append(loss.data)
-                        mean_kl.append(kl)
                 else:
 
                     policy_model_logits = self.policy_model(
