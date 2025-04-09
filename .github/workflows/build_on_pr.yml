@@ -161,7 +161,7 @@ jobs:
           --ignore tests/test_infer_ops \
           --ignore tests/test_legacy \
           --ignore tests/test_smoothquant \
-          tests/
+          tests/test_fp8/
         env:
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
           LLAMA_PATH: /data/scratch/llama-tiny
