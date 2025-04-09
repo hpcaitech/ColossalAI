@@ -13,7 +13,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn, 
     "shape",
     [(3, 7, 16)],
 )
-
+@clear_cache_before_run()
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 @parameterize("fp8_format", ["e4m3", "e5m2"])
 @parameterize("async_op", [True, False])
