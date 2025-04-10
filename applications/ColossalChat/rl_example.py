@@ -121,7 +121,7 @@ if __name__ == "__main__":
         # plugin_config={}, # for zero
         plugin_config={
             "pp_size": 2,
-            "tp_size": 1,
+            "tp_size": 2,
             "microbatch_size": args.train_microbatch_size // 2,
             "zero_stage": 0,
             "max_norm": 1.0,

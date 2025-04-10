@@ -72,6 +72,8 @@ class BaseConsumer:
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
+        self.tp_rank = dist.get_rank(self.plugin.tp_group)
+
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
 
         self.buffer = []
@@ -127,11 +129,14 @@ class BaseConsumer:
 
                     if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
                         print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.rank == 0:
                             ray_broadcast_tensor_dict(
                                 state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                             )
+                        del state_dict
+                        torch.cuda.empty_cache()
 
 
 @ray.remote
