@@ -1,3 +1,4 @@
+import os
 from contextlib import nullcontext
 from typing import Any, Dict, Optional
 
@@ -33,6 +34,8 @@ class BaseConsumer:
         model_config: Dict[str, Any],
         plugin_config: Dict[str, Any],
         microbatch_size: int = 1,
+        save_interval: int = 100,
+        save_dir: str = "./model",
     ):
         self.num_producers = num_producers
         self.num_episodes = num_episodes
@@ -44,14 +47,16 @@ class BaseConsumer:
         self.num_recv_per_update = num_recv_per_update
         self.batch_size = batch_size
         self.microbatch_size = microbatch_size
+        self.save_interval = save_interval
+        self.save_dir = save_dir
         assert batch_size % microbatch_size == 0, "batch_size should be divisible by microbatch_size"
         self.num_microbatches = batch_size // microbatch_size
 
         self.model_config = model_config
         self.plugin_config = plugin_config
-        assert self.plugin_config.get("pp_size", 1) == 1, "pp_size > 1 is not supported now"
 
         self.device = get_current_device()
+        self.lr_scheduler = None
 
     def setup(self) -> None:
         for i in range(self.num_producers):
@@ -60,18 +65,15 @@ class BaseConsumer:
             cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
-        plugin_config = dict(
-            tp_size=1,
-            pp_size=1,
-            precision="bf16",
-            zero_stage=1,
-        )
+        plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
         if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
             plugin_config["microbatch_size"] = self.microbatch_size
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
+        self.tp_rank = dist.get_rank(self.plugin.tp_group)
+
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
 
         self.buffer = []
@@ -94,7 +96,6 @@ class BaseConsumer:
                     i = 0
                     for _ in range(self.num_recv_per_update):
                         # receive data from producers
-
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
                             self.buffer.extend(
@@ -116,13 +117,26 @@ class BaseConsumer:
                                 pbar.set_postfix({"loss": loss})
                             i += 1
                     assert len(self.buffer) == 0
+                    if self.lr_scheduler is not None:
+                        self.lr_scheduler.step()
+                    if (step + 1) % self.save_interval == 0:
+                        if self.rank == 0:
+                            print(f"Start saving policy model at step {step + 1}.")
+                        save_path = os.path.join(self.save_dir, f"modeling-step-{step + 1}")
+                        self.booster.save_model(self.policy_model, save_path, shard=True)
+                        if self.rank == 0:
+                            print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
+
                     if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
                         print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.rank == 0:
                             ray_broadcast_tensor_dict(
                                 state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                             )
+                        del state_dict
+                        torch.cuda.empty_cache()
 
 
 @ray.remote

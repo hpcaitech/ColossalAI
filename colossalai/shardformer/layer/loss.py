@@ -3,13 +3,21 @@ import torch.distributed as dist
 from torch.autograd import Function
 from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
+from torch.nn.functional import log_softmax
 
 from colossalai.shardformer.layer._operation import reduce_forward
 from colossalai.shardformer.shard import ShardConfig
 
 from .utils import is_share_sp_tp
 
-__all__ = ["DistCrossEntropy", "cross_entropy_1d", "dist_cross_entropy"]
+__all__ = [
+    "DistCrossEntropy",
+    "cross_entropy_1d",
+    "dist_cross_entropy",
+    "DistLogProb",
+    "dist_log_prob_1d",
+    "dist_log_prob",
+]
 
 _IGNORE_IDX = -100
 
@@ -137,6 +145,98 @@ class DistCrossEntropy(Function):
         return grad_logits, None, None, None, None, None, None
 
 
+class DistLogProb(Function):
+    r"""
+    Overwrite the forward and backward function to calculate the log prob before gather
+
+    Args:
+        Function (:class:`torch.autograd.Function`): default
+    """
+
+    @staticmethod
+    def forward(
+        ctx,
+        vocab_logits: torch.Tensor,
+        target: torch.Tensor,
+        process_group: ProcessGroup,
+        vocab_size: int,
+        dtype=torch.float32,
+    ):
+
+        ##################
+        # Step1:Find the global maximum value of logits
+        ##################
+        logits_max = torch.max(vocab_logits, dim=-1)[0]
+        handle = dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group, async_op=True)
+
+        ##################
+        # Step2:Find the local mask. local mask will be use to select log_probs value in Step 4.
+        # For accleration, we overlap Step 2 and Step 3
+        ##################
+        rank = dist.get_rank(group=process_group)
+        world_size = dist.get_world_size(group=process_group)
+        if vocab_size is None:
+            partition_vocab_size = vocab_logits.size()[-1]
+            global_vocab_size = partition_vocab_size * world_size
+        else:
+            global_vocab_size = vocab_size
+            partition_vocab_size = global_vocab_size // world_size
+        # down and up threshold for local logits
+        delta = (global_vocab_size + world_size - 1) // world_size
+        down_threshold = rank * delta
+        up_threshold = down_threshold + delta
+        if up_threshold > global_vocab_size:
+            up_threshold = global_vocab_size
+        # mask
+        mask = (target < down_threshold) | (target >= up_threshold)
+        masked_target = target.clone() - down_threshold
+        masked_target[mask] = 0
+        masked_target_1d = masked_target.view(-1).contiguous()
+        handle.wait()
+
+        ##################
+        # Step3:Calculate global summation exp logits
+        ##################
+        vocab_logits = vocab_logits - logits_max.unsqueeze(dim=-1)
+        exp_logits = torch.exp(vocab_logits)
+        sum_exp_logits = torch.sum(exp_logits, dim=-1, dtype=torch.float32)  # local summation exp logits
+        dist.all_reduce(sum_exp_logits, op=dist.ReduceOp.SUM, group=process_group)
+
+        ##################
+        # Step4:Calculate local prob. We first cal log_softmax, then select log probs via local mask
+        ##################
+        log_probs = vocab_logits - torch.log(sum_exp_logits.unsqueeze(dim=-1))  # cal log_softmax
+        log_probs = log_probs.gather(dim=-1, index=masked_target.unsqueeze(-1))
+        log_probs[mask.unsqueeze(-1)] = 0  # set masked val to zero
+        dist.all_reduce(log_probs, op=dist.ReduceOp.SUM, group=process_group)
+
+        ctx.save_for_backward(exp_logits, mask, masked_target_1d, sum_exp_logits)
+        ctx.dtype = dtype
+        return log_probs
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        exp_logits, mask, masked_target_1d, sum_exp_logits = ctx.saved_tensors
+        ##################
+        # Step1:Find the global sofmax value
+        ##################
+        softmax_logits = exp_logits / sum_exp_logits.unsqueeze(dim=-1)
+
+        ##################
+        # Step2:Update softmax value based on local target index
+        ##################
+        partion_vocab_size = softmax_logits.shape[-1]
+        softmax_logits_2d = softmax_logits.view(-1, partion_vocab_size)
+        update = 1.0 - mask.view(-1).float().to(ctx.dtype)
+        softmax_logits_2d[torch.arange(0, softmax_logits_2d.shape[0]), masked_target_1d] -= update
+
+        ##################
+        # Step3:Calculate grad_output, which is the gradient of the loss function with respect to the output of logsoftmax
+        ##################
+        grad_logits = -softmax_logits.mul_(grad_output)
+        return grad_logits, None, None, None, None, None, None
+
+
 def cross_entropy_1d(
     vocab_logits: torch.Tensor,
     labels: torch.Tensor,
@@ -147,6 +247,16 @@ def cross_entropy_1d(
     mode: str = "mean",
 ) -> torch.Tensor:
     return DistCrossEntropy.apply(vocab_logits, labels, ignore_index, process_group, vocab_size, dtype, mode)
+
+
+def dist_log_prob_1d(
+    vocab_logits: torch.Tensor,
+    labels: torch.Tensor,
+    process_group: ProcessGroup = None,
+    vocab_size: int = None,
+    dtype: torch.dtype = None,
+) -> torch.Tensor:
+    return DistLogProb.apply(vocab_logits, labels, process_group, vocab_size, dtype)
 
 
 def dist_cross_entropy(
@@ -243,3 +353,41 @@ def dist_cross_entropy(
         loss, num_nonzero = loss[0], loss[1].detach()
     loss = (loss / num_nonzero).squeeze()
     return loss
+
+
+def dist_log_prob(
+    labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
+    logits: torch.Tensor,  # [B, S, Vocab_size]
+    shard_config: ShardConfig,
+    vocab_size: int,
+    dtype: torch.dtype,
+    seq_dim: int = 1,
+) -> torch.Tensor:
+    """
+    Helper to compute log prob for most shardformer models supporting PP, TP.
+    """
+    # Split labels if not gather output
+    parallel_output = shard_config.parallel_output
+    is_tp = shard_config.enable_tensor_parallelism
+
+    # TODO:support sp
+    labels = labels[..., 1:]
+    logits = logits[..., :-1, :]
+    labels = labels.contiguous()
+    logits = logits.contiguous()
+    assert labels.shape == logits.shape[:-1], f"label shape {labels.shape} does not match logit shape {logits.shape}"
+
+    # Flatten the tokens
+    if is_tp and parallel_output:
+        log_prob = dist_log_prob_1d(
+            logits,
+            labels,
+            process_group=shard_config.tensor_parallel_process_group,
+            vocab_size=vocab_size,
+            dtype=dtype,
+        )
+    else:
+        log_prob = log_softmax(logits, dim=-1)
+        log_prob = log_prob.gather(dim=-1, index=labels.unsqueeze(-1))
+
+    return log_prob

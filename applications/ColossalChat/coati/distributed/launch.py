@@ -1,9 +1,13 @@
+import copy
 from typing import Any, Dict, Optional
 
 import ray
 
 from .consumer import SimpleConsumer
+from .grpo_consumer import GRPOConsumer, GRPOEvalConsumer
 from .producer import SimpleProducer
+
+ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "EvalGRPO": GRPOEvalConsumer}
 
 
 def get_jsonl_size_fast(path: str) -> int:
@@ -30,6 +34,7 @@ def launch_distributed(
     inference_microbatch_size: int,
     train_batch_size: int,
     train_microbatch_size: int,
+    train_minibatch_size: int,
     dataset_config: Dict[str, Any],
     dataloaders_config: Dict[str, Any],
     inference_model_config: Dict[str, Any],
@@ -38,9 +43,18 @@ def launch_distributed(
     plugin_config: Dict[str, Any],
     tokenizer_config: Optional[Dict[str, Any]] = None,
     inference_backend: str = "transformers",
+    num_generations: int = 8,
     master_addr: str = "localhost",
     master_port: int = 29500,
+    core_algo: str = "GRPO",
+    project_name: Optional[str] = None,
 ):
+
+    if core_algo not in ALGO_MAP:
+        raise NotImplementedError(f"{core_algo} is not supported yet.")
+    else:
+        core_consumer = ALGO_MAP.get(core_algo, SimpleConsumer)
+
     train_dp_size = get_dp_size_fast(num_producers, plugin_config)
     assert (inference_batch_size * num_producers) % (train_batch_size * train_dp_size) == 0
 
@@ -65,10 +79,17 @@ def launch_distributed(
             tokenizer_config=tokenizer_config,
             microbatch_size=inference_microbatch_size,
             backend=inference_backend,
+            num_generations=num_generations,
         )
         procs.append(producer)
+    generate_config_consumer = copy.deepcopy(generate_config)
+    generate_config_consumer.update(
+        dict(
+            backend=inference_backend,
+        )
+    )
     for i in range(num_consumer_procs):
-        consumer = SimpleConsumer.options(num_gpus=1).remote(
+        consumer = core_consumer.options(num_gpus=1).remote(
             num_producers=num_producers,
             num_episodes=num_episodes,
             rank=i,
@@ -80,7 +101,15 @@ def launch_distributed(
             batch_size=train_batch_size,
             model_config=train_model_config,
             plugin_config=plugin_config,
-            microbatch_size=train_microbatch_size,
+            microbatch_size=train_minibatch_size,
+            generate_config=generate_config_consumer,
+            training_config={
+                "filter_range": [0.05, 9.0],
+                "lr": 1e-6,
+                "train_microbatch_size": train_microbatch_size,
+            },
+            num_generations=num_generations,
+            project_name=project_name,
         )
         procs.append(consumer)
     ray.get([p.setup.remote() for p in procs])

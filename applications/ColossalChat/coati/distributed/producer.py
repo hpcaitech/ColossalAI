@@ -100,7 +100,11 @@ class BaseProducer:
                 if i >= num_valid_microbatches:
                     break
                 outputs = self.rollout(**batch)
+
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
+                outputs["temperature"] = torch.tensor(
+                    [self.model.generate_config.temperature] * outputs["input_ids"].size(0)
+                ).to(outputs["input_ids"].device)
                 outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
@@ -113,10 +117,19 @@ class BaseProducer:
                     print(
                         f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                     )
+
                     state_dict = ray_broadcast_tensor_dict(
                         None, self.num_producers, device=self.device, group_name="sync_model"
                     )
                     self.load_state_dict(state_dict)
+                    del state_dict
+                    torch.cuda.empty_cache()
+                # linear annealing for 1 episode, temperature from initial to 0.7
+                if episode <= 0:
+                    ratio = 1 - (len(self.dataloader) - i) / len(self.dataloader)
+                    self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
+                        "temperature"
+                    ] + ratio * 0.7
 
 
 @ray.remote
@@ -135,6 +148,7 @@ class SimpleProducer(BaseProducer):
         tokenizer_config=None,
         microbatch_size=1,
         backend="transformers",
+        num_generations: int = 8,
     ):
         super().__init__(
             producer_idx,
@@ -150,11 +164,15 @@ class SimpleProducer(BaseProducer):
             microbatch_size,
             backend,
         )
-        self.model = self.backend_cls(model_config, generate_config, self.tokenizer)
+        self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
 
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
-        return self.model.generate(input_ids, attention_mask, **kwargs)
+        rollouts = self.model.generate(input_ids, attention_mask, **kwargs)
+        if self.producer_idx == 1:
+            print("Rollout example:\n", self.tokenizer.decode(rollouts["input_ids"][0][0], skip_special_tokens=True))
+
+        return rollouts
 
     def load_state_dict(self, state_dict):
         self.model.load_state_dict(state_dict)
