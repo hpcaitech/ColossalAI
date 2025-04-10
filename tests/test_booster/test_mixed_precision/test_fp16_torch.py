@@ -3,11 +3,10 @@ from torch.optim import Adam
 
 import colossalai
 from colossalai.booster.mixed_precision import FP16TorchMixedPrecision
-from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
-@clear_cache_before_run()
 def run_torch_amp(rank, world_size, port):
     # init dist env
     colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
@@ -34,7 +33,6 @@ def run_torch_amp(rank, world_size, port):
         optimizer.clip_grad_by_norm(1.0)
         optimizer.step()
         del model, optimizer, criterion, data, output, mixed_precision
-
 
 @rerun_if_address_is_in_use()
 def test_torch_ddp_plugin():
