@@ -3,8 +3,7 @@ from torch.testing import assert_close
 
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import cast_from_fp8, cast_from_fp8_pipeline, cast_to_fp8, cast_to_fp8_pipeline
-from colossalai.testing import parameterize, clear_cache_before_run
-
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
 @clear_cache_before_run()
