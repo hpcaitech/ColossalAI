@@ -129,6 +129,7 @@ class BaseConsumer:
 
                     if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
                         print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.rank == 0:
                             ray_broadcast_tensor_dict(
