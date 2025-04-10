@@ -11,6 +11,7 @@ from tests.test_infer.test_kernels.triton.test_context_attn_unpad import generat
 
 inference_ops = InferenceOpsLoader().load()
 
+from colossalai.testing import clear_cache_before_run
 from tests.test_infer.test_kernels.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
@@ -18,7 +19,6 @@ from tests.test_infer.test_kernels.triton.kernel_utils import (
     generate_caches_and_block_tables_vllm,
     torch_attn_ref,
 )
-from colossalai.testing import clear_cache_before_run
 
 q_len = 1
 PARTITION_SIZE = 512
@@ -55,6 +55,7 @@ def numpy_allclose(x, y, rtol, atol):
     y_numpy = y.detach().cpu().numpy()
 
     np.testing.assert_allclose(x_numpy, y_numpy, rtol=rtol, atol=atol)
+
 
 @clear_cache_before_run()
 @pytest.mark.parametrize("BATCH_SIZE", [1, 4, 7, 32])
@@ -196,6 +197,7 @@ try:
 except ImportError:
     HAS_VLLM = False
     print("The subsequent test requires vllm. Please refer to https://github.com/vllm-project/vllm")
+
 
 @clear_cache_before_run()
 @pytest.mark.skipif(not HAS_VLLM, reason="requires vllm")
