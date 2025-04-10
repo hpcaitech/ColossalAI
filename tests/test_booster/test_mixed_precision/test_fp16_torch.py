@@ -3,7 +3,7 @@ from torch.optim import Adam
 
 import colossalai
 from colossalai.booster.mixed_precision import FP16TorchMixedPrecision
-from colossalai.testing import rerun_if_address_is_in_use, spawn, clear_cache_before_run
+from colossalai.testing import clear_cache_before_run, rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo import model_zoo
 
 
