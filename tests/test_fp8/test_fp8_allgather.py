@@ -9,11 +9,11 @@ from colossalai.quantization.fp8 import _all_gather_fp8
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
+@clear_cache_before_run()
 @parameterize(
     "shape",
     [(3, 7, 16)],
 )
-@clear_cache_before_run()
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 @parameterize("fp8_format", ["e4m3", "e5m2"])
 @parameterize("async_op", [True, False])

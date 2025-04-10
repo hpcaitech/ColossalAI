@@ -6,11 +6,12 @@ from torch.testing import assert_close
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import all_to_all_single_fp8
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn, clear_cache_before_run
 
 dist.all_to_all_single
 
 
+@clear_cache_before_run()
 @parameterize("shape", [(4), (8, 7), (4, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 @parameterize("fp8_format", ["e4m3", "e5m2"])
