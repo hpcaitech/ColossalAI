@@ -83,7 +83,7 @@ if __name__ == "__main__":
         inference_model_config.update(dict(gpu_memory_utilization=0.7, enforce_eager=True, enable_chunked_prefill=True))
         generate_config.update(
             dict(
-                max_tokens=2048,
+                max_tokens=4096,
                 ignore_eos=True,
                 include_stop_str_in_output=True,
                 stop=["</answer>"],
@@ -120,8 +120,8 @@ if __name__ == "__main__":
         "beta": 0.0,  # no KL penalty
         "loss_variation": "token_level",
         "soft_over_length_punishment": True,
-        "max_length": 1024 * 2,
-        "cache_length": 256,
+        "max_length": 4096,
+        "cache_length": 512,
         "filter_truncated_response": True,
     }
 

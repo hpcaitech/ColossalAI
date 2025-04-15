@@ -1,7 +1,7 @@
 import json
 import os
 from contextlib import nullcontext
-from typing import Optional
+from typing import Optional, Any
 
 import ray
 import torch
@@ -144,7 +144,7 @@ class GRPOConsumer(BaseConsumer):
             self.reference_model, *_ = self.booster.boost(self.reference_model)
         self.plugin.logger.set_level("ERROR")
 
-    def step(self, step_idx: int, **kwargs) -> Optional[float]:
+    def step(self, step_idx: int, pbar: Any, **kwargs) -> Optional[float]:
         """
         Step data from policy model:
             [{
@@ -212,6 +212,7 @@ class GRPOConsumer(BaseConsumer):
         # update gradient only if at least 0.7*batch_size*num_generation valid samples are collected in case a lot of samples are invalid and got filtered out.
         # balance between efficiency and accuracy
         need_update = self.effective_sample_count >= self.batch_size * self.dp_size * self.num_generations * 0.75
+        pbar.set_postfix({"Step": self.global_step + 1, "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations * 0.75}"})
 
         # Gradient must be synchronized if zero2 is enabled. https://github.com/hpcaitech/ColossalAI/blob/44d4053fec005fe0b06b6bc755fdc962463145df/colossalai/booster/plugin/hybrid_parallel_plugin.py#L1500
         ctx = (
@@ -409,6 +410,7 @@ class GRPOConsumer(BaseConsumer):
         if need_update:
             self.optimizer.step()
             self.optimizer.zero_grad()
+            self.global_step += 1
             sample_utilization = self.effective_sample_count / self.total_sample_count
             self.effective_sample_count = 0
             self.total_sample_count = 0
