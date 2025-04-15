@@ -113,3 +113,20 @@ def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch
     mask_sum = mask.sum(dim=dim)
     mean = tensor / (mask_sum + 1e-8)
     return mean
+
+
+def masked_sum(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    """
+    Compute the masked sum of a tensor along a specified dimension.
+
+    Args:
+        tensor (torch.Tensor): The input tensor.
+        mask (torch.Tensor): The mask tensor with the same shape as the input tensor.
+        dim (int, optional): The dimension along which to compute the sum. Default is 1.
+
+    Returns:
+        torch.Tensor: The masked sum tensor.
+
+    """
+    tensor = tensor * mask
+    return tensor.sum(dim=dim)

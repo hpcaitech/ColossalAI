@@ -60,8 +60,8 @@ if __name__ == "__main__":
     ray.init(address="local", namespace="ray-example")
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
-    generate_config = dict(top_k=50, top_p=0.75, temperature=0.9)
+    train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False)
+    generate_config = dict(top_k=-1, top_p=1.0, temperature=1.0)
 
     if args.backend == "transformers":
         inference_model_config.update(
@@ -102,6 +102,29 @@ if __name__ == "__main__":
             )
         )
 
+    # Default Settings
+    # grpo_config = {
+    #     "filter_range": [0.05, 9.0],
+    #     "lr": 1e-6,
+    #     "train_microbatch_size": train_microbatch_size,
+    # }
+
+    # DAPO variant settings
+    grpo_config = {
+        "filter_range": [0.05, 9.0],
+        "lr": 1e-6,
+        "train_microbatch_size": args.train_microbatch_size,
+        "clip_eps_low": 0.2,
+        "clip_eps_high": 0.28,
+        "skip_threshold": 20.0,
+        "beta": 0.0,  # no KL penalty
+        "loss_variation": "token_level",
+        "soft_over_length_punishment": True,
+        "max_length": 1024 * 2,
+        "cache_length": 256,
+        "filter_truncated_response": True,
+    }
+
     launch_distributed(
         num_producers=args.num_inferencer,
         num_proc_per_producer=1,
@@ -118,14 +141,17 @@ if __name__ == "__main__":
         generate_config=generate_config,
         num_generations=args.num_generations,
         train_model_config=train_model_config,
-        # plugin_config={}, # for zero
+        grpo_config=grpo_config,
         plugin_config={
-            "pp_size": 2,
-            "tp_size": 2,
-            "microbatch_size": args.train_microbatch_size // 2,
-            "zero_stage": 0,
-            "max_norm": 1.0,
-        },  # for pp
+            "zero_stage": 2,
+        },  # for zero
+        # plugin_config={
+        #     "pp_size": 2,
+        #     "tp_size": 2,
+        #     "microbatch_size": args.train_microbatch_size // 2,
+        #     "zero_stage": 0,
+        #     "max_norm": 1.0,
+        # },  # for pp
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29506,

@@ -3,14 +3,29 @@ import torch
 from .reward_utils import extract_solution, validate_response_structure
 
 
-def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
+def math_reward_fn(step, input_ids, gt_answer, response_idx, **kwargs):
+    tokenizer = kwargs["tokenizer"]
+    soft_over_length_punishment = kwargs["soft_over_length_punishment"]
     format_score = 1.0
     acc_score = 9.0
-    tokenizer = kwargs["tokenizer"]
+    if step > 30:
+        format_score = 0.0
+        acc_score = 10.0
     reward = torch.tensor(0.0)
     format_reward = torch.tensor(0.0)
     acc_reward = torch.tensor(0.0)
     s, e = response_idx[0], response_idx[1]
+
+    length_reward = 0.0
+    if soft_over_length_punishment:
+        max_length = kwargs.get("max_length", 1024 * 4)
+        cache_length = kwargs.get("cache_length", 512)
+        res_length = e.item() - s.item() + 1
+        if res_length >= max_length:
+            length_reward = -1.0 * 2
+        elif res_length > max_length - cache_length:
+            length_reward = ((max_length - cache_length) - res_length) / cache_length * 2
+
     if gt_answer is None:
         return reward
 
@@ -32,6 +47,8 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     ):
         acc_reward += acc_score
         reward += acc_score
+
+    reward = reward + length_reward
 
     return torch.tensor([reward, format_reward, acc_reward]).to(input_ids.device)
 
