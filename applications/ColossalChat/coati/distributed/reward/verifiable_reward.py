@@ -14,7 +14,6 @@ class VerifiableReward:
 
     def __call__(
         self,
-        step: int,
         input_ids: torch.LongTensor,
         gt_answer: List[torch.Tensor] = None,
         response_idx: List[torch.Tensor] = None,
@@ -30,7 +29,6 @@ class VerifiableReward:
             reward_batch = torch.stack(
                 [
                     reward_fn(
-                        step,
                         input_ids[i],
                         gt_answer=gt_answer[i],
                         response_idx=response_idx[i],

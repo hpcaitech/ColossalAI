@@ -128,20 +128,6 @@ def all_reduce_mean(tensor: torch.Tensor, plugin: Plugin = None) -> torch.Tensor
     return tensor
 
 
-# def all_reduce_sum(tensor: torch.Tensor, ) -> torch.Tensor:
-#     """
-#     Performs an all-reduce operation to sum the values of the given tensor across all processes.
-
-#     Args:
-#         tensor (torch.Tensor): The input tensor to be reduced.
-
-#     Returns:
-#         torch.Tensor: The reduced tensor with the sum of values across all processes.
-#     """
-#     dist.all_reduce(tensor=tensor, op=dist.ReduceOp.SUM)
-#     return tensor
-
-
 def all_reduce_sum(tensor: torch.Tensor, plugin: Plugin = None) -> torch.Tensor:
     """
     Performs an all-reduce operation to sum the values of the given tensor across all processes.

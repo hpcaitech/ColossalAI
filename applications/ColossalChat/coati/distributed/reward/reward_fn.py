@@ -9,8 +9,8 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     format_score = 0.0
     acc_score = 10.0
     reward = torch.tensor(0.0)
-    format_reward = torch.tensor(0.0)
-    acc_reward = torch.tensor(0.0)
+    format_acc = torch.tensor(0.0)
+    ans_acc = torch.tensor(0.0)
     s, e = response_idx[0], response_idx[1]
 
     length_reward = 0.0
@@ -32,7 +32,7 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
 
     # Check format accuracy
     if format_valid:
-        format_reward += format_score
+        format_acc += 1
         reward += format_score
 
     # Check answer accuracy
@@ -40,12 +40,12 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         final_answer is not None
         and gt_answer.strip().replace(" ", "").lower() == final_answer.strip().replace(" ", "").lower()
     ):
-        acc_reward += acc_score
+        ans_acc += 1
         reward += acc_score
 
     reward = reward + length_reward
 
-    return torch.tensor([reward, format_reward, acc_reward]).to(input_ids.device)
+    return torch.tensor([reward, format_acc, ans_acc]).to(input_ids.device)
 
 
 def gsm8k_reward_fn(input_ids, **kwargs):

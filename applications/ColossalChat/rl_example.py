@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     # DAPO variant settings
     grpo_config = {
-        "filter_range": [0.05, 9.0],
+        "filter_range": [0.01, 0.99],  # only filter out all zero batch and all one batch
         "lr": 1e-6,
         "train_microbatch_size": args.train_microbatch_size,
         "clip_eps_low": 0.2,
@@ -144,8 +144,7 @@ if __name__ == "__main__":
         grpo_config=grpo_config,
         plugin_config={
             "zero_stage": 2,
-        },
-        # for zero
+        },  # for zero
         # plugin_config={
         #     "pp_size": 2,
         #     "tp_size": 2,

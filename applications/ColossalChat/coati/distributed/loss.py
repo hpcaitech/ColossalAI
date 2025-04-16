@@ -14,14 +14,12 @@ class PolicyLoss(nn.Module):
         self,
         clip_eps_low: float = 0.2,
         clip_eps_high: float = 0.2,
-        skip_threshold: float = 20.0,
         beta: float = 0.01,
         loss_variation: str = "sample_level",
     ) -> None:
         super().__init__()
         self.clip_eps_low = clip_eps_low
         self.clip_eps_high = clip_eps_high
-        self.skip_threshold = skip_threshold
         self.beta = beta
         self.loss_variation = loss_variation
         assert loss_variation in ["sample_level", "token_level"], f"Unsupported loss variation: {loss_variation}"
@@ -35,7 +33,6 @@ class PolicyLoss(nn.Module):
         action_mask: Optional[torch.Tensor] = None,
         loss_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        skip = False
         if action_mask is None:
             ratio = (log_probs - log_probs.detach()).exp()
         else:
@@ -43,7 +40,7 @@ class PolicyLoss(nn.Module):
 
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps_low, 1 + self.clip_eps_high) * advantages
-        if self.beta <= 0:
+        if self.beta == 0:
             # skip kl term if kl coefficient is zero
             per_token_kl = 0.0
         loss = -torch.min(surr1, surr2) + self.beta * per_token_kl
@@ -68,5 +65,7 @@ class PolicyLoss(nn.Module):
                 loss = loss * loss_mask
                 total_tokens = total_tokens * loss_mask
             loss = loss.sum() / (total_tokens.sum() + 1e-8)
+        else:
+            raise ValueError(f"Unsupported loss variation: {self.loss_variation}")
 
-        return loss, skip, ratio.max()
+        return loss, ratio.max()
