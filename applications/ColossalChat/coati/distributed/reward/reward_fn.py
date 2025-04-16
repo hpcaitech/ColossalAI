@@ -35,9 +35,10 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         format_acc += 1
         reward += format_score
 
-    # Check answer accuracy
+    # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
     if (
-        final_answer is not None
+        format_valid
+        and final_answer is not None
         and gt_answer.strip().replace(" ", "").lower() == final_answer.strip().replace(" ", "").lower()
     ):
         ans_acc += 1
