@@ -144,7 +144,8 @@ if __name__ == "__main__":
         grpo_config=grpo_config,
         plugin_config={
             "zero_stage": 2,
-        },  # for zero
+        },
+        # for zero
         # plugin_config={
         #     "pp_size": 2,
         #     "tp_size": 2,
