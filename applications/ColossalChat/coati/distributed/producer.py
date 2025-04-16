@@ -124,12 +124,12 @@ class BaseProducer:
                     self.load_state_dict(state_dict)
                     del state_dict
                     torch.cuda.empty_cache()
-                # linear annealing for 1 episode, temperature from initial to 0.7
+                # linear annealing for 1 episode, temperature from initial to 0.9
                 if episode <= 0:
                     ratio = 1 - (len(self.dataloader) - i) / len(self.dataloader)
                     self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
                         "temperature"
-                    ] + ratio * 0.7
+                    ] + ratio * 0.9
 
 
 @ray.remote

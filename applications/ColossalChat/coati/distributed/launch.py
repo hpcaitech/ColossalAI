@@ -40,6 +40,7 @@ def launch_distributed(
     inference_model_config: Dict[str, Any],
     generate_config: Dict[str, Any],
     train_model_config: Dict[str, Any],
+    grpo_config: Dict[str, Any],
     plugin_config: Dict[str, Any],
     tokenizer_config: Optional[Dict[str, Any]] = None,
     inference_backend: str = "transformers",
@@ -103,11 +104,7 @@ def launch_distributed(
             plugin_config=plugin_config,
             microbatch_size=train_minibatch_size,
             generate_config=generate_config_consumer,
-            training_config={
-                "filter_range": [0.05, 9.0],
-                "lr": 1e-6,
-                "train_microbatch_size": train_microbatch_size,
-            },
+            grpo_config=grpo_config,
             num_generations=num_generations,
             project_name=project_name,
         )

@@ -112,7 +112,7 @@ class BaseConsumer:
                             self.buffer = self.buffer[self.dp_size * self.microbatch_size :]
                             batch = bind_batch(batches)
                             batch = post_recv(batch)
-                            loss = self.step(i, **batch)
+                            loss = self.step(i, pbar, **batch)
                             if loss is not None:
                                 pbar.set_postfix({"loss": loss})
                             i += 1
@@ -181,7 +181,7 @@ class SimpleConsumer(BaseConsumer):
         super().setup()
         self.model, self.optimizer, *_ = self.booster.boost(self.model, self.optimizer)
 
-    def step(self, step_idx: int, **kwargs) -> Optional[float]:
+    def step(self, step_idx: int, pbar: Any, **kwargs) -> Optional[float]:
         labels = kwargs["input_ids"].clone()
         labels[kwargs["attention_mask"] == 0] = -100
         kwargs["labels"] = labels
