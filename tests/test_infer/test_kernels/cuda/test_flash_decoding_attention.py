@@ -197,7 +197,6 @@ except ImportError:
     print("The subsequent test requires vllm. Please refer to https://github.com/vllm-project/vllm")
 
 
-@clear_cache_before_run()
 @pytest.mark.skipif(not HAS_VLLM, reason="requires vllm")
 @pytest.mark.parametrize("BATCH_SIZE", [1, 7, 32])
 @pytest.mark.parametrize("BLOCK_SIZE", [6, 32])
