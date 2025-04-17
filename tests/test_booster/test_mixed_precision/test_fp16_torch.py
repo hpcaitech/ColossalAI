@@ -1,4 +1,3 @@
-import pytest
 import torch
 from torch.optim import Adam
 
@@ -36,7 +35,6 @@ def run_torch_amp(rank, world_size, port):
         del model, optimizer, criterion, data, output, mixed_precision
 
 
-@pytest.mark.skip(reason="Skip because assertion may fail for CI devices")
 @rerun_if_address_is_in_use()
 def test_torch_ddp_plugin():
     spawn(run_torch_amp, 1)

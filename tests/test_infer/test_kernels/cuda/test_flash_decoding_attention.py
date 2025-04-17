@@ -11,7 +11,6 @@ from tests.test_infer.test_kernels.triton.test_context_attn_unpad import generat
 
 inference_ops = InferenceOpsLoader().load()
 
-from colossalai.testing import clear_cache_before_run
 from tests.test_infer.test_kernels.triton.kernel_utils import (
     convert_kv_unpad_to_padded,
     create_attention_mask,
@@ -57,7 +56,6 @@ def numpy_allclose(x, y, rtol, atol):
     np.testing.assert_allclose(x_numpy, y_numpy, rtol=rtol, atol=atol)
 
 
-@clear_cache_before_run()
 @pytest.mark.parametrize("BATCH_SIZE", [1, 4, 7, 32])
 @pytest.mark.parametrize("BLOCK_SIZE", [8, 16, 32])
 @pytest.mark.parametrize("MAX_NUM_BLOCKS_PER_SEQ", [1, 8, 32, 256, 512])
