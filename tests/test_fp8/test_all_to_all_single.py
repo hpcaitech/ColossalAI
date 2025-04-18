@@ -6,9 +6,10 @@ from torch.testing import assert_close
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import all_to_all_single_fp8
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
+@clear_cache_before_run()
 @parameterize("shape", [(4,), (1, 8, 16), (4, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 @parameterize("async_op", [True, False])
@@ -24,6 +25,7 @@ def check_all2all(shape, dtype, async_op):
     assert_close(output, output_fp8, rtol=0.1, atol=0.1)
 
 
+@clear_cache_before_run()
 @parameterize("shape", [(8, 8, 16)])
 @parameterize("dtype", [torch.bfloat16, torch.float16])
 @parameterize("async_op", [True, False])

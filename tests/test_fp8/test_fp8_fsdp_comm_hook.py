@@ -8,7 +8,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.testing import assert_close
 
 from colossalai import launch
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 # example modified from https://pytorch.org/tutorials/intermediate/ddp_tutorial.html
 
@@ -28,6 +28,7 @@ class ToyModel(nn.Module):
         return self.net2(self.relu(self.net1(x)))
 
 
+@clear_cache_before_run()
 @parameterize("mode", ["grad", "params"])
 def run_model(mode):
     rank = dist.get_rank()

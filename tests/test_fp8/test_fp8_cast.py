@@ -3,9 +3,10 @@ from torch.testing import assert_close
 
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import cast_from_fp8, cast_from_fp8_pipeline, cast_to_fp8, cast_to_fp8_pipeline
-from colossalai.testing import parameterize
+from colossalai.testing import clear_cache_before_run, parameterize
 
 
+@clear_cache_before_run()
 @parameterize("shape", [(100, 10), (10, 100), (3, 7), (2, 1), (1, 2), (2, 2), (4, 2), (5,), (4,), (2,)])
 @parameterize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 @parameterize("fp8_format", ["e4m3", "e5m2"])

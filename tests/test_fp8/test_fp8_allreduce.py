@@ -5,7 +5,7 @@ from torch.testing import assert_close
 from colossalai import launch
 from colossalai.accelerator import get_accelerator
 from colossalai.quantization.fp8 import all_reduce_fp8
-from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
 @parameterize(
@@ -20,6 +20,7 @@ from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
         (8,),
     ],
 )
+@clear_cache_before_run()
 @parameterize("dtype", [torch.float16, torch.bfloat16])
 @parameterize("fp8_format", ["e4m3", "e5m2"])
 @parameterize("async_op", [True, False])
