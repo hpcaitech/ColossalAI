@@ -437,3 +437,43 @@ class RawConversationDataset(Dataset):
             tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
             self.tokenized_texts[index] = dict(tokens)
         return self.tokenized_texts[index]
+    
+class AIMEDataset(Dataset):
+    """
+    AIME dataset.
+    """
+
+    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int) -> None:
+        self.tokenizer = tokenizer
+        self.raw_texts = []
+        with jsonlines.open(input_file) as f:
+            for line in f:
+                self.raw_texts.append(line)
+        self.tokenized_texts = [None] * len(self.raw_texts)
+        self.max_length = max_length
+
+    def __len__(self) -> int:
+        return len(self.raw_texts)
+    
+    def __getitem__(self, index: int):
+        if self.tokenized_texts[index] is None:
+            message = self.raw_texts[index]
+            gt_answer = self.tokenizer.encode(message['answer'], padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
+           
+            def make_conv_hf(question):
+                msg = [
+                    {"role": "user", "content": question}
+                ]
+                return msg
+            
+            message = make_conv_hf(message["question"]) 
+            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
+            self.tokenized_texts[index] = dict(tokens)
+            self.tokenized_texts[index]["gt_answer"] = gt_answer.squeeze(1)
+        return self.tokenized_texts[index]
+    
+if __name__ == "__main__":
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("/home/share/data/model/Qwen2.5-3B")
+    dataset = AIMEDataset(tokenizer, "/home/yanglibing/workspace/PRIME/eval/data/AI-MO/aimo-validation-aime/aimo-validation-aime.jsonl", 512)
+    print(dataset[0])
