@@ -117,6 +117,7 @@ class BaseProducer:
                     print(
                         f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                     )
+                    torch.cuda.empty_cache()
 
                     state_dict = ray_broadcast_tensor_dict(
                         None, self.num_producers, device=self.device, group_name="sync_model"

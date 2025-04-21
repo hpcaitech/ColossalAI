@@ -49,6 +49,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
+    parser.add_argument(
+        "--ray_dir", type=str, default=None, help="Custom temperary directory for storing ray cluster data, Optional"
+    )
+    parser.add_argument(
+        "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
+    )
     args = parser.parse_args()
 
     assert args.train_minibatch_size > 0, "Train mini batch size must be greater than 0"
@@ -57,7 +63,12 @@ if __name__ == "__main__":
         and args.train_microbatch_size > 0
     ), "Train micro batch size must be greater than 0 less than train mini batch size * num generations"
 
-    ray.init(address="local", namespace="ray-example")
+    if args.master_address is None:
+        # Default settings: Using single machine
+        ray.init(address="local", namespace="ray-example")
+    else:
+        # For ray distributed multi-machine training, Please change _node_ip_address to your IP address of your master node
+        ray.init(_node_ip_address=args.master_address, namespace="ray-example", _temp_dir=args.ray_dir)
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False)
@@ -80,10 +91,18 @@ if __name__ == "__main__":
             )
         )
     elif args.backend == "vllm":
-        inference_model_config.update(dict(gpu_memory_utilization=0.7, enforce_eager=True, enable_chunked_prefill=True))
+        inference_model_config.update(
+            dict(
+                gpu_memory_utilization=0.7,
+                enforce_eager=True,
+                enable_chunked_prefill=True,
+                max_model_len=1024 * 10 + 510,
+                tensor_parallel_size=1,
+            )
+        )
         generate_config.update(
             dict(
-                max_tokens=4096,
+                max_tokens=1024 * 10,
                 ignore_eos=True,
                 include_stop_str_in_output=True,
                 stop=["</answer>"],
@@ -120,14 +139,14 @@ if __name__ == "__main__":
         "beta": 0.0,  # no KL penalty
         "loss_variation": "token_level",
         "soft_over_length_punishment": True,
-        "max_length": 4096,
+        "max_length": 1024 * 10,
         "cache_length": 512,
         "filter_truncated_response": True,
     }
 
     launch_distributed(
         num_producers=args.num_inferencer,
-        num_proc_per_producer=1,
+        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", 1),
         num_consumer_procs=args.num_trainers,
         num_episodes=10,
         inference_batch_size=args.inference_batch_size,
@@ -146,7 +165,6 @@ if __name__ == "__main__":
             "zero_stage": 2,
         },  # for zero
         # plugin_config={
-        #     "pp_size": 2,
         #     "tp_size": 2,
         #     "microbatch_size": args.train_microbatch_size // 2,
         #     "zero_stage": 0,

@@ -32,6 +32,7 @@ class PolicyLoss(nn.Module):
         per_token_kl: torch.Tensor,
         action_mask: Optional[torch.Tensor] = None,
         loss_mask: Optional[torch.Tensor] = None,
+        total_effective_tokens_in_batch: torch.Tensor = None,
     ) -> torch.Tensor:
         if action_mask is None:
             ratio = (log_probs - log_probs.detach()).exp()
@@ -54,17 +55,13 @@ class PolicyLoss(nn.Module):
                 loss = loss * loss_mask
             loss = loss.mean()
         elif self.loss_variation == "token_level":
-            total_tokens = 0
             if action_mask is not None:
                 loss = masked_sum(loss, action_mask)
-                total_tokens = action_mask.sum(dim=1)
             else:
                 loss = loss.sum(dim=1)
-                total_tokens = torch.ones_like(loss, device=loss.device) * log_probs.size(1)
             if loss_mask is not None:
                 loss = loss * loss_mask
-                total_tokens = total_tokens * loss_mask
-            loss = loss.sum() / (total_tokens.sum() + 1e-8)
+            loss = loss.sum() / (total_effective_tokens_in_batch + 1e-8)
         else:
             raise ValueError(f"Unsupported loss variation: {self.loss_variation}")
 

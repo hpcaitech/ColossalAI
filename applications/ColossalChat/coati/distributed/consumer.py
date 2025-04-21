@@ -16,7 +16,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
-from .utils import bind_batch, post_recv, unbind_batch
+from .utils import bind_batch, pad_batch, post_recv, unbind_batch
 
 
 class BaseConsumer:
@@ -110,6 +110,9 @@ class BaseConsumer:
                                 self.dp_rank * self.microbatch_size : (self.dp_rank + 1) * self.microbatch_size
                             ]
                             self.buffer = self.buffer[self.dp_size * self.microbatch_size :]
+                            batch = pad_batch(
+                                batches
+                            )  # when `imbs` is smaller than `tMbs`, samples may have differ in size, need to pad before stacking
                             batch = bind_batch(batches)
                             batch = post_recv(batch)
                             loss = self.step(i, pbar, **batch)

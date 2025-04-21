@@ -1,5 +1,6 @@
 import json
 import os
+import warnings
 from contextlib import nullcontext
 from typing import Any, Optional
 
@@ -41,6 +42,14 @@ class GRPOConsumer(BaseConsumer):
         grpo_config={},
         project_name=None,
     ):
+        print(f"Using GRPO config: {grpo_config}")
+        if grpo_config.get("loss_variation", "sample_level") == "token_level":
+            if batch_size != microbatch_size:
+                warnings.warn(
+                    f"Applied token_level loss, force overwrite mini-batch-size with batch-size: mini-batch-size: {microbatch_size}->{batch_size}",
+                    UserWarning,
+                )
+                microbatch_size = batch_size
         super().__init__(
             num_producers,
             num_episodes,
@@ -201,8 +210,10 @@ class GRPOConsumer(BaseConsumer):
                 loss_mask,
                 action_mask[:, -1] == False,
             )
+        effective_tokens_count = torch.sum(action_mask, dim=-1) * loss_mask
 
         effective_samples = all_reduce_sum(torch.sum(loss_mask), self.plugin)
+        total_effective_tokens_count = all_reduce_sum(torch.sum(effective_tokens_count), self.plugin)
         total_samples = all_reduce_sum(torch.sum(torch.ones_like(loss_mask, device=loss_mask.device)), self.plugin)
         self.effective_sample_count += effective_samples.item()
         self.total_sample_count += total_samples.item()
@@ -211,11 +222,11 @@ class GRPOConsumer(BaseConsumer):
 
         # update gradient only if at least 0.7*batch_size*num_generation valid samples are collected in case a lot of samples are invalid and got filtered out.
         # balance between efficiency and accuracy
-        need_update = self.effective_sample_count >= self.batch_size * self.dp_size * self.num_generations * 0.75
+        need_update = self.effective_sample_count >= self.batch_size * self.dp_size * self.num_generations * 0.95
         pbar.set_postfix(
             {
                 "Step": self.global_step + 1,
-                "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations * 0.75}",
+                "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations * 0.95}",
             }
         )
 
@@ -226,7 +237,6 @@ class GRPOConsumer(BaseConsumer):
             else self.booster.no_sync(self.policy_model, self.optimizer)
         )
         with ctx:
-
             for forward_micro_batch_start in range(0, data["input_ids"].size(0), forward_batch_size):
                 input_ids_forward_micro_batch = data["input_ids"][
                     forward_micro_batch_start : forward_micro_batch_start + forward_batch_size
@@ -324,6 +334,7 @@ class GRPOConsumer(BaseConsumer):
                             per_token_kl,
                             inputs["action_mask"],
                             loss_mask=inputs["loss_mask"],
+                            total_effective_tokens_in_batch=total_effective_tokens_count,
                         )
                         return loss
 
@@ -386,6 +397,7 @@ class GRPOConsumer(BaseConsumer):
                         per_token_kl,
                         action_mask_forward_micro_batch,
                         loss_mask=loss_mask_forward_micro_batch,
+                        total_effective_tokens_in_batch=total_effective_tokens_count,
                     )
 
                     self.booster.backward(loss, self.optimizer)
