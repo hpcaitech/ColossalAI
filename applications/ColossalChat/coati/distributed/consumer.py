@@ -119,7 +119,7 @@ class BaseConsumer:
                     assert len(self.buffer) == 0
                     if self.lr_scheduler is not None:
                         self.lr_scheduler.step()
-                    if (step + 1) % self.save_interval == 0:
+                    if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
                         if self.rank == 0:
                             print(f"Start saving policy model at step {step + 1}.")
                         save_path = os.path.join(self.save_dir, f"modeling-step-{step + 1}")
