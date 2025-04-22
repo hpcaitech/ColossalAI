@@ -49,6 +49,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["Simple", "GRPO", "EvalGRPO"])
+    parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
     args = parser.parse_args()
 
     assert args.train_minibatch_size > 0, "Train mini batch size must be greater than 0"
@@ -112,20 +113,20 @@ if __name__ == "__main__":
         train_batch_size=args.train_batch_size,
         train_minibatch_size=args.train_minibatch_size,
         train_microbatch_size=args.train_microbatch_size,
-        dataset_config={"path": args.dataset, "max_length": 300},
+        dataset_config={"path": args.dataset, "max_length": 300, "system_prompt": args.system_prompt},
         dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
         num_generations=args.num_generations,
         train_model_config=train_model_config,
-        # plugin_config={}, # for zero
-        plugin_config={
-            "pp_size": 2,
-            "tp_size": 2,
-            "microbatch_size": args.train_microbatch_size // 2,
-            "zero_stage": 0,
-            "max_norm": 1.0,
-        },  # for pp
+        plugin_config={},  # Default setting: zero.
+        # plugin_config={
+        #     "pp_size": 2,
+        #     "tp_size": 2,
+        #     "microbatch_size": args.train_microbatch_size // 2,
+        #     "zero_stage": 0,
+        #     "max_norm": 1.0,
+        # },  # for pp
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=29506,
