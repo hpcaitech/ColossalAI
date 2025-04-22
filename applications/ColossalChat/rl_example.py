@@ -107,7 +107,7 @@ if __name__ == "__main__":
         num_producers=args.num_inferencer,
         num_proc_per_producer=1,
         num_consumer_procs=args.num_trainers,
-        num_episodes=10,
+        num_episodes=1,
         inference_batch_size=args.inference_batch_size,
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
