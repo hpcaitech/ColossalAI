@@ -352,12 +352,14 @@ def apply_chat_template_and_mask(
     tokenizer: PreTrainedTokenizer,
     chat: List[Dict[str, str]],
     max_length: Optional[int] = None,
+    system_prompt: str = None,
     padding: bool = True,
     truncation: bool = True,
     ignore_idx: int = -100,
 ) -> Dict[str, torch.Tensor]:
 
-    system_prompt = "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n"
+    if system_prompt is None:
+        system_prompt = "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n"
 
     system_element = {
         "role": "system",
@@ -419,7 +421,7 @@ class RawConversationDataset(Dataset):
     Each instance is a dictionary with fields `system`, `roles`, `messages`, `offset`, `sep_style`, `seps`.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int, system_prompt: str) -> None:
         self.tokenizer = tokenizer
         self.raw_texts = []
         with jsonlines.open(input_file) as f:
@@ -427,6 +429,7 @@ class RawConversationDataset(Dataset):
                 self.raw_texts.append(line)
         self.tokenized_texts = [None] * len(self.raw_texts)
         self.max_length = max_length
+        self.system_prompt = system_prompt
 
     def __len__(self) -> int:
         return len(self.raw_texts)
@@ -434,6 +437,6 @@ class RawConversationDataset(Dataset):
     def __getitem__(self, index: int):
         if self.tokenized_texts[index] is None:
             message = self.raw_texts[index]
-            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
+            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length, self.system_prompt)
             self.tokenized_texts[index] = dict(tokens)
         return self.tokenized_texts[index]
