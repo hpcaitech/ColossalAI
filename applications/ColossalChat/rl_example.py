@@ -55,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
     )
+    parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
     args = parser.parse_args()
 
     assert args.train_minibatch_size > 0, "Train mini batch size must be greater than 0"
@@ -149,13 +150,13 @@ if __name__ == "__main__":
         num_producers=args.num_inferencer,
         num_proc_per_producer=inference_model_config.get("tensor_parallel_size", 1),
         num_consumer_procs=args.num_trainers,
-        num_episodes=10,
+        num_episodes=1,
         inference_batch_size=args.inference_batch_size,
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_minibatch_size=args.train_minibatch_size,
         train_microbatch_size=args.train_microbatch_size,
-        dataset_config={"path": args.dataset, "max_length": 300},
+        dataset_config={"path": args.dataset, "max_length": 300, "system_prompt": args.system_prompt},
         dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
