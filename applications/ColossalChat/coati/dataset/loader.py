@@ -375,7 +375,7 @@ def apply_chat_template_and_mask(
     tokens = []
     assistant_mask = []
     for i, msg in enumerate(chat):
-        msg_tokens = tokenizer.apply_chat_template([system_element, msg], tokenize=True, add_generation_prompt=True)
+        msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True, add_generation_prompt=True)
         # remove unexpected bos token
         if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
             msg_tokens = msg_tokens[1:]

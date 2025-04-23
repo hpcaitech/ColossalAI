@@ -66,7 +66,8 @@ def extract_solution(solution_str: str) -> Tuple[Optional[str], str]:
     """
 
     # Extract final answer using XML-style tags
-    answer_pattern = r"<answer>(.*?)</answer>"
+    # answer_pattern = r"<answer>(.*?)</answer>"
+    answer_pattern = r"boxed{(.*?)}"
     matches = list(re.finditer(answer_pattern, solution_str, re.DOTALL))
 
     if not matches:

@@ -18,12 +18,12 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     gt_answer = tokenizer.decode(gt_answer.squeeze(0), skip_special_tokens=True)
     final_answer, processed_str = extract_solution(decoded_final_answer)
 
-    format_valid = validate_response_structure(processed_str, kwargs["tags"])
+    # format_valid = validate_response_structure(processed_str, kwargs["tags"])
 
-    # Check format accuracy
-    if format_valid:
-        format_reward += format_score
-        reward += format_score
+    # # Check format accuracy
+    # if format_valid:
+    #     format_reward += format_score
+    #     reward += format_score
 
     # Check answer accuracy
     if (

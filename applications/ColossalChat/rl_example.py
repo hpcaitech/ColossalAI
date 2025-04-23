@@ -44,7 +44,7 @@ if __name__ == "__main__":
         "-tmbs",
         "--train-microbatch-size",
         type=int,
-        default=2,
+        default=1,
         help="Effective batch size per dp group for forwarding and backwarding. Please select based on the availiable memory.",
     )
     parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         inference_model_config.update(dict(gpu_memory_utilization=0.7, enforce_eager=True, enable_chunked_prefill=True))
         generate_config.update(
             dict(
-                max_tokens=2048,
+                max_tokens=4096,
                 ignore_eos=True,
                 include_stop_str_in_output=True,
                 stop=["</answer>"],
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         num_producers=args.num_inferencer,
         num_proc_per_producer=1,
         num_consumer_procs=args.num_trainers,
-        num_episodes=1,
+        num_episodes=2,
         inference_batch_size=args.inference_batch_size,
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
