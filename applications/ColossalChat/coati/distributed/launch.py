@@ -107,6 +107,7 @@ def launch_distributed(
             grpo_config=grpo_config,
             num_generations=num_generations,
             project_name=project_name,
+            save_dir=grpo_config.get("save_dir", f"./model/{project_name}"),
         )
         procs.append(consumer)
     ray.get([p.setup.remote() for p in procs])

@@ -62,6 +62,7 @@ if __name__ == "__main__":
         args.train_minibatch_size * args.num_generations >= args.train_microbatch_size
         and args.train_microbatch_size > 0
     ), "Train micro batch size must be greater than 0 less than train mini batch size * num generations"
+    assert args.train_minibatch_size < args.train_batch_size, "Train mini batch size must be less than train batch size"
 
     if args.master_address is None:
         # Default settings: Using single machine
@@ -71,7 +72,7 @@ if __name__ == "__main__":
         ray.init(_node_ip_address=args.master_address, namespace="ray-example", _temp_dir=args.ray_dir)
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False)
+    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
     generate_config = dict(top_k=-1, top_p=1.0, temperature=1.0)
 
     if args.backend == "transformers":
@@ -96,13 +97,13 @@ if __name__ == "__main__":
                 gpu_memory_utilization=0.7,
                 enforce_eager=True,
                 enable_chunked_prefill=True,
-                max_model_len=1024 * 10 + 510,
+                max_model_len=1024 * 4 + 510,
                 tensor_parallel_size=1,
             )
         )
         generate_config.update(
             dict(
-                max_tokens=1024 * 10,
+                max_tokens=1024 * 4,
                 ignore_eos=True,
                 include_stop_str_in_output=True,
                 stop=["</answer>"],
@@ -139,7 +140,7 @@ if __name__ == "__main__":
         "beta": 0.0,  # no KL penalty
         "loss_variation": "token_level",
         "soft_over_length_punishment": True,
-        "max_length": 1024 * 10,
+        "max_length": 1024 * 4,
         "cache_length": 512,
         "filter_truncated_response": True,
     }

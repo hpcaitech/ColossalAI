@@ -158,6 +158,7 @@ class SimpleConsumer(BaseConsumer):
         model_config,
         plugin_config,
         microbatch_size=1,
+        save_dir="./model",
     ):
         super().__init__(
             num_producers,

@@ -184,6 +184,7 @@ class SGLangInferenceBackend(BaseInferenceBackend):
 class VLLMInferenceBackend(BaseInferenceBackend):
     DEFAULT_MODEL_CONFIG = dict(
         trust_remote_code=True,
+        enable_sleep_mode=False,
     )
     FORCE_GENERATE_CONFIG = dict(
         logprobs=0,
@@ -205,6 +206,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         generate_config.update(self.FORCE_GENERATE_CONFIG)
         generate_config.update({"n": num_generations})
         self.generate_config = SamplingParams(**generate_config)
+        self.model_config = model_config
         self.tokenizer = tokenizer
         self.num_generations = num_generations
 

@@ -41,6 +41,7 @@ class GRPOConsumer(BaseConsumer):
         generate_config=None,
         grpo_config={},
         project_name=None,
+        save_dir="./model",
     ):
         print(f"Using GRPO config: {grpo_config}")
         if grpo_config.get("loss_variation", "sample_level") == "token_level":
@@ -63,6 +64,7 @@ class GRPOConsumer(BaseConsumer):
             model_config,
             plugin_config,
             microbatch_size,
+            save_dir=save_dir,
         )
         path = model_config.pop("path")
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
@@ -173,7 +175,7 @@ class GRPOConsumer(BaseConsumer):
         num_action = action_mask.shape[1]
         old_action_log_probs = data["action_log_probs"]
         response_length = torch.sum(action_mask, dim=1).to(torch.float32)
-        forward_batch_size = self.grpo_config.get("train_microbatch_size", data["input_ids"].size(0))
+        train_microbatch_size = self.grpo_config.get("train_microbatch_size", data["input_ids"].size(0))
 
         reward_group = self.reward_model(
             data["input_ids"],
@@ -222,11 +224,11 @@ class GRPOConsumer(BaseConsumer):
 
         # update gradient only if at least 0.7*batch_size*num_generation valid samples are collected in case a lot of samples are invalid and got filtered out.
         # balance between efficiency and accuracy
-        need_update = self.effective_sample_count >= self.batch_size * self.dp_size * self.num_generations * 0.95
+        need_update = self.effective_sample_count >= self.batch_size * self.dp_size * self.num_generations
         pbar.set_postfix(
             {
                 "Step": self.global_step + 1,
-                "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations * 0.95}",
+                "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations}",
             }
         )
 
@@ -237,23 +239,23 @@ class GRPOConsumer(BaseConsumer):
             else self.booster.no_sync(self.policy_model, self.optimizer)
         )
         with ctx:
-            for forward_micro_batch_start in range(0, data["input_ids"].size(0), forward_batch_size):
+            for forward_micro_batch_start in range(0, data["input_ids"].size(0), train_microbatch_size):
                 input_ids_forward_micro_batch = data["input_ids"][
-                    forward_micro_batch_start : forward_micro_batch_start + forward_batch_size
+                    forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
                 ]
                 attention_mask_forward_micro_batch = data["attention_mask"][
-                    forward_micro_batch_start : forward_micro_batch_start + forward_batch_size
+                    forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
                 ]
                 action_mask_forward_micro_batch = action_mask[
-                    forward_micro_batch_start : forward_micro_batch_start + forward_batch_size
+                    forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
                 ]
                 loss_mask_forward_micro_batch = (
-                    loss_mask[forward_micro_batch_start : forward_micro_batch_start + forward_batch_size]
+                    loss_mask[forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size]
                     if loss_mask is not None
                     else None
                 )
                 advantages_forward_micro_batch = advantages[
-                    forward_micro_batch_start : forward_micro_batch_start + forward_batch_size
+                    forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
                 ]
 
                 if self.plugin.pp_size > 1:
@@ -442,7 +444,7 @@ class GRPOConsumer(BaseConsumer):
                         [
                             f"Loss: {self.accum_loss.item() / self.accum_count:.4f}",
                             f"Reward: {self.accum_reward.item() / self.accum_count:.4f}",
-                            f"ormat Reward: {self.accum_format_acc.item() / self.accum_count:.4f}",
+                            f"format Reward: {self.accum_format_acc.item() / self.accum_count:.4f}",
                             f"Acc Reward: {self.accum_ans_acc.item() / self.accum_count:.4f}",
                             f"Advantages: {self.accum_advantages.item() / self.accum_count:.4f}",
                             f"Response Length: {self.accum_response_length.item() / self.accum_count:.4f}",
