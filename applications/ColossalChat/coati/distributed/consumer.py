@@ -109,17 +109,22 @@ class BaseConsumer:
                             batches = self.buffer[
                                 self.dp_rank * self.microbatch_size : (self.dp_rank + 1) * self.microbatch_size
                             ]
-                            self.buffer = self.buffer[self.dp_size * self.microbatch_size :]
                             batch = pad_batch(
                                 batches
                             )  # when `imbs` is smaller than `tMbs`, samples may have differ in size, need to pad before stacking
                             batch = bind_batch(batches)
                             batch = post_recv(batch)
-                            loss = self.step(i, pbar, **batch)
+                            loss, num_excessive_rollouts = self.step(i, pbar, **batch)
+                            self.buffer = (
+                                self.buffer[
+                                    (self.dp_rank + 1) * self.microbatch_size
+                                    - num_excessive_rollouts : (self.dp_rank + 1) * self.microbatch_size
+                                ]
+                                + self.buffer[self.dp_size * self.microbatch_size :]
+                            )
                             if loss is not None:
                                 pbar.set_postfix({"loss": loss})
                             i += 1
-                    assert len(self.buffer) == 0
                     if self.lr_scheduler is not None:
                         self.lr_scheduler.step()
                     if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
