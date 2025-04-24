@@ -607,7 +607,8 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
             )
         else:
-            attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+            # attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+            attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
 
         attn_output = self.o_proj(attn_output)
 
