@@ -1056,6 +1056,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         assert (
             not pp_style == "zbv" or scheduler_nodes is not None
         ), f"scheduler_nodes must not be None when using zero bubble pipeline."
+        if sp_size is None or sp_size <= 1:
+            enable_sequence_parallelism = False
         if enable_sequence_parallelism:
             self.sequence_parallelism_mode = (
                 sequence_parallelism_mode if sequence_parallelism_mode is not None else "all_to_all"

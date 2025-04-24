@@ -225,6 +225,7 @@ class ModelSharder(object):
         """
         if self.shard_config and self.shard_config.pipeline_stage_manager:
             held_layers = self.policy.get_held_layers()
+            print("held_layers", held_layers)
             set_tensors_to_none(self.model, exclude=set(held_layers))
             return set(self._get_recursive_held_layers(held_layers))
         return None
