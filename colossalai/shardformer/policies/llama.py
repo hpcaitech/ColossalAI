@@ -33,11 +33,7 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import (
-            LlamaAttention,
-            LlamaDecoderLayer,
-            LlamaModel,
-        )
+        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
         policy = {}
         embedding_cls = None
