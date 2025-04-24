@@ -135,6 +135,7 @@ if __name__ == "__main__":
         "filter_range": [0.01, 0.99],  # only filter out all zero batch and all one batch
         "lr": 1e-6,
         "train_microbatch_size": args.train_microbatch_size,
+        "dynamic_batching": True,
         "clip_eps_low": 0.2,
         "clip_eps_high": 0.28,
         "skip_threshold": 20.0,
