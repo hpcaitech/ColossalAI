@@ -33,7 +33,7 @@ class BaseConsumer:
         batch_size: int,
         model_config: Dict[str, Any],
         plugin_config: Dict[str, Any],
-        microbatch_size: int = 1,
+        minibatch_size: int = 1,
         save_interval: int = 100,
         save_dir: str = "./model",
     ):
@@ -46,11 +46,11 @@ class BaseConsumer:
         self.num_update_per_episode = num_update_per_episode
         self.num_recv_per_update = num_recv_per_update
         self.batch_size = batch_size
-        self.microbatch_size = microbatch_size
+        self.minibatch_size = minibatch_size
         self.save_interval = save_interval
         self.save_dir = save_dir
-        assert batch_size % microbatch_size == 0, "batch_size should be divisible by microbatch_size"
-        self.num_microbatches = batch_size // microbatch_size
+        assert batch_size % minibatch_size == 0, "batch_size should be divisible by microbatch_size"
+        self.num_microbatches = batch_size // minibatch_size
 
         self.model_config = model_config
         self.plugin_config = plugin_config
@@ -67,7 +67,7 @@ class BaseConsumer:
 
         plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
         if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
-            plugin_config["microbatch_size"] = self.microbatch_size
+            plugin_config["microbatch_size"] = self.minibatch_size
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)
@@ -105,22 +105,22 @@ class BaseConsumer:
                                     )
                                 )
                             )
-                        while len(self.buffer) >= self.dp_size * self.microbatch_size:
+                        while len(self.buffer) >= self.dp_size * self.minibatch_size:
                             batches = self.buffer[
-                                self.dp_rank * self.microbatch_size : (self.dp_rank + 1) * self.microbatch_size
+                                self.dp_rank * self.minibatch_size : (self.dp_rank + 1) * self.minibatch_size
                             ]
                             batch = pad_batch(
                                 batches
                             )  # when `imbs` is smaller than `tMbs`, samples may have differ in size, need to pad before stacking
                             batch = bind_batch(batches)
                             batch = post_recv(batch)
-                            loss, num_excessive_rollouts = self.step(i, pbar, **batch)
+                            loss, num_excessive_prompts = self.step(i, pbar, **batch)
                             self.buffer = (
                                 self.buffer[
-                                    (self.dp_rank + 1) * self.microbatch_size
-                                    - num_excessive_rollouts : (self.dp_rank + 1) * self.microbatch_size
+                                    (self.dp_rank + 1) * self.minibatch_size
+                                    - num_excessive_prompts : (self.dp_rank + 1) * self.minibatch_size
                                 ]
-                                + self.buffer[self.dp_size * self.microbatch_size :]
+                                + self.buffer[self.dp_size * self.minibatch_size :]
                             )
                             if loss is not None:
                                 pbar.set_postfix({"loss": loss})
@@ -162,7 +162,8 @@ class SimpleConsumer(BaseConsumer):
         batch_size,
         model_config,
         plugin_config,
-        microbatch_size=1,
+        minibatch_size=1,
+        save_interval: int = 100,
         save_dir="./model",
     ):
         super().__init__(
@@ -177,7 +178,7 @@ class SimpleConsumer(BaseConsumer):
             batch_size,
             model_config,
             plugin_config,
-            microbatch_size,
+            minibatch_size,
         )
         path = model_config.pop("path")
         self.model = AutoModelForCausalLM.from_pretrained(path, **model_config)

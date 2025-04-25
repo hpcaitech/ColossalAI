@@ -5,8 +5,7 @@ from .reward_utils import extract_solution, validate_response_structure
 
 def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     tokenizer = kwargs["tokenizer"]
-    soft_over_length_punishment = kwargs["soft_over_length_punishment"]
-    format_score = 0.0
+    soft_over_length_punishment = kwargs.get("soft_over_length_punishment", False)
     acc_score = 10.0
     reward = torch.tensor(0.0)
     format_acc = torch.tensor(0.0)
@@ -33,7 +32,6 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     # Check format accuracy
     if format_valid:
         format_acc += 1
-        reward += format_score
 
     # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
     if (

@@ -103,7 +103,14 @@ class BaseProducer:
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs["temperature"] = torch.tensor(
-                    [self.model.generate_config.temperature] * outputs["input_ids"].size(0)
+                    [
+                        (
+                            self.model.generate_config["temperature"]
+                            if isinstance(self.model.generate_config.temperature, dict)
+                            else self.model.generate_config.temperature
+                        )
+                    ]
+                    * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
                 outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
@@ -136,9 +143,14 @@ class BaseProducer:
                 # linear annealing for 1 episode, temperature from initial to 0.9
                 if episode <= 0:
                     ratio = 1 - (len(self.dataloader) - i) / len(self.dataloader)
-                    self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
-                        "temperature"
-                    ] + ratio * 0.9
+                    if isinstance(self.model.generate_config.temperature, dict):
+                        self.model.generate_config["temperature"] = (1 - ratio) * self.generate_config[
+                            "temperature"
+                        ] + ratio * 0.9
+                    else:
+                        self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
+                            "temperature"
+                        ] + ratio * 0.9
 
 
 @ray.remote

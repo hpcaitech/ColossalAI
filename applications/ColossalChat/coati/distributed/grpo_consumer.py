@@ -1,12 +1,9 @@
-import json
-import os
 import warnings
 from contextlib import nullcontext
 from typing import Any, Optional
 
 import ray
 import torch
-import torch.distributed as dist
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
@@ -35,22 +32,23 @@ class GRPOConsumer(BaseConsumer):
         batch_size,
         model_config,
         plugin_config,
-        microbatch_size=1,
+        minibatch_size=1,
         num_generations=8,
         use_wandb=True,
         generate_config=None,
         grpo_config={},
         project_name=None,
+        save_interval: int = 100,
         save_dir="./model",
     ):
         print(f"Using GRPO config: {grpo_config}")
         if grpo_config.get("loss_variation", "sample_level") == "token_level":
-            if batch_size != microbatch_size:
+            if batch_size != minibatch_size:
                 warnings.warn(
-                    f"Applied token_level loss, force overwrite mini-batch-size with batch-size: mini-batch-size: {microbatch_size}->{batch_size}",
+                    f"Applied token_level loss, force overwrite mini-batch-size with batch-size: mini-batch-size: {minibatch_size}->{batch_size}",
                     UserWarning,
                 )
-                microbatch_size = batch_size
+                minibatch_size = batch_size
         super().__init__(
             num_producers,
             num_episodes,
@@ -63,7 +61,7 @@ class GRPOConsumer(BaseConsumer):
             batch_size,
             model_config,
             plugin_config,
-            microbatch_size,
+            minibatch_size,
             save_dir=save_dir,
         )
         path = model_config.pop("path")
@@ -166,10 +164,10 @@ class GRPOConsumer(BaseConsumer):
             },
             ...]
         Format:
-            [batch_size, num_of_generation, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>.
+            [minibatch_size, num_of_generation, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>.
         """
 
-        # Reshape to [batch_size x num_of_generation, prompt_length + response_length]
+        # Reshape to [minibatch_size x num_of_generation, prompt_length + response_length]
         data = {k: v.view(-1, v.size(-1)) for k, v in kwargs.items()}
         action_mask = data["action_mask"]
         num_action = action_mask.shape[1]
@@ -187,15 +185,15 @@ class GRPOConsumer(BaseConsumer):
         format_acc = torch.tensor([value[1] for value in reward_group]).to(data["input_ids"].device)
         ans_acc = torch.tensor([value[2] for value in reward_group]).to(data["input_ids"].device)
 
-        # [batch_size, num_generations]
+        # [minibatch_size, num_generations]
 
         group_reward = reward.view(-1, self.num_generations)
         reward_mean = group_reward.mean(dim=1)
-        # [batch_size x num_generations]
+        # [minibatch_size x num_generations]
         reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
 
         reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-        # [batch_size x num_generations]
+        # [minibatch_size x num_generations]
         advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
         # filter out the reward that is too high (all sample gets full score) or too low (all sample gets 0 score),
         group_ans_acc = (
@@ -516,128 +514,6 @@ class GRPOConsumer(BaseConsumer):
                 return loss_scalar, num_excessive_samples // self.num_generations
         else:
             return None, num_excessive_samples // self.num_generations
-
-    def state_dict(self):
-        self.policy_model._force_wait_all_gather()
-        model = self.policy_model.unwrap()
-        state_dict = model.state_dict()
-        return state_dict
-
-
-@ray.remote
-class GRPOEvalConsumer(BaseConsumer):
-    def __init__(
-        self,
-        num_producers,
-        num_episodes,
-        rank,
-        world_size,
-        master_addr,
-        master_port,
-        num_update_per_episode,
-        num_recv_per_update,
-        batch_size,
-        model_config,
-        plugin_config,
-        microbatch_size=1,
-        num_generations=4,
-        use_wandb=True,
-        log_dir="./results",
-    ):
-        super().__init__(
-            num_producers,
-            num_episodes,
-            rank,
-            world_size,
-            master_addr,
-            master_port,
-            num_update_per_episode,
-            num_recv_per_update,
-            batch_size,
-            model_config,
-            plugin_config,
-            microbatch_size,
-        )
-        path = model_config.pop("path")
-        self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
-        self.policy_model.train()
-        self.accum_reward = torch.zeros(1, device=self.device)
-        self.accum_format_acc = torch.zeros(1, device=self.device)
-        self.accum_ans_acc = torch.zeros(1, device=self.device)
-        self.accum_response_length = torch.zeros(1, device=self.device)
-        self.accum_count = torch.zeros(1, device=self.device)
-
-        self.tokenizer = AutoTokenizer.from_pretrained(path)
-        self.pad_token_id = self.tokenizer.pad_token_id
-        self.num_generations = num_generations
-
-        # Initialize verifiable reward.
-        response_format_tags = {
-            "think_start": {"text": "<think>", "num_occur": 1},
-            "think_end": {"text": "</think>", "num_occur": 1},
-            "answer_start": {"text": "<answer>", "num_occur": 1},
-            "answer_end": {"text": "</answer>", "num_occur": 1},
-        }
-        self.reward_model = VerifiableReward(
-            reward_fns=[math_reward_fn], tokenizer=self.tokenizer, tags=response_format_tags
-        )
-
-        self.log_dir = log_dir
-        if not os.path.exists(self.log_dir):
-            os.makedirs(self.log_dir)
-        else:
-            os.system(f"rm -rf {self.log_dir}/*")
-
-    def setup(self):
-        super().setup()
-        self.policy_model, _, *_ = self.booster.boost(self.policy_model)
-
-    def step(self, step_idx: int, **kwargs) -> Optional[float]:
-        rank = dist.get_rank()
-        data = {k: v.view(-1, v.size(-1)).cpu() for k, v in kwargs.items()}
-        kwargs["input_ids"].size(0)
-        reward_group = self.reward_model(
-            data["input_ids"], gt_answer=data["gt_answer"], response_idx=data["response_idx"]
-        )
-        reward = [value[0].item() for value in reward_group]
-        format_acc = [value[1].item() for value in reward_group]
-        ans_acc = [value[2].item() for value in reward_group]
-        response_length = [(data["response_idx"][i][1] - data["response_idx"][i][0]).item() for i in range(len(reward))]
-
-        response = self.tokenizer.batch_decode(data["input_ids"], skip_special_tokens=True)
-        with open(f"{self.log_dir}/eval_results_rank_{rank}.jsonl", "a", encoding="utf8") as f:
-            for i in range(len(response)):
-                f.write(
-                    json.dumps(
-                        {
-                            "response": response[i],
-                            "reward": reward[i],
-                            "format_acc": format_acc[i],
-                            "ans_acc": ans_acc[i],
-                            "response_length": response_length[i],
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
-
-        self.accum_reward += sum(reward)
-        self.accum_format_acc += sum(format_acc)
-        self.accum_ans_acc += sum(ans_acc)
-        self.accum_response_length += sum(response_length)
-        self.accum_count += len(reward)
-
-        # print results
-        total_count = all_reduce_mean(self.accum_count, self.plugin)
-        mean_reward = all_reduce_mean(self.accum_reward, self.plugin) / total_count
-        mean_format_acc = all_reduce_mean(self.accum_format_acc, self.plugin) / total_count
-        mean_ans_acc = all_reduce_mean(self.accum_ans_acc, self.plugin) / total_count
-        mean_response_length = all_reduce_mean(self.accum_response_length, self.plugin) / total_count
-        if rank == 0:
-            print(
-                f"Step {step_idx}: Mean Reward: {mean_reward}, Mean Format Reward: {mean_format_acc}, Mean Acc Reward: {mean_ans_acc}, Mean Response Length: {mean_response_length}"
-            )
-        return None
 
     def state_dict(self):
         self.policy_model._force_wait_all_gather()
