@@ -2,7 +2,7 @@ import pytest
 import torch
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
 
-from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig, GlideLlamaForCausalLM
+# from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig, GlideLlamaForCausalLM
 from colossalai.inference.spec.drafter import Drafter
 from colossalai.utils import get_current_device
 
