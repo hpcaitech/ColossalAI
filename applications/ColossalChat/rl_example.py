@@ -10,6 +10,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
     parser.add_argument("-p", "--project", type=str, default="GRPO", help="Project name.")
+    parser.add_argument("-e", "--num-episodes", type=int, default=1, help="Number of episodes to train.")
 
     # Distributed training parameters
     parser.add_argument("-t", "--num-trainers", type=int, default=2)
@@ -192,7 +193,7 @@ if __name__ == "__main__":
         num_producers=args.num_inferencer,
         num_proc_per_producer=inference_model_config.get("tensor_parallel_size", 1),
         num_consumer_procs=args.num_trainers,
-        num_episodes=1,
+        num_episodes=args.num_episodes,
         inference_batch_size=args.inference_batch_size,
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
