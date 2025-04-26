@@ -130,7 +130,7 @@ class BaseConsumer:
                     if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
                         if self.rank == 0:
                             print(f"Start saving policy model at step {step + 1}.")
-                        save_path = os.path.join(self.save_dir, f"modeling-step-{step + 1}")
+                        save_path = os.path.join(self.save_dir, f"modeling-episode-{episode}-step-{step + 1}")
                         self.booster.save_model(self.policy_model, save_path, shard=True)
                         if self.rank == 0:
                             print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
