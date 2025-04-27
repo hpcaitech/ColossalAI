@@ -62,6 +62,7 @@ class GRPOConsumer(BaseConsumer):
             model_config,
             plugin_config,
             minibatch_size,
+            save_interval=save_interval,
             save_dir=save_dir,
         )
         path = model_config.pop("path")
