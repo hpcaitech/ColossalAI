@@ -86,6 +86,14 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
     parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
     parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
+    parser.add_argument(
+        "-rt",
+        "--reward-type",
+        type=str,
+        default="think_answer_tags",
+        choices=["think_answer_tags", "boxed"],
+        help="Reward type for GRPO.",
+    )
 
     # Logging/Checkpointing parameters
     parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
@@ -168,6 +176,7 @@ if __name__ == "__main__":
             "train_microbatch_size": args.train_microbatch_size,
             "beta": args.kl_coeff,  # KL penalty coefficient
             "loss_variation": "sample_level",
+            "reward_fn_type": args.reward_type,
         }
     elif args.algo == "DAPO":
         # DAPO variant settings
@@ -185,6 +194,7 @@ if __name__ == "__main__":
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "cache_length": min(1024, int(args.max_new_tokens / 4)),
             "filter_truncated_response": True,
+            "reward_fn_type": args.reward_type,
         }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")

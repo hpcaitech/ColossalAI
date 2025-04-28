@@ -7,7 +7,7 @@ import torch
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
-from coati.distributed.reward.reward_fn import math_reward_fn
+from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
@@ -133,7 +133,12 @@ class GRPOConsumer(BaseConsumer):
             k: v for k, v in grpo_config.items() if k in ["soft_over_length_punishment", "max_length", "cache_length"]
         }
         self.reward_model = VerifiableReward(
-            reward_fns=[math_reward_fn], tokenizer=self.tokenizer, tags=response_format_tags, **reward_model_kwargs
+            reward_fns=[
+                math_reward_fn if grpo_config.get("reward_fn_type") == "think_answer_tags" else boxed_math_reward_fn
+            ],
+            tokenizer=self.tokenizer,
+            tags=response_format_tags,
+            **reward_model_kwargs,
         )
         self.global_step = 0
         self.use_wandb = use_wandb
