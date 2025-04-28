@@ -246,6 +246,7 @@ class FalconPolicy(Policy):
             module = self.model.transformer
         stage_manager = self.pipeline_stage_manager
         held_layers = []
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.h))
