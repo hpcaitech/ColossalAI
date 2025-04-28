@@ -71,7 +71,7 @@ class BaseConsumer:
             and "num_microbatches" not in self.plugin_config
             and "microbatch_size" not in self.plugin_config
         ):
-            plugin_config["microbatch_size"] = self.minibatch_size
+            plugin_config["microbatch_size"] = max(1, self.minibatch_size // plugin_config.get("pp_size", 1))
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)
         self.booster = Booster(plugin=self.plugin)

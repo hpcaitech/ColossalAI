@@ -54,7 +54,9 @@ class GRPOConsumer(BaseConsumer):
             and "num_microbatches" not in plugin_config
             and "microbatch_size" not in plugin_config
         ):
-            plugin_config["microbatch_size"] = max(1, grpo_config.get("train_microbatch_size") // 2)
+            plugin_config["microbatch_size"] = max(
+                1, grpo_config.get("train_microbatch_size") // plugin_config.get("pp_size", 1)
+            )
         super().__init__(
             num_producers,
             num_episodes,
