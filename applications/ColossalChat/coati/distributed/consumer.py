@@ -66,7 +66,11 @@ class BaseConsumer:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
         plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
-        if self.plugin_config.get("pp_size", 1) > 1 and "num_microbatches" not in self.plugin_config:
+        if (
+            self.plugin_config.get("pp_size", 1) > 1
+            and "num_microbatches" not in self.plugin_config
+            and "microbatch_size" not in self.plugin_config
+        ):
             plugin_config["microbatch_size"] = self.minibatch_size
         plugin_config.update(self.plugin_config)
         self.plugin = HybridParallelPlugin(**plugin_config)

@@ -198,7 +198,6 @@ if __name__ == "__main__":
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_minibatch_size=args.train_minibatch_size,
-        train_microbatch_size=args.train_microbatch_size,
         dataset_config={
             "path": args.dataset,
             "max_length": args.max_prompt_tokens,
@@ -216,7 +215,8 @@ if __name__ == "__main__":
         # currently not support tp/pp
         # plugin_config={
         #     "tp_size": 2,
-        #     "microbatch_size": args.train_microbatch_size // 2,
+        #     "pp_size": 2,
+        #     "microbatch_size": max(1, args.train_microbatch_size // 2),
         #     "zero_stage": 0,
         #     "max_norm": 1.0,
         # },  # for pp
