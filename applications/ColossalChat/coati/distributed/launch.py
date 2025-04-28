@@ -33,7 +33,6 @@ def launch_distributed(
     inference_batch_size: int,
     inference_microbatch_size: int,
     train_batch_size: int,
-    train_microbatch_size: int,
     train_minibatch_size: int,
     dataset_config: Dict[str, Any],
     dataloaders_config: Dict[str, Any],

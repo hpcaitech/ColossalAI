@@ -68,6 +68,7 @@ class BaseProducer:
                 seed=42,
             ),
             num_workers=4,
+            drop_last=True,
         )
         self.device = get_current_device()
 
@@ -116,7 +117,6 @@ class BaseProducer:
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
-
                 if (i + 1) % self.num_microbatches == 0 and (
                     episode != self.num_episodes - 1 or i != num_valid_microbatches - 1
                 ):
