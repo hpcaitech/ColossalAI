@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 import ray.util.collective as cc
@@ -26,6 +26,7 @@ class BaseProducer:
         dataloaders_config: Dict[str, Any],
         model_config: Dict[str, Any],
         generate_config: Dict[str, Any],
+        consumer_plugin_config: Dict[str, Any] = None,
         tokenizer_config: Optional[Dict[str, Any]] = None,
         microbatch_size: int = 1,
         backend: str = "transformers",
@@ -43,6 +44,7 @@ class BaseProducer:
         self.model_config = model_config
         self.generate_config = generate_config
         self.tokenizer_config = tokenizer_config
+        self.consumer_plugin_config = consumer_plugin_config
 
         # init tokenizer
         if tokenizer_config is None:
@@ -78,9 +80,18 @@ class BaseProducer:
         else:
             raise ValueError(f"Unexpected backend {backend}")
 
-    def setup(self) -> None:
+    def setup(self, consumer_device_mesh_mapping: Dict[str, Any] = None, model_state_dict_keys: List = None) -> None:
+        self.consumer_device_mesh_mapping = consumer_device_mesh_mapping
+        self.model_state_dict_keys = model_state_dict_keys
         cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
-        cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model")
+        # cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model_pp_stage_0")
+        for i in range(self.num_consumer_procs):
+            device_mesh_mapping = self.consumer_device_mesh_mapping[i]
+            device_mesh_mapping["rank"]
+            # TODO: support ep, sp
+            if device_mesh_mapping["dp_rank"] == 0 and device_mesh_mapping["tp_rank"] == 0:
+                group_name = f"sync_model_pp_stage_{device_mesh_mapping['pp_stage']}"
+                cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=group_name)
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -125,14 +136,27 @@ class BaseProducer:
                     ):
                         self.model.llm.sleep()  # revict KV_cache to avoid OOM
                     # don't sync model for last iteration
+                    torch.cuda.empty_cache()
+                    state_dict = {}
                     print(
                         f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                     )
-                    torch.cuda.empty_cache()
+                    for consumer_rank_id in range(self.num_consumer_procs):
+                        device_mesh_mapping = self.consumer_device_mesh_mapping[consumer_rank_id]
+                        device_mesh_mapping["rank"]
+                        # TODO: support ep, sp
+                        if device_mesh_mapping["dp_rank"] == 0 and device_mesh_mapping["tp_rank"] == 0:
+                            group_name = f"sync_model_pp_stage_{device_mesh_mapping['pp_stage']}"
+                            state_dict.update(
+                                ray_broadcast_tensor_dict(
+                                    None, src=self.num_producers, device=self.device, group_name=group_name
+                                )
+                            )
+                    # check model sync integrity
+                    assert len(state_dict) == len(
+                        self.model_state_dict_keys
+                    ), f"state dict keys has {len(state_dict)} unique keys not equal original model with {len(self.model_state_dict_keys)} keys. Missing keys: {set(self.model_state_dict_keys)-set(state_dict.keys())}. Please kindly inform the developer."
 
-                    state_dict = ray_broadcast_tensor_dict(
-                        None, self.num_producers, device=self.device, group_name="sync_model"
-                    )
                     self.load_state_dict(state_dict)
                     del state_dict
                     torch.cuda.empty_cache()
@@ -166,6 +190,7 @@ class SimpleProducer(BaseProducer):
         dataloaders_config,
         model_config,
         generate_config,
+        consumer_plugin_config=None,
         tokenizer_config=None,
         microbatch_size=1,
         backend="transformers",
@@ -181,6 +206,7 @@ class SimpleProducer(BaseProducer):
             dataloaders_config,
             model_config,
             generate_config,
+            consumer_plugin_config,
             tokenizer_config,
             microbatch_size,
             backend,

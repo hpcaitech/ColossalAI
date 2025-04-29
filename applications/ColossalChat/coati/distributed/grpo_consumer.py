@@ -75,6 +75,7 @@ class GRPOConsumer(BaseConsumer):
         )
         path = model_config.pop("path")
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
+        self.orig_state_dict_key = [k for k in self.policy_model.state_dict()]
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
         self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
@@ -149,6 +150,22 @@ class GRPOConsumer(BaseConsumer):
             warmup_steps=0,
             eta_min=0.1 * grpo_config.get("lr", 1e-6),
         )
+
+    def get_device_mesh_mapping(self):
+        return {
+            "rank": self.rank,
+            "tp_rank": self.tp_rank,
+            "tp_size": self.tp_size,
+            "dp_size": self.dp_size,
+            "dp_rank": self.dp_rank,
+            "pp_size": self.booster.plugin.stage_manager.num_stages,
+            "pp_stage": self.booster.plugin.stage_manager.stage,
+            "is_last_stage": self.booster.plugin.stage_manager.is_last_stage(),
+            "world_size": self.world_size,
+        }
+
+    def get_model_state_dict_keys(self):
+        return self.orig_state_dict_key
 
     def setup(self):
         super().setup()
