@@ -127,43 +127,43 @@ model_zoo.register(
     loss_fn=loss_fn_for_gpt2_model,
     model_attribute=ModelAttribute(has_control_flow=True),
 )
-model_zoo.register(
-    name="transformers_gpt_lm",
-    model_fn=lambda: transformers.GPT2LMHeadModel(config),
-    data_gen_fn=data_gen_for_lm,
-    output_transform_fn=output_transform_fn,
-    loss_fn=loss_fn,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
-model_zoo.register(
-    name="transformers_gpt_double_heads",
-    model_fn=lambda: transformers.GPT2DoubleHeadsModel(config),
-    data_gen_fn=date_gen_for_double_heads,
-    output_transform_fn=output_transform_fn,
-    loss_fn=lambda x: x.loss + x.mc_loss,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
-model_zoo.register(
-    name="transformers_gpt_for_question_answering",
-    model_fn=lambda: transformers.GPT2ForQuestionAnswering(config),
-    data_gen_fn=data_gen_for_question_answering,
-    output_transform_fn=output_transform_fn,
-    loss_fn=loss_fn,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
-model_zoo.register(
-    name="transformers_gpt_for_token_classification",
-    model_fn=lambda: transformers.GPT2ForTokenClassification(config_for_token_classification),
-    data_gen_fn=data_gen_for_token_classification,
-    output_transform_fn=output_transform_fn,
-    loss_fn=loss_fn,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
-model_zoo.register(
-    name="transformers_gpt_for_sequence_classification",
-    model_fn=lambda: transformers.GPT2ForSequenceClassification(config_for_token_classification),
-    data_gen_fn=data_gen_for_sequence_classification,
-    output_transform_fn=output_transform_fn,
-    loss_fn=loss_fn,
-    model_attribute=ModelAttribute(has_control_flow=True),
-)
+# model_zoo.register(
+#     name="transformers_gpt_lm",
+#     model_fn=lambda: transformers.GPT2LMHeadModel(config),
+#     data_gen_fn=data_gen_for_lm,
+#     output_transform_fn=output_transform_fn,
+#     loss_fn=loss_fn,
+#     model_attribute=ModelAttribute(has_control_flow=True),
+# )
+# model_zoo.register(
+#     name="transformers_gpt_double_heads",
+#     model_fn=lambda: transformers.GPT2DoubleHeadsModel(config),
+#     data_gen_fn=date_gen_for_double_heads,
+#     output_transform_fn=output_transform_fn,
+#     loss_fn=lambda x: x.loss + x.mc_loss,
+#     model_attribute=ModelAttribute(has_control_flow=True),
+# )
+# model_zoo.register(
+#     name="transformers_gpt_for_question_answering",
+#     model_fn=lambda: transformers.GPT2ForQuestionAnswering(config),
+#     data_gen_fn=data_gen_for_question_answering,
+#     output_transform_fn=output_transform_fn,
+#     loss_fn=loss_fn,
+#     model_attribute=ModelAttribute(has_control_flow=True),
+# )
+# model_zoo.register(
+#     name="transformers_gpt_for_token_classification",
+#     model_fn=lambda: transformers.GPT2ForTokenClassification(config_for_token_classification),
+#     data_gen_fn=data_gen_for_token_classification,
+#     output_transform_fn=output_transform_fn,
+#     loss_fn=loss_fn,
+#     model_attribute=ModelAttribute(has_control_flow=True),
+# )
+# model_zoo.register(
+#     name="transformers_gpt_for_sequence_classification",
+#     model_fn=lambda: transformers.GPT2ForSequenceClassification(config_for_token_classification),
+#     data_gen_fn=data_gen_for_sequence_classification,
+#     output_transform_fn=output_transform_fn,
+#     loss_fn=loss_fn,
+#     model_attribute=ModelAttribute(has_control_flow=True),
+# )

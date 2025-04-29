@@ -38,13 +38,8 @@ class GPT2Policy(Policy):
     def module_policy(self):
         from transformers.models.gpt2.modeling_gpt2 import GPT2MLP, GPT2Attention, GPT2Block, GPT2Model
 
-        ATTN_IMPLEMENTATION = {
-            "eager": GPT2Attention,
-        }
-
         policy = {}
 
-        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -52,6 +47,10 @@ class GPT2Policy(Policy):
         else:
             if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
+
+
+
+        print("embedding_cls", embedding_cls)
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -224,6 +223,7 @@ class GPT2Policy(Policy):
 
         if embedding_cls is not None:
             # padding vocabulary size when using pp to make it divisible by  shard_config.make_vocab_size_divisible_by
+            print("embedding_cls", embedding_cls)
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="wte",
@@ -280,7 +280,7 @@ class GPT2Policy(Policy):
                     "forward": get_gpt2_flash_attention_forward(shard_config=self.shard_config),
                 },
                 policy=policy,
-                target_key=attn_cls,
+                target_key=GPT2Attention,
             )
 
         if not self.shard_config.pipeline_stage_manager and self.shard_config.enable_sequence_parallelism:
@@ -394,12 +394,13 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         module_policy = super().module_policy()
         module_policy[GPT2LMHeadModel] = ModulePolicyDescription()
         if self.shard_config.enable_tensor_parallelism:
+            print("self.shard_config.enable_tensor_parallelism", self.shard_config.enable_tensor_parallelism)
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="lm_head",
                     target_module=col_nn.VocabParallelLMHead1D,
                     kwargs={
-                        "gather_output": False,
+                        "gather_output": True,
                         "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
                     },
                 ),
@@ -417,19 +418,20 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 target_key=GPT2LMHeadModel,
             )
 
-        if self.shard_config.parallel_output:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
-                },
-                policy=module_policy,
-                target_key=GPT2LMHeadModel,
-            )
+        # if self.shard_config.parallel_output:
+        #     self.append_or_create_method_replacement(
+        #         description={
+        #             "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
+        #         },
+        #         policy=module_policy,
+        #         target_key=GPT2LMHeadModel,
+        #     )
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
                 model_cls=GPT2LMHeadModel,
                 new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
+                shard_config=self.shard_config,
                 policy=module_policy,
             )
         return module_policy
