@@ -74,3 +74,51 @@ def extract_solution(solution_str: str) -> Tuple[Optional[str], str]:
 
     final_answer = matches[-1].group(1).strip()
     return final_answer, solution_str
+
+
+def extract_boxed_solution(text: str) -> Optional[str]:
+    """
+    Modified from: https://gist.github.com/lewtun/9c2ce1937b741404090a3dc4c7c022b3
+    Retrieves the content from the last occurrence of `\boxed{}` in a LaTeX-like string.
+
+    Args:
+        text (str): A string potentially containing LaTeX-style boxed expressions.
+
+    Returns:
+        Optional[str]: The text inside the final `\boxed{}` if successfully extracted;
+                       returns `None` if no properly closed box is found.
+
+    Examples:
+        >>> extract_boxed_solution("The answer is \\boxed{42}.")
+        '42'
+        >>> extract_boxed_solution("Here is an unmatched \\boxed{42")
+        None
+    """
+    try:
+        # Find the last occurrence of "\boxed{"
+        start_idx = text.rindex("\\boxed{")
+        # Move past "\boxed{" to find the start of the content
+        content_start = start_idx + len("\\boxed{")
+        open_braces = 1
+        pos = content_start
+
+        # Traverse the string to find the matching closing brace
+        while open_braces > 0 and pos < len(text):
+            if text[pos] == "{":
+                open_braces += 1
+            elif text[pos] == "}":
+                open_braces -= 1
+            pos += 1
+
+        # If all braces are matched, extract and return the content
+        if open_braces == 0:
+            return text[content_start : pos - 1].strip()
+        else:
+            return None
+
+    except ValueError:
+        # "\boxed{" not found
+        return None
+    except Exception:
+        # Any other unexpected error
+        return None
