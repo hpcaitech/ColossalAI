@@ -66,7 +66,7 @@ def launch_distributed(
     num_update_per_episode = num_samples // global_inference_batch_size
     num_recv_per_update = inference_batch_size // inference_microbatch_size
 
-    producer_procs = []
+    procs = []
     for i in range(num_producers):
         producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
             producer_idx=i,
@@ -78,20 +78,18 @@ def launch_distributed(
             dataloaders_config=dataloaders_config,
             model_config=inference_model_config,
             generate_config=generate_config,
-            consumer_plugin_config=plugin_config,
             tokenizer_config=tokenizer_config,
             microbatch_size=inference_microbatch_size,
             backend=inference_backend,
             num_generations=num_generations,
         )
-        producer_procs.append(producer)
+        procs.append(producer)
     generate_config_consumer = copy.deepcopy(generate_config)
     generate_config_consumer.update(
         dict(
             backend=inference_backend,
         )
     )
-    consumer_procs = []
     for i in range(num_consumer_procs):
         consumer = core_consumer.options(num_gpus=1).remote(
             num_producers=num_producers,
@@ -113,14 +111,6 @@ def launch_distributed(
             save_interval=save_interval,
             save_dir=save_dir,
         )
-        consumer_procs.append(consumer)
-    # setup the consumer procs first
-    ray.get([p.setup.remote() for p in consumer_procs])
-    # get the device mesh mapping from consumer procs
-    consumer_device_mesh_mapping = ray.get([p.get_device_mesh_mapping.remote() for p in consumer_procs])
-    model_state_dict_keys = ray.get(consumer_procs[0].get_model_state_dict_keys.remote())
-    # setup the producer procs
-    ray.get([p.setup.remote(consumer_device_mesh_mapping, model_state_dict_keys) for p in producer_procs])
-    # loop
-    procs = producer_procs + consumer_procs
+        procs.append(consumer)
+    ray.get([p.setup.remote() for p in procs])
     ray.get([p.loop.remote() for p in procs])

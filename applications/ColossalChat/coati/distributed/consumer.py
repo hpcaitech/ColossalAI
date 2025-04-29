@@ -59,8 +59,13 @@ class BaseConsumer:
         self.lr_scheduler = None
 
     def setup(self) -> None:
+        for i in range(self.num_producers):
+            cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
+        if self.rank == 0:
+            cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
-        plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)  # default config
+
+        plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
         if (
             self.plugin_config.get("pp_size", 1) > 1
             and "num_microbatches" not in self.plugin_config
@@ -74,16 +79,10 @@ class BaseConsumer:
         self.tp_rank = dist.get_rank(self.plugin.tp_group)
 
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
-        self.tp_size = dist.get_world_size(self.plugin.tp_group)
 
         self.buffer = []
 
         self.recv_cnt = 0
-        for i in range(self.num_producers):
-            cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
-        if self.dp_rank == 0 and self.tp_rank == 0:
-            group_name = f"sync_model_pp_stage_{self.plugin.stage_manager.stage}"
-            cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name=group_name)
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -141,13 +140,12 @@ class BaseConsumer:
                             print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
 
                     if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
+                        print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
                         torch.cuda.empty_cache()
                         state_dict = self.state_dict()
-                        if self.dp_rank == 0 and self.tp_rank == 0:
-                            group_name = f"sync_model_pp_stage_{self.plugin.stage_manager.stage}"
-                            print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        if self.rank == 0:
                             ray_broadcast_tensor_dict(
-                                state_dict, src=self.num_producers, device=self.device, group_name=group_name
+                                state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                             )
                         del state_dict
                         torch.cuda.empty_cache()
@@ -192,9 +190,6 @@ class SimpleConsumer(BaseConsumer):
         self.model.gradient_checkpointing_enable()
         self.optimizer = HybridAdam(self.model.parameters(), lr=1e-3)
         self.accum_loss = torch.zeros(1, device=self.device)
-
-    def get_plugin(self):
-        return self.plugin
 
     def setup(self):
         super().setup()
