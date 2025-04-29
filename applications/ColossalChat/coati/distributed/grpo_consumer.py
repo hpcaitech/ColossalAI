@@ -151,19 +151,6 @@ class GRPOConsumer(BaseConsumer):
             eta_min=0.1 * grpo_config.get("lr", 1e-6),
         )
 
-    def get_device_mesh_mapping(self):
-        return {
-            "rank": self.rank,
-            "tp_rank": self.tp_rank,
-            "tp_size": self.tp_size,
-            "dp_size": self.dp_size,
-            "dp_rank": self.dp_rank,
-            "pp_size": self.booster.plugin.stage_manager.num_stages,
-            "pp_stage": self.booster.plugin.stage_manager.stage,
-            "is_last_stage": self.booster.plugin.stage_manager.is_last_stage(),
-            "world_size": self.world_size,
-        }
-
     def get_model_state_dict_keys(self):
         return self.orig_state_dict_key
 

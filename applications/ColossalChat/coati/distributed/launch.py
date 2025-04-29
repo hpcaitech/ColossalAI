@@ -116,11 +116,10 @@ def launch_distributed(
         consumer_procs.append(consumer)
     # setup the consumer procs first
     ray.get([p.setup.remote() for p in consumer_procs])
-    # get the device mesh mapping from consumer procs
-    consumer_device_mesh_mapping = ray.get([p.get_device_mesh_mapping.remote() for p in consumer_procs])
+    # get state dict key for checking syncing integrity
     model_state_dict_keys = ray.get(consumer_procs[0].get_model_state_dict_keys.remote())
     # setup the producer procs
-    ray.get([p.setup.remote(consumer_device_mesh_mapping, model_state_dict_keys) for p in producer_procs])
+    ray.get([p.setup.remote(model_state_dict_keys) for p in producer_procs])
     # loop
     procs = producer_procs + consumer_procs
     ray.get([p.loop.remote() for p in procs])

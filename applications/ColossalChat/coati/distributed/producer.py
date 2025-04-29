@@ -80,18 +80,12 @@ class BaseProducer:
         else:
             raise ValueError(f"Unexpected backend {backend}")
 
-    def setup(self, consumer_device_mesh_mapping: Dict[str, Any] = None, model_state_dict_keys: List = None) -> None:
-        self.consumer_device_mesh_mapping = consumer_device_mesh_mapping
+    def setup(self, model_state_dict_keys: List = None) -> None:
         self.model_state_dict_keys = model_state_dict_keys
         cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
-        # cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model_pp_stage_0")
-        for i in range(self.num_consumer_procs):
-            device_mesh_mapping = self.consumer_device_mesh_mapping[i]
-            device_mesh_mapping["rank"]
-            # TODO: support ep, sp
-            if device_mesh_mapping["dp_rank"] == 0 and device_mesh_mapping["tp_rank"] == 0:
-                group_name = f"sync_model_pp_stage_{device_mesh_mapping['pp_stage']}"
-                cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=group_name)
+        for pp_stage in range(self.consumer_plugin_config.get("pp_size", 1)):
+            group_name = f"sync_model_pp_stage_{pp_stage}"
+            cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=group_name)
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -141,17 +135,13 @@ class BaseProducer:
                     print(
                         f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                     )
-                    for consumer_rank_id in range(self.num_consumer_procs):
-                        device_mesh_mapping = self.consumer_device_mesh_mapping[consumer_rank_id]
-                        device_mesh_mapping["rank"]
-                        # TODO: support ep, sp
-                        if device_mesh_mapping["dp_rank"] == 0 and device_mesh_mapping["tp_rank"] == 0:
-                            group_name = f"sync_model_pp_stage_{device_mesh_mapping['pp_stage']}"
-                            state_dict.update(
-                                ray_broadcast_tensor_dict(
-                                    None, src=self.num_producers, device=self.device, group_name=group_name
-                                )
+                    for pp_stage in range(self.consumer_plugin_config.get("pp_size", 1)):
+                        group_name = f"sync_model_pp_stage_{pp_stage}"
+                        state_dict.update(
+                            ray_broadcast_tensor_dict(
+                                None, src=self.num_producers, device=self.device, group_name=group_name
                             )
+                        )
                     # check model sync integrity
                     assert len(state_dict) == len(
                         self.model_state_dict_keys
