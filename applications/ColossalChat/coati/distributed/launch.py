@@ -87,7 +87,7 @@ def launch_distributed(
             num_generations=num_generations,
             consumer_plugin_config=plugin_config,
             eval_dataset_config=eval_dataset_config,
-            eval_interval=eval_interval,
+            eval_interval=eval_interval * num_recv_per_update,
             evaluation_function_type=grpo_config["reward_fn_type"],
             eval_save_dir=eval_save_dir,
         )
