@@ -58,7 +58,7 @@ if __name__ == "__main__":
         "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
     )
     parser.add_argument(
-        "--master_port", type=int, default=29506, help="Master port for multi-node distributed training, Optional"
+        "--master_port", type=int, default=29505, help="Master port for multi-node distributed training, Optional"
     )
 
     # Sampling parameters
@@ -223,7 +223,7 @@ if __name__ == "__main__":
             "zero_stage": 2,
         },  # for zero
         # plugin_config={
-        #     "tp_size": 2,
+        #     "tp_size": 1,
         #     "pp_size": 2,
         #     "microbatch_size": max(
         #         1, args.train_microbatch_size // 2
