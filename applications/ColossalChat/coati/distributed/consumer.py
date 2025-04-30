@@ -81,18 +81,16 @@ class BaseConsumer:
 
         # Init Hybrid ray process group
         for i in range(self.num_producers):
-            cc.init_collective_group(self.world_size + 1, self.rank + 1, backend="hccl", group_name=f"sync_data_{i}")
+            cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
         if self.pp_size > 1:
             # use hybrid tp + pp
             if self.tp_rank == 0 and self.dp_rank == 0:
                 cc.init_collective_group(
-                    self.num_producers + 1, self.num_producers, backend="hccl", group_name=f"sync_model_{self.pp_rank}"
+                    self.num_producers + 1, self.num_producers, group_name=f"sync_model_{self.pp_rank}"
                 )
         else:
             if self.rank == 0:
-                cc.init_collective_group(
-                    self.num_producers + 1, self.num_producers, backend="hccl", group_name="sync_model"
-                )
+                cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
 
         self.buffer = []
 
@@ -154,7 +152,12 @@ class BaseConsumer:
                             print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
 
                     if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
-                        print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        if self.pp_size > 1:
+                            print(
+                                f"[T{dist.get_rank()}] Sync model PP stage {self.pp_rank} episode {episode} step {step}"
+                            )
+                        else:
+                            print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
                         torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.pp_size > 1:

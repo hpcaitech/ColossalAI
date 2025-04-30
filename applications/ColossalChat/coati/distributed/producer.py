@@ -82,16 +82,12 @@ class BaseProducer:
         self.consumer_pp_size = consumer_plugin_config["pp_size"]  # consumer pp size
 
     def setup(self) -> None:
-        cc.init_collective_group(
-            1 + self.num_consumer_procs, 0, backend="hccl", group_name=f"sync_data_{self.producer_idx}"
-        )
+        cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
         if self.consumer_pp_size > 1:
             for i in range(self.consumer_pp_size):
-                cc.init_collective_group(
-                    self.num_producers + 1, self.producer_idx, backend="hccl", group_name=f"sync_model_{i}"
-                )
+                cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=f"sync_model_{i}")
         else:
-            cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend="hccl", group_name="sync_model")
+            cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model")
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -142,8 +138,8 @@ class BaseProducer:
                     torch.cuda.empty_cache()
 
                     if self.consumer_pp_size > 1:
-                        # TODO: loop load
                         for i in range(self.consumer_pp_size):
+                            print(f"[P{self.producer_idx}] Sync model PP stage {i}")
                             state_dict = ray_broadcast_tensor_dict(
                                 None, self.num_producers, device=self.device, group_name=f"sync_model_{i}"
                             )

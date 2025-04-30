@@ -58,7 +58,7 @@ if __name__ == "__main__":
         "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
     )
     parser.add_argument(
-        "--master_port", type=int, default=29506, help="Master port for multi-node distributed training, Optional"
+        "--master_port", type=int, default=29505, help="Master port for multi-node distributed training, Optional"
     )
 
     # Sampling parameters
@@ -129,7 +129,7 @@ if __name__ == "__main__":
             args.top_k = -1
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False, attn_implementation="eager")
+    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
     generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
 
     if args.backend == "transformers":
@@ -155,7 +155,7 @@ if __name__ == "__main__":
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
-                tensor_parallel_size=2,
+                tensor_parallel_size=1,
             )
         )
         generate_config.update(
@@ -223,7 +223,7 @@ if __name__ == "__main__":
             "zero_stage": 2,
         },  # for zero
         # plugin_config={
-        #     "tp_size": 2,
+        #     "tp_size": 1,
         #     "pp_size": 2,
         #     "microbatch_size": max(
         #         1, args.train_microbatch_size // 2
