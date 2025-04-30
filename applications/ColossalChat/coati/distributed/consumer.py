@@ -18,7 +18,7 @@ from colossalai.utils import get_current_device
 from .comm import ray_broadcast_tensor_dict
 from .utils import bind_batch, pad_batch, post_recv, unbind_batch
 
-
+first_sleep=True
 class BaseConsumer:
     def __init__(
         self,
@@ -55,7 +55,8 @@ class BaseConsumer:
         self.model_config = model_config
         self.plugin_config = plugin_config
 
-        self.device = get_current_device()
+        # self.device = get_current_device()
+        self.device = 'npu'
         self.lr_scheduler = None
 
     def setup(self) -> None:
@@ -86,11 +87,11 @@ class BaseConsumer:
             # use hybrid tp + pp
             if self.tp_rank == 0 and self.dp_rank == 0:
                 cc.init_collective_group(
-                    self.num_producers + 1, self.num_producers, group_name=f"sync_model_{self.pp_rank}"
+                    self.num_producers + 1, self.num_producers, backend='hccl', group_name=f"sync_model_{self.pp_rank}"
                 )
         else:
             if self.rank == 0:
-                cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
+                cc.init_collective_group(self.num_producers + 1, self.num_producers, backend='hccl', group_name="sync_model")
 
         self.buffer = []
 
@@ -114,6 +115,11 @@ class BaseConsumer:
                         # receive data from producers
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
+                            global first_sleep
+                            if first_sleep:
+                                import time
+                                time.sleep(180)
+                                first_sleep=False
                             self.buffer.extend(
                                 unbind_batch(
                                     ray_broadcast_tensor_dict(
