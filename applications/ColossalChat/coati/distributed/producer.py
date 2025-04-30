@@ -39,7 +39,6 @@ class BaseProducer:
         self.microbatch_size = microbatch_size
         assert batch_size % microbatch_size == 0
         self.num_microbatches = batch_size // microbatch_size
-        print("Num micro batches: ", self.num_microbatches)
 
         self.dataset_config = dataset_config
         self.model_config = model_config
