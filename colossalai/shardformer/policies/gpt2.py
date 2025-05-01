@@ -47,7 +47,10 @@ class GPT2Policy(Policy):
             if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
 
+<<<<<<< Updated upstream
         print("embedding_cls", embedding_cls)
+=======
+>>>>>>> Stashed changes
 
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
@@ -220,7 +223,6 @@ class GPT2Policy(Policy):
 
         if embedding_cls is not None:
             # padding vocabulary size when using pp to make it divisible by  shard_config.make_vocab_size_divisible_by
-            print("embedding_cls", embedding_cls)
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="wte",
@@ -391,7 +393,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
         module_policy = super().module_policy()
         module_policy[GPT2LMHeadModel] = ModulePolicyDescription()
         if self.shard_config.enable_tensor_parallelism:
-            print("self.shard_config.enable_tensor_parallelism", self.shard_config.enable_tensor_parallelism)
             self.append_or_create_submodule_replacement(
                 description=SubModuleReplacementDescription(
                     suffix="lm_head",
@@ -428,7 +429,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
             self.set_pipeline_forward(
                 model_cls=GPT2LMHeadModel,
                 new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
-                # shard_config=self.shard_config,
+                shard_config=self.shard_config,
                 policy=module_policy,
             )
         return module_policy

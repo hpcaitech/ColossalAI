@@ -85,8 +85,6 @@ def _get_attention_mask(
             attention_mask,
             is_causal=True,
         )
-    elif self._attn_implementation == "flash_attention_2":
-        attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
     elif attention_mask is not None:
         if batch_size <= 0:
             raise ValueError("batch_size has to be defined and > 0")
