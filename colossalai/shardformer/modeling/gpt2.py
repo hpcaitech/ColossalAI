@@ -211,7 +211,6 @@ class GPT2PipelineForwards:
             encoder_attention_mask,
         )
 
-
         if self.gradient_checkpointing and self.training:
             if use_cache:
                 logger.warning_once(
@@ -877,7 +876,7 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
             )
         else:
             attn_output = ColoAttention.attention(query, key, value, **attention_mask, dropout_p=dropout_p, scale=scale)
-        
+
         attn_output = attn_output.permute(0, 2, 1, 3).contiguous()
         attn_output = attn_output.reshape(*attn_output.shape[:-2], -1).contiguous()
         attn_output = self.c_proj(attn_output)

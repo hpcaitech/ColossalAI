@@ -40,15 +40,12 @@ class GPT2Policy(Policy):
 
         policy = {}
 
-
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = col_nn.VocabParallelEmbedding1D
         else:
             if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
-
-
 
         print("embedding_cls", embedding_cls)
 
