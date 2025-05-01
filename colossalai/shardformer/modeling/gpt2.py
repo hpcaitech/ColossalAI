@@ -39,7 +39,6 @@ def _get_attention_mask(
     attention_mask: Optional[torch.FloatTensor],
     encoder_hidden_states: Optional[torch.Tensor],
     encoder_attention_mask: Optional[torch.FloatTensor],
-    head_mask: Optional[torch.Tensor] = None,
 ) -> Tuple[Optional[Union[torch.Tensor, dict]], Optional[Union[torch.Tensor, dict]]]:
     # Received input is already split for non-first pipeline stages,
     # but attn mask isn't
@@ -49,9 +48,7 @@ def _get_attention_mask(
     sp_mode = shard_config.sequence_parallelism_mode
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
-    _use_sdpa = self._attn_implementation == "sdpa"
-    print("_use_sdpa", _use_sdpa)
-    from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask_for_sdpa, _prepare_4d_causal_attention_mask_for_sdpa
+
     if self.config.add_cross_attention and encoder_hidden_states is not None:
         assert not sp_mode == "ring_attn", "Ring Attention only supports decoder-only."
         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
@@ -59,7 +56,7 @@ def _get_attention_mask(
             encoder_attention_mask = ColoAttention.prepare_attn_kwargs(
                 (encoder_batch_size, 1, seq_len, encoder_sequence_length),
                 dtype=hidden_states.dtype,
-                dtype2=encoder_hidden_states.dtype,
+                device=encoder_hidden_states.device,
                 q_padding_mask=attention_mask,
                 kv_padding_mask=encoder_attention_mask,
             )
@@ -67,12 +64,7 @@ def _get_attention_mask(
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=encoder_hidden_states.device)
-            if _use_sdpa:
-                encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
-                    mask=encoder_attention_mask, dtype=hidden_states.dtype, tgt_len=encoder_hidden_shape[-1]
-                )
-            elif not self._attn_implementation == "flash_attention_2":
-                encoder_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+            encoder_attention_mask = self.invert_attention_mask(encoder_attention_mask)
     else:
         if shard_config.enable_flash_attention:
             encoder_attention_mask = {"attention_mask": None}
@@ -95,13 +87,6 @@ def _get_attention_mask(
         )
     elif self._attn_implementation == "flash_attention_2":
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-    elif _use_sdpa:
-        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-            attention_mask=attention_mask,
-            input_shape=(batch_size, hidden_states[-1]),
-            inputs_embeds=hidden_states,
-            past_key_values_length=past_key_values_length,
-        )
     elif attention_mask is not None:
         if batch_size <= 0:
             raise ValueError("batch_size has to be defined and > 0")
@@ -224,7 +209,6 @@ class GPT2PipelineForwards:
             attention_mask,
             encoder_hidden_states,
             encoder_attention_mask,
-            head_mask
         )
 
 

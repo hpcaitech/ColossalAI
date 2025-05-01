@@ -400,7 +400,7 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                     suffix="lm_head",
                     target_module=col_nn.VocabParallelLMHead1D,
                     kwargs={
-                        "gather_output": True,
+                        "gather_output": False,
                         "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
                     },
                 ),
@@ -418,20 +418,20 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
                 target_key=GPT2LMHeadModel,
             )
 
-        # if self.shard_config.parallel_output:
-        #     self.append_or_create_method_replacement(
-        #         description={
-        #             "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
-        #         },
-        #         policy=module_policy,
-        #         target_key=GPT2LMHeadModel,
-        #     )
+        if self.shard_config.parallel_output:
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": partial(GPT2PipelineForwards.gpt2_lmhead_model_forward, shard_config=self.shard_config)
+                },
+                policy=module_policy,
+                target_key=GPT2LMHeadModel,
+            )
 
         if self.pipeline_stage_manager is not None:
             self.set_pipeline_forward(
                 model_cls=GPT2LMHeadModel,
                 new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
-                shard_config=self.shard_config,
+                # shard_config=self.shard_config,
                 policy=module_policy,
             )
         return module_policy
