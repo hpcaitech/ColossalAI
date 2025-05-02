@@ -53,6 +53,7 @@ def launch_distributed(
     eval_dataset_config: Optional[Dict[str, Any]] = None,
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
+    response_format_tags: Dict[Any] = None,
 ):
 
     if core_algo not in ALGO_MAP:
@@ -65,13 +66,46 @@ def launch_distributed(
 
     dataset_path = train_dataset_config["path"]
     num_samples = get_jsonl_size_fast(dataset_path)
-    global_inference_batch_size = inference_batch_size * num_producers  # TODO: this doesn't support TP on producer
+    global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
     num_recv_per_update = inference_batch_size // inference_microbatch_size
 
-    procs = []
+    # Attention: Ray use complex schedualing method that consider various factors including load-balancing.
+    # when requesting resources, it is not guaranteed that the resource comes from a node with lower node it
+    # this go against the design principle of our implementation, and we need to manually force the schedualing,
+    # allocating the producer to nodes with lower node id and the consumer to the resouces from nodes with higher
+    # node id. See the reference here: https://docs.ray.io/en/latest/ray-core/scheduling/index.html#nodeaffinityschedulingstrategy
+    nodes = ray.nodes()
+    node_info = {
+        node["NodeID"]: {
+            "num_gpus": node["Resources"].get("GPU", 0),
+            "address": node["NodeManagerAddress"],
+        }  # Default to 0 if no GPUs are available
+        for node in nodes
+    }
+    gpu_to_node_id = []
+    gpu_to_ip_address = []
+    for node_id in node_info:
+        for idx in range(int(node_info[node_id]["num_gpus"])):
+            gpu_to_node_id.append(node_id)
+            gpu_to_ip_address.append(node_info[node_id]["address"])
+    print(node_info)
+
+    producer_procs = []
     for i in range(num_producers):
-        producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
+        node_id = gpu_to_node_id[0]
+        producer_ip_address = gpu_to_ip_address[0]
+        for _ in range(num_proc_per_producer):
+            gpu_to_node_id.pop(0)
+            gpu_to_ip_address.pop(0)
+        print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
+        producer = SimpleProducer.options(
+            num_gpus=num_proc_per_producer,
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=node_id,
+                soft=False,
+            ),
+        ).remote(
             producer_idx=i,
             num_producers=num_producers,
             num_consumer_procs=num_consumer_procs,
@@ -91,20 +125,35 @@ def launch_distributed(
             evaluation_function_type=grpo_config["reward_fn_type"],
             eval_save_dir=eval_save_dir,
         )
-        procs.append(producer)
+        producer_procs.append(producer)
+    ray.get([p.setup.remote() for p in producer_procs])
     generate_config_consumer = copy.deepcopy(generate_config)
     generate_config_consumer.update(
         dict(
             backend=inference_backend,
         )
     )
+    consumer_master_ip_address = gpu_to_ip_address[0]
+    print(f"Use {consumer_master_ip_address} as master address for torch DDP.")
+    consumer_procs = []
     for i in range(num_consumer_procs):
-        consumer = core_consumer.options(num_gpus=1).remote(
+        node_id = gpu_to_node_id[0]
+        consumer_ip_address = gpu_to_ip_address[0]
+        gpu_to_node_id.pop(0)
+        gpu_to_ip_address.pop(0)
+        print(f"Schedual Consumer T[{i}] which requires 1 GPUs on node {consumer_ip_address}")
+        consumer = core_consumer.options(
+            num_gpus=1,
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=node_id,
+                soft=False,
+            ),
+        ).remote(
             num_producers=num_producers,
             num_episodes=num_episodes,
             rank=i,
             world_size=num_consumer_procs,
-            master_addr=master_addr,
+            master_addr=consumer_master_ip_address,
             master_port=master_port,
             num_update_per_episode=num_update_per_episode,
             num_recv_per_update=num_recv_per_update,
@@ -119,7 +168,8 @@ def launch_distributed(
             save_interval=save_interval,
             save_dir=save_dir,
             eval_interval=eval_interval,
+            response_format_tags=response_format_tags,
         )
-        procs.append(consumer)
-    ray.get([p.setup.remote() for p in procs])
-    ray.get([p.loop.remote() for p in procs])
+        consumer_procs.append(consumer)
+    ray.get([p.setup.remote() for p in consumer_procs])
+    ray.get([p.loop.remote() for p in (producer_procs + consumer_procs)])

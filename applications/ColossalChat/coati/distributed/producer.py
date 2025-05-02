@@ -112,6 +112,8 @@ class BaseProducer:
                         drop_last=False,
                         seed=42,
                     ),
+                    num_workers=4,
+                    drop_last=False,
                 )
             if evaluation_function_type == "think_answer_tags":
                 self.evaluation_function = math_reward_fn
@@ -166,8 +168,8 @@ class BaseProducer:
                             )
                             eval_results = []
                             eval_statistics[eval_task_name] = torch.zeros(2, device=self.device)
-                            for eval_batch in tqdm.tqdm(
-                                self.eval_dataloaders[eval_task_name], disable=self.producer_idx != 0
+                            for eval_batch_id, eval_batch in tqdm.tqdm(
+                                enumerate(self.eval_dataloaders[eval_task_name]), desc=f"Evaluating: {eval_task_name}"
                             ):
                                 eval_outputs = self.rollout(**eval_batch, sample_params=self.eval_sample_params)
                                 eval_results = eval_results + [
@@ -190,9 +192,7 @@ class BaseProducer:
                                 self.eval_save_dir,
                                 f"{eval_task_name}_episode_{episode}_step_{self.consumer_global_step}.jsonl",
                             )
-                            # delete the file if it exists
                             safe_write_jsonl(result_file_name, eval_results)
-                        print(f"[P{self.producer_idx}] Send eval statistics episode {episode} step {i}")
                         eval_statistics["consumer_global_step"] = torch.tensor(
                             [self.consumer_global_step], device=self.device
                         )
@@ -230,6 +230,8 @@ class BaseProducer:
                             state_dict = ray_broadcast_tensor_dict(
                                 None, self.num_producers, device=self.device, group_name=f"sync_model_{pp_idx}"
                             )
+                            if "consumer_global_step" in state_dict:
+                                self.consumer_global_step = state_dict.pop("consumer_global_step").item()
                             self.load_state_dict(state_dict)
                     else:
                         print(
@@ -308,7 +310,10 @@ class SimpleProducer(BaseProducer):
     def rollout(self, input_ids, attention_mask, **kwargs):
         rollouts = self.model.generate(input_ids, attention_mask, **kwargs)
         if self.producer_idx == 1:
-            print("Rollout example:\n", self.tokenizer.decode(rollouts["input_ids"][0][0], skip_special_tokens=True))
+            print(
+                "Truncated rollout example:\n",
+                self.tokenizer.decode(rollouts["input_ids"][0][0][-5000:], skip_special_tokens=True),
+            )
 
         return rollouts
 

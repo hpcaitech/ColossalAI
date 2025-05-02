@@ -115,10 +115,10 @@ class BaseConsumer:
                         eval_statistics = None
                         eval_global_step = None
                         for r in range(self.num_producers):
-                            print(f"[T{dist.get_rank()}] Recv eval result episode {episode} step {step} from {r}")
                             local_eval_result = ray_broadcast_tensor_dict(
                                 None, src=0, device=self.device, group_name=f"sync_data_{r}"
                             )
+                            print(f"[T{dist.get_rank()}] Recv eval result episode {episode} step {step} from {r}")
                             assert "consumer_global_step" in local_eval_result
                             eval_global_step = local_eval_result.pop("consumer_global_step").item()
                             if eval_statistics is None:

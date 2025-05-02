@@ -41,6 +41,7 @@ class GRPOConsumer(BaseConsumer):
         save_interval: int = 100,
         save_dir="./model",
         eval_interval: int = -1,
+        response_format_tags: dict = None,
     ):
         print(f"Using GRPO config: {grpo_config}")
         if grpo_config.get("loss_variation", "sample_level") == "token_level":
@@ -125,12 +126,6 @@ class GRPOConsumer(BaseConsumer):
                     "either max_tokens (vllm) or max_new_tokens (transformers) must be set in generate_config."
                 )
         # Initialize verifiable reward.
-        response_format_tags = {
-            "think_start": {"text": "<think>", "num_occur": 1},
-            "think_end": {"text": "</think>", "num_occur": 1},
-            "answer_start": {"text": "<answer>", "num_occur": 1},
-            "answer_end": {"text": "</answer>", "num_occur": 1},
-        }
         reward_model_kwargs = {
             k: v for k, v in grpo_config.items() if k in ["soft_over_length_punishment", "max_length", "cache_length"]
         }
@@ -377,7 +372,7 @@ class GRPOConsumer(BaseConsumer):
                             kl.append(appox_kl.mean())
                         else:
                             per_token_kl = 0.0
-                            kl.append(0.0)
+                            kl.append(torch.zeros(1, device=action_log_probs.device))
 
                         loss, _ = self.policy_loss_fn(
                             action_log_probs,
