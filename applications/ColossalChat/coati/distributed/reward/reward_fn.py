@@ -148,7 +148,7 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     gt_answer = tokenizer.decode(gt_answer.squeeze(0), skip_special_tokens=True)
     final_answer = extract_boxed_solution(decoded_final_answer)
     format_valid = final_answer is not None
-    if "tags" in kwargs:
+    if "tags" in kwargs and kwargs["tags"]:
         tags = kwargs["tags"]
         format_valid = format_valid and all(
             [decoded_final_answer.count(tags[tag]["text"]) == tags[tag]["num_occur"] for tag in tags]
