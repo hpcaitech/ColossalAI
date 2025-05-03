@@ -184,7 +184,7 @@ if __name__ == "__main__":
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
-                tensor_parallel_size=2,
+                tensor_parallel_size=1,
             )
         )
         generate_config.update(
