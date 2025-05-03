@@ -1,7 +1,10 @@
+import json
+import os
 from collections import defaultdict
 from typing import Any, Dict, List
 
 import torch
+from filelock import FileLock
 
 from colossalai.shardformer.layer.loss import dist_log_prob
 
@@ -152,3 +155,13 @@ def masked_sum(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.
     """
     tensor = tensor * mask
     return tensor.sum(dim=dim)
+
+
+def safe_write_jsonl(file_path, data):
+    with FileLock(file_path + ".lock"):
+        # Ensure file exists
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "a", encoding="utf8") as f:
+            for entry in data:
+                json_line = json.dumps(entry, ensure_ascii=False)
+                f.write(json_line + "\n")
