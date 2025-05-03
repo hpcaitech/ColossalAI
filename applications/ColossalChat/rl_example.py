@@ -78,12 +78,6 @@ if __name__ == "__main__":
         help="Ray master address for multi-node distributed training, Optional",
     )
     parser.add_argument(
-        "--torch_ddp_master_address",
-        type=str,
-        default=None,
-        help="Torch DDP master address for multi-node distributed training, Optional",
-    )
-    parser.add_argument(
         "--torch_ddp_master_port",
         type=int,
         default=29505,
@@ -125,7 +119,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("-ei", "--eval-interval", type=int, default=100, help="Interval for evaluation.")
     parser.add_argument(
-        "-rft", "--reponse_format-tags", type=str, default=None, help="Optional json string of the response format tag"
+        "-rft", "--response_format_tags", type=str, default=None, help="Optional json string of the response format tag"
     )
 
     # Logging/Checkpointing parameters
@@ -186,11 +180,11 @@ if __name__ == "__main__":
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.7,
+                gpu_memory_utilization=0.5,
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
-                tensor_parallel_size=1,
+                tensor_parallel_size=2,
             )
         )
         generate_config.update(
@@ -267,7 +261,6 @@ if __name__ == "__main__":
         #    "max_norm": 1.0,
         # },  # for pp, tp
         inference_backend=args.backend,
-        master_addr=args.torch_ddp_master_address,
         master_port=args.torch_ddp_master_port,
         core_algo=args.algo,
         project_name=args.project,

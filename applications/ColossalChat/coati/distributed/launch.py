@@ -44,7 +44,6 @@ def launch_distributed(
     tokenizer_config: Optional[Dict[str, Any]] = None,
     inference_backend: str = "transformers",
     num_generations: int = 8,
-    master_addr: str = "localhost",
     master_port: int = 29500,
     core_algo: str = "GRPO",
     project_name: Optional[str] = None,
@@ -53,7 +52,7 @@ def launch_distributed(
     eval_dataset_config: Optional[Dict[str, Any]] = None,
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
-    response_format_tags: Dict[Any] = None,
+    response_format_tags: Dict[str, Any] = None,
 ):
 
     if core_algo not in ALGO_MAP:
