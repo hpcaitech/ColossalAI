@@ -303,7 +303,9 @@ class SimpleProducer(BaseProducer):
         )
         self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
         self.eval_generation_config = copy.deepcopy(self.model.generate_config)
-        self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
+        self.eval_generation_config.update(
+            {"n": 1, "temperature": 0.6, "top_p": 0.95}
+        )  # use 1 generation for evaluation
         self.eval_sample_params = SamplingParams(**self.eval_generation_config)
 
     @torch.no_grad()
