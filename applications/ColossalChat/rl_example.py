@@ -246,7 +246,7 @@ if __name__ == "__main__":
         #     "zero_stage": 2,
         # },  # for zero
         plugin_config={
-            "tp_size": 4,
+            "tp_size": 2,
             "pp_size": 2,
             "microbatch_size": max(
                 1, args.train_microbatch_size // 2
@@ -261,7 +261,15 @@ if __name__ == "__main__":
         save_interval=args.save_interval,
         save_dir=os.path.join(args.save_dir, args.project.replace(" ", "_")),
         eval_dataset_config={
-            k: {"path": v, "max_length": args.max_prompt_tokens, "system_prompt": args.system_prompt}
+            k: {
+                "path": v["path"],
+                "max_length": args.max_prompt_tokens + args.max_new_tokens,
+                "max_new_tokens": args.max_new_tokens,
+                "system_prompt": args.system_prompt,
+                "temperature": v.get("temperature", 0.6),
+                "top_p": v.get("top_p", 0.95),
+                "top_k": v.get("top_k", 50),
+            }
             for k, v in json.loads(args.eval_dataset).items()
         },
         eval_interval=args.eval_interval,

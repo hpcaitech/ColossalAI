@@ -93,12 +93,14 @@ class BaseProducer:
         )
 
         self.eval_dataset_config = eval_dataset_config
-        if self.eval_dataset_config is not None and self.eval_interval > 0:
+        if self.eval_dataset_config is not None:
             self.eval_dataloaders = {}
             for eval_task_name in self.eval_dataset_config:
-                eval_dataset_path = eval_dataset_config[eval_task_name].pop("path")
                 eval_dataset = RawConversationDataset(
-                    self.tokenizer, eval_dataset_path, **eval_dataset_config[eval_task_name]
+                    self.tokenizer,
+                    eval_dataset_config[eval_task_name]["path"],
+                    eval_dataset_config[eval_task_name]["max_length"],
+                    eval_dataset_config[eval_task_name]["system_prompt"],
                 )
                 print(f"[P{self.producer_idx}] eval dataset {eval_task_name} size: {len(eval_dataset)}")
                 self.eval_dataloaders[eval_task_name] = DataLoader(
@@ -171,7 +173,14 @@ class BaseProducer:
                             for eval_batch_id, eval_batch in tqdm.tqdm(
                                 enumerate(self.eval_dataloaders[eval_task_name]), desc=f"Evaluating: {eval_task_name}"
                             ):
-                                eval_outputs = self.rollout(**eval_batch, sample_params=self.eval_sample_params)
+                                if isinstance(self.model, BACKEND_MAP["vllm"]):
+                                    eval_outputs = self.rollout(
+                                        **eval_batch, sample_params=self.eval_sample_params[eval_task_name]
+                                    )
+                                elif isinstance(self.model, BACKEND_MAP["transformers"]):
+                                    eval_outputs = self.rollout(
+                                        **eval_batch, generate_config=self.eval_generation_config[eval_task_name]
+                                    )
                                 eval_results = eval_results + [
                                     self.evaluation_function(
                                         eval_outputs["input_ids"][m][n],
@@ -179,6 +188,7 @@ class BaseProducer:
                                         eval_outputs["response_idx"][m][n],
                                         tokenizer=self.tokenizer,
                                         eval_mode=True,
+                                        max_new_tokens=self.eval_dataset_config[eval_task_name]["max_new_tokens"],
                                     )
                                     for m in range(eval_outputs["input_ids"].size(0))
                                     for n in range(eval_outputs["input_ids"].size(1))
@@ -302,11 +312,29 @@ class SimpleProducer(BaseProducer):
             eval_save_dir=eval_save_dir,
         )
         self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
-        self.eval_generation_config = copy.deepcopy(self.model.generate_config)
-        self.eval_generation_config.update(
-            {"n": 1, "temperature": 0.6, "top_p": 0.95}
-        )  # use 1 generation for evaluation
-        self.eval_sample_params = SamplingParams(**self.eval_generation_config)
+        self.eval_sample_params = {}
+        for eval_task_name in eval_dataset_config:
+            eval_generation_config = copy.deepcopy(self.model.generate_config)
+            if isinstance(self.model, BACKEND_MAP["vllm"]):
+                eval_generation_config.update(
+                    {
+                        "n": 1,
+                        "temperature": eval_dataset_config[eval_task_name]["temperature"],
+                        "top_p": eval_dataset_config[eval_task_name]["top_p"],
+                        "top_k": eval_dataset_config[eval_task_name]["top_k"],
+                    }
+                )  # use 1 generation for evaluation
+                self.eval_sample_params[eval_task_name] = SamplingParams(**eval_generation_config)
+            elif isinstance(self.model, BACKEND_MAP["transformers"]):
+                eval_generation_config.update(
+                    {
+                        "num_return_sequences": 1,
+                        "temperature": eval_dataset_config[eval_task_name]["temperature"],
+                        "top_p": eval_dataset_config[eval_task_name]["top_p"],
+                        "top_k": eval_dataset_config[eval_task_name]["top_k"],
+                    }
+                )  # use 1 generation for evaluation
+                self.eval_generation_config[eval_task_name] = copy.deepcopy(eval_generation_config)
 
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
