@@ -93,7 +93,7 @@ class BaseProducer:
         )
 
         self.eval_dataset_config = eval_dataset_config
-        if self.eval_dataset_config is not None:
+        if self.eval_dataset_config is not None and self.eval_interval > 0:
             self.eval_dataloaders = {}
             for eval_task_name in self.eval_dataset_config:
                 eval_dataset_path = eval_dataset_config[eval_task_name].pop("path")

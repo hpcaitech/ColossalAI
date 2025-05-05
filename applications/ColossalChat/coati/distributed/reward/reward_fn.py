@@ -81,12 +81,8 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     s, e = response_idx[0], response_idx[1]
 
     length_reward = 0.0
-    if soft_over_length_punishment:
-        max_length = kwargs.get("max_length", 1024 * 4)
-        cache_length = kwargs.get("cache_length", 512)
-        res_length = e.item() - s.item() + 1
-        if max_length - cache_length < res_length < max_length:
-            length_reward = ((max_length - cache_length) - res_length) / cache_length * acc_score
+    max_new_tokens = kwargs["max_new_tokens"]
+    res_length = e.item() - s.item() + 1
 
     if gt_answer is None:
         return reward
@@ -105,7 +101,16 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     if format_valid and final_answer is not None:
         reward, ans_acc = verify_model_answer(decoded_final_answer, gt_answer, ans_acc, acc_score, reward)
 
-    reward = reward + length_reward
+    if soft_over_length_punishment:
+        cache_length = kwargs.get("cache_length", 512)
+        if max_new_tokens - cache_length < res_length:
+            length_reward = ((max_new_tokens - cache_length) - res_length) / cache_length * acc_score
+        reward = reward + length_reward
+    if res_length >= max_new_tokens:
+        # no reward for over length
+        print(f"Overlength response detected: res_len: {e.item()-s.item()+1}, limit:{max_new_tokens}")
+        reward *= 0.0
+        format_acc *= 0.0
 
     if not eval_mode:
         return torch.tensor([reward, format_acc, ans_acc]).to(input_ids.device)
@@ -133,12 +138,8 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     s, e = response_idx[0], response_idx[1]
 
     length_reward = 0.0
-    if soft_over_length_punishment:
-        max_length = kwargs.get("max_length", 1024 * 4)
-        cache_length = kwargs.get("cache_length", 512)
-        res_length = e.item() - s.item() + 1
-        if max_length - cache_length < res_length < max_length:
-            length_reward = ((max_length - cache_length) - res_length) / cache_length * acc_score
+    max_new_tokens = kwargs["max_new_tokens"]
+    res_length = e.item() - s.item() + 1
 
     if gt_answer is None:
         return torch.tensor([reward, format_acc, ans_acc]).to(input_ids.device)
@@ -161,8 +162,17 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
     if format_valid and final_answer is not None:
         reward, ans_acc = verify_model_answer(decoded_final_answer, gt_answer, ans_acc, acc_score, reward)
+    if soft_over_length_punishment:
+        cache_length = kwargs.get("cache_length", 512)
+        if max_new_tokens - cache_length < res_length:
+            length_reward = ((max_new_tokens - cache_length) - res_length) / cache_length * acc_score
+        reward = reward + length_reward
+    if res_length >= max_new_tokens:
+        # no reward for over length
+        print(f"Overlength response detected: res_len: {e.item()-s.item()+1}, limit:{max_new_tokens}")
+        reward *= 0.0
+        format_acc *= 0.0
 
-    reward = reward + length_reward
     if not eval_mode:
         return torch.tensor([reward, format_acc, ans_acc]).to(input_ids.device)
     else:

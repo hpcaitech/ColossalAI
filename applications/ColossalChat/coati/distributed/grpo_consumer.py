@@ -127,7 +127,9 @@ class GRPOConsumer(BaseConsumer):
                 )
         # Initialize verifiable reward.
         reward_model_kwargs = {
-            k: v for k, v in grpo_config.items() if k in ["soft_over_length_punishment", "max_length", "cache_length"]
+            k: v
+            for k, v in grpo_config.items()
+            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length"]
         }
         self.reward_model = VerifiableReward(
             reward_fns=[
