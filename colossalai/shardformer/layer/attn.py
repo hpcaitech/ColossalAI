@@ -410,7 +410,7 @@ class RingAttention(torch.autograd.Function):
     We also adopt the double ring topology from LoongTrain to fully utilize available
     NICs on each node, by computing attention within a inner ring first and then sending all KVs to the next
     ring at once.
-    Our implementation references
+    Our implementation references code from
     - ring-flash-attention: https://github.com/zhuzilin/ring-flash-attention/tree/main
     - Megatron Context Parallel: https://github.com/NVIDIA/TransformerEngine/pull/726
     References:
