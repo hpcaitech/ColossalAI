@@ -459,29 +459,6 @@ def get_mistral_model_forward_for_flash_attn(shard_config: ShardConfig):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
 
-        # for decoder_layer in self.layers:
-        #     if output_hidden_states:
-        #         all_hidden_states += (hidden_states,)
-
-        #     if self.gradient_checkpointing and self.training:
-        #         layer_outputs = self._gradient_checkpointing_func(
-        #             decoder_layer.__call__,
-        #             hidden_states,
-        #             attention_mask,
-        #             position_ids,
-        #             past_key_values,
-        #             output_attentions,
-        #             use_cache,
-        #         )
-        #     else:
-        #         layer_outputs = decoder_layer(
-        #             hidden_states,
-        #             attention_mask=attention_mask,
-        #             position_ids=position_ids,
-        #             past_key_value=past_key_values,
-        #             output_attentions=output_attentions,
-        #             use_cache=use_cache,
-        #         )
 
         for decoder_layer in self.layers[: self.config.num_hidden_layers]:
             if output_hidden_states:

@@ -41,20 +41,10 @@ class MistralPolicy(Policy):
         from transformers.models.mistral.modeling_mistral import (
             MistralAttention,
             MistralDecoderLayer,
-            # MistralFlashAttention2,
             MistralModel,
-            # MistralSdpaAttention,
         )
 
-        # ATTN_IMPLEMENTATION = {
-        #     "eager": MistralAttention,
-        #     "flash_attention_2": MistralFlashAttention2,
-        #     "sdpa": MistralSdpaAttention,
-        # }
-
         policy = {}
-
-        # attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
