@@ -129,7 +129,7 @@ class BaseProducer:
         else:
             raise ValueError(f"Unexpected backend {backend}")
 
-        self.consumer_pp_size = consumer_plugin_config.get("pp_size", 1)  # consumer pp size
+        self.consumer_pp_size = consumer_plugin_config["pp_size"]  # consumer pp size
 
     def setup(self) -> None:
         cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
@@ -250,11 +250,14 @@ class BaseProducer:
                 # linear annealing for 1 episode, temperature from initial to 0.9
                 if episode <= 0:
                     ratio = 1 - (len(self.train_dataloader) - i) / len(self.train_dataloader)
-                    self.model.generate_config["temperature"] = (1 - ratio) * self.generate_config[
-                        "temperature"
-                    ] + ratio * 0.9
-                    if hasattr(self.model, "sample_params"):
-                        self.model.sample_params.temperature = self.model.generate_config["temperature"]
+                    if isinstance(self.model.generate_config.temperature, dict):
+                        self.model.generate_config["temperature"] = (1 - ratio) * self.generate_config[
+                            "temperature"
+                        ] + ratio * 0.9
+                    else:
+                        self.model.generate_config.temperature = (1 - ratio) * self.generate_config[
+                            "temperature"
+                        ] + ratio * 0.9
 
 
 @ray.remote
@@ -307,8 +310,8 @@ class SimpleProducer(BaseProducer):
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
         rollouts = self.model.generate(input_ids, attention_mask, **kwargs)
-        if self.producer_idx == 1:
-            print("Rollout example:\n", self.tokenizer.decode(rollouts["input_ids"][0][0], skip_special_tokens=True))
+        # if self.producer_idx == 1:
+        #     print("Rollout example:\n", self.tokenizer.decode(rollouts["input_ids"][0][0], skip_special_tokens=True))
 
         return rollouts
 
