@@ -165,4 +165,3 @@ applications/ColossalChat/logs
 applications/ColossalChat/tests/logs
 applications/ColossalChat/wandb
 applications/ColossalChat/model
-applications/ColossalChat/eval
