@@ -22,7 +22,7 @@ from tests.test_shardformer.test_model._utils import (
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
-
+@clear_cache_before_run()
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
@@ -176,7 +176,6 @@ def check_mistral(rank, world_size, port):
 
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
-@clear_cache_before_run()
 def test_mistral():
     spawn(check_mistral, 4)
 
