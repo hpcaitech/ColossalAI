@@ -47,11 +47,6 @@ class GPT2Policy(Policy):
             if self.tie_weight:
                 embedding_cls = col_nn.PaddingEmbedding
 
-<<<<<<< Updated upstream
-        print("embedding_cls", embedding_cls)
-=======
->>>>>>> Stashed changes
-
         if self.shard_config.enable_fused_normalization:
             norm_cls = col_nn.FusedLayerNorm
         else:
@@ -429,7 +424,6 @@ class GPT2LMHeadModelPolicy(GPT2Policy):
             self.set_pipeline_forward(
                 model_cls=GPT2LMHeadModel,
                 new_forward=GPT2PipelineForwards.gpt2_lmhead_model_forward,
-                shard_config=self.shard_config,
                 policy=module_policy,
             )
         return module_policy
