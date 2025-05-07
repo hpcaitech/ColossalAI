@@ -4,10 +4,6 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.cache_utils import Cache, DynamicCache
-from transformers.modeling_attn_mask_utils import (
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -65,18 +61,18 @@ class MistralForwards:
         else:
             input_shape = hidden_states.shape[:-1]
             batch_size, seq_length = input_shape
-            device = hidden_states.device
+            hidden_states.device
 
         past_key_values_length = 0
 
         if use_cache and past_key_values is None:
-                    past_key_values = DynamicCache()
+            past_key_values = DynamicCache()
 
         if cache_position is None:
-                    past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
-                    cache_position = torch.arange(
-                        past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
-                    )
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
+            )
 
         if position_ids is None:
             position_ids = cache_position.unsqueeze(0)
@@ -103,7 +99,7 @@ class MistralForwards:
         else:
             attention_mask = self._update_causal_mask(
                 attention_mask, hidden_states, cache_position, past_key_values, output_attentions
-                )
+            )
 
         if self.gradient_checkpointing and self.training:
             if use_cache:
@@ -151,14 +147,14 @@ class MistralForwards:
                 )
             else:
                 layer_outputs = decoder_layer(
-                hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_value=past_key_values,
-                output_attentions=output_attentions,
-                use_cache=use_cache,
-                cache_position=cache_position,
-                position_embeddings=position_embeddings,
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_value=past_key_values,
+                    output_attentions=output_attentions,
+                    use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
@@ -264,7 +260,6 @@ class MistralForwards:
             loss = None
             if labels is not None:
                 loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, self.model.dtype)
-
 
             return CausalLMOutputWithPast(
                 loss=loss,
@@ -459,7 +454,6 @@ def get_mistral_model_forward_for_flash_attn(shard_config: ShardConfig):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
 
-
         for decoder_layer in self.layers[: self.config.num_hidden_layers]:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
@@ -487,7 +481,7 @@ def get_mistral_model_forward_for_flash_attn(shard_config: ShardConfig):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-                # add hidden states from the last decoder layer
+            # add hidden states from the last decoder layer
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
         return BaseModelOutputWithPast(

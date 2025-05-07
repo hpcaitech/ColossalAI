@@ -38,11 +38,7 @@ class MistralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mistral.modeling_mistral import (
-            MistralAttention,
-            MistralDecoderLayer,
-            MistralModel,
-        )
+        from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
 
         policy = {}
 

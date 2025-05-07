@@ -22,6 +22,7 @@ from tests.test_shardformer.test_model._utils import (
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
+
 @clear_cache_before_run()
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
