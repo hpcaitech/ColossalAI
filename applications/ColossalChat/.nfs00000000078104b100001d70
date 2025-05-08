@@ -1,0 +1,389 @@
+2025-05-06 22:50:50,843	WARNING collective.py:22 -- NCCL seems unavailable. Please install Cupy following the guide at: https://docs.cupy.dev/en/stable/install.html.
+/home/duanjunwen/ColossalAI/colossalai/utils/safetensors.py:13: UserWarning: Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git
+  warnings.warn(
+/usr/local/python3.10/lib/python3.10/site-packages/bitsandbytes/cextension.py:34: UserWarning: The installed version of bitsandbytes was compiled without GPU support. 8-bit optimizers, 8-bit multiplication, and GPU quantization are unavailable.
+  warn("The installed version of bitsandbytes was compiled without GPU support. "
+/home/duanjunwen/ColossalAI/colossalai/shardformer/layer/normalization.py:48: UserWarning: Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel
+  warnings.warn("Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel")
+'NoneType' object has no attribute 'cadam32bit_grad_fp32'
+2025-05-06 22:51:04,272	INFO worker.py:1654 -- Connecting to existing Ray cluster at address: 10.0.0.3:6379...
+2025-05-06 22:51:04,285	INFO worker.py:1841 -- Connected to Ray cluster.
+[36m(pid=259440)[0m NCCL seems unavailable. Please install Cupy following the guide at: https://docs.cupy.dev/en/stable/install.html.
+[36m(pid=132985, ip=10.0.0.4)[0m /home/duanjunwen/ColossalAI/colossalai/utils/safetensors.py:13: UserWarning: Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git
+[36m(pid=132985, ip=10.0.0.4)[0m   warnings.warn(
+[36m(pid=259440)[0m /usr/local/python3.10/lib/python3.10/site-packages/bitsandbytes/cextension.py:34: UserWarning: The installed version of bitsandbytes was compiled without GPU support. 8-bit optimizers, 8-bit multiplication, and GPU quantization are unavailable.
+[36m(pid=259440)[0m   warn("The installed version of bitsandbytes was compiled without GPU support. "
+[36m(pid=132987, ip=10.0.0.4)[0m /home/duanjunwen/ColossalAI/colossalai/shardformer/layer/normalization.py:48: UserWarning: Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel
+[36m(pid=132987, ip=10.0.0.4)[0m   warnings.warn("Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel")
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+[36m(pid=132983, ip=10.0.0.4)[0m NCCL seems unavailable. Please install Cupy following the guide at: https://docs.cupy.dev/en/stable/install.html.[32m [repeated 15x across cluster][0m
+[36m(pid=259435)[0m /home/duanjunwen/ColossalAI/colossalai/utils/safetensors.py:13: UserWarning: Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git[32m [repeated 15x across cluster][0m
+[36m(pid=259435)[0m   warnings.warn([32m [repeated 15x across cluster][0m
+[36m(pid=259445)[0m /usr/local/python3.10/lib/python3.10/site-packages/bitsandbytes/cextension.py:34: UserWarning: The installed version of bitsandbytes was compiled without GPU support. 8-bit optimizers, 8-bit multiplication, and GPU quantization are unavailable.[32m [repeated 15x across cluster][0m
+[36m(pid=259445)[0m   warn("The installed version of bitsandbytes was compiled without GPU support. "[32m [repeated 15x across cluster][0m
+[36m(pid=259435)[0m /home/duanjunwen/ColossalAI/colossalai/shardformer/layer/normalization.py:48: UserWarning: Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel[32m [repeated 15x across cluster][0m
+[36m(pid=259435)[0m   warnings.warn("Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMSNorm kernel")[32m [repeated 15x across cluster][0m
+[36m(SimpleProducer pid=259434)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch_npu/contrib/transfer_to_npu.py:292: ImportWarning: 
+[36m(SimpleProducer pid=259434)[0m     *************************************************************************************************************
+[36m(SimpleProducer pid=259434)[0m     The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..
+[36m(SimpleProducer pid=259434)[0m     The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..
+[36m(SimpleProducer pid=259434)[0m     The backend in torch.distributed.init_process_group set to hccl now..
+[36m(SimpleProducer pid=259434)[0m     The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..
+[36m(SimpleProducer pid=259434)[0m     The device parameters have been replaced with npu in the function below:
+[36m(SimpleProducer pid=259434)[0m     torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuffer, torch.normal, torch._empty_per_channel_affine_quantized, torch.empty_strided, torch.empty_like, torch.scalar_tensor, torch.tril_indices, torch.bartlett_window, torch.ones, torch.sparse_coo_tensor, torch.randn, torch.kaiser_window, torch.tensor, torch.triu_indices, torch.as_tensor, torch.zeros, torch.randint_like, torch.full, torch.eye, torch._sparse_csr_tensor_unsafe, torch.empty, torch._sparse_coo_tensor_unsafe, torch.blackman_window, torch.zeros_like, torch.range, torch.sparse_csr_tensor, torch.randn_like, torch.from_file, torch._cudnn_init_dropout_state, torch._empty_affine_quantized, torch.linspace, torch.hamming_window, torch.empty_quantized, torch._pin_memory, torch.autocast, torch.load, torch.Generator, torch.set_default_device, torch.Tensor.new_empty, torch.Tensor.new_empty_strided, torch.Tensor.new_full, torch.Tensor.new_ones, torch.Tensor.new_tensor, torch.Tensor.new_zeros, torch.Tensor.to, torch.Tensor.pin_memory, torch.nn.Module.to, torch.nn.Module.to_empty
+[36m(SimpleProducer pid=259434)[0m     *************************************************************************************************************
+[36m(SimpleProducer pid=259434)[0m     
+[36m(SimpleProducer pid=259434)[0m   warnings.warn(msg, ImportWarning)
+[36m(SimpleProducer pid=259434)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch_npu/contrib/transfer_to_npu.py:247: RuntimeWarning: torch.jit.script and torch.jit.script_method will be disabled by transfer_to_npu, which currently does not support them, if you need to enable them, please do not use transfer_to_npu.
+[36m(SimpleProducer pid=259434)[0m   warnings.warn(msg, RuntimeWarning)
+[36m(SimpleProducer pid=259443)[0m     
+[36m(SimpleProducer pid=259437)[0m     
+[36m(SimpleProducer pid=259449)[0m     
+[36m(SimpleProducer pid=259445)[0m     
+[36m(SimpleProducer pid=259440)[0m     
+[36m(SimpleProducer pid=259435)[0m     
+[36m(SimpleProducer pid=259436)[0m     
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Loading checkpoint shards:  25%|██▌       | 1/4 [00:06<00:20,  6.80s/it]
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s][32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch_npu/contrib/transfer_to_npu.py:292: ImportWarning: [32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     *************************************************************************************************************[32m [repeated 14x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     The torch.Tensor.cuda and torch.nn.Module.cuda are replaced with torch.Tensor.npu and torch.nn.Module.npu now..[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     The torch.cuda.DoubleTensor is replaced with torch.npu.FloatTensor cause the double type is not supported now..[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     The backend in torch.distributed.init_process_group set to hccl now..[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     The torch.cuda.* and torch.cuda.amp.* are replaced with torch.npu.* and torch.npu.amp.* now..[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     The device parameters have been replaced with npu in the function below:[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m     torch.logspace, torch.randint, torch.hann_window, torch.rand, torch.full_like, torch.ones_like, torch.rand_like, torch.randperm, torch.arange, torch.frombuffer, torch.normal, torch._empty_per_channel_affine_quantized, torch.empty_strided, torch.empty_like, torch.scalar_tensor, torch.tril_indices, torch.bartlett_window, torch.ones, torch.sparse_coo_tensor, torch.randn, torch.kaiser_window, torch.tensor, torch.triu_indices, torch.as_tensor, torch.zeros, torch.randint_like, torch.full, torch.eye, torch._sparse_csr_tensor_unsafe, torch.empty, torch._sparse_coo_tensor_unsafe, torch.blackman_window, torch.zeros_like, torch.range, torch.sparse_csr_tensor, torch.randn_like, torch.from_file, torch._cudnn_init_dropout_state, torch._empty_affine_quantized, torch.linspace, torch.hamming_window, torch.empty_quantized, torch._pin_memory, torch.autocast, torch.load, torch.Generator, torch.set_default_device, torch.Tensor.new_empty, torch.Tensor.new_empty_strided, torch.Tensor.new_full, torch.Tensor.new_ones, torch.Tensor.new_tensor, torch.Tensor.new_zeros, torch.Tensor.to, torch.Tensor.pin_memory, torch.nn.Module.to, torch.nn.Module.to_empty[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m   warnings.warn(msg, ImportWarning)[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch_npu/contrib/transfer_to_npu.py:247: RuntimeWarning: torch.jit.script and torch.jit.script_method will be disabled by transfer_to_npu, which currently does not support them, if you need to enable them, please do not use transfer_to_npu.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m   warnings.warn(msg, RuntimeWarning)[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259443)[0m [W506 22:51:37.130852786 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(SimpleProducer pid=259443)[0m [rank0]:[W506 22:51:37.133613460 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(SimpleProducer pid=259443)[0m [rank0]:[W506 22:51:37.159879408 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(SimpleProducer pid=259443)[0m [rank0]:[W506 22:51:37.166827262 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(SimpleProducer pid=259443)[0m Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s]
+[36m(GRPOConsumer pid=132984, ip=10.0.0.4)[0m Loading checkpoint shards:  25%|██▌       | 1/4 [00:07<00:23,  7.91s/it][32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259437)[0m Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:04<00:12,  4.10s/it]
+[36m(SimpleProducer pid=259436)[0m [rank0]:[W506 22:51:42.331997621 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)[32m [repeated 28x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m Loading safetensors checkpoint shards:   0% Completed | 0/4 [00:00<?, ?it/s][32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259437)[0m Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:06<00:06,  3.05s/it]
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards:  50%|█████     | 2/4 [00:15<00:16,  8.01s/it][32m [repeated 8x across cluster][0m
+[36m(SimpleProducer pid=259445)[0m Loading safetensors checkpoint shards:  25% Completed | 1/4 [00:09<00:28,  9.59s/it][32m [repeated 4x across cluster][0m
+[36m(SimpleProducer pid=259437)[0m 
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m Loading checkpoint shards:  75%|███████▌  | 3/4 [00:21<00:07,  7.00s/it][32m [repeated 2x across cluster][0m
+[36m(SimpleProducer pid=259435)[0m Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:11<00:11,  5.55s/it][32m [repeated 9x across cluster][0m
+[36m(SimpleProducer pid=259449)[0m 
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards:  75%|███████▌  | 3/4 [00:23<00:07,  7.89s/it][32m [repeated 6x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Loading checkpoint shards: 100%|██████████| 4/4 [00:28<00:00,  7.13s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:28<00:00,  7.10s/it]
+[36m(SimpleProducer pid=259435)[0m Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:16<00:05,  5.33s/it][32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+[36m(SimpleProducer pid=259440)[0m 
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259435)[0m 
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards: 100%|██████████| 4/4 [00:31<00:00,  7.69s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:31<00:00,  7.78s/it][32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259443)[0m Loading safetensors checkpoint shards:  50% Completed | 2/4 [00:26<00:26, 13.07s/it][32m [repeated 9x across cluster][0m
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s][32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m Loading checkpoint shards:  25%|██▌       | 1/4 [00:06<00:20,  6.93s/it]
+[36m(SimpleProducer pid=259445)[0m Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:26<00:08,  8.82s/it]
+[36m(SimpleProducer pid=259436)[0m Loading safetensors checkpoint shards:  75% Completed | 3/4 [00:28<00:09,  9.45s/it]
+[36m(SimpleProducer pid=259445)[0m 
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards:  25%|██▌       | 1/4 [00:07<00:23,  7.81s/it][32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259445)[0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:33<00:00,  8.28s/it][32m [repeated 2x across cluster][0m
+[36m(GRPOConsumer pid=132982, ip=10.0.0.4)[0m Loading checkpoint shards:  50%|█████     | 2/4 [00:15<00:15,  7.51s/it][32m [repeated 6x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m 
+[36m(SimpleProducer pid=259436)[0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:37<00:00,  9.39s/it][32m [repeated 3x across cluster][0m
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m Loading checkpoint shards:  75%|███████▌  | 3/4 [00:22<00:07,  7.47s/it][32m [repeated 5x across cluster][0m
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m Loading checkpoint shards: 100%|██████████| 4/4 [00:27<00:00,  6.88s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:27<00:00,  6.89s/it]
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards:  75%|███████▌  | 3/4 [00:23<00:07,  7.94s/it][32m [repeated 5x across cluster][0m
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m [W506 22:52:29.496557944 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m [rank3]:[W506 22:52:29.612466819 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m [rank3]:[W506 22:52:29.613732489 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m [rank3]:[W506 22:52:29.615149419 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(GRPOConsumer pid=132983, ip=10.0.0.4)[0m [rank3]:[W506 22:52:29.616241789 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m Loading checkpoint shards: 100%|██████████| 4/4 [00:29<00:00,  7.53s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:29<00:00,  7.49s/it][32m [repeated 4x across cluster][0m
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Currently logged in as: 935724073 (935724073-university-of-new-south-wales) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: WARNING Path ./wandb/wandb/ wasn't writable, using system temp directory.
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: creating run
+[36m(SimpleProducer pid=259443)[0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:54<00:00, 13.97s/it]
+[36m(SimpleProducer pid=259443)[0m Loading safetensors checkpoint shards: 100% Completed | 4/4 [00:54<00:00, 13.69s/it]
+[36m(SimpleProducer pid=259443)[0m 
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Tracking run with wandb version 0.19.8
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Run data is saved locally in /tmp/wandb/run-20250506_225231-t3q14dzy
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Run `wandb offline` to turn off syncing.
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: Syncing run vllm_bs_32_temp_1.0_top_p_1.00
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: ⭐️ View project at https://wandb.ai/935724073-university-of-new-south-wales/GRPO-Train-Align-Debug
+[36m(GRPOConsumer pid=132986, ip=10.0.0.4)[0m wandb: 🚀 View run at https://wandb.ai/935724073-university-of-new-south-wales/GRPO-Train-Align-Debug/runs/t3q14dzy
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Episode 0:   0%|          | 0/117 [00:00<?, ?it/s]
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m [rank4]:[W506 22:52:34.326771112 compiler_depend.ts:848] Warning: The HCCL execution timeout 7200000ms is bigger than watchdog timeout 1800000ms which is set by init_process_group! The plog may not be recorded. (function ProcessGroupHCCL)[32m [repeated 35x across cluster][0m
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Loading checkpoint shards: 100%|██████████| 4/4 [00:31<00:00,  7.72s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:31<00:00,  7.80s/it][32m [repeated 3x across cluster][0m
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Currently logged in as: 935724073 (935724073-university-of-new-south-wales) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: WARNING Path ./wandb/wandb/ wasn't writable, using system temp directory.
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Tracking run with wandb version 0.19.8
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Run data is saved locally in /tmp/wandb/run-20250506_225233-5oz1tbc3
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Run `wandb offline` to turn off syncing.
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: Syncing run vllm_bs_32_temp_1.0_top_p_1.00
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: ⭐️ View project at https://wandb.ai/935724073-university-of-new-south-wales/GRPO-Train-Align-Debug
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m wandb: 🚀 View run at https://wandb.ai/935724073-university-of-new-south-wales/GRPO-Train-Align-Debug/runs/5oz1tbc3
+[36m(SimpleProducer pid=259437)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch/utils/_contextlib.py:116: DeprecationWarning: The keyword arguments {'prompt_token_ids'} are deprecated and will be removed in a future update. Please use the 'prompts' parameter instead.
+[36m(SimpleProducer pid=259437)[0m   return func(*args, **kwargs)
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m Successful rendezvous!
+[36m(SimpleProducer pid=259445)[0m /usr/local/python3.10/lib/python3.10/site-packages/torch/utils/_contextlib.py:116: DeprecationWarning: The keyword arguments {'prompt_token_ids'} are deprecated and will be removed in a future update. Please use the 'prompts' parameter instead.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259445)[0m   return func(*args, **kwargs)[32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Successful rendezvous![32m [repeated 56x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Episode 0:   0%|          | 0/117 [05:08<?, ?it/s, Step=1, Status=Collecting: 256/256]
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m Successful rendezvous![32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m The attention layers in this model are transitioning from computing the RoPE embeddings internally through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed `position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be removed and `position_embeddings` will be mandatory.
+inference_batch_size 8 num_producers 8 train_batch_size 16 train_dp_size 2
+[36m(pid=259440)[0m 'NoneType' object has no attribute 'cadam32bit_grad_fp32'
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:30] Available plugins for group vllm.platform_plugins:
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:32] name=ascend, value=vllm_ascend:register
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:34] all available plugins for group vllm.platform_plugins will be loaded.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:36] set environment variable VLLM_PLUGINS to control which plugins to load.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:44] plugin ascend loaded.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:198] Platform plugin ascend is activated
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:30] Available plugins for group vllm.general_plugins:
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:32] name=ascend_enhanced_model, value=vllm_ascend:register_model
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:34] all available plugins for group vllm.general_plugins will be loaded.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:36] set environment variable VLLM_PLUGINS to control which plugins to load.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:19 __init__.py:44] plugin ascend_enhanced_model loaded.
+[36m(SimpleProducer pid=259434)[0m WARNING 05-06 22:51:19 _custom_ops.py:21] Failed to import from vllm._C with ModuleNotFoundError("No module named 'vllm._C'")
+[36m(pid=259445)[0m 'NoneType' object has no attribute 'cadam32bit_grad_fp32'[32m [repeated 15x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)[0m
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:20 importing.py:16] Triton not installed or not compatible; certain GPU-related functions will not be available.
+[36m(SimpleProducer pid=259434)[0m WARNING 05-06 22:51:20 registry.py:351] Model architecture Qwen2VLForConditionalGeneration is already registered, and will be overwritten by the new model class vllm_ascend.models.qwen2_vl:CustomQwen2VLForConditionalGeneration.
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Using GRPO config: {'lr': 1e-06, 'train_microbatch_size': 8, 'beta': 0.01, 'loss_variation': 'sample_level', 'reward_fn_type': 'boxed'}
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:30] Available plugins for group vllm.platform_plugins:[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:32] name=ascend, value=vllm_ascend:register[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:34] all available plugins for group vllm.platform_plugins will be loaded.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:36] set environment variable VLLM_PLUGINS to control which plugins to load.[32m [repeated 14x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:44] plugin ascend loaded.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:198] Platform plugin ascend is activated[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:30] Available plugins for group vllm.general_plugins:[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:32] name=ascend_enhanced_model, value=vllm_ascend:register_model[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:34] all available plugins for group vllm.general_plugins will be loaded.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:19 __init__.py:44] plugin ascend_enhanced_model loaded.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m WARNING 05-06 22:51:19 _custom_ops.py:21] Failed to import from vllm._C with ModuleNotFoundError("No module named 'vllm._C'")[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:20 importing.py:16] Triton not installed or not compatible; certain GPU-related functions will not be available.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m WARNING 05-06 22:51:21 registry.py:351] Model architecture Qwen2VLForConditionalGeneration is already registered, and will be overwritten by the new model class vllm_ascend.models.qwen2_vl:CustomQwen2VLForConditionalGeneration.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:31 config.py:549] This model supports multiple tasks: {'score', 'generate', 'embed', 'classify', 'reward'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:31 config.py:1555] Chunked prefill is enabled with max_num_batched_tokens=2048.
+[36m(SimpleProducer pid=259434)[0m INFO 05-06 22:51:31 llm_engine.py:234] Initializing a V0 LLM engine (v0.7.3) with config: model='/home/duanjunwen/models/Qwen/Qwen2.5-7B', speculative_config=None, tokenizer='/home/duanjunwen/models/Qwen/Qwen2.5-7B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=npu, decoding_config=DecodingConfig(guided_decoding_backend='xgrammar'), observability_config=ObservabilityConfig(otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=0, served_model_name=/home/duanjunwen/models/Qwen/Qwen2.5-7B, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=False, chunked_prefill_enabled=True, use_async_output_proc=True, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}, use_cached_outputs=False, 
+[36m(SimpleProducer pid=259443)[0m INFO 05-06 22:51:31 config.py:549] This model supports multiple tasks: {'generate', 'score', 'reward', 'classify', 'embed'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259437)[0m INFO 05-06 22:51:31 config.py:549] This model supports multiple tasks: {'classify', 'generate', 'reward', 'score', 'embed'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259449)[0m INFO 05-06 22:51:31 config.py:549] This model supports multiple tasks: {'score', 'reward', 'generate', 'classify', 'embed'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259445)[0m INFO 05-06 22:51:31 config.py:549] This model supports multiple tasks: {'reward', 'generate', 'score', 'classify', 'embed'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259434)[0m WARNING 05-06 22:51:32 utils.py:2262] Methods add_lora,add_prompt_adapter,cache_config,compilation_config,current_platform,list_loras,list_prompt_adapters,load_config,pin_lora,pin_prompt_adapter,remove_lora,remove_prompt_adapter not implemented in <vllm_ascend.worker.worker.NPUWorker object at 0xffcfdc819480>
+[36m(SimpleProducer pid=259440)[0m INFO 05-06 22:51:32 config.py:549] This model supports multiple tasks: {'embed', 'classify', 'reward', 'score', 'generate'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259435)[0m INFO 05-06 22:51:32 config.py:549] This model supports multiple tasks: {'embed', 'score', 'reward', 'classify', 'generate'}. Defaulting to 'generate'.
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:32 config.py:549] This model supports multiple tasks: {'classify', 'generate', 'score', 'reward', 'embed'}. Defaulting to 'generate'.
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [extension] Loading the JIT-built cpu_adam_arm kernel during runtime now
+[36m(GRPOConsumer pid=132985, ip=10.0.0.4)[0m Using GRPO config: {'lr': 1e-06, 'train_microbatch_size': 8, 'beta': 0.01, 'loss_variation': 'sample_level', 'reward_fn_type': 'boxed'}[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:32 config.py:1555] Chunked prefill is enabled with max_num_batched_tokens=2048.[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:51:32 llm_engine.py:234] Initializing a V0 LLM engine (v0.7.3) with config: model='/home/duanjunwen/models/Qwen/Qwen2.5-7B', speculative_config=None, tokenizer='/home/duanjunwen/models/Qwen/Qwen2.5-7B', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, override_neuron_config=None, tokenizer_revision=None, trust_remote_code=True, dtype=torch.bfloat16, max_seq_len=4096, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, disable_custom_all_reduce=False, quantization=None, enforce_eager=True, kv_cache_dtype=auto,  device_config=npu, decoding_config=DecodingConfig(guided_decoding_backend='xgrammar'), observability_config=ObservabilityConfig(otlp_traces_endpoint=None, collect_model_forward_time=False, collect_model_execute_time=False), seed=0, served_model_name=/home/duanjunwen/models/Qwen/Qwen2.5-7B, num_scheduler_steps=1, multi_step_stream_outputs=True, enable_prefix_caching=False, chunked_prefill_enabled=True, use_async_output_proc=True, disable_mm_preprocessor_cache=False, mm_processor_kwargs=None, pooler_config=None, compilation_config={"splitting_ops":[],"compile_sizes":[],"cudagraph_capture_sizes":[],"max_capture_size":0}, use_cached_outputs=False, [32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m WARNING 05-06 22:51:33 utils.py:2262] Methods add_lora,add_prompt_adapter,cache_config,compilation_config,current_platform,list_loras,list_prompt_adapters,load_config,pin_lora,pin_prompt_adapter,remove_lora,remove_prompt_adapter not implemented in <vllm_ascend.worker.worker.NPUWorker object at 0xffcff6cd3640>[32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [extension] Time taken to load cpu_adam_arm op: 0.1460132598876953 seconds
+[36m(SimpleProducer pid=259437)[0m INFO 05-06 22:52:06 executor_base.py:111] # npu blocks: 3809, # CPU blocks: 585
+[36m(SimpleProducer pid=259437)[0m INFO 05-06 22:52:06 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.03x
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m [extension] Loading the JIT-built cpu_adam_arm kernel during runtime now[32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132987, ip=10.0.0.4)[0m [extension] Time taken to load cpu_adam_arm op: 0.16289782524108887 seconds[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259437)[0m INFO 05-06 22:52:08 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 16.79 seconds
+[36m(SimpleProducer pid=259449)[0m INFO 05-06 22:52:12 executor_base.py:111] # npu blocks: 3809, # CPU blocks: 585
+[36m(SimpleProducer pid=259449)[0m INFO 05-06 22:52:12 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.03x
+[36m(SimpleProducer pid=259449)[0m INFO 05-06 22:52:14 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 15.55 seconds
+[36m(SimpleProducer pid=259440)[0m INFO 05-06 22:52:17 executor_base.py:111] # npu blocks: 3809, # CPU blocks: 585
+[36m(SimpleProducer pid=259440)[0m INFO 05-06 22:52:17 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.03x
+[36m(SimpleProducer pid=259440)[0m INFO 05-06 22:52:18 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 16.44 seconds
+[36m(SimpleProducer pid=259435)[0m INFO 05-06 22:52:20 executor_base.py:111] # npu blocks: 3810, # CPU blocks: 585[32m [repeated 2x across cluster][0m
+[36m(SimpleProducer pid=259435)[0m INFO 05-06 22:52:20 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.06x[32m [repeated 2x across cluster][0m
+[36m(SimpleProducer pid=259435)[0m INFO 05-06 22:52:22 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 18.77 seconds[32m [repeated 2x across cluster][0m
+[36m(SimpleProducer pid=259445)[0m INFO 05-06 22:52:27 executor_base.py:111] # npu blocks: 3810, # CPU blocks: 585
+[36m(SimpleProducer pid=259445)[0m INFO 05-06 22:52:27 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.06x
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [05/06/25 22:52:34] INFO     colossalai - colossalai - INFO:                                 
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m                              /home/duanjunwen/ColossalAI/colossalai/initialize.py:75 launch  
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m                     INFO     colossalai - colossalai - INFO: Distributed environment is      
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m                              initialized, world size: 8                                      
+[36m(SimpleProducer pid=259445)[0m INFO 05-06 22:52:29 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 16.97 seconds
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:52:36 executor_base.py:111] # npu blocks: 3810, # CPU blocks: 585
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:52:36 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.06x
+[36m(SimpleProducer pid=259436)[0m INFO 05-06 22:52:38 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 17.26 seconds
+[36m(SimpleProducer pid=259443)[0m INFO 05-06 22:52:49 executor_base.py:111] # npu blocks: 3810, # CPU blocks: 585
+[36m(SimpleProducer pid=259443)[0m INFO 05-06 22:52:49 executor_base.py:116] Maximum concurrency for 4096 tokens per request: 119.06x
+[36m(SimpleProducer pid=259443)[0m INFO 05-06 22:52:51 llm_engine.py:436] init engine (profile, create kv cache, warmup model) took 17.65 seconds
+[36m(SimpleProducer pid=259435)[0m [P0] num_valid_microbatches 468, nmb: 4, dl: 468
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m Consumer0 num_update: 117, num_recv: 4, nmb: 1
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [T0] Recv data episode 0 step 0 from 0
+[36m(SimpleProducer pid=259436)[0m [P6] Send data [('input_ids', torch.Size([2, 8, 2654])), ('attention_mask', torch.Size([2, 8, 2654])), ('action_log_probs', torch.Size([2, 8, 2142])), ('action_mask', torch.Size([2, 8, 2142])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259445)[0m [P7] num_valid_microbatches 468, nmb: 4, dl: 468[32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m Consumer7 num_update: 117, num_recv: 4, nmb: 1[32m [repeated 7x across cluster][0m
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m [T7] Recv data episode 0 step 0 from 0[32m [repeated 7x across cluster][0m
+[36m(SimpleProducer pid=259440)[0m [P5] Send data [('input_ids', torch.Size([2, 8, 3944])), ('attention_mask', torch.Size([2, 8, 3944])), ('action_log_probs', torch.Size([2, 8, 3432])), ('action_mask', torch.Size([2, 8, 3432])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259449)[0m [P2] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259435)[0m [P0] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))][32m [repeated 4x across cluster][0m
+[36m(SimpleProducer pid=259434)[0m Rollout example:
+[36m(SimpleProducer pid=259434)[0m  system
+[36m(SimpleProducer pid=259434)[0m Please reason step by step, and put your final answer within \boxed{}.
+[36m(SimpleProducer pid=259434)[0m user
+[36m(SimpleProducer pid=259434)[0m Regular hexagon $ABCDEF$ is divided into six smaller equilateral triangles, such as $\triangle ABG$, shown in boldface in the diagram.  By connecting every other vertex, we obtain a larger equilateral triangle $\triangle ACE$, also shown in boldface.  Compute the ratio $[\triangle ABG]/[\triangle ACE]$. [asy]
+[36m(SimpleProducer pid=259434)[0m size(150); defaultpen(linewidth(0.8)); dotfactor=5;
+[36m(SimpleProducer pid=259434)[0m pair[] hex = new pair[6];
+[36m(SimpleProducer pid=259434)[0m string[] hexlabels = {"$C$","$B$","$A$","$F$","$E$","$D$"};
+[36m(SimpleProducer pid=259434)[0m hexlabels.cyclic=true;
+[36m(SimpleProducer pid=259434)[0m hex[0] = dir(0);
+[36m(SimpleProducer pid=259434)[0m for(int i = 1; i <= 6; ++i){
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m hex[i] = dir(60*i);
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m draw(hex[i] -- hex[i-1]);
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m dot(hexlabels[i],hex[i],hex[i]);
+[36m(SimpleProducer pid=259434)[0m }
+[36m(SimpleProducer pid=259434)[0m draw(hex[0]--hex[3]); draw(hex[1]--hex[4]); draw(hex[2]--hex[5]);
+[36m(SimpleProducer pid=259434)[0m draw(hex[0]--hex[2]--hex[4]--cycle,linewidth(1.3));
+[36m(SimpleProducer pid=259434)[0m draw(hex[1]--hex[2]--(0,0)--cycle,linewidth(1.3));
+[36m(SimpleProducer pid=259434)[0m dot("$G$",(0,0),2*S);
+[36m(SimpleProducer pid=259434)[0m [/asy] Let's think step by step and output the final answer within \boxed{}.
+[36m(SimpleProducer pid=259434)[0m assistant
+[36m(SimpleProducer pid=259434)[0m To compute the ratio $[\triangle ABG]/[\triangle ACE]$, we can use the formula for the area of an equilateral triangle. The area of an equilateral triangle with side length $s$ is given by $\frac{\sqrt{3}}{4} s^2$.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m In triangle $ ACE$, the side length is $s_1$, and in triangle $ ABG$, the side length is $s_2$. To find the ratio $\frac{[\triangle ABG]}{[\triangle ACE]}$, we can use the fact that each of the smaller equilateral triangles is similar to the larger triangles.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Using this similarity relationship, we can express the side lengths of the triangle in terms of the length of the side of the regular hexagon, $s$. Since $AC$ is a diagonal of the hexagon, it is equal to $2s$. Therefore, we have $s_1 = 2s$. Similarly, $BG$ is half the length of $AC$, so $s_2 = \frac{1}{2}s_1 = s$.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Now we can calculate the areas of the triangles using the formula for the area of an equilateral triangle. We have:
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m $[\triangle ABG] = \frac{\sqrt{3}}{4} s_2^2 = \frac{\sqrt{3}}{4} s^2$
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m $[\triangle ACE] = \frac{\sqrt{3}}{4} s_1^2 = \frac{\sqrt{3}}{4} (2s)^2 = 4 \frac{\sqrt{3}}{4} s^2 = \sqrt{3} s^2$
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Thus, the ratio is:
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m $\frac{[\triangle ABG]}{[\triangle ACE]} = \frac{\frac{\sqrt{3}}{4} s^2}{\sqrt{3} s^2} = \frac{1}{4}$
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m So the answer is $\boxed{1/4}$.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m jifss - Factoring Example Number 1 (#17)Sheila uses rewrite congruence notation to write.info@... er Exponential notation for. tables and graphs. These notation, number, and algebra to represent information. ppt Download 7-May-2018 positano.it supportive media and humanist a are. . . . transforms to 1000000 people a year.We've made a. moving up to new social and physical challenges.Now the human. world numerical notation for. But the majority of numerals look. It our socio-cultural environment using Supernormality Theory. in essence. taking up weak, competing, ideas; they religious sects), and moreland (religious morality).taking. the Project Team include Ian Goldin. and Mike Hammond.adoption of more rational. . sum of themFind out what. time, location visiting as the day of ReFESA. Numerical notation for. CFCSC Technology Standards Explained. What are they up to?? . rounded to two decimal places, in vertrite.2 ., 34 Numerical notation for. 25 100 306.14. 8.32. 2.725 158.89. Practice Grid Version. 6.taking these developments a step further.And a recent study in a major. economic journal. . but we need to explain what exactly has changed. The core of the differences has been absent,in small doses, in even more places, . . of the U.S.professor with documentation. . . at least that it. counting without notation. for. . Allies’ Strategy PubUniver. Why? advantages. University. of. London. time. RajeshR., KenHyett and Laura. . million deaths in French- . religion." Choose correctly. [ além. pronominal] .CONQUIS. abor setting up for sub-contract, sub- and. become. Numerical notation for. 2 t Separate 4-m systems?. Mental division n. of decimal points, if necessary.The woman has exchanged a. and Certificates of 1. Our own internal. "This ability for a fast moving physical object to. numerical notation for. Original WOFR information. then doing so on. Words using at least one digital. and signals digital signals neer 1.0. . Very soon, they will learn other forms of numerical notation for. A third problem is particularly.More information . NBP09019 - AS Lighthouse Pilot 10 shipping at home. Another example could strive. The Muslim world possibly solu-. . situated. within. . 10: (12.3482 × 2^. muito bem para fazer algo; is a market. . SYD 01:30 attendance women. Learning the types of inactive buscarGood book. PRP 2010 de purchase. Mathematical
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m jifss - Factoring Example Number 1 (#17)Sheila uses rewrite congruence notation to write.info@... er Exponential notation for. tables and graphs. These notation, number, and algebra to represent information. ppt Download 7-May-2018 positano.it supportive media and humanist a are. . . . transforms to 1000000 people a year.We've made a. moving up to new social and physical challenges.Now the human. world numerical notation for. But the majority of numerals look. It our socio-cultural environment using Supernormality Theory. in essence. taking up weak, competing, ideas; they religious sects), and moreland (religious morality).taking. the Project Team include Ian Goldin. and Mike Hammond.adoption of more rational. . sum of themFind out what. time, location visiting as the day of ReFESA. Numerical notation for. CFCSC Technology Standards Explained. What are they up to?? . rounded to two decimal places, in vertrite.2 ., 34 Numerical notation for. 25 100 306.14. 8.32. 2.725 158.89. Practice Grid Version. 6.taking these developments a step further.And a recent study in a major. economic journal. . but we need to explain what exactly has changed. The core of the differences has been absent,in small doses, in even more places, . . on an international learning and distance course Series.line are initially incomplete.Achre kingdoms. providers. . not just prestige. . Our societyeven. . uses this. CAV GROUP ContactsObjectives of this Division have adopted new standards with. the top-down manner -- using. . essay on the scientific and. so achieving longer deserve 100ams in New York City.is far more important' ' . saying' ' . Video Games: Affect can become. Numerical notation for. Calculating costs. THE OR邓小, thanks ... who established city-states. in Italy viz . Notice the pattern:1, 4, 16, 64, 256, . . . Compare this with the place value notation we use in decimal system (based on multiplication with 10s from right to left; and addition in the last column). In binary system, multiplication is with 2s. So, there is a place value notation for binary numbers as well. have few practical uses, and knowledge of binary notation and. standards . The basic number system. The intuitive system of numeration used by . Numerical notation for. procedures for add, subtract, multiply, and divide numbers. needed . . Indeed, teaching of mathematics by Tamil came at the expense of making. . Both use a formal grammar to derive their programs '. ‘0/3’ £lion. . and. . Numerical notation for. while Brunet (2009) identifies a high market demand and use. Proprietary and Quantitative Regulation for, Dominance . if bourgeoise of UniversAlm mathematics. if I is a. 3.x 2² '). If for numbers are encoded. meter close to dollars.. unlimited liability so would have the)This figure includes, for the purposes of initial processing. Numerical notation for. American. For forged documents. Search examples.http://bmpdb.com/22-Misc.html cộng đồngSinhala (12345) is used for numerals (and ' 100 w public ', . establishing a workshop for digitization. . to two devices and use to multiply. file name '03Media_characters.zip'. . and . involving the study of Narcissism or Morality on a global level, ._RANGE._, means '. divided by A Можно to get meaningful results without revisiting methodological questions,. . the next mathematical realization. to 100000 personal finance articles. . to do aoi courtesies, there by. . Supernormality . some never made a spare. number of Maajnini. TERMS.Square[ FL 80. left to half of our 5' playquery ' '. The ideas. . list. of age for their Mental calculations actizing. PR = widthanth GGNnnbr hand racers,. German A EUL . coleg Www.bestpracticeseducatedUSA.eqales IU 70-80. 7 using binary arithmetic. In加拿大经验 that is. CAN operate assembler based MCUs' ' . getting the. concept. On a framework to provide a window . . Numerical notation for. e cite text[ ABP] COL 449 PHY 140R ORTH. Kamlesha point that 1000$ 'mer' meaningless methodological superiority over. " In technology. receive level must first computing converts. quit working, it was named . INTERNATIONAL. COMMUNICATION UNITED KINGDOM. for array, vector, and matrix elements. Plus. . United States anddiary system Insimon . also writes 100 years of history as extraordinary. tended. . corners to find groups of hash marks. . desperation .Phone, Internetand all manner throughout most Southern and essentially рей . searches, is. position '' (the vertical norsmen hafa account of Environmental Evaluation of. Graphed. Environment. for Numerical notation for. making adjustments by subtracting one value from the next, . were. responsible for providing a standard of days, which determination markers coming up in the Bermuda Triangle. FOR SCHOLASTIC ANIMATED GRAPHICSTring to asks letters. This is the. . . mathematical learning from step up the International. Mathematics. Curriculum & , spae, /\ refold BIOFIT Connect. US LT 12,000 Grammar and Williamiving Same solution he came up "I am arguably extrapolated the speed of Our research been graduate... ' . . . . . thousand, billion, trillion, etc. 02. . inv see '01Solution x 2 2 '01x 473所述。solution x other. Related . . Numerical notation for. 2012 The Android Four Horizons 15 18 year requirements numberWriters, Call for a solution, I have abolition of money. .. 등에 의거 후 구매Pagodas symbolism award system which Makin copies tough on Catholics: ... it out in future shipments.Will not wait. not (';
+[36m(SimpleProducer pid=259434)[0m jifss - Verical-line notifications and distribution. for. . CERT. CP #5 000 UP & Down FD 50 @ 400KCCERT. Downloaded at : Monday, March 06, 2023 Examination Timetable Original Request: solicitud at the . EmailBAXCO and CSSCO Certificate of Complexity . their support from总理. 'Customer Response Center3 . www.markistan.com Website of the. Educational Framework and Community Service hours were our greatest contribution to the HEALTH MANAGEMENT . . (Subjective. . In three years. might be conceptually strong.They. focused and . . numeral in Mathematics . born every year: 320,000 couples per. Census does not have. Subsidized children exist in an elite hierarchy, for the IDMS have industrial agreements,ad.fopoly meeting Oct 3, and significant policies and laws have been enacted, mostly in accordance with their. teaching course modules for. . p i erosion . (16;48) and. . for. . . becomes. Adding interactive. . . Marshall, of. Chapter#: All of you top prime delta is the lead when the labor relations of. LOS VERS. Marihead hand, who want the. . Who was. regardless of claims, verification, or in some cases, disputes from Take Technical Applications. young people interested. . ) . I, finally, spent 300 staff head core refracting light under his unit . . . Certificate to' ' . 670 Trading Standard. ANALYSIS provided for Mountains2 with . ' . Numerical notation for. Numbered Surgery_ . Food and Drug Administration (FDA), or. how to play in ATC thinking routinesMaster page ... for money. . . updated. tJ.|t ' . . dependent. . people as working and student residents. The interpersonal skills necessary for leading numeracy. ' .Fibus are all in the spring of same month professiona1 books and . This is the general. content Knowledge measurement feasible. CDC was established. by Congress or the ratio is . conch on in channel. direction. . moderately. elastic Council for Labor Commission technical and operational. . Meaning that words should not be separated by spaces.is characterized. You open . . to help fill the junior. placement service section how to open a file in excel No . inter-school programs a doctoral. humans. is. beginning of daily. Kurdish Women's High School goat dy_backup_updater d g 1 upbase . Basis Registers.There is a high level of responsibility in creating, maintaining, and managing a well-structured ecommerce architecture 163A level to substantially . insecure environment is uniquely crashing the browser, followed. system) and never received pay checks. . regarding videogames in . Numerical notation for. undergraduate course in mathematics. of the textbooks. . . In geographic terms . Arial" " No" " No_hi! In some cases, parents have increased the reference can not take credit for success, for. Benefits Return to . Our class hundred systems Below is a short . Pyinvoke (PIC 2:R/W CLR_FUTURE) . In contemporary mathematics, an orbit is a collection of points related by the group action of a group element. The term is most commonly used in the context of Lie groups and related group actions.The generalization of the simple idea of orbits of group actions is minimal homogeneous spaces. File- . ' . That's sad, ' he said like the activist exceptionally skilled. Board and place holders. . writing sample. and program specifically. . is explained recently. mathematics students. . as part of the. 24 hour, seven-andover. an important cultural role representations in mathematics:	this. Office of eNew under Lien/. belief of Vernon and keys in multiplication. and reduce. 08, 119 . Back to Understand Observer.Dataeye . for Suicide prevention.numer stayed quietly trou y out... a Presentation Symbolicnary, Amphibia_230-235 in System_ompute_4 in Word'. Ensure bog State equal nne 4000. Typically, this will 2 be said that productivity is a technical and economic. computer science.. The third era can be better total hours worked per week to 35 hours per week.long help us to to be grabbed by.Temporary Characteristics The current. Numerical notation for. different than the symbols in security; 2.0187 Numeric Key A Espresso HiPro Authentication/ "
+[36m(SimpleProducer pid=259434)[0m jifss - Tatiana likes to command all numbers to whisper. their Sumiantile Age GRWYLA + Adolescent subclass number's' 5 in—not surprised —that construe-to-be PT governing powers?Generation of Biorefineries(USDOE-AL ) N numbers 3 to reconstruct .. axes. to Point" by.100$, $300 oro miercion?c. 02ti $q, o zn . Numerical notation for. that these solutions are related. by philosophy. . programme and rated documents. Physics 15. Rice 12.2 Reformulate Theorem around. . . A) 0.118m B) 0.228m C) 01.29m D)2.09 Em the Ideal Smithsonian about under . ." by values inspired by my antiques objecteralscoped fire, add 100. have even look on!垠 Ented enemies You might infer B friends brokeCommon ; color all . efficient 100 for clinical Student resource teachers, the text 'ж , the UEA LATTiBOS FEIST reports. . drivens.com plan. with the computer science There rating W Normals! . metal and stain. Sure, without scumbledore for processThe forDonaldTrump In a
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [T0] Recv data episode 0 step 0 from 1
+[36m(SimpleProducer pid=259434)[0m [P1] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259434)[0m Rollout example:
+[36m(SimpleProducer pid=259434)[0m  system
+[36m(SimpleProducer pid=259434)[0m Please reason step by step, and put your final answer within \boxed{}.
+[36m(SimpleProducer pid=259434)[0m user
+[36m(SimpleProducer pid=259434)[0m If $f(x) = -7x^4 + 3x^3 + x - 5$, and $g(x)$ is a polynomial such that the degree of $f(x) + g(x)$ is 1, then what is the degree of $g(x)$? Let's think step by step and output the final answer within \boxed{}.
+[36m(SimpleProducer pid=259434)[0m assistant
+[36m(SimpleProducer pid=259434)[0m To determine the degree of $g(x)$, we first need to understand what we mean by the degree of a polynomial. The degree of a polynomial is the highest power of $x$ that has a non-zero coefficient. In this case, the degree of $f(x)$ is 4 because the term with the highest power of $x$ is $-7x^4$.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m We are given that the degree of $f(x) + g(x)$ is 1. This means that when we add the two polynomials, the highest power of $x$ that has a non-zero coefficient in the resulting polynomial will be 1.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Since the degree of $f(x)$ is 4 and we want the degree of $f(x) + g(x)$ to be 1, we need to manipulate $g(x)$ so that when we add it to $f(x)$, the terms with powers greater than 1 cancel out. To do this, we can create $g(x)$ with terms that have powers lower than 4 and coefficients that will reduce the degree of each term when added to the corresponding term in $f(x)$. This will result in a new polynomial where the highest degree term has a power of 1.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m To accomplish this, we need $g(x)$ to have terms with powers from 0 to 3. This will ensure that when we add $g(x)$ to $f(x)$, the terms with powers greater than 1 will cancel out, leaving us with a polynomial of degree 1.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Therefore, the degree of $g(x)$ should be 3.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m cómo insertar (con el botón pinchinflejar) una imagen muestrairecibo.JPG en este documento, sin相处ovel er a bitmap o jpeg
+[36m(SimpleProducer pid=259434)[0m To insert an image titled "muestrairecibo.JPG" into the document, you'll need to use the "Insert Image" feature, which is represented by a pin-cushion-like icon. Here are the steps to insert an image:
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 1. Open the document in a word processing software like Microsoft Word, Google Docs, or LibreOffice Writer.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 2. Make sure the insertion point is where you want to insert the image.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 3. Locate the "Insert Image" or equivalent tool. If you're using Microsoft Word, it's located under the Home tab in the picture section, or you can use the shortcut: "Insert" > "Picture" and then select "Local File." In Google Docs, you can also use the "Upload or insert file" option under the Insert tab. For LibreOffice Writer, click on the "Insert" menu, select "Picture," and then click on "File."
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 4. A dialog box will appear. This allows you to browse to the location on your computer where "muestrairecibo.JPG" is saved.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 5. Navigate to the directory where the image file is located and double-click or select the file and click okay.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 6. The image of muestrairecibo.JPG should now appear in the document at the selected insertion point.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m If you're experiencing trouble locating the "Insert Image" feature, consult your operating system/word processing software user manual or contact their customer support for assistance. Remember, the exact process might be slightly different based on the specific software or version you are using.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m how to add a watermark element below the "image muesbrairecibo" file and that is automatically positioned and shrinks in relation to the image size (to left,right,top,down).
+[36m(SimpleProducer pid=259434)[0m To add a watermark below the image "muestrairecibo.JPG" and have it automatically positioned and shrink in relation to the image size, you can follow these steps for a couple of scenarios:
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m **Word Processing Software (e.g., Microsoft Word or Google Docs)**
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 1. Insert the image: Insert the "muestrairecibo.JPG" image into your desired location within your document.
+[36m(SimpleProducer pid=259434)[0m    
+[36m(SimpleProducer pid=259434)[0m 2. Reposition the image: If needed, you can relocate the inserted image by selecting it and using your word processing software's toolbar to change the image size or position. 
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 3. Create or upload the watermark image: Depending on which software you're using, you can either drag and drop the watermark image directly from your filesystem, or navigate through the file system dialog to locate and select the watermark image.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m    **Google Docs:** Click the "Insert" menu, then select "Image" or "Watermark"
+[36m(SimpleProducer pid=259434)[0m    
+[36m(SimpleProducer pid=259434)[0m    **Microsoft Word:** Click the "Insert" tab, then select "Watermark"
+[36m(SimpleProducer pid=259434)[0m    
+[36m(SimpleProducer pid=259434)[0m 4. Drag the watermark image to the desired location below the inserted "muestrairecibo.JPG" image.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m 5. Customizing the watermark:
+[36m(SimpleProducer pid=259434)[0m    - If you need more control over the position and size of the watermark in relation to the image, you might have to crop and resize the watermark file manually for each image or automate this process in a custom solution (chosen from steps below).
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m **Automating the Positioning and Shrinkage (Advanced, Using VBA for Microsoft Word or Google Apps Script for Google Docs)**
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m - **Microsoft Word (using VBA):** You might need to code a VBA macro to detect the image size, create a proportionally sized watermark image based on that size, and place the watermark image in the correct location. This would involve a more technical approach, requiring knowledge of Visual Basic for Applications.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m - **Google Docs (using Google Apps Script):** With Google Apps Script, you can write code to automate the resizing and positioning of the watermark based on the size of the document's images. For this example: create a new Google App Script, and write code to create a watermark with reduced opacity and automatically position and resize it relative to the inserted image. It would require some programming experience.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m In general, custom automation solutions (both VBA for Microsoft Word and Google Apps Script for Google Docs) usually involve breaking the tasks down into several steps and writing code to perform each step where you want the automation to occur – often triggered by a specific action, such as 'on open' or 'after insertion' of an image.
+[36m(SimpleProducer pid=259434)[0m 
+[36m(SimpleProducer pid=259434)[0m Remember to properly save your changes after each step and, if needed, test the watermark placement and resizing with different image sizes.
+[36m(SimpleProducer pid=259434)[0m [P1] Send data [('input_ids', torch.Size([2, 8, 2150])), ('attention_mask', torch.Size([2, 8, 2150])), ('action_log_probs', torch.Size([2, 8, 1638])), ('action_mask', torch.Size([2, 8, 1638])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m [T7] Recv data episode 0 step 0 from 0[32m [repeated 63x across cluster][0m
+[36m(SimpleProducer pid=259436)[0m [P6] Send data [('input_ids', torch.Size([2, 8, 2692])), ('attention_mask', torch.Size([2, 8, 2692])), ('action_log_probs', torch.Size([2, 8, 2180])), ('action_mask', torch.Size([2, 8, 2180])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259437)[0m [P3] Send data [('input_ids', torch.Size([2, 8, 3683])), ('attention_mask', torch.Size([2, 8, 3683])), ('action_log_probs', torch.Size([2, 8, 3171])), ('action_mask', torch.Size([2, 8, 3171])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [T0] Recv data episode 0 step 0 from 1
+[36m(GRPOConsumer pid=132981, ip=10.0.0.4)[0m [T0] Recv data episode 0 step 0 from 2
+[36m(SimpleProducer pid=259443)[0m [P4] Send data [('input_ids', torch.Size([2, 8, 3556])), ('attention_mask', torch.Size([2, 8, 3556])), ('action_log_probs', torch.Size([2, 8, 3044])), ('action_mask', torch.Size([2, 8, 3044])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(SimpleProducer pid=259435)[0m [P0] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m [T7] Recv data episode 0 step 0 from 2[32m [repeated 14x across cluster][0m
+[36m(SimpleProducer pid=259449)[0m [P2] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))][32m [repeated 2x across cluster][0m
+Traceback (most recent call last):
+  File "/home/duanjunwen/ColossalAI/applications/ColossalChat/rl_example.py", line 202, in <module>
+    launch_distributed(
+  File "/home/duanjunwen/ColossalAI/applications/ColossalChat/coati/distributed/launch.py", line 120, in launch_distributed
+    ray.get([p.loop.remote() for p in procs])
+  File "/usr/local/python3.10/lib/python3.10/site-packages/ray/_private/auto_init_hook.py", line 21, in auto_init_wrapper
+    return fn(*args, **kwargs)
+  File "/usr/local/python3.10/lib/python3.10/site-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+  File "/usr/local/python3.10/lib/python3.10/site-packages/ray/_private/worker.py", line 2771, in get
+    values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+  File "/usr/local/python3.10/lib/python3.10/site-packages/ray/_private/worker.py", line 919, in get_objects
+    raise value.as_instanceof_cause()
+ray.exceptions.RayTaskError(RuntimeError): [36mray::GRPOConsumer.loop()[39m (pid=132985, ip=10.0.0.4, actor_id=c8d5c4ebd0eed225bc8efefb01000000, repr=<coati.distributed.grpo_consumer.GRPOConsumer object at 0xffcfb775c610>)
+  File "/home/duanjunwen/ColossalAI/applications/ColossalChat/coati/distributed/consumer.py", line 141, in loop
+    loss, num_excessive_prompts = self.step(i, pbar, **batch)
+  File "/home/duanjunwen/ColossalAI/applications/ColossalChat/coati/distributed/grpo_consumer.py", line 391, in step
+    policy_model_outputs = self.booster.execute_pipeline(
+  File "/home/duanjunwen/ColossalAI/colossalai/booster/booster.py", line 221, in execute_pipeline
+    return self.plugin.execute_pipeline(data_iter, model, criterion, optimizer, return_loss, return_outputs)
+  File "/home/duanjunwen/ColossalAI/colossalai/booster/plugin/hybrid_parallel_plugin.py", line 1409, in execute_pipeline
+    outputs = self.scheduler.forward_backward_step(
+  File "/home/duanjunwen/ColossalAI/colossalai/pipeline/schedule/one_f_one_b.py", line 472, in forward_backward_step
+    result = self.run_forward_backward(model, data_iter, criterion, optimizer, return_loss, return_outputs)
+  File "/home/duanjunwen/ColossalAI/colossalai/pipeline/schedule/one_f_one_b.py", line 416, in run_forward_backward
+    input_obj_grad = self.backward_step(optimizer, input_obj, output_obj, output_obj_grad)
+  File "/home/duanjunwen/ColossalAI/colossalai/pipeline/schedule/one_f_one_b.py", line 305, in backward_step
+    optimizer.backward(output_obj)
+  File "/home/duanjunwen/ColossalAI/colossalai/booster/plugin/hybrid_parallel_plugin.py", line 807, in backward
+    super().backward(loss, inputs=inputs, retain_graph=retain_graph)
+  File "/home/duanjunwen/ColossalAI/colossalai/zero/low_level/low_level_optim.py", line 461, in backward
+    loss.backward(inputs=inputs, retain_graph=retain_graph)
+  File "/usr/local/python3.10/lib/python3.10/site-packages/torch/_tensor.py", line 581, in backward
+    torch.autograd.backward(
+  File "/usr/local/python3.10/lib/python3.10/site-packages/torch/autograd/__init__.py", line 347, in backward
+    _engine_run_backward(
+  File "/usr/local/python3.10/lib/python3.10/site-packages/torch/autograd/graph.py", line 825, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  File "/usr/local/python3.10/lib/python3.10/site-packages/torch/autograd/function.py", line 307, in apply
+    return user_fn(self, *args)
+  File "/home/duanjunwen/ColossalAI/colossalai/shardformer/layer/loss.py", line 231, in backward
+    softmax_logits_2d[torch.arange(0, softmax_logits_2d.shape[0]), masked_target_1d] -= update
+RuntimeError: NPU out of memory. Tried to allocate 4.67 GiB (NPU 0; 60.96 GiB total capacity; 32.79 GiB already allocated; 32.79 GiB current active; 3.34 GiB free; 52.71 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m The attention layers in this model are transitioning from computing the RoPE embeddings internally through `position_ids` (2D tensor with the indexes of the tokens), to using externally computed `position_embeddings` (Tuple of tensors, containing cos and sin). In v4.46 `position_ids` will be removed and `position_embeddings` will be mandatory.[32m [repeated 7x across cluster][0m
+[ERROR] 2025-05-06-22:59:02 (PID:258963, Device:0, RankID:-1) ERR99999 UNKNOWN applicaiton exception
+[36m(GRPOConsumer pid=132988, ip=10.0.0.4)[0m [T7] Recv data episode 0 step 0 from 7[32m [repeated 40x across cluster][0m
+[36m(SimpleProducer pid=259440)[0m [P5] Send data [('input_ids', torch.Size([2, 8, 4096])), ('attention_mask', torch.Size([2, 8, 4096])), ('action_log_probs', torch.Size([2, 8, 3584])), ('action_mask', torch.Size([2, 8, 3584])), ('response_idx', torch.Size([2, 8, 2])), ('gt_answer', torch.Size([2, 8, 128]))]

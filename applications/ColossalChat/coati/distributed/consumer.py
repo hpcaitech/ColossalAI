@@ -57,9 +57,11 @@ class BaseConsumer:
 
         # self.device = get_current_device()
         self.device = 'npu'
+        # self.device = torch.device(f"npu:{torch.npu.current_device()}")
         self.lr_scheduler = None
 
     def setup(self) -> None:
+        print(f"self.rank {self.rank} self.world_size {self.world_size} self.master_addr {self.master_addr} self.master_port {self.master_port}")
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
         plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
@@ -82,7 +84,7 @@ class BaseConsumer:
 
         # Init Hybrid ray process group
         for i in range(self.num_producers):
-            cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
+            cc.init_collective_group(self.world_size + 1, self.rank + 1, backend='hccl',group_name=f"sync_data_{i}")
         if self.pp_size > 1:
             # use hybrid tp + pp
             if self.tp_rank == 0 and self.dp_rank == 0:

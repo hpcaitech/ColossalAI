@@ -155,7 +155,7 @@ if __name__ == "__main__":
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
-                tensor_parallel_size=2,
+                tensor_parallel_size=1,
             )
         )
         generate_config.update(
@@ -223,10 +223,10 @@ if __name__ == "__main__":
         #     "zero_stage": 2,
         # },  # for zero
         plugin_config={
-            "tp_size": 2,
-            "pp_size": 2,
+            "tp_size": 8,
+            "pp_size": 3,
             "microbatch_size": max(
-                1, args.train_microbatch_size // 2
+                1, args.train_microbatch_size // 3
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": 1,
             "max_norm": 1.0,
