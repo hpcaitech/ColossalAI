@@ -275,7 +275,7 @@ class GRPOConsumer(BaseConsumer):
 
         pbar.set_postfix(
             {
-                "Step": self.global_step + 1,
+                "Global Training Step": self.global_step,
                 "Status": f"Collecting: {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations}",
             }
         )

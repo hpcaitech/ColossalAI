@@ -20,7 +20,7 @@ if __name__ == "__main__":
         "-ibs",
         "--inference-batch-size",
         type=int,
-        default=None,
+        default=64,
         help="Number of prompts to generate per inference step. It should be divisible by tbs, and the weights on the inference backend will be synced every ibs/tbs training steps of the policy model.",
     )
     parser.add_argument(
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         "-tMbs",
         "--train-minibatch-size",
         type=int,
-        default=None,
+        default=8,
         help="Number of unique prompts in each training batch per dp group. The inference backend must generate tMbs * g * dp_size samples before forwarding. Satisfy tMbs * g >= tmbs",
     )
     parser.add_argument(
@@ -131,6 +131,10 @@ if __name__ == "__main__":
     inference_model_config = dict(path=args.model)
     train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
     generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
+
+    print("Args:")
+    for key, value in args.__dict__.items():
+        print(f"{key}: {value}")
 
     if args.backend == "transformers":
         inference_model_config.update(

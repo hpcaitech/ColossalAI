@@ -107,7 +107,7 @@ class BaseConsumer:
             f"Consumer{self.rank} num_update: {self.num_update_per_episode}, num_recv: {self.num_recv_per_update}, nmb: {self.num_microbatches}"
         )
         for episode in range(self.num_episodes):
-            with tqdm(range(self.num_update_per_episode), desc=f"Episode {episode}", disable=self.rank != 0) as pbar:
+            with tqdm(range(self.num_update_per_episode), desc=f"Episode {episode} with rollout step", disable=self.rank != 0) as pbar:
                 for step in pbar:
                     i = 0
                     for _ in range(self.num_recv_per_update):
