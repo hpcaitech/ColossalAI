@@ -138,7 +138,6 @@ class BaseConsumer:
                             loss, excessive_prompts_idx = self.step(i, pbar, **batch)
 
                             if excessive_prompts_idx is not None:
-                                print("DP rank:", self.dp_rank, "excessive prompts idx:", excessive_prompts_idx)
                                 excessive_prompts = [
                                     self.buffer[idx + self.dp_rank * self.minibatch_size]
                                     for idx in excessive_prompts_idx

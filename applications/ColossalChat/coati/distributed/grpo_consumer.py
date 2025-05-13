@@ -41,13 +41,6 @@ class GRPOConsumer(BaseConsumer):
         save_dir="./model",
     ):
         print(f"Using GRPO config: {grpo_config}")
-        # if grpo_config.get("loss_variation", "sample_level") == "token_level":
-        #     if batch_size != minibatch_size:
-        #         warnings.warn(
-        #             f"Applied token_level loss, force overwrite mini-batch-size with batch-size: mini-batch-size: {minibatch_size}->{batch_size}",
-        #             UserWarning,
-        #         )
-        #         minibatch_size = batch_size
         if (
             plugin_config.get("pp_size", 1) > 1
             and "num_microbatches" not in plugin_config
@@ -250,7 +243,6 @@ class GRPOConsumer(BaseConsumer):
                     if effective_prompts_mask[mask_idx] == False:
                         # Update loss mask.
                         loss_mask[mask_idx] = False
-                print("Rank:", self.rank, "Excessive prompts:", excessive_prompts_idx)
         else:
             # If dynamic batching is disabled, we need to use all samples for training.
             need_update = (step_idx + 1) % self.num_microbatches == 0
