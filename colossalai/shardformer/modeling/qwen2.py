@@ -216,12 +216,6 @@ class Qwen2PipelineForwards:
             if idx - start_idx < num_ckpt_layers:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
-                    # hidden_states,
-                    # attention_mask,
-                    # position_ids,
-                    # past_key_values,
-                    # output_attentions,
-                    # use_cache,
                     hidden_states,
                     attention_mask,
                     position_ids,
@@ -233,12 +227,6 @@ class Qwen2PipelineForwards:
                 )
             else:
                 layer_outputs = decoder_layer(
-                    # hidden_states,
-                    # attention_mask=attention_mask,
-                    # position_ids=position_ids,
-                    # past_key_value=past_key_value,
-                    # output_attentions=output_attentions,
-                    # use_cache=use_cache,
                     hidden_states,
                     attention_mask,
                     position_ids,
@@ -535,7 +523,6 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
-        print("value_states, value_states", value_states.shape)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
@@ -547,8 +534,6 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         # Because the input can be padded, the absolute sequence length depends on the max position id.
-        # rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-        # cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -688,7 +673,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         # embed positions
         hidden_states = inputs_embeds
 
-        print("replace replace")
 
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
@@ -701,9 +685,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 is_causal=True,
             )
         else:
-            # attention_mask = self._update_causal_mask(
-            #     attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-            # )
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
                 (batch_size, seq_length),
@@ -742,12 +723,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
-                    # hidden_states,
-                    # attention_mask,
-                    # position_ids,
-                    # past_key_values,
-                    # output_attentions,
-                    # use_cache,
                     hidden_states,
                     attention_mask,
                     position_ids,
@@ -759,12 +734,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 )
             else:
                 layer_outputs = decoder_layer(
-                    # hidden_states,
-                    # attention_mask=attention_mask,
-                    # position_ids=position_ids,
-                    # past_key_value=past_key_values,
-                    # output_attentions=output_attentions,
-                    # use_cache=use_cache,
                     hidden_states,
                     attention_mask,
                     position_ids,

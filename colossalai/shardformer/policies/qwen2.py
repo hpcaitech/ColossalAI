@@ -65,15 +65,9 @@ class Qwen2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        # ATTN_IMPLEMENTATION = {
-        #     "eager": Qwen2Attention,
-        #     "flash_attention_2": Qwen2FlashAttention2,
-        #     "sdpa": Qwen2SdpaAttention,
-        # }
 
         policy = {}
 
-        # attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
@@ -320,7 +314,6 @@ class Qwen2Policy(Policy):
                     policy=policy,
                     target_key=Qwen2Model,
                 )
-                print("policy", policy)
 
         return policy
 
