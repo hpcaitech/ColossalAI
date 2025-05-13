@@ -79,7 +79,7 @@ class BaseProducer:
         else:
             raise ValueError(f"Unexpected backend {backend}")
 
-        self.consumer_pp_size = consumer_plugin_config["pp_size"]  # consumer pp size
+        self.consumer_pp_size = consumer_plugin_config.get("pp_size", 1)  # consumer pp size
 
     def setup(self) -> None:
         cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
