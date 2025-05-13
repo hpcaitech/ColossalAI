@@ -65,15 +65,15 @@ class Qwen2Policy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        ATTN_IMPLEMENTATION = {
-            "eager": Qwen2Attention,
-            "flash_attention_2": Qwen2FlashAttention2,
-            "sdpa": Qwen2SdpaAttention,
-        }
+        # ATTN_IMPLEMENTATION = {
+        #     "eager": Qwen2Attention,
+        #     "flash_attention_2": Qwen2FlashAttention2,
+        #     "sdpa": Qwen2SdpaAttention,
+        # }
 
         policy = {}
 
-        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
+        # attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
@@ -93,7 +93,7 @@ class Qwen2Policy(Policy):
             if getattr(self.model.config, "num_key_value_heads", False):
                 decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
 
-            policy[attn_cls] = ModulePolicyDescription(
+            policy[Qwen2Attention] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
 
@@ -301,12 +301,13 @@ class Qwen2Policy(Policy):
         )
 
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
+            print("self.shard_config.enable_flash_attention", self.shard_config.enable_flash_attention)
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_qwen2_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=attn_cls,
+                target_key=Qwen2Attention,
             )
             if self.pipeline_stage_manager is None:
                 # replace qwen2 model forward method
@@ -319,6 +320,7 @@ class Qwen2Policy(Policy):
                     policy=policy,
                     target_key=Qwen2Model,
                 )
+                print("policy", policy)
 
         return policy
 
@@ -370,6 +372,7 @@ class Qwen2Policy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
