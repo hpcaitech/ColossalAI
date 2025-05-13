@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Any, Dict, List
 
 import torch
@@ -25,27 +24,6 @@ def bind_batch(batches: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor
     for k in batches[0].keys():
         batch[k] = torch.stack([batch[k] for batch in batches], dim=0)
     return batch
-
-
-def pad_batch(batches: List[Dict[str, torch.Tensor]], tokenizer: Any = None) -> List[Dict[str, torch.Tensor]]:
-    max_len = defaultdict(int)
-    for sample in batches:
-        for k in sample:
-            if k in ["input_ids", "attention_mask", "action_log_probs", "action_mask"]:
-                max_len[k] = max(max_len[k], sample[k].size(-1))
-    for idx, sample in enumerate(batches):
-        for k in sample:
-            if k in ["input_ids", "attention_mask", "action_log_probs", "action_mask"]:
-                # right pad with 0s
-                if k in ["attention_mask", "action_mask"]:
-                    batches[idx][k] = torch.nn.functional.pad(
-                        batches[idx][k], (0, max_len[k] - batches[idx][k].size(-1)), "constant", False
-                    )
-                else:
-                    batches[idx][k] = torch.nn.functional.pad(
-                        batches[idx][k], (0, max_len[k] - batches[idx][k].size(-1)), "constant", 0
-                    )
-    return batches
 
 
 def pre_send(batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
