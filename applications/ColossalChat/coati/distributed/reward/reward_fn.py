@@ -110,3 +110,28 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     reward = reward + length_reward
 
     return torch.tensor([reward, format_acc, ans_acc]).to(input_ids.device)
+
+
+def agpo_boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
+    tokenizer = kwargs["tokenizer"]
+    reward_correct = torch.tensor(1.0)
+    reward_wrong = torch.tensor(-1.0)
+    ans_acc = torch.tensor(0.0)
+    format_acc = torch.tensor(0.0)
+    s, e = response_idx[0], response_idx[1]
+    seq_len = torch.tensor(e - s + 1)
+
+    decoded_final_answer = tokenizer.decode(input_ids[s : e + 1], skip_special_tokens=True)
+    gt_answer = tokenizer.decode(gt_answer.squeeze(0), skip_special_tokens=True)
+    final_answer = extract_boxed_solution(decoded_final_answer)
+
+    # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
+    if final_answer is not None:
+        format_acc += 1
+        if gt_answer.strip().lower() == final_answer.strip().lower():
+            ans_acc += 1
+            reward = reward_correct
+        else:
+            reward = reward_wrong
+
+    return torch.tensor([reward, format_acc, ans_acc, seq_len]).to(input_ids.device)
