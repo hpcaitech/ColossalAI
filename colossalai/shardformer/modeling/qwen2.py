@@ -9,7 +9,6 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.cache_utils import DynamicCache
 
 try:
     from transformers.modeling_attn_mask_utils import (
@@ -210,8 +209,7 @@ class Qwen2PipelineForwards:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
+            past_key_values[idx] if past_key_values is not None else None
 
             if idx - start_idx < num_ckpt_layers:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -523,7 +521,6 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
         key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
-
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             if self.layer_idx is None:
@@ -649,7 +646,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
@@ -669,10 +665,8 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
-
         # embed positions
         hidden_states = inputs_embeds
-
 
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
@@ -692,7 +686,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 past_key_values_length,
                 sliding_window=self.config.sliding_window,
             )
-
 
         if (self.gradient_checkpointing or sp_mode in ["ring", "all_to_all"]) and self.training:
             if use_cache:
@@ -745,7 +738,6 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 )
 
             hidden_states = layer_outputs[0]
-
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
