@@ -83,7 +83,7 @@ if __name__ == "__main__":
     parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
 
     # GRPO parameters
-    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["GRPO", "DAPO", "AGPO"])
     parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
     parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
     parser.add_argument(
@@ -194,6 +194,20 @@ if __name__ == "__main__":
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "cache_length": min(1024, int(args.max_new_tokens / 4)),
             "filter_truncated_response": True,
+            "reward_fn_type": args.reward_type,
+        }
+    elif args.algo == "AGPO":
+        # AGPO variant settings
+        grpo_config = {
+            "filter_range": [0.01, 0.99],
+            "lr": args.learning_rate,
+            "train_microbatch_size": args.train_microbatch_size,
+            "dynamic_batching": True,
+            "clip_eps_low": 0.2,
+            "clip_eps_high": 0.28,
+            "beta": 0,  # no KL penalty
+            "loss_variation": "token_level",
+            "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "reward_fn_type": args.reward_type,
         }
     else:

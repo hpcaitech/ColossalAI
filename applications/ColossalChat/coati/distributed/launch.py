@@ -7,7 +7,7 @@ from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
 from .producer import SimpleProducer
 
-ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "DAPO": GRPOConsumer}
+ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "DAPO": GRPOConsumer, "AGPO": GRPOConsumer}
 
 
 def get_jsonl_size_fast(path: str) -> int:
