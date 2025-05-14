@@ -11,6 +11,7 @@ import colossalai.shardformer.layer as col_nn
 from ..modeling.bert import (
     BertPipelineForwards,
     bert_sequence_parallel_forward_fn,
+    get_bert_sequence_parallel_attention_forward,
     get_jit_fused_bert_intermediate_forward,
     get_jit_fused_bert_output_forward,
     get_jit_fused_bert_self_output_forward,
@@ -48,6 +49,7 @@ class BertPolicy(Policy):
             BertLayer,
             BertModel,
             BertOutput,
+            BertSdpaSelfAttention,
             BertSelfOutput,
         )
 
@@ -76,6 +78,16 @@ class BertPolicy(Policy):
         sp_partial_derived = sp_mode == "split_gather"
 
         use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
+
+        if self.shard_config.enable_sequence_parallelism:
+            # Fix the tgt_len size in bert sequence parallel attention forward.
+            self.append_or_create_method_replacement(
+                description={
+                    "forward": get_bert_sequence_parallel_attention_forward(self.shard_config),
+                },
+                policy=policy,
+                target_key=BertSdpaSelfAttention,
+            )
 
         if self.shard_config.enable_tensor_parallelism:
             assert (
