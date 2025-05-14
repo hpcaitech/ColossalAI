@@ -512,9 +512,10 @@ class GRPOConsumer(BaseConsumer):
                 self.accum_response_length.zero_()
                 self.accum_count = 0
 
-            # All gather excessive prompts index across DP ranks.
-            excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
-            excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
+            if excessive_prompts_idx is not None:
+                # All gather excessive prompts index across DP ranks.
+                excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
+                excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
 
             return loss_scalar, excessive_prompts_idx
         else:
