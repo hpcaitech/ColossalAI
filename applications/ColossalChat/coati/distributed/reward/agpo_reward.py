@@ -20,7 +20,7 @@ class AGPOReward:
     ) -> torch.Tensor:
         # Get batch size
         bs = input_ids.size(0)
-        num_generations = self.kwargs.get("num_generations")
+        num_generations = self.kwargs["num_generations"]
 
         # Apply the reward function to the entire batch at once
         reward_infos = [self.reward_fn(input_ids[i], gt_answer=gt_answer[i], response_idx=response_idx[i], **self.kwargs) for i in range(bs)]

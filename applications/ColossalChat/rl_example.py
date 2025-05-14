@@ -209,6 +209,7 @@ if __name__ == "__main__":
             "loss_variation": "token_level",
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "reward_fn_type": args.reward_type,
+            "correct_sample_length_reward": True
         }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
