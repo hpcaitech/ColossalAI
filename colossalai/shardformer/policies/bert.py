@@ -80,6 +80,7 @@ class BertPolicy(Policy):
         use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
 
         if self.shard_config.enable_sequence_parallelism:
+            # Fix the tgt_len size in bert sequence parallel attention forward.
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_bert_sequence_parallel_attention_forward(self.shard_config),
