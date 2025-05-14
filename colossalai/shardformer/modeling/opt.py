@@ -584,16 +584,6 @@ def get_opt_flash_attention_forward(shard_config: ShardConfig):
             key_states = _shape(self.k_proj(hidden_states), -1, bsz, self.num_heads, self.head_dim)
             value_states = _shape(self.v_proj(hidden_states), -1, bsz, self.num_heads, self.head_dim)
 
-        # if self.is_decoder:
-        #     # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-        #     # Further calls to cross_attention layer can then reuse all cross-attention
-        #     # key/value_states (first "if" case)
-        #     # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-        #     # all previous decoder key/value_states. Further calls to uni-directional self-attention
-        #     # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-        #     # if encoder bi-directional self-attention `past_key_value` is always `None`
-        #     past_key_value = (key_states, value_states)
-
         query_states = _shape(query_states, tgt_len, bsz, self.num_heads, self.head_dim)
 
         dropout_p = self.dropout if self.training else 0.0
