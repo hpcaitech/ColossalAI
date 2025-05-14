@@ -135,7 +135,7 @@ def masked_sum(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.
     return tensor.sum(dim=dim)
 
 
-def safe_write_jsonl(file_path, data):
+def safe_append_to_jsonl_file(file_path, data):
     with FileLock(file_path + ".lock"):
         # Ensure file exists
         os.makedirs(os.path.dirname(file_path), exist_ok=True)

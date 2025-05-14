@@ -1,4 +1,5 @@
 import copy
+import uuid
 from typing import Any, Dict, Optional
 
 import ray
@@ -53,6 +54,7 @@ def launch_distributed(
     eval_dataset_config: Optional[Dict[str, Any]] = None,
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
+    eval_generation_config: Optional[Dict[str, Any]] = None,
 ):
 
     if core_algo not in ALGO_MAP:
@@ -68,6 +70,9 @@ def launch_distributed(
     global_inference_batch_size = inference_batch_size * num_producers  # TODO: this doesn't support TP on producer
     num_update_per_episode = num_samples // global_inference_batch_size
     num_recv_per_update = inference_batch_size // inference_microbatch_size
+
+    run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
+    wandb_group_name = str(uuid.uuid4())
 
     procs = []
     for i in range(num_producers):
@@ -90,6 +95,10 @@ def launch_distributed(
             eval_interval=eval_interval,
             evaluation_function_type=grpo_config["reward_fn_type"],
             eval_save_dir=eval_save_dir,
+            eval_generation_config=eval_generation_config,
+            project_name=project_name,
+            run_name=run_name,
+            wandb_group_name=wandb_group_name,
         )
         procs.append(producer)
     generate_config_consumer = copy.deepcopy(generate_config)
@@ -115,10 +124,11 @@ def launch_distributed(
             generate_config=generate_config_consumer,
             grpo_config=grpo_config,
             num_generations=num_generations,
-            project_name=project_name,
             save_interval=save_interval,
             save_dir=save_dir,
-            eval_interval=eval_interval,
+            project_name=project_name,
+            run_name=run_name,
+            wandb_group_name=wandb_group_name,
         )
         procs.append(consumer)
     ray.get([p.setup.remote() for p in procs])
