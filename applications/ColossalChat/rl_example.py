@@ -161,6 +161,7 @@ if __name__ == "__main__":
                 stop_strings=["</answer>"] if args.reward_type == "think_answer_tags" else None,
             )
         )
+        eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
@@ -179,6 +180,7 @@ if __name__ == "__main__":
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
             )
         )
+        eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     else:
         raise ValueError(f"Unsupported backend: {args.backend}")
 
@@ -257,4 +259,5 @@ if __name__ == "__main__":
         },
         eval_interval=args.eval_interval,
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
+        eval_generation_config=eval_generation_config,
     )

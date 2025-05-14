@@ -238,7 +238,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
                 log_probs.append(p)
 
         # pad them
-        max_len = self.generate_config.max_tokens
+        max_len = self.sample_params.max_tokens
         action_mask = torch.ones(len(out_tokens), max_len, dtype=attention_mask.dtype)
 
         for i, new_token_ids in enumerate(out_tokens):
