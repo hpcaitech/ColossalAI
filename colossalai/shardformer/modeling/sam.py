@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 
+# Same as the SamVisionAttention forward method in the v4.51.3 transformers
 def forward_fn():
     def forward(self, hidden_states: torch.Tensor, output_attentions=False) -> torch.Tensor:
         batch_size, height, width, _ = hidden_states.shape
