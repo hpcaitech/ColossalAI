@@ -9,7 +9,7 @@ from coati.distributed.loss import PolicyLoss
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from coati.distributed.utils import calc_action_log_probs
-from coati.trainer.utils import all_reduce_mean, all_reduce_sum
+from coati.trainer.utils import all_gather_tensors, all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -234,15 +234,22 @@ class GRPOConsumer(BaseConsumer):
             excessive_prompts = self.effective_prompt_count - self.batch_size * self.dp_size
 
             if excessive_prompts > 0:
-                # Mask excessive prompts to False
-                true_indices = torch.nonzero(effective_prompts_mask).squeeze()
-                excessive_prompts_idx = true_indices[-excessive_prompts:]
-                effective_prompts_mask[excessive_prompts_idx] = False
+                excessive_prompts_per_rank = excessive_prompts // self.dp_size
+                # Only count excessive prompts if they are greater than 1 per rank.
+                # TODO: customize excessive prompts calculation.
+                if excessive_prompts_per_rank != 0:
+                    # Mask excessive prompts to False
+                    true_indices = torch.nonzero(effective_prompts_mask).squeeze()
+                    if excessive_prompts_per_rank <= len(true_indices):
+                        excessive_prompts_idx = true_indices[-excessive_prompts_per_rank:]
+                    else:
+                        excessive_prompts_idx = true_indices
+                    effective_prompts_mask[excessive_prompts_idx] = False
 
-                for mask_idx in range(len(effective_prompts_mask)):
-                    if effective_prompts_mask[mask_idx] == False:
-                        # Update loss mask.
-                        loss_mask[mask_idx] = False
+                    for mask_idx in range(len(effective_prompts_mask)):
+                        if effective_prompts_mask[mask_idx] == False:
+                            # Update loss mask.
+                            loss_mask[mask_idx] = False
         else:
             # If dynamic batching is disabled, we need to use all samples for training.
             need_update = (step_idx + 1) % self.num_microbatches == 0
@@ -504,6 +511,11 @@ class GRPOConsumer(BaseConsumer):
                 self.accum_advantages.zero_()
                 self.accum_response_length.zero_()
                 self.accum_count = 0
+
+            # All gather excessive prompts index across DP ranks.
+            excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
+            excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
+
             return loss_scalar, excessive_prompts_idx
         else:
             return None, excessive_prompts_idx
