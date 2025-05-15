@@ -153,7 +153,7 @@ class GRPOConsumer(BaseConsumer):
         ):
             self.wandb_run = wandb.init(
                 project=self.project_name,
-                sync_tensorboard=True,
+                sync_tensorboard=False,
                 dir="./wandb",
                 name=self.run_name,
                 group=self.wandb_group_name,

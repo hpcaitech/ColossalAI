@@ -71,7 +71,7 @@ class BaseProducer:
         if self.producer_idx == 0:
             self.wandb_run = wandb.init(
                 project=project_name,
-                sync_tensorboard=True,
+                sync_tensorboard=False,
                 dir="./wandb",
                 name=run_name + "_eval",
                 group=wandb_group_name,
