@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import torch
-from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb, LlamaConfig
+from transformers.models.llama.modeling_llama import LlamaConfig, LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 from colossalai.kernel.kernel_loader import InferenceOpsLoader
 
@@ -33,11 +33,7 @@ def test_rotary_emb(BATCH_SIZE, SEQ_LEN, H, K_H, D, dtype):
 
     position_ids = torch.arange(TOTAL_TOKENS).reshape((BATCH_SIZE, SEQ_LEN))
 
-    config = LlamaConfig(
-        max_position_embeddings=SEQ_LEN,
-        num_attention_heads=H,
-        hidden_size=H*D
-    ) 
+    config = LlamaConfig(max_position_embeddings=SEQ_LEN, num_attention_heads=H, hidden_size=H * D)
     emb = LlamaRotaryEmbedding(config)
 
     cos, sin = emb(x0, position_ids)
