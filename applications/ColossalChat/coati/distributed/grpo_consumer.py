@@ -376,7 +376,7 @@ class GRPOConsumer(BaseConsumer):
                             kl.append(appox_kl.mean())
                         else:
                             per_token_kl = 0.0
-                            kl.append(0.0)
+                            kl.append(torch.tensor(0.0))
 
                         loss, _ = self.policy_loss_fn(
                             action_log_probs,
