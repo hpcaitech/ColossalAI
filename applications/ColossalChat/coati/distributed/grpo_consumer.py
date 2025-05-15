@@ -218,7 +218,29 @@ class GRPOConsumer(BaseConsumer):
         if self.grpo_config.get("dynamic_batching", True):
             need_update = self.effective_prompt_count >= self.batch_size * self.dp_size
             excessive_prompts = self.effective_prompt_count - self.batch_size * self.dp_size
-            assert excessive_prompts <= 0, "Debug: Excessive prompts should always be less than 0. Bug!!!!"
+
+            if excessive_prompts > 0:
+                excessive_prompts_per_rank = excessive_prompts // self.dp_size
+                # Only count excessive prompts if they are greater than 1 per rank.
+                # TODO: customize excessive prompts calculation.
+                if excessive_prompts_per_rank != 0:
+                    # Mask excessive prompts to False
+                    true_indices = torch.nonzero(effective_prompts_mask)
+                    # Make sure the indices are not empty.
+                    if true_indices.numel() > 0:
+                        true_indices = true_indices.squeeze()
+                        if excessive_prompts_per_rank <= len(true_indices):
+                            excessive_prompts_idx = true_indices[-excessive_prompts_per_rank:]
+                        else:
+                            excessive_prompts_idx = true_indices
+                        effective_prompts_mask[excessive_prompts_idx] = False
+
+                        for mask_idx in range(len(effective_prompts_mask)):
+                            if effective_prompts_mask[mask_idx] == False:
+                                # Update loss mask.
+                                loss_mask[mask_idx] = False
+                    else:
+                        excessive_prompts_idx = torch.empty([0])
         else:
             # If dynamic batching is disabled, we need to use all samples for training.
             need_update = (step_idx + 1) % self.num_microbatches == 0
