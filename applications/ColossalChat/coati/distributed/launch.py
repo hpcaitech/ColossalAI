@@ -56,7 +56,6 @@ def launch_distributed(
     eval_save_dir: Optional[str] = None,
     eval_generation_config: Optional[Dict[str, Any]] = None,
 ):
-
     if core_algo not in ALGO_MAP:
         raise NotImplementedError(f"{core_algo} is not supported yet.")
     else:

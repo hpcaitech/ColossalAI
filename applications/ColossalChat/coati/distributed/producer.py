@@ -58,6 +58,7 @@ class BaseProducer:
         self.microbatch_size = microbatch_size
         assert batch_size % microbatch_size == 0
         self.num_microbatches = batch_size // microbatch_size
+        self.lastest_eval_step = -1
 
         self.train_dataset_config = train_dataset_config
         self.model_config = model_config
@@ -178,12 +179,15 @@ class BaseProducer:
                 if i >= num_valid_microbatches:
                     break
                 if self.eval_interval > 0 and self.eval_dataset_config is not None:
-                    if i % self.eval_interval == 0:
+                    if (
+                        self.consumer_global_step % self.eval_interval == 0
+                        and self.consumer_global_step > self.lastest_eval_step
+                    ):
                         to_log_msg = {}
                         for eval_task_name in self.eval_dataloaders:
                             if self.producer_idx == 0:
                                 print(
-                                    f"[P{self.producer_idx}] Evaluate episode {episode} step {i} on task {eval_task_name}"
+                                    f"[P{self.producer_idx}] Evaluate episode {episode} step {self.consumer_global_step} on task {eval_task_name}"
                                 )
                             eval_results = []
                             eval_statistics_tensor = torch.zeros((2,), dtype=torch.float32).to(self.device)
@@ -223,6 +227,7 @@ class BaseProducer:
 
                         if self.producer_idx == 0:
                             self.wandb_run.log(to_log_msg, step=self.consumer_global_step)
+                        self.lastest_eval_step = self.consumer_global_step
                 outputs = self.rollout(**batch)
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
