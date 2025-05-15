@@ -93,11 +93,6 @@ class ViTPolicy(Policy):
                             "use_zbv": use_zbv,
                         },
                     ),
-                    # SubModuleReplacementDescription(
-                    #     # suffix="attention.attention.dropout",
-                    #     suffix="attention.attention.dropout_prob",
-                    #     target_module=col_nn.DropoutForParallelInput,
-                    # ),
                     SubModuleReplacementDescription(
                         suffix="attention.output.dense",
                         target_module=col_nn.Linear1D_Row,
