@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Any, Dict, List
 
 import torch
-
+import math
 from colossalai.shardformer.layer.loss import dist_log_prob
 
 
@@ -27,12 +27,26 @@ def bind_batch(batches: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor
     return batch
 
 
-def pad_batch(batches: List[Dict[str, torch.Tensor]], tokenizer: Any = None) -> List[Dict[str, torch.Tensor]]:
+def pad_batch(
+    batches: List[Dict[str, torch.Tensor]], 
+    tokenizer: Any = None,
+    max_length: int = 4096,
+) -> List[Dict[str, torch.Tensor]]:
     max_len = defaultdict(int)
     for sample in batches:
         for k in sample:
             if k in ["input_ids", "attention_mask", "action_log_probs", "action_mask"]:
-                max_len[k] = max(max_len[k], sample[k].size(-1))
+                # max_len[k] = max(max_len[k], sample[k].size(-1))
+                max_len[k] = max_length
+     
+    # # ensure max_len % (tp size * sp size) == 0
+    # lcm_value = math.lcm(tensor_parallel_size, sequence_parallel_size)
+    # for k in max_len:
+    #     if max_len[k] % lcm_value != 0:
+    #         max_len[k] = ((max_len[k] // lcm_value) + 1) * lcm_value
+    
+    # print(f"Padding last dim shape {[(k, v)for k, v in max_len.items()]}")
+    
     for idx, sample in enumerate(batches):
         for k in sample:
             if k in ["input_ids", "attention_mask", "action_log_probs", "action_mask"]:

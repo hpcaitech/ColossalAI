@@ -16,7 +16,8 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
-from .utils import bind_batch, pad_batch, post_recv, unbind_batch
+# from .utils import bind_batch, pad_batch, post_recv, unbind_batch
+from .utils import bind_batch, post_recv, unbind_batch
 
 first_sleep=True
 class BaseConsumer:
@@ -33,6 +34,7 @@ class BaseConsumer:
         batch_size: int,
         model_config: Dict[str, Any],
         plugin_config: Dict[str, Any],
+        generate_config: Dict[str, Any],
         minibatch_size: int = 1,
         save_interval: int = 100,
         save_dir: str = "./model",
@@ -59,6 +61,7 @@ class BaseConsumer:
         self.device = 'npu'
         # self.device = torch.device(f"npu:{torch.npu.current_device()}")
         self.lr_scheduler = None
+        self.generate_config = generate_config
 
     def setup(self) -> None:
         print(f"self.rank {self.rank} self.world_size {self.world_size} self.master_addr {self.master_addr} self.master_port {self.master_port}")
@@ -76,10 +79,12 @@ class BaseConsumer:
         self.booster = Booster(plugin=self.plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
         self.tp_rank = dist.get_rank(self.plugin.tp_group)
+        self.sp_rank = dist.get_rank(self.plugin.sp_group)
         self.pp_rank = dist.get_rank(self.plugin.pp_group)
 
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
         self.tp_size = dist.get_world_size(self.plugin.tp_group)
+        self.sp_size = dist.get_world_size(self.plugin.sp_group)
         self.pp_size = dist.get_world_size(self.plugin.pp_group)
 
         # Init Hybrid ray process group
@@ -120,7 +125,7 @@ class BaseConsumer:
                             global first_sleep
                             if first_sleep:
                                 import time
-                                time.sleep(180)
+                                time.sleep(720)
                                 first_sleep=False
                             self.buffer.extend(
                                 unbind_batch(
@@ -133,9 +138,10 @@ class BaseConsumer:
                             batches = self.buffer[
                                 self.dp_rank * self.minibatch_size : (self.dp_rank + 1) * self.minibatch_size
                             ]
-                            batch = pad_batch(
-                                batches
-                            )  # when `imbs` is smaller than `tMbs`, samples may have differ in size, need to pad before stacking
+                            # batch = pad_batch(
+                            #     batches, 
+                            #     max_length=self.generate_config['max_tokens']
+                            # )  # when `imbs` is smaller than `tMbs`, samples may have differ in size, need to pad before stacking
                             batch = bind_batch(batches)
                             batch = post_recv(batch)
                             loss, num_excessive_prompts = self.step(i, pbar, **batch)
@@ -151,6 +157,7 @@ class BaseConsumer:
                             i += 1
                     if self.lr_scheduler is not None:
                         self.lr_scheduler.step()
+                    print(f"step {step} save_interval {self.save_interval} self.num_update_per_episode {self.num_update_per_episode}")
                     if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
                         if self.rank == 0:
                             print(f"Start saving policy model at step {step + 1}.")
@@ -165,7 +172,7 @@ class BaseConsumer:
                                 f"[T{dist.get_rank()}] Sync model PP stage {self.pp_rank} episode {episode} step {step}"
                             )
                         else:
-                            print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                            print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")  
                         torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.pp_size > 1:

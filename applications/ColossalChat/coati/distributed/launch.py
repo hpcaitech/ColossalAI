@@ -154,7 +154,9 @@ def launch_distributed(
         print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
         
         producer = SimpleProducer.options(
-            num_cpus=1,
+            # num_cpus=1,
+            # num_cpus=num_proc_per_producer, 
+            num_gpus=0,
             resources={"NPU":num_proc_per_producer},
             scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
                 node_id=node_id,

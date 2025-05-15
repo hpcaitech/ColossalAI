@@ -158,7 +158,7 @@ class GRPOConsumer(BaseConsumer):
         ):
             # Initialize wandb.
             name = f"{self.generate_config['backend']}_bs_{self.batch_size*self.dp_size}_temp_{self.generate_config['temperature']:.01f}_top_p_{self.generate_config['top_p']:.02f}"
-            self.wandb_run = wandb.init(project=self.project_name, sync_tensorboard=True, dir="./wandb", name=name)
+            self.wandb_run = wandb.init(project=self.project_name, sync_tensorboard=True, dir="./wandb", name=name, settings=wandb.Settings(init_timeout=120))
 
         self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
             self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
@@ -336,6 +336,7 @@ class GRPOConsumer(BaseConsumer):
                                 num_action,
                                 self.plugin.shard_config,
                             )
+                            del reference_model_logits
                         else:
                             # Dummy reference logprobs for data iterator.
                             reference_action_log_probs = None
@@ -415,6 +416,7 @@ class GRPOConsumer(BaseConsumer):
                         num_action,
                         self.plugin.shard_config,
                     )
+                    del policy_model_logits
 
                     if self.policy_loss_fn.beta > 0:
                         with torch.no_grad():
@@ -428,6 +430,7 @@ class GRPOConsumer(BaseConsumer):
                             num_action,
                             self.plugin.shard_config,
                         )
+                        del reference_model_logits
                         per_token_kl = (
                             torch.exp(reference_action_log_probs - action_log_probs)
                             - (reference_action_log_probs - action_log_probs)

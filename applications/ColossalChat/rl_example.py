@@ -96,7 +96,7 @@ if __name__ == "__main__":
     )
 
     # Logging/Checkpointing parameters
-    parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
+    parser.add_argument("-si", "--save-interval", type=int, default=20, help="Interval for saving checkpoints.")
     parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
 
     args = parser.parse_args()
@@ -223,13 +223,16 @@ if __name__ == "__main__":
         #     "zero_stage": 2,
         # },  # for zero
         plugin_config={
-            "tp_size": 8,
-            "pp_size": 3,
+            "tp_size": 2,
+            "pp_size": 2,
             "microbatch_size": max(
-                1, args.train_microbatch_size // 3
+                1, args.train_microbatch_size // 2
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": 1,
             "max_norm": 1.0,
+            # "sp_size": 4,
+            # "enable_sequence_parallelism":True,
+            # "sequence_parallelism_mode":"ring" # ["split_gather", "ring", "all_to_all"]
         },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",
