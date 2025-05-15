@@ -271,6 +271,7 @@ class T5PipelineForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
@@ -389,7 +390,9 @@ class T5PipelineForwards:
                 decoder_hidden_states=decoder_outputs.hidden_states,
                 decoder_attentions=decoder_outputs.attentions,
                 cross_attentions=decoder_outputs.cross_attentions,
-                encoder_last_hidden_state=encoder_hidden_states,
+                encoder_last_hidden_state=encoder_outputs.last_hidden_state,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attentions=encoder_outputs.attentions,
             )
 
     @staticmethod
