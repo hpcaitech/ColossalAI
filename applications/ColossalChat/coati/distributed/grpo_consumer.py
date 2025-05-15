@@ -266,7 +266,6 @@ class GRPOConsumer(BaseConsumer):
         total_samples = all_reduce_sum(torch.sum(torch.ones_like(loss_mask, device=loss_mask.device)), self.plugin)
         self.effective_sample_count += effective_samples.item()
         self.total_sample_count += total_samples.item()
-
         pbar.set_postfix(
             {
                 "Global Step": self.global_step,
@@ -522,7 +521,6 @@ class GRPOConsumer(BaseConsumer):
                 # All gather excessive prompts index across DP ranks.
                 excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
                 excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
-
             return loss_scalar, excessive_prompts_idx
         else:
             return None, excessive_prompts_idx
