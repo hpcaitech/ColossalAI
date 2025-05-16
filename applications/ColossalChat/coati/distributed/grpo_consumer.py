@@ -33,12 +33,13 @@ class GRPOConsumer(BaseConsumer):
         plugin_config,
         minibatch_size=1,
         num_generations=8,
-        use_wandb=True,
         generate_config=None,
         grpo_config={},
-        project_name=None,
         save_interval: int = 100,
         save_dir="./model",
+        project_name: str = None,
+        run_name: str = None,
+        wandb_group_name: str = None,
     ):
         print(f"Using GRPO config: {grpo_config}")
         if (
@@ -84,6 +85,9 @@ class GRPOConsumer(BaseConsumer):
         self.effective_sample_count = 0
         self.effective_prompt_count = 0
         self.total_sample_count = 0
+        self.project_name = project_name
+        self.run_name = run_name
+        self.wandb_group_name = wandb_group_name
 
         self.policy_loss_fn = PolicyLoss(
             clip_eps_low=grpo_config.get("clip_eps_low", 0.2),
@@ -134,7 +138,6 @@ class GRPOConsumer(BaseConsumer):
             **reward_model_kwargs,
         )
         self.global_step = 0
-        self.use_wandb = use_wandb
 
         self.lr_scheduler = CosineAnnealingWarmupLR(
             optimizer=self.optimizer,
@@ -145,13 +148,16 @@ class GRPOConsumer(BaseConsumer):
 
     def setup(self):
         super().setup()
-        if self.use_wandb and (
-            (not self.plugin.pp_size > 1 and self.rank == 0)
-            or (self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0)
+        if (not self.plugin.pp_size > 1 and self.rank == 0) or (
+            self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
         ):
-            # Initialize wandb.
-            name = f"{self.generate_config['backend']}_bs_{self.batch_size*self.dp_size}_temp_{self.generate_config['temperature']:.01f}_top_p_{self.generate_config['top_p']:.02f}"
-            self.wandb_run = wandb.init(project=self.project_name, sync_tensorboard=True, dir="./wandb", name=name)
+            self.wandb_run = wandb.init(
+                project=self.project_name,
+                sync_tensorboard=False,
+                dir="./wandb",
+                name=self.run_name,
+                group=self.wandb_group_name,
+            )
 
         self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
             self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
@@ -265,7 +271,6 @@ class GRPOConsumer(BaseConsumer):
         total_samples = all_reduce_sum(torch.sum(torch.ones_like(loss_mask, device=loss_mask.device)), self.plugin)
         self.effective_sample_count += effective_samples.item()
         self.total_sample_count += total_samples.item()
-
         pbar.set_postfix(
             {
                 "Global Step": self.global_step,
@@ -506,8 +511,8 @@ class GRPOConsumer(BaseConsumer):
                     }
                     if self.policy_loss_fn.beta > 0:
                         metrics["train/kl"] = self.accum_kl.item() / self.accum_count
-
-                    self.wandb_run.log(metrics)
+                    if self.wandb_run is not None:
+                        self.wandb_run.log(metrics)
                 self.accum_loss.zero_()
                 self.accum_reward.zero_()
                 self.accum_ans_acc.zero_()
@@ -521,7 +526,6 @@ class GRPOConsumer(BaseConsumer):
                 # All gather excessive prompts index across DP ranks.
                 excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
                 excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
-
             return loss_scalar, excessive_prompts_idx
         else:
             return None, excessive_prompts_idx
@@ -530,4 +534,5 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model._force_wait_all_gather()
         model = self.policy_model.unwrap()
         state_dict = model.state_dict()
+        state_dict["consumer_global_step"] = torch.tensor([self.global_step], device=self.device)
         return state_dict

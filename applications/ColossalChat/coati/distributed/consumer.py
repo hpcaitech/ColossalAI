@@ -93,7 +93,6 @@ class BaseConsumer:
                 cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
 
         self.buffer = []
-
         self.recv_cnt = 0
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
@@ -209,6 +208,8 @@ class SimpleConsumer(BaseConsumer):
             model_config,
             plugin_config,
             minibatch_size,
+            save_interval,
+            save_dir,
         )
         path = model_config.pop("path")
         self.model = AutoModelForCausalLM.from_pretrained(path, **model_config)

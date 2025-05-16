@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 
 import ray
@@ -9,7 +10,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
-    parser.add_argument("-p", "--project", type=str, default="GRPO-V3", help="Project name.")
+    parser.add_argument(
+        "-ed",
+        "--eval-dataset",
+        type=str,
+        default='{"eval task name":"data_eval.jsonl"}',
+        help="Evaluation dataset for each task, please use json format to specify the dataset for each task. \
+        For example: {'task1':'data_eval_task1.jsonl', 'task2':'data_eval_task2.jsonl'}, the jsonl file should be in the same format as the training dataset. \
+        The key is the task name, and the value is the path to the jsonl file",
+    )
+    parser.add_argument("-p", "--project", type=str, default="GRPO", help="Project name.")
     parser.add_argument("-e", "--num-episodes", type=int, default=1, help="Number of episodes to train.")
 
     # Distributed training parameters
@@ -94,11 +104,20 @@ if __name__ == "__main__":
         choices=["think_answer_tags", "boxed"],
         help="Reward type for GRPO.",
     )
+    parser.add_argument(
+        "-ei",
+        "--eval-interval",
+        type=int,
+        default=100,
+        help="Interval for evaluation. Evaluate every ei training steps.",
+    )
 
     # Logging/Checkpointing parameters
     parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
     parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
-
+    parser.add_argument(
+        "-esd", "--eval-save-dir", type=str, default="./eval", help="Directory for saving evaluation results."
+    )
     args = parser.parse_args()
 
     if args.train_minibatch_size is None:
@@ -148,6 +167,7 @@ if __name__ == "__main__":
                 stop_strings=["</answer>"] if args.reward_type == "think_answer_tags" else None,
             )
         )
+        eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
@@ -166,6 +186,7 @@ if __name__ == "__main__":
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
             )
         )
+        eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     else:
         raise ValueError(f"Unsupported backend: {args.backend}")
 
@@ -208,7 +229,7 @@ if __name__ == "__main__":
         inference_microbatch_size=args.inference_microbatch_size,
         train_batch_size=args.train_batch_size,
         train_minibatch_size=args.train_minibatch_size,
-        dataset_config={
+        train_dataset_config={
             "path": args.dataset,
             "max_length": args.max_prompt_tokens,
             "system_prompt": args.system_prompt,
@@ -238,4 +259,11 @@ if __name__ == "__main__":
         project_name=args.project,
         save_interval=args.save_interval,
         save_dir=os.path.join(args.save_dir, args.project.replace(" ", "_")),
+        eval_dataset_config={
+            k: {"path": v, "max_length": args.max_prompt_tokens, "system_prompt": args.system_prompt}
+            for k, v in json.loads(args.eval_dataset).items()
+        },
+        eval_interval=args.eval_interval,
+        eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
+        eval_generation_config=eval_generation_config,
     )
