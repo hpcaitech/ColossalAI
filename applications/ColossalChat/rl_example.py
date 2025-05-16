@@ -104,7 +104,13 @@ if __name__ == "__main__":
         choices=["think_answer_tags", "boxed"],
         help="Reward type for GRPO.",
     )
-    parser.add_argument("-ei", "--eval-interval", type=int, default=100, help="Interval for evaluation.")
+    parser.add_argument(
+        "-ei",
+        "--eval-interval",
+        type=int,
+        default=100,
+        help="Interval for evaluation. Evaluate every ei training steps.",
+    )
 
     # Logging/Checkpointing parameters
     parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")

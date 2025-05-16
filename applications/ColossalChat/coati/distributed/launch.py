@@ -66,7 +66,7 @@ def launch_distributed(
 
     dataset_path = train_dataset_config["path"]
     num_samples = get_jsonl_size_fast(dataset_path)
-    global_inference_batch_size = inference_batch_size * num_producers  # TODO: this doesn't support TP on producer
+    global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
     num_recv_per_update = inference_batch_size // inference_microbatch_size
 
