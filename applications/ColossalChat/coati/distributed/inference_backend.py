@@ -201,6 +201,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
             raise ImportError("vllm is not installed")
         model_config = update_by_default(model_config, self.DEFAULT_MODEL_CONFIG)
         path = model_config.pop("path")
+        print(f"model_config {model_config}")
         self.llm = LLM(model=path, **model_config)
         generate_config = generate_config.copy()
         generate_config.update(self.FORCE_GENERATE_CONFIG)
@@ -209,6 +210,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         self.model_config = model_config
         self.tokenizer = tokenizer
         self.num_generations = num_generations
+        self.max_length = generate_config['max_tokens']
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:

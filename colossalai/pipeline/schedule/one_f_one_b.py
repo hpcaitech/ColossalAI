@@ -92,7 +92,7 @@ class OneForwardOneBackwardSchedule(PipelineSchedule):
 
             assert (
                 self.num_microbatches >= self.stage_manager.num_stages
-            ), "Number of microbatch should be larger than number of stages"
+            ), f"Number of microbatch should be larger than number of stages {self.num_microbatches} vs {self.stage_manager.num_stages}"
 
         if self.forward_only:
             self.num_microbatches = (self.batch_size - 1) // self.microbatch_size + 1

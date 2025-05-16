@@ -168,6 +168,7 @@ class DistLogProb(Function):
         ##################
         logits_max = torch.max(vocab_logits, dim=-1)[0]
         handle = dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group, async_op=True)
+        print(f"#########debug loss step1 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
 
         ##################
         # Step2:Find the local mask. local mask will be use to select log_probs value in Step 4.
@@ -193,6 +194,7 @@ class DistLogProb(Function):
         masked_target[mask] = 0
         masked_target_1d = masked_target.view(-1).contiguous()
         handle.wait()
+        print(f"#########debug loss step3 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
 
         ##################
         # Step3:Calculate global summation exp logits
@@ -205,8 +207,18 @@ class DistLogProb(Function):
         ##################
         # Step4:Calculate local prob. We first cal log_softmax, then select log probs via local mask
         ##################
+        # print(f"#########debug loss step4 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
+        # torch.npu.synchronize()
+        # torch.npu.empty_cache()
+        #sum_exp_logits = sum_exp_logits.unsqueeze(dim=-1)
+        #print(f"#########debug loss step4.01 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
+        #log_logits = torch.log(sum_exp_logits)
+        #print(f"#########debug loss step4.02 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
+        #log_probs = vocab_logits - log_logits 
         log_probs = vocab_logits - torch.log(sum_exp_logits.unsqueeze(dim=-1))  # cal log_softmax
+        # print(f"#########debug loss step4.1 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
         log_probs = log_probs.gather(dim=-1, index=masked_target.unsqueeze(-1))
+        # print(f"#########debug loss step4.2 mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
         log_probs[mask.unsqueeze(-1)] = 0  # set masked val to zero
         dist.all_reduce(log_probs, op=dist.ReduceOp.SUM, group=process_group)
 
