@@ -187,7 +187,7 @@ class BaseProducer:
                         for eval_task_name in self.eval_dataloaders:
                             if self.producer_idx == 0:
                                 print(
-                                    f"[P{self.producer_idx}] Evaluate episode {episode} step {self.consumer_global_step} on task {eval_task_name}"
+                                    f"[P{self.producer_idx}] Evaluate consumer step {self.consumer_global_step} on task {eval_task_name}"
                                 )
                             eval_results = []
                             eval_statistics_tensor = torch.zeros((2,), dtype=torch.float32).to(self.device)

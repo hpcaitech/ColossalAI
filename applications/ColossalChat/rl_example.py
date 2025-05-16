@@ -95,7 +95,13 @@ if __name__ == "__main__":
         choices=["think_answer_tags", "boxed"],
         help="Reward type for GRPO.",
     )
-    parser.add_argument("-ei", "--eval-interval", type=int, default=100, help="Interval for evaluation.")
+    parser.add_argument(
+        "-ei",
+        "--eval-interval",
+        type=int,
+        default=100,
+        help="Interval for evaluation. Evaluate every ei consumer steps.",
+    )
 
     # Logging/Checkpointing parameters
     parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
@@ -116,8 +122,8 @@ if __name__ == "__main__":
         and args.train_microbatch_size > 0
     ), "Train micro batch size must be greater than 0 less than train mini batch size * num generations"
     assert (
-        args.train_minibatch_size <= args.train_batch_size
-    ), "Train mini batch size must be less than or equals to train batch size"
+        args.train_minibatch_size <= args.train_batch_size and args.train_batch_size % args.train_minibatch_size == 0
+    ), "Train mini batch size must be less than or equals to train batch size and train batch size must be divisible by train mini batch size"
 
     if args.master_address is None:
         # Default settings: Using single machine
