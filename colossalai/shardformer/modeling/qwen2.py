@@ -95,7 +95,6 @@ class Qwen2PipelineForwards:
             batch_size, seq_length = input_shape
             device = hidden_states.device
 
-        #print(f"######## debug 0 qwen2 pipe model, ls: {stage_manager.is_last_stage()}, fs: {stage_manager.is_first_stage()}, hidden_states: {hidden_states.shape}")
         seq_length_with_past = seq_length
         past_key_values_length = 0
 
@@ -177,7 +176,6 @@ class Qwen2PipelineForwards:
                     sliding_window=self.config.sliding_window,
                 )
 
-        #print(f"######## debug 1 qwen2 pipe model, fs: {stage_manager.is_first_stage()}, ls: {stage_manager.is_last_stage()}, hidden_states: {hidden_states.shape}")
         if stage_manager.is_first_stage():
             if shard_config.enable_sequence_parallelism:
                 if is_share_sp_tp(sp_mode):
@@ -193,7 +191,6 @@ class Qwen2PipelineForwards:
                         process_group=sp_group,
                         grad_scale=1 / sp_size,
                     )
-        #print(f"######## debug 2 qwen2 pipe model, ls: {stage_manager.is_last_stage()}, hidden_states: {hidden_states.shape}")
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
@@ -512,7 +509,6 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
             ), "Must specify sp_size and sp_group for sequence parallel"
 
         bsz, q_len, _ = hidden_states.size()
-        #print(f"#############debug 1 bsz: {bsz}, q_len: {q_len}, _: {_}, self.num_heads: {self.num_heads}, self.head_dim: {self.head_dim}")
         # sp: modify sp_len when sequence parallel mode is ring
         if sp_mode in ["split_gather", "ring"]:
             q_len *= sp_size
@@ -520,15 +516,13 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
         value_states = self.v_proj(hidden_states)
-        #print(f"#############debug query_states: {query_states.shape}, key_states: {key_states.shape}, value_states: {value_states.shape}")
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":
             query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
             key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
             value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
-        print(f"#############debug 2 bsz: {bsz}, q_len: {q_len}, _: {_}, self.num_heads: {self.num_heads}, self.head_dim: {self.head_dim}")
-
+        
         query_states = query_states.view(bsz, q_len, self.num_heads, -1).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
@@ -544,7 +538,6 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
         # Because the input can be padded, the absolute sequence length depends on the max position id.
         cos, sin = self.rotary_emb(value_states, position_ids)
-        #print(f"#############debug fa cos: {cos.shape}, sin: {sin.shape}, position_ids: {position_ids}, query_states: {query_states.shape}, key_states: {key_states.shape}, value_states: {value_states.shape}")
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
 
         if past_key_value is not None:
@@ -581,7 +574,6 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if shard_config.enable_flash_attention:
-            #print(f"#######debug fa q_len: {q_len}, q_len: {q_len}, query_states: {query_states.shape}, key_states: {key_states.shape}")
             atten_mask = torch.triu(
                 torch.ones(q_len, q_len),
                 diagonal=1,
@@ -857,13 +849,11 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
 
         layer_idx = 0
         for decoder_layer in self.layers:
-            print(f"#########debug layer {layer_idx} mem current: {torch.npu.memory_allocated() / (1024**3):.2f} GB, max: {torch.npu.max_memory_allocated() / (1024**3):.2f} GB,")
             layer_idx += 1
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
             if self.gradient_checkpointing and self.training:
-                print(f"#######debug self.gradient_checkpointing in")
                 layer_outputs = self._gradient_checkpointing_func(
                     decoder_layer.__call__,
                     hidden_states,

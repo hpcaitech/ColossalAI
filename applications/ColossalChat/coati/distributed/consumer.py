@@ -63,7 +63,6 @@ class BaseConsumer:
         self.generate_config = generate_config
 
     def setup(self) -> None:
-        print(f"self.rank {self.rank} self.world_size {self.world_size} self.master_addr {self.master_addr} self.master_port {self.master_port}")
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
 
         plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
@@ -155,7 +154,6 @@ class BaseConsumer:
                             i += 1
                     if self.lr_scheduler is not None:
                         self.lr_scheduler.step()
-                    print(f"step {step} save_interval {self.save_interval} self.num_update_per_episode {self.num_update_per_episode}")
                     if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
                         if self.rank == 0:
                             print(f"Start saving policy model at step {step + 1}.")

@@ -201,7 +201,6 @@ class VLLMInferenceBackend(BaseInferenceBackend):
             raise ImportError("vllm is not installed")
         model_config = update_by_default(model_config, self.DEFAULT_MODEL_CONFIG)
         path = model_config.pop("path")
-        print(f"model_config {model_config}")
         self.llm = LLM(model=path, **model_config)
         generate_config = generate_config.copy()
         generate_config.update(self.FORCE_GENERATE_CONFIG)
