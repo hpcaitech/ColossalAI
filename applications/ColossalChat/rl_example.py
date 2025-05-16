@@ -100,7 +100,7 @@ if __name__ == "__main__":
         "--eval-interval",
         type=int,
         default=100,
-        help="Interval for evaluation. Evaluate every ei consumer steps.",
+        help="Interval for evaluation. Evaluate every ei training steps.",
     )
 
     # Logging/Checkpointing parameters
