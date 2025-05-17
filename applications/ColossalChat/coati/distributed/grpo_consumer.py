@@ -120,12 +120,16 @@ class GRPOConsumer(BaseConsumer):
                     "either max_tokens (vllm) or max_new_tokens (transformers) must be set in generate_config."
                 )
         # Initialize verifiable reward.
-        response_format_tags = {
-            "think_start": {"text": "<think>", "num_occur": 1},
-            "think_end": {"text": "</think>", "num_occur": 1},
-            "answer_start": {"text": "<answer>", "num_occur": 1},
-            "answer_end": {"text": "</answer>", "num_occur": 1},
-        }
+        response_format_tags = (
+            {
+                "think_start": {"text": "<think>", "num_occur": 1},
+                "think_end": {"text": "</think>", "num_occur": 1},
+                "answer_start": {"text": "<answer>", "num_occur": 1},
+                "answer_end": {"text": "</answer>", "num_occur": 1},
+            }
+            if grpo_config.get("reward_fn_type") == "think_answer_tags"
+            else None
+        )
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
