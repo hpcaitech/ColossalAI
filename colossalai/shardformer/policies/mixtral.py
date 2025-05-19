@@ -43,11 +43,7 @@ class MixtralPolicy(Policy):
 <<<<<<< Updated upstream
         from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
 =======
-        from transformers.models.mixtral.modeling_mixtral import (
-            MixtralAttention,
-            MixtralDecoderLayer,
-            MixtralModel,
-        )
+        from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
 >>>>>>> Stashed changes
 
         policy = {}
