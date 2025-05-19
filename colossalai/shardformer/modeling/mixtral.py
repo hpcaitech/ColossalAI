@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import List, Optional, Tuple, Union, Callable
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -13,8 +13,8 @@ from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask_for_sdpa,
 )
 from transformers.models.mixtral.modeling_mixtral import (
-    MixtralSparseMoeBlock,
     MixtralModel,
+    MixtralSparseMoeBlock,
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
     apply_rotary_pos_emb,
@@ -654,7 +654,7 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         # repeat k/v heads if n_kv_heads < n_heads
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
-        dropout_rate = 0.0 if not self.training else self.attention_dropout
+        0.0 if not self.training else self.attention_dropout
 
         # In PEFT, usually we cast the layer norms in float32 for training stability reasons
         # therefore the input hidden states gets silently casted in float32. Hence, we need
