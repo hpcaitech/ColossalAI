@@ -12,9 +12,9 @@ from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaConfig,
     LlamaDecoderLayer,
-    LlamaDynamicNTKScalingRotaryEmbedding,
+    # LlamaDynamicNTKScalingRotaryEmbedding,
     LlamaForCausalLM,
-    LlamaLinearScalingRotaryEmbedding,
+    # LlamaLinearScalingRotaryEmbedding,
     LlamaMLP,
     LlamaModel,
     LlamaRMSNorm,
@@ -173,6 +173,8 @@ def glide_llama_model_forward(
         position_ids = cache_position.unsqueeze(0)
 
     attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
+    position_ids = position_ids + glide_input.n_spec_tokens
+    position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
     # embed positions
     hidden_states = inputs_embeds
@@ -189,9 +191,9 @@ def glide_llama_model_forward(
         # GlideLlamaDecoderLayer
         layer_outputs = decoder_layer(
             hidden_states,
+            position_embeddings=position_embeddings,
             glide_input=glide_input,
             attention_mask=attention_mask,
-            position_ids=position_ids,
             past_key_value=past_key_values,
             output_attentions=output_attentions,
             use_cache=use_cache,
@@ -267,7 +269,7 @@ class LlamaCrossAttention(nn.Module):
 
         self.q_proj = nn.Linear(self.hidden_size, self.large_num_heads * self.large_head_dim, bias=False)
         self.o_proj = nn.Linear(self.large_num_heads * self.large_head_dim, self.hidden_size, bias=False)
-        self._init_rope()
+        # self._init_rope()
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -299,9 +301,10 @@ class LlamaCrossAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        position_ids: Optional[torch.LongTensor] = None,
         glide_input: GlideInput = None,  # Used for glimpsing main model's KV caches
         attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
     ) -> Optional[torch.Tensor]:
@@ -319,8 +322,9 @@ class LlamaCrossAttention(nn.Module):
         query_states = query_states.view(bsz, -1, self.large_num_heads, self.large_head_dim).transpose(1, 2)
 
         # for RoPE
-        position_ids = position_ids + glide_input.n_spec_tokens
-        cos, sin = self.rotary_emb(query_states, position_ids)
+        # position_ids = position_ids + glide_input.n_spec_tokens
+        # cos, sin = self.rotary_emb(query_states, position_ids)
+        cos, sin = position_embeddings
         query_states = apply_single_rotary_pos_emb(query_states, cos, sin, position_ids)
         query_states = query_states.transpose(1, 2)
         query_states = query_states.reshape(-1, self.large_num_heads, self.large_head_dim)
@@ -367,9 +371,10 @@ class GlideLlamaDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: torch.Tensor = None,
+        position_ids: Optional[torch.LongTensor] = None,
         glide_input: GlideInput = None,
         attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
@@ -401,8 +406,8 @@ class GlideLlamaDecoderLayer(nn.Module):
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
+            position_embeddings=position_embeddings,
             attention_mask=attention_mask,
-            position_ids=position_ids,
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
@@ -425,9 +430,10 @@ class GlideLlamaDecoderLayer(nn.Module):
 
             hidden_states = self.cross_attn(
                 hidden_states=hidden_states,
+                position_embeddings=position_embeddings,
+                position_ids = position_ids,
                 glide_input=glide_input,
                 attention_mask=attention_mask,
-                position_ids=position_ids,
                 output_attentions=output_attentions,
                 use_cache=True,
             )
