@@ -632,16 +632,10 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
         # Because the input can be padded, the absolute sequence length depends on the max position id.
-        rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
         cos, sin = position_embeddings
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-        use_sliding_windows = (
-            _flash_supports_window_size
-            and getattr(self.config, "sliding_window", None) is not None
-            and kv_seq_len > self.config.sliding_window
-        )
         if not _flash_supports_window_size:
             logger.warning_once(
                 "The current flash attention version does not support sliding window attention, for a more memory efficient implementation"
