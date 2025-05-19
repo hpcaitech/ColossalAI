@@ -634,7 +634,6 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         # Because the input can be padded, the absolute sequence length depends on the max position id.
         rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
         cos, sin = position_embeddings
-        # cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
@@ -649,31 +648,6 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
                 " make sure to upgrade flash-attn library."
             )
         if past_key_value is not None:
-            # Activate slicing cache only if the config has a value `sliding_windows` attribute
-            # cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
-            # if (
-            #     getattr(self.config, "sliding_window", None) is not None
-            #     and kv_seq_len > self.config.sliding_window
-            #     and cache_has_contents
-            # ):
-            #     slicing_tokens = 1 - self.config.sliding_window
-
-            #     past_key = past_key_value[self.layer_idx][0]
-            #     past_value = past_key_value[self.layer_idx][1]
-
-            #     past_key = past_key[:, :, slicing_tokens:, :].contiguous()
-            #     past_value = past_value[:, :, slicing_tokens:, :].contiguous()
-
-            #     if past_key.shape[-2] != self.config.sliding_window - 1:
-            #         raise ValueError(
-            #             f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
-            #             f" {past_key.shape}"
-            #         )
-
-            #     if attention_mask is not None:
-            #         attention_mask = attention_mask[:, slicing_tokens:]
-            #         attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
-
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}  # Specific to RoPE models
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
@@ -708,15 +682,6 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        # attn_output = self._flash_attention_forward(
-        #     query_states,
-        #     key_states,
-        #     value_states,
-        #     attention_mask,
-        #     q_len,
-        #     dropout=dropout_rate,
-        #     use_sliding_windows=use_sliding_windows,
-        # )
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":

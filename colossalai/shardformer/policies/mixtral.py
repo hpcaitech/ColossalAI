@@ -43,18 +43,10 @@ class MixtralPolicy(Policy):
         from transformers.models.mixtral.modeling_mixtral import (
             MixtralAttention,
             MixtralDecoderLayer,
-            # MixtralFlashAttention2,
             MixtralModel,
-            # MixtralSdpaAttention,
         )
 
-        # ATTN_IMPLEMENTATION = {
-        #     "eager": MixtralAttention,
-        #     "flash_attention_2": MixtralFlashAttention2,
-        #     "sdpa": MixtralSdpaAttention,
-        # }
         policy = {}
-        # attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
