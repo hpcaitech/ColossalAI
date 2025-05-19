@@ -109,7 +109,7 @@ if __name__ == "__main__":
         "--eval-interval",
         type=int,
         default=100,
-        help="Interval for evaluation. Evaluate every ei consumer steps.",
+        help="Interval for evaluation. Evaluate every ei training steps.",
     )
 
     # Logging/Checkpointing parameters
@@ -117,6 +117,9 @@ if __name__ == "__main__":
     parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
     parser.add_argument(
         "-esd", "--eval-save-dir", type=str, default="./eval", help="Directory for saving evaluation results."
+    )
+    parser.add_argument(
+        "-rsd", "--rollout-save-dir", type=str, default="./rollouts", help="Directory for saving rollout loggings."
     )
     args = parser.parse_args()
 
@@ -198,6 +201,8 @@ if __name__ == "__main__":
             "beta": args.kl_coeff,  # KL penalty coefficient
             "loss_variation": "sample_level",
             "reward_fn_type": args.reward_type,
+            "max_length": args.max_new_tokens + args.max_prompt_tokens,
+            "max_new_tokens": args.max_new_tokens,
         }
     elif args.algo == "DAPO":
         # DAPO variant settings
@@ -213,6 +218,7 @@ if __name__ == "__main__":
             "loss_variation": "token_level",
             "soft_over_length_punishment": True,
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
+            "max_new_tokens": args.max_new_tokens,
             "cache_length": min(1024, int(args.max_new_tokens / 4)),
             "filter_truncated_response": True,
             "reward_fn_type": args.reward_type,
@@ -266,4 +272,6 @@ if __name__ == "__main__":
         eval_interval=args.eval_interval,
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
         eval_generation_config=eval_generation_config,
+        log_rollout_interval=20,
+        rollout_log_file=os.path.join(args.rollout_save_dir, args.project.replace(" ", "_") + ".jsonl"),
     )

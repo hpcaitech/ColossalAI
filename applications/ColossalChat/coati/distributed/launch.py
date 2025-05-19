@@ -55,6 +55,8 @@ def launch_distributed(
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
     eval_generation_config: Optional[Dict[str, Any]] = None,
+    log_rollout_interval: int = 20,
+    rollout_log_file: str = "./rollout_log.jsonl",
 ):
     if core_algo not in ALGO_MAP:
         raise NotImplementedError(f"{core_algo} is not supported yet.")
@@ -98,6 +100,8 @@ def launch_distributed(
             project_name=project_name,
             run_name=run_name,
             wandb_group_name=wandb_group_name,
+            log_rollout_interval=log_rollout_interval,
+            rollout_log_file=rollout_log_file,
         )
         procs.append(producer)
     generate_config_consumer = copy.deepcopy(generate_config)

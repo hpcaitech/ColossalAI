@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 from typing import Any, Dict, Optional
 
@@ -49,6 +50,8 @@ class BaseProducer:
         project_name: str = None,
         run_name: str = None,
         wandb_group_name: str = None,
+        log_rollout_interval: int = 20,
+        rollout_log_file: str = "./rollout_log.jsonl",
     ):
         self.producer_idx = producer_idx
         self.num_producers = num_producers
@@ -58,7 +61,7 @@ class BaseProducer:
         self.microbatch_size = microbatch_size
         assert batch_size % microbatch_size == 0
         self.num_microbatches = batch_size // microbatch_size
-        self.lastest_eval_step = -1
+        self.latest_eval_step = -1
 
         self.train_dataset_config = train_dataset_config
         self.model_config = model_config
@@ -68,6 +71,17 @@ class BaseProducer:
         self.eval_interval = eval_interval
         self.eval_save_dir = eval_save_dir
         self.consumer_global_step = 0
+        self.eval_mode = False
+        self.log_rollout_interval = log_rollout_interval
+        self.latest_rollout_log_step = -1
+        if producer_idx == 0:
+            if os.path.exists(rollout_log_file):
+                raise ValueError(
+                    f"Rollout log file {rollout_log_file} already exists. Please delete it or change the name."
+                )
+            else:
+                os.makedirs(os.path.dirname(rollout_log_file), exist_ok=True)
+                self.rollout_log_file = open(rollout_log_file, "w", encoding="utf8")
         if self.producer_idx == 0:
             self.wandb_run = wandb.init(
                 project=project_name,
@@ -77,7 +91,7 @@ class BaseProducer:
                 group=wandb_group_name,
             )
 
-        if os.path.exists(self.eval_save_dir):
+        if os.path.exists(self.eval_save_dir) and self.eval_interval > 0:
             raise ValueError(f"Eval save dir {self.eval_save_dir} already exists. Please delete it or change the name.")
 
         # init tokenizer
@@ -180,14 +194,15 @@ class BaseProducer:
                     break
                 if self.eval_interval > 0 and self.eval_dataset_config is not None:
                     if (
-                        self.consumer_global_step % self.eval_interval == 0
-                        and self.consumer_global_step > self.lastest_eval_step
-                    ):
+                        self.consumer_global_step - self.latest_eval_step >= self.eval_interval
+                        and self.consumer_global_step > self.latest_eval_step
+                    ) or self.latest_eval_step == -1:
                         to_log_msg = {}
+                        self.eval_mode = True
                         for eval_task_name in self.eval_dataloaders:
                             if self.producer_idx == 0:
                                 print(
-                                    f"[P{self.producer_idx}] Evaluate consumer step {self.consumer_global_step} on task {eval_task_name}"
+                                    f"[P{self.producer_idx}] Evaluate model at training step {self.consumer_global_step} on task {eval_task_name}"
                                 )
                             eval_results = []
                             eval_statistics_tensor = torch.zeros((2,), dtype=torch.float32).to(self.device)
@@ -220,14 +235,15 @@ class BaseProducer:
                             safe_append_to_jsonl_file(
                                 os.path.join(
                                     self.eval_save_dir,
-                                    f"{eval_task_name}_episode_{episode}_step_{self.consumer_global_step}.jsonl",
+                                    f"{eval_task_name}_training_step_{self.consumer_global_step}.jsonl",
                                 ),
                                 eval_results,
                             )
 
                         if self.producer_idx == 0:
                             self.wandb_run.log(to_log_msg, step=self.consumer_global_step)
-                        self.lastest_eval_step = self.consumer_global_step
+                        self.eval_mode = False
+                        self.latest_eval_step = self.consumer_global_step
                 outputs = self.rollout(**batch)
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
@@ -256,6 +272,8 @@ class BaseProducer:
                             state_dict = ray_broadcast_tensor_dict(
                                 None, self.num_producers, device=self.device, group_name=f"sync_model_{pp_idx}"
                             )
+                            if "consumer_global_step" in state_dict:
+                                self.consumer_global_step = state_dict.pop("consumer_global_step").item()
                             self.load_state_dict(state_dict)
                     else:
                         print(
@@ -311,6 +329,8 @@ class SimpleProducer(BaseProducer):
         project_name: str = None,
         run_name: str = None,
         wandb_group_name: str = None,
+        log_rollout_interval: int = 20,
+        rollout_log_file: str = "./rollout_log.jsonl",
     ):
         super().__init__(
             producer_idx,
@@ -333,6 +353,8 @@ class SimpleProducer(BaseProducer):
             project_name=project_name,
             run_name=run_name,
             wandb_group_name=wandb_group_name,
+            log_rollout_interval=log_rollout_interval,
+            rollout_log_file=rollout_log_file,
         )
         self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
         self.eval_generation_config = copy.deepcopy(self.model.generate_config)
@@ -343,10 +365,32 @@ class SimpleProducer(BaseProducer):
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
         rollouts = self.model.generate(input_ids, attention_mask, **kwargs)
-        # if self.producer_idx == 1:
-        #     print("Rollout example:\n", self.tokenizer.decode(rollouts["input_ids"][0][0], skip_special_tokens=True))
-
+        if self.producer_idx == 0 and not self.eval_mode:
+            if (
+                self.consumer_global_step - self.latest_rollout_log_step >= self.log_rollout_interval
+                or self.latest_rollout_log_step == -1
+            ):
+                new_record = (
+                    json.dumps(
+                        {
+                            "train_step": self.consumer_global_step,
+                            "rollout": self.tokenizer.batch_decode(
+                                rollouts["input_ids"][:, 0], skip_special_tokens=True
+                            ),
+                        }
+                    )
+                    + "\n"
+                )
+                self.rollout_log_file.write(new_record)
+                self.rollout_log_file.flush()
+                self.latest_rollout_log_step = self.consumer_global_step
         return rollouts
+
+    def __del__(self):
+        if self.producer_idx == 0:
+            self.wandb_run.finish()
+        if hasattr(self, "rollout_log_file"):
+            self.rollout_log_file.close()
 
     def load_state_dict(self, state_dict):
         self.model.load_state_dict(state_dict)
