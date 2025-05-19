@@ -42,8 +42,11 @@ class MixtralPolicy(Policy):
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
         from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 =======
         from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
