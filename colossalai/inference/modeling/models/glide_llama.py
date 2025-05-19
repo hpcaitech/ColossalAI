@@ -12,9 +12,7 @@ from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     LlamaConfig,
     LlamaDecoderLayer,
-    # LlamaDynamicNTKScalingRotaryEmbedding,
     LlamaForCausalLM,
-    # LlamaLinearScalingRotaryEmbedding,
     LlamaMLP,
     LlamaModel,
     LlamaRMSNorm,
@@ -431,7 +429,7 @@ class GlideLlamaDecoderLayer(nn.Module):
             hidden_states = self.cross_attn(
                 hidden_states=hidden_states,
                 position_embeddings=position_embeddings,
-                position_ids = position_ids,
+                position_ids=position_ids,
                 glide_input=glide_input,
                 attention_mask=attention_mask,
                 output_attentions=output_attentions,
