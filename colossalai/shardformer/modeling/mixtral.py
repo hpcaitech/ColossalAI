@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Callable
 
 import torch
 import torch.distributed as dist
@@ -14,6 +14,7 @@ from transformers.modeling_attn_mask_utils import (
 )
 from transformers.models.mixtral.modeling_mixtral import (
     MixtralSparseMoeBlock,
+    MixtralModel,
     MoeCausalLMOutputWithPast,
     MoeModelOutputWithPast,
     apply_rotary_pos_emb,
@@ -215,7 +216,7 @@ class MixtralPipelineForwards:
 
     @staticmethod
     def mixtral_model_forward(
-        self,
+        self: MixtralModel,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -225,6 +226,7 @@ class MixtralPipelineForwards:
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         return_dict: Optional[bool] = None,
         stage_manager: Optional[PipelineStageManager] = None,
         hidden_states: Optional[torch.FloatTensor] = None,
@@ -340,11 +342,18 @@ class MixtralPipelineForwards:
                 )
                 use_cache = False
 
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_router_logits = () if output_router_logits else None
         next_decoder_cache = None
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
 
         start_idx, end_idx = stage_index[0], stage_index[1]
         for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
@@ -370,6 +379,9 @@ class MixtralPipelineForwards:
                     None,
                     output_attentions,
                     output_router_logits,
+                    use_cache,
+                    cache_position,
+                    position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -380,6 +392,8 @@ class MixtralPipelineForwards:
                     output_attentions,
                     output_router_logits,
                     use_cache,
+                    cache_position,
+                    position_embeddings,
                 )
             hidden_states = layer_outputs[0]
 
@@ -559,14 +573,18 @@ class MixtralPipelineForwards:
 
 def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
+    from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+    from transformers.models.mixtral.modeling_mixtral import eager_attention_forward
 
     def forward(
         self,
         hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
         use_cache: bool = False,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
@@ -615,9 +633,10 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
 
         # Because the input can be padded, the absolute sequence length depends on the max position id.
         rotary_seq_len = max(kv_seq_len, position_ids[:, -1].max().item()) + 1
-        cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
+        cos, sin = position_embeddings
+        # cos, sin = self.rotary_emb(value_states, seq_len=rotary_seq_len)
 
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
         use_sliding_windows = (
             _flash_supports_window_size
@@ -631,31 +650,31 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
             )
         if past_key_value is not None:
             # Activate slicing cache only if the config has a value `sliding_windows` attribute
-            cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
-            if (
-                getattr(self.config, "sliding_window", None) is not None
-                and kv_seq_len > self.config.sliding_window
-                and cache_has_contents
-            ):
-                slicing_tokens = 1 - self.config.sliding_window
+            # cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
+            # if (
+            #     getattr(self.config, "sliding_window", None) is not None
+            #     and kv_seq_len > self.config.sliding_window
+            #     and cache_has_contents
+            # ):
+            #     slicing_tokens = 1 - self.config.sliding_window
 
-                past_key = past_key_value[self.layer_idx][0]
-                past_value = past_key_value[self.layer_idx][1]
+            #     past_key = past_key_value[self.layer_idx][0]
+            #     past_value = past_key_value[self.layer_idx][1]
 
-                past_key = past_key[:, :, slicing_tokens:, :].contiguous()
-                past_value = past_value[:, :, slicing_tokens:, :].contiguous()
+            #     past_key = past_key[:, :, slicing_tokens:, :].contiguous()
+            #     past_value = past_value[:, :, slicing_tokens:, :].contiguous()
 
-                if past_key.shape[-2] != self.config.sliding_window - 1:
-                    raise ValueError(
-                        f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
-                        f" {past_key.shape}"
-                    )
+            #     if past_key.shape[-2] != self.config.sliding_window - 1:
+            #         raise ValueError(
+            #             f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
+            #             f" {past_key.shape}"
+            #         )
 
-                if attention_mask is not None:
-                    attention_mask = attention_mask[:, slicing_tokens:]
-                    attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
+            #     if attention_mask is not None:
+            #         attention_mask = attention_mask[:, slicing_tokens:]
+            #         attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
 
-            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}  # Specific to RoPE models
             key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         # repeat k/v heads if n_kv_heads < n_heads
@@ -689,14 +708,36 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
         query_states = query_states.transpose(1, 2)
         key_states = key_states.transpose(1, 2)
         value_states = value_states.transpose(1, 2)
-        attn_output = self._flash_attention_forward(
+        # attn_output = self._flash_attention_forward(
+        #     query_states,
+        #     key_states,
+        #     value_states,
+        #     attention_mask,
+        #     q_len,
+        #     dropout=dropout_rate,
+        #     use_sliding_windows=use_sliding_windows,
+        # )
+
+        attention_interface: Callable = eager_attention_forward
+        if self.config._attn_implementation != "eager":
+            if self.config._attn_implementation == "sdpa" and kwargs.get("output_attentions", False):
+                logger.warning_once(
+                    "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. Falling back to "
+                    'eager attention. This warning can be removed using the argument `attn_implementation="eager"` when loading the model.'
+                )
+            else:
+                attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+
+        attn_output, attn_weights = attention_interface(
+            self,
             query_states,
             key_states,
             value_states,
             attention_mask,
-            q_len,
-            dropout=dropout_rate,
-            use_sliding_windows=use_sliding_windows,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=getattr(self.config, "sliding_window", None),  # main diff with Llama
+            **kwargs,
         )
 
         # sp: all-to-all comminucation when introducing sequence parallel
@@ -712,7 +753,7 @@ def get_mixtral_flash_attention_forward(shard_config, sp_mode=None, sp_size=None
 
         if not output_attentions:
             attn_weights = None
-        return attn_output, attn_weights, past_key_value
+        return attn_output, attn_weights
 
     return forward
 
@@ -731,6 +772,7 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_router_logits: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, MoeModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -788,7 +830,7 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
                     " this may lead to unexpected behaviour for Flash Attention version of Mixtral. Make sure to "
                     " call `tokenizer.padding_side  = 'left'` before tokenizing the input. "
                 )
-        if self._attn_implementation == "flash_attention_2":
+        if self.config._attn_implementation == "flash_attention_2":
             # 2d mask is passed through the layers
             attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
         elif self._attn_implementation == "sdpa" and not output_attentions:
@@ -820,6 +862,16 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
             )
         hidden_states = inputs_embeds
 
+        if cache_position is None:
+            past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
+            cache_position = torch.arange(
+                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+            )
+        if position_ids is None:
+            position_ids = cache_position.unsqueeze(0)
+
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -840,6 +892,8 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
                     output_attentions,
                     output_router_logits,
                     use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -850,6 +904,8 @@ def get_mixtral_flash_attention_model_forward(shard_config, sp_mode=None, sp_siz
                     output_attentions=output_attentions,
                     output_router_logits=output_router_logits,
                     use_cache=use_cache,
+                    cache_position=cache_position,
+                    position_embeddings=position_embeddings,
                 )
 
             hidden_states = layer_outputs[0]
