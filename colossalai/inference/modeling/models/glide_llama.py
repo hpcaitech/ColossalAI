@@ -16,7 +16,6 @@ from transformers.models.llama.modeling_llama import (
     LlamaMLP,
     LlamaModel,
     LlamaRMSNorm,
-    LlamaRotaryEmbedding,
 )
 
 from colossalai.inference.spec import GlideInput
