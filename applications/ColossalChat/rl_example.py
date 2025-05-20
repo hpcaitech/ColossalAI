@@ -273,5 +273,5 @@ if __name__ == "__main__":
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
         eval_generation_config=eval_generation_config,
         log_rollout_interval=20,
-        rollout_log_file=os.path.join(args.rollout_save_dir, args.project.replace(" ", "_") + ".jsonl"),
+        rollout_save_dir=args.rollout_save_dir,
     )
