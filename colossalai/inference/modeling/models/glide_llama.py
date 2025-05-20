@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers.cache_utils import Cache, DynamicCache, StaticCache
+from transformers.cache_utils import DynamicCache
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
@@ -154,8 +154,8 @@ def glide_llama_model_forward(
         inputs_embeds = self.embed_tokens(input_ids)
 
     if use_cache and past_key_values is None:
-                past_key_values = DynamicCache()
-                print("past_key_values", type(past_key_values))
+        past_key_values = DynamicCache()
+        print("past_key_values", type(past_key_values))
 
     if cache_position is None:
         print("past_key_values", type(past_key_values))
@@ -196,7 +196,6 @@ def glide_llama_model_forward(
         )
 
         hidden_states = layer_outputs[0]
-
 
         if output_attentions:
             all_self_attns += (layer_outputs[1],)

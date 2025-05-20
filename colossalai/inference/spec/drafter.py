@@ -110,7 +110,6 @@ class Drafter:
                 break
             input_ids = next_token_ids[:, None]
             past_key_values = outputs.past_key_values
-            
 
         speculated_length = len(token_ids)  # For now, only support bsz 1
         logits = torch.concat(logits, dim=0)
