@@ -119,7 +119,7 @@ class T5PipelineForwards:
         # initialize past_key_values with `None` if past does not exist
         if past_key_values is None:
             past_key_values = [None] * len(self.block)
-            
+
         past_key_values_length = 0
         if cache_position is None:
             cache_position = torch.arange(
@@ -131,7 +131,7 @@ class T5PipelineForwards:
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask = self.get_extended_attention_mask(attention_mask, input_shape)
+        self.get_extended_attention_mask(attention_mask, input_shape)
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
@@ -143,7 +143,7 @@ class T5PipelineForwards:
             encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
         else:
             encoder_extended_attention_mask = None
-            
+
         if self.config.is_decoder:
             causal_mask = self._update_causal_mask(
                 attention_mask,
@@ -158,7 +158,6 @@ class T5PipelineForwards:
             causal_mask = (1.0 - causal_mask) * torch.finfo(hidden_states.dtype).min
         else:
             causal_mask = None
-
 
         # Prepare head mask if needed
         head_mask = self.get_head_mask(head_mask, self.config.num_layers)
