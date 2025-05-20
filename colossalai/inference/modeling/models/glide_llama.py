@@ -153,15 +153,13 @@ def glide_llama_model_forward(
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    past_seen_tokens = 0
-    if use_cache:  # kept for BC (cache positions)
-        if not isinstance(past_key_values, StaticCache):
-            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            past_seen_tokens = past_key_values.get_seq_length()
+    if use_cache and past_key_values is None:
+                past_key_values = DynamicCache()
+                print("past_key_values", type(past_key_values))
 
     if cache_position is None:
-        if isinstance(past_key_values, StaticCache):
-            raise ValueError("cache_position is a required argument when using StaticCache.")
+        print("past_key_values", type(past_key_values))
+        past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
         )
@@ -169,17 +167,17 @@ def glide_llama_model_forward(
     if position_ids is None:
         position_ids = cache_position.unsqueeze(0)
 
-    attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position)
-    position_ids = position_ids + glide_input.n_spec_tokens
-    position_embeddings = self.rotary_emb(hidden_states, position_ids)
+    attention_mask = self._update_causal_mask(attention_mask, inputs_embeds, cache_position, past_key_values)
+    if hasattr(glide_input, "n_spec_tokens"):
+        position_ids = position_ids + glide_input.n_spec_tokens
 
     # embed positions
     hidden_states = inputs_embeds
+    position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
     # decoder layers
     all_hidden_states = () if output_hidden_states else None
     all_self_attns = () if output_attentions else None
-    next_decoder_cache = None
 
     for decoder_layer in self.layers:
         if output_hidden_states:
@@ -199,8 +197,6 @@ def glide_llama_model_forward(
 
         hidden_states = layer_outputs[0]
 
-        if use_cache:
-            next_decoder_cache = layer_outputs[2 if output_attentions else 1]
 
         if output_attentions:
             all_self_attns += (layer_outputs[1],)
@@ -211,16 +207,11 @@ def glide_llama_model_forward(
     if output_hidden_states:
         all_hidden_states += (hidden_states,)
 
-    next_cache = None
-    if use_cache:
-        next_cache = (
-            next_decoder_cache.to_legacy_cache() if isinstance(next_decoder_cache, Cache) else next_decoder_cache
-        )
     if not return_dict:
-        return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+        return tuple(v for v in [hidden_states, past_key_values, all_hidden_states, all_self_attns] if v is not None)
     return BaseModelOutputWithPast(
         last_hidden_state=hidden_states,
-        past_key_values=next_cache,
+        past_key_values=past_key_values,
         hidden_states=all_hidden_states,
         attentions=all_self_attns,
     )
@@ -374,7 +365,7 @@ class GlideLlamaDecoderLayer(nn.Module):
         hidden_states = self.input_layernorm(hidden_states)
 
         # Self Attention
-        hidden_states, self_attn_weights, present_key_value = self.self_attn(
+        hidden_states, self_attn_weights = self.self_attn(
             hidden_states=hidden_states,
             position_embeddings=position_embeddings,
             attention_mask=attention_mask,
@@ -416,9 +407,6 @@ class GlideLlamaDecoderLayer(nn.Module):
         hidden_states = residual + hidden_states
 
         outputs = (hidden_states,)
-
-        if use_cache:
-            outputs += (present_key_value,)
 
         return outputs
 
