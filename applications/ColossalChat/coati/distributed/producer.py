@@ -151,6 +151,9 @@ class BaseProducer:
         else:
             raise ValueError("eval_dataset_config is not defined")
         self.device = get_current_device()
+        # self.device = get_current_device()
+        self.device = 'npu'
+        # self.device = torch.device(f"npu:{torch.npu.current_device()}")
 
         # init backend
         if backend in BACKEND_MAP:
@@ -161,18 +164,12 @@ class BaseProducer:
         self.consumer_pp_size = consumer_plugin_config.get("pp_size", 1)  # consumer pp size
 
     def setup(self) -> None:
-        cc.init_collective_group(
-            world_size=self.num_producers,
-            rank=self.producer_idx,
-            backend=Backend.NCCL,
-            group_name="producer_group",
-        )
-        cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
+        cc.init_collective_group(1 + self.num_consumer_procs, 0, backend='hccl', group_name=f"sync_data_{self.producer_idx}")
         if self.consumer_pp_size > 1:
             for i in range(self.consumer_pp_size):
-                cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=f"sync_model_{i}")
+                cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend='hccl', group_name=f"sync_model_{i}")
         else:
-            cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model")
+            cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend='hccl', group_name="sync_model")
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -250,7 +247,7 @@ class BaseProducer:
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
-                outputs = pre_send(outputs)
+                # outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )

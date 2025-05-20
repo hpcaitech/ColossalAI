@@ -210,6 +210,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         self.model_config = model_config
         self.tokenizer = tokenizer
         self.num_generations = num_generations
+        self.max_length = generate_config['max_tokens']
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:

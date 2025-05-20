@@ -341,6 +341,7 @@ class GRPOConsumer(BaseConsumer):
                                 num_action,
                                 self.plugin.shard_config,
                             )
+                            del reference_model_logits
                         else:
                             # Dummy reference logprobs for data iterator.
                             reference_action_log_probs = None
@@ -420,6 +421,7 @@ class GRPOConsumer(BaseConsumer):
                         num_action,
                         self.plugin.shard_config,
                     )
+                    del policy_model_logits
 
                     if self.policy_loss_fn.beta > 0:
                         with torch.no_grad():
@@ -433,6 +435,7 @@ class GRPOConsumer(BaseConsumer):
                             num_action,
                             self.plugin.shard_config,
                         )
+                        del reference_model_logits
                         per_token_kl = (
                             torch.exp(reference_action_log_probs - action_log_probs)
                             - (reference_action_log_probs - action_log_probs)
