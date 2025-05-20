@@ -18,7 +18,6 @@ from colossalai.utils import get_current_device
 from .comm import ray_broadcast_tensor_dict
 from .utils import bind_batch, post_recv, unbind_batch
 
-first_sleep=True
 class BaseConsumer:
     def __init__(
         self,
@@ -124,11 +123,6 @@ class BaseConsumer:
                         # receive data from producers
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
-                            global first_sleep
-                            if first_sleep:
-                                import time
-                                time.sleep(720)
-                                first_sleep=False
                             self.buffer.extend(
                                 unbind_batch(
                                     ray_broadcast_tensor_dict(

@@ -32,7 +32,7 @@ class Worker:
         {
             "precision": torch.bfloat16,
             "device": "npu",
-            "num_devices": 8,
+            "num_devices": 1,
         },
     ],
 )

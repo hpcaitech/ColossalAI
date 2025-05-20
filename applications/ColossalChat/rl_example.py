@@ -79,7 +79,7 @@ if __name__ == "__main__":
         help="Top p for sampling. Please check the generation arguments documentation for your backend.",
     )
     parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
-    parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 4 - 512, help="Max length for generation.")
+    parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 24 - 512, help="Max length for generation.")
     parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
 
     # GRPO parameters
@@ -223,16 +223,16 @@ if __name__ == "__main__":
         #     "zero_stage": 2,
         # },  # for zero
         plugin_config={
-            "tp_size": 2,
+            "tp_size": 4,
             "pp_size": 2,
             "microbatch_size": max(
                 1, args.train_microbatch_size // 2
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": 1,
             "max_norm": 1.0,
-            # "sp_size": 4,
-            # "enable_sequence_parallelism":True,
-            # "sequence_parallelism_mode":"ring" # ["split_gather", "ring", "all_to_all"]
+            "sp_size": 4,
+            "enable_sequence_parallelism":True,
+            "sequence_parallelism_mode":"split_gather" # ["split_gather", "ring", "all_to_all"]
         },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",

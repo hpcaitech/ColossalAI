@@ -13,7 +13,7 @@ import argparse
 parser = argparse.ArgumentParser(description='VLLM args.')
 parser.add_argument("-m", "--model_path", type=str, default="/home/duanjunwen/models/Qwen/Qwen2.5-14B", help="The model path. ")
 parser.add_argument("-l", "--max_length", type=int, default=8192, help="Max sequence length")
-parser.add_argument("-w", "--world_size", type=int, default=1, help="Gpu nums")
+parser.add_argument("-w", "--world_size", type=int, default=8, help="Gpu nums")
 parser.add_argument("-t", "--temperature", type=float, default=0.8, help="Temperature")
 parser.add_argument("--top_p", type=float, default=0.95, help="Top p")
 parser.add_argument("-i", "--input_texts", type=str, default="Find all prime numbers up to 100.", help="Prompts inputs. ")
@@ -51,7 +51,7 @@ class Worker:
         {
             "precision": torch.bfloat16,
             "device": "npu",
-            "num_devices": 8,
+            "num_devices": 1,
         },
     ],
 )
