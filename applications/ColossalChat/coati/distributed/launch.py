@@ -55,6 +55,8 @@ def launch_distributed(
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
     eval_generation_config: Optional[Dict[str, Any]] = None,
+    log_rollout_interval: int = 20,
+    rollout_save_dir: str = "./rollout",
 ):
     if core_algo not in ALGO_MAP:
         raise NotImplementedError(f"{core_algo} is not supported yet.")
@@ -72,6 +74,10 @@ def launch_distributed(
 
     run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
     wandb_group_name = str(uuid.uuid4())
+    rollout_log_file = os.path.join(
+        rollout_save_dir,
+        f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
+    )
 
     procs = []
     for i in range(num_producers):
@@ -98,6 +104,8 @@ def launch_distributed(
             project_name=project_name,
             run_name=run_name,
             wandb_group_name=wandb_group_name,
+            log_rollout_interval=log_rollout_interval,
+            rollout_log_file=rollout_log_file,
         )
         procs.append(producer)
     generate_config_consumer = copy.deepcopy(generate_config)
