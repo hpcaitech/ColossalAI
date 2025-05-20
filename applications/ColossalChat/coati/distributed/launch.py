@@ -77,7 +77,7 @@ def launch_distributed(
     wandb_group_name = str(uuid.uuid4())
     rollout_log_file = os.path.join(
         rollout_save_dir,
-        f"{project_name}_run_{wandb_group_name}.jsonl",
+        f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
 
     procs = []
