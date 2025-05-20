@@ -155,10 +155,8 @@ def glide_llama_model_forward(
 
     if use_cache and past_key_values is None:
         past_key_values = DynamicCache()
-        print("past_key_values", type(past_key_values))
 
     if cache_position is None:
-        print("past_key_values", type(past_key_values))
         past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
         cache_position = torch.arange(
             past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
