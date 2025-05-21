@@ -94,10 +94,6 @@ class ViTPolicy(Policy):
                         },
                     ),
                     SubModuleReplacementDescription(
-                        suffix="attention.attention.dropout",
-                        target_module=col_nn.DropoutForParallelInput,
-                    ),
-                    SubModuleReplacementDescription(
                         suffix="attention.output.dense",
                         target_module=col_nn.Linear1D_Row,
                         kwargs={

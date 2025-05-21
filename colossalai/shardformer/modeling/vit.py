@@ -349,7 +349,7 @@ def get_vit_flash_self_attention_forward():
         value_layer = self.transpose_for_scores(self.value(hidden_states))
         query_layer = self.transpose_for_scores(mixed_query_layer)
 
-        dropout_p = self.dropout.p if self.training else 0.0
+        dropout_p = self.dropout_prob if self.training else 0.0
         context_layer = ColoAttention.attention(query_layer, key_layer, value_layer, dropout_p=dropout_p)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
