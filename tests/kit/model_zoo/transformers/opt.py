@@ -53,6 +53,7 @@ config = transformers.OPTConfig(
     num_hidden_layers=2,
     num_attention_heads=4,
     dropout=0,
+    attn_implementation="eager",
 )
 
 # register the following models
