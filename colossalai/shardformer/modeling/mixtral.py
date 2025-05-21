@@ -348,11 +348,10 @@ class MixtralPipelineForwards:
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_router_logits = () if output_router_logits else None
-        next_decoder_cache = None
         if cache_position is None:
             past_seen_tokens = past_key_values.get_seq_length() if past_key_values is not None else 0
             cache_position = torch.arange(
-                past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
+                past_seen_tokens, past_seen_tokens + hidden_states.shape[1], device=hidden_states.device
             )
 
         start_idx, end_idx = stage_index[0], stage_index[1]
