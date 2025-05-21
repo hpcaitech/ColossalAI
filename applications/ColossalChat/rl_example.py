@@ -222,6 +222,16 @@ if __name__ == "__main__":
             "reward_fn_type": args.reward_type,
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "max_new_tokens": args.max_new_tokens,
+            "response_format_tags": (
+                {
+                    "think_start": {"text": "<think>", "num_occur": 1},
+                    "think_end": {"text": "</think>", "num_occur": 1},
+                    "answer_start": {"text": "<answer>", "num_occur": 1},
+                    "answer_end": {"text": "</answer>", "num_occur": 1},
+                }
+                if args.reward_type == "think_answer_tags"
+                else None
+            ),
         }
     elif args.algo == "DAPO":
         # DAPO variant settings
@@ -241,6 +251,16 @@ if __name__ == "__main__":
             "cache_length": min(1024, int(args.max_new_tokens / 4)),
             "filter_truncated_response": True,
             "reward_fn_type": args.reward_type,
+            "response_format_tags": (
+                {
+                    "think_start": {"text": "<think>", "num_occur": 1},
+                    "think_end": {"text": "</think>", "num_occur": 1},
+                    "answer_start": {"text": "<answer>", "num_occur": 1},
+                    "answer_end": {"text": "</answer>", "num_occur": 1},
+                }
+                if args.reward_type == "think_answer_tags"
+                else None
+            ),
         }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
