@@ -40,21 +40,9 @@ class MixtralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mixtral.modeling_mixtral import (
-            MixtralAttention,
-            MixtralDecoderLayer,
-            MixtralFlashAttention2,
-            MixtralModel,
-            MixtralSdpaAttention,
-        )
+        from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
 
-        ATTN_IMPLEMENTATION = {
-            "eager": MixtralAttention,
-            "flash_attention_2": MixtralFlashAttention2,
-            "sdpa": MixtralSdpaAttention,
-        }
         policy = {}
-        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
@@ -76,7 +64,7 @@ class MixtralPolicy(Policy):
                 num_kv_heads //= sp_size
                 decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
-            policy[attn_cls] = ModulePolicyDescription(
+            policy[MixtralAttention] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
         if self.shard_config.enable_sequence_parallelism:
@@ -89,7 +77,7 @@ class MixtralPolicy(Policy):
                     "forward": get_mixtral_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=attn_cls,
+                target_key=MixtralAttention,
             )
             self.append_or_create_method_replacement(
                 description={
@@ -330,7 +318,7 @@ class MixtralPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
-
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
