@@ -286,7 +286,8 @@ def new_from_pretrained(
     config.name_or_path = pretrained_model_name_or_path
 
     # Instantiate model.
-    init_contexts = [no_init_weights(_enable=_fast_init)]
+    # init_contexts = [no_init_weights(_enable=_fast_init)]
+    init_contexts = [no_init_weights()]
 
     with ContextManagers(init_contexts):
         model = cls(config, *model_args, **model_kwargs)
