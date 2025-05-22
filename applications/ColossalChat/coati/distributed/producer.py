@@ -149,7 +149,7 @@ class BaseProducer:
             else:
                 raise ValueError(f"Unknown evaluation function type {evaluation_function_type}")
         else:
-            raise ValueError("eval_dataset_config is not defined")
+            print("No eval dataset provided, skip eval")
         self.device = get_current_device()
 
         # init backend
