@@ -10,7 +10,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
-    parser.add_argument("-p", "--project", type=str, default="GRPO-V3", help="Project name.")
+    parser.add_argument(
+        "-ed",
+        "--eval-dataset",
+        type=str,
+        default=None,
+        help="Evaluation dataset for each task, please use json format to specify the dataset for each task. \
+        For example: {'task1':'data_eval_task1.jsonl', 'task2':'data_eval_task2.jsonl'}, the jsonl file should be in the same format as the training dataset. \
+        The key is the task name, and the value is the path to the jsonl file",
+    )
+    parser.add_argument("-p", "--project", type=str, default="GRPO", help="Project name.")
     parser.add_argument("-e", "--num-episodes", type=int, default=1, help="Number of episodes to train.")
 
     # Distributed training parameters
@@ -301,10 +310,14 @@ if __name__ == "__main__":
         project_name=args.project,
         save_interval=args.save_interval,
         save_dir=os.path.join(args.save_dir, args.project.replace(" ", "_")),
-        eval_dataset_config={
-            k: {"path": v, "max_length": args.max_prompt_tokens, "system_prompt": args.system_prompt}
-            for k, v in json.loads(args.eval_dataset).items()
-        },
+        eval_dataset_config=(
+            {
+                k: {"path": v, "max_length": args.max_prompt_tokens, "system_prompt": args.system_prompt}
+                for k, v in json.loads(args.eval_dataset).items()
+            }
+            if args.eval_dataset
+            else None
+        ),
         eval_interval=args.eval_interval,
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
         eval_generation_config=eval_generation_config,

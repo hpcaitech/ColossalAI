@@ -151,7 +151,7 @@ class BaseProducer:
                 raise ValueError(f"Unknown evaluation function type {evaluation_function_type}")
             self.response_format_tags = response_format_tags
         else:
-            raise ValueError("eval_dataset_config is not defined")
+            print("No eval dataset provided, skip eval")
         self.device = get_current_device()
 
         # init backend
