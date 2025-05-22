@@ -370,6 +370,7 @@ config = transformers.BertConfig(
     intermediate_size=256,
     hidden_dropout_prob=0,
     attention_probs_dropout_prob=0,
+    attn_implementation="eager",
 )
 
 # register the BERT variants
