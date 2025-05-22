@@ -193,7 +193,7 @@ class DistLogProb(Function):
         masked_target[mask] = 0
         masked_target_1d = masked_target.view(-1).contiguous()
         handle.wait()
-
+ 
         ##################
         # Step3:Calculate global summation exp logits
         ##################

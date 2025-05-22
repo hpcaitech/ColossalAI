@@ -2,6 +2,7 @@ import math
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch_npu
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_outputs import (
@@ -144,13 +145,14 @@ class Qwen2PipelineForwards:
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
             mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
-            attention_mask = ColoAttention.prepare_attn_kwargs(
-                mask_shape,
-                hidden_states.dtype,
-                hidden_states.device,
-                q_padding_mask=attention_mask,
-                is_causal=True,
-            )
+            attention_mask = None
+            #attention_mask = ColoAttention.prepare_attn_kwargs(
+            #    mask_shape,
+            #    hidden_states.dtype,
+            #    hidden_states.device,
+            #    q_padding_mask=attention_mask,
+            #    is_causal=True,
+            #)
         else:
             if self._attn_implementation == "flash_attention_2":
                 # 2d mask is passed through the layers
@@ -197,6 +199,7 @@ class Qwen2PipelineForwards:
 
         start_idx, end_idx = stage_index[0], stage_index[1]
         num_ckpt_layers = 0
+        self.gradient_checkpointing = True
         if self.gradient_checkpointing and self.training:
             num_ckpt_layers = end_idx - start_idx
             # TODO: We can replace `gradient_checkpointing_enable` fn and initialize a gradient_checkpointing (List[bool]) for each layer
@@ -488,6 +491,139 @@ class Qwen2PipelineForwards:
             return {"hidden_states": hidden_states}
 
 
+def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+    def forward(
+        self: Qwen2Attention,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+        if sp_mode is not None:
+            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert (sp_size is not None) and (
+                sp_group is not None
+            ), "Must specify sp_size and sp_group for sequence parallel"
+
+        bsz, q_len, _ = hidden_states.size()
+        # sp: modify sp_len when sequence parallel mode is ring
+        if sp_mode in ["split_gather", "ring"]:
+            q_len *= sp_size
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+        # sp: all-to-all comminucation when introducing sequence parallel
+        if sp_mode == "all_to_all":
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            bsz, q_len, _ = query_states.size()
+        
+        query_states = query_states.view(bsz, q_len, self.num_heads, -1).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
+
+        kv_seq_len = key_states.shape[-2]
+        if past_key_value is not None:
+            if self.layer_idx is None:
+                raise ValueError(
+                    f"The cache structure has changed since version v4.36. If you are using {self.__class__.__name__} "
+                    "for auto-regressive decoding with k/v caching, please make sure to initialize the attention class "
+                    "with a layer index."
+                )
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+        # Because the input can be padded, the absolute sequence length depends on the max position id.
+        cos, sin = self.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
+        if past_key_value is not None:
+            # Activate slicing cache only if the config has a value `sliding_windows` attribute
+            cache_has_contents = past_key_value.get_seq_length(self.layer_idx) > 0
+            if (
+                getattr(self.config, "sliding_window", None) is not None
+                and kv_seq_len > self.config.sliding_window
+                and cache_has_contents
+            ):
+                slicing_tokens = 1 - self.config.sliding_window
+
+                past_key = past_key_value[self.layer_idx][0]
+                past_value = past_key_value[self.layer_idx][1]
+
+                past_key = past_key[:, :, slicing_tokens:, :].contiguous()
+                past_value = past_value[:, :, slicing_tokens:, :].contiguous()
+
+                if past_key.shape[-2] != self.config.sliding_window - 1:
+                    raise ValueError(
+                        f"past key must have a shape of (`batch_size, num_heads, self.config.sliding_window-1, head_dim`), got"
+                        f" {past_key.shape}"
+                    )
+
+                if attention_mask is not None:
+                    attention_mask = attention_mask[:, slicing_tokens:]
+                    attention_mask = torch.cat([attention_mask, torch.ones_like(attention_mask[:, -1:])], dim=-1)
+
+            cache_kwargs = {"sin": sin, "cos": cos}  # Specific to RoPE models
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+        # repeat k/v heads if n_kv_heads < n_heads
+        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups)
+
+        if shard_config.enable_flash_attention:
+            atten_mask = torch.triu(
+                torch.ones(q_len, q_len),
+                diagonal=1,
+            ).to(dtype=torch.bool, device="npu")
+            scale = 1.0 / math.sqrt(query_states.shape[-1])
+            attn_output = torch_npu.npu_fusion_attention(query_states, key_states, value_states, head_num=query_states.size(1), input_layout="BNSD", sparse_mode=1, atten_mask=atten_mask, scale = scale)
+            attn_output = attn_output[0]
+        else:
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+
+            if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
+                raise ValueError(
+                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                    f" {attn_weights.size()}"
+                )
+
+            if attention_mask is not None:
+                if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
+                    raise ValueError(
+                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"
+                    )
+                attn_weights = attn_weights + attention_mask
+
+            # upcast attention to fp32
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_output = torch.matmul(attn_weights, value_states)
+
+            if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
+                raise ValueError(
+                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                    f" {attn_output.size()}"
+                )
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        if sp_mode == "all_to_all":
+            attn_output = attn_output.reshape(bsz, q_len, -1)
+            attn_output = all_to_all_comm(
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )
+        else:
+            attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
+
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output, None, past_key_value
+
+    return forward
+
+
+
+
 def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
         self: Qwen2Attention,
@@ -711,7 +847,9 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
             )
 
+        layer_idx = 0
         for decoder_layer in self.layers:
+            layer_idx += 1
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -824,7 +962,7 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
-            force_sp_output_gather=False,
+            # force_sp_output_gather=False,
         )
 
         hidden_states = outputs[0]
