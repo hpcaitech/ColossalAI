@@ -218,7 +218,6 @@ class Qwen2PipelineForwards:
                 all_hidden_states += (hidden_states,)
 
             past_key_value = past_key_values[idx] if past_key_values is not None else None
-            print(f"######debug idx: {idx}")
 
             if idx - start_idx < num_ckpt_layers:
                 layer_outputs = self._gradient_checkpointing_func(
