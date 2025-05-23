@@ -151,7 +151,9 @@ if __name__ == "__main__":
             args.top_k = -1
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False, attn_implementation="eager")
+    train_model_config = dict(
+        path=args.model, use_flash_attention_2=False, use_cache=False, attn_implementation="eager"
+    )
     generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
 
     if args.backend == "transformers":

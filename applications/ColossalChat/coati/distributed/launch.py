@@ -65,7 +65,9 @@ def launch_distributed(
         core_consumer = ALGO_MAP.get(core_algo, SimpleConsumer)
 
     train_dp_size = get_dp_size_fast(num_consumer_procs, plugin_config)
-    print(f"inference_batch_size {inference_batch_size} num_producers {num_producers} train_batch_size {train_batch_size} train_dp_size {train_dp_size}")
+    print(
+        f"inference_batch_size {inference_batch_size} num_producers {num_producers} train_batch_size {train_batch_size} train_dp_size {train_dp_size}"
+    )
     assert (inference_batch_size * num_producers) % (train_batch_size * train_dp_size) == 0
 
     dataset_path = train_dataset_config["path"]
@@ -73,14 +75,13 @@ def launch_distributed(
     global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
     num_recv_per_update = inference_batch_size // inference_microbatch_size
-    
+
     run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
     wandb_group_name = str(uuid.uuid4())
     rollout_log_file = os.path.join(
         rollout_save_dir,
         f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
-
 
     # ###########################################
     # # Old version, may lead colossalai init stuck in multinodes
@@ -136,7 +137,7 @@ def launch_distributed(
     #     procs.append(consumer)
     # ray.get([p.setup.remote() for p in procs])
     # ray.get([p.loop.remote() for p in procs])
-    
+
     ###########################################
     # New version, assign master ip for colossalai & vllm respectively
     ###########################################
@@ -153,13 +154,13 @@ def launch_distributed(
     gpu_to_node_id = []
     gpu_to_ip_address = []
     for node_id in node_info:
-        for idx in range(int(node_info[node_id]["num_gpus"])): # use num_gpus instead of num_npus
+        for idx in range(int(node_info[node_id]["num_gpus"])):  # use num_gpus instead of num_npus
             gpu_to_node_id.append(node_id)
             gpu_to_ip_address.append(node_info[node_id]["address"])
     print(f"node_info {node_info} \n gpu_to_node_id {gpu_to_node_id} \n gpu_to_ip_address {gpu_to_ip_address} \n")
 
     producer_procs = []
-    
+
     for i in range(num_producers):
         node_id = gpu_to_node_id[0]
         producer_ip_address = gpu_to_ip_address[0]
@@ -167,12 +168,12 @@ def launch_distributed(
             gpu_to_node_id.pop(0)
             gpu_to_ip_address.pop(0)
         print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
-        
+
         producer = SimpleProducer.options(
             # num_cpus=1,
-            # num_cpus=num_proc_per_producer, 
+            # num_cpus=num_proc_per_producer,
             num_gpus=0,
-            resources={"NPU":num_proc_per_producer},
+            resources={"NPU": num_proc_per_producer},
             scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
                 node_id=node_id,
                 soft=False,
@@ -221,7 +222,7 @@ def launch_distributed(
         gpu_to_ip_address.pop(0)
         print(f"Schedual Consumer T[{i}] which requires 1 GPUs on node {consumer_ip_address}")
         consumer = core_consumer.options(
-            resources={"NPU":1},
+            resources={"NPU": 1},
             scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
                 node_id=node_id,
                 soft=False,

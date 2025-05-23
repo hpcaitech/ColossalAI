@@ -11,7 +11,7 @@ import wandb
 from coati.dataset.loader import RawConversationDataset
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
 from ray.util.collective import allreduce
-from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
@@ -19,7 +19,7 @@ from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
 from .inference_backend import BACKEND_MAP
-from .utils import pre_send, safe_append_to_jsonl_file
+from .utils import safe_append_to_jsonl_file
 
 try:
     from vllm import SamplingParams
@@ -152,7 +152,7 @@ class BaseProducer:
             print("No eval dataset provided, skip eval")
         self.device = get_current_device()
         # self.device = get_current_device()
-        self.device = 'npu'
+        self.device = "npu"
         # self.device = torch.device(f"npu:{torch.npu.current_device()}")
 
         # init backend
@@ -164,12 +164,16 @@ class BaseProducer:
         self.consumer_pp_size = consumer_plugin_config.get("pp_size", 1)  # consumer pp size
 
     def setup(self) -> None:
-        cc.init_collective_group(1 + self.num_consumer_procs, 0, backend='hccl', group_name=f"sync_data_{self.producer_idx}")
+        cc.init_collective_group(
+            1 + self.num_consumer_procs, 0, backend="hccl", group_name=f"sync_data_{self.producer_idx}"
+        )
         if self.consumer_pp_size > 1:
             for i in range(self.consumer_pp_size):
-                cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend='hccl', group_name=f"sync_model_{i}")
+                cc.init_collective_group(
+                    self.num_producers + 1, self.producer_idx, backend="hccl", group_name=f"sync_model_{i}"
+                )
         else:
-            cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend='hccl', group_name="sync_model")
+            cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend="hccl", group_name="sync_model")
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError

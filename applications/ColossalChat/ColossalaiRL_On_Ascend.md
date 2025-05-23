@@ -30,7 +30,7 @@ pip install ray==2.43.0 --no-cache-dir
 
 # Create soft-link from fuyao-ray to ray site-package
 cd ..
-ln -s ./ray/python/ray/ /usr/local/python3.10/lib/python3.10/site-packages/ray 
+ln -s ./ray/python/ray/ /usr/local/python3.10/lib/python3.10/site-packages/ray
 
 # Install Fuyao Ray
 cd ray
@@ -60,19 +60,19 @@ Then write IP node map to /etc/hosts
 10.0.0.6 npu-6
 ```
 
-### Set Ascend Multi-Node Config 
+### Set Ascend Multi-Node Config
 
 ```bash
 export ATB_LLM_HCCL_ENABLE=1
 export ATB_LLM_COMM_BACKEND="hccl"
 export HCCL_CONNECT_TIMEOUT=7200
 export WORLD_SIZE=32
-export HCCL_EXEC_TIMEOUT=7200 
+export HCCL_EXEC_TIMEOUT=7200
 export HCCL_SOCKET_IFNAME=eno0
-export RAY_COLLECTIVE_MEET_TIMEOUT_SECONDS=7200 
+export RAY_COLLECTIVE_MEET_TIMEOUT_SECONDS=7200
 ```
 
-## 3.Run task on ColossalaiRL-Ascend 
+## 3.Run task on ColossalaiRL-Ascend
 
 ### Start Ray Cluster
 Now we use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:

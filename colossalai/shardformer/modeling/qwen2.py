@@ -144,15 +144,15 @@ class Qwen2PipelineForwards:
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
+            (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = None
-            #attention_mask = ColoAttention.prepare_attn_kwargs(
+            # attention_mask = ColoAttention.prepare_attn_kwargs(
             #    mask_shape,
             #    hidden_states.dtype,
             #    hidden_states.device,
             #    q_padding_mask=attention_mask,
             #    is_causal=True,
-            #)
+            # )
         else:
             if self._attn_implementation == "flash_attention_2":
                 # 2d mask is passed through the layers
@@ -523,7 +523,7 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
             key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
             value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
-        
+
         query_states = query_states.view(bsz, q_len, self.num_heads, -1).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, -1).transpose(1, 2)
@@ -580,7 +580,16 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
                 diagonal=1,
             ).to(dtype=torch.bool, device="npu")
             scale = 1.0 / math.sqrt(query_states.shape[-1])
-            attn_output = torch_npu.npu_fusion_attention(query_states, key_states, value_states, head_num=query_states.size(1), input_layout="BNSD", sparse_mode=1, atten_mask=atten_mask, scale = scale)
+            attn_output = torch_npu.npu_fusion_attention(
+                query_states,
+                key_states,
+                value_states,
+                head_num=query_states.size(1),
+                input_layout="BNSD",
+                sparse_mode=1,
+                atten_mask=atten_mask,
+                scale=scale,
+            )
             attn_output = attn_output[0]
         else:
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
@@ -621,8 +630,6 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
         return attn_output, None, past_key_value
 
     return forward
-
-
 
 
 def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):

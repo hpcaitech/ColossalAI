@@ -1,10 +1,12 @@
-import ray
 import time
+
+import ray
 import ray.util.collective as cc
 import torch
 from coati.distributed.comm import ray_broadcast_object, ray_broadcast_tensor_dict
 
 from colossalai.testing import parameterize
+
 
 @ray.remote(num_cpus=1, num_gpus=0, resources={"NPU": 1})
 class Worker:
@@ -13,6 +15,7 @@ class Worker:
         self.world_size = world_size
         self.group_name = "default"
         cc.init_collective_group(world_size, rank, backend="hccl", group_name=self.group_name)
+
     def run_ray_broadcast_object(self, obj, src, device):
         # ray_broadcast_object
         received_obj = ray_broadcast_object(obj, src, device, group_name=self.group_name)
@@ -26,6 +29,7 @@ class Worker:
     def destroy_worker(self):
         cc.destroy_collective_group(self.group_name)
 
+
 @parameterize(
     "test_config",
     [
@@ -37,7 +41,7 @@ class Worker:
     ],
 )
 def test_comm(test_config):
-    #ray.init()
+    # ray.init()
     ray.init(address="local", namespace="ray-example")
     # ray.init(_node_ip_address='10.0.0.5', namespace="ray-example")
 
@@ -83,6 +87,7 @@ def test_comm(test_config):
     for worker in workers:
         worker.destroy_worker.remote()
     ray.shutdown()
+
 
 if __name__ == "__main__":
     test_comm()

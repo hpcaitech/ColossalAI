@@ -1,22 +1,25 @@
-import ray
+import argparse
 import time
+
+import ray
 import ray.util.collective as cc
 import torch
-from coati.distributed.comm import ray_broadcast_object, ray_broadcast_tensor_dict
+from coati.distributed.comm import ray_broadcast_tensor_dict
+from vllm import LLM, SamplingParams
 
 from colossalai.testing import parameterize
 
-from vllm import LLM, SamplingParams
-import torch
-import argparse
-
-parser = argparse.ArgumentParser(description='VLLM args.')
-parser.add_argument("-m", "--model_path", type=str, default="/home/duanjunwen/models/Qwen/Qwen2.5-14B", help="The model path. ")
+parser = argparse.ArgumentParser(description="VLLM args.")
+parser.add_argument(
+    "-m", "--model_path", type=str, default="/home/duanjunwen/models/Qwen/Qwen2.5-14B", help="The model path. "
+)
 parser.add_argument("-l", "--max_length", type=int, default=8192, help="Max sequence length")
 parser.add_argument("-w", "--world_size", type=int, default=8, help="Gpu nums")
 parser.add_argument("-t", "--temperature", type=float, default=0.8, help="Temperature")
 parser.add_argument("--top_p", type=float, default=0.95, help="Top p")
-parser.add_argument("-i", "--input_texts", type=str, default="Find all prime numbers up to 100.", help="Prompts inputs. ")
+parser.add_argument(
+    "-i", "--input_texts", type=str, default="Find all prime numbers up to 100.", help="Prompts inputs. "
+)
 args = parser.parse_args()
 
 # Create a sampling params object.
@@ -30,7 +33,9 @@ class Worker:
         self.group_name = "default"
         cc.init_collective_group(world_size, rank, backend="hccl", group_name=self.group_name)
         self.llm = LLM(model=args.model_path, max_model_len=args.max_length, tensor_parallel_size=args.world_size)
-        self.sampling_params = SamplingParams(temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_length)
+        self.sampling_params = SamplingParams(
+            temperature=args.temperature, top_p=args.top_p, max_tokens=args.max_length
+        )
 
     def run_ray_broadcast_object(self, obj, src, device):
         # Create an LLM.
@@ -44,6 +49,7 @@ class Worker:
 
     def destroy_worker(self):
         cc.destroy_collective_group(self.group_name)
+
 
 @parameterize(
     "test_config",
@@ -75,13 +81,13 @@ def test_comm(test_config):
     torch.npu.synchronize()
     start_time = time.time()
     results = [worker.run_ray_broadcast_object.remote(test_obj, src, device) for worker in workers]
-    
+
     # get result
     results = ray.get(results)
 
     end_time = time.time()
     total_time = end_time - start_time
-    
+
     print(f"total_time {total_time}")
 
     for i, result in enumerate(results):
@@ -91,6 +97,7 @@ def test_comm(test_config):
     for worker in workers:
         worker.destroy_worker.remote()
     ray.shutdown()
+
 
 if __name__ == "__main__":
     test_comm()

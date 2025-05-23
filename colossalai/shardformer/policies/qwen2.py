@@ -19,7 +19,6 @@ from colossalai.shardformer.layer import (
 from ..modeling.qwen2 import (
     Qwen2PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
-    get_qwen2_flash_attention_forward,
     get_qwen2_flash_attention_npu_forward,
     get_qwen2_model_forward_for_flash_attn,
 )
