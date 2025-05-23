@@ -237,7 +237,7 @@ python rl_example.py \
 
 ## 🧪 Example: multi-machine TP+PP Strategy
 
-### Create ray cluster on multi-machine 
+### Create ray cluster on multi-machine
 
 Now we use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
 ```bash
@@ -252,23 +252,23 @@ ray start --address='10.0.0.3:6379'
 ```bash
 # Hint1: replace /models/Qwen/Qwen2.5-7B to your model path
 #        replace /datasets/train-alignment.jsonl to your dataset path
-python rl_example.py 
+python rl_example.py
 -m /path/to/Qwen2.5-Math-7B/ \
--d /path/to/train_data.jsonl \ 
---master_address '10.0.0.3' 
--t 16 \ 
--i 16 \ 
--p GRPO-Train-Align-Debug \ 
--g 2 \ 
--ibs 1 \ 
--tbs 2 \ 
--tMbs 1 \ 
--tmbs 2 \ 
--imbs 1 \ 
--b vllm \ 
--e 2 \ 
--rt boxed \ 
--s "Please reason step by step, and put your final answer within \\boxed{}." 
+-d /path/to/train_data.jsonl \
+--master_address '10.0.0.3'
+-t 16 \
+-i 16 \
+-p GRPO-Train-Align-Debug \
+-g 2 \
+-ibs 1 \
+-tbs 2 \
+-tMbs 1 \
+-tmbs 2 \
+-imbs 1 \
+-b vllm \
+-e 2 \
+-rt boxed \
+-s "Please reason step by step, and put your final answer within \\boxed{}."
 ```
 
 ---
