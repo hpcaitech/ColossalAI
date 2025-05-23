@@ -34,7 +34,7 @@ jobs:
       anyExtensionFileChanged: ${{ steps.find-extension-change.outputs.any_changed }}
       changedLibraryFiles: ${{ steps.find-lib-change.outputs.all_changed_files }}
       anyLibraryFileChanged: ${{ steps.find-lib-change.outputs.any_changed }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted,ubuntu-latest]
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-detect-change
       cancel-in-progress: true
@@ -87,7 +87,7 @@ jobs:
     name: Build and Test Colossal-AI
     needs: detect
     if: needs.detect.outputs.anyLibraryFileChanged == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted,ubuntu-latest]
     container:
       image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --shm-size=2g --rm -v /dev/shm -v /data/scratch:/data/scratch
