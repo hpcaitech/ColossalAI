@@ -8,7 +8,7 @@ This repository implements a distributed Reinforcement Learning (RL) training fr
 
 * **Distributed Training with Ray**: Scalable to multiple machines and GPUs.
 * **Support for GRPO and DAPO**: Choose your preferred policy optimization algorithm.
-* **Flexible Model Backends**: Choose between `transformers` and `vllm` backends.
+* **Model Backends**: Support `vllm` as inference backends.
 * **Rollout and Policy Decoupling**: Efficient generation and consumption of data through parallel inferencer-trainer architecture.
 * **Evaluation Integration**: Easily plug in task-specific eval datasets.
 * **Checkpoints and Logging**: Configurable intervals and directories.
@@ -22,7 +22,7 @@ This repository implements a distributed Reinforcement Learning (RL) training fr
 Install Colossalai & ColossalChat
 ```bash
 git clone https://github.com/hpcaitech/ColossalAI.git
-git checkout grpo-latest
+git checkout grpo-latest-ascend
 pip install -e .
 
 cd ./applications/ColossalChat
@@ -35,7 +35,7 @@ Please update CANN before install fuyao ray
 source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ./Ascend-cann-kernels-910b_8.1.RC1.alpha001_linux-aarch64.run  --devel
 
-# Clone Fuyao Ray
+# Clone Fuyao Ray. Fuyao Ray is not an open source project, it will be inherited in the ColossalRL images.
 git clone https://gitee.com/openfuyao/ray.git
 cd ray
 git pull origin pull/5/head
@@ -51,8 +51,8 @@ ln -s ./ray/python/ray/ /usr/local/python3.10/lib/python3.10/site-packages/ray
 cd ray
 python python/ray/setup-dev.py
 ```
-Prepare Model & dataset
 
+Prepare Model & dataset
 ```bash
 huggingface-cli download --local-dir-use-symlinks False Qwen/Qwen2.5-7B --local-dir /models/Qwen/Qwen2.5-7B
 ```
@@ -221,25 +221,27 @@ In addition to the two default training settings we provided--- original `GRPO` 
 ```bash
 python rl_example.py \
   --dataset /path/to/train_data.jsonl \
-  --model /path/to/Qwen2.5-Math-7B/ \
+  --model /path/to/Qwen2.5-3B/ \
   -t 4 -i 4 \
   -b vllm \
-  -a DAPO \
-  -ibs 8 -tbs 8 -e 2 \
+  -ibs 2 -tbs 4 -tMbs 1 -tmbs 4 -imbs 1 \
   -rt boxed \
-  -si 15 \
+  -g 4 \ 
+  -ibs 1 \ 
+  -tbs 2 \ 
+  -tMbs 1 \ 
+  -tmbs 2 \ 
+  -imbs 1 \ 
   -s "Please reason step by step, and put your final answer within \\boxed{}." \
   -tMbs 8 \
-  -p GRPO-Reward-Debug \
-  -ei 5 \
-  -ed '{"Math_500_level_1": "path/to/math_500_level_1.jsonl", "Ma1h_500_level_3": "path/to/math_500_level_3.jsonl"}'
+  -p GRPO-Train-Align-Debug \
 ```
 
 ## 🧪 Example: multi-machine TP+PP Strategy
 
-### Create ray cluster on multi-machine
-
-Now we use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
+### Create ray cluster on multi-machine 
+For example, now we have 4 nodes and their IPs are 10.0.0.3, 10.0.0.4, 10.0.0.5, 10.0.0.6.
+We use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
 ```bash
 ray start --head --node-ip-address=10.0.0.3
 ```
@@ -249,26 +251,39 @@ Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluser
 ray start --address='10.0.0.3:6379'
 ```
 
+Modify plugin_config in ./applications/ColossalChat/rl_example.py 
+```python
+plugin_config={
+  "tp_size": 4,
+  "pp_size": 2,
+  "microbatch_size": max(
+    1, args.train_microbatch_size // 2
+  ),  # microbatch size should be set to train_microbatch_size // pp_size
+  "zero_stage": 1,
+  "max_norm": 1.0,
+  },  # for pp, tp
+```
+
 ```bash
 # Hint1: replace /models/Qwen/Qwen2.5-7B to your model path
 #        replace /datasets/train-alignment.jsonl to your dataset path
-python rl_example.py
--m /path/to/Qwen2.5-Math-7B/ \
--d /path/to/train_data.jsonl \
---master_address '10.0.0.3'
--t 16 \
--i 16 \
--p GRPO-Train-Align-Debug \
--g 2 \
--ibs 1 \
--tbs 2 \
--tMbs 1 \
--tmbs 2 \
--imbs 1 \
--b vllm \
--e 2 \
--rt boxed \
--s "Please reason step by step, and put your final answer within \\boxed{}."
+python rl_example.py 
+  -m /path/to/Qwen2.5-Math-7B/ \
+  -d /path/to/train_data.jsonl \ 
+  --master_address '10.0.0.3' 
+  -t 16 \ 
+  -i 16 \ 
+  -p GRPO-Train-Align-Debug \ 
+  -g 2 \ 
+  -ibs 1 \ 
+  -tbs 2 \ 
+  -tMbs 1 \ 
+  -tmbs 2 \ 
+  -imbs 1 \ 
+  -b vllm \ 
+  -e 2 \ 
+  -rt boxed \ 
+  -s "Please reason step by step, and put your final answer within \\boxed{}." 
 ```
 
 ---

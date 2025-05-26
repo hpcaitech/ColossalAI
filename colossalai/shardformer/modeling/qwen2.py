@@ -574,10 +574,6 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
         if shard_config.enable_flash_attention:
-            atten_mask = torch.triu(
-                torch.ones(q_len, q_len),
-                diagonal=1,
-            ).to(dtype=torch.bool, device="npu")
             scale = 1.0 / math.sqrt(query_states.shape[-1])
             attn_output = torch_npu.npu_fusion_attention(
                 query_states,
@@ -586,8 +582,10 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
                 head_num=query_states.size(1),
                 input_layout="BNSD",
                 sparse_mode=1,
-                atten_mask=atten_mask,
+                atten_mask=None,
                 scale=scale,
+                pre_tockens=65536,
+                next_tockens=65536,
             )
             attn_output = attn_output[0]
         else:

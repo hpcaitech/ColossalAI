@@ -190,8 +190,7 @@ class DistLogProb(Function):
         # mask
         mask = (target < down_threshold) | (target >= up_threshold)
         masked_target = target.clone() - down_threshold
-        # masked_target[mask] = 0
-        masked_target *= ~mask
+        masked_target[mask] = 0
         masked_target_1d = masked_target.view(-1).contiguous()
         handle.wait()
 

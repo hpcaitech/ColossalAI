@@ -248,9 +248,6 @@ if __name__ == "__main__":
         num_generations=args.num_generations,
         train_model_config=train_model_config,
         grpo_config=grpo_config,
-        # plugin_config={
-        #     "zero_stage": 2,
-        # },  # for zero
         plugin_config={
             "tp_size": 2,
             "pp_size": 2,
@@ -259,9 +256,6 @@ if __name__ == "__main__":
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": 1,
             "max_norm": 1.0,
-            # "sp_size": 4,
-            # "enable_sequence_parallelism":True,
-            # "sequence_parallelism_mode":"split_gather" # ["split_gather", "ring", "all_to_all"]
         },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",

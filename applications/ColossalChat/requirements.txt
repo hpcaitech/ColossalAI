@@ -1,9 +1,9 @@
-transformers==4.39.3
+transformers==4.47.0
 tqdm
 datasets==2.14.7
 loralib
 colossalai>=0.4.7
-torch>=2.1.0
+torch==2.5.1
 langchain
 tokenizers
 fastapi
@@ -22,3 +22,9 @@ sentencepiece==0.1.99
 flash-attn
 tiktoken
 jsonlines
+math-verify==0.7.0
+
+# The following packages be built into the image.
+# torch_npu==2.5.1
+# fuyao-ray==2.43.0
+# vllm-ascend==0.7.3
