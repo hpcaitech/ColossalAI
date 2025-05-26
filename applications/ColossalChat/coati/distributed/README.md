@@ -1,6 +1,6 @@
 # Distributed RL Framework for Language Model Fine-Tuning
 
-This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like HuggingFace Transformers or VLLM.
+This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like  VLLM.
 
 ---
 
@@ -127,7 +127,7 @@ Each data sample in the training or evaluation `.jsonl` file should follow this 
 
 | Argument              | Description           | Example        |
 | --------------------- | --------------------- | -------------- |
-| `--backend`           | Generation backend, choose from `vllm` `transformers`    | `vllm` |
+| `--backend`           | Generation backend, choose from `vllm`     | `vllm` |
 | `--temperature`       | Sampling temperature for generation  | `1.0`          |
 | `--top-k`             | Top-K sampling parameter for generation        | `None`         |
 | `--top-p`             | Top-P sampling parameter for generation        | `1.0`          |
@@ -226,12 +226,12 @@ python rl_example.py \
   -b vllm \
   -ibs 2 -tbs 4 -tMbs 1 -tmbs 4 -imbs 1 \
   -rt boxed \
-  -g 4 \
-  -ibs 1 \
-  -tbs 2 \
-  -tMbs 1 \
-  -tmbs 2 \
-  -imbs 1 \
+  -g 4 \ 
+  -ibs 1 \ 
+  -tbs 2 \ 
+  -tMbs 1 \ 
+  -tmbs 2 \ 
+  -imbs 1 \ 
   -s "Please reason step by step, and put your final answer within \\boxed{}." \
   -tMbs 8 \
   -p GRPO-Train-Align-Debug \
@@ -239,7 +239,7 @@ python rl_example.py \
 
 ## 🧪 Example: multi-machine TP+PP Strategy
 
-### Create ray cluster on multi-machine
+### Create ray cluster on multi-machine 
 For example, now we have 4 nodes and their IPs are 10.0.0.3, 10.0.0.4, 10.0.0.5, 10.0.0.6.
 We use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
 ```bash
@@ -251,7 +251,7 @@ Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluser
 ray start --address='10.0.0.3:6379'
 ```
 
-Modify plugin_config in ./applications/ColossalChat/rl_example.py
+Modify plugin_config in ./applications/ColossalChat/rl_example.py 
 ```python
 plugin_config={
   "tp_size": 4,
@@ -267,23 +267,23 @@ plugin_config={
 ```bash
 # Hint1: replace /models/Qwen/Qwen2.5-7B to your model path
 #        replace /datasets/train-alignment.jsonl to your dataset path
-python rl_example.py
+python rl_example.py 
   -m /path/to/Qwen2.5-Math-7B/ \
-  -d /path/to/train_data.jsonl \
-  --master_address '10.0.0.3'
-  -t 16 \
-  -i 16 \
-  -p GRPO-Train-Align-Debug \
-  -g 2 \
-  -ibs 1 \
-  -tbs 2 \
-  -tMbs 1 \
-  -tmbs 2 \
-  -imbs 1 \
-  -b vllm \
-  -e 2 \
-  -rt boxed \
-  -s "Please reason step by step, and put your final answer within \\boxed{}."
+  -d /path/to/train_data.jsonl \ 
+  --master_address '10.0.0.3' 
+  -t 16 \ 
+  -i 16 \ 
+  -p GRPO-Train-Align-Debug \ 
+  -g 2 \ 
+  -ibs 1 \ 
+  -tbs 2 \ 
+  -tMbs 1 \ 
+  -tmbs 2 \ 
+  -imbs 1 \ 
+  -b vllm \ 
+  -e 2 \ 
+  -rt boxed \ 
+  -s "Please reason step by step, and put your final answer within \\boxed{}." 
 ```
 
 ---
