@@ -48,6 +48,7 @@ def _get_attention_mask(
     sp_mode = shard_config.sequence_parallelism_mode
     # If a 2D or 3D attention mask is provided for the cross-attention
     # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
+
     if self.config.add_cross_attention and encoder_hidden_states is not None:
         assert not sp_mode == "ring_attn", "Ring Attention only supports decoder-only."
         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
@@ -55,7 +56,7 @@ def _get_attention_mask(
             encoder_attention_mask = ColoAttention.prepare_attn_kwargs(
                 (encoder_batch_size, 1, seq_len, encoder_sequence_length),
                 dtype=hidden_states.dtype,
-                dtype2=encoder_hidden_states.dtype,
+                device=encoder_hidden_states.device,
                 q_padding_mask=attention_mask,
                 kv_padding_mask=encoder_attention_mask,
             )
@@ -77,7 +78,6 @@ def _get_attention_mask(
     if shard_config.enable_flash_attention:
         if attention_mask is not None:
             attention_mask = attention_mask.view(batch_size, -1)
-
         attention_mask = ColoAttention.prepare_attn_kwargs(
             (batch_size, 1, seq_len, seq_len + past_key_values_length),
             hidden_states.dtype,
@@ -835,9 +835,12 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
             attention_mask = encoder_attention_mask
         else:
             query, key, value = self.c_attn(hidden_states).split(self.split_size, dim=2)
-        query = self._split_heads(query, self.num_heads, self.head_dim)
-        key = self._split_heads(key, self.num_heads, self.head_dim)
-        value = self._split_heads(value, self.num_heads, self.head_dim)
+
+        shape_q = (*query.shape[:-1], -1, self.head_dim)
+        shape_kv = (*key.shape[:-1], -1, self.head_dim)
+        query = query.view(shape_q).transpose(1, 2)
+        key = key.view(shape_kv).transpose(1, 2)
+        value = value.view(shape_kv).transpose(1, 2)
 
         if layer_past is not None:
             past_key, past_value = layer_past
@@ -871,7 +874,9 @@ def get_gpt2_flash_attention_forward(shard_config: Optional[ShardConfig] = None)
             )
         else:
             attn_output = ColoAttention.attention(query, key, value, **attention_mask, dropout_p=dropout_p, scale=scale)
-        attn_output = self._merge_heads(attn_output, self.num_heads, self.head_dim)
+
+        attn_output = attn_output.permute(0, 2, 1, 3).contiguous()
+        attn_output = attn_output.reshape(*attn_output.shape[:-2], -1).contiguous()
         attn_output = self.c_proj(attn_output)
         attn_output = self.resid_dropout(attn_output)
         outputs = (attn_output, present, None)

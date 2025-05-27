@@ -69,7 +69,7 @@ def new_from_pretrained(
     _ = kwargs.pop("mirror", None)
     from_pipeline = kwargs.pop("_from_pipeline", None)
     from_auto_class = kwargs.pop("_from_auto", False)
-    _fast_init = kwargs.pop("_fast_init", True)
+    kwargs.pop("_fast_init", True)
     torch_dtype = kwargs.pop("torch_dtype", None)
     subfolder = kwargs.pop("subfolder", "")
     commit_hash = kwargs.pop("_commit_hash", None)
@@ -286,7 +286,7 @@ def new_from_pretrained(
     config.name_or_path = pretrained_model_name_or_path
 
     # Instantiate model.
-    init_contexts = [no_init_weights(_enable=_fast_init)]
+    init_contexts = [no_init_weights()]
 
     with ContextManagers(init_contexts):
         model = cls(config, *model_args, **model_kwargs)

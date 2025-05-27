@@ -38,23 +38,9 @@ class MistralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mistral.modeling_mistral import (
-            MistralAttention,
-            MistralDecoderLayer,
-            MistralFlashAttention2,
-            MistralModel,
-            MistralSdpaAttention,
-        )
-
-        ATTN_IMPLEMENTATION = {
-            "eager": MistralAttention,
-            "flash_attention_2": MistralFlashAttention2,
-            "sdpa": MistralSdpaAttention,
-        }
+        from transformers.models.mistral.modeling_mistral import MistralAttention, MistralDecoderLayer, MistralModel
 
         policy = {}
-
-        attn_cls = ATTN_IMPLEMENTATION[self.model.config._attn_implementation]
 
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
@@ -258,7 +244,7 @@ class MistralPolicy(Policy):
                     "forward": get_mistral_flash_attention_forward(self.shard_config),
                 },
                 policy=policy,
-                target_key=attn_cls,
+                target_key=MistralAttention,
             )
             if self.pipeline_stage_manager is None:
                 # replace llama model forward method
@@ -316,6 +302,7 @@ class MistralPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))

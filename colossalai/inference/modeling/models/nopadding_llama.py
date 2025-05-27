@@ -478,9 +478,9 @@ class NopadLlamaAttention(LlamaAttention, ParallelModule):
             attn_oproj=attn_oproj,
             process_group=process_group,
             model_shard_infer_config=model_shard_infer_config,
-            num_heads=module.num_heads,
-            hidden_size=module.hidden_size,
-            num_key_value_heads=module.num_key_value_heads,
+            num_heads=module.config.num_attention_heads,
+            hidden_size=module.config.hidden_size,
+            num_key_value_heads=module.config.num_key_value_heads,
         )
 
         return attn_layer

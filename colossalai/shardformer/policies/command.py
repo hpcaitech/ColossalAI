@@ -6,8 +6,6 @@ from torch import Tensor
 from torch.nn import Module
 
 from colossalai.shardformer.layer import (
-    FusedLayerNorm,
-    LayerNorm,
     Linear1D_Col,
     Linear1D_Row,
     LinearWithGradAccum,
@@ -38,18 +36,13 @@ class CommandPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.cohere.modeling_cohere import (
-            CohereAttention,
-            CohereDecoderLayer,
-            CohereFlashAttention2,
-            CohereModel,
-            CohereSdpaAttention,
-        )
+        from transformers.models.cohere.modeling_cohere import CohereAttention, CohereDecoderLayer, CohereModel
 
+        # The eager, flash_attention_2, sdpa will all be passed to CohereAttention in v4.51.3 transformers.
         ATTN_IMPLEMENTATION = {
             "eager": CohereAttention,
-            "flash_attention_2": CohereFlashAttention2,
-            "sdpa": CohereSdpaAttention,
+            "flash_attention_2": CohereAttention,
+            "sdpa": CohereAttention,
         }
         policy = {}
 
@@ -61,15 +54,11 @@ class CommandPolicy(Policy):
             if self.tie_weight:
                 embedding_cls = PaddingEmbedding
 
-        if self.shard_config.enable_fused_normalization:
-            norm_cls = FusedLayerNorm
-        else:
-            norm_cls = LayerNorm
+        # CohereLayerNorm has no bias in v4.51.3 transformers, so we don't replace it.
 
         sp_mode = self.shard_config.sequence_parallelism_mode or None
         sp_size = self.shard_config.sequence_parallel_size or None
         sp_group = self.shard_config.sequence_parallel_process_group or None
-        sp_partial_derived = sp_mode in ["split_gather", "ring"]
         if sp_mode == "ring_attn" and not self.is_causal:
             raise ValueError("Ring attention is only meant for causal language modeling.")
 
@@ -86,14 +75,15 @@ class CommandPolicy(Policy):
             policy[attn_cls] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
+
+        self.append_or_create_method_replacement(
+            description={
+                "forward": get_command_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+            },
+            policy=policy,
+            target_key=attn_cls,
+        )
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
-            self.append_or_create_method_replacement(
-                description={
-                    "forward": get_command_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
-                },
-                policy=policy,
-                target_key=attn_cls,
-            )
             if self.pipeline_stage_manager is None:
                 self.append_or_create_method_replacement(
                     description={
@@ -280,29 +270,6 @@ class CommandPolicy(Policy):
                 target_key=CohereModel,
             )
 
-        # optimization configuration
-        self.append_or_create_submodule_replacement(
-            description=[
-                SubModuleReplacementDescription(
-                    suffix="input_layernorm",
-                    target_module=norm_cls,
-                    kwargs={"sp_partial_derived": sp_partial_derived},
-                ),
-            ],
-            policy=policy,
-            target_key=CohereDecoderLayer,
-        )
-
-        self.append_or_create_submodule_replacement(
-            description=SubModuleReplacementDescription(
-                suffix="norm",
-                target_module=norm_cls,
-                kwargs={"sp_partial_derived": sp_partial_derived},
-            ),
-            policy=policy,
-            target_key=CohereModel,
-        )
-
         return policy
 
     def postprocess(self):
@@ -349,6 +316,7 @@ class CommandPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))

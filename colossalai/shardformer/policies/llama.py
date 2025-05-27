@@ -33,22 +33,9 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import (
-            LlamaAttention,
-            LlamaDecoderLayer,
-            LlamaFlashAttention2,
-            LlamaModel,
-            LlamaSdpaAttention,
-        )
+        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
 
-        ATTN_IMPLEMENTATION = {
-            "eager": LlamaAttention,
-            "flash_attention_2": LlamaFlashAttention2,
-            "sdpa": LlamaSdpaAttention,
-        }
         policy = {}
-
-        attn_cls = ATTN_IMPLEMENTATION[self.origin_attn_implement]
         embedding_cls = None
         if self.shard_config.enable_tensor_parallelism:
             embedding_cls = VocabParallelEmbedding1D
@@ -82,7 +69,7 @@ class LlamaPolicy(Policy):
                 num_kv_heads //= sp_size
                 decoder_attribute_replacement["num_key_value_heads"] = num_kv_heads
 
-            policy[attn_cls] = ModulePolicyDescription(
+            policy[LlamaAttention] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
@@ -91,7 +78,7 @@ class LlamaPolicy(Policy):
                     "forward": get_llama_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=attn_cls,
+                target_key=LlamaAttention,
             )
 
         if self.pipeline_stage_manager is None:
@@ -354,6 +341,7 @@ class LlamaPolicy(Policy):
         stage_manager = self.pipeline_stage_manager
 
         held_layers = []
+        held_layers.append(module.rotary_emb)
         if stage_manager.is_interleave:
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))

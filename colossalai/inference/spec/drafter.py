@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 from transformers import PreTrainedTokenizer
+from transformers.cache_utils import DynamicCache
 
 from colossalai.utils import get_current_device
 
@@ -93,9 +94,8 @@ class Drafter:
 
         for _ in range(n_spec_tokens):
             # update past key values
-            kwargs["past_key_values"] = past_key_values
 
-            outputs = self._drafter_model(input_ids, **kwargs)
+            outputs = self._drafter_model(input_ids, past_key_values=past_key_values, **kwargs)
             next_token_logits = outputs.logits[:, -1, :]
 
             # NOTE Only use greedy search for speculating.
@@ -114,6 +114,8 @@ class Drafter:
         speculated_length = len(token_ids)  # For now, only support bsz 1
         logits = torch.concat(logits, dim=0)
         token_ids = torch.concat(token_ids, dim=-1)
+        if isinstance(past_key_values, DynamicCache):
+            past_key_values = past_key_values.to_legacy_cache()
 
         out = DrafterOutput(
             speculated_length=speculated_length, logits=logits, next_tokens=token_ids, past_key_values=past_key_values
