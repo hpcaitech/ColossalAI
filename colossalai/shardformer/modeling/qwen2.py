@@ -199,7 +199,6 @@ class Qwen2PipelineForwards:
 
         start_idx, end_idx = stage_index[0], stage_index[1]
         num_ckpt_layers = 0
-        self.gradient_checkpointing = True
         if self.gradient_checkpointing and self.training:
             num_ckpt_layers = end_idx - start_idx
             # TODO: We can replace `gradient_checkpointing_enable` fn and initialize a gradient_checkpointing (List[bool]) for each layer
@@ -852,9 +851,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
                 hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
             )
 
-        layer_idx = 0
         for decoder_layer in self.layers:
-            layer_idx += 1
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
