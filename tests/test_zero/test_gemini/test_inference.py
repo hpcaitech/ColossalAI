@@ -114,7 +114,6 @@ def run_dist(rank, world_size, port):
     exam_inference()
 
 
-@pytest.mark.skip("this test failed")
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 4])
 def test_inference(world_size):
