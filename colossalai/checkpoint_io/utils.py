@@ -1142,7 +1142,7 @@ def gather_state_dict_fast(
                 ks.append(k)
                 ops.append(dist.P2POp(dist.irecv, buffer, dist.get_global_rank(group, i), group))
         reqs = dist.batch_isend_irecv(ops)
-        for req in reqs: # len(reqs) maybe be different from len(ops) because of coalescing
+        for req in reqs:  # len(reqs) maybe be different from len(ops) because of coalescing
             req.wait()
         for k in ks:
             returned_state_dict[k] = returned_state_dict[k].to(device)
