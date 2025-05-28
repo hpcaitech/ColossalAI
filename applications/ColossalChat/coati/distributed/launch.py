@@ -79,15 +79,11 @@ def launch_distributed(
         f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
 
-    # Attention: Ray use complex schedualing method that consider various factors including load-balancing.
-    # when requesting resources, it is not guaranteed that the resource comes from a node with lower node it
-    # this go against the design principle of our implementation, and we need to manually force the schedualing,
-    # allocating the producer to nodes with lower node id and the consumer to the resouces from nodes with higher
-    # node id. See the reference here: https://docs.ray.io/en/latest/ray-core/scheduling/index.html#nodeaffinityschedulingstrategy
     nodes = ray.nodes()
     node_info = {
         node["NodeID"]: {
-            "num_gpus": node["Resources"].get("GPU", 0),
+            # "num_gpus": node["Resources"].get("GPU", 0),
+            "num_gpus": node["Resources"].get("NPU", 0),
             "address": node["NodeManagerAddress"],
         }  # Default to 0 if no GPUs are available
         for node in nodes
@@ -95,12 +91,12 @@ def launch_distributed(
     gpu_to_node_id = []
     gpu_to_ip_address = []
     for node_id in node_info:
-        for idx in range(int(node_info[node_id]["num_gpus"])):
+        for idx in range(int(node_info[node_id]["num_gpus"])):  # use num_gpus instead of num_npus
             gpu_to_node_id.append(node_id)
             gpu_to_ip_address.append(node_info[node_id]["address"])
-    print(node_info)
 
     producer_procs = []
+
     for i in range(num_producers):
         node_id = gpu_to_node_id[0]
         producer_ip_address = gpu_to_ip_address[0]
@@ -108,7 +104,17 @@ def launch_distributed(
             gpu_to_node_id.pop(0)
             gpu_to_ip_address.pop(0)
         print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
-        producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
+
+        producer = SimpleProducer.options(
+            # num_cpus=1,
+            # num_cpus=num_proc_per_producer,
+            num_gpus=0,
+            resources={"NPU": num_proc_per_producer},
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=node_id,
+                soft=False,
+            ),
+        ).remote(
             producer_idx=i,
             num_producers=num_producers,
             num_consumer_procs=num_consumer_procs,
@@ -150,7 +156,13 @@ def launch_distributed(
         gpu_to_node_id.pop(0)
         gpu_to_ip_address.pop(0)
         print(f"Schedual Consumer T[{i}] which requires 1 GPUs on node {consumer_ip_address}")
-        consumer = core_consumer.options(num_gpus=1).remote(
+        consumer = core_consumer.options(
+            resources={"NPU": 1},
+            scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=node_id,
+                soft=False,
+            ),
+        ).remote(
             num_producers=num_producers,
             num_episodes=num_episodes,
             rank=i,

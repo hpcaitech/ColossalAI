@@ -13,7 +13,6 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.initialize import launch
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
 from .utils import bind_batch, post_recv, unbind_batch
@@ -33,6 +32,7 @@ class BaseConsumer:
         batch_size: int,
         model_config: Dict[str, Any],
         plugin_config: Dict[str, Any],
+        generate_config: Dict[str, Any],
         minibatch_size: int = 1,
         save_interval: int = 100,
         save_dir: str = "./model",
@@ -55,8 +55,9 @@ class BaseConsumer:
         self.model_config = model_config
         self.plugin_config = plugin_config
 
-        self.device = get_current_device()
+        self.device = "npu"
         self.lr_scheduler = None
+        self.generate_config = generate_config
 
     def setup(self) -> None:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
@@ -73,24 +74,28 @@ class BaseConsumer:
         self.booster = Booster(plugin=self.plugin)
         self.dp_rank = dist.get_rank(self.plugin.dp_group)
         self.tp_rank = dist.get_rank(self.plugin.tp_group)
+        self.sp_rank = dist.get_rank(self.plugin.sp_group)
         self.pp_rank = dist.get_rank(self.plugin.pp_group)
 
         self.dp_size = dist.get_world_size(self.plugin.dp_group)
         self.tp_size = dist.get_world_size(self.plugin.tp_group)
+        self.sp_size = dist.get_world_size(self.plugin.sp_group)
         self.pp_size = dist.get_world_size(self.plugin.pp_group)
 
         # Init Hybrid ray process group
         for i in range(self.num_producers):
-            cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
+            cc.init_collective_group(self.world_size + 1, self.rank + 1, backend="hccl", group_name=f"sync_data_{i}")
         if self.pp_size > 1:
             # use hybrid tp + pp
             if self.tp_rank == 0 and self.dp_rank == 0:
                 cc.init_collective_group(
-                    self.num_producers + 1, self.num_producers, group_name=f"sync_model_{self.pp_rank}"
+                    self.num_producers + 1, self.num_producers, backend="hccl", group_name=f"sync_model_{self.pp_rank}"
                 )
         else:
             if self.rank == 0:
-                cc.init_collective_group(self.num_producers + 1, self.num_producers, group_name="sync_model")
+                cc.init_collective_group(
+                    self.num_producers + 1, self.num_producers, backend="hccl", group_name="sync_model"
+                )
 
         self.buffer = []
         self.recv_cnt = 0

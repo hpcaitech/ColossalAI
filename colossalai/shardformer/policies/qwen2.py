@@ -19,7 +19,7 @@ from colossalai.shardformer.layer import (
 from ..modeling.qwen2 import (
     Qwen2PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
-    get_qwen2_flash_attention_forward,
+    get_qwen2_flash_attention_npu_forward,
     get_qwen2_model_forward_for_flash_attn,
 )
 
@@ -304,7 +304,7 @@ class Qwen2Policy(Policy):
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_qwen2_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                    "forward": get_qwen2_flash_attention_npu_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
                 target_key=attn_cls,

@@ -1,5 +1,81 @@
 # Distributed RL Framework for Language Model Fine-Tuning
 
+This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like  VLLM.
+
+---
+
+## 🚀 Features
+
+* **Distributed Training with Ray**: Scalable to multiple machines and GPUs.
+* **Support for GRPO and DAPO**: Choose your preferred policy optimization algorithm.
+* **Model Backends**: Support `vllm` as inference backends.
+* **Rollout and Policy Decoupling**: Efficient generation and consumption of data through parallel inferencer-trainer architecture.
+* **Evaluation Integration**: Easily plug in task-specific eval datasets.
+* **Checkpoints and Logging**: Configurable intervals and directories.
+
+---
+
+## 🛠 Installation
+
+### Prepare Develop Environment
+
+Install Colossalai & ColossalChat
+```bash
+git clone https://github.com/hpcaitech/ColossalAI.git
+git checkout grpo-latest-ascend
+pip install -e .
+
+cd ./applications/ColossalChat
+pip install -e .
+```
+Install Fuyao Ray.
+Please update CANN before install fuyao ray
+```bash
+# Install CANN
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+./Ascend-cann-kernels-910b_8.1.RC1.alpha001_linux-aarch64.run  --devel
+
+# Clone Fuyao Ray. Fuyao Ray is not an open source project, it will be inherited in the ColossalRL images.
+git clone https://gitee.com/openfuyao/ray.git
+cd ray
+git pull origin pull/5/head
+
+# Install ray
+pip install ray==2.43.0 --no-cache-dir
+
+# Create soft-link from fuyao-ray to ray site-package
+cd ..
+ln -s ./ray/python/ray/ /usr/local/python3.10/lib/python3.10/site-packages/ray
+
+# Install Fuyao Ray
+cd ray
+python python/ray/setup-dev.py
+```
+
+Prepare Model & dataset
+```bash
+huggingface-cli download --local-dir-use-symlinks False Qwen/Qwen2.5-7B --local-dir /models/Qwen/Qwen2.5-7B
+```
+
+### Set Distributed Config
+Now, we need to set distributed config for multi-node.
+
+First, we set host ip config.
+For example. I need to configure a cluster of 4 nodes, then I do
+```bash
+vim /etc/hosts
+```
+Then write IP node map to /etc/hosts
+```bash
+10.0.0.3 npu-3
+10.0.0.4 npu-4
+10.0.0.5 npu-5
+10.0.0.6 npu-6
+```
+
+Set Ascend Multi-Node Config
+
+
 This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like VLLM. Currently, we support two Reinforcement Learning with Verifiable Reward (RLVR) tasks: solving math problems and code generation.
 
 **Please note that we are still under intensive development, stay tuned.**
@@ -43,70 +119,26 @@ pip install ray
 
 Install Other Dependencies
 ```bash
-pip install cupy-cuda12x
-python -m cupyx.tools.install_library --cuda 12.x --library nccl
+export ATB_LLM_HCCL_ENABLE=1
+export ATB_LLM_COMM_BACKEND="hccl"
+export HCCL_CONNECT_TIMEOUT=7200
+export WORLD_SIZE=32
+export HCCL_EXEC_TIMEOUT=7200
+export HCCL_SOCKET_IFNAME=eno0
+export RAY_COLLECTIVE_MEET_TIMEOUT_SECONDS=7200
 ```
-
-To support long input/output sequence length (e.g., 32K), you may need to manually change the default setting (180 seconds) for the `timeout_s` variable in your ray installation to a larger value as shown in the screenshot below.
-
-<div align="center">
-  <p align="center">
-    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/change_ray_timeout.png" width=700/>
-  </p>
-</div>
-
-Prepare Model & dataset
-```bash
-huggingface-cli download --local-dir-use-symlinks False Qwen/Qwen2.5-7B --local-dir /models/Qwen/Qwen2.5-7B
-```
-
-## Architecture Design
-
-<div align="center">
-  <p align="center">
-    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/producer-consumer-pattern.png" width=700/>
-  </p>
-</div>
-Producer-Consumer Pattern: a classic software design pattern used for managing resources, data, or tasks between two different processes or threads.
-
-* Producer: inference engine which rollouts out examples and saves them into a shared buffer.
-* Consumer: training framework which takes training examples from the shared buffer and train the policy model.
-
-Key features for Producer-Consumer Pattern:
-* Buffer: Acts as a shared queue where the producer adds data and the consumer removes data.
-* Concurrency: Rollout and training can work concurrently.
 
 ## 🧠 Data Format
 
-Samples in the training or evaluation `.jsonl` file should follow the format specific to the type of task. We currently support two RLVR tasks: solving math problems and code generation.
+Each data sample in the training or evaluation `.jsonl` file should follow this format:
 
-### Math Data Format
 ```json
 {
   "messages": {
     "role": "user",
-    "content": "Simplify $\\sqrt[3]{1+8} \\cdot \\sqrt[3]{1+\\sqrt[3]{8}}$."
+    "content": "Simplify $\\sqrt[3]{1+8} \\cdot \\sqrt[3]{1+\\sqrt[3]{8}}$. Let's think step by step and output the final answer within \\boxed{}."
   },
   "gt_answer": "3"
-}
-```
-
-### Code Data Format
-We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Inputs and outputs in test cases should be two lists containing only strings and matching in the number of elements. Your prompt must properly instruct the LLM to generate code to read test cases from stdin and output results to stdout.
-```json
-{
-    "messages": {
-        "role": "user",
-        "content": "Solve the following coding problem using the programming language python:\n\nMikhail walks on a Cartesian plane. He starts at the point $(0, 0)$, and in one move he can go to any of eight adjacent points. For example, ..."
-    },
-    "test_cases": {
-        "inputs": [
-            "3\n2 2 3\n4 3 7\n10 1 9\n"
-        ],
-        "outputs": [
-            "1\n6\n-1\n"
-        ]
-    }
 }
 ```
 
@@ -118,7 +150,7 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 | ---------------- | --------------------------------------- | ----------------- |
 | `--model`        | Model path or identifier                | `/path/to/model` |
 | `--dataset`      | Path to training `.jsonl`               | `/path/to/train_data.jsonl`      |
-| `--eval-dataset` | JSON of task\:eval\_dataset\_path pairs | `{"eval_1":"/path/to/eval_1.jsonl"}`            |
+| `--eval-dataset` | JSON of task\:eval\_dataset\_path pairs | `{'eval_1':'/path/to/eval_1.jsonl'}`            |
 | `--project`      | Project name                            | `Project1`            |
 | `--num-episodes` | Number of training episodes             | `1`               |
 
@@ -142,7 +174,7 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 | `--temperature`       | Sampling temperature for generation  | `1.0`          |
 | `--top-k`             | Top-K sampling parameter for generation        | `None`         |
 | `--top-p`             | Top-P sampling parameter for generation        | `1.0`          |
-| `--system-prompt`     | System prompt, optional, default to the default system prompt for each reward types. For more information, refer to the [**reward type**](#-constraints-and-notes) section        | `Please reason step by step, and put your final answer within \\boxed{}.`         |
+| `--system-prompt`     | System prompt, default to the system prompt for `think_answer_tags` format         | `Please reason step by step, and put your final answer within \\boxed{}.`         |
 | `--max-new-tokens`    | Max generation tokens | `3584`         |
 | `--max-prompt-tokens` | Max prompt tokens     | `512`          |
 
@@ -152,9 +184,9 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 | ----------------- | ---------------------------- | ------------------- |
 | `--algo`          | Algorithm (`GRPO` or `DAPO`), for more customization refer to [GRPO Settings](#️-grpo-settings) | `GRPO`              |
 | `--learning-rate` | Learning rate                | `1e-6`              |
-| `--kl-coeff`      | KL penalty coefficient, if nonzero, a reference model will be used       | `0.01`              |
-| `--reward-type`   | Reward signal type (choose from 'think_answer_tags', 'boxed', 'code') For more information, refer to the [**reward type**](#-constraints-and-notes) section        | `think_answer_tags` |
-| `--eval-interval` | Evaluation interval in number of training steps (positive value to enable evaluation)         | `10`               |
+| `--kl-coeff`      | KL penalty coefficient       | `0.01`              |
+| `--reward-type`   | Reward signal type (choose from 'think_answer_tags', 'boxed')          | `think_answer_tags` |
+| `--eval-interval` | Evaluation interval in number of training steps (positive value to enable evaluation)         | `100`               |
 
 ### Logging and Checkpointing
 
@@ -177,7 +209,7 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 
 ## ⚙️ GRPO Settings
 
-In addition to the two default training settings provided—`GRPO` and `DAPO`—users can customize their training by changing the following hyperparameters in `grpo_config` in `rl_example.py`.
+In addition to the two default training settings we provided--- original `GRPO` and `DAPO`, users can customize their training by changing the following hyperparameters in `grpo_config` in `rl_example.py`.
 
 | Argument Name                 | Description                      | Default                                                                                                                                                   |
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -224,29 +256,6 @@ In addition to the two default training settings provided—`GRPO` and `DAPO`—
     train_pipeline_parallelism_size /
     train_tensor_parallelism_size)
   ```
-* Reward Type
-
-    We currently support three reward types--- `think_answer_tags`, `boxed`, `code`, each varies in details such as how answer is extracted and the reward calculation process. Please select one from `think_answer_tags`, `boxed` for math problem solving and use `code` for code generation. The default system prompt for each reward type is as follows. Please make sure your system prompt provides information for the answer to be correctly extracted from model responses.
-
-    * think_answer_tags
-
-        Answer extraction: extract the content between the last `<answer>`, `</answer>` tags.
-
-        ```
-        You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n
-        ```
-    * boxed
-
-        Answer extraction: extract the last content marked by `\\boxed{}`
-        ```
-        Please reason step by step, and put your final answer within \\boxed{}.
-        ```
-    * code
-
-        Answer extraction: extract code inside ` ```python\n...``` `
-        ```
-        You are a helpful assistant.
-        ```
 ---
 
 ## 🧪 Example: single machine 8-GPU Zero2 Strategy
@@ -279,7 +288,7 @@ We use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
 ray start --head --node-ip-address=10.0.0.3
 ```
 
-Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluster by following code:
+Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluser by following code:
 ```bash
 ray start --address='10.0.0.3:6379'
 ```
@@ -320,4 +329,5 @@ python rl_example.py
 ```
 
 ## Acknowledgement
-Colossal-RL is a distributed version of ColossalChat and inspired by a few awesome open-source projects. We would like to express our gratitude to the following awesome open-source projects and algorithms: GRPO, DAPO, TRL, Verl, OpenRLHF, StreamRL, Qwen, Logic-RL.
+
+---

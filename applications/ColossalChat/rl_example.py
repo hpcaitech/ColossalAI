@@ -206,7 +206,9 @@ if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
+    train_model_config = dict(
+        path=args.model, use_flash_attention_2=False, use_cache=False, attn_implementation="eager"
+    )
     generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
 
     if args.backend == "transformers":
@@ -325,12 +327,12 @@ if __name__ == "__main__":
         train_model_config=train_model_config,
         grpo_config=grpo_config,
         plugin_config={
-            "tp_size": args.tensor_parallel_size,
-            "pp_size": args.pipeline_parallel_size,
+            "tp_size": 2,
+            "pp_size": 2,
             "microbatch_size": max(
-                1, args.train_microbatch_size // args.pipeline_parallel_size
+                1, args.train_microbatch_size // 2
             ),  # microbatch size should be set to train_microbatch_size // pp_size
-            "zero_stage": args.zero_stage,
+            "zero_stage": 1,
             "max_norm": 1.0,
         },  # for pp, tp
         inference_backend=args.backend,

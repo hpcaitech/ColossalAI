@@ -12,15 +12,13 @@ from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from ray.util.collective import allreduce
-from ray.util.collective.types import Backend, ReduceOp
+from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
-from colossalai.utils import get_current_device
-
 from .comm import ray_broadcast_tensor_dict
 from .inference_backend import BACKEND_MAP
-from .utils import pre_send, safe_append_to_jsonl_file
+from .utils import safe_append_to_jsonl_file
 
 try:
     from vllm import SamplingParams
@@ -161,13 +159,8 @@ class BaseProducer:
                 )
         else:
             print("No eval dataset provided, skip eval")
-        self.device = get_current_device()
-        self.reward_model = VerifiableReward(
-            reward_fns=[self.evaluation_function],  # multiple reward functions can be added here
-            tokenizer=self.tokenizer,
-            tags=self.response_format_tags,
-            **reward_model_kwargs,
-        )
+
+        self.device = "npu"
 
         # init backend
         if backend in BACKEND_MAP:
@@ -179,17 +172,15 @@ class BaseProducer:
 
     def setup(self) -> None:
         cc.init_collective_group(
-            world_size=self.num_producers,
-            rank=self.producer_idx,
-            backend=Backend.NCCL,
-            group_name="producer_group",
+            1 + self.num_consumer_procs, 0, backend="hccl", group_name=f"sync_data_{self.producer_idx}"
         )
-        cc.init_collective_group(1 + self.num_consumer_procs, 0, group_name=f"sync_data_{self.producer_idx}")
         if self.consumer_pp_size > 1:
             for i in range(self.consumer_pp_size):
-                cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name=f"sync_model_{i}")
+                cc.init_collective_group(
+                    self.num_producers + 1, self.producer_idx, backend="hccl", group_name=f"sync_model_{i}"
+                )
         else:
-            cc.init_collective_group(self.num_producers + 1, self.producer_idx, group_name="sync_model")
+            cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend="hccl", group_name="sync_model")
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -272,47 +263,6 @@ class BaseProducer:
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
-                bs, num_gen = outputs["input_ids"].size(0), outputs["input_ids"].size(1)
-                if self.grpo_config["reward_fn_type"] == "code":
-                    test_cases = []
-                    for prompt_id in range(bs):
-                        test_cases.extend([outputs["test_cases"][prompt_id]] * num_gen)
-                    reward_model_output = self.reward_model(
-                        outputs["input_ids"].view((-1, outputs["input_ids"].size(-1))),
-                        test_cases=test_cases,
-                        response_idx=outputs["response_idx"].view((-1, 2)),
-                    )
-                else:
-                    gt_answer = []
-                    for prompt_id in range(bs):
-                        gt_answer.extend([outputs["gt_answer"][prompt_id]] * num_gen)
-                    reward_model_output = self.reward_model(
-                        outputs["input_ids"].view((-1, outputs["input_ids"].size(-1))),
-                        gt_answer=gt_answer,
-                        response_idx=outputs["response_idx"].view((-1, 2)),
-                    )
-                outputs["reward"] = (
-                    torch.tensor([value[0] for value in reward_model_output])
-                    .to(outputs["input_ids"].device)
-                    .view((bs, num_gen, 1))
-                )
-                outputs["format_acc"] = (
-                    torch.tensor([value[1] for value in reward_model_output])
-                    .to(outputs["input_ids"].device)
-                    .view((bs, num_gen, 1))
-                )
-                outputs["ans_acc"] = (
-                    torch.tensor([value[2] for value in reward_model_output])
-                    .to(outputs["input_ids"].device)
-                    .view((bs, num_gen, 1))
-                )
-                if "gt_answer" in outputs:
-                    outputs.pop("gt_answer")
-                if "test_cases" in outputs:
-                    outputs.pop("test_cases")
-
-                print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
-                outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
