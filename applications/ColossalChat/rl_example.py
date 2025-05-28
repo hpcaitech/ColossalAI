@@ -113,7 +113,7 @@ if __name__ == "__main__":
     )
 
     # Logging/Checkpointing parameters
-    parser.add_argument("-si", "--save-interval", type=int, default=20, help="Interval for saving checkpoints.")
+    parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
     parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
     parser.add_argument(
         "-esd", "--eval-save-dir", type=str, default="./eval", help="Directory for saving evaluation results."
