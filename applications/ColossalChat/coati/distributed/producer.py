@@ -15,8 +15,6 @@ from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
-from colossalai.utils import get_current_device
-
 from .comm import ray_broadcast_tensor_dict
 from .inference_backend import BACKEND_MAP
 from .utils import safe_append_to_jsonl_file
