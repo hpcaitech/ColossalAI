@@ -30,6 +30,15 @@ pip install -e .
 cd ./applications/ColossalChat
 pip install -e .
 ```
+
+Install vllm and vllm-ascend
+```bash
+apt update  -y
+apt install -y libnuma-dev
+pip install vllm==0.7.3
+pip install vllm-ascend==0.7.3 --extra-index https://download.pytorch.org/whl/cpu/
+```
+
 Install Fuyao Ray.
 Please update CANN before install fuyao ray
 ```bash
