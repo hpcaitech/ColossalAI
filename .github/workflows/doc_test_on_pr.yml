@@ -15,7 +15,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     outputs:
       any_changed: ${{ steps.changed-files.outputs.any_changed }}
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}
@@ -56,7 +56,7 @@ jobs:
     needs: detect-changed-doc
     runs-on: [self-hosted, gpu]
     container:
-      image: hpcaitech/pytorch-cuda:2.2.2-12.1.0
+      image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm
     timeout-minutes: 30
     defaults:

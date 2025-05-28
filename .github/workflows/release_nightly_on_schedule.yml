@@ -9,7 +9,7 @@ jobs:
   publish:
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Build and publish Python 🐍 distributions 📦 to PyPI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-[self-hosted, ubuntu-latest]
     timeout-minutes: 20
     outputs:
       status: ${{ steps.publish.outcome }}
@@ -36,7 +36,7 @@ jobs:
   notify:
     name: Notify Lark via webhook
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     if: ${{ always() }} && github.repository == 'hpcaitech/ColossalAI'
     steps:
       - uses: actions/checkout@v2

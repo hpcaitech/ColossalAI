@@ -10,7 +10,7 @@ jobs:
   matrix_preparation:
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Prepare matrix for weekly check
-    runs-on: ubuntu-latest
+    runs-on: ubunt[self-hosted, ubuntu-latest]u-latest
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
     steps:
@@ -34,7 +34,7 @@ jobs:
       fail-fast: false
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
     container:
-      image: hpcaitech/pytorch-cuda:2.2.2-12.1.0
+      image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 30
     steps:

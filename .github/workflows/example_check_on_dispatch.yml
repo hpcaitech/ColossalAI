@@ -14,7 +14,7 @@ jobs:
         github.base_ref == 'main' &&
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     name: Check the examples user want
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}
     container:
-      image: hpcaitech/pytorch-cuda:2.2.2-12.1.0
+      image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm -v /data/scratch/examples-data:/data/ -v /dev/shm
     timeout-minutes: 15
     steps:
