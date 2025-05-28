@@ -17,7 +17,7 @@ if __name__ == "__main__":
         default=None,
         help="Evaluation dataset for each task, please use json format to specify the dataset for each task. \
         For example: {'task1':'data_eval_task1.jsonl', 'task2':'data_eval_task2.jsonl'}, the jsonl file should be in the same format as the training dataset. \
-        The key is the task name, and the value is the path to the jsonl file",
+        The key is the task name, and the value is the path to the jsonl file, please replace sinple quotes with double quotes to conform to json format.",
     )
     parser.add_argument("-p", "--project", type=str, default="GRPO", help="Project name.")
     parser.add_argument("-e", "--num-episodes", type=int, default=1, help="Number of episodes to train.")

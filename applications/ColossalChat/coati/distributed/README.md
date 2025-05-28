@@ -135,7 +135,7 @@ Each data sample in the training or evaluation `.jsonl` file should follow this 
 | ---------------- | --------------------------------------- | ----------------- |
 | `--model`        | Model path or identifier                | `/path/to/model` |
 | `--dataset`      | Path to training `.jsonl`               | `/path/to/train_data.jsonl`      |
-| `--eval-dataset` | JSON of task\:eval\_dataset\_path pairs | `{'eval_1':'/path/to/eval_1.jsonl'}`            |
+| `--eval-dataset` | JSON of task\:eval\_dataset\_path pairs | `{"eval_1":"/path/to/eval_1.jsonl"}`            |
 | `--project`      | Project name                            | `Project1`            |
 | `--num-episodes` | Number of training episodes             | `1`               |
 
