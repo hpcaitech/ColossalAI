@@ -12,7 +12,7 @@ jobs:
   build-n-publish:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main'
     name: Build and publish Python 🐍 distributions 📦 to PyPI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-[self-hosted, ubuntu-latest]
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@v2
@@ -35,7 +35,7 @@ jobs:
   notify:
     name: Notify Lark via webhook
     needs: build-n-publish
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@v2

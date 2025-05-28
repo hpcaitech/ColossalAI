@@ -10,7 +10,7 @@ jobs:
   generate-and-publish:
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Generate leaderboard report and publish to Lark
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-[self-hosted, ubuntu-latest]
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@v2

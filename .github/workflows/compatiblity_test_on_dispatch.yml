@@ -15,7 +15,7 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -31,7 +31,7 @@ jobs:
           do
               for cv in $CUDA_VERSIONS
               do
-                  DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tv}-${cv}\"")
+                  DOCKER_IMAGE+=("\"image-cloud.luchentech.com/hpcaitech/pytorch-cuda:${tv}-${cv}\"")
               done
           done
 
@@ -44,7 +44,7 @@ jobs:
     name: Test for PyTorch Compatibility
     needs: matrix_preparation
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, 8-gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}

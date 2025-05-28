@@ -9,7 +9,7 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ubuntu-latest]-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     concurrency:
@@ -23,7 +23,7 @@ jobs:
           DOCKER_IMAGE=()
 
           while read tag; do
-            DOCKER_IMAGE+=("\"hpcaitech/pytorch-cuda:${tag}\"")
+            DOCKER_IMAGE+=("\"image-cloud.luchentech.com/hpcaitech/pytorch-cuda:${tag}\"")
           done <.compatibility
 
           container=$( IFS=',' ; echo "${DOCKER_IMAGE[*]}" )
@@ -35,7 +35,7 @@ jobs:
     name: Test for PyTorch Compatibility
     needs: matrix_preparation
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, 8-gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
