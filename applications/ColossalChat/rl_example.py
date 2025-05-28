@@ -151,7 +151,9 @@ if __name__ == "__main__":
             args.top_k = -1
 
     inference_model_config = dict(path=args.model)
-    train_model_config = dict(path=args.model, use_flash_attention_2=True, use_cache=False)
+    train_model_config = dict(
+        path=args.model, use_flash_attention_2=False, use_cache=False, attn_implementation="eager"
+    )
     generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
 
     if args.backend == "transformers":
@@ -247,17 +249,14 @@ if __name__ == "__main__":
         train_model_config=train_model_config,
         grpo_config=grpo_config,
         plugin_config={
-            "zero_stage": 2,
-        },  # for zero
-        # plugin_config={
-        #     "tp_size": 2,
-        #     "pp_size": 2,
-        #     "microbatch_size": max(
-        #         1, args.train_microbatch_size // 2
-        #     ),  # microbatch size should be set to train_microbatch_size // pp_size
-        #     "zero_stage": 0,
-        #     "max_norm": 1.0,
-        # },  # for pp, tp
+            "tp_size": 2,
+            "pp_size": 2,
+            "microbatch_size": max(
+                1, args.train_microbatch_size // 2
+            ),  # microbatch size should be set to train_microbatch_size // pp_size
+            "zero_stage": 1,
+            "max_norm": 1.0,
+        },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=args.master_port,
