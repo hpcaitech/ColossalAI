@@ -2,6 +2,8 @@
 
 This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like  VLLM.
 
+**Please note that we are still under intensive development, stay tuned.**
+
 ---
 
 ## 🚀 Features
@@ -28,6 +30,15 @@ pip install -e .
 cd ./applications/ColossalChat
 pip install -e .
 ```
+
+Install vllm and vllm-ascend
+```bash
+apt update  -y
+apt install -y libnuma-dev
+pip install vllm==0.7.3
+pip install vllm-ascend==0.7.3 --extra-index https://download.pytorch.org/whl/cpu/
+```
+
 Install Fuyao Ray.
 Please update CANN before install fuyao ray
 ```bash
@@ -84,6 +95,23 @@ export HCCL_EXEC_TIMEOUT=7200
 export HCCL_SOCKET_IFNAME=eno0
 export RAY_COLLECTIVE_MEET_TIMEOUT_SECONDS=7200
 ```
+
+
+## Architecture Design
+
+<div align="center">
+  <p align="center">
+    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/producer-consumer-pattern.png" width=700/>
+  </p>
+</div>
+Producer-Consumer Pattern: a classic software design pattern used for managing resources, data, or tasks between two different processes or threads.
+
+* Producer: inference engine which rollouts out examples and saves them into a shared buffer.
+* Consumer: training framework which takes training examples from the shared buffer and train the policy model.
+
+Key features for Producer-Consumer Pattern:
+* Buffer: Acts as a shared queue where the producer adds data and the consumer removes data.
+* Concurrency: Rollout and training can work concurrently.
 
 ## 🧠 Data Format
 
@@ -287,5 +315,4 @@ python rl_example.py
 ```
 
 ## Acknowledgement
-
----
+Colossal-RL is a distributed version of ColossalChat and inspired by a few awesome open-source projects. We would like to express our gratitude to the Fuyao-ray team and the vllm-ascend team for their support throughout the development of the this project. We also thank the following awesome open-source projects and algorithms: GRPO, DAPO, TRL, Verl, OpenRLHF, StreamRL, Qwen, Logic-RL.
