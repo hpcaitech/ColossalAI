@@ -55,9 +55,7 @@ class BaseConsumer:
         self.model_config = model_config
         self.plugin_config = plugin_config
 
-        # self.device = get_current_device()
         self.device = "npu"
-        # self.device = torch.device(f"npu:{torch.npu.current_device()}")
         self.lr_scheduler = None
         self.generate_config = generate_config
 

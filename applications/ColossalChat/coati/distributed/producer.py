@@ -150,10 +150,8 @@ class BaseProducer:
                 raise ValueError(f"Unknown evaluation function type {evaluation_function_type}")
         else:
             print("No eval dataset provided, skip eval")
-        self.device = get_current_device()
-        # self.device = get_current_device()
+
         self.device = "npu"
-        # self.device = torch.device(f"npu:{torch.npu.current_device()}")
 
         # init backend
         if backend in BACKEND_MAP:
@@ -251,7 +249,6 @@ class BaseProducer:
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
-                # outputs = pre_send(outputs)
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )

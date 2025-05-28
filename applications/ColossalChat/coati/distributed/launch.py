@@ -65,9 +65,6 @@ def launch_distributed(
         core_consumer = ALGO_MAP.get(core_algo, SimpleConsumer)
 
     train_dp_size = get_dp_size_fast(num_consumer_procs, plugin_config)
-    print(
-        f"inference_batch_size {inference_batch_size} num_producers {num_producers} train_batch_size {train_batch_size} train_dp_size {train_dp_size}"
-    )
     assert (inference_batch_size * num_producers) % (train_batch_size * train_dp_size) == 0
 
     dataset_path = train_dataset_config["path"]
@@ -83,64 +80,6 @@ def launch_distributed(
         f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
 
-    # ###########################################
-    # # Old version, may lead colossalai init stuck in multinodes
-    # ############################################
-    # procs = []
-    # for i in range(num_producers):
-    #     # producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
-    #     producer = SimpleProducer.options(num_cpus=1, resources={"NPU":num_proc_per_producer}).remote(
-    #         producer_idx=i,
-    #         num_producers=num_producers,
-    #         num_consumer_procs=num_consumer_procs,
-    #         num_episodes=num_episodes,
-    #         batch_size=inference_batch_size,
-    #         dataset_config=dataset_config,
-    #         dataloaders_config=dataloaders_config,
-    #         model_config=inference_model_config,
-    #         generate_config=generate_config,
-    #         tokenizer_config=tokenizer_config,
-    #         microbatch_size=inference_microbatch_size,
-    #         backend=inference_backend,
-    #         num_generations=num_generations,
-    #         consumer_plugin_config=plugin_config,
-    #     )
-    #     procs.append(producer)
-    # generate_config_consumer = copy.deepcopy(generate_config)
-    # generate_config_consumer.update(
-    #     dict(
-    #         backend=inference_backend,
-    #     )
-    # )
-    # for i in range(num_consumer_procs):
-    #     # consumer = core_consumer.options(num_gpus=1).remote(
-    #     consumer = core_consumer.options(num_cpus=1, resources={"NPU":1}).remote(
-    #         num_producers=num_producers,
-    #         num_episodes=num_episodes,
-    #         rank=i,
-    #         world_size=num_consumer_procs,
-    #         master_addr=master_addr,
-    #         master_port=master_port,
-    #         num_update_per_episode=num_update_per_episode,
-    #         num_recv_per_update=num_recv_per_update,
-    #         batch_size=train_batch_size,
-    #         model_config=train_model_config,
-    #         plugin_config=plugin_config,
-    #         minibatch_size=train_minibatch_size,
-    #         generate_config=generate_config_consumer,
-    #         grpo_config=grpo_config,
-    #         num_generations=num_generations,
-    #         project_name=project_name,
-    #         save_interval=save_interval,
-    #         save_dir=save_dir,
-    #     )
-    #     procs.append(consumer)
-    # ray.get([p.setup.remote() for p in procs])
-    # ray.get([p.loop.remote() for p in procs])
-
-    ###########################################
-    # New version, assign master ip for colossalai & vllm respectively
-    ###########################################
     nodes = ray.nodes()
     node_info = {
         node["NodeID"]: {
@@ -150,14 +89,12 @@ def launch_distributed(
         }  # Default to 0 if no GPUs are available
         for node in nodes
     }
-    print(f"node_info {node_info}")
     gpu_to_node_id = []
     gpu_to_ip_address = []
     for node_id in node_info:
         for idx in range(int(node_info[node_id]["num_gpus"])):  # use num_gpus instead of num_npus
             gpu_to_node_id.append(node_id)
             gpu_to_ip_address.append(node_info[node_id]["address"])
-    print(f"node_info {node_info} \n gpu_to_node_id {gpu_to_node_id} \n gpu_to_ip_address {gpu_to_ip_address} \n")
 
     producer_procs = []
 
@@ -232,7 +169,6 @@ def launch_distributed(
             num_episodes=num_episodes,
             rank=i,
             world_size=num_consumer_procs,
-            # master_addr=master_addr,
             master_addr=consumer_master_ip_address,
             master_port=master_port,
             num_update_per_episode=num_update_per_episode,
