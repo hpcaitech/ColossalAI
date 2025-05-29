@@ -84,12 +84,9 @@ class GRPOConsumer(BaseConsumer):
         self.project_name = project_name
         self.effective_sample_count = 0
         self.effective_prompt_count = 0
-<<<<<<< HEAD
-=======
         self.total_sample_count = 0
         self.overlength_samples = 0
         self.total_overlength_samples = 0
->>>>>>> c8b368c2 (add overlength sample count (#6332))
         self.project_name = project_name
         self.run_name = run_name
         self.wandb_group_name = wandb_group_name
@@ -218,10 +215,18 @@ class GRPOConsumer(BaseConsumer):
                 loss_mask,
                 action_mask[:, -1] == False,
             )
-
-            self.overlength_samples = (old_loss_mask & ~loss_mask).sum().item()
-            self.overlength_samples = all_reduce_sum(
-                torch.tensor(self.overlength_samples, device=loss_mask.device), self.plugin
+        if self.filter_range is not None and self.grpo_config.get("dynamic_batching", False) == False:
+            # filter out samples with reward outside the range
+            # if dynamic batching is enabled, we filter out out of range groups before training
+            group_ans_acc_mean = (
+                ans_acc.view(-1, self.num_generations).mean(dim=1).repeat_interleave(self.num_generations, dim=-1)
+            )
+            loss_mask = torch.logical_and(
+                loss_mask,
+                torch.logical_and(
+                    group_ans_acc_mean > self.filter_range[0],
+                    group_ans_acc_mean < self.filter_range[1],
+                ),
             )
             self.total_overlength_samples += self.overlength_samples.item()
 
@@ -448,18 +453,12 @@ class GRPOConsumer(BaseConsumer):
             self.optimizer.step()
             self.optimizer.zero_grad()
             self.global_step += 1
-<<<<<<< HEAD
-            sample_utilization = self.effective_sample_count / len(self.raw_train_batch_reward) / self.num_generations
-            self.effective_prompt_count = 0
-            self.effective_sample_count = 0
-=======
             sample_utilization = self.effective_sample_count / self.total_sample_count
             overlength_samples_percentage = self.total_overlength_samples / self.total_sample_count
             self.effective_prompt_count = 0
             self.effective_sample_count = 0
             self.total_sample_count = 0
             self.total_overlength_samples = 0
->>>>>>> c8b368c2 (add overlength sample count (#6332))
             loss_scalar = self.accum_loss.item()
             if not self.plugin.pp_size > 1 or (
                 self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
@@ -467,14 +466,14 @@ class GRPOConsumer(BaseConsumer):
                 if (not self.plugin.pp_size > 1 and self.rank == 0) or (
                     self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
                 ):
-                    raw_batch_reward_mean = sum(self.raw_train_batch_reward) / len(self.raw_train_batch_reward)
-                    raw_batch_format_acc_mean = sum(self.raw_train_batch_format_acc) / len(
-                        self.raw_train_batch_format_acc
-                    )
-                    raw_batch_ans_acc_mean = sum(self.raw_train_batch_ans_acc) / len(self.raw_train_batch_ans_acc)
-                    raw_batch_response_len_mean = sum(self.raw_train_batch_response_len) / len(
-                        self.raw_train_batch_response_len
-                    )
+                    raw_batch_reward_mean = torch.cat(self.raw_train_batch_reward, dim=0).mean().cpu().item()
+                    raw_batch_format_acc_mean = torch.cat(self.raw_train_batch_format_acc, dim=0).mean().cpu().item()
+                    raw_batch_ans_acc_mean = torch.cat(self.raw_train_batch_ans_acc, dim=0).mean().cpu().item()
+                    raw_batch_response_len = torch.cat(self.raw_train_batch_response_len, dim=0)
+                    raw_batch_response_len_mean = raw_batch_response_len.mean().cpu().item()
+                    overlength_samples_ratio = (
+                        (raw_batch_response_len >= action_mask.size(-1)).to(float).mean().cpu().item()
+                    )  # not an exact figure, but a close estimate
                     self.raw_train_batch_reward = []
                     self.raw_train_batch_format_acc = []
                     self.raw_train_batch_ans_acc = []
