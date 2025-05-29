@@ -124,17 +124,17 @@ class BaseConsumer:
                             raw_batch_with_reward = self.calculate_reward({k:v.view(-1, v.size(-1)) if k!='temperature' else v for k, v in raw_batch.items()})
                             raw_batch_with_reward = {k: v.view(-1, self.num_generations, v.size(-1)) if k!='temperature' else v for k, v in raw_batch_with_reward.items()}
                             # [batch_size, num_generations] -> [batch_size]
-                            group_reward_mean = raw_batch_with_reward["reward"][:,:,0].mean(dim=-1)  
-                            group_format_acc_mean = raw_batch_with_reward["format_acc"][:,:,0].mean(dim=-1) 
-                            group_ans_acc_mean = raw_batch_with_reward["ans_acc"][:,:,0].mean(dim=-1) 
-                            group_response_len = (
+                            reward = raw_batch_with_reward["reward"][:,:,0]
+                            format_acc = raw_batch_with_reward["format_acc"][:,:,0]
+                            ans_acc = raw_batch_with_reward["ans_acc"][:,:,0]
+                            response_len = (
                                 (raw_batch_with_reward["response_idx"][:, :, 1] - raw_batch_with_reward["response_idx"][:, :, 0] + 1)
                                 .type(torch.float32)
-                                .mean(dim=-1)
                             )
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
                                 # filter the group based on the reward and accuracy
+                                group_ans_acc_mean = ans_acc.mean(dim=1)
                                 effective_group_mask = torch.logical_and(
                                     group_ans_acc_mean > self.filter_range[0], group_ans_acc_mean < self.filter_range[1]
                                 )
@@ -143,15 +143,15 @@ class BaseConsumer:
                                 self.buffer.append(
                                     [
                                         group_with_reward if effective_group_mask is None or effective_group_mask[group_idx] else None,
-                                        group_reward_mean[group_idx],
-                                        group_format_acc_mean[group_idx],
-                                        group_ans_acc_mean[group_idx],
-                                        group_response_len[group_idx],
+                                        reward[group_idx],
+                                        format_acc[group_idx],
+                                        ans_acc[group_idx],
+                                        response_len[group_idx],
                                     ]
                                 )
                             if effective_group_mask is not None:
                                 print(
-                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
+                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch_with_reward)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
                                 )
                         # mapping the effective group to the raw group for indexing
                         effective_group_to_raw_group_mapping = {}
@@ -160,7 +160,7 @@ class BaseConsumer:
                                 effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = (
                                     buffer_idx
                                 )
-                        pbar.set_postfix({"Collect Effective Prompt": f"{len(effective_group_to_raw_group_mapping)}/{self.dp_size * self.minibatch_size}"})
+                        print(f"[T{dist.get_rank()}] Collect Effective Prompt: {len(effective_group_to_raw_group_mapping)}/{self.dp_size * self.minibatch_size}")
 
                         while len(effective_group_to_raw_group_mapping) >= self.dp_size * self.minibatch_size:
                             # on each dp_rank, we use minibatch_size effective samples to form a batch
