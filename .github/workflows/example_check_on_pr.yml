@@ -17,7 +17,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
       anyChanged: ${{ steps.setup-matrix.outputs.anyChanged }}

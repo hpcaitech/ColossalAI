@@ -9,7 +9,7 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     concurrency:

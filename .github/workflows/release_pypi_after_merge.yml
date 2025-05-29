@@ -35,7 +35,7 @@ jobs:
   notify:
     name: Notify Lark via webhook
     needs: build-n-publish
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     if: ${{ always() }}
     steps:
       - uses: actions/checkout@v2
