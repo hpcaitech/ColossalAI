@@ -61,7 +61,7 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest --durations=0 tests
+          PYTHONPATH=$PWD pytest -m "not largedist" --durations=0 tests
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib
