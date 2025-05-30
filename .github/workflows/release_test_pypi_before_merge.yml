@@ -5,9 +5,6 @@ on:
     paths:
       - 'version.txt'
 
-permissions:
-  id-token: write
-  contents: read
 
 jobs:
   build-n-publish:
@@ -15,6 +12,9 @@ jobs:
     name: Build and publish Python 🐍 distributions 📦 to Test PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      id-token: write
+      contents: read
     steps:
     - uses: actions/checkout@v2
 
