@@ -15,7 +15,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       any_changed: ${{ steps.changed-files.outputs.any_changed }}
       changed_files: ${{ steps.changed-files.outputs.all_changed_files }}

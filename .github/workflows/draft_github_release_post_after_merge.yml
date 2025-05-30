@@ -12,7 +12,7 @@ jobs:
   release:
     name: Draft Release Post
     if: ( github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true ) && github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     steps:
       - uses: actions/checkout@v2
         with:
