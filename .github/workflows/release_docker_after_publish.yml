@@ -9,7 +9,7 @@ jobs:
   release:
     name: Publish Docker Image to DockerHub
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     container:
       image: "hpcaitech/docker-in-docker:latest"
       options: --gpus all --rm -v /var/run/docker.sock:/var/run/docker.sock

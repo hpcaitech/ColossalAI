@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-[self-hosted, ubuntu-latest]
+    runs-on: [self-hosted, ubuntu-latest]
     steps:
       - uses: usthe/issues-translate-action@v2.7
         with:

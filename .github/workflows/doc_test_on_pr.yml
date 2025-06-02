@@ -54,7 +54,7 @@ jobs:
       needs.detect-changed-doc.outputs.any_changed == 'true'
     name: Test the changed Doc
     needs: detect-changed-doc
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     container:
       image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm

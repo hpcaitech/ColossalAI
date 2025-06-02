@@ -7,7 +7,7 @@ on:
 
 jobs:
   sync-submodule:
-    runs-on: ubuntu-[self-hosted, ubuntu-latest]
+    runs-on: [self-hosted, ubuntu-latest]
     if: github.repository == 'hpcaitech/ColossalAI'
     steps:
       - name: Checkout

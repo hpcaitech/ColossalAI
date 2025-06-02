@@ -10,7 +10,7 @@ jobs:
   matrix_preparation:
     name: Prepare Container List
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted,ubuntu-latest]
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
