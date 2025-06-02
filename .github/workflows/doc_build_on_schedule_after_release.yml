@@ -11,7 +11,7 @@ jobs:
   build-doc:
     name: Trigger Documentation Build Workflow
     if: github.repository == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     steps:
       - name: trigger workflow in ColossalAI-Documentation
         run: |

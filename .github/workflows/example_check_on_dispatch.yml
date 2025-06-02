@@ -14,7 +14,7 @@ jobs:
         github.base_ref == 'main' &&
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     name: Check the examples user want
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:

@@ -33,7 +33,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-doc
       cancel-in-progress: true

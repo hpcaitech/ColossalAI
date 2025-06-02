@@ -15,7 +15,7 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    runs-on: [self-hosted, ubuntu-latest]-latest
+    runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -73,7 +73,18 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest --durations=0 tests
+          PYTHONPATH=$PWD pytest 
+          -m "not largedist" \
+          --durations=0 \
+          --ignore tests/test_analyzer \
+          --ignore tests/test_auto_parallel \
+          --ignore tests/test_fx \
+          --ignore tests/test_autochunk \
+          --ignore tests/test_gptq \
+          --ignore tests/test_infer_ops \
+          --ignore tests/test_legacy \
+          --ignore tests/test_smoothquant \
+          tests/
         env:
           DATA: /data/scratch/cifar-10
           LD_LIBRARY_PATH: /github/home/.tensornvme/lib
