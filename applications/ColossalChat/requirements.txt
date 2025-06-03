@@ -2,7 +2,7 @@ transformers==4.47.0
 tqdm
 datasets==2.14.7
 loralib
-colossalai>=0.4.7
+colossalai==0.4.9
 torch==2.5.1
 langchain
 tokenizers
@@ -15,11 +15,10 @@ packaging
 autoflake==2.2.1
 black==23.9.1
 tensorboard
-six==1.16.0
+six==1.17.0
 datasets
 ninja==1.11.1
-sentencepiece==0.1.99
-flash-attn
+sentencepiece==0.2.0
 tiktoken
 jsonlines
 math-verify==0.7.0
