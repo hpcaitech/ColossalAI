@@ -7,9 +7,7 @@ on:
       - 'version.txt'
     types:
       - closed
-permissions:
-  id-token: write
-  contents: read
+
 jobs:
   build-n-publish:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main'
