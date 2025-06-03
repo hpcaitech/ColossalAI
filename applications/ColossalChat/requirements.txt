@@ -2,7 +2,6 @@ transformers==4.47.0
 tqdm
 datasets==2.14.7
 loralib
-colossalai==0.4.9
 torch==2.5.1
 langchain
 tokenizers
