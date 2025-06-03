@@ -73,7 +73,7 @@ jobs:
 
       - name: Unit Testing
         run: |
-          PYTHONPATH=$PWD pytest 
+          PYTHONPATH=$PWD pytest
           -m "not largedist" \
           --durations=0 \
           --ignore tests/test_analyzer \

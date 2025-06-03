@@ -85,7 +85,7 @@ jobs:
       needs.detect-changed-example.outputs.anyChanged == 'true'
     name: Test the changed example
     needs: detect-changed-example
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.detect-changed-example.outputs.matrix)}}

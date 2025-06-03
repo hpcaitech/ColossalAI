@@ -40,7 +40,7 @@ jobs:
         github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     name: Manually check example files
     needs: manual_check_matrix_preparation
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.manual_check_matrix_preparation.outputs.matrix)}}

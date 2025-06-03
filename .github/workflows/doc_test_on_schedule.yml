@@ -10,7 +10,7 @@ jobs:
     # Add this condition to avoid executing this job if the trigger event is workflow_dispatch.
     if: github.repository == 'hpcaitech/ColossalAI'
     name: Test the changed Doc
-    runs-on: [self-hosted, gpu]
+    runs-on: [self-hosted, ubuntu-latest]
     container:
       image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
       options: --gpus all --rm
