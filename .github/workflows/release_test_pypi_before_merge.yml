@@ -5,26 +5,18 @@ on:
     paths:
       - 'version.txt'
 
-
-permissions:
-  id-token: write
-  contents: read
-
 jobs:
   build-n-publish:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI'
     name: Build and publish Python 🐍 distributions 📦 to Test PyPI
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      id-token: write
-      contents: read
     steps:
     - uses: actions/checkout@v2
 
     - uses: actions/setup-python@v2
       with:
-        python-version: '3.8.14'
+        python-version: '3.9'
 
     - name: add timestamp to the version
       id: prep-version

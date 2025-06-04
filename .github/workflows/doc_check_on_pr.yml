@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: "3.8.14"
+          python-version: "3.9"
 
       - run: python .github/workflows/scripts/check_doc_i18n.py -d docs/source
 
@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: "3.8.14"
+          python-version: "3.9"
 
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch

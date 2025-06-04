@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: '3.9'
       - name: generate draft
         id: generate_draft
         run: |

@@ -7,9 +7,6 @@ on:
       - 'version.txt'
     types:
       - closed
-permissions:
-  id-token: write
-  contents: read
 jobs:
   build-n-publish:
     if: github.event_name == 'workflow_dispatch' || github.repository == 'hpcaitech/ColossalAI' && github.event.pull_request.merged == true && github.base_ref == 'main'
@@ -21,7 +18,7 @@ jobs:
 
     - uses: actions/setup-python@v2
       with:
-        python-version: '3.8.14'
+        python-version: '3.9'
 
     - run: python setup.py sdist build
 
@@ -44,7 +41,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: '3.9'
 
       - name: Install requests
         run: pip install requests

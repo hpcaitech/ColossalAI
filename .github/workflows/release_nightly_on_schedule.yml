@@ -18,7 +18,7 @@ jobs:
 
     - uses: actions/setup-python@v2
       with:
-        python-version: '3.8.14'
+        python-version: '3.9'
 
     - run: |
         python .github/workflows/scripts/update_setup_for_nightly.py
@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: '3.8.14'
+          python-version: '3.9'
 
       - name: Install requests
         run: pip install requests
