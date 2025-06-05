@@ -124,22 +124,17 @@ class BaseConsumer:
                             # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
                             # we need to calculate the metrics before filtering here for logging
                             for group in raw_batch:
-                                group_with_reward = self.calculate_group_reward(group)
-                                group_reward_mean = group_with_reward["reward"].mean().cpu().item()
-                                group_format_acc_mean = group_with_reward["format_acc"].mean().cpu().item()
-                                group_ans_acc_mean = group_with_reward["ans_acc"].mean().cpu().item()
+                                group_reward_mean = group["reward"].mean().cpu().item()
+                                group_format_acc_mean = group["format_acc"].mean().cpu().item()
+                                group_ans_acc_mean = group["ans_acc"].mean().cpu().item()
                                 group_response_len = (
-                                    (
-                                        group_with_reward["response_idx"][:, 1]
-                                        - group_with_reward["response_idx"][:, 0]
-                                        + 1
-                                    )
+                                    (group["response_idx"][:, 1] - group["response_idx"][:, 0] + 1)
                                     .type(torch.float32)
                                     .mean()
                                     .cpu()
                                     .item()
                                 )
-                                filtered_group = self.prompt_level_filtering(group_with_reward)
+                                filtered_group = self.prompt_level_filtering(group)
                                 recv_effective_count += 1 if filtered_group is not None else 0
                                 self.buffer.append(
                                     [
