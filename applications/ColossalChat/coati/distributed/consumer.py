@@ -132,9 +132,7 @@ class BaseConsumer:
                             format_acc = raw_batch["format_acc"][:, :, 0]
                             ans_acc = raw_batch["ans_acc"][:, :, 0]
                             response_len = (
-                                raw_batch["response_idx"][:, :, 1]
-                                - raw_batch["response_idx"][:, :, 0]
-                                + 1
+                                raw_batch["response_idx"][:, :, 1] - raw_batch["response_idx"][:, :, 0] + 1
                             ).type(torch.float32)
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
@@ -160,7 +158,7 @@ class BaseConsumer:
                                 )
                             if effective_group_mask is not None:
                                 print(
-                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch_with_reward)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
+                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
                                 )
                         # mapping the effective group to the raw group for indexing
                         effective_group_to_raw_group_mapping = {}
