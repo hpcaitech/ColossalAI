@@ -291,7 +291,7 @@ class BaseProducer:
                     reward_model_output = self.reward_model(
                         outputs["input_ids"].view((-1, outputs["input_ids"].size(-1))),
                         gt_answer=gt_answer,
-                        response_idx=outputs["response_idx"],
+                        response_idx=outputs["response_idx"].view((-1, 2)),
                     )
                 outputs["reward"] = (
                     torch.tensor([value[0] for value in reward_model_output])

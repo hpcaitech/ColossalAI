@@ -132,9 +132,7 @@ class BaseConsumer:
                             format_acc = raw_batch["format_acc"][:, :, 0]
                             ans_acc = raw_batch["ans_acc"][:, :, 0]
                             response_len = (
-                                raw_batch["response_idx"][:, :, 1]
-                                - raw_batch["response_idx"][:, :, 0]
-                                + 1
+                                raw_batch["response_idx"][:, :, 1] - raw_batch["response_idx"][:, :, 0] + 1
                             ).type(torch.float32)
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
