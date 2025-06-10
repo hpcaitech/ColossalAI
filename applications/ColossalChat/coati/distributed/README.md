@@ -1,6 +1,6 @@
 # Distributed RL Framework for Language Model Fine-Tuning
 
-This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like VLLM. Currently, we supports two Reinforcement Learning with Verifiable Reward (RLVR) tasks: solving math problems and code generation.
+This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like VLLM. Currently, we support two Reinforcement Learning with Verifiable Reward (RLVR) tasks: solving math problems and code generation.
 
 **Please note that we are still under intensive development, stay tuned.**
 
@@ -70,7 +70,7 @@ Key features for Producer-Consumer Pattern:
 
 ## 🧠 Data Format
 
-Samples in the training or evaluation `.jsonl` file should the same format depends on the type of task, we currently support two RLVR tasks: solving math problems and code generation.
+Samples in the training or evaluation `.jsonl` file should follow the format specific to the type of task. We currently support two RLVR tasks: solving math problems and code generation.
 
 ### Math Data Format
 ```json
@@ -84,7 +84,7 @@ Samples in the training or evaluation `.jsonl` file should the same format depen
 ```
 
 ### Code Data Format
-We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Inputs and outputs in test cases should be two lists containing only strings and matching in the number of elements. You prompt must properly instruct the LLM to generate code to read test cases from stdin and output results to stdout.
+We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Inputs and outputs in test cases should be two lists containing only strings and matching in the number of elements. Your prompt must properly instruct the LLM to generate code to read test cases from stdin and output results to stdout.
 ```json
 {
     "messages": {
@@ -134,7 +134,7 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 | `--temperature`       | Sampling temperature for generation  | `1.0`          |
 | `--top-k`             | Top-K sampling parameter for generation        | `None`         |
 | `--top-p`             | Top-P sampling parameter for generation        | `1.0`          |
-| `--system-prompt`     | System prompt, Optional, default to the default system prompt for each reward types. For more information, refer to the [**reward type**](#-constraints-and-notes) section        | `Please reason step by step, and put your final answer within \\boxed{}.`         |
+| `--system-prompt`     | System prompt, optional, default to the default system prompt for each reward types. For more information, refer to the [**reward type**](#-constraints-and-notes) section        | `Please reason step by step, and put your final answer within \\boxed{}.`         |
 | `--max-new-tokens`    | Max generation tokens | `3584`         |
 | `--max-prompt-tokens` | Max prompt tokens     | `512`          |
 
@@ -169,7 +169,7 @@ We support [Prime code dataset format](https://github.com/PRIME-RL/PRIME). Input
 
 ## ⚙️ GRPO Settings
 
-In addition to the two default training settings we provided--- original `GRPO` and `DAPO`, users can customize their training by changing the following hyperparameters in `grpo_config` in `rl_example.py`.
+In addition to the two default training settings provided—`GRPO` and `DAPO`—users can customize their training by changing the following hyperparameters in `grpo_config` in `rl_example.py`.
 
 | Argument Name                 | Description                      | Default                                                                                                                                                   |
 | ----------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -272,7 +272,7 @@ We use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
 ray start --head --node-ip-address=10.0.0.3
 ```
 
-Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluser by following code:
+Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluster by following code:
 ```bash
 ray start --address='10.0.0.3:6379'
 ```
@@ -313,4 +313,4 @@ python rl_example.py
 ```
 
 ## Acknowledgement
-Colossal-RL is a distributed version of ColossalChat and inspired by a few awesome open-source projects. We would like to express our gratitude to the Fuyao-ray team and the vllm-ascend team for their support throughout the development of the this project. We also thank the following awesome open-source projects and algorithms: GRPO, DAPO, TRL, Verl, OpenRLHF, StreamRL, Qwen, Logic-RL.
+Colossal-RL is a distributed version of ColossalChat and inspired by a few awesome open-source projects. We would like to express our gratitude to the following awesome open-source projects and algorithms: GRPO, DAPO, TRL, Verl, OpenRLHF, StreamRL, Qwen, Logic-RL.
