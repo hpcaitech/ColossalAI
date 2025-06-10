@@ -47,6 +47,14 @@ pip install cupy-cuda12x
 python -m cupyx.tools.install_library --cuda 12.x --library nccl
 ```
 
+To support long input/output sequence length (e.g., 32K), you may need to manually change the default setting (180 seconds) for the `timeout_s` variable in your ray installation to a larger value as shown in the screenshot below.
+
+<div align="center">
+  <p align="center">
+    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/applications/chat/change_ray_timeout.png" width=700/>
+  </p>
+</div>
+
 Prepare Model & dataset
 ```bash
 huggingface-cli download --local-dir-use-symlinks False Qwen/Qwen2.5-7B --local-dir /models/Qwen/Qwen2.5-7B
