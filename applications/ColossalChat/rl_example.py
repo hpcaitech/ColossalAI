@@ -121,6 +121,34 @@ if __name__ == "__main__":
     parser.add_argument(
         "-rsd", "--rollout-save-dir", type=str, default="./rollouts", help="Directory for saving rollout loggings."
     )
+    parser.add_argument(
+        "-tp",
+        "--tensor-parallel-size",
+        type=int,
+        default=1,
+        help="Tensor parallel size for the trainer (consumer). Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-pp",
+        "--pipeline-parallel-size",
+        type=int,
+        default=1,
+        help="Pipeline parallel size for the trainer (consumer). Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-zero",
+        "--zero-stage",
+        type=int,
+        default=0,
+        help="Zero stage for the trainer (consumer). Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-ptp",
+        "--producer-tensor-parallel-size",
+        type=int,
+        default=1,
+        help="Tensor parallel size for the producer. Please check the generation arguments documentation for your backend.",
+    )
     args = parser.parse_args()
 
     if args.train_minibatch_size is None:
@@ -134,8 +162,8 @@ if __name__ == "__main__":
         and args.train_microbatch_size > 0
     ), "Train micro batch size must be greater than 0 less than train mini batch size * num generations"
     assert (
-        args.train_minibatch_size <= args.train_batch_size
-    ), "Train mini batch size must be less than or equals to train batch size"
+        args.train_minibatch_size <= args.train_batch_size and args.train_batch_size % args.train_minibatch_size == 0
+    ), "Train mini batch size must be less than or equals to train batch size and train batch size must be divisible by train mini batch size"
 
     if args.master_address is None:
         # Default settings: Using single machine
@@ -180,7 +208,7 @@ if __name__ == "__main__":
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
-                tensor_parallel_size=1,
+                tensor_parallel_size=args.producer_tensor_parallel_size,
             )
         )
         generate_config.update(
@@ -205,6 +233,16 @@ if __name__ == "__main__":
             "reward_fn_type": args.reward_type,
             "max_length": args.max_new_tokens + args.max_prompt_tokens,
             "max_new_tokens": args.max_new_tokens,
+            "response_format_tags": (
+                {
+                    "think_start": {"text": "<think>", "num_occur": 1},
+                    "think_end": {"text": "</think>", "num_occur": 1},
+                    "answer_start": {"text": "<answer>", "num_occur": 1},
+                    "answer_end": {"text": "</answer>", "num_occur": 1},
+                }
+                if args.reward_type == "think_answer_tags"
+                else None
+            ),
         }
     elif args.algo == "DAPO":
         # DAPO variant settings
@@ -224,13 +262,23 @@ if __name__ == "__main__":
             "cache_length": min(1024, int(args.max_new_tokens / 4)),
             "filter_truncated_response": True,
             "reward_fn_type": args.reward_type,
+            "response_format_tags": (
+                {
+                    "think_start": {"text": "<think>", "num_occur": 1},
+                    "think_end": {"text": "</think>", "num_occur": 1},
+                    "answer_start": {"text": "<answer>", "num_occur": 1},
+                    "answer_end": {"text": "</answer>", "num_occur": 1},
+                }
+                if args.reward_type == "think_answer_tags"
+                else None
+            ),
         }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
 
     launch_distributed(
         num_producers=args.num_inferencer,
-        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", 1),
+        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size),
         num_consumer_procs=args.num_trainers,
         num_episodes=args.num_episodes,
         inference_batch_size=args.inference_batch_size,
@@ -249,12 +297,12 @@ if __name__ == "__main__":
         train_model_config=train_model_config,
         grpo_config=grpo_config,
         plugin_config={
-            "tp_size": 2,
-            "pp_size": 2,
+            "tp_size": args.tensor_parallel_size,
+            "pp_size": args.pipeline_parallel_size,
             "microbatch_size": max(
-                1, args.train_microbatch_size // 2
+                1, args.train_microbatch_size // args.pipeline_parallel_size
             ),  # microbatch size should be set to train_microbatch_size // pp_size
-            "zero_stage": 1,
+            "zero_stage": args.zero_stage,
             "max_norm": 1.0,
         },  # for pp, tp
         inference_backend=args.backend,

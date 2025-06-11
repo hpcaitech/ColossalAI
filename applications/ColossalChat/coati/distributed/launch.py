@@ -133,6 +133,7 @@ def launch_distributed(
             eval_dataset_config=eval_dataset_config,
             eval_interval=eval_interval,
             evaluation_function_type=grpo_config["reward_fn_type"],
+            response_format_tags=grpo_config["response_format_tags"],
             eval_save_dir=eval_save_dir,
             eval_generation_config=eval_generation_config,
             project_name=project_name,

@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import ray
 import torch
@@ -9,7 +9,7 @@ from coati.distributed.loss import PolicyLoss
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from coati.distributed.utils import calc_action_log_probs
-from coati.trainer.utils import all_gather_tensors, all_reduce_mean, all_reduce_sum
+from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -72,19 +72,18 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model.gradient_checkpointing_enable()
         self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
         self.accum_loss = torch.zeros(1, device=self.device)
-        self.accum_reward = torch.zeros(1, device=self.device)
         self.accum_kl = torch.zeros(1, device=self.device)
-        self.accum_format_acc = torch.zeros(1, device=self.device)
-        self.accum_ans_acc = torch.zeros(1, device=self.device)
         self.accum_advantages = torch.zeros(1, device=self.device)
-        self.accum_response_length = torch.zeros(1, device=self.device)
+        self.raw_train_batch_reward = []
+        self.raw_train_batch_format_acc = []
+        self.raw_train_batch_ans_acc = []
+        self.raw_train_batch_response_len = []
         self.accum_count = 0
         self.generate_config = generate_config
         self.grpo_config = grpo_config
         self.project_name = project_name
         self.effective_sample_count = 0
         self.effective_prompt_count = 0
-        self.total_sample_count = 0
         self.project_name = project_name
         self.run_name = run_name
         self.wandb_group_name = wandb_group_name
@@ -120,16 +119,7 @@ class GRPOConsumer(BaseConsumer):
                     "either max_tokens (vllm) or max_new_tokens (transformers) must be set in generate_config."
                 )
         # Initialize verifiable reward.
-        response_format_tags = (
-            {
-                "think_start": {"text": "<think>", "num_occur": 1},
-                "think_end": {"text": "</think>", "num_occur": 1},
-                "answer_start": {"text": "<answer>", "num_occur": 1},
-                "answer_end": {"text": "</answer>", "num_occur": 1},
-            }
-            if grpo_config.get("reward_fn_type") == "think_answer_tags"
-            else None
-        )
+        response_format_tags = grpo_config.get("response_format_tags", None)
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
@@ -185,24 +175,21 @@ class GRPOConsumer(BaseConsumer):
         Format:
             [minibatch_size, num_of_generation, prompt_length + response_length] --- <PAD>...<PAD><PROMPT>...<PROMPT><RESPONSE>...<RESPONSE><PAD>...<PAD>.
         """
-
         # Reshape to [minibatch_size x num_of_generation, prompt_length + response_length]
-        data = {k: v.view(-1, v.size(-1)) for k, v in kwargs.items()}
+        data = {k: v.view(-1, v.size(-1)) for k, v in kwargs.items() if "raw_train_mini_batch_" not in k}
+        self.raw_train_batch_reward.extend(kwargs["raw_train_mini_batch_reward"])
+        self.raw_train_batch_format_acc.extend(kwargs["raw_train_mini_batch_format_acc"])
+        self.raw_train_batch_ans_acc.extend(kwargs["raw_train_mini_batch_ans_acc"])
+        self.raw_train_batch_response_len.extend(kwargs["raw_train_mini_batch_response_len"])
         action_mask = data["action_mask"]
         num_action = action_mask.shape[1]
         old_action_log_probs = data["action_log_probs"]
         response_length = torch.sum(action_mask, dim=1).to(torch.float32)
         train_microbatch_size = self.grpo_config.get("train_microbatch_size", data["input_ids"].size(0))
 
-        reward_group = self.reward_model(
-            data["input_ids"],
-            gt_answer=data["gt_answer"],
-            response_idx=data["response_idx"],
-        )
-
-        reward = torch.tensor([value[0] for value in reward_group]).to(data["input_ids"].device)
-        format_acc = torch.tensor([value[1] for value in reward_group]).to(data["input_ids"].device)
-        ans_acc = torch.tensor([value[2] for value in reward_group]).to(data["input_ids"].device)
+        reward = data["reward"].view((-1))
+        format_acc = data["format_acc"].view((-1))
+        ans_acc = data["ans_acc"].view((-1))
 
         # [minibatch_size, num_generations]
 
@@ -214,16 +201,9 @@ class GRPOConsumer(BaseConsumer):
         reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
         # [minibatch_size x num_generations]
         advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
-        # filter out the reward that is too high (all sample gets full score) or too low (all sample gets 0 score),
-        group_ans_acc = (
-            ans_acc.view(-1, self.num_generations).mean(dim=1).repeat_interleave(self.num_generations, dim=0)
-        )
+
         # [minibatch_size x num_of_generation]
-        loss_mask = (
-            torch.ones(action_mask.size(0), device=action_mask.device).bool()
-            if self.filter_range is None
-            else torch.logical_and(group_ans_acc > self.filter_range[0], group_ans_acc < self.filter_range[1])
-        )
+        loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
 
         # filter out overlength samples
         if self.filter_truncated_response and action_mask.size(1) == self.max_length:
@@ -231,42 +211,25 @@ class GRPOConsumer(BaseConsumer):
                 loss_mask,
                 action_mask[:, -1] == False,
             )
-        prompt_level_mask = loss_mask.view(self.minibatch_size, self.num_generations)
-
-        # [minibatch_size] -> calculate the number of effective prompts
-        effective_prompts_mask = prompt_level_mask.any(dim=1)
-        effective_prompts = all_reduce_sum(torch.sum(effective_prompts_mask), self.plugin)
-        self.effective_prompt_count += effective_prompts.item()
-        excessive_prompts_idx = None
+        if self.filter_range is not None and self.grpo_config.get("dynamic_batching", False) == False:
+            # filter out samples with reward outside the range
+            # if dynamic batching is enabled, we filter out out of range groups before training
+            group_ans_acc_mean = (
+                ans_acc.view(-1, self.num_generations).mean(dim=1).repeat_interleave(self.num_generations, dim=-1)
+            )
+            loss_mask = torch.logical_and(
+                loss_mask,
+                torch.logical_and(
+                    group_ans_acc_mean > self.filter_range[0],
+                    group_ans_acc_mean < self.filter_range[1],
+                ),
+            )
+        self.effective_prompt_count += group_reward.size(0) * self.dp_size
 
         mean_kl, mean_loss = [], []
 
         if self.grpo_config.get("dynamic_batching", True):
             need_update = self.effective_prompt_count >= self.batch_size * self.dp_size
-            excessive_prompts = self.effective_prompt_count - self.batch_size * self.dp_size
-
-            if excessive_prompts > 0:
-                excessive_prompts_per_rank = excessive_prompts // self.dp_size
-                # Only count excessive prompts if they are greater than 1 per rank.
-                # TODO: customize excessive prompts calculation.
-                if excessive_prompts_per_rank != 0:
-                    # Mask excessive prompts to False
-                    true_indices = torch.nonzero(effective_prompts_mask)
-                    # Make sure the indices are not empty.
-                    if true_indices.numel() > 0:
-                        true_indices = true_indices.squeeze(-1)
-                        if excessive_prompts_per_rank <= len(true_indices):
-                            excessive_prompts_idx = true_indices[-excessive_prompts_per_rank:]
-                        else:
-                            excessive_prompts_idx = true_indices
-                        effective_prompts_mask[excessive_prompts_idx] = False
-
-                        for mask_idx in range(len(effective_prompts_mask)):
-                            if effective_prompts_mask[mask_idx] == False:
-                                # Update loss mask.
-                                loss_mask[mask_idx] = False
-                    else:
-                        excessive_prompts_idx = torch.empty([0])
         else:
             # If dynamic batching is disabled, we need to use all samples for training.
             need_update = (step_idx + 1) % self.num_microbatches == 0
@@ -276,12 +239,10 @@ class GRPOConsumer(BaseConsumer):
         total_effective_tokens_count = all_reduce_sum(torch.sum(effective_tokens_count), self.plugin)
         total_samples = all_reduce_sum(torch.sum(torch.ones_like(loss_mask, device=loss_mask.device)), self.plugin)
         self.effective_sample_count += effective_samples.item()
-        self.total_sample_count += total_samples.item()
         pbar.set_postfix(
             {
                 "Global Step": self.global_step,
-                "Effective prompts": f"{self.effective_prompt_count}/{self.batch_size * self.dp_size}",
-                "Effective samples": f"{self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations}",
+                "Gradient Accumulation on": f"{self.effective_prompt_count}/{self.batch_size * self.dp_size} effective prompts, {self.effective_sample_count}/{self.batch_size * self.dp_size * self.num_generations} effective samples",
             }
         )
 
@@ -473,20 +434,16 @@ class GRPOConsumer(BaseConsumer):
                 self.accum_loss.add_(sum(mean_loss) / len(mean_loss))
                 if self.policy_loss_fn.beta > 0:
                     self.accum_kl.add_(sum(mean_kl) / len(mean_kl))
-                self.accum_reward.add_(reward.data)
-                self.accum_format_acc.add_(format_acc.data)
-                self.accum_ans_acc.add_(ans_acc.data)
                 self.accum_advantages.add_(advantages.data)
-                self.accum_response_length.add_(response_length.data)
                 self.accum_count += 1
         if need_update:
             self.optimizer.step()
             self.optimizer.zero_grad()
             self.global_step += 1
-            sample_utilization = self.effective_sample_count / self.total_sample_count
+            # no need to run all reduce as raw_train_batch_* are not splited across dp rank
+            sample_utilization = self.effective_sample_count / len(self.raw_train_batch_reward) / self.num_generations
             self.effective_prompt_count = 0
             self.effective_sample_count = 0
-            self.total_sample_count = 0
             loss_scalar = self.accum_loss.item()
             if not self.plugin.pp_size > 1 or (
                 self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
@@ -494,25 +451,39 @@ class GRPOConsumer(BaseConsumer):
                 if (not self.plugin.pp_size > 1 and self.rank == 0) or (
                     self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
                 ):
+                    raw_batch_reward_mean = torch.cat(self.raw_train_batch_reward, dim=0).mean().cpu().item()
+                    raw_batch_format_acc_mean = torch.cat(self.raw_train_batch_format_acc, dim=0).mean().cpu().item()
+                    raw_batch_ans_acc_mean = torch.cat(self.raw_train_batch_ans_acc, dim=0).mean().cpu().item()
+                    raw_batch_response_len = torch.cat(self.raw_train_batch_response_len, dim=0)
+                    raw_batch_response_len_mean = raw_batch_response_len.mean().cpu().item()
+                    overlength_samples_ratio = (
+                        (raw_batch_response_len >= action_mask.size(-1)).to(float).mean().cpu().item()
+                    )  # not an exact figure, but a close estimate
+                    self.raw_train_batch_reward = []
+                    self.raw_train_batch_format_acc = []
+                    self.raw_train_batch_ans_acc = []
+                    self.raw_train_batch_response_len = []
                     to_log_msg = [
                         f"Loss: {self.accum_loss.item() / self.accum_count:.4f}",
-                        f"Reward: {self.accum_reward.item() / self.accum_count:.4f}",
-                        f"format Reward: {self.accum_format_acc.item() / self.accum_count:.4f}",
-                        f"Acc Reward: {self.accum_ans_acc.item() / self.accum_count:.4f}",
+                        f"Reward: {raw_batch_reward_mean:.4f}",
+                        f"format Reward: {raw_batch_format_acc_mean:.4f}",
+                        f"Acc Reward: {raw_batch_ans_acc_mean:.4f}",
                         f"Advantages: {self.accum_advantages.item() / self.accum_count:.4f}",
-                        f"Response Length: {self.accum_response_length.item() / self.accum_count:.4f}",
+                        f"Response Length: {raw_batch_response_len_mean:.4f}",
                         f"Sample_utilization: {sample_utilization:.4f}",
+                        f"Overlength samples ratio: {overlength_samples_ratio:.4f}",
                     ] + ([f"KL: {self.accum_kl.item() / self.accum_count:.4f}"] if self.policy_loss_fn.beta > 0 else [])
                     print("\n".join(to_log_msg))
                     metrics = {
-                        "metrics/reward": self.accum_reward.item() / self.accum_count,
-                        "metrics/format_acc": self.accum_format_acc.item() / self.accum_count,
-                        "metrics/ans_acc": self.accum_ans_acc.item() / self.accum_count,
-                        "metrics/response_length": self.accum_response_length.item() / self.accum_count,
+                        "metrics/reward": raw_batch_reward_mean,
+                        "metrics/format_acc": raw_batch_format_acc_mean,
+                        "metrics/ans_acc": raw_batch_ans_acc_mean,
+                        "metrics/response_length": raw_batch_response_len_mean,
                         "train/loss": self.accum_loss.item() / self.accum_count,
                         "train/advantages": self.accum_advantages.item() / self.accum_count,
                         "train/learning_rate": self.lr_scheduler.get_last_lr()[0],
                         "train/sample_utilization": sample_utilization,
+                        "train/overlength_samples_ratio": overlength_samples_ratio,
                         "rollout/temperature": data["temperature"].cpu().numpy()[0][0],
                     }
                     if self.policy_loss_fn.beta > 0:
@@ -520,21 +491,46 @@ class GRPOConsumer(BaseConsumer):
                     if self.wandb_run is not None:
                         self.wandb_run.log(metrics)
                 self.accum_loss.zero_()
-                self.accum_reward.zero_()
-                self.accum_ans_acc.zero_()
-                self.accum_format_acc.zero_()
                 self.accum_kl.zero_()
                 self.accum_advantages.zero_()
-                self.accum_response_length.zero_()
                 self.accum_count = 0
-
-            if excessive_prompts_idx is not None:
-                # All gather excessive prompts index across DP ranks.
-                excessive_prompts_idx = [idx + self.dp_rank * self.minibatch_size for idx in excessive_prompts_idx]
-                excessive_prompts_idx = all_gather_tensors(excessive_prompts_idx, self.plugin)
-            return loss_scalar, excessive_prompts_idx
+            return loss_scalar
         else:
-            return None, excessive_prompts_idx
+            return None
+
+    def calculate_reward(self, rollout: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate the group reward for the given rollout group.
+
+        Args:
+            rollout_group (Dict[str, Any]):
+                a group of samples generated by the model from the same prompt
+                contain the following keys:
+                    "input_ids": torch.Tensor, [num_of_generation, prompt_length + response_length]
+                    "attention_mask": torch.Tensor, [num_of_generation, prompt_length + response_length]
+                    "action_mask": torch.Tensor, [num_of_generation, response_length]
+                    "action_log_probs": torch.Tensor, [num_of_generation, response_length]
+                    "response_idx": int, torch.Tensor, [num_of_generation, 2]
+                    "gt_answer": torch.Tensor, [num_of_generation, 128]
+                    "temperature": torch.Tensor, [] (scalar)
+
+        Returns:
+            Dict[str, Any]: The new group data with calculated reward.
+        """
+        reward_model_output = self.reward_model(
+            rollout["input_ids"],
+            gt_answer=rollout["gt_answer"],
+            response_idx=rollout["response_idx"],
+        )
+        # [num_of_generation]
+        reward = torch.tensor([value[0] for value in reward_model_output]).to(rollout["input_ids"].device)
+        format_acc = torch.tensor([value[1] for value in reward_model_output]).to(rollout["input_ids"].device)
+        ans_acc = torch.tensor([value[2] for value in reward_model_output]).to(rollout["input_ids"].device)
+
+        rollout["reward"] = reward.view((-1, 1))
+        rollout["format_acc"] = format_acc.view((-1, 1))
+        rollout["ans_acc"] = ans_acc.view((-1, 1))
+        return rollout
 
     def state_dict(self):
         self.policy_model._force_wait_all_gather()
