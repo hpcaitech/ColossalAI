@@ -358,7 +358,7 @@ class GRPOConsumer(BaseConsumer):
                         criterion=_criterion,
                         optimizer=self.optimizer,
                         return_loss=True,
-                        return_outputs=True,
+                        return_outputs=False,
                     )
                     loss = policy_model_outputs["loss"]
 
