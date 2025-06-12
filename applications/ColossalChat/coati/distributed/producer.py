@@ -44,6 +44,7 @@ class BaseProducer:
         eval_dataset_config=None,
         eval_interval=-1,  # disable evaluation
         evaluation_function_type="think_answer_tags",
+        response_format_tags=None,
         eval_save_dir: str = "./eval",
         project_name: str = None,
         run_name: str = None,
@@ -146,6 +147,7 @@ class BaseProducer:
                 self.evaluation_function = boxed_math_reward_fn
             else:
                 raise ValueError(f"Unknown evaluation function type {evaluation_function_type}")
+            self.response_format_tags = response_format_tags
         else:
             print("No eval dataset provided, skip eval")
 
@@ -214,6 +216,7 @@ class BaseProducer:
                                         eval_outputs["response_idx"][m][n],
                                         tokenizer=self.tokenizer,
                                         eval_mode=True,
+                                        tags=self.response_format_tags,
                                     )
                                     for m in range(eval_outputs["input_ids"].size(0))
                                     for n in range(eval_outputs["input_ids"].size(1))
@@ -242,11 +245,10 @@ class BaseProducer:
                         self.eval_mode = False
                         self.latest_eval_step = self.consumer_global_step
                 outputs = self.rollout(**batch)
-
-                print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
+                print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
@@ -320,6 +322,7 @@ class SimpleProducer(BaseProducer):
         eval_dataset_config=None,
         eval_interval=-1,  # disable evaluation
         evaluation_function_type="think_answer_tags",
+        response_format_tags=None,
         eval_save_dir: str = "./eval",
         eval_generation_config={},
         project_name: str = None,
@@ -345,6 +348,7 @@ class SimpleProducer(BaseProducer):
             eval_dataset_config=eval_dataset_config,
             eval_interval=eval_interval,
             evaluation_function_type=evaluation_function_type,
+            response_format_tags=response_format_tags,
             eval_save_dir=eval_save_dir,
             project_name=project_name,
             run_name=run_name,
