@@ -16,7 +16,7 @@ def get_jsonl_size_fast(path: str) -> int:
     with open(path) as f:
         lines = f.readlines()
         lines = [line for line in lines if line.strip()]
-        return len(lines) - 1
+        return len(lines)
 
 
 def get_dp_size_fast(n_procs: int, plugin_config: Dict[str, Any]) -> int:
