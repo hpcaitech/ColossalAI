@@ -247,7 +247,6 @@ In addition to the two default training settings provided—`GRPO` and `DAPO`—
         ```
         You are a helpful assistant.
         ```
-        generated code is
 ---
 
 ## 🧪 Example: single machine 8-GPU Zero2 Strategy
