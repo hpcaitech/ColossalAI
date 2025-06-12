@@ -7,7 +7,6 @@ import ray
 import ray.util.collective as cc
 import torch
 import tqdm
-import wandb
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
@@ -16,11 +15,12 @@ from ray.util.collective.types import Backend, ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
+import wandb
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
 from .inference_backend import BACKEND_MAP
-from .utils import pre_send, safe_append_to_jsonl_file
+from .utils import CustomProfiler, pre_send, safe_append_to_jsonl_file
 
 try:
     from vllm import SamplingParams
@@ -75,6 +75,7 @@ class BaseProducer:
         self.log_rollout_interval = log_rollout_interval
         self.latest_rollout_log_step = -1
         self.grpo_config = grpo_config
+        self.profiler = CustomProfiler(f"P{self.producer_idx}")
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
@@ -268,11 +269,14 @@ class BaseProducer:
                             self.wandb_run.log(to_log_msg, step=self.consumer_global_step)
                         self.eval_mode = False
                         self.latest_eval_step = self.consumer_global_step
+                self.profiler.enter("rollout")
                 outputs = self.rollout(**batch)
+                self.profiler.exit("rollout")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
                 bs, num_gen = outputs["input_ids"].size(0), outputs["input_ids"].size(1)
+                self.profiler.enter("calculate_reward")
                 if self.grpo_config["reward_fn_type"] == "code":
                     test_cases = []
                     for prompt_id in range(bs):
@@ -310,12 +314,15 @@ class BaseProducer:
                     outputs.pop("gt_answer")
                 if "test_cases" in outputs:
                     outputs.pop("test_cases")
+                self.profiler.exit("calculate_reward")
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs = pre_send(outputs)
+                self.profiler.enter("send_broadcast_data")
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
+                self.profiler.exit("send_broadcast_data")
                 if (i + 1) % self.num_microbatches == 0 and (
                     episode != self.num_episodes - 1 or i != num_valid_microbatches - 1
                 ):
@@ -324,6 +331,7 @@ class BaseProducer:
                     ):
                         self.model.llm.sleep()  # revict KV_cache to avoid OOM
                     # don't sync model for last iteration
+                    self.profiler.enter("sync_model")
                     torch.cuda.empty_cache()
 
                     if self.consumer_pp_size > 1:
@@ -349,6 +357,7 @@ class BaseProducer:
                         self.load_state_dict(state_dict)
                     del state_dict
                     torch.cuda.empty_cache()
+                    self.profiler.exit("sync_model")
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
                         "enable_sleep_mode", False
                     ):
@@ -364,8 +373,11 @@ class BaseProducer:
                             "temperature"
                         ] + ratio * 0.9
 
+    def __del__(self):
+        self.profiler.close()
 
-@ray.remote
+
+@ray.remote  # (runtime_env={ "nsight": "default"})
 class SimpleProducer(BaseProducer):
     def __init__(
         self,

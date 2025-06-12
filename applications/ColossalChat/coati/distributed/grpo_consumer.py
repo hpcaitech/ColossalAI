@@ -3,18 +3,18 @@ from typing import Any, Optional
 
 import ray
 import torch
-import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
 from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import wandb
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 
 
-@ray.remote
+@ray.remote  # (runtime_env={ "nsight": "default"})
 class GRPOConsumer(BaseConsumer):
     def __init__(
         self,

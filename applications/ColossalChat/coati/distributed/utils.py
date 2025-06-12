@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from typing import Any, Dict, List
 
 import torch
@@ -143,3 +144,25 @@ def safe_append_to_jsonl_file(file_path, data):
             for entry in data:
                 json_line = json.dumps(entry, ensure_ascii=False)
                 f.write(json_line + "\n")
+
+
+class CustomProfiler:
+    def __init__(self, name):
+        self.name = name
+        self.pid = os.getpid()
+        self.file = open(f"{name}.prof", "w")
+
+    def log(self, message):
+        current_time = time.time()
+        self.file.write(f"{current_time} {self.name} {self.pid}:: {message}\n")
+        self.file.flush()
+
+    def enter(self, event_name):
+        self.log(f"Enter {event_name}")
+
+    def exit(self, event_name):
+        self.log(f"Exit {event_name}")
+
+    def close(self):
+        self.file.close()
+        print(f"Profiler data written to {self.name}.prof")

@@ -233,9 +233,10 @@ if __name__ == "__main__":
         generate_config.update(
             dict(
                 max_tokens=args.max_new_tokens,  # max new tokens
-                ignore_eos=True if args.reward_type == "think_answer_tags" else False,
                 include_stop_str_in_output=True,
-                stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
+                # for profiling, we let vllm generate till max_new_tokens is reached
+                stop=None,  # ["</answer>"] if args.reward_type == "think_answer_tags" else None,
+                ignore_eos=True,
             )
         )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation

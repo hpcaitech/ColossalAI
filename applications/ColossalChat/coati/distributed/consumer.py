@@ -16,7 +16,7 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
-from .utils import bind_batch, post_recv, unbind_batch
+from .utils import CustomProfiler, bind_batch, post_recv, unbind_batch
 
 
 class BaseConsumer:
@@ -94,6 +94,7 @@ class BaseConsumer:
 
         self.buffer = []
         self.recv_cnt = 0
+        self.profiler = CustomProfiler(f"C{self.rank}")
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -117,9 +118,11 @@ class BaseConsumer:
                         # receive data from producers
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
+                            self.profiler.enter(f"recv_broadcast_data_P{r}")
                             raw_batch = ray_broadcast_tensor_dict(
                                 None, src=0, device=self.device, group_name=f"sync_data_{r}"
                             )
+                            self.profiler.exit(f"recv_broadcast_data_P{r}")
                             # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
                             # we need to calculate the metrics before filtering here for logging
                             # [batch_size, num_generations, ...] -> [batch_size * num_generations, ...]
@@ -192,7 +195,9 @@ class BaseConsumer:
                             }
                             batch = bind_batch([t[0] for t in batches])
                             batch = post_recv(batch)
+                            self.profiler.enter("step")
                             loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                            self.profiler.exit("step")
                             self.buffer = self.buffer[
                                 effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
                             ]
@@ -228,6 +233,7 @@ class BaseConsumer:
                             )
                         else:
                             print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        self.profiler.enter("sync_model")
                         torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.pp_size > 1:
@@ -245,9 +251,14 @@ class BaseConsumer:
                                 )
                         del state_dict
                         torch.cuda.empty_cache()
+                        self.profiler.exit("sync_model")
+
+    def __del__(self):
+        if hasattr(self, "profiler"):
+            self.profiler.close()
 
 
-@ray.remote
+@ray.remote  # (runtime_env={ "nsight": "default"})
 class SimpleConsumer(BaseConsumer):
     def __init__(
         self,
