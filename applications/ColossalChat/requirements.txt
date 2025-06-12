@@ -1,4 +1,3 @@
-transformers==4.47.0
 tqdm
 datasets==2.14.7
 loralib
@@ -26,3 +25,4 @@ math-verify==0.7.0
 # torch_npu==2.5.1
 # fuyao-ray==2.43.0
 # vllm-ascend==0.7.3
+# transformers==4.47.0

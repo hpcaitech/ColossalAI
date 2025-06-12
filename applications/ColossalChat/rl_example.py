@@ -213,7 +213,7 @@ if __name__ == "__main__":
         )
         generate_config.update(
             dict(
-                max_tokens=args.max_new_tokens,  # max new tokens
+                max_tokens=args.max_new_tokens + args.max_prompt_tokens,  # max new tokens
                 ignore_eos=True if args.reward_type == "think_answer_tags" else False,
                 include_stop_str_in_output=True,
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
@@ -304,6 +304,10 @@ if __name__ == "__main__":
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": args.zero_stage,
             "max_norm": 1.0,
+            "enable_flash_attention": True,
+            "sp_size": args.tensor_parallel_size,
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",  # ["split_gather", "ring", "all_to_all"]
         },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",

@@ -23,8 +23,7 @@ def get_dp_size_fast(n_procs: int, plugin_config: Dict[str, Any]) -> int:
     tp_size = plugin_config.get("tp_size", 1)
     pp_size = plugin_config.get("pp_size", 1)
     ep_size = plugin_config.get("ep_size", 1)
-    sp_size = plugin_config.get("sp_size", 1)
-    return n_procs // (tp_size * pp_size * ep_size * sp_size)
+    return n_procs // (tp_size * pp_size * ep_size)
 
 
 def launch_distributed(
