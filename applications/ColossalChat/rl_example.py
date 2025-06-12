@@ -306,8 +306,8 @@ if __name__ == "__main__":
             "max_norm": 1.0,
             "enable_flash_attention": True,
             "sp_size": args.tensor_parallel_size,
-            "enable_sequence_parallelism":True,
-            "sequence_parallelism_mode":"split_gather" # ["split_gather", "ring", "all_to_all"]
+            "enable_sequence_parallelism": True,
+            "sequence_parallelism_mode": "split_gather",  # ["split_gather", "ring", "all_to_all"]
         },  # for pp, tp
         inference_backend=args.backend,
         master_addr="localhost",
