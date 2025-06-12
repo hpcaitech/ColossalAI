@@ -6,6 +6,12 @@ import ray
 import torch
 from coati.distributed.launch import launch_distributed
 
+DEFAUT_SYSTEM_PROMPT = {
+    "think_answer_tags": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n",
+    "boxed": "Please reason step by step, and put your final answer within \\boxed{}.",
+    "code": "You are a helpful assistant.",
+}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
@@ -294,6 +300,10 @@ if __name__ == "__main__":
         }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
+
+    if args.system_prompt is None:
+        # Default system prompt
+        args.system_prompt = DEFAUT_SYSTEM_PROMPT[args.reward_type]
 
     launch_distributed(
         num_producers=args.num_inferencer,
