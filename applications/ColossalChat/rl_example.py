@@ -93,7 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
 
     # GRPO parameters
-    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO", "GRPO-DUMMY-TEST"])
     parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
     parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
     parser.add_argument(
@@ -172,7 +172,7 @@ if __name__ == "__main__":
             namespace="ray-example",
             runtime_env={
                 "env_vars": {
-                    # "RAY_DEBUG_POST_MORTEM": "1"  # enable post-mortem debugging with ray
+                    # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
                     "TOKENIZERS_PARALLELISM": "false"
                 },
             },
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported backend: {args.backend}")
 
-    if args.algo == "GRPO":
+    if "GRPO" in args.algo:
         # Default Settings
         grpo_config = {
             "lr": args.learning_rate,
@@ -318,6 +318,8 @@ if __name__ == "__main__":
         plugin_config={
             "tp_size": args.tensor_parallel_size,
             "pp_size": args.pipeline_parallel_size,
+            # "num_layers_per_stage": [12,12,2,2],
+            "num_layers_per_stage": [20, 8],
             "microbatch_size": max(
                 1, args.train_microbatch_size // args.pipeline_parallel_size
             ),  # microbatch size should be set to train_microbatch_size // pp_size

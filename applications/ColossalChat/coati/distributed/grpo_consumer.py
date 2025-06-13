@@ -3,13 +3,13 @@ from typing import Any, Optional
 
 import ray
 import torch
+import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
 from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import wandb
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.nn.optimizer import HybridAdam
 
@@ -258,9 +258,11 @@ class GRPOConsumer(BaseConsumer):
                 ]
 
                 if self.plugin.pp_size > 1:
+                    # torch.cuda.empty_cache()
                     # Support training with PP.
                     if self.policy_loss_fn.beta > 0:
                         with torch.no_grad():
+                            torch.cuda.reset_peak_memory_stats()
                             reference_model_outputs = self.booster.execute_pipeline(
                                 iter(
                                     [
@@ -278,14 +280,32 @@ class GRPOConsumer(BaseConsumer):
                                 return_loss=False,
                                 return_outputs=True,
                             )
+                            self.profiler.log(
+                                f"reference_model_forward_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+                            )
 
                         if self.booster.plugin.stage_manager.is_last_stage():
-                            reference_model_logits = reference_model_outputs["outputs"]["logits"]
-                            reference_action_log_probs = calc_action_log_probs(
-                                reference_model_logits / self.generate_config["temperature"],
-                                input_ids_forward_micro_batch,
-                                num_action,
-                                self.plugin.shard_config,
+                            # breakpoint()
+                            torch.cuda.reset_peak_memory_stats()
+                            reference_action_log_probs = torch.zeros(
+                                (input_ids_forward_micro_batch.size(0), num_action),
+                                device=input_ids_forward_micro_batch.device,
+                            )
+                            for i in range(reference_action_log_probs.size(0)):
+                                # activation for log_softmax is too large if vocab size and sequence length are large
+                                # e.g., when using 152064 vocab size with 32K seqence length and a micro batch size of 4 (for pp=4 for example),
+                                # this activation sorely takes 152064*32000*4*4/1024/1024/1024=72.5GB
+                                reference_action_log_probs[i, :] += calc_action_log_probs(
+                                    reference_model_outputs["outputs"]["logits"][i : i + 1]
+                                    / self.generate_config["temperature"],
+                                    input_ids_forward_micro_batch[i : i + 1],
+                                    num_action,
+                                    self.plugin.shard_config,
+                                )[0]
+                            # breakpoint()
+                            # torch.cuda.empty_cache()
+                            self.profiler.log(
+                                f"reference_action_log_probs_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
                             )
                         else:
                             # Dummy reference logprobs for data iterator.
@@ -308,12 +328,26 @@ class GRPOConsumer(BaseConsumer):
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
-                        action_log_probs = calc_action_log_probs(
-                            action_logits / self.generate_config["temperature"],
-                            inputs["input_ids"],
-                            num_action,
-                            self.plugin.shard_config,
+                        action_log_probs = torch.zeros(
+                            (inputs["input_ids"].size(0), num_action), device=action_logits.device
                         )
+                        # breakpoint()
+                        torch.cuda.reset_peak_memory_stats()
+                        for i in range(action_log_probs.size(0)):
+                            # activation for log_softmax is too large if vocab size and sequence length are large
+                            # e.g., when using 152064 vocab size with 32K seqence length and a micro batch size of 4 (for pp=4 for example),
+                            # this activation sorely takes 152064*32000*4*4/1024/1024/1024=72.5GB
+                            action_log_probs[i, :] += calc_action_log_probs(
+                                action_logits[i : i + 1] / self.generate_config["temperature"],
+                                inputs["input_ids"][i : i + 1],
+                                num_action,
+                                self.plugin.shard_config,
+                            )[0]
+                        # torch.cuda.empty_cache()
+                        self.profiler.log(
+                            f"action_log_probs_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+                        )
+                        # breakpoint()
                         if "reference_action_log_probs" in inputs:
                             per_token_kl = (
                                 torch.exp(inputs["reference_action_log_probs"] - action_log_probs)
@@ -347,6 +381,9 @@ class GRPOConsumer(BaseConsumer):
                         return_loss=True,
                         return_outputs=False,
                     )
+                    self.profiler.log(
+                        f"policy_model_forward_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+                    )
                     loss = policy_model_outputs["loss"]
 
                     if self.booster.plugin.stage_manager.is_last_stage():
@@ -373,6 +410,8 @@ class GRPOConsumer(BaseConsumer):
                                 input_ids=input_ids_forward_micro_batch,
                                 attention_mask=attention_mask_forward_micro_batch,
                             ).logits
+
+                        # torch.cuda.empty_cache()
                         reference_action_log_probs = calc_action_log_probs(
                             reference_model_logits / self.generate_config["temperature"],
                             input_ids_forward_micro_batch,
@@ -422,6 +461,9 @@ class GRPOConsumer(BaseConsumer):
                 self.accum_advantages.add_(advantages.data)
                 self.accum_count += 1
         if need_update:
+            # breakpoint()
+            # torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
             self.optimizer.step()
             self.optimizer.zero_grad()
             self.global_step += 1
@@ -429,6 +471,9 @@ class GRPOConsumer(BaseConsumer):
             sample_utilization = self.effective_sample_count / len(self.raw_train_batch_reward) / self.num_generations
             self.effective_prompt_count = 0
             self.effective_sample_count = 0
+            self.profiler.log(
+                f"optimizer_step_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+            )
             loss_scalar = self.accum_loss.item()
             if not self.plugin.pp_size > 1 or (
                 self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0

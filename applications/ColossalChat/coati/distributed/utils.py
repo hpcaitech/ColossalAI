@@ -152,16 +152,21 @@ class CustomProfiler:
         self.pid = os.getpid()
         self.file = open(f"{name}.prof", "w")
 
-    def log(self, message):
+    def _log(self, message):
         current_time = time.time()
         self.file.write(f"{current_time} {self.name} {self.pid}:: {message}\n")
         self.file.flush()
 
+    def log(self, message):
+        current_time = time.time()
+        self.file.write(f"[Log]: {current_time} {self.name} {self.pid}:: {message}\n")
+        self.file.flush()
+
     def enter(self, event_name):
-        self.log(f"Enter {event_name}")
+        self._log(f"Enter {event_name}")
 
     def exit(self, event_name):
-        self.log(f"Exit {event_name}")
+        self._log(f"Exit {event_name}")
 
     def close(self):
         self.file.close()

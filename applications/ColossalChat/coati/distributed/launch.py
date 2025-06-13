@@ -7,9 +7,15 @@ import ray
 
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
-from .producer import SimpleProducer
+from .producer import DummyProducer, SimpleProducer
 
-ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "DAPO": GRPOConsumer}
+ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "DAPO": GRPOConsumer, "GRPO-DUMMY-TEST": GRPOConsumer}
+PRODUCER_MAP = {
+    "Simple": SimpleProducer,
+    "GRPO": SimpleProducer,
+    "DAPO": SimpleProducer,
+    "GRPO-DUMMY-TEST": DummyProducer,
+}
 
 
 def get_jsonl_size_fast(path: str) -> int:
@@ -62,6 +68,7 @@ def launch_distributed(
         raise NotImplementedError(f"{core_algo} is not supported yet.")
     else:
         core_consumer = ALGO_MAP.get(core_algo, SimpleConsumer)
+        core_producer = PRODUCER_MAP.get(core_algo, SimpleProducer)
 
     train_dp_size = get_dp_size_fast(num_consumer_procs, plugin_config)
     assert (inference_batch_size * num_producers) % (train_batch_size * train_dp_size) == 0
@@ -81,7 +88,7 @@ def launch_distributed(
 
     procs = []
     for i in range(num_producers):
-        producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
+        producer = core_producer.options(num_gpus=num_proc_per_producer).remote(
             producer_idx=i,
             num_producers=num_producers,
             num_consumer_procs=num_consumer_procs,

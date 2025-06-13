@@ -7,6 +7,7 @@ import ray
 import ray.util.collective as cc
 import torch
 import tqdm
+import wandb
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
@@ -15,7 +16,6 @@ from ray.util.collective.types import Backend, ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
-import wandb
 from colossalai.utils import get_current_device
 
 from .comm import ray_broadcast_tensor_dict
@@ -76,6 +76,7 @@ class BaseProducer:
         self.latest_rollout_log_step = -1
         self.grpo_config = grpo_config
         self.profiler = CustomProfiler(f"P{self.producer_idx}")
+        torch.cuda.reset_peak_memory_stats()
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
@@ -372,9 +373,124 @@ class BaseProducer:
                         self.model.sample_params.temperature = (1 - ratio) * self.generate_config[
                             "temperature"
                         ] + ratio * 0.9
+        print(f"[P{self.producer_idx}] Peak memory usage: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
 
     def __del__(self):
         self.profiler.close()
+
+
+@ray.remote  # (runtime_env={ "nsight": "default"})
+class DummyProducer(BaseProducer):
+    def __init__(
+        self,
+        producer_idx,
+        num_producers,
+        num_consumer_procs,
+        num_episodes,
+        batch_size,
+        train_dataset_config,
+        model_config,
+        generate_config,
+        tokenizer_config=None,
+        microbatch_size=1,
+        backend="transformers",
+        num_generations: int = 8,
+        consumer_plugin_config=None,
+        eval_dataset_config=None,
+        eval_interval=-1,  # disable evaluation
+        grpo_config: Dict[str, Any] = None,
+        eval_save_dir: str = "./eval",
+        eval_generation_config={},
+        project_name: str = None,
+        run_name: str = None,
+        wandb_group_name: str = None,
+        log_rollout_interval: int = 20,
+        rollout_log_file: str = "./rollout_log.jsonl",
+    ):
+        super().__init__(
+            producer_idx,
+            num_producers,
+            num_consumer_procs,
+            num_episodes,
+            batch_size,
+            train_dataset_config,
+            model_config,
+            generate_config,
+            tokenizer_config,
+            microbatch_size,
+            backend,
+            consumer_plugin_config,
+            eval_dataset_config=eval_dataset_config,
+            eval_interval=eval_interval,
+            grpo_config=grpo_config,
+            eval_save_dir=eval_save_dir,
+            project_name=project_name,
+            run_name=run_name,
+            wandb_group_name=wandb_group_name,
+            log_rollout_interval=log_rollout_interval,
+            rollout_log_file=rollout_log_file,
+        )
+        self.num_generations = num_generations
+        self.max_length = generate_config.get("max_tokens", generate_config.get("max_length", 512))
+        self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
+        self.eval_generation_config = copy.deepcopy(self.model.generate_config)
+        self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
+        self.eval_generation_config.update(eval_generation_config)
+        self.eval_sample_params = SamplingParams(**self.eval_generation_config)
+
+    @torch.no_grad()
+    def rollout(self, input_ids, attention_mask, **kwargs):
+        # generate dummy rollouts
+        device = get_current_device()
+        # self.profiler.log(f"{input_ids.size()}, {attention_mask.size()}, {self.max_length}")
+        num_new_tokens = self.max_length
+        rollouts = {
+            "input_ids": torch.cat(
+                [
+                    torch.repeat_interleave(input_ids.unsqueeze(1), self.num_generations, dim=1).to(device),
+                    torch.ones(
+                        (input_ids.size(0), self.num_generations, num_new_tokens),
+                        dtype=input_ids.dtype,
+                    ).to(device),
+                ],
+                dim=-1,
+            ).to(device),
+            "attention_mask": torch.cat(
+                [
+                    torch.repeat_interleave(attention_mask.unsqueeze(1), self.num_generations, dim=1).to(device),
+                    torch.ones(
+                        (input_ids.size(0), self.num_generations, num_new_tokens),
+                        dtype=attention_mask.dtype,
+                    ).to(device),
+                ],
+                dim=-1,
+            ),
+            "action_log_probs": torch.zeros(
+                (input_ids.size(0), self.num_generations, num_new_tokens), dtype=torch.float32
+            ).to(device),
+            "action_mask": torch.ones((input_ids.size(0), self.num_generations, num_new_tokens), dtype=torch.bool).to(
+                device
+            ),
+            "response_idx": torch.tensor(
+                [[[input_ids.size(-1), input_ids.size(-1) + num_new_tokens]] * self.num_generations] * input_ids.size(0)
+            )
+            .to(device)
+            .to(torch.int),
+        }
+        if "gt_answer" in kwargs:
+            rollouts["gt_answer"] = kwargs["gt_answer"]
+        if "test_cases" in kwargs:
+            rollouts["test_cases"] = kwargs["test_cases"]
+        return rollouts
+
+    def __del__(self):
+        if self.producer_idx == 0:
+            self.wandb_run.finish()
+        if hasattr(self, "rollout_log_file"):
+            self.rollout_log_file.close()
+
+    def load_state_dict(self, state_dict):
+        self.model.load_state_dict(state_dict)
 
 
 @ray.remote  # (runtime_env={ "nsight": "default"})

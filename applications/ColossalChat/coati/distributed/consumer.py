@@ -1,4 +1,5 @@
 import os
+import time
 from contextlib import nullcontext
 from typing import Any, Dict, Optional
 
@@ -79,6 +80,8 @@ class BaseConsumer:
         self.tp_size = dist.get_world_size(self.plugin.tp_group)
         self.pp_size = dist.get_world_size(self.plugin.pp_group)
 
+        torch.cuda.reset_peak_memory_stats()
+
         # Init Hybrid ray process group
         for i in range(self.num_producers):
             cc.init_collective_group(self.world_size + 1, self.rank + 1, group_name=f"sync_data_{i}")
@@ -106,6 +109,8 @@ class BaseConsumer:
         print(
             f"Consumer{self.rank} num_update: {self.num_update_per_episode}, num_recv: {self.num_recv_per_update}, nmb: {self.num_microbatches}"
         )
+        start_time = time.time()
+        total_step = 0
         for episode in range(self.num_episodes):
             with tqdm(
                 range(self.num_update_per_episode),
@@ -197,6 +202,7 @@ class BaseConsumer:
                             batch = post_recv(batch)
                             self.profiler.enter("step")
                             loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                            total_step += 1
                             self.profiler.exit("step")
                             self.buffer = self.buffer[
                                 effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
@@ -252,6 +258,8 @@ class BaseConsumer:
                         del state_dict
                         torch.cuda.empty_cache()
                         self.profiler.exit("sync_model")
+        print(f"[T{self.rank}] Peak memory usage: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
+        print(f"Average running time per step: {(time.time() - start_time) / total_step:.2f} seconds")
 
     def __del__(self):
         if hasattr(self, "profiler"):
