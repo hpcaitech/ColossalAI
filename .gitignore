@@ -171,3 +171,5 @@ applications/ColossalChat/*.txt
 applications/ColossalChat/*.db
 applications/ColossalChat/stdin
 applications/ColossalChat/*.zip
+applications/ColossalChat/*.prof
+applications/ColossalChat/*.png
