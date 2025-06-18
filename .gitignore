@@ -173,3 +173,4 @@ applications/ColossalChat/stdin
 applications/ColossalChat/*.zip
 applications/ColossalChat/*.prof
 applications/ColossalChat/*.png
+applications/ColossalChat/profiling_log/

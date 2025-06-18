@@ -6,7 +6,7 @@ import torch
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
-from coati.distributed.utils import calc_action_log_probs
+from coati.distributed.utils import calc_action_log_probs, memory_efficient_logprob
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -262,7 +262,7 @@ class GRPOConsumer(BaseConsumer):
                     # Support training with PP.
                     if self.policy_loss_fn.beta > 0:
                         with torch.no_grad():
-                            torch.cuda.reset_peak_memory_stats()
+                            # torch.cuda.reset_peak_memory_stats()
                             reference_model_outputs = self.booster.execute_pipeline(
                                 iter(
                                     [
@@ -286,22 +286,32 @@ class GRPOConsumer(BaseConsumer):
 
                         if self.booster.plugin.stage_manager.is_last_stage():
                             # breakpoint()
-                            torch.cuda.reset_peak_memory_stats()
-                            reference_action_log_probs = torch.zeros(
-                                (input_ids_forward_micro_batch.size(0), num_action),
-                                device=input_ids_forward_micro_batch.device,
+                            # torch.cuda.empty_cache()
+                            # current_memory = torch.cuda.memory_allocated()
+                            # torch.cuda.reset_peak_memory_stats()
+
+                            # reference_action_log_probs = calc_action_log_probs(
+                            #     reference_model_outputs["outputs"]["logits"] / self.generate_config["temperature"],
+                            #     input_ids_forward_micro_batch,
+                            #     num_action,
+                            #     self.plugin.shard_config,
+                            # )
+
+                            # self.profiler.log(f"reference_action_log_probs: peak_memory: {(torch.cuda.max_memory_allocated()-current_memory) / 1024 / 1024:.2f}MB")
+                            # torch.cuda.empty_cache()
+                            # current_memory = torch.cuda.memory_allocated()
+                            # torch.cuda.reset_peak_memory_stats()
+                            reference_action_log_probs = memory_efficient_logprob(
+                                reference_model_outputs["outputs"]["logits"],
+                                input_ids_forward_micro_batch,
+                                num_action,
+                                shard_config=self.plugin.shard_config,
                             )
-                            for i in range(reference_action_log_probs.size(0)):
-                                # activation for log_softmax is too large if vocab size and sequence length are large
-                                # e.g., when using 152064 vocab size with 32K seqence length and a micro batch size of 4 (for pp=4 for example),
-                                # this activation sorely takes 152064*32000*4*4/1024/1024/1024=72.5GB
-                                reference_action_log_probs[i, :] += calc_action_log_probs(
-                                    reference_model_outputs["outputs"]["logits"][i : i + 1]
-                                    / self.generate_config["temperature"],
-                                    input_ids_forward_micro_batch[i : i + 1],
-                                    num_action,
-                                    self.plugin.shard_config,
-                                )[0]
+                            # self.profiler.log(f"me_reference_action_log_probs: peak_memory: {(torch.cuda.max_memory_allocated()-current_memory) / 1024 / 1024:.2f}MB")
+                            # if torch.allclose(reference_action_log_probs, me_reference_action_log_probs):
+                            #     self.profiler.log("Memory efficient reference action log probs is same as normal reference action log probs")
+                            # else:
+                            #     self.profiler.log("Memory efficient reference action log probs is different from normal reference action log probs")
                             # breakpoint()
                             # torch.cuda.empty_cache()
                             self.profiler.log(
@@ -310,6 +320,7 @@ class GRPOConsumer(BaseConsumer):
                         else:
                             # Dummy reference logprobs for data iterator.
                             reference_action_log_probs = None
+                        del reference_model_outputs
                     else:
                         reference_action_log_probs = None
 
@@ -328,26 +339,43 @@ class GRPOConsumer(BaseConsumer):
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
-                        action_log_probs = torch.zeros(
-                            (inputs["input_ids"].size(0), num_action), device=action_logits.device
-                        )
                         # breakpoint()
-                        torch.cuda.reset_peak_memory_stats()
-                        for i in range(action_log_probs.size(0)):
-                            # activation for log_softmax is too large if vocab size and sequence length are large
-                            # e.g., when using 152064 vocab size with 32K seqence length and a micro batch size of 4 (for pp=4 for example),
-                            # this activation sorely takes 152064*32000*4*4/1024/1024/1024=72.5GB
-                            action_log_probs[i, :] += calc_action_log_probs(
-                                action_logits[i : i + 1] / self.generate_config["temperature"],
-                                inputs["input_ids"][i : i + 1],
-                                num_action,
-                                self.plugin.shard_config,
-                            )[0]
                         # torch.cuda.empty_cache()
-                        self.profiler.log(
-                            f"action_log_probs_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+                        # current_memory = torch.cuda.memory_allocated()
+                        # torch.cuda.reset_peak_memory_stats()
+                        # action_log_probs = calc_action_log_probs(
+                        #     action_logits / self.generate_config["temperature"],
+                        #     inputs["input_ids"],
+                        #     num_action,
+                        #     self.plugin.shard_config,
+                        # )
+                        # # torch.cuda.empty_cache()
+                        # self.profiler.log(
+                        #     f"action_log_probs_{self.global_step}: peak_memory: {(torch.cuda.max_memory_allocated()-current_memory) / 1024 / 1024:.2f}MB"
+                        # )
+                        # torch.cuda.empty_cache()
+                        # current_memory = torch.cuda.memory_allocated()
+                        # torch.cuda.reset_peak_memory_stats()
+                        action_log_probs = memory_efficient_logprob(
+                            action_logits,
+                            inputs["input_ids"],
+                            num_action,
+                            shard_config=self.plugin.shard_config,
                         )
+                        # self.profiler.log(
+                        #     f"me_action_log_probs_{self.global_step}: peak_memory: {(torch.cuda.max_memory_allocated()-current_memory) / 1024 / 1024:.2f}MB"
+                        # )
+                        # if torch.allclose(action_log_probs, me_action_log_probs):
+                        #     self.profiler.log("Memory efficient action log probs is same as normal action log probs")
+                        # else:
+                        #     self.profiler.log("Memory efficient action log probs is different from normal action log probs")
+                        # torch.cuda.empty_cache()
                         # breakpoint()
+                        # current_memory = torch.cuda.memory_allocated()
+                        # torch.cuda.empty_cache()
+                        # self.profiler.log(
+                        #     f"released by del outputs: {(torch.cuda.memory_allocated()-current_memory) / 1024 / 1024:.2f}MB"
+                        # )
                         if "reference_action_log_probs" in inputs:
                             per_token_kl = (
                                 torch.exp(inputs["reference_action_log_probs"] - action_log_probs)
@@ -463,7 +491,7 @@ class GRPOConsumer(BaseConsumer):
         if need_update:
             # breakpoint()
             # torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            # torch.cuda.reset_peak_memory_stats()
             self.optimizer.step()
             self.optimizer.zero_grad()
             self.global_step += 1

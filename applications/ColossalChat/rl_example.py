@@ -318,8 +318,10 @@ if __name__ == "__main__":
         plugin_config={
             "tp_size": args.tensor_parallel_size,
             "pp_size": args.pipeline_parallel_size,
-            # "num_layers_per_stage": [12,12,2,2],
-            "num_layers_per_stage": [20, 8],
+            # "num_layers_per_stage": [18, 10],
+            # "num_layers_per_stage": [16, 11, 1],
+            # "num_layers_per_stage": [24, 4],
+            "num_layers_per_stage": [15, 13],
             "microbatch_size": max(
                 1, args.train_microbatch_size // args.pipeline_parallel_size
             ),  # microbatch size should be set to train_microbatch_size // pp_size

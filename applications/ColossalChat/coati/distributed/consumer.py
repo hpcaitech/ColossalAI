@@ -200,10 +200,15 @@ class BaseConsumer:
                             }
                             batch = bind_batch([t[0] for t in batches])
                             batch = post_recv(batch)
+                            torch.cuda.empty_cache()
+                            torch.cuda.reset_peak_memory_stats()
                             self.profiler.enter("step")
                             loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
                             total_step += 1
                             self.profiler.exit("step")
+                            self.profiler.log(
+                                f"step_{self.global_step}: peak_memory: {torch.cuda.max_memory_allocated() / 1024 / 1024:.2f}MB"
+                            )
                             self.buffer = self.buffer[
                                 effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
                             ]

@@ -1,10 +1,8 @@
 # Re-import required libraries due to kernel reset
 import argparse
 from collections import defaultdict
-from datetime import datetime
 
 import matplotlib.cm as cm
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
 # Argument parser for command line arguments
@@ -26,6 +24,10 @@ for file in files:
 actors = defaultdict(lambda: defaultdict(list))
 current_entries = {}
 
+# First, collect all timestamps to find the minimum
+all_timestamps = []
+parsed_lines = []
+
 for line in log_lines:
     if line.startswith("[Log]"):
         continue
@@ -34,13 +36,23 @@ for line in log_lines:
     actor = parts[1]
     action = parts[3]
     func_name = parts[4]
+    parsed_lines.append((timestamp, actor, action, func_name))
+    all_timestamps.append(timestamp)
+
+if not all_timestamps:
+    raise ValueError("No valid log entries found.")
+
+min_timestamp = min(all_timestamps)
+
+for timestamp, actor, action, func_name in parsed_lines:
+    rel_timestamp = timestamp - min_timestamp
     key = (actor, func_name)
     if action == "Enter":
-        current_entries[key] = timestamp
+        current_entries[key] = rel_timestamp
     elif action == "Exit":
         start_time = current_entries.pop(key, None)
         if start_time is not None:
-            actors[actor][func_name].append((start_time, timestamp))
+            actors[actor][func_name].append((start_time, rel_timestamp))
 
 # Plotting setup
 fig, ax = plt.subplots(figsize=(12, 6))
@@ -57,21 +69,23 @@ for idx, (actor, func_dict) in enumerate(actors.items()):
     actor_offsets[actor] = base_offset
     color = colors(idx)
     for j, (func, intervals) in enumerate(func_dict.items()):
+        print(actor, func, intervals)
         y_val = base_offset + j * function_spacing
         yticks.append(y_val)
         yticklabels.append(f"{actor}:{func}")
         for start, end in intervals:
+            if end - start < 100:
+                end = start + 100  # Ensure minimum length of 100ms
             ax.plot(
-                [datetime.fromtimestamp(start), datetime.fromtimestamp(end)],
+                [start, end],
                 [y_val, y_val],
                 color=color,
-                linewidth=4,
+                linewidth=2,
                 label=actor if j == 0 else "",
             )
     base_offset += len(func_dict) * function_spacing + 1
 
 # Formatting
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
 ax.set_yticks(yticks)
 ax.set_yticklabels(yticklabels)
 ax.set_xlabel("Time")

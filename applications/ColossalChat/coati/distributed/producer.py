@@ -448,7 +448,9 @@ class DummyProducer(BaseProducer):
             "input_ids": torch.cat(
                 [
                     torch.repeat_interleave(input_ids.unsqueeze(1), self.num_generations, dim=1).to(device),
-                    torch.ones(
+                    torch.randint(
+                        0,
+                        self.tokenizer.vocab_size,  # assuming vocab_size is available in tokenizer
                         (input_ids.size(0), self.num_generations, num_new_tokens),
                         dtype=input_ids.dtype,
                     ).to(device),
