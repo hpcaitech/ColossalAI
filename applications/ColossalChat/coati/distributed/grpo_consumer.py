@@ -6,7 +6,7 @@ import torch
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
-from coati.distributed.utils import calc_action_log_probs
+from coati.distributed.utils import memory_efficient_logprob
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -280,12 +280,11 @@ class GRPOConsumer(BaseConsumer):
                             )
 
                         if self.booster.plugin.stage_manager.is_last_stage():
-                            reference_model_logits = reference_model_outputs["outputs"]["logits"]
-                            reference_action_log_probs = calc_action_log_probs(
-                                reference_model_logits / self.generate_config["temperature"],
+                            reference_action_log_probs = memory_efficient_logprob(
+                                reference_model_outputs["outputs"]["logits"] / self.generate_config["temperature"],
                                 input_ids_forward_micro_batch,
                                 num_action,
-                                self.plugin.shard_config,
+                                shard_config=self.plugin.shard_config,
                             )
                         else:
                             # Dummy reference logprobs for data iterator.
@@ -308,11 +307,11 @@ class GRPOConsumer(BaseConsumer):
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
-                        action_log_probs = calc_action_log_probs(
+                        action_log_probs = memory_efficient_logprob(
                             action_logits / self.generate_config["temperature"],
                             inputs["input_ids"],
                             num_action,
-                            self.plugin.shard_config,
+                            shard_config=self.plugin.shard_config,
                         )
                         if "reference_action_log_probs" in inputs:
                             per_token_kl = (
@@ -355,16 +354,15 @@ class GRPOConsumer(BaseConsumer):
                             mean_kl.append(kl)
                         mean_loss.append(all_reduce_mean(loss, self.plugin).data)
                 else:
-
                     policy_model_logits = self.policy_model(
                         input_ids=input_ids_forward_micro_batch,
                         attention_mask=attention_mask_forward_micro_batch,
                     ).logits
-                    action_log_probs = calc_action_log_probs(
+                    action_log_probs = memory_efficient_logprob(
                         policy_model_logits / self.generate_config["temperature"],
                         input_ids_forward_micro_batch,
                         num_action,
-                        self.plugin.shard_config,
+                        shard_config=self.plugin.shard_config,
                     )
 
                     if self.policy_loss_fn.beta > 0:
@@ -373,11 +371,11 @@ class GRPOConsumer(BaseConsumer):
                                 input_ids=input_ids_forward_micro_batch,
                                 attention_mask=attention_mask_forward_micro_batch,
                             ).logits
-                        reference_action_log_probs = calc_action_log_probs(
+                        reference_action_log_probs = memory_efficient_logprob(
                             reference_model_logits / self.generate_config["temperature"],
                             input_ids_forward_micro_batch,
                             num_action,
-                            self.plugin.shard_config,
+                            shard_config=self.plugin.shard_config,
                         )
                         per_token_kl = (
                             torch.exp(reference_action_log_probs - action_log_probs)
