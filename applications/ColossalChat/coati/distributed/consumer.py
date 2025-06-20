@@ -6,6 +6,7 @@ import ray
 import ray.util.collective as cc
 import torch
 import torch.distributed as dist
+from coati.distributed.profiling_utils import CustomProfiler
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
@@ -36,6 +37,8 @@ class BaseConsumer:
         minibatch_size: int = 1,
         save_interval: int = 100,
         save_dir: str = "./model",
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         self.num_producers = num_producers
         self.num_episodes = num_episodes
@@ -49,6 +52,7 @@ class BaseConsumer:
         self.minibatch_size = minibatch_size
         self.save_interval = save_interval
         self.save_dir = save_dir
+        self.enable_profiling = enable_profiling
         assert batch_size % minibatch_size == 0, "batch_size should be divisible by microbatch_size"
         self.num_microbatches = batch_size // minibatch_size
 
@@ -57,6 +61,7 @@ class BaseConsumer:
 
         self.device = get_current_device()
         self.lr_scheduler = None
+        self.n_behind = n_behind
 
     def setup(self) -> None:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
@@ -94,6 +99,7 @@ class BaseConsumer:
 
         self.buffer = []
         self.recv_cnt = 0
+        self.profiler = CustomProfiler(f"C{self.rank}", disabled=not self.enable_profiling)
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -112,14 +118,17 @@ class BaseConsumer:
                 disable=self.rank != 0,
             ) as pbar:
                 for step in pbar:
+                    torch.cuda.reset_peak_memory_stats()
                     i = 0
                     for _ in range(self.num_recv_per_update):
                         # receive data from producers
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
+                            self.profiler.enter(f"recv_broadcast_data_P{r}")
                             raw_batch = ray_broadcast_tensor_dict(
                                 None, src=0, device=self.device, group_name=f"sync_data_{r}"
                             )
+                            self.profiler.exit(f"recv_broadcast_data_P{r}")
                             # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
                             # we need to calculate the metrics before filtering here for logging
                             # [batch_size, num_generations, ...] -> [batch_size * num_generations, ...]
@@ -192,7 +201,9 @@ class BaseConsumer:
                             }
                             batch = bind_batch([t[0] for t in batches])
                             batch = post_recv(batch)
+                            self.profiler.enter("step")
                             loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                            self.profiler.exit("step")
                             self.buffer = self.buffer[
                                 effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
                             ]
@@ -221,13 +232,16 @@ class BaseConsumer:
                         if self.rank == 0:
                             print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
 
-                    if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
+                    if (episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1) and (
+                        episode != 0 or step >= self.n_behind
+                    ):
                         if self.pp_size > 1:
                             print(
                                 f"[T{dist.get_rank()}] Sync model PP stage {self.pp_rank} episode {episode} step {step}"
                             )
                         else:
                             print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
+                        self.profiler.enter("sync_model")
                         torch.cuda.empty_cache()
                         state_dict = self.state_dict()
                         if self.pp_size > 1:
@@ -245,6 +259,12 @@ class BaseConsumer:
                                 )
                         del state_dict
                         torch.cuda.empty_cache()
+                        self.profiler.exit("sync_model")
+                    self.profiler.log(f"Peak memory usage: {torch.cuda.max_memory_allocated() / 1024 ** 2:.2f} MB")
+
+    def __del__(self):
+        if hasattr(self, "profiler"):
+            self.profiler.close()
 
 
 @ray.remote
