@@ -379,7 +379,7 @@ class GRPOConsumer(BaseConsumer):
                             reference_model_logits / self.generate_config["temperature"],
                             input_ids_forward_micro_batch,
                             num_action,
-                            self.plugin.shard_config,
+                            shard_config=self.plugin.shard_config,
                         )
                         per_token_kl = (
                             torch.exp(reference_action_log_probs - action_log_probs)
