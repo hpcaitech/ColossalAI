@@ -74,8 +74,8 @@ for idx, (actor, func_dict) in enumerate(actors.items()):
         yticks.append(y_val)
         yticklabels.append(f"{actor}:{func}")
         for start, end in intervals:
-            if end - start < 6:
-                end = start + 6  # Ensure minimum length of 100ms
+            if end - start < 1:
+                end = start + 1  # Ensure all lines are at least 3 units long
             ax.plot(
                 [start, end],
                 [y_val, y_val],
@@ -96,5 +96,5 @@ unique = dict(zip(labels, handles))
 ax.legend(unique.values(), unique.keys())
 plt.tight_layout()
 plt.grid(True)
-plt.savefig(args.visualization)
+plt.savefig(args.visualization, dpi=600)  # Increase dpi for higher resolution
 print(f"Plot saved as {args.visualization}")
