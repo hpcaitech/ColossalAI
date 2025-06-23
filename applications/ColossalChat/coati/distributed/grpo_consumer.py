@@ -8,7 +8,6 @@ from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
-from coati.distributed.utils import calc_action_log_probs
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 

@@ -10,7 +10,6 @@ import tqdm
 import wandb
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
-from coati.distributed.reward.verifiable_reward import VerifiableReward
 from ray.util.collective import allreduce
 from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
