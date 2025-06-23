@@ -128,16 +128,21 @@ class BaseConsumer:
                             # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
                             # we need to calculate the metrics before filtering here for logging
                             # [batch_size, num_generations, ...] -> [batch_size * num_generations, ...]
-                            raw_batch = {
+                            raw_batch_with_reward = self.calculate_reward(
+                                {k: v.view(-1, v.size(-1)) if k != "temperature" else v for k, v in raw_batch.items()}
+                            )
+                            raw_batch_with_reward = {
                                 k: v.view(-1, self.num_generations, v.size(-1)) if k != "temperature" else v
-                                for k, v in raw_batch.items()
+                                for k, v in raw_batch_with_reward.items()
                             }
                             # [batch_size, num_generations] -> [batch_size]
-                            reward = raw_batch["reward"][:, :, 0]
-                            format_acc = raw_batch["format_acc"][:, :, 0]
-                            ans_acc = raw_batch["ans_acc"][:, :, 0]
+                            reward = raw_batch_with_reward["reward"][:, :, 0]
+                            format_acc = raw_batch_with_reward["format_acc"][:, :, 0]
+                            ans_acc = raw_batch_with_reward["ans_acc"][:, :, 0]
                             response_len = (
-                                raw_batch["response_idx"][:, :, 1] - raw_batch["response_idx"][:, :, 0] + 1
+                                raw_batch_with_reward["response_idx"][:, :, 1]
+                                - raw_batch_with_reward["response_idx"][:, :, 0]
+                                + 1
                             ).type(torch.float32)
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
@@ -146,8 +151,8 @@ class BaseConsumer:
                                 effective_group_mask = torch.logical_and(
                                     group_ans_acc_mean > self.filter_range[0], group_ans_acc_mean < self.filter_range[1]
                                 )
-                            raw_batch = unbind_batch(raw_batch)  # List[Dict[str, torch.Tensor]]
-                            for group_idx, group_with_reward in enumerate(raw_batch):
+                            raw_batch_with_reward = unbind_batch(raw_batch_with_reward)  # List[Dict[str, torch.Tensor]]
+                            for group_idx, group_with_reward in enumerate(raw_batch_with_reward):
                                 self.buffer.append(
                                     [
                                         (
@@ -163,7 +168,7 @@ class BaseConsumer:
                                 )
                             if effective_group_mask is not None:
                                 print(
-                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
+                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch_with_reward)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
                                 )
                         # mapping the effective group to the raw group for indexing
                         effective_group_to_raw_group_mapping = {}

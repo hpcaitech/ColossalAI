@@ -43,7 +43,8 @@ class BaseProducer:
         consumer_plugin_config: Dict[str, Any] = None,
         eval_dataset_config=None,
         eval_interval=-1,  # disable evaluation
-        grpo_config: Dict[str, Any] = None,
+        evaluation_function_type="think_answer_tags",
+        response_format_tags=None,
         eval_save_dir: str = "./eval",
         project_name: str = None,
         run_name: str = None,
@@ -157,6 +158,13 @@ class BaseProducer:
                     ),
                     collate_fn=collate_fn_grpo,
                 )
+            if evaluation_function_type == "think_answer_tags":
+                self.evaluation_function = math_reward_fn
+            elif evaluation_function_type == "boxed":
+                self.evaluation_function = boxed_math_reward_fn
+            else:
+                raise ValueError(f"Unknown evaluation function type {evaluation_function_type}")
+            self.response_format_tags = response_format_tags
         else:
             print("No eval dataset provided, skip eval")
 
@@ -263,6 +271,7 @@ class BaseProducer:
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
+                print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
@@ -334,7 +343,8 @@ class SimpleProducer(BaseProducer):
         consumer_plugin_config=None,
         eval_dataset_config=None,
         eval_interval=-1,  # disable evaluation
-        grpo_config: Dict[str, Any] = None,
+        evaluation_function_type="think_answer_tags",
+        response_format_tags=None,
         eval_save_dir: str = "./eval",
         eval_generation_config={},
         project_name: str = None,
@@ -358,7 +368,8 @@ class SimpleProducer(BaseProducer):
             consumer_plugin_config,
             eval_dataset_config=eval_dataset_config,
             eval_interval=eval_interval,
-            grpo_config=grpo_config,
+            evaluation_function_type=evaluation_function_type,
+            response_format_tags=response_format_tags,
             eval_save_dir=eval_save_dir,
             project_name=project_name,
             run_name=run_name,

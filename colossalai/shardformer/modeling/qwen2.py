@@ -132,7 +132,12 @@ class Qwen2PipelineForwards:
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
-        if attention_mask is not None and self._attn_implementation == "flash_attention_2" and use_cache:
+        if (
+            not shard_config.enable_flash_attention
+            and attention_mask is not None
+            and self._attn_implementation == "flash_attention_2"
+            and use_cache
+        ):
             is_padding_right = attention_mask[:, -1].sum().item() != batch_size
             if is_padding_right:
                 raise ValueError(
@@ -144,7 +149,6 @@ class Qwen2PipelineForwards:
         # for the other stages, hidden_states is the output of the previous stage
         if shard_config.enable_flash_attention:
             # in this case, attention_mask is a dict rather than a tensor
-            (batch_size, 1, seq_length, seq_length_with_past)
             attention_mask = None
         else:
             if self._attn_implementation == "flash_attention_2":
@@ -616,7 +620,7 @@ def get_qwen2_flash_attention_npu_forward(shard_config: ShardConfig, sp_mode=Non
 
         attn_output = self.o_proj(attn_output)
 
-        return attn_output, None, past_key_value
+        return attn_output, None
 
     return forward
 
@@ -805,15 +809,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
         hidden_states = inputs_embeds
 
         if shard_config.enable_flash_attention:
-            # in this case, attention_mask is a dict rather than a tensor
-            mask_shape = (batch_size, 1, seq_length, seq_length_with_past)
-            attention_mask = ColoAttention.prepare_attn_kwargs(
-                mask_shape,
-                hidden_states.dtype,
-                hidden_states.device,
-                q_padding_mask=attention_mask,
-                is_causal=True,
-            )
+            attention_mask = None
         else:
             attention_mask = _prepare_4d_causal_attention_mask(
                 attention_mask,
