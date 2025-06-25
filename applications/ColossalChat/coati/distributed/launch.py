@@ -16,7 +16,7 @@ def get_jsonl_size_fast(path: str) -> int:
     with open(path) as f:
         lines = f.readlines()
         lines = [line for line in lines if line.strip()]
-        return len(lines) - 1
+        return len(lines)
 
 
 def get_dp_size_fast(n_procs: int, plugin_config: Dict[str, Any]) -> int:
@@ -36,7 +36,6 @@ def launch_distributed(
     train_batch_size: int,
     train_minibatch_size: int,
     train_dataset_config: Dict[str, Any],
-    dataloaders_config: Dict[str, Any],
     inference_model_config: Dict[str, Any],
     generate_config: Dict[str, Any],
     train_model_config: Dict[str, Any],
@@ -121,7 +120,6 @@ def launch_distributed(
             num_episodes=num_episodes,
             batch_size=inference_batch_size,
             train_dataset_config=train_dataset_config,
-            dataloaders_config=dataloaders_config,
             model_config=inference_model_config,
             generate_config=generate_config,
             tokenizer_config=tokenizer_config,

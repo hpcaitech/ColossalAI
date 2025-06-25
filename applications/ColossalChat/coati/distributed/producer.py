@@ -8,8 +8,8 @@ import ray.util.collective as cc
 import torch
 import tqdm
 import wandb
-from coati.dataset.loader import RawConversationDataset
-from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
+from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
+from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from ray.util.collective import allreduce
 from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
@@ -34,7 +34,6 @@ class BaseProducer:
         num_episodes: int,
         batch_size: int,
         train_dataset_config: Dict[str, Any],
-        dataloaders_config: Dict[str, Any],
         model_config: Dict[str, Any],
         generate_config: Dict[str, Any],
         tokenizer_config: Optional[Dict[str, Any]] = None,
@@ -73,6 +72,13 @@ class BaseProducer:
         self.eval_mode = False
         self.log_rollout_interval = log_rollout_interval
         self.latest_rollout_log_step = -1
+        self.grpo_config = grpo_config
+        reward_model_kwargs = {
+            k: v
+            for k, v in grpo_config.items()
+            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length"]
+        }
+        self.response_format_tags = grpo_config.get("response_format_tags", None)
         if producer_idx == 0:
             if os.path.exists(rollout_log_file):
                 raise ValueError(
@@ -118,7 +124,16 @@ class BaseProducer:
             ),
             num_workers=4,
             drop_last=True,
+            collate_fn=collate_fn_grpo,
         )
+        if grpo_config["reward_fn_type"] == "think_answer_tags":
+            self.evaluation_function = math_reward_fn
+        elif grpo_config["reward_fn_type"] == "boxed":
+            self.evaluation_function = boxed_math_reward_fn
+        elif grpo_config["reward_fn_type"] == "code":
+            self.evaluation_function = code_reward_fn
+        else:
+            raise ValueError(f"Unknown evaluation function type {grpo_config['reward_fn_type']}")
 
         self.eval_dataset_config = eval_dataset_config
         if self.eval_dataset_config is not None:
@@ -140,6 +155,7 @@ class BaseProducer:
                         drop_last=False,
                         seed=42,
                     ),
+                    collate_fn=collate_fn_grpo,
                 )
             if evaluation_function_type == "think_answer_tags":
                 self.evaluation_function = math_reward_fn
@@ -212,7 +228,13 @@ class BaseProducer:
                                 eval_results = eval_results + [
                                     self.evaluation_function(
                                         eval_outputs["input_ids"][m][n],
-                                        eval_outputs["gt_answer"][m][n],
+                                        eval_outputs[
+                                            (
+                                                "test_cases"
+                                                if self.grpo_config["reward_fn_type"] == "code"
+                                                else "gt_answer"
+                                            )
+                                        ][m],
                                         eval_outputs["response_idx"][m][n],
                                         tokenizer=self.tokenizer,
                                         eval_mode=True,
@@ -311,7 +333,6 @@ class SimpleProducer(BaseProducer):
         num_episodes,
         batch_size,
         train_dataset_config,
-        dataloaders_config,
         model_config,
         generate_config,
         tokenizer_config=None,
@@ -338,7 +359,6 @@ class SimpleProducer(BaseProducer):
             num_episodes,
             batch_size,
             train_dataset_config,
-            dataloaders_config,
             model_config,
             generate_config,
             tokenizer_config,

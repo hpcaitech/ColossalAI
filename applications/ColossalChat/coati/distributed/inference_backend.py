@@ -74,9 +74,8 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         micro_batch_size = input_ids.size(0)
         input_ids = input_ids.to(get_current_device())
         attention_mask = attention_mask.to(get_current_device())
-        gt_answer = None
-        if "gt_answer" in kwargs:
-            gt_answer = kwargs.pop("gt_answer")
+        gt_answer = kwargs.pop("gt_answer", None)
+        test_cases = kwargs.pop("test_cases", None)
         if self.num_generations > 1:
             input_ids = input_ids.repeat_interleave(self.num_generations, dim=0)
             attention_mask = attention_mask.repeat_interleave(self.num_generations, dim=0)
@@ -116,8 +115,9 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         data = {k: v.view(micro_batch_size, self.num_generations, v.size(-1)) for k, v in data.items()}
 
         if gt_answer is not None:
-            # repeat gt_answer for each prompt.
-            data["gt_answer"] = gt_answer.repeat_interleave(self.num_generations, dim=1)
+            data["gt_answer"] = gt_answer
+        if test_cases is not None:
+            data["test_cases"] = test_cases
         data = {k: v.to(get_current_device()) for k, v in data.items()}
         return data
 
@@ -270,11 +270,11 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         }
 
         data = {k: v.view(micro_batch_size, -1, v.size(-1)) for k, v in data.items()}
-
-        if "gt_answer" in kwargs:
-            # repeat gt_answer for each prompt.
-            data["gt_answer"] = kwargs["gt_answer"].repeat_interleave(data["input_ids"].size(1), dim=1)
         data = {k: v.to(get_current_device()) for k, v in data.items()}
+        if "gt_answer" in kwargs:
+            data["gt_answer"] = kwargs["gt_answer"]
+        if "test_cases" in kwargs:
+            data["test_cases"] = kwargs["test_cases"]
         return data
 
     def load_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> None:

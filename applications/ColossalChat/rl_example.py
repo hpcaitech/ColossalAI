@@ -6,6 +6,12 @@ import ray
 import torch
 from coati.distributed.launch import launch_distributed
 
+DEFAUT_SYSTEM_PROMPT = {
+    "think_answer_tags": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n",
+    "boxed": "Please reason step by step, and put your final answer within \\boxed{}.",
+    "code": "You are a helpful assistant.",
+}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
@@ -101,7 +107,7 @@ if __name__ == "__main__":
         "--reward-type",
         type=str,
         default="think_answer_tags",
-        choices=["think_answer_tags", "boxed"],
+        choices=["think_answer_tags", "boxed", "code"],
         help="Reward type for GRPO.",
     )
     parser.add_argument(
@@ -167,16 +173,37 @@ if __name__ == "__main__":
 
     if args.master_address is None:
         # Default settings: Using single machine
-        ray.init(address="local", namespace="ray-example")
+        ray.init(
+            address="local",
+            namespace="ray-example",
+            runtime_env={
+                "env_vars": {
+                    # "RAY_DEBUG_POST_MORTEM": "1"  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false"
+                },
+            },
+        )
     else:
         # For ray distributed multi-machine training, Please change _node_ip_address to your IP address of your master node
-        ray.init(_node_ip_address=args.master_address, namespace="ray-example", _temp_dir=args.ray_dir)
+        ray.init(
+            _node_ip_address=args.master_address,
+            namespace="ray-example",
+            _temp_dir=args.ray_dir,
+            runtime_env={
+                "env_vars": {
+                    # "RAY_DEBUG_POST_MORTEM": "1"  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false"
+                },
+            },
+        )
 
     if args.top_k is None:
         if args.backend == "transformers":
             args.top_k = 50
         elif args.backend == "vllm":
             args.top_k = -1
+
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(
@@ -276,6 +303,10 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
 
+    if args.system_prompt is None:
+        # Default system prompt
+        args.system_prompt = DEFAUT_SYSTEM_PROMPT[args.reward_type]
+
     launch_distributed(
         num_producers=args.num_inferencer,
         num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size),
@@ -290,7 +321,6 @@ if __name__ == "__main__":
             "max_length": args.max_prompt_tokens,
             "system_prompt": args.system_prompt,
         },
-        dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
         num_generations=args.num_generations,

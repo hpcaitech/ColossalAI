@@ -86,6 +86,50 @@ Then write IP node map to /etc/hosts
 
 Set Ascend Multi-Node Config
 
+
+This repository implements a distributed Reinforcement Learning (RL) training framework designed to fine-tune large language models using algorithms such as **GRPO** and **DAPO**. It supports multi-node and multi-GPU setups, scalable rollout generation, and policy optimization using libraries like VLLM. Currently, we support two Reinforcement Learning with Verifiable Reward (RLVR) tasks: solving math problems and code generation.
+
+**Please note that we are still under intensive development, stay tuned.**
+
+---
+
+## 🚀 Features
+
+* **Distributed Training with Ray**: Scalable to multiple machines and GPUs.
+* **Support for GRPO and DAPO**: Choose your preferred policy optimization algorithm.
+* **Model Backends**: Support `vllm` as inference backends.
+* **Rollout and Policy Decoupling**: Efficient generation and consumption of data through parallel inferencer-trainer architecture.
+* **Evaluation Integration**: Easily plug in task-specific eval datasets.
+* **Checkpoints and Logging**: Configurable intervals and directories.
+
+---
+
+## 🛠 Installation
+
+### Prepare Develop Environment
+
+Install Colossalai & ColossalChat
+```bash
+git clone https://github.com/hpcaitech/ColossalAI.git
+git checkout grpo-latest
+BUILD_EXT=1 pip install -e .
+
+cd ./applications/ColossalChat
+pip install -e .
+```
+
+Install vllm
+```bash
+pip install vllm==0.7.3
+```
+
+Install Ray.
+```bash
+pip install ray
+```
+
+Install Other Dependencies
+
 ```bash
 export ATB_LLM_HCCL_ENABLE=1
 export ATB_LLM_COMM_BACKEND="hccl"
@@ -242,6 +286,7 @@ In addition to the two default training settings we provided--- original `GRPO` 
     train_tensor_parallelism_size)
   ```
 
+
 ---
 
 ## 🧪 Example: single machine 8-GPU Zero2 Strategy
@@ -255,6 +300,54 @@ python rl_example.py \
   -ibs 2 -tbs 4 -tMbs 1 -tmbs 4 -imbs 1 \
   -rt boxed \
   -g 4 \
+  -ibs 1 \
+  -tbs 2 \
+  -tMbs 1 \
+  -tmbs 2 \
+  -imbs 1 \
+  -s "Please reason step by step, and put your final answer within \\boxed{}." \
+  -tMbs 8 \
+  -p GRPO-Train-Align-Debug \
+```
+
+## 🧪 Example: multi-machine TP+PP Strategy
+
+### Create ray cluster on multi-machine
+For example, now we have 4 nodes and their IPs are 10.0.0.3, 10.0.0.4, 10.0.0.5, 10.0.0.6.
+We use 10.0.0.3 as master node. First we start a ray cluster on 10.0.0.3:
+```bash
+ray start --head --node-ip-address=10.0.0.3
+```
+
+Then, for each slave node (10.0.0.4/10.0.0.5/10.0.0.6), we add to the ray cluser by following code:
+```bash
+ray start --address='10.0.0.3:6379'
+```
+
+Modify plugin_config in ./applications/ColossalChat/rl_example.py
+```python
+plugin_config={
+  "tp_size": 4,
+  "pp_size": 2,
+  "microbatch_size": max(
+    1, args.train_microbatch_size // 2
+  ),  # microbatch size should be set to train_microbatch_size // pp_size
+  "zero_stage": 1,
+  "max_norm": 1.0,
+  },  # for pp, tp
+```
+
+```bash
+# Hint1: replace /models/Qwen/Qwen2.5-7B to your model path
+#        replace /datasets/train-alignment.jsonl to your dataset path
+python rl_example.py
+  -m /path/to/Qwen2.5-Math-7B/ \
+  -d /path/to/train_data.jsonl \
+  --master_address '10.0.0.3'
+  -t 16 \
+  -i 16 \
+  -p GRPO-Train-Align-Debug \
+  -g 2 \
   -ibs 1 \
   -tbs 2 \
   -tMbs 1 \
