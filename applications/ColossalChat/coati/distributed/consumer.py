@@ -134,8 +134,12 @@ class BaseConsumer:
     def calculate_effective_group_to_raw_group_mapping(self, step):
         effective_group_to_raw_group_mapping = {}
         for buffer_idx in range(len(self.buffer)):
-            if self.buffer[buffer_idx][0] is not None and (self.buffer[buffer_idx][-1] <= step - self.n_behind):
-                effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = buffer_idx
+            if self.buffer[buffer_idx][0] is not None:
+                if self.n_behind == 0:
+                    effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = buffer_idx
+                else:
+                    if self.buffer[buffer_idx][-1] <= step - self.n_behind:
+                        effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = buffer_idx
         return effective_group_to_raw_group_mapping
 
     def loop(self) -> None:
