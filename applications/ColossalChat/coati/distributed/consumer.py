@@ -6,6 +6,7 @@ import ray
 import ray.util.collective as cc
 import torch
 import torch.distributed as dist
+from coati.distributed.profiling_utils import CustomProfiler
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
@@ -36,6 +37,8 @@ class BaseConsumer:
         minibatch_size: int = 1,
         save_interval: int = 100,
         save_dir: str = "./model",
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         self.num_producers = num_producers
         self.num_episodes = num_episodes
@@ -49,6 +52,7 @@ class BaseConsumer:
         self.minibatch_size = minibatch_size
         self.save_interval = save_interval
         self.save_dir = save_dir
+        self.enable_profiling = enable_profiling
         assert batch_size % minibatch_size == 0, "batch_size should be divisible by microbatch_size"
         self.num_microbatches = batch_size // minibatch_size
 
@@ -58,6 +62,7 @@ class BaseConsumer:
         self.device = "npu"
         self.lr_scheduler = None
         self.generate_config = generate_config
+        self.n_behind = n_behind
 
     def setup(self) -> None:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
@@ -99,12 +104,44 @@ class BaseConsumer:
 
         self.buffer = []
         self.recv_cnt = 0
+        self.profiler = CustomProfiler(f"C{self.rank}", disabled=not self.enable_profiling)
 
     def state_dict(self) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
     def step(self, step_idx: int, **kwargs) -> Optional[float]:
         raise NotImplementedError
+
+    def prepare_mini_batch(self, effective_group_to_raw_group_mapping: Dict[int, int]) -> Dict[str, torch.Tensor]:
+        """
+        Prepare a mini-batch from the effective group to raw group mapping.
+        This method is used to create a mini-batch for training.
+        """
+        batches = [
+            self.buffer[effective_group_to_raw_group_mapping[i]]
+            for i in range(self.dp_rank * self.minibatch_size, (self.dp_rank + 1) * self.minibatch_size)
+        ]
+        # every dp_rank will receive a complete mini-batch, no need to sync within step() later
+        # each mini-batch use the first self.dp_size * minibatch_size effective samples
+        raw_mini_batches = self.buffer[
+            : effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1
+        ]  # include the last effective sample
+        raw_mini_batches_metric_dict = {
+            "raw_train_mini_batch_reward": [t[1] for t in raw_mini_batches],
+            "raw_train_mini_batch_format_acc": [t[2] for t in raw_mini_batches],
+            "raw_train_mini_batch_ans_acc": [t[3] for t in raw_mini_batches],
+            "raw_train_mini_batch_response_len": [t[4] for t in raw_mini_batches],
+        }
+        batch = bind_batch([t[0] for t in batches])
+        batch = post_recv(batch)
+        return batch, raw_mini_batches_metric_dict
+
+    def calculate_effective_group_to_raw_group_mapping(self, step):
+        effective_group_to_raw_group_mapping = {}
+        for buffer_idx in range(len(self.buffer)):
+            if self.buffer[buffer_idx][0] is not None and (self.buffer[buffer_idx][-1] <= step - self.n_behind):
+                effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = buffer_idx
+        return effective_group_to_raw_group_mapping
 
     def loop(self) -> None:
         print(
@@ -117,32 +154,65 @@ class BaseConsumer:
                 disable=self.rank != 0,
             ) as pbar:
                 for step in pbar:
+                    torch.npu.reset_peak_memory_stats()
                     i = 0
+                    self.profiler.enter(f"rollout_episode_{episode}_step_{step}")
                     for _ in range(self.num_recv_per_update):
+                        if self.n_behind > 0:
+                            # after sync model, do not wait for more data to arrive as rollout takes time, use buffered data
+                            effective_group_to_raw_group_mapping = self.calculate_effective_group_to_raw_group_mapping(
+                                step=step
+                            )
+                            while len(effective_group_to_raw_group_mapping) >= self.dp_size * self.minibatch_size:
+                                self.profiler.log(
+                                    f"Still have {len(effective_group_to_raw_group_mapping)} effective groups, greater than {self.dp_size * self.minibatch_size}, start training"
+                                )
+                                batch, raw_mini_batches_metric_dict = self.prepare_mini_batch(
+                                    effective_group_to_raw_group_mapping
+                                )
+                                self.profiler.enter("step")
+                                loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                                self.profiler.exit("step")
+                                self.buffer = self.buffer[
+                                    effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
+                                ]
+                                # recalculate the effective group to raw group mapping
+                                effective_group_to_raw_group_mapping_size_before = len(
+                                    effective_group_to_raw_group_mapping
+                                )
+                                effective_group_to_raw_group_mapping = (
+                                    self.calculate_effective_group_to_raw_group_mapping(step=step)
+                                )
+                                assert (
+                                    len(effective_group_to_raw_group_mapping)
+                                    == effective_group_to_raw_group_mapping_size_before
+                                    - self.dp_size * self.minibatch_size
+                                )
+                                if loss is not None:
+                                    pbar.set_postfix({"loss": loss})
+                                i += 1
                         # receive data from producers
                         for r in range(self.num_producers):
                             print(f"[T{dist.get_rank()}] Recv data episode {episode} step {step} from {r}")
+
+                            self.profiler.enter(f"recv_broadcast_data_P{r}")
                             raw_batch = ray_broadcast_tensor_dict(
                                 None, src=0, device=self.device, group_name=f"sync_data_{r}"
                             )
+                            self.profiler.exit(f"recv_broadcast_data_P{r}")
                             # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
                             # we need to calculate the metrics before filtering here for logging
                             # [batch_size, num_generations, ...] -> [batch_size * num_generations, ...]
-                            raw_batch_with_reward = self.calculate_reward(
-                                {k: v.view(-1, v.size(-1)) if k != "temperature" else v for k, v in raw_batch.items()}
-                            )
-                            raw_batch_with_reward = {
+                            raw_batch = {
                                 k: v.view(-1, self.num_generations, v.size(-1)) if k != "temperature" else v
-                                for k, v in raw_batch_with_reward.items()
+                                for k, v in raw_batch.items()
                             }
                             # [batch_size, num_generations] -> [batch_size]
-                            reward = raw_batch_with_reward["reward"][:, :, 0]
-                            format_acc = raw_batch_with_reward["format_acc"][:, :, 0]
-                            ans_acc = raw_batch_with_reward["ans_acc"][:, :, 0]
+                            reward = raw_batch["reward"][:, :, 0]
+                            format_acc = raw_batch["format_acc"][:, :, 0]
+                            ans_acc = raw_batch["ans_acc"][:, :, 0]
                             response_len = (
-                                raw_batch_with_reward["response_idx"][:, :, 1]
-                                - raw_batch_with_reward["response_idx"][:, :, 0]
-                                + 1
+                                raw_batch["response_idx"][:, :, 1] - raw_batch["response_idx"][:, :, 0] + 1
                             ).type(torch.float32)
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
@@ -151,8 +221,9 @@ class BaseConsumer:
                                 effective_group_mask = torch.logical_and(
                                     group_ans_acc_mean > self.filter_range[0], group_ans_acc_mean < self.filter_range[1]
                                 )
-                            raw_batch_with_reward = unbind_batch(raw_batch_with_reward)  # List[Dict[str, torch.Tensor]]
-                            for group_idx, group_with_reward in enumerate(raw_batch_with_reward):
+
+                            raw_batch = unbind_batch(raw_batch)  # List[Dict[str, torch.Tensor]]
+                            for group_idx, group_with_reward in enumerate(raw_batch):
                                 self.buffer.append(
                                     [
                                         (
@@ -164,56 +235,43 @@ class BaseConsumer:
                                         format_acc[group_idx],
                                         ans_acc[group_idx],
                                         response_len[group_idx],
+                                        step,
                                     ]
                                 )
                             if effective_group_mask is not None:
                                 print(
-                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch_with_reward)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
+                                    f"[T{dist.get_rank()}] Filter recv data: {len(raw_batch)} -> {torch.sum(effective_group_mask).cpu().item()} effective groups"
                                 )
                         # mapping the effective group to the raw group for indexing
-                        effective_group_to_raw_group_mapping = {}
-                        for buffer_idx in range(len(self.buffer)):
-                            if self.buffer[buffer_idx][0] is not None:
-                                effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = (
-                                    buffer_idx
-                                )
+                        effective_group_to_raw_group_mapping = self.calculate_effective_group_to_raw_group_mapping(
+                            step=step
+                        )
                         print(
                             f"[T{dist.get_rank()}] Collect Effective Prompt: {len(effective_group_to_raw_group_mapping)}/{self.dp_size * self.minibatch_size}"
                         )
-
+                    if self.n_behind == 0:
+                        # If n_behind is 0, we start training after receiving data from producers.
+                        effective_group_to_raw_group_mapping = self.calculate_effective_group_to_raw_group_mapping(
+                            step=step
+                        )
                         while len(effective_group_to_raw_group_mapping) >= self.dp_size * self.minibatch_size:
-                            # on each dp_rank, we use minibatch_size effective samples to form a batch
-                            batches = [
-                                self.buffer[effective_group_to_raw_group_mapping[i]]
-                                for i in range(
-                                    self.dp_rank * self.minibatch_size, (self.dp_rank + 1) * self.minibatch_size
-                                )
-                            ]
-                            # every dp_rank will receive a complete mini-batch, no need to sync within step() later
-                            # each mini-batch use the first self.dp_size * minibatch_size effective samples
-                            raw_mini_batches = self.buffer[
-                                : effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1
-                            ]  # include the last effective sample
-                            raw_mini_batches_metric_dict = {
-                                "raw_train_mini_batch_reward": [t[1] for t in raw_mini_batches],
-                                "raw_train_mini_batch_format_acc": [t[2] for t in raw_mini_batches],
-                                "raw_train_mini_batch_ans_acc": [t[3] for t in raw_mini_batches],
-                                "raw_train_mini_batch_response_len": [t[4] for t in raw_mini_batches],
-                            }
-                            batch = bind_batch([t[0] for t in batches])
-                            batch = post_recv(batch)
+                            self.profiler.log(
+                                f"Still have {len(effective_group_to_raw_group_mapping)} effective groups, greater than {self.dp_size * self.minibatch_size}, start training"
+                            )
+                            batch, raw_mini_batches_metric_dict = self.prepare_mini_batch(
+                                effective_group_to_raw_group_mapping
+                            )
+                            self.profiler.enter("step")
                             loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                            self.profiler.exit("step")
                             self.buffer = self.buffer[
                                 effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
                             ]
                             # recalculate the effective group to raw group mapping
                             effective_group_to_raw_group_mapping_size_before = len(effective_group_to_raw_group_mapping)
-                            effective_group_to_raw_group_mapping = {}
-                            for buffer_idx in range(len(self.buffer)):
-                                if self.buffer[buffer_idx][0] is not None:
-                                    effective_group_to_raw_group_mapping[len(effective_group_to_raw_group_mapping)] = (
-                                        buffer_idx
-                                    )
+                            effective_group_to_raw_group_mapping = self.calculate_effective_group_to_raw_group_mapping(
+                                step=step
+                            )
                             assert (
                                 len(effective_group_to_raw_group_mapping)
                                 == effective_group_to_raw_group_mapping_size_before - self.dp_size * self.minibatch_size
@@ -231,14 +289,17 @@ class BaseConsumer:
                         if self.rank == 0:
                             print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
 
-                    if episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1:
+                    if (episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1) and (
+                        episode != 0 or step >= self.n_behind
+                    ):
                         if self.pp_size > 1:
                             print(
                                 f"[T{dist.get_rank()}] Sync model PP stage {self.pp_rank} episode {episode} step {step}"
                             )
                         else:
                             print(f"[T{dist.get_rank()}] Sync model episode {episode} step {step}")
-                        torch.cuda.empty_cache()
+                        self.profiler.enter("sync_model")
+                        torch.npu.empty_cache()
                         state_dict = self.state_dict()
                         if self.pp_size > 1:
                             if self.tp_rank == 0 and self.dp_rank == 0:
@@ -254,7 +315,14 @@ class BaseConsumer:
                                     state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                                 )
                         del state_dict
-                        torch.cuda.empty_cache()
+                        torch.npu.empty_cache()
+                        self.profiler.exit("sync_model")
+                    self.profiler.log(f"Peak memory usage: {torch.npu.max_memory_allocated() / 1024 ** 2:.2f} MB")
+                    self.profiler.exit(f"rollout_episode_{episode}_step_{step}")
+
+    def __del__(self):
+        if hasattr(self, "profiler"):
+            self.profiler.close()
 
 
 @ray.remote

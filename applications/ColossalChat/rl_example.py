@@ -6,6 +6,12 @@ import ray
 import torch
 from coati.distributed.launch import launch_distributed
 
+DEFAUT_SYSTEM_PROMPT = {
+    "think_answer_tags": "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n",
+    "boxed": "Please reason step by step, and put your final answer within \\boxed{}.",
+    "code": "You are a helpful assistant.",
+}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
@@ -62,66 +68,6 @@ if __name__ == "__main__":
         help="Effective batch size per dp group for forwarding and backwarding. Please select based on the availiable memory.",
     )
     parser.add_argument(
-        "--ray_dir", type=str, default=None, help="Custom temperary directory for storing ray cluster data, Optional"
-    )
-    parser.add_argument(
-        "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
-    )
-    parser.add_argument(
-        "--master_port", type=int, default=29506, help="Master port for multi-node distributed training, Optional"
-    )
-
-    # Sampling parameters
-    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
-    parser.add_argument("-temp", "--temperature", type=float, default=1.0, help="Temperature for sampling.")
-    parser.add_argument(
-        "-topk",
-        "--top-k",
-        type=int,
-        default=None,
-        help="Top k for sampling. Please check the generation arguments documentation for your backend.",
-    )
-    parser.add_argument(
-        "-topp",
-        "--top-p",
-        type=float,
-        default=1.0,
-        help="Top p for sampling. Please check the generation arguments documentation for your backend.",
-    )
-    parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
-    parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 4 - 512, help="Max length for generation.")
-    parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
-
-    # GRPO parameters
-    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
-    parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
-    parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
-    parser.add_argument(
-        "-rt",
-        "--reward-type",
-        type=str,
-        default="think_answer_tags",
-        choices=["think_answer_tags", "boxed"],
-        help="Reward type for GRPO.",
-    )
-    parser.add_argument(
-        "-ei",
-        "--eval-interval",
-        type=int,
-        default=100,
-        help="Interval for evaluation. Evaluate every ei training steps.",
-    )
-
-    # Logging/Checkpointing parameters
-    parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
-    parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
-    parser.add_argument(
-        "-esd", "--eval-save-dir", type=str, default="./eval", help="Directory for saving evaluation results."
-    )
-    parser.add_argument(
-        "-rsd", "--rollout-save-dir", type=str, default="./rollouts", help="Directory for saving rollout loggings."
-    )
-    parser.add_argument(
         "-tp",
         "--tensor-parallel-size",
         type=int,
@@ -143,11 +89,82 @@ if __name__ == "__main__":
         help="Zero stage for the trainer (consumer). Please check the generation arguments documentation for your backend.",
     )
     parser.add_argument(
+        "--ray_dir", type=str, default=None, help="Custom temperary directory for storing ray cluster data, Optional"
+    )
+    parser.add_argument(
+        "--master_address", type=str, default=None, help="Master address for multi-node distributed training, Optional"
+    )
+    parser.add_argument(
+        "--master_port", type=int, default=29506, help="Master port for multi-node distributed training, Optional"
+    )
+
+    # Sampling parameters
+    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
+    parser.add_argument("-gmu", "--gpu-memory-utilization", type=float, default=0.7, help="Vllm gpu memory utilization")
+    parser.add_argument("-temp", "--temperature", type=float, default=1.0, help="Temperature for sampling.")
+    parser.add_argument(
+        "-topk",
+        "--top-k",
+        type=int,
+        default=None,
+        help="Top k for sampling. Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-topp",
+        "--top-p",
+        type=float,
+        default=1.0,
+        help="Top p for sampling. Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
+    parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 4 - 512, help="Max length for generation.")
+    parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
+    parser.add_argument(
         "-ptp",
         "--producer-tensor-parallel-size",
         type=int,
         default=1,
         help="Tensor parallel size for the producer. Please check the generation arguments documentation for your backend.",
+    )
+
+    # GRPO parameters
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
+    parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
+    parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
+    parser.add_argument(
+        "-rt",
+        "--reward-type",
+        type=str,
+        default="think_answer_tags",
+        choices=["think_answer_tags", "boxed", "code"],
+        help="Reward type for GRPO.",
+    )
+    parser.add_argument(
+        "-ei",
+        "--eval-interval",
+        type=int,
+        default=100,
+        help="Interval for evaluation. Evaluate every ei training steps.",
+    )
+    parser.add_argument(
+        "-nb",
+        "--n-behind",
+        type=int,
+        default=0,
+        help="Number of producer batches to rollout to fill the data buffer before trainer starts to decrease bubble time",
+    )
+
+    # Logging/Checkpointing parameters
+    parser.add_argument("-si", "--save-interval", type=int, default=100, help="Interval for saving checkpoints.")
+    parser.add_argument("-sd", "--save-dir", type=str, default="./model", help="Directory for saving checkpoints.")
+    parser.add_argument(
+        "-esd", "--eval-save-dir", type=str, default="./eval", help="Directory for saving evaluation results."
+    )
+    parser.add_argument(
+        "-rsd", "--rollout-save-dir", type=str, default="./rollouts", help="Directory for saving rollout loggings."
+    )
+    parser.add_argument(
+        "--enable_profiling", action="store_true", default=False, help="Enable profiling for the training process."
     )
     args = parser.parse_args()
 
@@ -167,16 +184,37 @@ if __name__ == "__main__":
 
     if args.master_address is None:
         # Default settings: Using single machine
-        ray.init(address="local", namespace="ray-example")
+        ray.init(
+            address="local",
+            namespace="ray-example",
+            runtime_env={
+                "env_vars": {
+                    # "RAY_DEBUG_POST_MORTEM": "1"  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false"
+                },
+            },
+        )
     else:
         # For ray distributed multi-machine training, Please change _node_ip_address to your IP address of your master node
-        ray.init(_node_ip_address=args.master_address, namespace="ray-example", _temp_dir=args.ray_dir)
+        ray.init(
+            _node_ip_address=args.master_address,
+            namespace="ray-example",
+            _temp_dir=args.ray_dir,
+            runtime_env={
+                "env_vars": {
+                    # "RAY_DEBUG_POST_MORTEM": "1"  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false"
+                },
+            },
+        )
 
     if args.top_k is None:
         if args.backend == "transformers":
             args.top_k = 50
         elif args.backend == "vllm":
             args.top_k = -1
+
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(
@@ -204,7 +242,7 @@ if __name__ == "__main__":
     elif args.backend == "vllm":
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.7,
+                gpu_memory_utilization=args.gpu_memory_utilization,
                 enforce_eager=True,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
@@ -213,10 +251,10 @@ if __name__ == "__main__":
         )
         generate_config.update(
             dict(
-                max_tokens=args.max_new_tokens + args.max_prompt_tokens,  # max new tokens
-                ignore_eos=True if args.reward_type == "think_answer_tags" else False,
+                max_tokens=args.max_new_tokens,  # max new tokens
                 include_stop_str_in_output=True,
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
+                ignore_eos=True if args.reward_type == "think_answer_tags" else False,
             )
         )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
@@ -276,6 +314,10 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
 
+    if args.system_prompt is None:
+        # Default system prompt
+        args.system_prompt = DEFAUT_SYSTEM_PROMPT[args.reward_type]
+
     launch_distributed(
         num_producers=args.num_inferencer,
         num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size),
@@ -290,7 +332,6 @@ if __name__ == "__main__":
             "max_length": args.max_prompt_tokens,
             "system_prompt": args.system_prompt,
         },
-        dataloaders_config={},
         inference_model_config=inference_model_config,
         generate_config=generate_config,
         num_generations=args.num_generations,
@@ -329,4 +370,6 @@ if __name__ == "__main__":
         eval_generation_config=eval_generation_config,
         log_rollout_interval=20,
         rollout_save_dir=args.rollout_save_dir,
+        enable_profiling=args.enable_profiling,
+        n_behind=args.n_behind,
     )
