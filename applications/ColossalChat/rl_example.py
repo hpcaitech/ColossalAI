@@ -263,7 +263,6 @@ if __name__ == "__main__":
         grpo_config = {
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
-            "num_minibatch_during_rollout": 1,  # number of mini batches to pop out from buffer and used for training during rollout of the producer after it syncs the model. Hint, set to a proper value close to the number of mini batches for training that takes roughly the same time as the rollout of the producer. A value that is too large or too small will cause bubble time on the trainer or the producer.
             "beta": args.kl_coeff,  # KL penalty coefficient
             "loss_variation": "sample_level",
             "reward_fn_type": args.reward_type,

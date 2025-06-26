@@ -337,9 +337,8 @@ class BaseProducer:
                     ):
                         self.model.llm.sleep()  # revict KV_cache to avoid OOM
                     # don't sync model for last iteration
-                    self.profiler.enter("sync_model")
                     torch.cuda.empty_cache()
-
+                    self.profiler.enter("sync_model")
                     if self.consumer_pp_size > 1:
                         for pp_idx in range(self.consumer_pp_size):
                             print(
@@ -361,9 +360,9 @@ class BaseProducer:
                         if "consumer_global_step" in state_dict:
                             self.consumer_global_step = state_dict.pop("consumer_global_step").item()
                         self.load_state_dict(state_dict)
+                    self.profiler.exit("sync_model")
                     del state_dict
                     torch.cuda.empty_cache()
-                    self.profiler.exit("sync_model")
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
                         "enable_sleep_mode", False
                     ):
