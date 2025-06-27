@@ -319,6 +319,7 @@ if __name__ == "__main__":
                 else None
             ),
         }
+        assert args.n_behind == 0, "DAPO does not support N behined."
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
 
