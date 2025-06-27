@@ -248,7 +248,7 @@ if __name__ == "__main__":
         )
         if args.enable_profiling:
             # If profiling is enabled, we force model to generate to max_new_tokens
-            inference_model_config.update(
+            generate_config.update(
                 dict(
                     max_tokens=args.max_new_tokens,  # max new tokens
                     ignore_eos=True,
