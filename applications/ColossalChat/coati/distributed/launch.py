@@ -57,6 +57,8 @@ def launch_distributed(
     eval_generation_config: Optional[Dict[str, Any]] = None,
     log_rollout_interval: int = 20,
     rollout_save_dir: str = "./rollout",
+    enable_profiling: bool = False,
+    n_behind: int = 0,
 ):
     if core_algo not in ALGO_MAP:
         raise NotImplementedError(f"{core_algo} is not supported yet.")
@@ -132,6 +134,8 @@ def launch_distributed(
             wandb_group_name=wandb_group_name,
             log_rollout_interval=log_rollout_interval,
             rollout_log_file=rollout_log_file,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         producer_procs.append(producer)
     ray.get([p.setup.remote() for p in producer_procs])
@@ -171,6 +175,8 @@ def launch_distributed(
             project_name=project_name,
             run_name=run_name,
             wandb_group_name=wandb_group_name,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         consumer_procs.append(consumer)
     ray.get([p.setup.remote() for p in consumer_procs])

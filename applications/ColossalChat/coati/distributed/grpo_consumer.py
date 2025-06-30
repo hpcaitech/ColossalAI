@@ -38,6 +38,8 @@ class GRPOConsumer(BaseConsumer):
         project_name: str = None,
         run_name: str = None,
         wandb_group_name: str = None,
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         print(f"Using GRPO config: {grpo_config}")
         if (
@@ -63,6 +65,8 @@ class GRPOConsumer(BaseConsumer):
             minibatch_size,
             save_interval=save_interval,
             save_dir=save_dir,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         path = model_config.pop("path")
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
