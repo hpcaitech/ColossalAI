@@ -9,6 +9,7 @@ import torch
 import tqdm
 import wandb
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
+from coati.distributed.profiling_utils import CustomProfiler
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
 from ray.util.collective import allreduce
@@ -52,6 +53,8 @@ class BaseProducer:
         wandb_group_name: str = None,
         log_rollout_interval: int = 20,
         rollout_log_file: str = "./rollout_log.jsonl",
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         self.producer_idx = producer_idx
         self.num_producers = num_producers
@@ -62,6 +65,7 @@ class BaseProducer:
         assert batch_size % microbatch_size == 0
         self.num_microbatches = batch_size // microbatch_size
         self.latest_eval_step = -1
+        self.profiler = CustomProfiler(f"P{self.producer_idx}", disabled=not enable_profiling)
 
         self.train_dataset_config = train_dataset_config
         self.model_config = model_config
@@ -75,6 +79,7 @@ class BaseProducer:
         self.log_rollout_interval = log_rollout_interval
         self.latest_rollout_log_step = -1
         self.grpo_config = grpo_config
+        self.n_behind = n_behind
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
@@ -268,11 +273,14 @@ class BaseProducer:
                             self.wandb_run.log(to_log_msg, step=self.consumer_global_step)
                         self.eval_mode = False
                         self.latest_eval_step = self.consumer_global_step
+                self.profiler.enter("rollout")
                 outputs = self.rollout(**batch)
+                self.profiler.exit("rollout")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
                 ).to(outputs["input_ids"].device)
                 bs, num_gen = outputs["input_ids"].size(0), outputs["input_ids"].size(1)
+                self.profiler.enter("calculate_reward")
                 if self.grpo_config["reward_fn_type"] == "code":
                     test_cases = []
                     for prompt_id in range(bs):
@@ -310,14 +318,19 @@ class BaseProducer:
                     outputs.pop("gt_answer")
                 if "test_cases" in outputs:
                     outputs.pop("test_cases")
+                self.profiler.exit("calculate_reward")
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
                 outputs = pre_send(outputs)
+                self.profiler.enter("send_broadcast_data")
                 ray_broadcast_tensor_dict(
                     outputs, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}"
                 )
-                if (i + 1) % self.num_microbatches == 0 and (
-                    episode != self.num_episodes - 1 or i != num_valid_microbatches - 1
+                self.profiler.exit("send_broadcast_data")
+                if (
+                    (i + 1) % self.num_microbatches == 0
+                    and (episode != self.num_episodes - 1 or i != num_valid_microbatches - 1)
+                    and (episode != 0 or (i + 1) > self.n_behind * self.num_microbatches)
                 ):
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
                         "enable_sleep_mode", False
@@ -325,7 +338,7 @@ class BaseProducer:
                         self.model.llm.sleep()  # revict KV_cache to avoid OOM
                     # don't sync model for last iteration
                     torch.cuda.empty_cache()
-
+                    self.profiler.enter("sync_model")
                     if self.consumer_pp_size > 1:
                         for pp_idx in range(self.consumer_pp_size):
                             print(
@@ -347,6 +360,7 @@ class BaseProducer:
                         if "consumer_global_step" in state_dict:
                             self.consumer_global_step = state_dict.pop("consumer_global_step").item()
                         self.load_state_dict(state_dict)
+                    self.profiler.exit("sync_model")
                     del state_dict
                     torch.cuda.empty_cache()
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
@@ -363,6 +377,9 @@ class BaseProducer:
                         self.model.sample_params.temperature = (1 - ratio) * self.generate_config[
                             "temperature"
                         ] + ratio * 0.9
+
+    def __del__(self):
+        self.profiler.close()
 
 
 @ray.remote
@@ -392,6 +409,8 @@ class SimpleProducer(BaseProducer):
         wandb_group_name: str = None,
         log_rollout_interval: int = 20,
         rollout_log_file: str = "./rollout_log.jsonl",
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         super().__init__(
             producer_idx,
@@ -415,6 +434,8 @@ class SimpleProducer(BaseProducer):
             wandb_group_name=wandb_group_name,
             log_rollout_interval=log_rollout_interval,
             rollout_log_file=rollout_log_file,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
         self.eval_generation_config = copy.deepcopy(self.model.generate_config)
