@@ -4,6 +4,13 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
+from transformers.models.qwen2.modeling_qwen2 import (
+    Qwen2Attention,
+    Qwen2DecoderLayer,
+    Qwen2ForCausalLM,
+    Qwen2ForSequenceClassification,
+    Qwen2Model,
+)
 
 from colossalai.shardformer.layer import (
     FusedRMSNorm,
@@ -21,26 +28,6 @@ from ..modeling.qwen2 import (
     get_qwen2_flash_attention_forward,
     get_qwen2_model_forward_for_flash_attn,
 )
-
-try:
-    from transformers.models.qwen2.modeling_qwen2 import (
-        Qwen2Attention,
-        Qwen2DecoderLayer,
-        Qwen2FlashAttention2,
-        Qwen2ForCausalLM,
-        Qwen2ForSequenceClassification,
-        Qwen2Model,
-        Qwen2SdpaAttention,
-    )
-except ImportError:
-    Qwen2ForCausalLM = "Qwen2ForCausalLM"
-    Qwen2ForSequenceClassification = "Qwen2ForSequenceClassification"
-    Qwen2Attention = "Qwen2Attention"
-    Qwen2FlashAttention2 = "Qwen2FlashAttention2"
-    Qwen2SdpaAttention = "Qwen2SdpaAttention"
-    Qwen2DecoderLayer = "Qwen2DecoderLayer"
-    Qwen2Model = "Qwen2Model"
-
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificationPolicy"]
@@ -295,7 +282,6 @@ class Qwen2Policy(Policy):
         )
 
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
-            print("self.shard_config.enable_flash_attention", self.shard_config.enable_flash_attention)
             self.append_or_create_method_replacement(
                 description={
                     "forward": get_qwen2_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
