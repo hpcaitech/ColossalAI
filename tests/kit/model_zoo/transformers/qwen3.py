@@ -23,12 +23,42 @@ if HAS_QWEN3:
         # -----------------------------------
         # from transformers import AutoTokenizer
         # tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen3-4B')
-        # input = "Hey! Long time no see! How are you doing?"
+        # input = "This is a test sentence. This is a test sentence. This is a test sentence. This is a test sentence."
         # tokenized_input = tokenizer(input, return_tensors='pt').to('cuda')
         # -----------------------------------
 
         # NOTE: due to sp convention, need to be a multiple of 4
-        input_ids = torch.tensor([[18665, 0, 5724, 882, 902, 1490, 0, 2585, 525, 498, 3730, 30]], dtype=torch.long)
+        input_ids = torch.tensor(
+            [
+                [
+                    1986,
+                    374,
+                    264,
+                    1273,
+                    11652,
+                    13,
+                    1096,
+                    374,
+                    264,
+                    1273,
+                    11652,
+                    13,
+                    1096,
+                    374,
+                    264,
+                    1273,
+                    11652,
+                    13,
+                    1096,
+                    374,
+                    264,
+                    1273,
+                    11652,
+                    13,
+                ]
+            ],
+            dtype=torch.long,
+        )
         attention_mask = torch.ones(input_ids.shape, dtype=torch.long)
         return dict(input_ids=input_ids, attention_mask=attention_mask)
 
@@ -81,11 +111,11 @@ if HAS_QWEN3:
         loss_fn=loss_fn_for_causal_lm,
         model_attribute=ModelAttribute(has_control_flow=True),
     )
-    # model_zoo.register(
-    #     name="transformers_qwen3_for_sequence_classification",
-    #     model_fn=lambda: transformers.Qwen3ForSequenceClassification(config),
-    #     data_gen_fn=data_gen,
-    #     output_transform_fn=output_transform_fn,
-    #     loss_fn=loss_fn_for_seq_classification,
-    #     model_attribute=ModelAttribute(has_control_flow=True),
-    # )
+    model_zoo.register(
+        name="transformers_qwen3_for_sequence_classification",
+        model_fn=lambda: transformers.Qwen3ForSequenceClassification(config),
+        data_gen_fn=data_gen,
+        output_transform_fn=output_transform_fn,
+        loss_fn=loss_fn_for_seq_classification,
+        model_attribute=ModelAttribute(has_control_flow=True),
+    )
