@@ -138,6 +138,10 @@ jobs:
             cp -p -r /github/home/cuda_ext_cache/* /__w/ColossalAI/ColossalAI/
           fi
 
+      - name: Install flash-attention
+        run: |
+          pip install flash-attn==2.7.4.post1 --no-build-isolation
+
       - name: Install Colossal-AI
         run: |
           BUILD_EXT=1 pip install -v -e .
