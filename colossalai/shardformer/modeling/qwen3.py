@@ -1,9 +1,9 @@
+# Modifed from qwen2 modeling
 import math
 from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.modeling_attn_mask_utils import (
     _prepare_4d_causal_attention_mask,
     _prepare_4d_causal_attention_mask_for_sdpa,
@@ -13,11 +13,11 @@ from transformers.modeling_outputs import (
     CausalLMOutputWithPast,
     SequenceClassifierOutputWithPast,
 )
-from transformers.models.qwen2.modeling_qwen2 import (
-    Qwen2Attention,
-    Qwen2ForCausalLM,
-    Qwen2ForSequenceClassification,
-    Qwen2Model,
+from transformers.models.qwen3.modeling_qwen3 import (
+    Qwen3Attention,
+    Qwen3ForCausalLM,
+    Qwen3ForSequenceClassification,
+    Qwen3Model,
     apply_rotary_pos_emb,
     repeat_kv,
 )
@@ -32,15 +32,15 @@ from ..layer._operation import gather_sp_output
 from ..layer.utils import is_share_sp_tp
 
 
-class Qwen2PipelineForwards:
+class Qwen3PipelineForwards:
     """
-    This class serves as a micro library for forward function substitution of Qwen2 models
+    This class serves as a micro library for forward function substitution of Qwen3 models
     under pipeline setting.
     """
 
     @staticmethod
-    def qwen2_model_forward(
-        self: Qwen2Model,
+    def qwen3_model_forward(
+        self: Qwen3Model,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -100,8 +100,6 @@ class Qwen2PipelineForwards:
         if use_cache:
             logger.warning_once("use_cache=True is not supported for pipeline models at the moment.")
             use_cache = False
-
-        # assert past_key_values is None, "past_key_values is not supported for Qwen2 models at the moment."
 
         if past_key_values is not None:
             past_key_values_length = past_key_values[0][0].shape[2]
@@ -259,8 +257,8 @@ class Qwen2PipelineForwards:
         return {"hidden_states": hidden_states}
 
     @staticmethod
-    def qwen2_for_causal_lm_forward(
-        self: Qwen2ForCausalLM,
+    def qwen3_for_causal_lm_forward(
+        self: Qwen3ForCausalLM,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -318,7 +316,7 @@ class Qwen2PipelineForwards:
             output_hidden_states = False
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs = Qwen2PipelineForwards.qwen2_model_forward(
+        outputs = Qwen3PipelineForwards.qwen3_model_forward(
             self.model,
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -362,8 +360,8 @@ class Qwen2PipelineForwards:
             return {"hidden_states": hidden_states}
 
     @staticmethod
-    def qwen2_for_sequence_classification_forward(
-        self: Qwen2ForSequenceClassification,
+    def qwen3_for_sequence_classification_forward(
+        self: Qwen3ForSequenceClassification,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
@@ -397,7 +395,7 @@ class Qwen2PipelineForwards:
             logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
             output_hidden_states = False
 
-        transformer_outputs = Qwen2PipelineForwards.qwen2_model_forward(
+        transformer_outputs = Qwen3PipelineForwards.qwen3_model_forward(
             self.model,
             input_ids,
             attention_mask=attention_mask,
@@ -427,39 +425,27 @@ class Qwen2PipelineForwards:
 
             if self.config.pad_token_id is None and batch_size != 1:
                 raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
-            if self.config.pad_token_id is None:
-                sequence_lengths = -1
-            else:
-                if input_ids is not None:
-                    sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
-                else:
-                    sequence_lengths = -1
 
-            pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
+            if self.config.pad_token_id is None:
+                last_non_pad_token = -1
+            elif input_ids is not None:
+                # To handle both left- and right- padding, we take the rightmost token that is not equal to pad_token_id
+                non_pad_mask = (input_ids != self.config.pad_token_id).to(logits.device, torch.int32)
+                token_indices = torch.arange(input_ids.shape[-1], device=logits.device, dtype=torch.int32)
+                last_non_pad_token = (token_indices * non_pad_mask).argmax(-1)
+            else:
+                last_non_pad_token = -1
+                logger.warning_once(
+                    f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
+                    "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
+                )
+
+            pooled_logits = logits[torch.arange(batch_size, device=logits.device), last_non_pad_token]
 
             loss = None
             if labels is not None:
-                labels = labels.to(logits.device)
-                if self.config.problem_type is None:
-                    if self.num_labels == 1:
-                        self.config.problem_type = "regression"
-                    elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                        self.config.problem_type = "single_label_classification"
-                    else:
-                        self.config.problem_type = "multi_label_classification"
+                loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
 
-                if self.config.problem_type == "regression":
-                    loss_fct = MSELoss()
-                    if self.num_labels == 1:
-                        loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-                    else:
-                        loss = loss_fct(pooled_logits, labels)
-                elif self.config.problem_type == "single_label_classification":
-                    loss_fct = CrossEntropyLoss()
-                    loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
-                elif self.config.problem_type == "multi_label_classification":
-                    loss_fct = BCEWithLogitsLoss()
-                    loss = loss_fct(pooled_logits, labels)
             if not return_dict:
                 output = (pooled_logits,) + transformer_outputs[1:]
                 return ((loss,) + output) if loss is not None else output
@@ -477,9 +463,9 @@ class Qwen2PipelineForwards:
             return {"hidden_states": hidden_states}
 
 
-def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_qwen3_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     def forward(
-        self: Qwen2Attention,
+        self: Qwen3Attention,
         hidden_states: torch.Tensor,
         position_embeddings: Tuple[torch.Tensor, torch.Tensor],
         attention_mask: Optional[torch.Tensor] = None,
@@ -508,8 +494,8 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
             value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
             bsz, q_len, _ = query_states.size()
 
-        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        query_states = self.q_norm(query_states.view(bsz, q_len, -1, self.head_dim)).transpose(1, 2)
+        key_states = self.k_norm(key_states.view(bsz, q_len, -1, self.head_dim)).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
@@ -560,7 +546,13 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
 
         if shard_config.enable_flash_attention:
             assert isinstance(attention_mask, dict), "Flash Attention Error: attention_mask should be a dict."
-            attn_output = ColoAttention.attention(query_states, key_states, value_states, **attention_mask)
+            attn_output = ColoAttention.attention(
+                query_states,
+                key_states,
+                value_states,
+                dropout_p=0.0 if not self.training else self.attention_dropout,
+                **attention_mask,
+            )
         else:
             attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
 
@@ -602,7 +594,7 @@ def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
     return forward
 
 
-def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+def get_qwen3_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
     logger = logging.get_logger(__name__)
 
     def forward(
@@ -759,7 +751,7 @@ def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=No
 
 def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
     def forward(
-        self: Qwen2ForCausalLM,
+        self: Qwen3ForCausalLM,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,

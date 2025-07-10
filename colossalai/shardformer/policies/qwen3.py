@@ -1,15 +1,16 @@
+# Modifed from qwen2 policy
 from functools import partial
 from typing import Callable, Dict, List, Union
 
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.qwen2.modeling_qwen2 import (
-    Qwen2Attention,
-    Qwen2DecoderLayer,
-    Qwen2ForCausalLM,
-    Qwen2ForSequenceClassification,
-    Qwen2Model,
+from transformers.models.qwen3.modeling_qwen3 import (
+    Qwen3Attention,
+    Qwen3DecoderLayer,
+    Qwen3ForCausalLM,
+    Qwen3ForSequenceClassification,
+    Qwen3Model,
 )
 
 from colossalai.shardformer.layer import (
@@ -22,26 +23,26 @@ from colossalai.shardformer.layer import (
     VocabParallelEmbedding1D,
 )
 
-from ..modeling.qwen2 import (
-    Qwen2PipelineForwards,
+from ..modeling.qwen3 import (
+    Qwen3PipelineForwards,
     get_lm_forward_with_dist_cross_entropy,
-    get_qwen2_flash_attention_forward,
-    get_qwen2_model_forward_for_flash_attn,
+    get_qwen3_flash_attention_forward,
+    get_qwen3_model_forward_for_flash_attn,
 )
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
-__all__ = ["Qwen2Policy", "Qwen2ForCausalLMPolicy", "Qwen2ForSequenceClassificationPolicy"]
+__all__ = ["Qwen3Policy", "Qwen3ForCausalLMPolicy", "Qwen3ForSequenceClassificationPolicy"]
 
 
-class Qwen2Policy(Policy):
+class Qwen3Policy(Policy):
     def __init__(self) -> None:
         super().__init__()
         import transformers
         from packaging.version import Version
 
         assert Version(transformers.__version__) >= Version(
-            "4.39.1"
-        ), "The Qwen2 model should run on a transformers version of 4.39.1."
+            "4.51.0"
+        ), "The Qwen3 model should run on a transformers version of 4.51.0 or higher."
 
     def config_sanity_check(self):
         pass
@@ -74,7 +75,7 @@ class Qwen2Policy(Policy):
             if getattr(self.model.config, "num_key_value_heads", False):
                 decoder_attribute_replacement["num_key_value_heads"] = self.model.config.num_key_value_heads // sp_size
 
-            policy[Qwen2Attention] = ModulePolicyDescription(
+            policy[Qwen3Attention] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
             )
 
@@ -97,7 +98,7 @@ class Qwen2Policy(Policy):
                     self.model.config.num_key_value_heads // self.shard_config.tensor_parallel_size
                 )
 
-            policy[Qwen2DecoderLayer] = ModulePolicyDescription(
+            policy[Qwen3DecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -166,7 +167,7 @@ class Qwen2Policy(Policy):
                 ],
             )
         elif use_zbv:
-            policy[Qwen2DecoderLayer] = ModulePolicyDescription(
+            policy[Qwen3DecoderLayer] = ModulePolicyDescription(
                 attribute_replacement=decoder_attribute_replacement,
                 sub_module_replacement=[
                     SubModuleReplacementDescription(
@@ -250,7 +251,7 @@ class Qwen2Policy(Policy):
                     ),
                 ),
                 policy=policy,
-                target_key=Qwen2Model,
+                target_key=Qwen3Model,
             )
 
         # optimization configuration
@@ -268,7 +269,7 @@ class Qwen2Policy(Policy):
                 ),
             ],
             policy=policy,
-            target_key=Qwen2DecoderLayer,
+            target_key=Qwen3DecoderLayer,
         )
 
         self.append_or_create_submodule_replacement(
@@ -278,27 +279,27 @@ class Qwen2Policy(Policy):
                 kwargs={"sp_partial_derived": sp_partial_derived},
             ),
             policy=policy,
-            target_key=Qwen2Model,
+            target_key=Qwen3Model,
         )
 
         if self.shard_config.enable_flash_attention or self.shard_config.enable_sequence_parallelism:
             self.append_or_create_method_replacement(
                 description={
-                    "forward": get_qwen2_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
+                    "forward": get_qwen3_flash_attention_forward(self.shard_config, sp_mode, sp_size, sp_group),
                 },
                 policy=policy,
-                target_key=Qwen2Attention,
+                target_key=Qwen3Attention,
             )
             if self.pipeline_stage_manager is None:
-                # replace qwen2 model forward method
+                # replace qwen3 model forward method
                 self.append_or_create_method_replacement(
                     description={
-                        "forward": get_qwen2_model_forward_for_flash_attn(
+                        "forward": get_qwen3_model_forward_for_flash_attn(
                             self.shard_config, sp_mode, sp_size, sp_group
                         ),
                     },
                     policy=policy,
-                    target_key=Qwen2Model,
+                    target_key=Qwen3Model,
                 )
 
         return policy
@@ -313,7 +314,7 @@ class Qwen2Policy(Policy):
             return
 
         stage_manager = self.pipeline_stage_manager
-        if self.model.__class__.__name__ == "Qwen2Model":
+        if self.model.__class__.__name__ == "Qwen3Model":
             module = self.model
         else:
             module = self.model.model
@@ -343,7 +344,7 @@ class Qwen2Policy(Policy):
         """Get pipeline layers for current stage."""
         assert self.pipeline_stage_manager is not None
 
-        if self.model.__class__.__name__ == "Qwen2Model":
+        if self.model.__class__.__name__ == "Qwen3Model":
             module = self.model
         else:
             module = self.model.model
@@ -377,14 +378,13 @@ class Qwen2Policy(Policy):
         return held_layers
 
 
-class Qwen2ModelPolicy(Qwen2Policy):
+class Qwen3ModelPolicy(Qwen3Policy):
     def module_policy(self):
         policy = super().module_policy()
 
         if self.pipeline_stage_manager:
-            # set None as default
             self.set_pipeline_forward(
-                model_cls=Qwen2Model, new_forward=Qwen2PipelineForwards.qwen2_model_forward, policy=policy
+                model_cls=Qwen3Model, new_forward=Qwen3PipelineForwards.qwen3_model_forward, policy=policy
             )
         return policy
 
@@ -394,11 +394,11 @@ class Qwen2ModelPolicy(Qwen2Policy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in Qwen2 model"""
+        """No shared params in Qwen3 model"""
         return []
 
 
-class Qwen2ForCausalLMPolicy(Qwen2Policy):
+class Qwen3ForCausalLMPolicy(Qwen3Policy):
     def module_policy(self):
         policy = super().module_policy()
         setattr(self.shard_config, "causal_lm", True)
@@ -407,7 +407,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for casual lm
             new_item = {
-                Qwen2ForCausalLM: ModulePolicyDescription(
+                Qwen3ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -422,7 +422,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         elif use_zbv:
             # add a new item for casual lm
             new_item = {
-                Qwen2ForCausalLM: ModulePolicyDescription(
+                Qwen3ForCausalLM: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
@@ -438,7 +438,7 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         if self.pipeline_stage_manager:
             # set None as default
             self.set_pipeline_forward(
-                model_cls=Qwen2ForCausalLM, new_forward=Qwen2PipelineForwards.qwen2_for_causal_lm_forward, policy=policy
+                model_cls=Qwen3ForCausalLM, new_forward=Qwen3PipelineForwards.qwen3_for_causal_lm_forward, policy=policy
             )
 
         return policy
@@ -458,30 +458,30 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        qwen2_model = self.model.model
+        qwen3_model = self.model.model
         if self.pipeline_stage_manager and self.pipeline_stage_manager.num_stages > 1:
             if (
-                id(qwen2_model.embed_tokens.weight) == id(self.model.lm_head.weight)
+                id(qwen3_model.embed_tokens.weight) == id(self.model.lm_head.weight)
                 and self.pipeline_stage_manager.num_stages > 1
             ):
                 # tie weights
                 return [
                     {
-                        0: qwen2_model.embed_tokens.weight,
+                        0: qwen3_model.embed_tokens.weight,
                         self.pipeline_stage_manager.num_stages - 1: self.model.lm_head.weight,
                     }
                 ]
         return []
 
 
-class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
+class Qwen3ForSequenceClassificationPolicy(Qwen3Policy):
     def module_policy(self):
         policy = super().module_policy()
         use_zbv = self.pipeline_stage_manager is not None and self.pipeline_stage_manager.use_zbv
         if self.shard_config.enable_tensor_parallelism:
             # add a new item for sequence classification
             new_item = {
-                Qwen2ForSequenceClassification: ModulePolicyDescription(
+                Qwen3ForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="score",
@@ -498,7 +498,7 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
             policy.update(new_item)
         elif use_zbv:
             new_item = {
-                Qwen2ForSequenceClassification: ModulePolicyDescription(
+                Qwen3ForSequenceClassification: ModulePolicyDescription(
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="score",
@@ -515,10 +515,9 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
             policy.update(new_item)
         # to be confirmed
         if self.pipeline_stage_manager:
-            # set None as default
             self.set_pipeline_forward(
-                model_cls=Qwen2ForSequenceClassification,
-                new_forward=Qwen2PipelineForwards.qwen2_for_sequence_classification_forward,
+                model_cls=Qwen3ForSequenceClassification,
+                new_forward=Qwen3PipelineForwards.qwen3_for_sequence_classification_forward,
                 policy=policy,
             )
         return policy
@@ -538,5 +537,5 @@ class Qwen2ForSequenceClassificationPolicy(Qwen2Policy):
         return held_layers
 
     def get_shared_params(self) -> List[Dict[int, Tensor]]:
-        """No shared params in Qwen2 for sequence classification model"""
+        """No shared params in Qwen3 for sequence classification model"""
         return []
