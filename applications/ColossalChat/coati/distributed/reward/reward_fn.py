@@ -24,7 +24,7 @@ import torch
 from latex2sympy2_extended import NormalizationConfig
 from math_verify import ExprExtractionConfig, LatexExtractionConfig, parse, verify
 
-from .code_reward.utils import check_correctness as check_correctness_code
+from .code_reward.utils import check_correctness_code_api as check_correctness_code
 from .reward_utils import extract_boxed_solution, extract_solution, validate_response_structure
 
 CANNOT_PARSE_GT_ANSWER = -1
@@ -223,6 +223,7 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
 
 
 def code_reward_fn(input_ids, test_cases, response_idx, **kwargs):
+    url = kwargs.get("url", "http://localhost:8000/check_correctness")
     tokenizer = kwargs["tokenizer"]
     eval_mode = kwargs.get("eval_mode", False)
     soft_over_length_punishment = kwargs.get("soft_over_length_punishment", False)
@@ -255,6 +256,9 @@ def code_reward_fn(input_ids, test_cases, response_idx, **kwargs):
     if format_valid:
         format_acc += 1
 
+    res = []
+    metadata = []
+
     try:
         try:
             if not isinstance(test_cases, dict):
@@ -264,15 +268,18 @@ def code_reward_fn(input_ids, test_cases, response_idx, **kwargs):
             raise e
         # Complete check on all in-out pairs first. If there is no failure, per-sample test can be skipped.
         try:
-            res, metadata = check_correctness_code(in_outs=test_cases, generation=solution, timeout=10, debug=True)
+            res, metadata = check_correctness_code(
+                in_outs=test_cases, generation=solution, timeout=10, debug=False, url=url
+            )
             metadata = dict(enumerate(metadata))[0]
-            success = all(map(lambda x: x is True, res))
+            success = all(map(lambda x: x == 1, res))
             if success:
                 ans_acc += 1
                 if eval_mode or format_valid:
                     reward += acc_score
                 if not eval_mode:
                     reward = reward + length_reward
+
         except Exception:
             pass
 
@@ -288,7 +295,9 @@ def code_reward_fn(input_ids, test_cases, response_idx, **kwargs):
         return {
             "prompt": prompt,
             "prediction": decoded_final_answer,
-            "gold": test_cases["outputs"],
+            "test_cases": test_cases,
+            "test_results": res,
+            "test_metadata": metadata,
             "parsed": solution,
             "format_valid": format_acc.item(),
             "ans_valid": ans_acc.item(),
