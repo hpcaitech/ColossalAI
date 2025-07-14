@@ -16,27 +16,24 @@
 # limitations under the License.
 
 import multiprocessing
-import os
-import sys
 import traceback
 from typing import Optional
+
+import requests
 
 from .testing_util import run_test
 
 
 def _temp_run(sample, generation, debug, result, metadata_list, timeout):
-    with open(os.devnull, "w") as devnull:
-        sys.stdout = devnull
-        sys.stderr = devnull
-        try:
-            res, metadata = run_test(in_outs=sample, test=generation, debug=debug, timeout=timeout)
-            result.append(res)
-            metadata_list.append(metadata)
-        except Exception:
-            # print(e) # some tracebacks are extremely long.
-            traceback.print_exc(10)
-            result.append([-1 for i in range(len(sample["inputs"]))])
-            metadata_list.append({})
+    try:
+        res, metadata = run_test(in_outs=sample, test=generation, debug=debug, timeout=timeout)
+        result.append(res)
+        metadata_list.append(metadata)
+    except Exception:
+        # print(e) # some tracebacks are extremely long.
+        traceback.print_exc(10)
+        result.append([-1 for i in range(len(sample["inputs"]))])
+        metadata_list.append({})
 
 
 def check_correctness(in_outs: Optional[dict], generation, timeout=10, debug=True):
@@ -49,7 +46,7 @@ def check_correctness(in_outs: Optional[dict], generation, timeout=10, debug=Tru
     metadata_list = manager.list()
     p = multiprocessing.Process(target=_temp_run, args=(in_outs, generation, debug, result, metadata_list, timeout))
     p.start()
-    p.join(timeout=timeout + 1)
+    p.join(timeout=600)  # Global timeout of 10 minutes that's for all test cases combined
     if p.is_alive():
         p.kill()
         # p.terminate()
@@ -59,3 +56,16 @@ def check_correctness(in_outs: Optional[dict], generation, timeout=10, debug=Tru
         if debug:
             print("global timeout")
     return result[0], metadata_list
+
+
+def check_correctness_code_api(
+    in_outs: Optional[dict], generation, timeout=10, debug=True, url="http://localhost:8000/check_correctness"
+):
+    payload = {"in_outs": in_outs, "generation": generation, "timeout": timeout, "debug": debug}
+    response = requests.post(url, json=payload)
+    if response.status_code == 200:
+        results = response.json()
+        return results["result"], results["metadata"]
+    else:
+        print(f"Error: {response.status_code} - {response.text}")
+        return [-1 for i in range(len(in_outs["inputs"]))], {}

@@ -83,7 +83,7 @@ class BaseProducer:
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
-            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length"]
+            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length", "code_verifier_api_url"]
         }
         self.response_format_tags = grpo_config.get("response_format_tags", None)
         if producer_idx == 0:
@@ -250,7 +250,7 @@ class BaseProducer:
                                     for m in range(eval_outputs["input_ids"].size(0))
                                     for n in range(eval_outputs["input_ids"].size(1))
                                 ]
-                            eval_statistics_tensor[0] += len([res for res in eval_results if res["ans_valid"] == 1])
+                            eval_statistics_tensor[0] += sum([max(0, res["ans_valid"]) for res in eval_results])
                             eval_statistics_tensor[1] += len(eval_results)
                             allreduce(eval_statistics_tensor, op=ReduceOp.SUM, group_name="producer_group")
                             to_log_msg[f"eval/{eval_task_name}"] = (
