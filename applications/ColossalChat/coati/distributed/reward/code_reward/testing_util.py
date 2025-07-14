@@ -180,8 +180,6 @@ def run_test(in_outs, test=None, debug=False, timeout=15, run_all_tests=False):
             tmp_test = new_test
 
             sol += tmp_test
-            # if debug:
-            #     print(f"sol = {sol}")
             method_name = "code"
             signal.alarm(timeout)
             try:
