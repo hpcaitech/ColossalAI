@@ -119,9 +119,12 @@ model_zoo.register(
 model_zoo.register(
     name="timm_nf_regnet_b0", model_fn=tm.nf_regnet_b0, data_gen_fn=data_gen_fn, output_transform_fn=output_transform_fn
 )
-model_zoo.register(
-    name="timm_regnetv_040", model_fn=tm.regnetv_040, data_gen_fn=data_gen_fn, output_transform_fn=output_transform_fn
-)
+
+# TODO: will need to register fake impl of aten::_unique2 to make it work (torch==2.5.1)
+# model_zoo.register(
+#     name="timm_regnetv_040", model_fn=tm.regnetv_040, data_gen_fn=data_gen_fn, output_transform_fn=output_transform_fn
+# )
+
 model_zoo.register(
     name="timm_skresnet18", model_fn=tm.skresnet18, data_gen_fn=data_gen_fn, output_transform_fn=output_transform_fn
 )
