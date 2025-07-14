@@ -89,7 +89,7 @@ def clean_traceback(error_traceback):
     return error_traceback
 
 
-def run_test(in_outs, test=None, debug=False, timeout=15):
+def run_test(in_outs, test=None, debug=False, timeout=15, run_all_tests=False):
     """
     if test(generated_code) is not None it'll try to run the code.
     otherwise it'll just return an input and output pair.
@@ -180,8 +180,6 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
             tmp_test = new_test
 
             sol += tmp_test
-            if debug:
-                print(f"sol = {sol}")
             method_name = "code"
             signal.alarm(timeout)
             try:
@@ -202,8 +200,7 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
                 }
             signal.alarm(0)
         if debug:
-            print(f"get method = {datetime.now().time()}")
-
+            print(f"get method {method_name} = {datetime.now().time()}")
         try:
             method = getattr(tmp, method_name)  # get_attr second arg must be str
         except Exception:
@@ -329,6 +326,9 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
                         error_traceback = traceback.format_exc()
                         print(f"Call-based runtime error or time limit exceeded error = {repr(e)}{e}")
                         results.append(-1)
+                        signal.alarm(0)
+                        if run_all_tests:
+                            continue
                         return results, {
                             "error": repr(e),
                             "traceback": clean_traceback(error_traceback),
@@ -519,6 +519,10 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
 
                 results.append(tmp_result)
                 if tmp_result is not True:
+                    if debug:
+                        print("final result:", results)
+                    if run_all_tests:
+                        continue
                     return results, {
                         "output": raw_true_output_copy,
                         "expected": raw_outputs,
@@ -539,7 +543,8 @@ def run_test(in_outs, test=None, debug=False, timeout=15):
                         )
 
                     print(f"results = {results}")
-
+    if debug:
+        print("final results", results)
     return results, {}
 
 
