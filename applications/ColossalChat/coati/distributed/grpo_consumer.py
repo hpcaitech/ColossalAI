@@ -346,6 +346,7 @@ class GRPOConsumer(BaseConsumer):
                         data_policy_forward["reference_action_log_probs"] = reference_action_log_probs
 
                     kl = []
+                    policy_model_logits = torch.empty_like(input_ids_forward_micro_batch, device=self.device)
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
@@ -425,6 +426,20 @@ class GRPOConsumer(BaseConsumer):
                             kl = all_reduce_mean(torch.mean(torch.stack(kl)).to(loss.device), self.plugin).data
                             mean_kl.append(kl)
                         mean_loss.append(all_reduce_mean(loss, self.plugin).data)
+                        mini_batch_entropies.append(
+                            all_reduce_mean(
+                                (
+                                    (
+                                        (
+                                            entropy_from_logits(policy_model_logits[:, -num_action:])
+                                            * action_mask_forward_micro_batch
+                                        ).sum(-1)
+                                    )
+                                    / action_mask_forward_micro_batch.sum(-1)
+                                ).detach(),
+                                self.plugin,
+                            )
+                        )
                 else:
                     policy_model_logits = self.policy_model(
                         input_ids=input_ids_forward_micro_batch,
