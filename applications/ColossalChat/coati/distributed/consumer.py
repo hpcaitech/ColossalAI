@@ -15,7 +15,7 @@ from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.initialize import launch
 from colossalai.nn.optimizer import HybridAdam
 
-from .comm import ray_broadcast_tensor_dict
+from .comm import ray_broadcast_tensor_dict, ray_broadcast_tensor_dict_and_load
 from .utils import bind_batch, post_recv, unbind_batch
 
 
@@ -172,6 +172,8 @@ class BaseConsumer:
                                 )
                                 self.profiler.enter("step")
                                 loss = self.step(i, pbar, **batch, **raw_mini_batches_metric_dict)
+                                del batch
+                                del raw_mini_batches_metric_dict
                                 self.profiler.exit("step")
                                 self.buffer = self.buffer[
                                     effective_group_to_raw_group_mapping[self.dp_size * self.minibatch_size - 1] + 1 :
@@ -303,7 +305,8 @@ class BaseConsumer:
                         state_dict = self.state_dict()
                         if self.pp_size > 1:
                             if self.tp_rank == 0 and self.dp_rank == 0:
-                                ray_broadcast_tensor_dict(
+                                ray_broadcast_tensor_dict_and_load(
+                                    None,
                                     state_dict,
                                     src=self.num_producers,
                                     device=self.device,
@@ -311,8 +314,12 @@ class BaseConsumer:
                                 )
                         else:
                             if self.rank == 0:
-                                ray_broadcast_tensor_dict(
-                                    state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
+                                ray_broadcast_tensor_dict_and_load(
+                                    None,
+                                    state_dict,
+                                    src=self.num_producers,
+                                    device=self.device,
+                                    group_name="sync_model",
                                 )
                         del state_dict
                         torch.npu.empty_cache()

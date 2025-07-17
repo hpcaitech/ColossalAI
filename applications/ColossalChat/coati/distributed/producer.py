@@ -17,7 +17,7 @@ from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
-from .comm import ray_broadcast_tensor_dict
+from .comm import ray_broadcast_tensor_dict, ray_broadcast_tensor_dict_and_load
 from .inference_backend import BACKEND_MAP
 from .utils import safe_append_to_jsonl_file
 
@@ -191,6 +191,7 @@ class BaseProducer:
                 )
         else:
             cc.init_collective_group(self.num_producers + 1, self.producer_idx, backend="hccl", group_name="sync_model")
+        cc.init_collective_group(self.num_producers, self.producer_idx, backend="hccl", group_name="producer_group")
 
     def rollout(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
@@ -340,25 +341,16 @@ class BaseProducer:
                             print(
                                 f"[P{self.producer_idx}] Sync model PP stage {pp_idx} episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                             )
-                            state_dict = ray_broadcast_tensor_dict(
-                                None, self.num_producers, device=self.device, group_name=f"sync_model_{pp_idx}"
+                            ray_broadcast_tensor_dict_and_load(
+                                self, None, self.num_producers, device=self.device, group_name=f"sync_model_{pp_idx}"
                             )
-                            if "consumer_global_step" in state_dict:
-                                self.consumer_global_step = state_dict.pop("consumer_global_step").item()
-                            self.load_state_dict(state_dict)
                     else:
                         print(
                             f"[P{self.producer_idx}] Sync model episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                         )
-                        state_dict = ray_broadcast_tensor_dict(
-                            None, self.num_producers, device=self.device, group_name="sync_model"
+                        ray_broadcast_tensor_dict_and_load(
+                            self, None, self.num_producers, device=self.device, group_name=f"sync_model"
                         )
-                        if "consumer_global_step" in state_dict:
-                            self.consumer_global_step = state_dict.pop("consumer_global_step").item()
-                        self.load_state_dict(state_dict)
-                    self.profiler.exit("sync_model")
-                    del state_dict
-                    torch.npu.empty_cache()
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
                         "enable_sleep_mode", False
                     ):

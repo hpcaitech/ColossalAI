@@ -166,6 +166,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--enable_profiling", action="store_true", default=False, help="Enable profiling for the training process."
     )
+    parser.add_argument("--cpu_offload", action="store_true", default=False, help="Cpu offload.")
     args = parser.parse_args()
 
     if args.train_minibatch_size is None:
@@ -251,7 +252,7 @@ if __name__ == "__main__":
         )
         generate_config.update(
             dict(
-                max_tokens=args.max_new_tokens,  # max new tokens
+                max_tokens=args.max_new_tokens + args.max_prompt_tokens,  # max new tokens
                 include_stop_str_in_output=True,
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
                 ignore_eos=True if args.reward_type == "think_answer_tags" else False,
@@ -344,6 +345,7 @@ if __name__ == "__main__":
                 1, args.train_microbatch_size // args.pipeline_parallel_size
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": args.zero_stage,
+            "cpu_offload": args.cpu_offload,
             "max_norm": 1.0,
             "enable_flash_attention": True,
             "sp_size": args.tensor_parallel_size,

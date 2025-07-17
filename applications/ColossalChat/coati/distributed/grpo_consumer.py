@@ -62,6 +62,7 @@ class GRPOConsumer(BaseConsumer):
             batch_size,
             model_config,
             plugin_config,
+            generate_config,
             minibatch_size,
             save_interval=save_interval,
             save_dir=save_dir,
