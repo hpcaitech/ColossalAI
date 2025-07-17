@@ -110,6 +110,16 @@ def memory_efficient_logprob(
     return action_log_probs
 
 
+def entropy_from_logits(logits: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate entropy
+    Reference: https://github.com/volcengine/verl/blob/96b730bbed80292a439f0c0057d3920ab8b28d52/verl/utils/torch_functional.py#L145
+    """
+    p = torch.nn.functional.softmax(logits, dim=-1)
+    entropy = torch.logsumexp(logits, dim=-1) - torch.sum(p * logits, dim=-1)
+    return entropy
+
+
 def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.Tensor:
     """
     Compute the masked mean of a tensor along a specified dimension.
