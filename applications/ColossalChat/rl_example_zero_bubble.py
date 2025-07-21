@@ -15,6 +15,12 @@ DEFAUT_SYSTEM_PROMPT = {
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", type=str, default="Qwen/Qwen2.5-7B")
+    parser.add_argument(
+        "--tokenizer-path",
+        type=str,
+        default=None,
+        help="Path to the tokenizer. If not provided, will use the model path.",
+    )
     parser.add_argument("-d", "--dataset", type=str, default="data.jsonl")
     parser.add_argument(
         "-ed",
@@ -166,6 +172,7 @@ if __name__ == "__main__":
         "--enable_profiling", action="store_true", default=False, help="Enable profiling for the training process."
     )
     args = parser.parse_args()
+    print(args)
 
     if args.train_minibatch_size is None:
         # Default settings: Using train batch size as mini batch size
@@ -283,7 +290,7 @@ if __name__ == "__main__":
     elif args.algo == "DAPO":
         # DAPO variant settings
         grpo_config = {
-            "filter_range": [0.01, 0.99],  # only filter out all zero batch and all one batch
+            "filter_range": [0.01, 0.7],  # only filter out all zero batch and all one batch
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
             "dynamic_batching": True,
@@ -343,7 +350,9 @@ if __name__ == "__main__":
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": args.zero_stage,
             "max_norm": 1.0,
+            "num_layers_per_stage": [18, 10],
         },  # for pp, tp
+        tokenizer_config={"path": args.tokenizer_path} if args.tokenizer_path else {"path": args.model},
         inference_backend=args.backend,
         master_addr="localhost",
         master_port=args.master_port,

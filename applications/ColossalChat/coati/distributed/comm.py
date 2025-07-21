@@ -1,5 +1,6 @@
-from typing import Any, Dict
 import copy
+from typing import Any, Dict
+
 import ray
 import ray.util.collective as cc
 import torch
@@ -30,6 +31,7 @@ def ray_broadcast_object(obj: Any, src: int = 0, device=None, group_name: str = 
         else:
             obj = c10d._tensor_to_object(obj, size_tensor.item())
     return obj
+
 
 def ray_broadcast_tensor_dict(
     tensor_dict: Dict[str, torch.Tensor],
@@ -98,7 +100,7 @@ class SharedVariableActor:
         queue length as data may still be generating
         """
         ret = False
-        if self.queue_size < self.buffer_size_limit:
+        if self.queue_size < (self.buffer_size_limit / max(0.1, self.signals.get("sample_utilization", 1.0))):
             ret = True
             self.queue_size += num_tasks
         return ret

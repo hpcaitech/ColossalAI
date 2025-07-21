@@ -11,19 +11,18 @@ import torch
 import tqdm
 import wandb
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
+from coati.distributed.comm import SharedVariableActor, ray_broadcast_tensor_dict
+from coati.distributed.inference_backend import BACKEND_MAP
 from coati.distributed.profiling_utils import CustomProfiler
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
+from coati.distributed.utils import pre_send, safe_append_to_jsonl_file
 from ray.util.collective import allreduce
 from ray.util.collective.types import ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
 from transformers import AutoTokenizer
 
 from colossalai.utils import get_current_device
-
-from coati.distributed.comm import SharedVariableActor, ray_broadcast_tensor_dict
-from coati.distributed.inference_backend import BACKEND_MAP
-from coati.distributed.utils import pre_send, safe_append_to_jsonl_file
 
 try:
     from vllm import SamplingParams
@@ -280,11 +279,17 @@ class BaseProducer:
                             self.profiler.exit("sync_model")
                         self.sync_model_thread_started = False
 
-                    if not self.sync_model_thread_started and self.consumer_global_step != self.producer_weight_version:
+                    distributor_weight_version = ray.get(self.shared_signal_actor.get_signal.remote()).get(
+                        f"distributor_weight_version", 0
+                    )
+                    if (
+                        not self.sync_model_thread_started
+                        and distributor_weight_version != self.producer_weight_version
+                    ):
                         # only sync model when the thread is not started and global step is changed
                         self.sync_model_thread_started = True
                         self.sync_model_thread = threading.Thread(target=sync_model_thread)
-                        self.producer_weight_version = self.consumer_global_step
+                        self.producer_weight_version = distributor_weight_version
                         self.sync_model_thread.start()
                     torch.cuda.empty_cache()
                     if isinstance(self.model, BACKEND_MAP["vllm"]) and self.model.model_config.get(
@@ -478,7 +483,7 @@ class SimpleProducer(BaseProducer):
             train_dataset_config,
             model_config,
             generate_config,
-            tokenizer_config,
+            copy.deepcopy(tokenizer_config),
             microbatch_size,
             backend,
             consumer_plugin_config,
@@ -493,7 +498,8 @@ class SimpleProducer(BaseProducer):
             rollout_log_file=rollout_log_file,
             enable_profiling=enable_profiling,
         )
-        self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
+        print("tokenizer_config", tokenizer_config)
+        self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations, tokenizer_config)
         self.eval_generation_config = copy.deepcopy(self.model.generate_config)
         self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
         self.eval_generation_config.update(eval_generation_config)

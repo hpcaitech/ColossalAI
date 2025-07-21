@@ -5,9 +5,9 @@ import ray
 import torch
 import wandb
 from coati.distributed.comm import SharedVariableActor
-from coati.distributed.zero_bubble.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
-from coati.distributed.utils import memory_efficient_logprob
+from coati.distributed.utils import entropy_from_logits, memory_efficient_logprob
+from coati.distributed.zero_bubble.consumer import BaseConsumer
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -33,6 +33,7 @@ class GRPOConsumer(BaseConsumer):
         plugin_config,
         minibatch_size=1,
         num_generations=8,
+        tokenizer_config=None,
         generate_config=None,
         grpo_config={},
         save_interval: int = 100,
@@ -73,9 +74,11 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
+        self.vocab_size = self.policy_model.config.vocab_size
         self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
         self.accum_loss = torch.zeros(1, device=self.device)
         self.accum_kl = torch.zeros(1, device=self.device)
+        self.accum_entropy = torch.zeros(1, device=self.device)
         self.accum_advantages = torch.zeros(1, device=self.device)
         self.raw_train_batch_reward = []
         self.raw_train_batch_format_acc = []
@@ -102,8 +105,11 @@ class GRPOConsumer(BaseConsumer):
         if self.policy_loss_fn.beta > 0:
             self.reference_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
             self.reference_model.eval()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        if tokenizer_config is not None:
+            path = tokenizer_config.pop("path", None)
+            self.tokenizer = AutoTokenizer.from_pretrained(path, **tokenizer_config)
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(path)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.num_generations = num_generations
         self.filter_range = grpo_config.get("filter_range", None)
@@ -243,8 +249,12 @@ class GRPOConsumer(BaseConsumer):
             else self.booster.no_sync(self.policy_model, self.optimizer)
         )
         with ctx:
+            mini_batch_entropies = []
             for forward_micro_batch_start in range(0, data["input_ids"].size(0), train_microbatch_size):
                 input_ids_forward_micro_batch = data["input_ids"][
+                    forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
+                ]
+                old_action_log_probs_micro_batch = old_action_log_probs[
                     forward_micro_batch_start : forward_micro_batch_start + train_microbatch_size
                 ]
                 attention_mask_forward_micro_batch = data["attention_mask"][
@@ -303,6 +313,7 @@ class GRPOConsumer(BaseConsumer):
                         "action_mask": action_mask_forward_micro_batch,
                         "advantages": advantages_forward_micro_batch,
                         "loss_mask": loss_mask_forward_micro_batch,
+                        "old_action_log_probs": old_action_log_probs_micro_batch,
                         "source": self.rank,
                     }
                     if reference_action_log_probs is not None:
@@ -312,6 +323,12 @@ class GRPOConsumer(BaseConsumer):
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
+                        mini_batch_entropies.append(
+                            (
+                                ((entropy_from_logits(action_logits[:, -num_action:]) * inputs["action_mask"]).sum(-1))
+                                / inputs["action_mask"].sum(-1)
+                            ).detach()
+                        )
                         action_log_probs = memory_efficient_logprob(
                             action_logits / self.generate_config["temperature"],
                             inputs["input_ids"],
@@ -334,7 +351,7 @@ class GRPOConsumer(BaseConsumer):
 
                         loss, _ = self.policy_loss_fn(
                             action_log_probs,
-                            action_log_probs,
+                            inputs["old_action_log_probs"],
                             inputs["advantages"].repeat_interleave(action_log_probs.size(-1), dim=-1),
                             per_token_kl,
                             inputs["action_mask"],
@@ -396,7 +413,7 @@ class GRPOConsumer(BaseConsumer):
 
                     loss, _ = self.policy_loss_fn(
                         action_log_probs,
-                        old_action_log_probs,
+                        old_action_log_probs_micro_batch,
                         advantages_forward_micro_batch.repeat_interleave(action_log_probs.size(-1), dim=-1),
                         per_token_kl,
                         action_mask_forward_micro_batch,
@@ -411,6 +428,20 @@ class GRPOConsumer(BaseConsumer):
                         kl = all_reduce_mean(kl.mean(), self.plugin)
                         mean_kl.append(kl.data)
                     mean_loss.append(loss.data)
+                    mini_batch_entropies.append(
+                        all_reduce_mean(
+                            (
+                                (
+                                    (
+                                        entropy_from_logits(policy_model_logits[:, -num_action:])
+                                        * action_mask_forward_micro_batch
+                                    ).sum(-1)
+                                )
+                                / action_mask_forward_micro_batch.sum(-1)
+                            ).detach(),
+                            self.plugin,
+                        )
+                    )
             if not self.plugin.pp_size > 1 or (
                 self.plugin.pp_size > 1
                 and self.booster.plugin.stage_manager.is_last_stage()
@@ -422,7 +453,9 @@ class GRPOConsumer(BaseConsumer):
                 ans_acc = all_reduce_mean(ans_acc.mean(), self.plugin)
                 advantages = all_reduce_mean(advantages.mean(), self.plugin)
                 response_length = all_reduce_mean(response_length.mean(), self.plugin)
+                entropy = all_reduce_mean(torch.cat(mini_batch_entropies, dim=0).mean(), self.plugin)
                 self.accum_loss.add_(sum(mean_loss) / len(mean_loss))
+                self.accum_entropy.add_(entropy.data)
                 if self.policy_loss_fn.beta > 0:
                     self.accum_kl.add_(sum(mean_kl) / len(mean_kl))
                 self.accum_advantages.add_(advantages.data)
@@ -465,6 +498,7 @@ class GRPOConsumer(BaseConsumer):
                         f"Response Length: {raw_batch_response_len_mean:.4f}",
                         f"Sample_utilization: {sample_utilization:.4f}",
                         f"Overlength samples ratio: {overlength_samples_ratio:.4f}",
+                        f"Entropy: {self.accum_entropy.item() / self.accum_count:.4f}",
                     ] + ([f"KL: {self.accum_kl.item() / self.accum_count:.4f}"] if self.policy_loss_fn.beta > 0 else [])
                     print("\n".join(to_log_msg))
                     metrics = {
@@ -476,6 +510,7 @@ class GRPOConsumer(BaseConsumer):
                         "train/advantages": self.accum_advantages.item() / self.accum_count,
                         "train/learning_rate": self.lr_scheduler.get_last_lr()[0],
                         "train/sample_utilization": sample_utilization,
+                        "train/entropy": self.accum_entropy.item() / self.accum_count,
                         "train/overlength_samples_ratio": overlength_samples_ratio,
                         "rollout/temperature": data["temperature"].cpu().numpy()[0][0],
                     }
@@ -483,8 +518,10 @@ class GRPOConsumer(BaseConsumer):
                         metrics["train/kl"] = self.accum_kl.item() / self.accum_count
                     if self.wandb_run is not None:
                         self.wandb_run.log(metrics)
+                    ray.get(self.shared_signal_actor.set_signal.remote("sample_utilization", sample_utilization))
                 self.accum_loss.zero_()
                 self.accum_kl.zero_()
+                self.accum_entropy.zero_()
                 self.accum_advantages.zero_()
                 self.accum_count = 0
             return loss_scalar
