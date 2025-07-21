@@ -346,7 +346,6 @@ class GRPOConsumer(BaseConsumer):
                         data_policy_forward["reference_action_log_probs"] = reference_action_log_probs
 
                     kl = []
-                    policy_model_logits = torch.empty_like(input_ids_forward_micro_batch, device=self.device)
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits

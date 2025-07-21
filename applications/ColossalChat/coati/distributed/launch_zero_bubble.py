@@ -130,7 +130,7 @@ def launch_distributed(
             train_dataset_config=train_dataset_config,
             model_config=inference_model_config,
             generate_config=generate_config,
-            tokenizer_config=tokenizer_config,
+            tokenizer_config=copy.deepcopy(tokenizer_config),
             microbatch_size=inference_microbatch_size,
             backend=inference_backend,
             num_generations=num_generations,
@@ -158,8 +158,6 @@ def launch_distributed(
     consumer_master_ip_address = gpu_to_ip_address[0]
     print(f"Use {consumer_master_ip_address} as master address for torch DDP.")
     consumer_procs = []
-    if num_consumer_procs <= 1:
-        raise ValueError("Number of consumer processes should be greater than 1 for async rl training.")
     for i in range(num_consumer_procs):
         node_id = gpu_to_node_id[0]
         consumer_ip_address = gpu_to_ip_address[0]
@@ -180,6 +178,7 @@ def launch_distributed(
             model_config=train_model_config,
             plugin_config=plugin_config,
             minibatch_size=train_minibatch_size,
+            tokenizer_config=copy.deepcopy(tokenizer_config),
             generate_config=generate_config_consumer,
             grpo_config=grpo_config,
             num_generations=num_generations,

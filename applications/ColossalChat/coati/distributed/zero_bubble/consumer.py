@@ -7,16 +7,15 @@ import ray
 import ray.util.collective as cc
 import torch
 import torch.distributed as dist
+from coati.distributed.comm import SharedVariableActor, ray_broadcast_tensor_dict
 from coati.distributed.profiling_utils import CustomProfiler
+from coati.distributed.utils import bind_batch, post_recv, unbind_batch
 from tqdm import tqdm
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
 from colossalai.initialize import launch
 from colossalai.utils import get_current_device
-
-from coati.distributed.comm import SharedVariableActor, ray_broadcast_tensor_dict
-from coati.distributed.utils import bind_batch, post_recv, unbind_batch
 
 
 class BaseConsumer:
@@ -175,14 +174,15 @@ class BaseConsumer:
                         raw_batch = ray.get(
                             self.shared_sync_data_actor.get_data.remote(self.data_uid)
                         )  # get the first queued data
+                        self.profiler.log(f"enter sleep")
                         while raw_batch is None:
-                            self.profiler.log(f"No data received by consumer {self.rank}, skipping")
                             print(
                                 f"[T{dist.get_rank()}] No data received by consumer {self.rank}, skipping. Consider increasing the data actor buffer limit"
                             )
                             time.sleep(1)
                             raw_batch = ray.get(self.shared_sync_data_actor.get_data.remote(self.data_uid))
                             continue
+                        self.profiler.log(f"exit sleep")
                         self.data_uid += 1
                         raw_batch = {k: v.to(self.device) for k, v in raw_batch.items()}
                         # calculate group reward et al. filtering. As only the filtered group will be used for training (which is incomplete),
