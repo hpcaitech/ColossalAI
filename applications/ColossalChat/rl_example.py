@@ -252,7 +252,7 @@ if __name__ == "__main__":
         )
         generate_config.update(
             dict(
-                max_tokens=args.max_new_tokens + args.max_prompt_tokens,  # max new tokens
+                max_tokens=args.max_new_tokens,  # max new tokens
                 include_stop_str_in_output=True,
                 stop=["</answer>"] if args.reward_type == "think_answer_tags" else None,
                 ignore_eos=True if args.reward_type == "think_answer_tags" else False,

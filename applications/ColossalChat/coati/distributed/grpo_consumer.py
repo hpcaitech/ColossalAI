@@ -69,8 +69,8 @@ class GRPOConsumer(BaseConsumer):
             enable_profiling=enable_profiling,
             n_behind=n_behind,
         )
-        path = model_config.pop("path")
-        self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
+        self.path = model_config.pop("path")
+        self.policy_model = AutoModelForCausalLM.from_pretrained(self.path, **model_config)
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
         self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
@@ -98,12 +98,7 @@ class GRPOConsumer(BaseConsumer):
             loss_variation=grpo_config.get("loss_variation", "sample_level"),
         )
 
-        # Reference model is initialized from policy model.
-        if self.policy_loss_fn.beta > 0:
-            self.reference_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
-            self.reference_model.eval()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.path)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.num_generations = num_generations
         self.filter_range = grpo_config.get("filter_range", None)
@@ -148,7 +143,10 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
             self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
         )
+        # Reference model is initialized from policy model.
         if self.policy_loss_fn.beta > 0:
+            self.reference_model = AutoModelForCausalLM.from_pretrained(self.path, **self.model_config)
+            self.reference_model.eval()
             self.reference_model, *_ = self.booster.boost(self.reference_model)
         self.plugin.logger.set_level("ERROR")
 

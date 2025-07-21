@@ -53,7 +53,7 @@ def main():
     # ==============================
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", type=str, default="7b", help="Model configuration")
-    parser.add_argument("-model", "--model_path", type=str, help="Model path")
+    parser.add_argument("--model_path", type=str, help="Model path")
     parser.add_argument(
         "-p",
         "--plugin",
@@ -85,6 +85,7 @@ def main():
     parser.add_argument("--pp_style", default="1f1b", choices=["1f1b", "interleaved", "zbv"])
     parser.add_argument("--n_chunks", default=1, help="number of model chunks", type=eval)
     parser.add_argument("--profile", action="store_true", help="Profile the code")
+    parser.add_argument("--cpu_offload", action="store_true", help="Cpu offload")
     parser.add_argument(
         "--nsys",
         action="store_true",
@@ -142,6 +143,7 @@ def main():
             pp_style=args.pp_style,
             num_model_chunks=args.n_chunks,
             zero_stage=args.zero,
+            cpu_offload=args.cpu_offload,
             sp_size=args.sp,
             sequence_parallelism_mode=args.sp_mode,
             enable_sequence_parallelism=args.sp > 1,
@@ -204,7 +206,11 @@ def main():
     )
 
     model = Qwen2ForCausalLM.from_pretrained(
-        MODEL_PATH, trust_remote_code=True, use_flash_attention_2=False, use_cache=False, attn_implementation="eager"
+        args.model_path,
+        trust_remote_code=True,
+        use_flash_attention_2=False,
+        use_cache=False,
+        attn_implementation="eager",
     )
     if args.grad_checkpoint:
         model.gradient_checkpointing_enable()

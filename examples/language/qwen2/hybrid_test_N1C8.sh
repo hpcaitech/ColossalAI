@@ -6,5 +6,14 @@
 
 export OMP_NUM_THREADS=8
 
-#hybird: zero2+flash_atten+grad_ckpt+bs4
-colossalai run --nproc_per_node 8 benchmark.py -m "/home/grpo/models/Qwen2.5-7B/" -p "3d" -x -g --zero 1 -b 32 --mbs 1 --tp 2 --pp 2 -l 4096
+colossalai run --nproc_per_node 8 benchmark.py \
+	--model_path "/home/grpo/models/DeepSeek-R1-Distill-Qwen-7B/" \
+	-p "3d" \
+	-x -g \
+	--zero 1 \
+	--cpu_offload \
+	-b 16 --mbs 1 \
+	--tp 4 --pp 2 \
+	-l 4096 \
+	-s 3 \
+	&>qwen2_7b.log &
