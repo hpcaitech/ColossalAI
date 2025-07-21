@@ -180,23 +180,84 @@ class GRPOConsumer(BaseConsumer):
         response_length = torch.sum(action_mask, dim=1).to(torch.float32)
         train_microbatch_size = self.grpo_config.get("train_microbatch_size", data["input_ids"].size(0))
 
-        reward = data["reward"].view((-1))
-        format_acc = data["format_acc"].view((-1))
-        ans_acc = data["ans_acc"].view((-1))
+        if(True):
 
-        # [minibatch_size, num_generations]
+        # if(algo == "grpo"):
+        
+            """ 
+            reward = data["reward"].view((-1))
+            format_acc = data["format_acc"].view((-1))
+            ans_acc = data["ans_acc"].view((-1))
+            
+            # [minibatch_size, num_generations]
+            
+            group_reward = reward.view(-1, self.num_generations)
+            reward_mean = group_reward.mean(dim=1)
+            # [minibatch_size x num_generations]
+            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+            
+            reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
+            # [minibatch_size x num_generations]
+            advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
+            
+            print("advantages.shape: ", advantages.shape) 
 
-        group_reward = reward.view(-1, self.num_generations)
-        reward_mean = group_reward.mean(dim=1)
-        # [minibatch_size x num_generations]
-        reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+            # [minibatch_size x num_of_generation]
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool() 
 
-        reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
-        # [minibatch_size x num_generations]
-        advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
+            print("loss_mask.shape: ", loss_mask.shape) 
 
-        # [minibatch_size x num_of_generation]
-        loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
+            
+
+            # if(algo == "reinforce_plus_plus_baseline"):
+            reward = data["reward"].view((-1))
+            format_acc = data["format_acc"].view((-1))
+            ans_acc = data["ans_acc"].view((-1))
+
+            # [minibatch_size, num_generations]
+
+            group_reward = reward.view(-1, self.num_generations)
+            reward_mean = group_reward.mean(dim=1)
+            # [minibatch_size x num_generations]
+            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+
+            
+            # [minibatch_size x num_generations]
+            advantages = ((reward - reward_mean)).unsqueeze(dim=-1)
+
+            advantages_mean = advantages.mean(dim=0)
+
+            advantages_std = advantages.std(dim=0) 
+
+            advantages = (advantages - advantages_mean) / (advantages_std + 1e-4) 
+
+            # [minibatch_size x num_of_generation]
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
+        
+            """
+
+            # if(algo == "rloo"):
+            reward = data["reward"].view((-1))
+            format_acc = data["format_acc"].view((-1))
+            ans_acc = data["ans_acc"].view((-1))
+
+            # [minibatch_size, num_generations]
+
+            group_reward = reward.view(-1, self.num_generations)
+            reward_mean = group_reward.mean(dim=1)
+            # [minibatch_size x num_generations]
+            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+
+
+            # [minibatch_size x num_generations]
+            advantages = reward 
+
+            advantages = (advantages * self.num_generations / (self.num_generations - 1) - reward_mean * self.num_generations / (self.num_generations - 1)).unsqueeze(dim=-1)  
+
+            # [minibatch_size x num_of_generation]
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool() 
+
+            
 
         # filter out overlength samples
         if self.filter_truncated_response and action_mask.size(1) == self.max_length:
