@@ -1,14 +1,12 @@
 from contextlib import nullcontext
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import ray
 import torch
 import wandb
 from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
-from coati.distributed.reward.reward_fn import boxed_math_reward_fn, math_reward_fn
-from coati.distributed.reward.verifiable_reward import VerifiableReward
-from coati.distributed.utils import calc_action_log_probs
+from coati.distributed.utils import memory_efficient_logprob
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -40,6 +38,8 @@ class GRPOConsumer(BaseConsumer):
         project_name: str = None,
         run_name: str = None,
         wandb_group_name: str = None,
+        enable_profiling: bool = False,
+        n_behind: int = 0,
     ):
         print(f"Using GRPO config: {grpo_config}")
         if (
@@ -62,12 +62,15 @@ class GRPOConsumer(BaseConsumer):
             batch_size,
             model_config,
             plugin_config,
+            generate_config,
             minibatch_size,
             save_interval=save_interval,
             save_dir=save_dir,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
-        path = model_config.pop("path")
-        self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
+        self.path = model_config.pop("path")
+        self.policy_model = AutoModelForCausalLM.from_pretrained(self.path, **model_config)
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
         self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
@@ -95,12 +98,7 @@ class GRPOConsumer(BaseConsumer):
             loss_variation=grpo_config.get("loss_variation", "sample_level"),
         )
 
-        # Reference model is initialized from policy model.
-        if self.policy_loss_fn.beta > 0:
-            self.reference_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
-            self.reference_model.eval()
-
-        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.path)
         self.pad_token_id = self.tokenizer.pad_token_id
         self.num_generations = num_generations
         self.filter_range = grpo_config.get("filter_range", None)
@@ -119,20 +117,7 @@ class GRPOConsumer(BaseConsumer):
                     "either max_tokens (vllm) or max_new_tokens (transformers) must be set in generate_config."
                 )
         # Initialize verifiable reward.
-        response_format_tags = grpo_config.get("response_format_tags", None)
-        reward_model_kwargs = {
-            k: v
-            for k, v in grpo_config.items()
-            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length"]
-        }
-        self.reward_model = VerifiableReward(
-            reward_fns=[
-                math_reward_fn if grpo_config.get("reward_fn_type") == "think_answer_tags" else boxed_math_reward_fn
-            ],
-            tokenizer=self.tokenizer,
-            tags=response_format_tags,
-            **reward_model_kwargs,
-        )
+        grpo_config.get("response_format_tags", None)
         self.global_step = 0
 
         self.lr_scheduler = CosineAnnealingWarmupLR(
@@ -158,7 +143,10 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model, self.optimizer, _, _, self.lr_scheduler = self.booster.boost(
             self.policy_model, self.optimizer, lr_scheduler=self.lr_scheduler
         )
+        # Reference model is initialized from policy model.
         if self.policy_loss_fn.beta > 0:
+            self.reference_model = AutoModelForCausalLM.from_pretrained(self.path, **self.model_config)
+            self.reference_model.eval()
             self.reference_model, *_ = self.booster.boost(self.reference_model)
         self.plugin.logger.set_level("ERROR")
 
@@ -295,12 +283,11 @@ class GRPOConsumer(BaseConsumer):
                             )
 
                         if self.booster.plugin.stage_manager.is_last_stage():
-                            reference_model_logits = reference_model_outputs["outputs"]["logits"]
-                            reference_action_log_probs = calc_action_log_probs(
-                                reference_model_logits / self.generate_config["temperature"],
+                            reference_action_log_probs = memory_efficient_logprob(
+                                reference_model_outputs["outputs"]["logits"],
                                 input_ids_forward_micro_batch,
                                 num_action,
-                                self.plugin.shard_config,
+                                shard_config=self.plugin.shard_config,
                             )
                         else:
                             # Dummy reference logprobs for data iterator.
@@ -323,11 +310,11 @@ class GRPOConsumer(BaseConsumer):
 
                     def _criterion(outputs, inputs):
                         action_logits = outputs.logits
-                        action_log_probs = calc_action_log_probs(
-                            action_logits / self.generate_config["temperature"],
+                        action_log_probs = memory_efficient_logprob(
+                            action_logits,
                             inputs["input_ids"],
                             num_action,
-                            self.plugin.shard_config,
+                            shard_config=self.plugin.shard_config,
                         )
                         if "reference_action_log_probs" in inputs:
                             per_token_kl = (
@@ -370,16 +357,15 @@ class GRPOConsumer(BaseConsumer):
                             mean_kl.append(kl)
                         mean_loss.append(all_reduce_mean(loss, self.plugin).data)
                 else:
-
                     policy_model_logits = self.policy_model(
                         input_ids=input_ids_forward_micro_batch,
                         attention_mask=attention_mask_forward_micro_batch,
                     ).logits
-                    action_log_probs = calc_action_log_probs(
+                    action_log_probs = memory_efficient_logprob(
                         policy_model_logits / self.generate_config["temperature"],
                         input_ids_forward_micro_batch,
                         num_action,
-                        self.plugin.shard_config,
+                        shard_config=self.plugin.shard_config,
                     )
 
                     if self.policy_loss_fn.beta > 0:
@@ -388,11 +374,11 @@ class GRPOConsumer(BaseConsumer):
                                 input_ids=input_ids_forward_micro_batch,
                                 attention_mask=attention_mask_forward_micro_batch,
                             ).logits
-                        reference_action_log_probs = calc_action_log_probs(
+                        reference_action_log_probs = memory_efficient_logprob(
                             reference_model_logits / self.generate_config["temperature"],
                             input_ids_forward_micro_batch,
                             num_action,
-                            self.plugin.shard_config,
+                            shard_config=self.plugin.shard_config,
                         )
                         per_token_kl = (
                             torch.exp(reference_action_log_probs - action_log_probs)
@@ -497,40 +483,6 @@ class GRPOConsumer(BaseConsumer):
             return loss_scalar
         else:
             return None
-
-    def calculate_reward(self, rollout: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculate the group reward for the given rollout group.
-
-        Args:
-            rollout_group (Dict[str, Any]):
-                a group of samples generated by the model from the same prompt
-                contain the following keys:
-                    "input_ids": torch.Tensor, [num_of_generation, prompt_length + response_length]
-                    "attention_mask": torch.Tensor, [num_of_generation, prompt_length + response_length]
-                    "action_mask": torch.Tensor, [num_of_generation, response_length]
-                    "action_log_probs": torch.Tensor, [num_of_generation, response_length]
-                    "response_idx": int, torch.Tensor, [num_of_generation, 2]
-                    "gt_answer": torch.Tensor, [num_of_generation, 128]
-                    "temperature": torch.Tensor, [] (scalar)
-
-        Returns:
-            Dict[str, Any]: The new group data with calculated reward.
-        """
-        reward_model_output = self.reward_model(
-            rollout["input_ids"],
-            gt_answer=rollout["gt_answer"],
-            response_idx=rollout["response_idx"],
-        )
-        # [num_of_generation]
-        reward = torch.tensor([value[0] for value in reward_model_output]).to(rollout["input_ids"].device)
-        format_acc = torch.tensor([value[1] for value in reward_model_output]).to(rollout["input_ids"].device)
-        ans_acc = torch.tensor([value[2] for value in reward_model_output]).to(rollout["input_ids"].device)
-
-        rollout["reward"] = reward.view((-1, 1))
-        rollout["format_acc"] = format_acc.view((-1, 1))
-        rollout["ans_acc"] = ans_acc.view((-1, 1))
-        return rollout
 
     def state_dict(self):
         self.policy_model._force_wait_all_gather()

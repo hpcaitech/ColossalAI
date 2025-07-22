@@ -1,0 +1,8 @@
+colossalai>=0.3.6
+datasets
+numpy
+tqdm
+transformers
+flash-attn>=2.0.0
+SentencePiece==0.1.99
+tensorboard==2.14.0

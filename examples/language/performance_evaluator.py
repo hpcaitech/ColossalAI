@@ -161,18 +161,18 @@ class PerformanceEvaluator:
         ) * (
             1.0 + (seq_len / (6.0 * self.hidden_size)) + (self.vocab_size / (16.0 * self.num_layers * self.hidden_size))
         )
-        self.flop += batch_size * seq_len * self.model_numel * 2 * (3 + int(self.enable_grad_checkpoint))
+        self.flop += batch_size * (seq_len // 1024) * self.model_numel * (3 + int(self.enable_grad_checkpoint))
 
     def on_fit_end(self) -> None:
         avg_duration = all_reduce_mean(self.timer.duration, self.coordinator.world_size)
         avg_throughput = self.num_samples * self.dp_world_size / (avg_duration + 1e-12)
         mp_world_size = self.coordinator.world_size // self.dp_world_size
-        avg_tflops_per_gpu_megatron = self.flop_megatron / 1e12 / (avg_duration + 1e-12) / mp_world_size
+        self.flop_megatron / 1e12 / (avg_duration + 1e-12) / mp_world_size
         avg_tflops_per_gpu = self.flop / 1e12 / (avg_duration + 1e-12) / mp_world_size
         self.coordinator.print_on_master(
             f"num_samples: {self.num_samples}, dp_world_size: {self.dp_world_size}, flop_megatron: {self.flop_megatron}, flop: {self.flop}, avg_duration: {avg_duration}, "
             f"avg_throughput: {avg_throughput}"
         )
         self.coordinator.print_on_master(
-            f"Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU by Megatron: {avg_tflops_per_gpu_megatron:.2f}, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}"
+            f"Throughput: {avg_throughput:.2f} samples/sec, TFLOPS per GPU: {avg_tflops_per_gpu:.2f}"
         )

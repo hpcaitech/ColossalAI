@@ -55,3 +55,32 @@ def ray_broadcast_tensor_dict(
     if rank == src:
         out_dict = tensor_dict
     return out_dict
+
+
+def ray_broadcast_tensor_dict_and_load(
+    producer_obj, tensor_dict: Dict[str, torch.Tensor], src: int = 0, device=None, group_name: str = "default"
+):
+    rank = cc.get_rank(group_name)
+    if rank == src:
+        metadata = []
+        for k, v in tensor_dict.items():
+            metadata.append((k, v.shape, v.dtype))
+    else:
+        metadata = None
+    metadata = ray_broadcast_object(metadata, src, device, group_name)
+    for k, shape, dtype in metadata:
+        if "consumer_global_step" == k:
+            continue
+        if rank == src:
+            tensor = tensor_dict[k]
+        else:
+            out_dict = {}
+            tensor = torch.empty(shape, dtype=dtype, device=device)
+        cc.broadcast(tensor, src, group_name)
+        if rank != src:
+            out_dict[k] = tensor
+            producer_obj.load_state_dict(out_dict)
+            del out_dict
+            torch.npu.empty_cache()
+    if rank == src:
+        out_dict = tensor_dict

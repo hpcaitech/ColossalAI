@@ -71,31 +71,43 @@ def log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.T
     return per_label_logps.squeeze(-1)
 
 
-def calc_action_log_probs(
+def memory_efficient_logprob(
     logits: torch.Tensor,
-    sequences: torch.LongTensor,
-    num_actions: int,
-    shard_config,
+    inputs: torch.Tensor,
+    num_action: int,
+    chunk_size: int = 2048,
+    shard_config: Any = None,
     vocab_size: int = None,
 ) -> torch.Tensor:
-    """Calculate action log probs.
-
+    """
+    Calculate action log probs in a memory-efficient way by processing in chunks.
     Args:
         logits (torch.Tensor): Output tensor of Actor.forward.logits.
-        sequences (torch.LongTensor): Input sequences.
-        num_actions (int): Number of actions.
-        shard_config
-        vocab_size
-
-
+        inputs (torch.LongTensor): Input sequences.
+        num_action (int): Number of actions.
+        chunk_size (int, optional): Size of each chunk to process. Default is 2048.
+        shard_config: Shard configuration for distributed computation.
+        vocab_size (int, optional): Vocabulary size. Default is None.
     Returns:
         torch.Tensor: Action log probs.
     """
-    # labels: torch.Tensor,  # [B, S] or [B, S, Vocab_size]
-    # logits: torch.Tensor,  # [B, S, Vocab_size]
-    log_probs = dist_log_prob(sequences, logits, shard_config, vocab_size, logits.dtype)
-    log_probs = log_probs.squeeze(-1)
-    return log_probs[:, -num_actions:]
+    action_log_probs = torch.zeros((logits.size(0), num_action), device=logits.device, dtype=logits.dtype)
+    context_length = logits.size(1) - num_action
+    for i in range(action_log_probs.size(0)):
+        # loop over each sample in the micro-batch
+        for start in range(context_length, logits.size(1), chunk_size):
+            end = min(start + chunk_size, logits.size(1))
+            # calculate log probs in chunks to save memory
+            log_probs = dist_log_prob(
+                inputs[i : i + 1, start - 1 : end],
+                logits[i : i + 1, start - 1 : end],
+                shard_config,
+                vocab_size,
+                logits.dtype,
+            )  # [1, chunk_size, 1]
+            log_probs = log_probs.squeeze(-1)
+            action_log_probs[i, start - context_length : end - context_length] += log_probs[0]
+    return action_log_probs
 
 
 def masked_mean(tensor: torch.Tensor, mask: torch.Tensor, dim: int = 1) -> torch.Tensor:

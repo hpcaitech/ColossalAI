@@ -16,7 +16,7 @@ def get_jsonl_size_fast(path: str) -> int:
     with open(path) as f:
         lines = f.readlines()
         lines = [line for line in lines if line.strip()]
-        return len(lines) - 1
+        return len(lines)
 
 
 def get_dp_size_fast(n_procs: int, plugin_config: Dict[str, Any]) -> int:
@@ -36,7 +36,6 @@ def launch_distributed(
     train_batch_size: int,
     train_minibatch_size: int,
     train_dataset_config: Dict[str, Any],
-    dataloaders_config: Dict[str, Any],
     inference_model_config: Dict[str, Any],
     generate_config: Dict[str, Any],
     train_model_config: Dict[str, Any],
@@ -57,6 +56,8 @@ def launch_distributed(
     eval_generation_config: Optional[Dict[str, Any]] = None,
     log_rollout_interval: int = 20,
     rollout_save_dir: str = "./rollout",
+    enable_profiling: bool = False,
+    n_behind: int = 0,
 ):
     if core_algo not in ALGO_MAP:
         raise NotImplementedError(f"{core_algo} is not supported yet.")
@@ -79,6 +80,11 @@ def launch_distributed(
         f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
 
+    # Attention: Ray use complex schedualing method that consider various factors including load-balancing.
+    # when requesting resources, it is not guaranteed that the resource comes from a node with lower node it
+    # this go against the design principle of our implementation, and we need to manually force the schedualing,
+    # allocating the producer to nodes with lower node id and the consumer to the resouces from nodes with higher
+    # node id. See the reference here: https://docs.ray.io/en/latest/ray-core/scheduling/index.html#nodeaffinityschedulingstrategy
     nodes = ray.nodes()
     node_info = {
         node["NodeID"]: {
@@ -104,7 +110,6 @@ def launch_distributed(
             gpu_to_node_id.pop(0)
             gpu_to_ip_address.pop(0)
         print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
-
         producer = SimpleProducer.options(
             # num_cpus=1,
             # num_cpus=num_proc_per_producer,
@@ -121,7 +126,6 @@ def launch_distributed(
             num_episodes=num_episodes,
             batch_size=inference_batch_size,
             train_dataset_config=train_dataset_config,
-            dataloaders_config=dataloaders_config,
             model_config=inference_model_config,
             generate_config=generate_config,
             tokenizer_config=tokenizer_config,
@@ -131,8 +135,7 @@ def launch_distributed(
             consumer_plugin_config=plugin_config,
             eval_dataset_config=eval_dataset_config,
             eval_interval=eval_interval,
-            evaluation_function_type=grpo_config["reward_fn_type"],
-            response_format_tags=grpo_config["response_format_tags"],
+            grpo_config=grpo_config,
             eval_save_dir=eval_save_dir,
             eval_generation_config=eval_generation_config,
             project_name=project_name,
@@ -140,6 +143,8 @@ def launch_distributed(
             wandb_group_name=wandb_group_name,
             log_rollout_interval=log_rollout_interval,
             rollout_log_file=rollout_log_file,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         producer_procs.append(producer)
     ray.get([p.setup.remote() for p in producer_procs])
@@ -185,6 +190,8 @@ def launch_distributed(
             project_name=project_name,
             run_name=run_name,
             wandb_group_name=wandb_group_name,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
         )
         consumer_procs.append(consumer)
     ray.get([p.setup.remote() for p in consumer_procs])

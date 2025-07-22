@@ -20,6 +20,7 @@ sentencepiece==0.2.0
 tiktoken
 jsonlines
 math-verify==0.7.0
+pyext
 
 # The following packages be built into the image.
 # torch_npu==2.5.1
