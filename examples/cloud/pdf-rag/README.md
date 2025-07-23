@@ -53,4 +53,3 @@ pip install -r requirements.txt
 - FlagEmbedding
 - haystack
 - haystack-integrations
-

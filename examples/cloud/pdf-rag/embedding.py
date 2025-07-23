@@ -1,9 +1,11 @@
 import json
+import os
+import time
+
 import numpy as np
 from FlagEmbedding import FlagAutoModel
-import time
 from sklearn.metrics.pairwise import cosine_similarity
-import os
+
 
 def load_model(model_name="BAAI/bge-base-en-v1.5", use_fp16=True):
     return FlagAutoModel.from_finetuned(
@@ -42,17 +44,17 @@ def load_embeddings(file_path):
 def main():
     config = {
         "model_name": "BAAI/bge-base-en-v1.5",
-        "json_path": #PATH_TO_YOUR_JSON.json#,
-        "embedding_path": #PATH_TO_YOUR_EMBEDDING.npy#,
+        "json_path": "#PATH_TO_YOUR_JSON.json#",
+        "embedding_path": "#PATH_TO_YOUR_EMBEDDING.npy#",
         "use_fp16": True,
         "use_precomputed_embeddings": False
     }
-    
+
     model = load_model(
         model_name=config["model_name"],
         use_fp16=config["use_fp16"]
     )
-    
+
     if config["use_precomputed_embeddings"]:
         embeddings = load_embeddings(config["embedding_path"])
         if embeddings is None:
@@ -61,17 +63,17 @@ def main():
         data = load_data(config["json_path"])
         if not data:
             return
-            
+
         texts = extract_texts(data)
         embeddings = generate_embeddings(model, texts)
         save_embeddings(embeddings, config["embedding_path"])
-    
+
 ##### Test demo with simple KNN cosine_similarity
     # query='This is a test query to find relevant documents.'
     # query_embedding=np.array(model.encode(query))
     # similarity_scores = cosine_similarity([query_embedding], embeddings)
     # indices = np.argsort(-similarity_scores)
-    
+
     return embeddings
 
 if __name__ == '__main__':
