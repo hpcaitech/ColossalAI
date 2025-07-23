@@ -61,7 +61,7 @@ class BaseConsumer:
 
         self.device = get_current_device()
         self.lr_scheduler = None
-        self.n_behind = n_behind
+        self.n_behind = n_behind 
 
     def setup(self) -> None:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)

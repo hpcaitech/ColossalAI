@@ -130,7 +130,7 @@ if __name__ == "__main__":
     )
 
     # GRPO parameters
-    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO"])
+    parser.add_argument("-a", "--algo", type=str, default="GRPO", choices=["DAPO", "GRPO", "REINFORCE_PPB", "RLOO"])
     parser.add_argument("-lr", "--learning-rate", type=float, default=1e-6, help="Learning rate for GRPO.")
     parser.add_argument("-kl", "--kl-coeff", type=float, default=0.01, help="KL penalty coefficient for GRPO.")
     parser.add_argument(
@@ -228,13 +228,7 @@ if __name__ == "__main__":
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False)
-    generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
-
-    # inference_model_config.update(
-    #     dict(
-    #     intermediate_size=14336,
-    #     )
-    # ) 
+    generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)  
 
     if args.backend == "transformers":
         inference_model_config.update(
@@ -284,13 +278,12 @@ if __name__ == "__main__":
             )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     else:
-        raise ValueError(f"Unsupported backend: {args.backend}")
-
-    print("inference_model_config: ", inference_model_config) 
+        raise ValueError(f"Unsupported backend: {args.backend}") 
 
     if args.algo == "GRPO":
         # Default Settings
         grpo_config = {
+            "algo": "GRPO", 
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
             "beta": args.kl_coeff,  # KL penalty coefficient
@@ -312,6 +305,7 @@ if __name__ == "__main__":
     elif args.algo == "DAPO":
         # DAPO variant settings
         grpo_config = {
+            "algo": "DAPO",
             "filter_range": [0.01, 0.99],  # only filter out all zero batch and all one batch
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
@@ -338,9 +332,10 @@ if __name__ == "__main__":
                 else None
             ),
         }
-    elif args.algo == "REINFORCE_Plus_Plus_Baseline":
+    elif args.algo == "REINFORCE_PPB":
         # Default Settings
         grpo_config = {
+            "algo": "REINFORCE_PPB",
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
             "beta": args.kl_coeff,  # KL penalty coefficient
@@ -358,7 +353,29 @@ if __name__ == "__main__":
                 if args.reward_type == "think_answer_tags"
                 else None
             ),
-        } 
+        }
+    elif args.algo == "RLOO":
+        # Default Settings
+        grpo_config = {
+            "algo": "RLOO", 
+            "lr": args.learning_rate,
+            "train_microbatch_size": args.train_microbatch_size,
+            "beta": args.kl_coeff,  # KL penalty coefficient
+            "loss_variation": "sample_level",
+            "reward_fn_type": args.reward_type,
+            "max_length": args.max_new_tokens + args.max_prompt_tokens,
+            "max_new_tokens": args.max_new_tokens,
+            "response_format_tags": (
+                {
+                    "think_start": {"text": "<think>", "num_occur": 1},
+                    "think_end": {"text": "</think>", "num_occur": 1},
+                    "answer_start": {"text": "<answer>", "num_occur": 1},
+                    "answer_end": {"text": "</answer>", "num_occur": 1},
+                }
+                if args.reward_type == "think_answer_tags"
+                else None
+            ),
+        }
     else:
         raise ValueError(f"Unsupported algorithm: {args.algo}")
     if args.reward_type == "code":

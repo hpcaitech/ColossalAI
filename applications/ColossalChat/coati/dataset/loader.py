@@ -370,22 +370,16 @@ def apply_chat_template_and_mask(
     if "messages" in chat:
         gt_answer = chat.get("gt_answer", None)
         test_cases = chat.get("test_cases", None)
-        chat = [chat["messages"]]
-
-    # print("chat: ", chat) 
+        chat = [chat["messages"]] 
 
     tokens = []
     assistant_mask = []
     for i, msg in enumerate(chat):
         msg_tokens = tokenizer.apply_chat_template([system_element, msg], tokenize=True, add_generation_prompt=True)
-
-        # print("msg_tokens: ", i, msg_tokens) 
-
         # remove unexpected bos token
         if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
             msg_tokens = msg_tokens[1:]
         tokens.extend(msg_tokens)
-        # print("tokens: ", tokens) 
         if msg["role"] == "assistant":
             assistant_mask.extend([True] * len(msg_tokens))
         else:
@@ -402,7 +396,7 @@ def apply_chat_template_and_mask(
             tokens = tokens[:max_length]
             assistant_mask = assistant_mask[:max_length]
             attention_mask = attention_mask[:max_length]
-    # print("tokens: ", tokens) 
+     
     input_ids = torch.tensor(tokens, dtype=torch.long)
     attention_mask = torch.tensor(attention_mask, dtype=torch.long)
     labels = input_ids.clone()
