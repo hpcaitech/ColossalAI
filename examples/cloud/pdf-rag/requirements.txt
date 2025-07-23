@@ -1,0 +1,7 @@
+numpy
+scikit-learn
+hnswlib
+rank_bm25
+FlagEmbedding
+haystack
+haystack-integrations
