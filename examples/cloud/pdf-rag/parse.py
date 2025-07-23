@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 
-from haystack import Document, Pipeline
+from haystack import Pipeline
 from haystack.components.converters import PyPDFToDocument
 from haystack.components.preprocessors import DocumentCleaner, DocumentSplitter
 from haystack.components.writers import DocumentWriter
@@ -29,6 +29,7 @@ def create_indexing_pipeline():
 
     return indexing_pipeline, document_store
 
+
 def process_pdfs(pdf_directory, indexing_pipeline):
     papers_dir = Path(pdf_directory)
     pdf_files = list(papers_dir.glob("*.pdf"))
@@ -38,20 +39,23 @@ def process_pdfs(pdf_directory, indexing_pipeline):
         except:
             pass
 
+
 def save_to_json(document_store, output_path):
     all_documents = document_store.filter_documents()
     docs_list = [doc.to_dict() for doc in all_documents]
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(docs_list, f, ensure_ascii=False, indent=2)
 
+
 def main():
     PDF_DIRECTORY = "#PATH_TO_YOUR_PDF_DIRECTORY#"
     OUTPUT_JSON = "#PATH_TO_YOUR_JSON#"
-    
-    start_time = time.time()
+
+    time.time()
     indexing_pipeline, document_store = create_indexing_pipeline()
     process_pdfs(PDF_DIRECTORY, indexing_pipeline)
     save_to_json(document_store, OUTPUT_JSON)
+
 
 if __name__ == "__main__":
     main()
