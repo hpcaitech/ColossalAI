@@ -132,7 +132,7 @@ class GRPOConsumer(BaseConsumer):
             eta_min=0.1 * grpo_config.get("lr", 1e-6),
         )
 
-        self.adv = grpo_config.get("algo")  
+        self.adv = grpo_config.get("algo")
 
     def setup(self):
         super().setup()
@@ -184,27 +184,27 @@ class GRPOConsumer(BaseConsumer):
 
         # if(True):
 
-        if(self.adv == "GRPO" or self.adv == "DAPO"):
-         
+        if self.adv == "GRPO" or self.adv == "DAPO":
+
             reward = data["reward"].view((-1))
             format_acc = data["format_acc"].view((-1))
             ans_acc = data["ans_acc"].view((-1))
-            
+
             # [minibatch_size, num_generations]
-            
+
             group_reward = reward.view(-1, self.num_generations)
             reward_mean = group_reward.mean(dim=1)
             # [minibatch_size x num_generations]
             reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
-            
+
             reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
             # [minibatch_size x num_generations]
-            advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1) 
+            advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
 
             # [minibatch_size x num_of_generation]
-            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool() 
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
 
-        elif(self.adv == "REINFORCE_PPB"): 
+        elif self.adv == "REINFORCE_PPB":
 
             reward = data["reward"].view((-1))
             format_acc = data["format_acc"].view((-1))
@@ -215,21 +215,21 @@ class GRPOConsumer(BaseConsumer):
             group_reward = reward.view(-1, self.num_generations)
             reward_mean = group_reward.mean(dim=1)
             # [minibatch_size x num_generations]
-            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0) 
-            
+            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+
             # [minibatch_size x num_generations]
             advantages = ((reward - reward_mean)).unsqueeze(dim=-1)
 
             advantages_mean = advantages.mean(dim=0)
 
-            advantages_std = advantages.std(dim=0) 
+            advantages_std = advantages.std(dim=0)
 
-            advantages = (advantages - advantages_mean) / (advantages_std + 1e-4) 
+            advantages = (advantages - advantages_mean) / (advantages_std + 1e-4)
 
             # [minibatch_size x num_of_generation]
-            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool() 
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
 
-        elif(self.adv == "RLOO"):
+        elif self.adv == "RLOO":
             reward = data["reward"].view((-1))
             format_acc = data["format_acc"].view((-1))
             ans_acc = data["ans_acc"].view((-1))
@@ -241,10 +241,13 @@ class GRPOConsumer(BaseConsumer):
             # [minibatch_size x num_generations]
             reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
 
-            advantages = (reward * self.num_generations / (self.num_generations - 1) - reward_mean * self.num_generations / (self.num_generations - 1)).unsqueeze(dim=-1)  
+            advantages = (
+                reward * self.num_generations / (self.num_generations - 1)
+                - reward_mean * self.num_generations / (self.num_generations - 1)
+            ).unsqueeze(dim=-1)
 
             # [minibatch_size x num_of_generation]
-            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool() 
+            loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
 
         # filter out overlength samples
         if self.filter_truncated_response and action_mask.size(1) == self.max_length:

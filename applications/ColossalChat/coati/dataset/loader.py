@@ -370,7 +370,7 @@ def apply_chat_template_and_mask(
     if "messages" in chat:
         gt_answer = chat.get("gt_answer", None)
         test_cases = chat.get("test_cases", None)
-        chat = [chat["messages"]] 
+        chat = [chat["messages"]]
 
     tokens = []
     assistant_mask = []
@@ -396,7 +396,7 @@ def apply_chat_template_and_mask(
             tokens = tokens[:max_length]
             assistant_mask = assistant_mask[:max_length]
             attention_mask = attention_mask[:max_length]
-     
+
     input_ids = torch.tensor(tokens, dtype=torch.long)
     attention_mask = torch.tensor(attention_mask, dtype=torch.long)
     labels = input_ids.clone()

@@ -116,7 +116,7 @@ class BaseProducer:
         self.tokenizer.padding_side = "left"
 
         if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token 
+            self.tokenizer.pad_token = self.tokenizer.eos_token
 
         # init dataloader
         train_dataset_path = train_dataset_config.pop("path")

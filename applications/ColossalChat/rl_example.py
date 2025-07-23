@@ -228,7 +228,7 @@ if __name__ == "__main__":
 
     inference_model_config = dict(path=args.model)
     train_model_config = dict(path=args.model, use_flash_attention_2=False, use_cache=False)
-    generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)  
+    generate_config = dict(top_k=args.top_k, top_p=args.top_p, temperature=args.temperature)
 
     if args.backend == "transformers":
         inference_model_config.update(
@@ -278,12 +278,12 @@ if __name__ == "__main__":
             )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
     else:
-        raise ValueError(f"Unsupported backend: {args.backend}") 
+        raise ValueError(f"Unsupported backend: {args.backend}")
 
     if args.algo == "GRPO":
         # Default Settings
         grpo_config = {
-            "algo": "GRPO", 
+            "algo": "GRPO",
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
             "beta": args.kl_coeff,  # KL penalty coefficient
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     elif args.algo == "RLOO":
         # Default Settings
         grpo_config = {
-            "algo": "RLOO", 
+            "algo": "RLOO",
             "lr": args.learning_rate,
             "train_microbatch_size": args.train_microbatch_size,
             "beta": args.kl_coeff,  # KL penalty coefficient

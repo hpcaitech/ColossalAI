@@ -220,7 +220,6 @@ _POLICY_LIST = {
     "transformers.models.qwen2.modeling_qwen2.Qwen2ForSequenceClassification": PolicyLocation(
         file_name="qwen2", class_name="Qwen2ForSequenceClassificationPolicy"
     ),
-
     # Qwen3
     "transformers.models.qwen3.modeling_qwen3.Qwen3Model": PolicyLocation(
         file_name="qwen3", class_name="Qwen3ModelPolicy"
