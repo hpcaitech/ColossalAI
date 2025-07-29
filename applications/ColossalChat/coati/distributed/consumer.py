@@ -364,7 +364,7 @@ class SimpleConsumer(BaseConsumer):
         self.model = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.model.train()
         self.model.gradient_checkpointing_enable()
-        self.optimizer = HybridAdam(self.model.parameters(), lr=1e-3)
+        self.optimizer = HybridAdam(self.model.parameters(), lr=1e-3, weight_decay=0.01)
         self.accum_loss = torch.zeros(1, device=self.device)
 
     def setup(self):
