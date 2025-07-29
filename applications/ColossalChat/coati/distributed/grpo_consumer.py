@@ -72,7 +72,7 @@ class GRPOConsumer(BaseConsumer):
         self.policy_model = AutoModelForCausalLM.from_pretrained(path, **model_config)
         self.policy_model.train()
         self.policy_model.gradient_checkpointing_enable()
-        self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6))
+        self.optimizer = HybridAdam(self.policy_model.parameters(), lr=grpo_config.get("lr", 1e-6), weight_decay=grpo_config.get("weight_decay", 0.01))
         self.accum_loss = torch.zeros(1, device=self.device)
         self.accum_kl = torch.zeros(1, device=self.device)
         self.accum_entropy = torch.zeros(1, device=self.device)
