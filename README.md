@@ -326,7 +326,7 @@ Acceleration of [AlphaFold Protein Structure](https://alphafold.ebi.ac.uk/)
 </p>
 
 - Enhanced MoE parallelism, Open-source MoE model training can be 9 times more efficient
-[[code]](https://github.com/hpcaitech/ColossalAI/tree/main/examples/language/openmoe)
+[[code]](https://github.com/hpcaitech/ColossalAI/blob/main/colossalai/legacy/moe/openmoe/README.md)
 [[blog]](https://www.hpc-ai.tech/blog/enhanced-moe-parallelism-open-source-moe-model-training-can-be-9-times-more-efficient)
 
 ### GPT-3
