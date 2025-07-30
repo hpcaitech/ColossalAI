@@ -396,6 +396,7 @@ def apply_chat_template_and_mask(
             tokens = tokens[:max_length]
             assistant_mask = assistant_mask[:max_length]
             attention_mask = attention_mask[:max_length]
+
     input_ids = torch.tensor(tokens, dtype=torch.long)
     attention_mask = torch.tensor(attention_mask, dtype=torch.long)
     labels = input_ids.clone()

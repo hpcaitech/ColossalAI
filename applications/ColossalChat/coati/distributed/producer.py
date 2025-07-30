@@ -115,6 +115,9 @@ class BaseProducer:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, **tokenizer_config)
         self.tokenizer.padding_side = "left"
 
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
         # init dataloader
         train_dataset_path = train_dataset_config.pop("path")
         self.train_dataset = RawConversationDataset(self.tokenizer, train_dataset_path, **train_dataset_config)
