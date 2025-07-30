@@ -443,10 +443,7 @@ class GRPOConsumer(BaseConsumer):
                         )
                     )
             if not self.plugin.pp_size > 1 or (
-                self.plugin.pp_size > 1
-                and self.booster.plugin.stage_manager.is_last_stage()
-                and self.tp_rank == 0
-                and self.dp_rank == 0
+                self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
             ):
                 reward = all_reduce_mean(reward.mean(), self.plugin)
                 format_acc = all_reduce_mean(format_acc.mean(), self.plugin)
@@ -473,7 +470,10 @@ class GRPOConsumer(BaseConsumer):
                 self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
             ):
                 if (not self.plugin.pp_size > 1 and self.rank == 0) or (
-                    self.plugin.pp_size > 1 and self.booster.plugin.stage_manager.is_last_stage() and self.tp_rank == 0
+                    self.plugin.pp_size > 1
+                    and self.booster.plugin.stage_manager.is_last_stage()
+                    and self.tp_rank == 0
+                    and self.dp_rank == 0
                 ):
                     raw_batch_reward_mean = torch.cat(self.raw_train_batch_reward, dim=0).mean().cpu().item()
                     raw_batch_format_acc_mean = torch.cat(self.raw_train_batch_format_acc, dim=0).mean().cpu().item()
