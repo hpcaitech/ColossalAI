@@ -35,9 +35,9 @@ class PolicyLoss(nn.Module):
         total_effective_tokens_in_batch: torch.Tensor = None,
     ) -> torch.Tensor:
         if action_mask is None:
-            ratio = (log_probs - log_probs.detach()).exp()
+            ratio = (log_probs - old_log_probs.detach()).exp()
         else:
-            ratio = ((log_probs - log_probs.detach()) * action_mask).exp()
+            ratio = ((log_probs - old_log_probs.detach()) * action_mask).exp()
 
         surr1 = ratio * advantages
         surr2 = ratio.clamp(1 - self.clip_eps_low, 1 + self.clip_eps_high) * advantages
