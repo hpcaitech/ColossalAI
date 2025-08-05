@@ -46,17 +46,17 @@ env:
     valueFrom:
       fieldRef:
         fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
-  
+
   # Enhanced timeout configuration
   - name: COLOSSALAI_DIST_TIMEOUT
     value: "1800"  # 30 minutes for init
   - name: COLOSSALAI_MASTER_READY_TIMEOUT
     value: "600"   # 10 minutes for master readiness
-  
+
   # K8s networking
   - name: NCCL_SOCKET_IFNAME
     value: "eth0"
-  - name: GLOO_SOCKET_IFNAME  
+  - name: GLOO_SOCKET_IFNAME
     value: "eth0"
   - name: NCCL_IB_DISABLE
     value: "1"
@@ -133,13 +133,13 @@ spec:
         - |
           # Stagger startup to avoid race conditions
           sleep $((JOB_COMPLETION_INDEX * 30 + 30))
-          
+
           # Set rank based on completion index
           export RANK=$((JOB_COMPLETION_INDEX * 8))
           export LOCAL_RANK=0
-          
+
           echo "Node $JOB_COMPLETION_INDEX starting with RANK=$RANK"
-          
+
           # Enhanced torchrun command
           torchrun \
             --nnodes=2 \
@@ -207,7 +207,7 @@ spec:
    ```bash
    # Watch logs from both pods
    kubectl logs -l job-name=opensora-2node-test -f --prefix=true
-   
+
    # Or individual pods
    kubectl logs opensora-2node-test-0-xxxxx -f
    kubectl logs opensora-2node-test-1-xxxxx -f
@@ -242,7 +242,7 @@ spec:
    - name: DEBUG_DISTRIBUTED
      value: "1"
    - name: NCCL_DEBUG
-     value: "INFO" 
+     value: "INFO"
    ```
 
 ### Common Issues:

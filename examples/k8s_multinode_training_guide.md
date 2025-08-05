@@ -64,7 +64,7 @@ env:
         fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
   - name: RDZV_ID
     value: "opensora-training-job-123"
-  
+
   # Network configuration
   - name: NCCL_SOCKET_IFNAME
     value: "eth0"
@@ -74,7 +74,7 @@ env:
     value: "1"
   - name: NCCL_DEBUG
     value: "WARN"  # Use "INFO" for debugging
-    
+
   # ColossalAI timeout configuration
   - name: COLOSSALAI_DIST_TIMEOUT
     value: "1800"  # 30 minutes for initialization
@@ -135,11 +135,11 @@ spec:
         - |
           # Wait for pod startup synchronization
           sleep \$((RANDOM % 30 + 30))
-          
+
           # Set additional environment variables
           export RANK=\$((JOB_COMPLETION_INDEX * 8))
           export LOCAL_RANK=0
-          
+
           # Enhanced torchrun command
           torchrun \\
             --nnodes=4 \\
@@ -216,15 +216,15 @@ def main():
     except RuntimeError as e:
         print(f"Environment validation failed: {e}")
         return 1
-    
+
     # Setup K8s networking
     setup_k8s_networking()
-    
+
     # Run diagnostics if needed
     if os.environ.get("DEBUG_DISTRIBUTED", "0") == "1":
         diagnosis = diagnose_distributed_issues()
         print(f"Diagnosis results: {diagnosis}")
-    
+
     # Initialize ColossalAI with enhanced error handling
     try:
         colossalai.launch_from_torch(verbose=True)
@@ -232,10 +232,10 @@ def main():
     except Exception as e:
         print(f"ColossalAI initialization failed: {e}")
         return 1
-    
+
     # Your training code here
     # ...
-    
+
     return 0
 
 if __name__ == "__main__":
@@ -252,24 +252,24 @@ import json
 def main():
     print("Running Kubernetes distributed training diagnostics...")
     diagnosis = diagnose_distributed_issues()
-    
+
     print("\\n" + "="*50)
     print("DIAGNOSIS RESULTS")
     print("="*50)
-    
+
     for check, status in diagnosis.items():
         if check == "recommendations":
             continue
         status_str = "✓ PASS" if status else "✗ FAIL"
         print(f"{check:.<30} {status_str}")
-    
+
     if diagnosis["recommendations"]:
         print("\\n" + "="*50)
         print("RECOMMENDATIONS")
         print("="*50)
         for i, rec in enumerate(diagnosis["recommendations"], 1):
             print(f"{i}. {rec}")
-    
+
     print("\\n" + json.dumps(diagnosis, indent=2))
 
 if __name__ == "__main__":
@@ -339,23 +339,23 @@ import colossalai
 def test_distributed_setup():
     try:
         colossalai.launch_from_torch(verbose=True)
-        
+
         # Basic distributed test
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
-        
+
         print(f"Process {rank}/{world_size} initialized successfully!")
-        
+
         # Test all-reduce operation
         tensor = torch.ones(1).cuda() * rank
         torch.distributed.all_reduce(tensor)
         expected = sum(range(world_size))
-        
+
         if tensor.item() == expected:
             print(f"✓ All-reduce test passed: {tensor.item()} == {expected}")
         else:
             print(f"✗ All-reduce test failed: {tensor.item()} != {expected}")
-            
+
         return True
     except Exception as e:
         print(f"Distributed setup test failed: {e}")

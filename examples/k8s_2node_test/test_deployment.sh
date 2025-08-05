@@ -59,15 +59,15 @@ elapsed=0
 while [ $elapsed -lt $timeout ]; do
     status=$(get_pod_status)
     echo "Pod status: $status"
-    
+
     # Check if both pods are running
     running_pods=$(kubectl get pods -l job-name=opensora-multinode-test --no-headers 2>/dev/null | grep "Running" | wc -l)
-    
+
     if [ "$running_pods" -eq 2 ]; then
         echo "✓ Both pods are running!"
         break
     fi
-    
+
     sleep 10
     elapsed=$((elapsed + 10))
 done
@@ -92,10 +92,10 @@ check_logs() {
     local pod_name=$1
     echo ""
     echo "📋 Checking logs for $pod_name..."
-    
+
     # Get recent logs
     logs=$(kubectl logs $pod_name --tail=50 2>/dev/null || echo "No logs available yet")
-    
+
     # Check for success indicators
     if echo "$logs" | grep -q "ColossalAI initialization successful"; then
         echo "✓ $pod_name: ColossalAI initialization successful"
@@ -110,7 +110,7 @@ check_logs() {
     else
         echo "⏳ $pod_name: Still initializing..."
     fi
-    
+
     # Check for error indicators
     if echo "$logs" | grep -q "initialization failed"; then
         echo "✗ $pod_name: Initialization failed"
@@ -130,17 +130,17 @@ monitor_elapsed=0
 while [ $monitor_elapsed -lt $monitor_timeout ] && [ $success_count -lt 2 ]; do
     # Get current pod names
     pod_names=$(kubectl get pods -l job-name=opensora-multinode-test --no-headers -o custom-columns=":metadata.name" 2>/dev/null)
-    
+
     for pod in $pod_names; do
         check_logs $pod
     done
-    
+
     if [ $success_count -ge 2 ]; then
         echo ""
         echo "🎉 SUCCESS: Both pods completed successfully!"
         break
     fi
-    
+
     echo "Waiting... ($monitor_elapsed/${monitor_timeout}s, successes: $success_count/2)"
     sleep 30
     monitor_elapsed=$((monitor_elapsed + 30))
@@ -164,7 +164,7 @@ if [ $success_count -ge 2 ]; then
     echo "1. Scale to 4 nodes by updating YAML (nnodes=4, WORLD_SIZE=32)"
     echo "2. Deploy your actual Open-Sora training script"
     echo "3. The fix is ready for production use!"
-    
+
     result=0
 else
     echo "⚠️  TEST INCOMPLETE: $success_count/2 nodes completed successfully"
@@ -175,7 +175,7 @@ else
     echo "3. Resource constraints in the cluster"
     echo ""
     echo "Check the detailed logs below:"
-    
+
     result=1
 fi
 
