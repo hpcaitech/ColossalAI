@@ -217,6 +217,7 @@ class BaseConsumer:
                             effective_group_mask = None
                             if self.filter_range is not None and self.grpo_config.get("dynamic_batching", True):
                                 # filter the group based on the reward and accuracy
+                                group_ans_acc_mean = ans_acc.mean(dim=1)
                                 effective_group_mask = torch.logical_and(
                                     group_ans_acc_mean > self.filter_range[0], group_ans_acc_mean < self.filter_range[1]
                                 )
