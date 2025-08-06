@@ -152,7 +152,7 @@ if __name__ == "__main__":
         "-ei",
         "--eval-interval",
         type=int,
-        default=100,
+        default=-1,
         help="Interval for evaluation. Evaluate every ei training steps.",
     )
     parser.add_argument(
