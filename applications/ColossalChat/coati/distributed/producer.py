@@ -8,10 +8,12 @@ import ray.util.collective as cc
 import torch
 import tqdm
 import wandb
+from coati.dataset import StatefulDistributedSampler
 from coati.dataset.loader import RawConversationDataset, collate_fn_grpo
 from coati.distributed.profiling_utils import CustomProfiler
 from coati.distributed.reward.reward_fn import boxed_math_reward_fn, code_reward_fn, math_reward_fn
 from coati.distributed.reward.verifiable_reward import VerifiableReward
+from coati.utils import load_checkpoint
 from ray.util.collective import allreduce
 from ray.util.collective.types import Backend, ReduceOp
 from torch.utils.data import DataLoader, DistributedSampler
@@ -68,6 +70,7 @@ class BaseProducer:
         self.profiler = CustomProfiler(f"P{self.producer_idx}", disabled=not enable_profiling)
 
         self.train_dataset_config = train_dataset_config
+        self.checkpoint_path = model_config.pop("checkpoint_path", None)
         self.model_config = model_config
         self.generate_config = generate_config
         self.tokenizer_config = tokenizer_config
@@ -121,7 +124,7 @@ class BaseProducer:
         self.train_dataloader = DataLoader(
             self.train_dataset,
             batch_size=microbatch_size,
-            sampler=DistributedSampler(
+            sampler=StatefulDistributedSampler(
                 self.train_dataset,
                 num_replicas=num_producers,
                 rank=producer_idx,
@@ -133,6 +136,13 @@ class BaseProducer:
             drop_last=True,
             collate_fn=collate_fn_grpo,
         )
+        if self.checkpoint_path is not None:
+            # resume training from checkpoint
+            start_epoch, start_step, sampler_start_idx = load_checkpoint(self.checkpoint_path, None, None, None, None)
+            self.train_dataloader.sampler.set_start_index(sampler_start_idx)
+            print(
+                f"[P{self.producer_idx}] Resume training from checkpoint {self.checkpoint_path}, start epoch {start_epoch}, start step {start_step}, sampler start index {sampler_start_idx}"
+            )
         if grpo_config["reward_fn_type"] == "think_answer_tags":
             self.evaluation_function = math_reward_fn
         elif grpo_config["reward_fn_type"] == "boxed":
@@ -203,6 +213,29 @@ class BaseProducer:
         raise NotImplementedError
 
     def loop(self) -> None:
+
+        torch.cuda.empty_cache()
+        self.profiler.enter("sync_model")
+        if self.consumer_pp_size > 1:
+            for pp_idx in range(self.consumer_pp_size):
+                state_dict = ray_broadcast_tensor_dict(
+                    None, self.num_producers, device=self.device, group_name=f"sync_model_{pp_idx}"
+                )
+                if "consumer_global_step" in state_dict:
+                    self.consumer_global_step = state_dict.pop("consumer_global_step").item()
+                self.load_state_dict(state_dict)
+        else:
+            state_dict = ray_broadcast_tensor_dict(
+                None, self.num_producers, device=self.device, group_name="sync_model"
+            )
+            if "consumer_global_step" in state_dict:
+                self.consumer_global_step = state_dict.pop("consumer_global_step").item()
+            self.load_state_dict(state_dict)
+        self.profiler.exit("sync_model")
+        print(f"[P{self.producer_idx}] Sync initial model done.")
+        del state_dict
+        torch.cuda.empty_cache()
+
         num_update_per_episode = len(self.train_dataloader) // self.num_microbatches
         num_valid_microbatches = num_update_per_episode * self.num_microbatches
 
