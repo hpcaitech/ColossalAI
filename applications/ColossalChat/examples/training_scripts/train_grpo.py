@@ -89,9 +89,7 @@ def train(args):
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, trust_remote_code=True)
             if args.rm_pretrain:
                 reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
-            ref_model = AutoModelForCausalLM.from_pretrained(
-                args.pretrain, trust_remote_code=True
-            )
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, trust_remote_code=True)
 
         if args.lora_config is not None:
             actor = convert_to_lora_module(actor, lora_config=lora_config)
