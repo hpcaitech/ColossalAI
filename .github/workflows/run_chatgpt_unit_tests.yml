@@ -31,6 +31,7 @@ jobs:
 
       - name: Install ChatGPT
         run: |
+          pip install flash-attn --no-build-isolation
           cd applications/ColossalChat
           pip install -v .
           pip install pytest

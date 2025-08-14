@@ -35,6 +35,7 @@ jobs:
 
       - name: Install ChatGPT
         run: |
+          pip install flash-attn --no-build-isolation
           cd applications/ColossalChat
           pip install --no-cache-dir -v .
           pip install --no-cache-dir -r examples/requirements.txt

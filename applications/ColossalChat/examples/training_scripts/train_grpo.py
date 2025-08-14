@@ -69,14 +69,12 @@ def train(args):
                 args.pretrain,
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 use_flash_attention_2=True,
-                local_files_only=True,
                 trust_remote_code=True,
             )
             ref_model = AutoModelForCausalLM.from_pretrained(
                 args.pretrain,
                 torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
                 use_flash_attention_2=True,
-                local_files_only=True,
                 trust_remote_code=True,
             )
             if args.rm_pretrain:
@@ -88,11 +86,11 @@ def train(args):
                 )
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
-            actor = AutoModelForCausalLM.from_pretrained(args.pretrain, local_files_only=True, trust_remote_code=True)
+            actor = AutoModelForCausalLM.from_pretrained(args.pretrain, trust_remote_code=True)
             if args.rm_pretrain:
                 reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
             ref_model = AutoModelForCausalLM.from_pretrained(
-                args.pretrain, local_files_only=True, trust_remote_code=True
+                args.pretrain, trust_remote_code=True
             )
 
         if args.lora_config is not None:
