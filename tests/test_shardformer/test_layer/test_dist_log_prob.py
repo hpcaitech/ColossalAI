@@ -1,6 +1,5 @@
 import pytest
 import torch
-from coati.distributed.utils import log_probs_from_logits
 
 import colossalai
 from colossalai.logging import disable_existing_loggers
@@ -10,6 +9,22 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 CONFIG = dict(
     parallel=dict(data=1, pipeline=1, tensor=dict(size=2, mode="1d")),
 )
+
+
+def log_probs_from_logits(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the log probabilities from logits for the given labels.
+
+    Args:
+        logits (torch.Tensor): The input logits.
+        labels (torch.Tensor): The target labels.
+
+    Returns:
+        torch.Tensor: The log probabilities corresponding to the labels.
+    """
+    log_probs = torch.log_softmax(logits, dim=-1)
+    per_label_logps = log_probs.gather(dim=-1, index=labels.unsqueeze(-1))
+    return per_label_logps.squeeze(-1)
 
 
 def check_dist_log_prob(rank, world_size, port):
