@@ -102,9 +102,7 @@ def train(args):
             coordinator.print_on_master(msg="Flash-attention enabled successfully")
         else:
             actor = AutoModelForCausalLM.from_pretrained(args.pretrain, trust_remote_code=True)
-            ref_model = AutoModelForCausalLM.from_pretrained(
-                args.pretrain, trust_remote_code=True
-            )
+            ref_model = AutoModelForCausalLM.from_pretrained(args.pretrain, trust_remote_code=True)
             if not args.no_neural_reward_model:
                 reward_model = RewardModel(args.rm_pretrain, trust_remote_code=True)
             critic = Critic(args.rm_pretrain)

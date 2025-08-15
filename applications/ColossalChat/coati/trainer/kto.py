@@ -193,12 +193,14 @@ class KTOTrainer(SLTrainer):
             loss_mean = all_reduce_mean(tensor=loss)
             chosen_reward_mean = chosen_rewards.mean()
             chosen_rewards_list = [
-                torch.tensor(0, dtype=chosen_reward_mean.dtype, device=loss.device) for _ in range(dist.get_world_size())
+                torch.tensor(0, dtype=chosen_reward_mean.dtype, device=loss.device)
+                for _ in range(dist.get_world_size())
             ]
             dist.all_gather(chosen_rewards_list, chosen_reward_mean)
             rejected_reward_mean = rejected_rewards.mean()
             rejected_rewards_list = [
-                torch.tensor(0, dtype=rejected_reward_mean.dtype, device=loss.device) for _ in range(dist.get_world_size())
+                torch.tensor(0, dtype=rejected_reward_mean.dtype, device=loss.device)
+                for _ in range(dist.get_world_size())
             ]
             dist.all_gather(rejected_rewards_list, rejected_reward_mean)
             chosen_rewards_list = [i for i in chosen_rewards_list if not i.isnan()]
