@@ -40,7 +40,8 @@ export OMP_NUM_THREADS=8
 get_pretrain() {
     local model=$1
     if [[ $model == "llama" ]]; then
-        echo "nickypro/tinyllama-110M"
+        # echo "nickypro/tinyllama-15M"
+        echo "TinyPixel/llama-110m"
     elif [[ $model == "opt" ]]; then
         echo "facebook/opt-125m"
     else

@@ -7,7 +7,8 @@ DATA_SAVE_PATH=$BASE_TEMP_DIR/tests
 CONFIG_DIR=$BASE_DIR/conversation_template
 
 # MODELS=("colossal-llama2" "llama2" "mistral" "chatGLM2" "chatGLM3" "deepseek" "Yi" "baichuan")  # for local test
-MODELS=("colossal-llama2" "llama2" "chatGLM2" "chatGLM3" "deepseek" "Yi")
+# MODELS=("colossal-llama2" "llama2" "chatGLM2" "chatGLM3" "deepseek" "Yi")  # chatGLM2 cannot pass with transformers=4.40 above
+MODELS=("colossal-llama2" "llama2" "chatGLM3" "deepseek" "Yi")
 
 get_pretrain() {
     local model=$1

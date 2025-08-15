@@ -20,6 +20,7 @@ from colossalai.shardformer.layer import (
     PaddingEmbedding,
     RMSNorm,
     VocabParallelEmbedding1D,
+    VocabParallelLMHead1D,
 )
 
 from ..modeling.qwen2 import (
@@ -411,8 +412,12 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
                     sub_module_replacement=[
                         SubModuleReplacementDescription(
                             suffix="lm_head",
-                            target_module=Linear1D_Col,
-                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
+                            target_module=VocabParallelLMHead1D,
+                            kwargs=dict(
+                                gather_output=not self.shard_config.parallel_output,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
@@ -428,7 +433,16 @@ class Qwen2ForCausalLMPolicy(Qwen2Policy):
                             suffix="lm_head",
                             target_module=LinearWithGradAccum,
                             kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
-                        )
+                        ),
+                        SubModuleReplacementDescription(
+                            suffix="lm_head",
+                            target_module=VocabParallelLMHead1D,
+                            kwargs={
+                                "gather_output": not self.shard_config.parallel_output,
+                                "make_vocab_size_divisible_by": self.shard_config.make_vocab_size_divisible_by,
+                                "fp8_communication": self.shard_config.fp8_communication,
+                            },
+                        ),
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
                 )

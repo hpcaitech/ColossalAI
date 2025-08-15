@@ -1,4 +1,4 @@
-transformers==4.39.3
+transformers>=4.39.3
 tqdm
 datasets==2.14.7
 loralib
@@ -22,3 +22,6 @@ sentencepiece==0.1.99
 flash-attn
 tiktoken
 jsonlines
+math_verify
+latex2sympy2_extended
+pyext

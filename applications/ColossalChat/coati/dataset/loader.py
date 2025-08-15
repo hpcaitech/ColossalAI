@@ -352,14 +352,30 @@ def apply_chat_template_and_mask(
     tokenizer: PreTrainedTokenizer,
     chat: List[Dict[str, str]],
     max_length: Optional[int] = None,
+    system_prompt: str = None,
     padding: bool = True,
     truncation: bool = True,
     ignore_idx: int = -100,
 ) -> Dict[str, torch.Tensor]:
+
+    if system_prompt is None:
+        system_prompt = "You are a helpful assistant. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and<answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>. Now the user asks you to solve a math problem that involves reasoning. After thinking, when you finally reach a conclusion, clearly output the final answer without explanation within the <answer> </answer> tags, i.e., <answer> 123 </answer>.\n\n"
+
+    system_element = {
+        "role": "system",
+        "content": system_prompt,
+    }
+
+    # Format for RL.
+    if "messages" in chat:
+        gt_answer = chat.get("gt_answer", None)
+        test_cases = chat.get("test_cases", None)
+        chat = [chat["messages"]]
+
     tokens = []
     assistant_mask = []
     for i, msg in enumerate(chat):
-        msg_tokens = tokenizer.apply_chat_template([msg], tokenize=True)
+        msg_tokens = tokenizer.apply_chat_template([system_element, msg], tokenize=True, add_generation_prompt=True)
         # remove unexpected bos token
         if i > 0 and msg_tokens[0] == tokenizer.bos_token_id:
             msg_tokens = msg_tokens[1:]
@@ -372,14 +388,10 @@ def apply_chat_template_and_mask(
     if max_length is not None:
         if padding and len(tokens) < max_length:
             to_pad = max_length - len(tokens)
-            if tokenizer.padding_side == "right":
-                tokens.extend([tokenizer.pad_token_id] * to_pad)
-                assistant_mask.extend([False] * to_pad)
-                attention_mask.extend([0] * to_pad)
-            else:
-                tokens = [tokenizer.pad_token_id] * to_pad + tokens
-                assistant_mask = [False] * to_pad + assistant_mask
-                attention_mask = [0] * to_pad + attention_mask
+            # Left padding for generation.
+            tokens = [tokenizer.pad_token_id] * to_pad + tokens
+            assistant_mask = [False] * to_pad + assistant_mask
+            attention_mask = [0] * to_pad + attention_mask
         if truncation and len(tokens) > max_length:
             tokens = tokens[:max_length]
             assistant_mask = assistant_mask[:max_length]
@@ -389,6 +401,15 @@ def apply_chat_template_and_mask(
     labels = input_ids.clone()
     labels[~torch.tensor(assistant_mask, dtype=torch.bool)] = ignore_idx
 
+    if gt_answer is not None:
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels, "gt_answer": gt_answer}
+    elif test_cases is not None:
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "test_cases": test_cases,
+        }
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
@@ -402,7 +423,7 @@ class RawConversationDataset(Dataset):
     Each instance is a dictionary with fields `system`, `roles`, `messages`, `offset`, `sep_style`, `seps`.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int) -> None:
+    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int, system_prompt: str) -> None:
         self.tokenizer = tokenizer
         self.raw_texts = []
         with jsonlines.open(input_file) as f:
@@ -410,6 +431,7 @@ class RawConversationDataset(Dataset):
                 self.raw_texts.append(line)
         self.tokenized_texts = [None] * len(self.raw_texts)
         self.max_length = max_length
+        self.system_prompt = system_prompt
 
     def __len__(self) -> int:
         return len(self.raw_texts)
@@ -417,6 +439,23 @@ class RawConversationDataset(Dataset):
     def __getitem__(self, index: int):
         if self.tokenized_texts[index] is None:
             message = self.raw_texts[index]
-            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length)
+            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length, self.system_prompt)
             self.tokenized_texts[index] = dict(tokens)
         return self.tokenized_texts[index]
+
+
+def collate_fn_grpo(batch):
+    input_ids = [item["input_ids"] for item in batch]
+    attention_mask = [item["attention_mask"] for item in batch]
+    labels = [item["labels"] for item in batch]
+    # Assume input_ids, attention_mask, labels are already of the same length,
+    # otherwise use pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+    input_ids = torch.stack(input_ids)
+    attention_mask = torch.stack(attention_mask)
+    labels = torch.stack(labels)
+    ret = {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+    if "test_cases" in batch[0]:
+        ret["test_cases"] = [item["test_cases"] for item in batch]
+    if "gt_answer" in batch[0]:
+        ret["gt_answer"] = [item["gt_answer"] for item in batch]
+    return ret

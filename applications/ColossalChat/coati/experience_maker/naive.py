@@ -117,6 +117,11 @@ class NaiveExperienceMaker(ExperienceMaker):
                 f"stop_token_ids should be a list of list of integers, a list of integers or an integers. got {stop_token_ids}"
             )
         generate_kwargs["stop_token_ids"] = stop_token_ids
+        # Hack: manually initialize cache_position to address transformer version conflict
+        if generate_kwargs.get("cache_position", None) is None and generate_kwargs.get("use_cache", False) is True:
+            generate_kwargs["cache_position"] = torch.arange(
+                0, input_ids.shape[1], dtype=torch.long, device=input_ids.device
+            )
         torch.manual_seed(41)  # for tp, gurantee the same input for reward model
 
         if self.use_grpo and self.num_generation > 1:

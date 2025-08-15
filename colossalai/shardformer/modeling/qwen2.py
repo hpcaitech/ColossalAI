@@ -275,6 +275,7 @@ class Qwen2PipelineForwards:
         hidden_states: Optional[torch.FloatTensor] = None,
         stage_index: Optional[List[int]] = None,
         shard_config: ShardConfig = None,
+        **kwargs,
     ):
         r"""
         Args:
@@ -823,7 +824,6 @@ def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
         loss = None
         if labels is not None:
             loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
-
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
