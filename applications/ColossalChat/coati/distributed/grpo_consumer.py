@@ -8,6 +8,7 @@ from coati.distributed.consumer import BaseConsumer
 from coati.distributed.loss import PolicyLoss
 from coati.distributed.utils import entropy_from_logits, memory_efficient_logprob
 from coati.trainer.utils import all_reduce_mean, all_reduce_sum
+from coati.utils import load_checkpoint
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
@@ -157,6 +158,14 @@ class GRPOConsumer(BaseConsumer):
         )
         if self.policy_loss_fn.beta > 0:
             self.reference_model, *_ = self.booster.boost(self.reference_model)
+        if self.checkpoint_path is not None:
+            load_checkpoint(
+                self.checkpoint_path,
+                self.booster,
+                self.policy_model,
+                self.optimizer,
+                self.lr_scheduler,
+            )
         self.plugin.logger.set_level("ERROR")
 
     def step(self, step_idx: int, pbar: Any, **kwargs) -> Optional[float]:

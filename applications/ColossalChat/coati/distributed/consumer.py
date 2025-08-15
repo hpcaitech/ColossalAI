@@ -1,4 +1,3 @@
-import os
 from contextlib import nullcontext
 from typing import Any, Dict, Optional
 
@@ -7,11 +6,13 @@ import ray.util.collective as cc
 import torch
 import torch.distributed as dist
 from coati.distributed.profiling_utils import CustomProfiler
+from coati.utils import save_checkpoint
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
 from colossalai.booster import Booster
 from colossalai.booster.plugin import HybridParallelPlugin
+from colossalai.cluster import DistCoordinator
 from colossalai.initialize import launch
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.utils import get_current_device
@@ -55,6 +56,7 @@ class BaseConsumer:
         self.enable_profiling = enable_profiling
         assert batch_size % minibatch_size == 0, "batch_size should be divisible by microbatch_size"
         self.num_microbatches = batch_size // minibatch_size
+        self.checkpoint_path = model_config.pop("checkpoint_path", None)
 
         self.model_config = model_config
         self.plugin_config = plugin_config
@@ -62,9 +64,11 @@ class BaseConsumer:
         self.device = get_current_device()
         self.lr_scheduler = None
         self.n_behind = n_behind
+        self.total_prompt_trained = 0  # for setting start index when resume training
 
     def setup(self) -> None:
         launch(self.rank, self.world_size, self.master_addr, self.master_port, local_rank=0)
+        self.coordinator = DistCoordinator()
 
         plugin_config = dict(tp_size=1, pp_size=1, precision="bf16", zero_stage=2)
         if (
@@ -143,6 +147,26 @@ class BaseConsumer:
         return effective_group_to_raw_group_mapping
 
     def loop(self) -> None:
+        self.profiler.enter("sync_model")
+        torch.cuda.empty_cache()
+        state_dict = self.state_dict()
+        if self.pp_size > 1:
+            if self.tp_rank == 0 and self.dp_rank == 0:
+                ray_broadcast_tensor_dict(
+                    state_dict,
+                    src=self.num_producers,
+                    device=self.device,
+                    group_name=f"sync_model_{self.pp_rank}",
+                )
+        else:
+            if self.rank == 0:
+                ray_broadcast_tensor_dict(
+                    state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
+                )
+        del state_dict
+        torch.cuda.empty_cache()
+        self.profiler.exit("sync_model")
+
         print(
             f"Consumer{self.rank} num_update: {self.num_update_per_episode}, num_recv: {self.num_recv_per_update}, nmb: {self.num_microbatches}"
         )
@@ -208,6 +232,7 @@ class BaseConsumer:
                                 for k, v in raw_batch.items()
                             }
                             # [batch_size, num_generations] -> [batch_size]
+                            self.total_prompt_trained += raw_batch["reward"].size(0)
                             reward = raw_batch["reward"][:, :, 0]
                             format_acc = raw_batch["format_acc"][:, :, 0]
                             ans_acc = raw_batch["ans_acc"][:, :, 0]
@@ -285,10 +310,19 @@ class BaseConsumer:
                     if (step + 1) % self.save_interval == 0 or (step + 1) == self.num_update_per_episode:
                         if self.rank == 0:
                             print(f"Start saving policy model at step {step + 1}.")
-                        save_path = os.path.join(self.save_dir, f"modeling-episode-{episode}-step-{step + 1}")
-                        self.booster.save_model(self.policy_model, save_path, shard=True)
+                        save_checkpoint(
+                            save_dir=self.save_dir,
+                            booster=self.booster,
+                            model=self.policy_model,
+                            optimizer=self.optimizer,
+                            lr_scheduler=self.lr_scheduler,
+                            epoch=episode,
+                            step=step,
+                            batch_size=int(self.total_prompt_trained / step),
+                            coordinator=self.coordinator,
+                        )  # for setting start index when resuming training
                         if self.rank == 0:
-                            print(f"Saved model checkpoint at step {step + 1} in folder {save_path}")
+                            print(f"Saved model checkpoint at step {step + 1} in folder {self.save_dir}")
 
                     if (episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1) and (
                         episode != 0 or step >= self.n_behind

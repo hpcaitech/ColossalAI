@@ -81,9 +81,12 @@ def load_checkpoint(
     """
 
     # Update booster params states.
-    booster.load_model(model=model, checkpoint=os.path.join(load_dir, "modeling"))
-    booster.load_optimizer(optimizer=optimizer, checkpoint=os.path.join(load_dir, "optimizer"))
-    booster.load_lr_scheduler(lr_scheduler=lr_scheduler, checkpoint=os.path.join(load_dir, "lr_scheduler"))
+    if model is not None:
+        booster.load_model(model=model, checkpoint=os.path.join(load_dir, "modeling"))
+    if optimizer is not None:
+        booster.load_optimizer(optimizer=optimizer, checkpoint=os.path.join(load_dir, "optimizer"))
+    if lr_scheduler is not None:
+        booster.load_lr_scheduler(lr_scheduler=lr_scheduler, checkpoint=os.path.join(load_dir, "lr_scheduler"))
 
     running_states = load_json(file_path=os.path.join(load_dir, "running_states.json"))
     return (
