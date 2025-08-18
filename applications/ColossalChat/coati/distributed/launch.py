@@ -7,7 +7,7 @@ import ray
 
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
-from .producer import SimpleProducer
+from .producer import AsyncProducer, SimpleProducer
 
 ALGO_MAP = {
     "Simple": SimpleConsumer,
@@ -16,6 +16,7 @@ ALGO_MAP = {
     "REINFORCE_PPB": GRPOConsumer,
     "RLOO": GRPOConsumer,
 }
+Producer_MAP = {"Simple": SimpleProducer, "Async": AsyncProducer}
 
 
 def get_jsonl_size_fast(path: str) -> int:
@@ -110,6 +111,10 @@ def launch_distributed(
     print(node_info)
 
     producer_procs = []
+    if "async" in inference_backend:
+        core_producer = AsyncProducer
+    else:
+        core_producer = Producer_MAP.get("Simple", SimpleProducer)
     for i in range(num_producers):
         node_id = gpu_to_node_id[0]
         producer_ip_address = gpu_to_ip_address[0]
@@ -117,7 +122,7 @@ def launch_distributed(
             gpu_to_node_id.pop(0)
             gpu_to_ip_address.pop(0)
         print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
-        producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
+        producer = core_producer.options(num_gpus=num_proc_per_producer).remote(
             producer_idx=i,
             num_producers=num_producers,
             num_consumer_procs=num_consumer_procs,

@@ -109,7 +109,9 @@ if __name__ == "__main__":
     )
 
     # Sampling parameters
-    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
+    parser.add_argument(
+        "-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm", "async-vllm"]
+    )
     parser.add_argument("-temp", "--temperature", type=float, default=1.0, help="Temperature for sampling.")
     parser.add_argument(
         "-topk",
@@ -134,6 +136,13 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Tensor parallel size for the producer. Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-pdp",
+        "--producer-data-parallel-size",
+        type=int,
+        default=1,
+        help="Data parallel size for the producer. Increase this value to scale up the data parallelism of the inference backend.",
     )
 
     # GRPO parameters
@@ -206,8 +215,8 @@ if __name__ == "__main__":
             namespace="ray-example",
             runtime_env={
                 "env_vars": {
-                    # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
-                    "TOKENIZERS_PARALLELISM": "false"
+                    "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false",
                 },
             },
         )
@@ -219,8 +228,8 @@ if __name__ == "__main__":
             _temp_dir=args.ray_dir,
             runtime_env={
                 "env_vars": {
-                    # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
-                    "TOKENIZERS_PARALLELISM": "false"
+                    "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
+                    "TOKENIZERS_PARALLELISM": "false",
                 },
             },
         )
@@ -228,7 +237,7 @@ if __name__ == "__main__":
     if args.top_k is None:
         if args.backend == "transformers":
             args.top_k = 50
-        elif args.backend == "vllm":
+        elif args.backend == "vllm" or args.backend == "async-vllm":
             args.top_k = -1
 
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
@@ -256,7 +265,8 @@ if __name__ == "__main__":
             )
         )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
-    elif args.backend == "vllm":
+    elif args.backend == "vllm" or args.backend == "async-vllm":
+        # os.environ["VLLM_DP_SIZE"] = str(args.producer_data_parallel_size)
         inference_model_config.update(
             dict(
                 gpu_memory_utilization=0.7,
@@ -396,7 +406,8 @@ if __name__ == "__main__":
 
     launch_distributed(
         num_producers=args.num_inferencer,
-        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size),
+        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size)
+        * inference_model_config.get("data_parallel_size", args.producer_data_parallel_size),
         num_consumer_procs=args.num_trainers,
         num_episodes=args.num_episodes,
         inference_batch_size=args.inference_batch_size,

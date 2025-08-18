@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import json
 import os
@@ -310,7 +311,10 @@ class BaseProducer:
                         self.eval_mode = False
                         self.latest_eval_step = self.consumer_global_step
                 self.profiler.enter("rollout")
-                outputs = self.rollout(**batch)
+                if isinstance(self.model, BACKEND_MAP["async-vllm"]):
+                    outputs = asyncio.run(self.rollout(**batch))
+                else:
+                    outputs = self.rollout(**batch)
                 self.profiler.exit("rollout")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
@@ -473,7 +477,9 @@ class SimpleProducer(BaseProducer):
             enable_profiling=enable_profiling,
             n_behind=n_behind,
         )
-        self.model = self.backend_cls(model_config, generate_config, self.tokenizer, num_generations)
+        self.model = self.backend_cls(
+            model_config, generate_config, self.tokenizer, num_generations, self.microbatch_size
+        )
         self.eval_generation_config = copy.deepcopy(self.model.generate_config)
         self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
         self.eval_generation_config.update(eval_generation_config)
@@ -482,6 +488,221 @@ class SimpleProducer(BaseProducer):
     @torch.no_grad()
     def rollout(self, input_ids, attention_mask, **kwargs):
         rollouts = self.model.generate(input_ids, attention_mask, **kwargs)
+        if self.producer_idx == 0 and not self.eval_mode:
+            if (
+                self.consumer_global_step - self.latest_rollout_log_step >= self.log_rollout_interval
+                or self.latest_rollout_log_step == -1
+            ):
+                new_record = (
+                    json.dumps(
+                        {
+                            "train_step": self.consumer_global_step,
+                            "rollout": self.tokenizer.batch_decode(
+                                rollouts["input_ids"][:, 0], skip_special_tokens=True
+                            ),
+                        }
+                    )
+                    + "\n"
+                )
+                self.rollout_log_file.write(new_record)
+                self.rollout_log_file.flush()
+                self.latest_rollout_log_step = self.consumer_global_step
+        return rollouts
+
+    def __del__(self):
+        if self.producer_idx == 0:
+            self.wandb_run.finish()
+        if hasattr(self, "rollout_log_file"):
+            self.rollout_log_file.close()
+
+    def load_state_dict(self, state_dict):
+        self.model.load_state_dict(state_dict)
+
+
+@ray.remote
+class AsyncProducer(BaseProducer):
+    """
+    Asyncronous version of the producer that uses vLLM for generation.
+    """
+
+    def __init__(
+        self,
+        producer_idx,
+        num_producers,
+        num_consumer_procs,
+        num_episodes,
+        batch_size,
+        train_dataset_config,
+        model_config,
+        generate_config,
+        tokenizer_config=None,
+        microbatch_size=1,
+        backend="transformers",
+        num_generations: int = 8,
+        consumer_plugin_config=None,
+        eval_dataset_config=None,
+        eval_interval=-1,  # disable evaluation
+        grpo_config: Dict[str, Any] = None,
+        eval_save_dir: str = "./eval",
+        eval_generation_config={},
+        project_name: str = None,
+        run_name: str = None,
+        wandb_group_name: str = None,
+        log_rollout_interval: int = 20,
+        rollout_log_file: str = "./rollout_log.jsonl",
+        enable_profiling: bool = False,
+        n_behind: int = 0,
+    ):
+        super().__init__(
+            producer_idx,
+            num_producers,
+            num_consumer_procs,
+            num_episodes,
+            batch_size,
+            train_dataset_config,
+            model_config,
+            generate_config,
+            tokenizer_config,
+            microbatch_size,
+            backend,
+            consumer_plugin_config,
+            eval_dataset_config=eval_dataset_config,
+            eval_interval=eval_interval,
+            grpo_config=grpo_config,
+            eval_save_dir=eval_save_dir,
+            project_name=project_name,
+            run_name=run_name,
+            wandb_group_name=wandb_group_name,
+            log_rollout_interval=log_rollout_interval,
+            rollout_log_file=rollout_log_file,
+            enable_profiling=enable_profiling,
+            n_behind=n_behind,
+        )
+        assert backend == "async-vllm", f"AsyncProducer only supports async-vllm backend, got {backend}"
+        self.model = self.backend_cls(
+            model_config, generate_config, self.tokenizer, num_generations, self.microbatch_size
+        )
+        self.eval_generation_config = copy.deepcopy(self.model.generate_config)
+        self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
+        self.eval_generation_config.update(eval_generation_config)
+        self.eval_sample_params = SamplingParams(**self.eval_generation_config)
+
+    @torch.no_grad()
+    async def rollout(self, input_ids, attention_mask, **kwargs):
+        tasks = []
+        for prompt_id in range(input_ids.size(0)):
+            new_kwargs = copy.deepcopy(kwargs)
+            if "gt_answer" in new_kwargs:
+                new_kwargs["gt_answer"] = new_kwargs["gt_answer"][prompt_id]
+            if "test_cases" in new_kwargs:
+                new_kwargs["test_cases"] = new_kwargs["test_cases"][prompt_id]
+            tasks.append(
+                self.model.generate(
+                    input_ids[prompt_id].unsqueeze(0),
+                    attention_mask[prompt_id].unsqueeze(0),
+                    **new_kwargs,
+                )
+            )
+        # print(f"Producer {self.producer_idx} running {len(tasks)} tasks")
+        rollouts = await asyncio.gather(*tasks)
+        rollouts = {
+            k: (
+                torch.cat([r[k] for r in rollouts], dim=0)
+                if k not in ["gt_answer", "test_cases"]
+                else [r[k] for r in rollouts]
+            )
+            for k in rollouts[0].keys()
+        }
+        if self.producer_idx == 0 and not self.eval_mode:
+            if (
+                self.consumer_global_step - self.latest_rollout_log_step >= self.log_rollout_interval
+                or self.latest_rollout_log_step == -1
+            ):
+                new_record = (
+                    json.dumps(
+                        {
+                            "train_step": self.consumer_global_step,
+                            "rollout": self.tokenizer.batch_decode(
+                                rollouts["input_ids"][:, 0], skip_special_tokens=True
+                            ),
+                        }
+                    )
+                    + "\n"
+                )
+                self.rollout_log_file.write(new_record)
+                self.rollout_log_file.flush()
+                self.latest_rollout_log_step = self.consumer_global_step
+        return rollouts
+
+    def __del__(self):
+        if self.producer_idx == 0:
+            self.wandb_run.finish()
+        if hasattr(self, "rollout_log_file"):
+            self.rollout_log_file.close()
+
+    def load_state_dict(self, state_dict):
+        self.model.load_state_dict(state_dict)
+
+
+@ray.remote
+class AsyncServer:
+    """
+    A async worker for inference only
+    """
+
+    def __init__(
+        self,
+        producer_idx,
+        num_producers,
+        model_config,
+        generate_config,
+        tokenizer_config=None,
+        microbatch_size=1,
+        backend="transformers",
+        num_generations: int = 8,
+        eval_generation_config={},
+    ):
+        tokenizer_path = model_config["path"]
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, **tokenizer_config)
+        self.tokenizer.padding_side = "left"
+        self.microbatch_size = microbatch_size
+        self.producer_idx = producer_idx
+        self.num_producers = num_producers
+        assert backend == "async-vllm", f"AsyncProducer only supports async-vllm backend, got {backend}"
+        self.model = self.backend_cls(
+            model_config, generate_config, self.tokenizer, num_generations, self.microbatch_size
+        )
+        self.eval_generation_config = copy.deepcopy(self.model.generate_config)
+        self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
+        self.eval_generation_config.update(eval_generation_config)
+        self.eval_sample_params = SamplingParams(**self.eval_generation_config)
+
+    @torch.no_grad()
+    async def rollout(self, input_ids, attention_mask, **kwargs):
+        tasks = []
+        for prompt_id in range(input_ids.size(0)):
+            new_kwargs = copy.deepcopy(kwargs)
+            if "gt_answer" in new_kwargs:
+                new_kwargs["gt_answer"] = new_kwargs["gt_answer"][prompt_id]
+            if "test_cases" in new_kwargs:
+                new_kwargs["test_cases"] = new_kwargs["test_cases"][prompt_id]
+            tasks.append(
+                self.model.generate(
+                    input_ids[prompt_id].unsqueeze(0),
+                    attention_mask[prompt_id].unsqueeze(0),
+                    **new_kwargs,
+                )
+            )
+        # print(f"Producer {self.producer_idx} running {len(tasks)} tasks")
+        rollouts = await asyncio.gather(*tasks)
+        rollouts = {
+            k: (
+                torch.cat([r[k] for r in rollouts], dim=0)
+                if k not in ["gt_answer", "test_cases"]
+                else [r[k] for r in rollouts]
+            )
+            for k in rollouts[0].keys()
+        }
         if self.producer_idx == 0 and not self.eval_mode:
             if (
                 self.consumer_global_step - self.latest_rollout_log_step >= self.log_rollout_interval
