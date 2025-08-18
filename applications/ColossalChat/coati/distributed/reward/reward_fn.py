@@ -182,7 +182,7 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         raise ValueError("no gt_answer is provided, please check your training dataset.")
 
     decoded_final_answer = tokenizer.decode(input_ids[s : e + 1], skip_special_tokens=True)
-
+    # print(f"decoded_final_answer: {decoded_final_answer[-100:]}", gt_answer)
     final_answer = extract_boxed_solution(decoded_final_answer)
     format_valid = final_answer is not None
     if "tags" in kwargs and kwargs["tags"]:
