@@ -9,8 +9,13 @@ from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
 from .producer import SimpleProducer
 
-ALGO_MAP = {"Simple": SimpleConsumer, "GRPO": GRPOConsumer, "DAPO": GRPOConsumer}
-
+ALGO_MAP = {
+    "Simple": SimpleConsumer,
+    "GRPO": GRPOConsumer,
+    "DAPO": GRPOConsumer,
+    "REINFORCE_PPB": GRPOConsumer,
+    "RLOO": GRPOConsumer,
+}
 
 def get_jsonl_size_fast(path: str) -> int:
     with open(path) as f:
@@ -66,6 +71,7 @@ def launch_distributed(
         core_consumer = ALGO_MAP.get(core_algo, SimpleConsumer)
 
     train_dp_size = get_dp_size_fast(num_consumer_procs, plugin_config)
+
     assert (inference_batch_size * num_producers) % (train_batch_size * train_dp_size) == 0
 
     dataset_path = train_dataset_config["path"]
