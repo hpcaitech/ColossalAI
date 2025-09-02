@@ -196,51 +196,29 @@ class GRPOConsumer(BaseConsumer):
         response_length = torch.sum(action_mask, dim=1).to(torch.float32)
         train_microbatch_size = self.grpo_config.get("train_microbatch_size", data["input_ids"].size(0))
 
-        if self.adv == "GRPO" or self.adv == "DAPO":
-            
-            reward = data["reward"].view((-1))
-            format_acc = data["format_acc"].view((-1))
-            ans_acc = data["ans_acc"].view((-1))
+        reward = data["reward"].view((-1))
+        format_acc = data["format_acc"].view((-1))
+        ans_acc = data["ans_acc"].view((-1))
 
-            # [minibatch_size, num_generations]
+        # [minibatch_size, num_generations]
 
-            group_reward = reward.view(-1, self.num_generations)
-            reward_mean = group_reward.mean(dim=1)
-            # [minibatch_size x num_generations]
-            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+        group_reward = reward.view(-1, self.num_generations)
+        reward_mean = group_reward.mean(dim=1)
+        # [minibatch_size x num_generations]
+        reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+
+        if self.adv == "GRPO" or self.adv == "DAPO": 
 
             reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
             # [minibatch_size x num_generations]
             advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
 
-        elif self.adv == "REINFORCE_PPB":
-
-            reward = data["reward"].view((-1))
-            format_acc = data["format_acc"].view((-1))
-            ans_acc = data["ans_acc"].view((-1))
-
-            # [minibatch_size, num_generations]
-
-            group_reward = reward.view(-1, self.num_generations)
-            reward_mean = group_reward.mean(dim=1)
-            # [minibatch_size x num_generations]
-            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+        elif self.adv == "REINFORCE_PPB": 
 
             # [minibatch_size x num_generations]
             advantages = ((reward - reward_mean)).unsqueeze(dim=-1)
 
-
-        elif self.adv == "RLOO":
-            reward = data["reward"].view((-1))
-            format_acc = data["format_acc"].view((-1))
-            ans_acc = data["ans_acc"].view((-1))
-
-            # [minibatch_size, num_generations]
-
-            group_reward = reward.view(-1, self.num_generations)
-            reward_mean = group_reward.mean(dim=1)
-            # [minibatch_size x num_generations]
-            reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
+        elif self.adv == "RLOO": 
 
             advantages = (
                 reward * self.num_generations / (self.num_generations - 1)
