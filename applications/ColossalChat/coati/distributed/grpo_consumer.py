@@ -207,24 +207,24 @@ class GRPOConsumer(BaseConsumer):
         # [minibatch_size x num_generations]
         reward_mean = reward_mean.repeat_interleave(self.num_generations, dim=0)
 
-        if self.adv == "GRPO" or self.adv == "DAPO": 
+        if self.adv == "GRPO" or self.adv == "DAPO":
 
             reward_std = group_reward.std(dim=1).repeat_interleave(self.num_generations, dim=0)
             # [minibatch_size x num_generations]
             advantages = ((reward - reward_mean) / (reward_std + 1e-4)).unsqueeze(dim=-1)
 
-        elif self.adv == "REINFORCE_PPB": 
+        elif self.adv == "REINFORCE_PPB":
 
             # [minibatch_size x num_generations]
             advantages = ((reward - reward_mean)).unsqueeze(dim=-1)
 
-        elif self.adv == "RLOO": 
+        elif self.adv == "RLOO":
 
             advantages = (
                 reward * self.num_generations / (self.num_generations - 1)
                 - reward_mean * self.num_generations / (self.num_generations - 1)
             ).unsqueeze(dim=-1)
-        
+
         # [minibatch_size x num_of_generation]
         loss_mask = torch.ones(action_mask.size(0), device=action_mask.device).bool()
 
@@ -379,16 +379,25 @@ class GRPOConsumer(BaseConsumer):
 
                         if self.adv == "REINFORCE_PPB":
 
-                            inputs["advantages"] = inputs["advantages"] - self.policy_loss_fn.beta * per_token_kl 
-                            advantages_forward_micro_batch_mean = torch.sum(inputs["advantages"] * inputs["action_mask"])/(torch.sum(
-                                    inputs["action_mask"]
-                                ) + 1e-4)
-                            advantages_forward_micro_batch_std = torch.rsqrt(torch.sum((inputs["advantages"] - advantages_forward_micro_batch_mean)**2 * inputs["action_mask"])/(torch.sum(
-                                    inputs["action_mask"]
-                                ) + 1e-4) + 1e-8) 
-                            inputs["advantages"] = (inputs["advantages"] - advantages_forward_micro_batch_mean) * inputs["action_mask"]  / (advantages_forward_micro_batch_std) 
+                            inputs["advantages"] = inputs["advantages"] - self.policy_loss_fn.beta * per_token_kl
+                            advantages_forward_micro_batch_mean = torch.sum(
+                                inputs["advantages"] * inputs["action_mask"]
+                            ) / (torch.sum(inputs["action_mask"]) + 1e-4)
+                            advantages_forward_micro_batch_std = torch.rsqrt(
+                                torch.sum(
+                                    (inputs["advantages"] - advantages_forward_micro_batch_mean) ** 2
+                                    * inputs["action_mask"]
+                                )
+                                / (torch.sum(inputs["action_mask"]) + 1e-4)
+                                + 1e-8
+                            )
+                            inputs["advantages"] = (
+                                (inputs["advantages"] - advantages_forward_micro_batch_mean)
+                                * inputs["action_mask"]
+                                / (advantages_forward_micro_batch_std)
+                            )
 
-                            per_token_kl = 0.0 
+                            per_token_kl = 0.0
 
                         loss, _ = self.policy_loss_fn(
                             action_log_probs,
@@ -451,21 +460,35 @@ class GRPOConsumer(BaseConsumer):
                     else:
                         per_token_kl = 0.0
                         kl = None
-                    
-                    advantages_forward_micro_batch.repeat_interleave(action_log_probs.size(-1), dim=-1) - self.policy_loss_fn.beta * per_token_kl
+
+                    (
+                        advantages_forward_micro_batch.repeat_interleave(action_log_probs.size(-1), dim=-1)
+                        - self.policy_loss_fn.beta * per_token_kl
+                    )
 
                     if self.adv == "REINFORCE_PPB":
 
-                        advantages_forward_micro_batch = advantages_forward_micro_batch - self.policy_loss_fn.beta * per_token_kl 
-                        advantages_forward_micro_batch_mean = torch.sum(advantages_forward_micro_batch * action_mask_forward_micro_batch)/(torch.sum(
-                                action_mask_forward_micro_batch
-                            ) + 1e-4)
-                        advantages_forward_micro_batch_std = torch.rsqrt(torch.sum((advantages_forward_micro_batch - advantages_forward_micro_batch_mean)**2 * action_mask_forward_micro_batch)/(torch.sum(
-                                action_mask_forward_micro_batch
-                            ) + 1e-4) + 1e-8) 
-                        advantages_forward_micro_batch = (advantages_forward_micro_batch - advantages_forward_micro_batch_mean) * action_mask_forward_micro_batch  / (advantages_forward_micro_batch_std) 
+                        advantages_forward_micro_batch = (
+                            advantages_forward_micro_batch - self.policy_loss_fn.beta * per_token_kl
+                        )
+                        advantages_forward_micro_batch_mean = torch.sum(
+                            advantages_forward_micro_batch * action_mask_forward_micro_batch
+                        ) / (torch.sum(action_mask_forward_micro_batch) + 1e-4)
+                        advantages_forward_micro_batch_std = torch.rsqrt(
+                            torch.sum(
+                                (advantages_forward_micro_batch - advantages_forward_micro_batch_mean) ** 2
+                                * action_mask_forward_micro_batch
+                            )
+                            / (torch.sum(action_mask_forward_micro_batch) + 1e-4)
+                            + 1e-8
+                        )
+                        advantages_forward_micro_batch = (
+                            (advantages_forward_micro_batch - advantages_forward_micro_batch_mean)
+                            * action_mask_forward_micro_batch
+                            / (advantages_forward_micro_batch_std)
+                        )
 
-                        per_token_kl = 0.0 
+                        per_token_kl = 0.0
 
                     loss, _ = self.policy_loss_fn(
                         action_log_probs,

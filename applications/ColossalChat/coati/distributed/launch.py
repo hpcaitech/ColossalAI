@@ -17,6 +17,7 @@ ALGO_MAP = {
     "RLOO": GRPOConsumer,
 }
 
+
 def get_jsonl_size_fast(path: str) -> int:
     with open(path) as f:
         lines = f.readlines()
