@@ -490,13 +490,13 @@ class GRPOConsumer(BaseConsumer):
                         per_token_kl = 0.0 
 
                     loss, _ = self.policy_loss_fn(
-                    action_log_probs,
-                    old_action_log_probs,
-                    advantages_forward_micro_batch,
-                    per_token_kl,
-                    action_mask_forward_micro_batch,
-                    loss_mask=loss_mask_forward_micro_batch,
-                    total_effective_tokens_in_batch=total_effective_tokens_count,
+                        action_log_probs,
+                        old_action_log_probs_micro_batch,
+                        advantages_forward_micro_batch,
+                        per_token_kl,
+                        action_mask_forward_micro_batch,
+                        loss_mask=loss_mask_forward_micro_batch,
+                        total_effective_tokens_in_batch=total_effective_tokens_count,
                     )
 
                     self.booster.backward(loss, self.optimizer)
