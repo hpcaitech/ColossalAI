@@ -16,6 +16,7 @@ class PolicyLoss(nn.Module):
         clip_eps_high: float = 0.2,
         beta: float = 0.01,
         loss_variation: str = "sample_level",
+        adv: str = "GRPO",
     ) -> None:
         super().__init__()
         self.clip_eps_low = clip_eps_low
@@ -23,6 +24,7 @@ class PolicyLoss(nn.Module):
         self.beta = beta
         self.loss_variation = loss_variation
         assert loss_variation in ["sample_level", "token_level"], f"Unsupported loss variation: {loss_variation}"
+        self.adv = adv
 
     def forward(
         self,
