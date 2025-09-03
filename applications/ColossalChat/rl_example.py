@@ -110,7 +110,11 @@ if __name__ == "__main__":
 
     # Sampling parameters
     parser.add_argument(
-        "-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm", "async-vllm"]
+        "-b",
+        "--backend",
+        type=str,
+        default="transformers",
+        choices=["transformers", "vllm", "async-vllm", "async-agentic-vllm"],
     )
     parser.add_argument("-temp", "--temperature", type=float, default=1.0, help="Temperature for sampling.")
     parser.add_argument(
@@ -215,7 +219,7 @@ if __name__ == "__main__":
             namespace="ray-example",
             runtime_env={
                 "env_vars": {
-                    "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
+                    # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
                     "TOKENIZERS_PARALLELISM": "false",
                 },
             },
@@ -228,7 +232,7 @@ if __name__ == "__main__":
             _temp_dir=args.ray_dir,
             runtime_env={
                 "env_vars": {
-                    "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
+                    # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
                     "TOKENIZERS_PARALLELISM": "false",
                 },
             },
@@ -237,7 +241,7 @@ if __name__ == "__main__":
     if args.top_k is None:
         if args.backend == "transformers":
             args.top_k = 50
-        elif args.backend == "vllm" or args.backend == "async-vllm":
+        elif "vllm" in args.backend:
             args.top_k = -1
 
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
@@ -265,7 +269,7 @@ if __name__ == "__main__":
             )
         )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
-    elif args.backend == "vllm" or args.backend == "async-vllm":
+    elif args.backend == "vllm" or args.backend == "async-vllm" or args.backend == "async-agentic-vllm":
         # os.environ["VLLM_DP_SIZE"] = str(args.producer_data_parallel_size)
         inference_model_config.update(
             dict(
@@ -404,6 +408,25 @@ if __name__ == "__main__":
         # Default system prompt
         args.system_prompt = DEFAUT_SYSTEM_PROMPT[args.reward_type]
 
+    if "agentic" in args.backend:
+        assert "vllm" in args.backend, "Agentic backend only supports async-agentic-vllm backends."
+        generate_config["n"] = 1  # agentic producer use AsyncProducer which processes one request a time
+        generate_config["max_tokens"] = (
+            2048  # max new tokens for each agentic step, usually smaller than max_new_tokens as agentic model will generate multiple steps
+        )
+        agentic_config = {
+            "model": args.model,
+            "model_type": "transformers",
+            "generate_cfg": {
+                "max_input_tokens": args.max_new_tokens + args.max_prompt_tokens,
+            },
+        }
+        agentic_config["generate_cfg"].update(
+            {k: v for k, v in generate_config.items() if k in ["top_k", "top_p", "temperature"]}
+        )
+    else:
+        agentic_config = None
+
     launch_distributed(
         num_producers=args.num_inferencer,
         num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size)
@@ -424,6 +447,7 @@ if __name__ == "__main__":
         num_generations=args.num_generations,
         train_model_config=train_model_config,
         grpo_config=grpo_config,
+        agentic_config=agentic_config,
         plugin_config={
             "tp_size": args.tensor_parallel_size,
             "pp_size": args.pipeline_parallel_size,

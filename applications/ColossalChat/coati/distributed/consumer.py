@@ -150,6 +150,7 @@ class BaseConsumer:
         self.profiler.enter("sync_model")
         torch.cuda.empty_cache()
         state_dict = self.state_dict()
+        print(f"[C{self.rank}]: Sync model before training")
         if self.pp_size > 1:
             if self.tp_rank == 0 and self.dp_rank == 0:
                 ray_broadcast_tensor_dict(
@@ -164,6 +165,7 @@ class BaseConsumer:
                     state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                 )
         del state_dict
+        print(f"[C{self.rank}]: Sync model before training done")
         torch.cuda.empty_cache()
         self.profiler.exit("sync_model")
 
@@ -323,7 +325,7 @@ class BaseConsumer:
                         )  # for setting start index when resuming training
                         if self.rank == 0:
                             print(f"Saved model checkpoint at step {step + 1} in folder {self.save_dir}")
-
+                    # breakpoint()
                     if (episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1) and (
                         episode != 0 or step >= self.n_behind
                     ):

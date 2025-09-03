@@ -4,10 +4,11 @@ import uuid
 from typing import Any, Dict, Optional
 
 import ray
+from coati.distributed.agent.agentic import AgenticProducer
 
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
-from .producer import AsyncProducer, SimpleProducer
+from .producer import AsyncSimpleProducer, SimpleProducer
 
 ALGO_MAP = {
     "Simple": SimpleConsumer,
@@ -16,7 +17,7 @@ ALGO_MAP = {
     "REINFORCE_PPB": GRPOConsumer,
     "RLOO": GRPOConsumer,
 }
-Producer_MAP = {"Simple": SimpleProducer, "Async": AsyncProducer}
+Producer_MAP = {"Simple": SimpleProducer, "Async": AsyncSimpleProducer}
 
 
 def get_jsonl_size_fast(path: str) -> int:
@@ -48,6 +49,7 @@ def launch_distributed(
     generate_config: Dict[str, Any],
     train_model_config: Dict[str, Any],
     grpo_config: Dict[str, Any],
+    agentic_config: Optional[Dict[str, Any]],
     plugin_config: Dict[str, Any],
     tokenizer_config: Optional[Dict[str, Any]] = None,
     inference_backend: str = "transformers",
@@ -80,7 +82,7 @@ def launch_distributed(
     num_samples = get_jsonl_size_fast(dataset_path)
     global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
-    num_recv_per_update = inference_batch_size // inference_microbatch_size
+    num_recv_per_update = inference_batch_size // inference_microbatch_size if "async" not in inference_backend else 1
 
     run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
     wandb_group_name = str(uuid.uuid4())
@@ -112,9 +114,12 @@ def launch_distributed(
 
     producer_procs = []
     if "async" in inference_backend:
-        core_producer = AsyncProducer
+        core_producer = AsyncSimpleProducer
     else:
-        core_producer = Producer_MAP.get("Simple", SimpleProducer)
+        core_producer = SimpleProducer
+    enable_agentic = "agentic" in inference_backend
+    if enable_agentic:
+        inference_backend = inference_backend.replace("agentic-", "")
     for i in range(num_producers):
         node_id = gpu_to_node_id[0]
         producer_ip_address = gpu_to_ip_address[0]
@@ -132,7 +137,11 @@ def launch_distributed(
             model_config=inference_model_config,
             generate_config=generate_config,
             tokenizer_config=tokenizer_config,
-            microbatch_size=inference_microbatch_size,
+            microbatch_size=(
+                inference_microbatch_size * num_generations
+                if "async" in inference_backend
+                else inference_microbatch_size
+            ),
             backend=inference_backend,
             num_generations=num_generations,
             consumer_plugin_config=plugin_config,
@@ -145,12 +154,63 @@ def launch_distributed(
             run_name=run_name,
             wandb_group_name=wandb_group_name,
             log_rollout_interval=log_rollout_interval,
-            rollout_log_file=rollout_log_file,
+            rollout_log_file=rollout_log_file if not enable_agentic else None,
             enable_profiling=enable_profiling,
             n_behind=n_behind,
         )
         producer_procs.append(producer)
     ray.get([p.setup.remote() for p in producer_procs])
+    """
+    # test async generate
+    import torch
+    import asyncio
+    import time
+    async def test():
+        res_ref = producer_procs[0].generate.remote(torch.ones((2, 10), dtype=torch.int), torch.ones((2, 10), dtype=torch.int))
+        res = await res_ref
+        return res
+    res = asyncio.run(test())
+    print(res)
+    time.sleep(1000)
+    """
+
+    if enable_agentic:
+        # when agentic is enabled, we use core_producer as inference engine and
+        # AgenticProducer as the real producer
+        _producer_procs = producer_procs
+        producer_procs = [
+            AgenticProducer.options(num_cpus=1).remote(
+                producer_idx=producer_idx,
+                num_producers=num_producers * train_batch_size,
+                num_consumer_procs=num_consumer_procs,
+                num_episodes=num_episodes,
+                batch_size=1,  # batch_size must be 1 for agentic producer
+                train_dataset_config=train_dataset_config,
+                model_config=inference_model_config,
+                generate_config=generate_config,
+                async_producers=_producer_procs,
+                tokenizer_config=tokenizer_config,
+                agentic_config=agentic_config,
+                microbatch_size=1,  # microbatch_size must be 1 for agentic producer
+                backend=inference_backend,
+                num_generations=num_generations,
+                consumer_plugin_config=plugin_config,
+                eval_dataset_config=eval_dataset_config,
+                eval_interval=eval_interval,
+                grpo_config=grpo_config,
+                eval_save_dir=eval_save_dir,
+                eval_generation_config=eval_generation_config,
+                project_name=project_name,
+                run_name=run_name,
+                wandb_group_name=wandb_group_name,
+                log_rollout_interval=log_rollout_interval,
+                rollout_log_file=rollout_log_file,
+                enable_profiling=enable_profiling,
+                n_behind=n_behind,
+            )
+            for producer_idx in range(num_producers * inference_batch_size)
+        ]
+
     generate_config_consumer = copy.deepcopy(generate_config)
     generate_config_consumer.update(
         dict(

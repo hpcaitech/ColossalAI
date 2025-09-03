@@ -4,6 +4,7 @@
 Dataloader for sft, dpo, ppo
 """
 
+import copy
 import os
 from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional, Sequence, Union
@@ -423,7 +424,9 @@ class RawConversationDataset(Dataset):
     Each instance is a dictionary with fields `system`, `roles`, `messages`, `offset`, `sep_style`, `seps`.
     """
 
-    def __init__(self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int, system_prompt: str) -> None:
+    def __init__(
+        self, tokenizer: PreTrainedTokenizer, input_file: str, max_length: int, system_prompt: str, tokenize=True
+    ) -> None:
         self.tokenizer = tokenizer
         self.raw_texts = []
         with jsonlines.open(input_file) as f:
@@ -432,30 +435,50 @@ class RawConversationDataset(Dataset):
         self.tokenized_texts = [None] * len(self.raw_texts)
         self.max_length = max_length
         self.system_prompt = system_prompt
+        self.tokenize = tokenize
 
     def __len__(self) -> int:
         return len(self.raw_texts)
 
     def __getitem__(self, index: int):
-        if self.tokenized_texts[index] is None:
-            message = self.raw_texts[index]
-            tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length, self.system_prompt)
-            self.tokenized_texts[index] = dict(tokens)
-        return self.tokenized_texts[index]
+        if self.tokenize:
+            if self.tokenized_texts[index] is None:
+                message = self.raw_texts[index]
+                tokens = apply_chat_template_and_mask(self.tokenizer, message, self.max_length, self.system_prompt)
+                self.tokenized_texts[index] = dict(tokens)
+            return self.tokenized_texts[index]
+        else:
+            chat = copy.deepcopy(self.raw_texts[index])
+            chat["messages"] = [{"role": "system", "content": self.system_prompt}, chat["messages"]]
+            return chat
 
 
 def collate_fn_grpo(batch):
-    input_ids = [item["input_ids"] for item in batch]
-    attention_mask = [item["attention_mask"] for item in batch]
-    labels = [item["labels"] for item in batch]
-    # Assume input_ids, attention_mask, labels are already of the same length,
-    # otherwise use pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
-    input_ids = torch.stack(input_ids)
-    attention_mask = torch.stack(attention_mask)
-    labels = torch.stack(labels)
-    ret = {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
-    if "test_cases" in batch[0]:
-        ret["test_cases"] = [item["test_cases"] for item in batch]
-    if "gt_answer" in batch[0]:
-        ret["gt_answer"] = [item["gt_answer"] for item in batch]
-    return ret
+    if "input_ids" in batch[0]:
+        # tokenized format
+        input_ids = [item["input_ids"] for item in batch]
+        attention_mask = [item["attention_mask"] for item in batch]
+        labels = [item["labels"] for item in batch]
+        # Assume input_ids, attention_mask, labels are already of the same length,
+        # otherwise use pad_sequence(input_ids, batch_first=True, padding_value=tokenizer.pad_token_id)
+        input_ids = torch.stack(input_ids)
+        attention_mask = torch.stack(attention_mask)
+        labels = torch.stack(labels)
+        ret = {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+        if "test_cases" in batch[0]:
+            ret["test_cases"] = [item["test_cases"] for item in batch]
+        if "gt_answer" in batch[0]:
+            ret["gt_answer"] = [item["gt_answer"] for item in batch]
+        return ret
+    elif "messages" in batch[0]:
+        # vllm format
+        ret = {
+            "messages": [item["messages"] for item in batch],
+        }
+        if "test_cases" in batch[0]:
+            ret["test_cases"] = [item["test_cases"] for item in batch]
+        if "gt_answer" in batch[0]:
+            ret["gt_answer"] = [item["gt_answer"] for item in batch]
+        return ret
+    else:
+        raise ValueError("Unsupported batch format")
