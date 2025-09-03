@@ -64,7 +64,7 @@ class AsyncInferenceBackend(BaseInferenceBackend):
                 - action_mask (torch.Tensor): shape [B, N]
                 where N is the number of generated tokens. And all tensors should be on CUDA.
         """
-        raise NotImplementedError("AsyncInferenceBackend does not support generate method.")
+        raise NotImplementedError("Generate method must be implemented in subclass.")
 
 
 class TransformersInferenceBackend(BaseInferenceBackend):
@@ -84,6 +84,7 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
         microbatch_size: int = 1,
+        profiler=None,
     ):
         model_config = update_by_default(model_config, self.DEFAULT_MODEL_CONFIG)
         model_config.update(self.FORCE_MODEL_CONFIG)
@@ -93,6 +94,7 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         self.generate_config.update(self.FORCE_GENERATE_CONFIG)
         self.tokenizer = tokenizer
         self.num_generations = num_generations
+        self.profiler = profiler
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
@@ -158,6 +160,7 @@ class SGLangInferenceBackend(BaseInferenceBackend):
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
         microbatch_size: int = 1,
+        profiler=None,
     ):
         if sgl is None:
             raise ImportError("sglang is not installed")
@@ -223,6 +226,7 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
         microbatch_size: int = 1,
+        profiler=None,
     ):
         if LLM is None:
             raise ImportError("vllm is not installed")
@@ -323,6 +327,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
         microbatch_size: int = 1,
+        profiler=None,
     ):
         if LLM is None:
             raise ImportError("vllm is not installed")
@@ -332,7 +337,8 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
         generate_config = generate_config.copy()
         generate_config.update(self.FORCE_GENERATE_CONFIG)
-        generate_config.update({"n": num_generations})
+        if "n" not in generate_config:
+            generate_config.update({"n": num_generations})
         self.generate_config = generate_config
         self.sample_params = SamplingParams(**generate_config)
         self.model_config = model_config
@@ -340,6 +346,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         self.num_generations = num_generations
         self.queued_requests = []
         self.microbatch_size = microbatch_size
+        self.profiler = profiler
 
     @torch.no_grad()
     async def generate(
@@ -351,6 +358,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
             input_ids (torch.Tensor): shape [B, S], B=1
             attention_mask (torch.Tensor): shape [B, S]
         """
+        # breakpoint()
         assert input_ids.size(0) == attention_mask.size(0) == 1
         response_start_idx = input_ids.size(1)
         first_non_padding_token_idx = (input_ids != self.tokenizer.pad_token_id).int().argmax(dim=1)
@@ -366,6 +374,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         self.queued_requests.append(request_id)  # enqueue
         # pop the first input_ids and attention_mask
         prompt_token_ids = input_ids_no_padding[0]
+        self.profiler.enter(f"vllm generate {request_id}")
         outputs = self.engine.generate(
             prompt={"prompt_token_ids": prompt_token_ids}, sampling_params=sample_params, request_id=request_id
         )
@@ -380,6 +389,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
             assert len(output_i.logprobs) == len(output_i.token_ids)
             p = [m[t].logprob for m, t in zip(output_i.logprobs, output_i.token_ids)]
             log_probs.append(p)
+        self.profiler.exit(f"vllm generate {request_id}")
         # pad them
         max_len = self.sample_params.max_tokens
         action_mask = torch.ones(len(out_tokens), max_len, dtype=attention_mask.dtype)
