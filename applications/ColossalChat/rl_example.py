@@ -162,6 +162,13 @@ if __name__ == "__main__":
         help="Reward type for GRPO.",
     )
     parser.add_argument(
+        "--agentic-type",
+        type=str,
+        default="QwenMathAgent",
+        choices=["QwenMathAgent", "LangGraphMathAgent"],
+        help="Agentic model type for agentic training.",
+    )
+    parser.add_argument(
         "-cv",
         "--code-verifier-api-url",
         type=str,
@@ -414,16 +421,22 @@ if __name__ == "__main__":
         generate_config["max_tokens"] = (
             2048  # max new tokens for each agentic step, usually smaller than max_new_tokens as agentic model will generate multiple steps
         )
-        agentic_config = {
-            "model": args.model,
-            "model_type": "transformers",
-            "generate_cfg": {
-                "max_input_tokens": args.max_new_tokens + args.max_prompt_tokens,
-            },
-        }
-        agentic_config["generate_cfg"].update(
-            {k: v for k, v in generate_config.items() if k in ["top_k", "top_p", "temperature"]}
-        )
+        if args.agentic_type == "QwenMathAgent":
+            agentic_config = {
+                "agentic_producer": "QwenMathAgent",
+                "model": args.model,
+                "model_type": "transformers",
+                "generate_cfg": {
+                    "max_input_tokens": args.max_new_tokens + args.max_prompt_tokens,
+                },
+            }
+            agentic_config["generate_cfg"].update(
+                {k: v for k, v in generate_config.items() if k in ["top_k", "top_p", "temperature"]}
+            )
+        elif args.agentic_type == "LangGraphMathAgent":
+            agentic_config = {"configurable": {"thread_id": "math-1"}, "agentic_producer": "LangGraphMathAgent"}
+        else:
+            raise ValueError(f"Unsupported agentic model type: {args.agentic_type}")
     else:
         agentic_config = None
 

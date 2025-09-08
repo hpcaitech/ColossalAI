@@ -4,7 +4,8 @@ import uuid
 from typing import Any, Dict, Optional
 
 import ray
-from coati.distributed.agent.agentic import AgenticProducer
+from coati.distributed.agent.langgraph_math_agentic import LangGraphMathAgenticProducer
+from coati.distributed.agent.qwen_math_agentic import QwenMathAgenticProducer
 
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
@@ -18,6 +19,10 @@ ALGO_MAP = {
     "RLOO": GRPOConsumer,
 }
 Producer_MAP = {"Simple": SimpleProducer, "Async": AsyncSimpleProducer}
+AGENTIC_PRODUCER_MAP = {
+    "QwenMathAgent": QwenMathAgenticProducer,
+    "LangGraphMathAgent": LangGraphMathAgenticProducer,
+}  # supported agentic producers
 
 
 def get_jsonl_size_fast(path: str) -> int:
@@ -178,8 +183,16 @@ def launch_distributed(
         # when agentic is enabled, we use core_producer as inference engine and
         # AgenticProducer as the real producer
         _producer_procs = producer_procs
+        assert (
+            "agentic_producer" in agentic_config
+        ), "Please specify the agentic producer through `agentic_producer` in agentic_config."
+        assert (
+            agentic_config["agentic_producer"] in AGENTIC_PRODUCER_MAP
+        ), f"Only {list(AGENTIC_PRODUCER_MAP.keys())} are supported as agentic producer so far."
+        agentic_producer_cls = AGENTIC_PRODUCER_MAP[agentic_config["agentic_producer"]]
+        agentic_config.pop("agentic_producer")
         producer_procs = [
-            AgenticProducer.options(num_cpus=1).remote(
+            agentic_producer_cls.options(num_cpus=1).remote(
                 producer_idx=producer_idx,
                 num_producers=num_producers * train_batch_size,
                 num_consumer_procs=num_consumer_procs,

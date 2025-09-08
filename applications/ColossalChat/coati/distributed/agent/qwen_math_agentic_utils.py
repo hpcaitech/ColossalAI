@@ -60,6 +60,11 @@ class LocalLLMFromGenerationWorkers:
         self.generation_worker = generation_worker
 
     def generate(self, **kwargs):
+        breakpoint()
+        if "max_new_tokens" in kwargs:
+            # we use VLLM backend for generation, which uses `max_tokens`
+            kwargs["max_tokens"] = kwargs["max_new_tokens"]
+            del kwargs["max_new_tokens"]
         rollouts = ray.get(self.generation_worker.generate.remote(**kwargs))
         return rollouts["input_ids"]
 
@@ -131,6 +136,7 @@ class CustomTransformers(Transformers):
         response = self._chat_no_stream(messages=messages, generate_cfg=generate_cfg)
         # if self.producer_idx == 0:
         #     print(response)
+        breakpoint()
         yield response
 
 

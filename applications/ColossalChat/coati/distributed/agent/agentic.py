@@ -4,14 +4,11 @@ from typing import Any, Dict
 
 import ray
 import torch
-from coati.distributed.agent.agentic_math_utils import TIR_SYSTEM, CustomTransformers
 from coati.distributed.producer import BaseProducer
-from qwen_agent.agents import TIRMathAgent
 from vllm import SamplingParams
 
 
-@ray.remote
-class AgenticProducer(BaseProducer):
+class BaseAgenticProducer(BaseProducer):
     """
     Asyncronous version of the producer that uses vLLM for generation.
     This class is designed to generate agentic response
@@ -29,7 +26,6 @@ class AgenticProducer(BaseProducer):
         generate_config,
         async_producers,
         tokenizer_config=None,
-        agentic_config=None,
         microbatch_size=1,
         backend="transformers",
         num_generations: int = 8,
@@ -82,10 +78,13 @@ class AgenticProducer(BaseProducer):
         self.async_producers = async_producers
         self.num_generations = num_generations
         self.generate_config = generate_config
-        self.agentic_config = model_config if not agentic_config else agentic_config
-        self.agentic_config.update({"model": model_config["path"]})
-        self.llm = CustomTransformers(self.agentic_config, self.producer_idx, generation_workers=self.async_producers)
-        self.bot = TIRMathAgent(llm=self.llm, name=model_config["path"], system_message=TIR_SYSTEM)
+
+    def _run_agentic_pipeline(self, messages):
+        """
+        Run the agentic pipeline to generate responses based on the input messages.
+        This function should be implemented in subclasses.
+        """
+        raise NotImplementedError
 
     def rollout(self, **kwargs) -> Dict[str, torch.Tensor]:
         """
@@ -110,9 +109,7 @@ class AgenticProducer(BaseProducer):
         }
         for i in range(self.num_generations):
             _messages = copy.deepcopy(messages)
-            for response in self.bot.run(messages):
-                continue
-            _messages.extend(response)
+            _messages = self._run_agentic_pipeline(_messages)
             response_input_ids = self.tokenizer.apply_chat_template(_messages, return_tensors="pt", tokenize=True)
             # truncate if too long
             response_input_ids = response_input_ids[:, : self.grpo_config["max_length"] - to_pad_left]

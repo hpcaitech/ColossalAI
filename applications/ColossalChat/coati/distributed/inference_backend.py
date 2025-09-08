@@ -363,7 +363,12 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         response_start_idx = input_ids.size(1)
         first_non_padding_token_idx = (input_ids != self.tokenizer.pad_token_id).int().argmax(dim=1)
         input_ids_no_padding = [input_ids.tolist()[0][first_non_padding_token_idx[0] :]]
-        sample_params = kwargs.get("sample_params", self.sample_params)
+        sample_params = self.sample_params
+        if len(kwargs) > 0:
+            sample_params = self.generate_config.copy()
+            sample_params.update(kwargs)
+            sample_params.update(self.FORCE_GENERATE_CONFIG)
+            sample_params = SamplingParams(**sample_params)
         out_tokens = []
         out_len = []
         log_probs = []
