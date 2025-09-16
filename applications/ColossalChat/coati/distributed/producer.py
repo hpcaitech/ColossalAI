@@ -587,26 +587,6 @@ class BaseAsyncProducer(BaseProducer):
         self.condition = asyncio.Condition()
         self.data_ready_for_sending = []
 
-    # @torch.no_grad()
-    # async def generate(self, input_ids, attention_mask, **kwargs):
-    #     tasks = []
-    #     print("input_ids:", input_ids)
-    #     for prompt_id in range(input_ids.size(0)):
-    #         new_kwargs = copy.deepcopy(kwargs)
-    #         if "gt_answer" in new_kwargs:
-    #             new_kwargs["gt_answer"] = new_kwargs["gt_answer"][prompt_id]
-    #         if "test_cases" in new_kwargs:
-    #             new_kwargs["test_cases"] = new_kwargs["test_cases"][prompt_id]
-    #         tasks.append(
-    #             self.model.generate(
-    #                 input_ids[prompt_id].unsqueeze(0),
-    #                 attention_mask[prompt_id].unsqueeze(0),
-    #                 **new_kwargs,
-    #             )
-    #         )
-    #     rollouts = await asyncio.gather(*tasks)
-    #     return rollouts
-
     @torch.no_grad()
     async def generate(self, input_ids, attention_mask, **kwargs):
         # naive rollout strategy
@@ -647,7 +627,7 @@ class BaseAsyncProducer(BaseProducer):
         """
         Get the load of each producer.
         """
-        return len(self.model.queued_requests)
+        return len(self.model.running_requests)
 
     async def async_sync_model(self, episode, step, num_processes: int = 1) -> None:
         """

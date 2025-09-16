@@ -1,5 +1,6 @@
 import copy
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict
 
 import ray
@@ -86,6 +87,15 @@ class BaseAgenticProducer(BaseProducer):
         """
         raise NotImplementedError
 
+    def _build_prompt(
+        self, messages, add_generation_prompt: bool = True, return_dict=True, return_tensors="pt"
+    ) -> dict:
+        """
+        Build the prompt from the input messages.
+        This function should be implemented in subclasses.
+        """
+        raise NotImplementedError
+
     def rollout(self, **kwargs) -> Dict[str, torch.Tensor]:
         """
         Rollout function to generate responses for the input, for example, using LLM or agentic pipeline.
@@ -93,9 +103,9 @@ class BaseAgenticProducer(BaseProducer):
         """
         assert len(kwargs["messages"]) == 1, "Only support batch size of 1 for agentic producer"
         messages = kwargs["messages"][0]
-        prompt_input_ids = self.tokenizer.apply_chat_template(
-            messages, return_tensors="pt", tokenize=True, add_generation_prompt=True
-        )
+        prompt_input_ids = self._build_prompt(
+            messages, return_dict=True, return_tensors="pt", add_generation_prompt=True
+        )["input_ids"]
         # add left padding
         prompt_length = prompt_input_ids.shape[1]
         max_prompt_length = self.train_dataset_config["max_length"]
@@ -107,10 +117,16 @@ class BaseAgenticProducer(BaseProducer):
             "action_log_probs": [],
             "response_idx": [],
         }
+        with ThreadPoolExecutor(max_workers=self.num_generations) as executor:
+            results = list(
+                executor.map(self._run_agentic_pipeline, [copy.deepcopy(messages) for _ in range(self.num_generations)])
+            )
+
         for i in range(self.num_generations):
-            _messages = copy.deepcopy(messages)
-            _messages = self._run_agentic_pipeline(_messages)
-            response_input_ids = self.tokenizer.apply_chat_template(_messages, return_tensors="pt", tokenize=True)
+            _messages, logprobs = results[i]
+            response_input_ids = self._build_prompt(
+                _messages, return_dict=True, return_tensors="pt", add_generation_prompt=False
+            )["input_ids"]
             # truncate if too long
             response_input_ids = response_input_ids[:, : self.grpo_config["max_length"] - to_pad_left]
             # add left right padding
@@ -127,9 +143,14 @@ class BaseAgenticProducer(BaseProducer):
             )  # [1, max_length-prompt_length]
             rollouts["attention_mask"].append(attention_mask)
             rollouts["action_mask"].append(action_mask)
-            rollouts["action_log_probs"].append(
-                torch.ones(size=(1, self.grpo_config["max_length"] - max_prompt_length))
-            )  # dummy log probs
+            truncated_logprobs = logprobs[:, :, prompt_length : prompt_length + self.generate_config["max_tokens"]]
+            logprobs_padded = torch.nn.functional.pad(
+                truncated_logprobs,
+                (0, self.generate_config["max_tokens"] - truncated_logprobs.size(-1)),
+                "constant",
+                value=0.0,
+            )  # [1, max_new_tokens]
+            rollouts["action_log_probs"].append(logprobs_padded[0])
             rollouts["response_idx"].append(
                 torch.tensor(
                     [
@@ -141,7 +162,6 @@ class BaseAgenticProducer(BaseProducer):
                 )
             )  # [1, 2]
             rollouts["input_ids"].append(input_ids)
-        # breakpoint()
         rollouts = {k: torch.cat(v, dim=0).unsqueeze(0) for k, v in rollouts.items()}  # [num_generations, ...]
         rollouts["temperature"] = torch.tensor([self.agentic_config.get("temperature", 1.0)])
         if hasattr(self, "rollout_log_file") and self.producer_idx == 0 and not self.eval_mode:

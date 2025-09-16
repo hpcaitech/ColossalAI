@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 import ray
-from coati.distributed.agent.agentic import BaseAgenticProducer
+from coati.distributed.agent.base import BaseAgenticProducer
 from coati.distributed.agent.qwen_math_agentic_utils import TIR_SYSTEM, CustomTransformers
 from qwen_agent.agents import TIRMathAgent
 
@@ -24,6 +24,7 @@ class QwenMathAgenticProducer(BaseAgenticProducer):
         model_config,
         generate_config,
         async_producers,
+        tool_workers=[],
         tokenizer_config=None,
         agentic_config=None,
         microbatch_size=1,
@@ -85,4 +86,5 @@ class QwenMathAgenticProducer(BaseAgenticProducer):
         for response in self.bot.run(messages):
             continue
         messages.extend(response)
+        # breakpoint()
         return messages

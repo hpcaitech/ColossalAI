@@ -164,8 +164,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--agentic-type",
         type=str,
-        default="QwenMathAgent",
-        choices=["QwenMathAgent", "LangGraphMathAgent"],
+        default="Agentic",
+        choices=["Agentic", "QwenMathAgent"],
         help="Agentic model type for agentic training.",
     )
     parser.add_argument(
@@ -418,9 +418,6 @@ if __name__ == "__main__":
     if "agentic" in args.backend:
         assert "vllm" in args.backend, "Agentic backend only supports async-agentic-vllm backends."
         generate_config["n"] = 1  # agentic producer use AsyncProducer which processes one request a time
-        generate_config["max_tokens"] = (
-            2048  # max new tokens for each agentic step, usually smaller than max_new_tokens as agentic model will generate multiple steps
-        )
         if args.agentic_type == "QwenMathAgent":
             agentic_config = {
                 "agentic_producer": "QwenMathAgent",
@@ -433,8 +430,15 @@ if __name__ == "__main__":
             agentic_config["generate_cfg"].update(
                 {k: v for k, v in generate_config.items() if k in ["top_k", "top_p", "temperature"]}
             )
-        elif args.agentic_type == "LangGraphMathAgent":
-            agentic_config = {"configurable": {"thread_id": "math-1"}, "agentic_producer": "LangGraphMathAgent"}
+        elif args.agentic_type == "Agentic":
+            generate_config["stop"] = ["<|im_end|>"]
+            generate_config["prompt_logprobs"] = 0
+            agentic_config = {
+                "agentic_producer": "Agentic",
+                "tool_call_budget": 5,
+                "llm_call_budget": 10,
+                "max_tokens": 2048,
+            }
         else:
             raise ValueError(f"Unsupported agentic model type: {args.agentic_type}")
     else:

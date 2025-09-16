@@ -344,7 +344,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         self.model_config = model_config
         self.tokenizer = tokenizer
         self.num_generations = num_generations
-        self.queued_requests = []
+        self.running_requests = []
         self.microbatch_size = microbatch_size
         self.profiler = profiler
 
@@ -358,8 +358,10 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
             input_ids (torch.Tensor): shape [B, S], B=1
             attention_mask (torch.Tensor): shape [B, S]
         """
-        # breakpoint()
         assert input_ids.size(0) == attention_mask.size(0) == 1
+        request_id = (
+            str(uuid4()) if not "request_id" in kwargs else kwargs.pop("request_id")
+        )  # use fixed request_id to reuse kv cache
         response_start_idx = input_ids.size(1)
         first_non_padding_token_idx = (input_ids != self.tokenizer.pad_token_id).int().argmax(dim=1)
         input_ids_no_padding = [input_ids.tolist()[0][first_non_padding_token_idx[0] :]]
@@ -373,10 +375,10 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         out_len = []
         log_probs = []
         response_idx = []
-        while len(self.queued_requests) >= self.microbatch_size:
+        while len(self.running_requests) >= self.microbatch_size:
+            # print(f"Current running {len(self.running_requests)}/{self.microbatch_size} requests, waiting...")
             await asyncio.sleep(0.1)
-        request_id = str(uuid4())
-        self.queued_requests.append(request_id)  # enqueue
+        self.running_requests.append(request_id)  # enqueue
         # pop the first input_ids and attention_mask
         prompt_token_ids = input_ids_no_padding[0]
         self.profiler.enter(f"vllm generate {request_id}")
@@ -386,14 +388,25 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         async for chunk in outputs:
             # generate the output tokens, can yield to avoid blocking
             pass
-        self.queued_requests.remove(request_id)  # dequeue
-        for output_i in chunk.outputs:
+        self.running_requests.remove(request_id)  # dequeue
+        if self.generate_config.get("prompt_logprobs", None) is not None:
+            # when prompt_logprobs is not None, vllm will return logprobs for the whole sequence
+            # for agentic producer, we return the logprobs of the whole sequence
+            log_probs = [
+                [m[t].logprob if m is not None else 0.0 for m, t in zip(chunk.prompt_logprobs, chunk.prompt_token_ids)]
+            ]
+            for _ in range(sample_params.n - 1):
+                log_probs.append([t for t in log_probs[0]])  # repeat the same logprobs for num_generations times
+        else:
+            log_probs = [[] for _ in range(sample_params.n)]
+
+        for generation_id, output_i in enumerate(chunk.outputs):
             out_len.append(len(output_i.token_ids))
             out_tokens.append(list(output_i.token_ids))
             response_idx.append((response_start_idx, response_start_idx + len(output_i.token_ids) - 1))
             assert len(output_i.logprobs) == len(output_i.token_ids)
             p = [m[t].logprob for m, t in zip(output_i.logprobs, output_i.token_ids)]
-            log_probs.append(p)
+            log_probs[generation_id].extend(p)
         self.profiler.exit(f"vllm generate {request_id}")
         # pad them
         max_len = self.sample_params.max_tokens
@@ -402,7 +415,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         for i, new_token_ids in enumerate(out_tokens):
             pad_len = max_len - out_len[i]
             out_tokens[i] = new_token_ids + [self.tokenizer.pad_token_id] * pad_len
-            log_probs[i] = log_probs[i] + [0.0] * pad_len
+            log_probs[i] = log_probs[i] + [0.0] * (max_len - len(log_probs[i]))
             action_mask[i, out_len[i] :] = 0
 
         out_tokens = torch.tensor(out_tokens)

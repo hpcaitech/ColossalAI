@@ -55,17 +55,18 @@ class LocalLLMFromGenerationWorkers:
     A class that wraps the Transformers model to support API-based text generation.
     """
 
-    def __init__(self, generation_worker=None):
+    def __init__(self, generation_worker=None, tokenizer=None):
         self.device = "cpu"
         self.generation_worker = generation_worker
+        self.tokenizer = tokenizer
 
     def generate(self, **kwargs):
-        breakpoint()
         if "max_new_tokens" in kwargs:
             # we use VLLM backend for generation, which uses `max_tokens`
             kwargs["max_tokens"] = kwargs["max_new_tokens"]
             del kwargs["max_new_tokens"]
         rollouts = ray.get(self.generation_worker.generate.remote(**kwargs))
+        # breakpoint()
         return rollouts["input_ids"]
 
 
@@ -108,7 +109,7 @@ class CustomTransformers(Transformers):
         ################################################################
         self.generation_workers = generation_workers
         self.hf_models = [
-            LocalLLMFromGenerationWorkers(generation_worker=generation_worker)
+            LocalLLMFromGenerationWorkers(generation_worker=generation_worker, tokenizer=self.tokenizer)
             for generation_worker in generation_workers
         ]
         self.producer_idx = producer_idx
@@ -133,10 +134,9 @@ class CustomTransformers(Transformers):
         candidates = [i for i, l in enumerate(load) if l == min_load]
         # random tie break
         self.load_balancer_idx = random.choice(candidates)
+        # breakpoint()
         response = self._chat_no_stream(messages=messages, generate_cfg=generate_cfg)
-        # if self.producer_idx == 0:
-        #     print(response)
-        breakpoint()
+        # breakpoint()
         yield response
 
 
