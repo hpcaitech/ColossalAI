@@ -165,7 +165,7 @@ if __name__ == "__main__":
         "--agentic-type",
         type=str,
         default="Agentic",
-        choices=["Agentic", "QwenMathAgent"],
+        choices=["Agentic"],
         help="Agentic model type for agentic training.",
     )
     parser.add_argument(
@@ -418,19 +418,7 @@ if __name__ == "__main__":
     if "agentic" in args.backend:
         assert "vllm" in args.backend, "Agentic backend only supports async-agentic-vllm backends."
         generate_config["n"] = 1  # agentic producer use AsyncProducer which processes one request a time
-        if args.agentic_type == "QwenMathAgent":
-            agentic_config = {
-                "agentic_producer": "QwenMathAgent",
-                "model": args.model,
-                "model_type": "transformers",
-                "generate_cfg": {
-                    "max_input_tokens": args.max_new_tokens + args.max_prompt_tokens,
-                },
-            }
-            agentic_config["generate_cfg"].update(
-                {k: v for k, v in generate_config.items() if k in ["top_k", "top_p", "temperature"]}
-            )
-        elif args.agentic_type == "Agentic":
+        if args.agentic_type == "Agentic":
             generate_config["stop"] = ["<|im_end|>"]
             generate_config["prompt_logprobs"] = 0
             agentic_config = {

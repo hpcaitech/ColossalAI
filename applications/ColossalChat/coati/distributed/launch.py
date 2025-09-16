@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 
 import ray
 from coati.distributed.agent.agentic_producer import AgenticProducer
-from coati.distributed.agent.qwen_math_agentic_producer import QwenMathAgenticProducer
 from coati.distributed.agent.tool_worker import ToolWorker
 
 from .consumer import SimpleConsumer
@@ -21,7 +20,6 @@ ALGO_MAP = {
 }
 Producer_MAP = {"Simple": SimpleProducer, "Async": AsyncSimpleProducer}
 AGENTIC_PRODUCER_MAP = {
-    "QwenMathAgent": QwenMathAgenticProducer,
     "Agentic": AgenticProducer,
 }  # supported agentic producers
 
