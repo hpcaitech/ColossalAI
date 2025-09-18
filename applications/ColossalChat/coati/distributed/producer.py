@@ -93,7 +93,14 @@ class BaseProducer:
         reward_model_kwargs = {
             k: v
             for k, v in grpo_config.items()
-            if k in ["soft_over_length_punishment", "max_new_tokens", "cache_length", "code_verifier_api_url"]
+            if k
+            in [
+                "soft_over_length_punishment",
+                "max_new_tokens",
+                "cache_length",
+                "code_verifier_api_url",
+                "forced_patterns",
+            ]
         }
         self.response_format_tags = grpo_config.get("response_format_tags", None)
         if producer_idx == 0 and rollout_log_file is not None:
@@ -103,7 +110,7 @@ class BaseProducer:
                 )
             else:
                 os.makedirs(os.path.dirname(rollout_log_file), exist_ok=True)
-                self.rollout_log_file = open(rollout_log_file, "w", encoding="utf8")
+                self.rollout_log_file = open(rollout_log_file, "a", encoding="utf8")
         if self.producer_idx == 0:
             self.wandb_run = wandb.init(
                 project=project_name,
@@ -259,6 +266,9 @@ class BaseProducer:
             print(f"[P{self.producer_idx}] Sync model episode {episode} step {(step + 1) // self.num_microbatches - 1}")
             state_dict = ray_broadcast_tensor_dict(
                 None, self.num_producers, device=self.device, group_name="sync_model"
+            )
+            print(
+                f"[P{self.producer_idx}] Sync model episode {episode} step {(step + 1) // self.num_microbatches - 1} done"
             )
             if "consumer_global_step" in state_dict:
                 self.consumer_global_step = state_dict.pop("consumer_global_step").item()
@@ -498,7 +508,8 @@ class SimpleProducer(BaseProducer):
                             "rollout": self.tokenizer.batch_decode(
                                 rollouts["input_ids"][:, 0], skip_special_tokens=True
                             ),
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     + "\n"
                 )
@@ -583,8 +594,10 @@ class BaseAsyncProducer(BaseProducer):
         self.eval_generation_config["n"] = 1  # use 1 generation for evaluation
         self.eval_generation_config.update(eval_generation_config)
         self.eval_sample_params = SamplingParams(**self.eval_generation_config)
-        self.ready_processes = 0
-        self.condition = asyncio.Condition()
+        self.ready_processes_sync_model = 0
+        self.ready_processes_sync_data = 0
+        self.sync_model_condition = asyncio.Condition()
+        self.sync_data_condition = asyncio.Condition()
         self.data_ready_for_sending = []
 
     @torch.no_grad()
@@ -613,6 +626,7 @@ class BaseAsyncProducer(BaseProducer):
             ).cpu()  # CUDA tensor is not serializable by ray
             for k in rollouts[0].keys()
         }
+        rollouts["consumer_global_step"] = self.consumer_global_step
         return rollouts
 
     @torch.no_grad()
@@ -634,33 +648,33 @@ class BaseAsyncProducer(BaseProducer):
         Asyncronous version to sync model from consumer to producer.
         called by another producer, such as agentic producer.
         """
-        async with self.condition:
-            self.ready_processes += 1
+        async with self.sync_model_condition:
+            self.ready_processes_sync_model += 1
             # Wait until all processes are ready
-            if self.ready_processes < num_processes:
-                await self.condition.wait()
+            if self.ready_processes_sync_model < num_processes:
+                await self.sync_model_condition.wait()
 
-            # Only one process should reset `ready_processes` and perform the sync
-            if self.ready_processes == num_processes:
-                self.ready_processes = 0
-                self.condition.notify_all()  # Notify all waiting processes
+            # Only one process should reset `ready_processes_sync_model` and perform the sync
+            if self.ready_processes_sync_model == num_processes:
+                self.ready_processes_sync_model = 0
+                self.sync_model_condition.notify_all()  # Notify all waiting processes
                 self.sync_model(episode, step)
 
     async def async_sync_data(self, data: Dict[str, torch.Tensor], num_processes: int = 1) -> None:
         # merge data dict
-        async with self.condition:
-            self.ready_processes += 1
+        async with self.sync_data_condition:
+            self.ready_processes_sync_data += 1
             if data:
                 self.data_ready_for_sending.append(data)
 
             # Wait until all processes are ready
-            if self.ready_processes < num_processes:
-                await self.condition.wait()
+            if self.ready_processes_sync_data < num_processes:
+                await self.sync_data_condition.wait()
 
             # Only one process should reset `ready_processes` and perform the sync
-            if self.ready_processes == num_processes:  # wait for all producers to join
-                self.ready_processes = 0
-                self.condition.notify_all()
+            if self.ready_processes_sync_data == num_processes:  # wait for all producers to join
+                self.ready_processes_sync_data = 0
+                self.sync_data_condition.notify_all()
                 # merge data for sending
                 if len(self.data_ready_for_sending) >= 1:
                     batch_rollout_data = {}
@@ -856,7 +870,8 @@ class AsyncSimpleProducer(BaseAsyncProducer):
                             "rollout": self.tokenizer.batch_decode(
                                 rollouts["input_ids"][:, 0], skip_special_tokens=True
                             ),
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     + "\n"
                 )

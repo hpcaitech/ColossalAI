@@ -19,6 +19,7 @@ https://github.com/volcengine/verl
 
 
 import json
+import re
 
 import torch
 from latex2sympy2_extended import NormalizationConfig
@@ -126,6 +127,12 @@ def math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
 
     format_valid = validate_response_structure(processed_str, kwargs["tags"])
 
+    if "forced_patterns" in kwargs and kwargs["forced_patterns"]:
+        forced_patterns = kwargs["forced_patterns"]
+        format_valid = format_valid and all(
+            [re.search(pattern, decoded_final_answer) is not None for pattern in forced_patterns]
+        )
+
     # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
     if final_answer is not None:
         if eval_mode or format_valid:
@@ -161,7 +168,7 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
     tokenizer = kwargs["tokenizer"]
     eval_mode = kwargs.get("eval_mode", False)
     soft_over_length_punishment = kwargs.get("soft_over_length_punishment", False)
-    acc_score = 10.0
+    acc_score = 1.0
     reward = torch.tensor(0.0)
     format_acc = torch.tensor(0.0)
     ans_acc = torch.tensor(0.0)
@@ -182,7 +189,6 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         raise ValueError("no gt_answer is provided, please check your training dataset.")
 
     decoded_final_answer = tokenizer.decode(input_ids[s : e + 1], skip_special_tokens=True)
-    # print(f"decoded_final_answer: {decoded_final_answer[-100:]}", gt_answer)
     final_answer = extract_boxed_solution(decoded_final_answer)
     format_valid = final_answer is not None
     if "tags" in kwargs and kwargs["tags"]:
@@ -190,7 +196,11 @@ def boxed_math_reward_fn(input_ids, gt_answer, response_idx, **kwargs):
         format_valid = format_valid and all(
             [decoded_final_answer.count(tags[tag]["text"]) == tags[tag]["num_occur"] for tag in tags]
         )
-
+    if "forced_patterns" in kwargs and kwargs["forced_patterns"]:
+        forced_patterns = kwargs["forced_patterns"]
+        format_valid = format_valid and all(
+            [re.search(pattern, decoded_final_answer) is not None for pattern in forced_patterns]
+        )
     # Check answer accuracy, answer is considered correct if the answer is correct and the format is valid
     if final_answer is not None:
         if eval_mode or format_valid:

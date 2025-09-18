@@ -20,7 +20,7 @@ def run_python_code(code: str) -> str:
         code = code.replace("```python", "```", 1).strip()
     if code.startswith("```py"):  # qwen3 uses ```py
         code = code.replace("```py", "```", 1).strip()
-    return python_repl.run(code, timeout=20)
+    return python_repl.run(code, timeout=30)
 
 
 repl_tool = Tool(

@@ -68,7 +68,7 @@ def launch_distributed(
     eval_interval: int = 100,
     eval_save_dir: Optional[str] = None,
     eval_generation_config: Optional[Dict[str, Any]] = None,
-    log_rollout_interval: int = 20,
+    log_rollout_interval: int = 1,
     rollout_save_dir: str = "./rollout",
     enable_profiling: bool = False,
     n_behind: int = 0,

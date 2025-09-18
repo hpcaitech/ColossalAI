@@ -135,15 +135,13 @@ class BaseAgenticProducer(BaseProducer):
             input_ids = torch.nn.functional.pad(
                 response_input_ids, (to_pad_left, to_pad_right), "constant", value=self.tokenizer.pad_token_id
             )  # [1, max_length]
-            attention_mask = torch.nn.functional.pad(
-                torch.ones_like(response_input_ids), (to_pad_left, to_pad_right), "constant", value=0
-            )  # [1, max_length]
-            action_mask = torch.nn.functional.pad(
-                torch.ones(size=(1, response_length)), (0, to_pad_right), "constant", value=0
-            )  # [1, max_length-prompt_length]
+            attention_mask = input_ids.ne(self.tokenizer.pad_token_id).int()  # [1, max_length]
+            action_mask = input_ids[:, max_prompt_length:].ne(self.tokenizer.pad_token_id).int()
             rollouts["attention_mask"].append(attention_mask)
             rollouts["action_mask"].append(action_mask)
-            truncated_logprobs = logprobs[:, :, prompt_length : prompt_length + self.generate_config["max_tokens"]]
+            truncated_logprobs = logprobs[
+                :, :, prompt_length : prompt_length + self.generate_config["max_tokens"]
+            ]  # truncate to max_new_tokens
             logprobs_padded = torch.nn.functional.pad(
                 truncated_logprobs,
                 (0, self.generate_config["max_tokens"] - truncated_logprobs.size(-1)),
@@ -177,7 +175,8 @@ class BaseAgenticProducer(BaseProducer):
                             "rollout": self.tokenizer.batch_decode(
                                 rollouts["input_ids"][:, 0], skip_special_tokens=True
                             ),
-                        }
+                        },
+                        ensure_ascii=False,
                     )
                     + "\n"
                 )

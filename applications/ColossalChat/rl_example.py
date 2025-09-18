@@ -131,6 +131,7 @@ if __name__ == "__main__":
         default=1.0,
         help="Top p for sampling. Please check the generation arguments documentation for your backend.",
     )
+    parser.add_argument("-ct", "--chat-template", type=str, default=None, help="Chat template to use for the model.")
     parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
     parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 4 - 512, help="Max length for generation.")
     parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
@@ -427,10 +428,19 @@ if __name__ == "__main__":
                 "llm_call_budget": 10,
                 "max_tokens": 2048,
             }
+            grpo_config["forced_patterns"] = [
+                r"<tool_response>\n.+\n</tool_response>"
+            ]  # force at least one correct tool call
         else:
             raise ValueError(f"Unsupported agentic model type: {args.agentic_type}")
     else:
         agentic_config = None
+
+    tokenizer_config = {
+        "path": args.model,
+        "trust_remote_code": True,
+        "chat_template": args.chat_template,
+    }
 
     launch_distributed(
         num_producers=args.num_inferencer,
@@ -453,6 +463,7 @@ if __name__ == "__main__":
         train_model_config=train_model_config,
         grpo_config=grpo_config,
         agentic_config=agentic_config,
+        tokenizer_config=tokenizer_config,
         plugin_config={
             "tp_size": args.tensor_parallel_size,
             "pp_size": args.pipeline_parallel_size,
@@ -480,7 +491,7 @@ if __name__ == "__main__":
         eval_interval=args.eval_interval,
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
         eval_generation_config=eval_generation_config,
-        log_rollout_interval=20,
+        log_rollout_interval=1,
         rollout_save_dir=args.rollout_save_dir,
         enable_profiling=args.enable_profiling,
         n_behind=args.n_behind,

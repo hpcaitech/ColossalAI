@@ -409,7 +409,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
             log_probs[generation_id].extend(p)
         self.profiler.exit(f"vllm generate {request_id}")
         # pad them
-        max_len = self.sample_params.max_tokens
+        max_len = sample_params.max_tokens
         action_mask = torch.ones(len(out_tokens), max_len, dtype=attention_mask.dtype)
 
         for i, new_token_ids in enumerate(out_tokens):

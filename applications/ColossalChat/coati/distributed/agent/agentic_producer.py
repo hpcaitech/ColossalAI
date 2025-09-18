@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import ray
 from coati.distributed.agent.base import BaseAgenticProducer
-from transformers import AutoTokenizer
 
 DEFAULT_SYSTEM_MESSAGE = """A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The Assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <reason> </reason> and <answer> </answer> tags, respectively, i.e., <reason> reasoning process here </reason><answer> answer here </answer>."""
 
@@ -88,13 +87,6 @@ class AgenticProducer(BaseAgenticProducer):
         self.tool_workers = tool_workers
         self.agentic_config = model_config if not agentic_config else agentic_config
         self.agentic_config.update({"model": model_config["path"]})
-        tokenizer_path = None
-        if tokenizer_config and "path" in tokenizer_config:
-            tokenizer_path = tokenizer_config["path"]
-        elif "path" in model_config:
-            tokenizer_path = model_config["path"]
-        assert tokenizer_path is not None, "Tokenizer path must be provided either in tokenizer_config or model_config."
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
         self.tools_schema = []
         self.tool_call_budget = self.agentic_config.get("tool_call_budget", 3)
         self.llm_call_budget = self.agentic_config.get("llm_call_budget", 10)
@@ -258,6 +250,7 @@ class AgenticProducer(BaseAgenticProducer):
                 )
             )
             llm_call_count += 1
+            self.consumer_global_step = response.pop("consumer_global_step")
             response_input_ids = response["input_ids"]
             logprobs = response["action_log_probs"]
             response_text = self.tokenizer.decode(
