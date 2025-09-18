@@ -123,24 +123,22 @@ class BaseAgenticProducer(BaseProducer):
             )
 
         for i in range(self.num_generations):
-            _messages, logprobs = results[i]
-            response_input_ids = self._build_prompt(
-                _messages, return_dict=True, return_tensors="pt", add_generation_prompt=False
-            )["input_ids"]
+            # due to the multiround feature, action_mask and attention_mask need to be recomputed
+            _messages, response_input_ids, logprobs = results[i]
             # truncate if too long
-            response_input_ids = response_input_ids[:, : self.grpo_config["max_length"] - to_pad_left]
+            response_input_ids = response_input_ids[0, :, : self.grpo_config["max_length"] - to_pad_left]
             # add left right padding
-            to_pad_right = self.grpo_config["max_length"] - response_input_ids.shape[1] - to_pad_left
-            response_length = response_input_ids.shape[1] - prompt_length
+            to_pad_right = self.grpo_config["max_length"] - response_input_ids.size(-1) - to_pad_left
             input_ids = torch.nn.functional.pad(
                 response_input_ids, (to_pad_left, to_pad_right), "constant", value=self.tokenizer.pad_token_id
             )  # [1, max_length]
             attention_mask = input_ids.ne(self.tokenizer.pad_token_id).int()  # [1, max_length]
             action_mask = input_ids[:, max_prompt_length:].ne(self.tokenizer.pad_token_id).int()
+            response_length = action_mask.sum().item()
             rollouts["attention_mask"].append(attention_mask)
             rollouts["action_mask"].append(action_mask)
             truncated_logprobs = logprobs[
-                :, :, prompt_length : prompt_length + self.generate_config["max_tokens"]
+                0, :, prompt_length : prompt_length + self.generate_config["max_tokens"]
             ]  # truncate to max_new_tokens
             logprobs_padded = torch.nn.functional.pad(
                 truncated_logprobs,
@@ -148,7 +146,7 @@ class BaseAgenticProducer(BaseProducer):
                 "constant",
                 value=0.0,
             )  # [1, max_new_tokens]
-            rollouts["action_log_probs"].append(logprobs_padded[0])
+            rollouts["action_log_probs"].append(logprobs_padded)
             rollouts["response_idx"].append(
                 torch.tensor(
                     [

@@ -224,9 +224,7 @@ class AgenticProducer(BaseAgenticProducer):
             if llm_call_count > self.llm_call_budget:
                 print(f"LLM call budget exceeded: {llm_call_count} > {self.llm_call_budget}. Stopping.")
                 del self.async_llm_engine_map[request_id]
-                while messages[-1]["role"] == "tool":
-                    messages.pop()
-                return messages, logprobs
+                return messages, response_input_ids, logprobs
             inputs = self._build_prompt(messages, return_dict=True, return_tensors="pt")
             if num_prompt_tokens == 0:
                 num_prompt_tokens = inputs["input_ids"].size(-1)
@@ -235,9 +233,7 @@ class AgenticProducer(BaseAgenticProducer):
                     f"Max tokens exceeded: Current have generated {inputs['input_ids'].size(-1) - num_prompt_tokens} tokens > {self.generate_config.get('max_tokens', 512)}. Stopping."
                 )
                 del self.async_llm_engine_map[request_id]
-                while messages[-1]["role"] == "tool":
-                    messages.pop()
-                return messages, logprobs
+                return messages, response_input_ids, logprobs
             async_producer = self._select_async_producer(request_id=request_id)
             agentic_generate_config = copy.deepcopy(self.generate_config)
             agentic_generate_config["max_tokens"] = self.agentic_config.get("max_tokens", 2048)
@@ -262,7 +258,7 @@ class AgenticProducer(BaseAgenticProducer):
                 if tool_call_count > self.tool_call_budget:
                     print(f"Tool call budget exceeded: {tool_call_count} > {self.tool_call_budget}. Stopping.")
                     del self.async_llm_engine_map[request_id]
-                    return messages, logprobs
+                    return messages, response_input_ids, logprobs
                 tool_call_count += len(assistant_message["tool_calls"])
                 handlers = []
                 for tool_call in assistant_message["tool_calls"]:
@@ -277,4 +273,4 @@ class AgenticProducer(BaseAgenticProducer):
             else:
                 # no further tool call, return the messages
                 del self.async_llm_engine_map[request_id]
-                return messages, logprobs
+                return messages, response_input_ids, logprobs

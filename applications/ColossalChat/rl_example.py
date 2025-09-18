@@ -429,18 +429,16 @@ if __name__ == "__main__":
                 "max_tokens": 2048,
             }
             grpo_config["forced_patterns"] = [
-                r"<tool_response>\n.+\n</tool_response>"
+                r"<tool_response>\n.+\n</tool_response>"  # please modify based on your tool response format
             ]  # force at least one correct tool call
         else:
             raise ValueError(f"Unsupported agentic model type: {args.agentic_type}")
     else:
         agentic_config = None
 
-    tokenizer_config = {
-        "path": args.model,
-        "trust_remote_code": True,
-        "chat_template": args.chat_template,
-    }
+    tokenizer_config = {"path": args.model, "trust_remote_code": True}
+    if args.chat_template is not None:
+        tokenizer_config["chat_template"] = args.chat_template
 
     launch_distributed(
         num_producers=args.num_inferencer,
