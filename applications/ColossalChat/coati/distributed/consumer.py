@@ -181,7 +181,6 @@ class BaseConsumer:
                 for step in pbar:
                     torch.cuda.reset_peak_memory_stats()
                     i = 0
-
                     self.profiler.enter(f"rollout_episode_{episode}_step_{step}")
                     for _ in range(self.num_recv_per_update):
                         if self.n_behind > 0:
@@ -325,6 +324,7 @@ class BaseConsumer:
                         )  # for setting start index when resuming training
                         if self.rank == 0:
                             print(f"Saved model checkpoint at step {step + 1} in folder {self.save_dir}")
+
                     if (episode != self.num_episodes - 1 or step != self.num_update_per_episode - 1) and (
                         episode != 0 or step >= self.n_behind
                     ):

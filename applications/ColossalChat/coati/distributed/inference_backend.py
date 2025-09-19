@@ -251,7 +251,12 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         micro_batch_input_ids_no_padding = [
             micro_batch_input_ids[i][first_non_padding_token_idx[i] :] for i in range(micro_batch_size)
         ]
-        sample_params = kwargs.get("sample_params", self.sample_params)
+        sample_params = self.sample_params
+        if len(kwargs) > 0:
+            sample_params = self.generate_config.copy()
+            sample_params.update({k: v for k, v in kwargs.items() if k not in ["gt_answer", "test_cases", "labels"]})
+            sample_params.update(self.FORCE_GENERATE_CONFIG)
+            sample_params = SamplingParams(**sample_params)
         outputs = self.llm.generate(
             prompt_token_ids=micro_batch_input_ids_no_padding, sampling_params=sample_params, use_tqdm=False
         )
@@ -358,7 +363,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
             input_ids (torch.Tensor): shape [B, S], B=1
             attention_mask (torch.Tensor): shape [B, S]
         """
-        assert input_ids.size(0) == attention_mask.size(0) == 1
+        assert input_ids.size(0) == attention_mask.size(0) == 1, "AsyncVLLMInferenceBackend only supports batch size 1"
         request_id = (
             str(uuid4()) if not "request_id" in kwargs else kwargs.pop("request_id")
         )  # use fixed request_id to reuse kv cache
@@ -368,7 +373,7 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         sample_params = self.sample_params
         if len(kwargs) > 0:
             sample_params = self.generate_config.copy()
-            sample_params.update(kwargs)
+            sample_params.update({k: v for k, v in kwargs.items() if k not in ["gt_answer", "test_cases", "labels"]})
             sample_params.update(self.FORCE_GENERATE_CONFIG)
             sample_params = SamplingParams(**sample_params)
         out_tokens = []

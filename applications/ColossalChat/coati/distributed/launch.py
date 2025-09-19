@@ -143,7 +143,7 @@ def launch_distributed(
             tokenizer_config=tokenizer_config,
             microbatch_size=(
                 inference_microbatch_size * num_generations
-                if "async" in inference_backend
+                if "async-agentic" in inference_backend
                 else inference_microbatch_size
             ),
             backend=inference_backend,

@@ -284,7 +284,6 @@ class BaseProducer:
         ray_broadcast_tensor_dict(data, src=0, device=self.device, group_name=f"sync_data_{self.producer_idx}")
 
     def loop(self) -> None:
-        # breakpoint()
         self.sync_model(0, 0)
         num_update_per_episode = len(self.train_dataloader) // self.num_microbatches
         num_valid_microbatches = num_update_per_episode * self.num_microbatches
@@ -620,10 +619,10 @@ class BaseAsyncProducer(BaseProducer):
         rollouts = await asyncio.gather(*tasks)
         rollouts = {
             k: (
-                torch.cat([r[k] for r in rollouts], dim=0)
+                torch.cat([r[k] for r in rollouts], dim=0).cpu()
                 if k not in ["gt_answer", "test_cases"]
                 else [r[k] for r in rollouts]
-            ).cpu()  # CUDA tensor is not serializable by ray
+            )  # CUDA tensor is not serializable by ray
             for k in rollouts[0].keys()
         }
         rollouts["consumer_global_step"] = self.consumer_global_step
@@ -758,8 +757,8 @@ class BaseAsyncProducer(BaseProducer):
                         self.eval_mode = False
                         self.latest_eval_step = self.consumer_global_step
                 self.profiler.enter("rollout")
-                # breakpoint()
                 outputs = await self.rollout(**batch)
+                outputs = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v for k, v in outputs.items()}
                 self.profiler.exit("rollout")
                 outputs["temperature"] = torch.tensor(
                     [self.model.generate_config["temperature"]] * outputs["input_ids"].size(0)
@@ -803,6 +802,8 @@ class BaseAsyncProducer(BaseProducer):
                     outputs.pop("gt_answer")
                 if "test_cases" in outputs:
                     outputs.pop("test_cases")
+                if "consumer_global_step" in outputs:
+                    outputs.pop("consumer_global_step")
                 self.profiler.exit("calculate_reward")
 
                 print(f"[P{self.producer_idx}] Send data {[(k, v.shape) for k, v in outputs.items()]}")
