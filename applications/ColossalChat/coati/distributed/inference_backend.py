@@ -381,7 +381,6 @@ class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
         log_probs = []
         response_idx = []
         while len(self.running_requests) >= self.microbatch_size:
-            # print(f"Current running {len(self.running_requests)}/{self.microbatch_size} requests, waiting...")
             await asyncio.sleep(0.1)
         self.running_requests.append(request_id)  # enqueue
         # pop the first input_ids and attention_mask

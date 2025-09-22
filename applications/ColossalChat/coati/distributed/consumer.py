@@ -165,7 +165,6 @@ class BaseConsumer:
                     state_dict, src=self.num_producers, device=self.device, group_name="sync_model"
                 )
         del state_dict
-        print(f"[C{self.rank}]: Sync model before training done")
         torch.cuda.empty_cache()
         self.profiler.exit("sync_model")
 
