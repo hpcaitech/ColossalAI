@@ -87,7 +87,9 @@ def launch_distributed(
     num_samples = get_jsonl_size_fast(dataset_path)
     global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
-    num_recv_per_update = inference_batch_size // inference_microbatch_size if "async-agentic" not in inference_backend else 1
+    num_recv_per_update = (
+        inference_batch_size // inference_microbatch_size if "async-agentic" not in inference_backend else 1
+    )
 
     run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
     wandb_group_name = str(uuid.uuid4())

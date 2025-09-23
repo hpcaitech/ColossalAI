@@ -847,6 +847,7 @@ class AsyncSimpleProducer(BaseAsyncProducer):
     Asyncronous version of the producer that uses vLLM for generation.
     This class is designed to handle multiple producer actors and distribute tasks among them.
     """
+
     @torch.no_grad()
     async def rollout(self, input_ids, attention_mask, **kwargs):
         # naive rollout strategy without load balancing
