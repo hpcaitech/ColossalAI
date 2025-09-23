@@ -19,17 +19,6 @@ class ToolWorker:
             tools (List[BaseTool]): List of LangChain tools to register.
         """
         self._tool_registry: Dict[str, BaseTool] = {tool.name: tool for tool in tools}
-        self.pending = 0
-
-    @ray.method(concurrency_group="io")
-    def get_load(self) -> int:
-        """Return the current load of the worker."""
-        return self.pending
-
-    @ray.method(concurrency_group="io")
-    def increase_load(self):
-        """Increase the load counter."""
-        self.pending += 1
 
     @ray.method(concurrency_group="io")
     def list_tools(self) -> List[str]:
@@ -64,7 +53,6 @@ class ToolWorker:
             Any: The tool's output.
         """
         if tool_name == "return_parsing_error":
-            self.pending -= 1
             return "Error: Tool call parsing error. Please use the correct JSON format."
         if tool_name not in self._tool_registry:
             return f"Error: Tool {tool_name} not found. Available tools: {self.list_tools()}"
@@ -73,5 +61,4 @@ class ToolWorker:
             ret = tool.run(input_data, **kwargs)
         except Exception as e:
             ret = f"Error: Tool {tool_name} execution failed with error: {str(e)}"
-        self.pending -= 1
         return ret

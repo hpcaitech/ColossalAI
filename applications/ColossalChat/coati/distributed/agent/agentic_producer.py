@@ -52,6 +52,7 @@ class AgenticProducer(BaseAgenticProducer):
         log_rollout_interval: int = 20,
         rollout_log_file: str = "./rollout_log.jsonl",
         enable_profiling: bool = False,
+        load_balancer=None,
         n_behind: int = 0,
     ):
         assert microbatch_size == 1  # microbatch_size must be 1 for agentic producer
@@ -84,6 +85,7 @@ class AgenticProducer(BaseAgenticProducer):
             enable_profiling=enable_profiling,
             n_behind=n_behind,
         )
+        self.load_balancer = load_balancer
         self.tool_workers = tool_workers
         self.agentic_config = model_config if not agentic_config else agentic_config
         self.agentic_config.update({"model": model_config["path"]})
@@ -183,32 +185,26 @@ class AgenticProducer(BaseAgenticProducer):
             assistant_message["tool_calls"] = tool_calls
         return assistant_message
 
-    def _select_tool_worker(self) -> ray.actor.ActorHandle:
+    def _select_tool_worker(self) -> int:
         """
         Select a tool worker based on the current load.
         """
-        loads = ray.get([worker.get_load.remote() for worker in self.tool_workers])
-        min_load = min(loads)
-        candidates = [i for i, l in enumerate(loads) if l == min_load]
-        selected_idx = random.choice(candidates)  # random tie break
-        ray.get(self.tool_workers[selected_idx].increase_load.remote())
-        return self.tool_workers[selected_idx]
+        selected_idx, current_loads = ray.get(self.load_balancer.get_next_worker.remote("tool", amount=1))
+        return selected_idx
 
-    def _select_async_producer(self, request_id) -> ray.actor.ActorHandle:
+    def _select_async_producer(self, request_id) -> int:
         """
         Select an async producer based on the current load.
         """
         # use the last used async producer if exists to reuse kv cache (as vllm use paged kv cache,
         # it will reuse most of the kv cache pages without recomputation)
         if request_id in self.async_llm_engine_map:
-            return self.async_producers[self.async_llm_engine_map[request_id]]
+            ray.get(self.load_balancer.increase_load.remote("async-llm", self.async_llm_engine_map[request_id], 1))
+            return self.async_llm_engine_map[request_id]
         # otherwise select the least loaded async producer
-        loads = ray.get([proc.get_producer_load.remote() for proc in self.async_producers])
-        min_load = min(loads)
-        candidates = [i for i, l in enumerate(loads) if l == min_load]
-        selected_idx = random.choice(candidates)  # random tie break
+        selected_idx, current_loads = ray.get(self.load_balancer.get_next_worker.remote("async-llm", amount=1))
         self.async_llm_engine_map[request_id] = selected_idx
-        return self.async_producers[selected_idx]
+        return selected_idx
 
     def _run_agentic_pipeline(self, messages):
         """
@@ -234,7 +230,7 @@ class AgenticProducer(BaseAgenticProducer):
                 )
                 del self.async_llm_engine_map[request_id]
                 return messages, response_input_ids, logprobs
-            async_producer = self._select_async_producer(request_id=request_id)
+            async_producer = self.async_producers[self._select_async_producer(request_id=request_id)]
             agentic_generate_config = copy.deepcopy(self.generate_config)
             agentic_generate_config["max_tokens"] = self.agentic_config.get("max_tokens", 2048)
             response = ray.get(
@@ -246,6 +242,7 @@ class AgenticProducer(BaseAgenticProducer):
                 )
             )
             llm_call_count += 1
+            ray.get(self.load_balancer.decrease_load.remote("async-llm", self.async_llm_engine_map[request_id], 1))
             self.consumer_global_step = response.pop("consumer_global_step")
             response_input_ids = response["input_ids"]
             logprobs = response["action_log_probs"]
@@ -261,12 +258,17 @@ class AgenticProducer(BaseAgenticProducer):
                     return messages, response_input_ids, logprobs
                 tool_call_count += len(assistant_message["tool_calls"])
                 handlers = []
+                tool_workers_called = []
                 for tool_call in assistant_message["tool_calls"]:
                     # select a tool worker to execute the tool call
-                    tool_worker = self._select_tool_worker()
+                    tool_worker_idx = self._select_tool_worker()
+                    tool_workers_called.append(tool_worker_idx)
+                    tool_worker = self.tool_workers[tool_worker_idx]
                     handler = tool_worker.call.remote(tool_call["function"]["name"], tool_call["function"]["arguments"])
                     handlers.append(handler)
                 tool_results = ray.get(handlers)
+                for idx in tool_workers_called:
+                    ray.get(self.load_balancer.decrease_load.remote("tool", idx, 1))
                 for tool_call, tool_result in zip(assistant_message["tool_calls"], tool_results):
                     tool_message = {"role": "tool", "content": str(tool_result)}
                     messages.append(tool_message)

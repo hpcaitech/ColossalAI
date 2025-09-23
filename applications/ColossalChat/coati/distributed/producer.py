@@ -636,12 +636,6 @@ class BaseAsyncProducer(BaseProducer):
         """
         raise NotImplementedError("rollout must be implemented in subclasses")
 
-    async def get_producer_load(self):
-        """
-        Get the load of each producer.
-        """
-        return len(self.model.running_requests)
-
     async def async_sync_model(self, episode, step, num_processes: int = 1) -> None:
         """
         Asyncronous version to sync model from consumer to producer.
@@ -853,7 +847,6 @@ class AsyncSimpleProducer(BaseAsyncProducer):
     Asyncronous version of the producer that uses vLLM for generation.
     This class is designed to handle multiple producer actors and distribute tasks among them.
     """
-
     @torch.no_grad()
     async def rollout(self, input_ids, attention_mask, **kwargs):
         # naive rollout strategy without load balancing

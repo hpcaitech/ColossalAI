@@ -281,8 +281,10 @@ if __name__ == "__main__":
         # os.environ["VLLM_DP_SIZE"] = str(args.producer_data_parallel_size)
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.7,
-                enforce_eager=True,
+                gpu_memory_utilization=0.8,
+                max_num_batched_tokens=4096,
+                max_num_seqs=1024,
+                enforce_eager=False,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
                 tensor_parallel_size=args.producer_tensor_parallel_size,

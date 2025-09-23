@@ -10,6 +10,7 @@ from coati.distributed.agent.tool_worker import ToolWorker
 from .consumer import SimpleConsumer
 from .grpo_consumer import GRPOConsumer
 from .producer import AsyncSimpleProducer, SimpleProducer
+from .utils import LoadBalancer
 
 ALGO_MAP = {
     "Simple": SimpleConsumer,
@@ -86,7 +87,7 @@ def launch_distributed(
     num_samples = get_jsonl_size_fast(dataset_path)
     global_inference_batch_size = inference_batch_size * num_producers
     num_update_per_episode = num_samples // global_inference_batch_size
-    num_recv_per_update = inference_batch_size // inference_microbatch_size if "async" not in inference_backend else 1
+    num_recv_per_update = inference_batch_size // inference_microbatch_size if "async-agentic" not in inference_backend else 1
 
     run_name = f"{inference_backend}_bs_{train_batch_size * train_dp_size}_temp_{generate_config['temperature']:.01f}_top_p_{generate_config['top_p']:.02f}"
     wandb_group_name = str(uuid.uuid4())
@@ -124,6 +125,7 @@ def launch_distributed(
     enable_agentic = "agentic" in inference_backend
     if enable_agentic:
         inference_backend = inference_backend.replace("agentic-", "")
+        inference_microbatch_size = inference_microbatch_size * num_generations
     for i in range(num_producers):
         node_id = gpu_to_node_id[0]
         producer_ip_address = gpu_to_ip_address[0]
@@ -141,11 +143,7 @@ def launch_distributed(
             model_config=inference_model_config,
             generate_config=generate_config,
             tokenizer_config=tokenizer_config,
-            microbatch_size=(
-                inference_microbatch_size * num_generations
-                if "async-agentic" in inference_backend
-                else inference_microbatch_size
-            ),
+            microbatch_size=inference_microbatch_size,
             backend=inference_backend,
             num_generations=num_generations,
             consumer_plugin_config=plugin_config,
@@ -183,6 +181,7 @@ def launch_distributed(
         assert (
             agentic_config["agentic_producer"] in AGENTIC_PRODUCER_MAP
         ), f"Only {list(AGENTIC_PRODUCER_MAP.keys())} are supported as agentic producer so far."
+        load_balancer = LoadBalancer.remote({"tool": len(tool_workers), "async-llm": num_producers})
         agentic_producer_cls = AGENTIC_PRODUCER_MAP[agentic_config["agentic_producer"]]
         agentic_config.pop("agentic_producer")
         producer_procs = [
@@ -214,6 +213,7 @@ def launch_distributed(
                 log_rollout_interval=log_rollout_interval,
                 rollout_log_file=rollout_log_file,
                 enable_profiling=enable_profiling,
+                load_balancer=load_balancer,
                 n_behind=n_behind,
             )
             for producer_idx in range(num_producers * inference_batch_size)

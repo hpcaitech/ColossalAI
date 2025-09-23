@@ -1,12 +1,12 @@
 import json
 import os
 from typing import Any, Dict, List
-
+import asyncio
 import torch
 from filelock import FileLock
-
+import random
 from colossalai.shardformer.layer.loss import dist_log_prob
-
+import ray
 
 def unbind_batch(batch: Dict[str, torch.Tensor]) -> List[Dict[str, torch.Tensor]]:
     batches = []
@@ -165,3 +165,25 @@ def safe_append_to_jsonl_file(file_path, data):
             for entry in data:
                 json_line = json.dumps(entry, ensure_ascii=False)
                 f.write(json_line + "\n")
+
+@ray.remote
+class LoadBalancer:
+    def __init__(self, worker_counts):
+        self.load = {}
+        for type in worker_counts:
+            self.load[type] = {k: 0 for k in range(worker_counts[type])}
+
+    def get_next_worker(self, worker_type, amount=1):
+        loads = [(k, v) for k, v in self.load[worker_type].items()]
+        min_load = min(loads, key=lambda x: x[1])
+        candidates = [k for k, v in loads if v == min_load[1]]
+        chosen = random.choice(candidates)
+        self.load[worker_type][chosen] += amount
+        return chosen, self.load[worker_type]
+    
+    def increase_load(self, worker_type, worker_id, amount=1):
+        self.load[worker_type][worker_id] += amount
+        
+    def decrease_load(self, worker_type, worker_id, amount=1):
+        self.load[worker_type][worker_id] -= amount
+        
