@@ -42,6 +42,18 @@ Train your models and scale your AI workload in one click!
    </a>
 </div>
 
+### Colossal-AI Benchmark
+
+To see how these performance gains translate to real-world applications, we conducted a large language model training benchmark using Colossal-AI on Llama-like models. The tests were run on both 8-card and 16-card configurations for 7B and 70B models, respectively. 
+
+|              GPU              |  GPUs  | Model Size |    Parallelism    | Batch Size per DP | Seqlen | Throughput | TFLOPS/GPU  | Peak Mem(MiB)  |
+| :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-------------: | :-------------: | :-------------: |
+|         H200            |     8     |      7B       |   zero2(dp8)     | 36 |        4096     |       17.13 samp/s     |       534.18     |       119040.02     |
+|         H200            |     16     |      70B       |   zero2     | 48 |        4096     |       3.27 samp/s     |       469.1     |       150032.23     |
+|         B200            |     8     |      7B       |   zero1(dp2)+tp2+pp4     | 128 |        4096     |       25.83 samp/s     |       805.69     |       100119.77     |
+|         H200            |     16     |      70B       |   zero1(dp2)+tp2+pp4     | 128 |        4096     |       5.66 samp/s     |       811.79     |       100072.02     |
+
+The results from the Colossal-AI benchmark provide the most practical insight. For the 7B model on 8 cards, the **B200 achieved a 50% higher throughput** and a significant increase in TFLOPS per GPU. For the 70B model on 16 cards, the B200 again demonstrated a clear advantage, with **over 70% higher throughput and TFLOPS per GPU**. These numbers show that the B200's performance gains translate directly to faster training times for large-scale models.
 
 ## Latest News
 * [2025/02] [DeepSeek 671B Fine-Tuning Guide Revealed—Unlock the Upgraded DeepSeek Suite with One Click, AI Players Ecstatic!](https://company.hpc-ai.com/blog/shocking-release-deepseek-671b-fine-tuning-guide-revealed-unlock-the-upgraded-deepseek-suite-with-one-click-ai-players-ecstatic)
