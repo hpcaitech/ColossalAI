@@ -150,6 +150,7 @@ class BaseConsumer:
         self.profiler.enter("sync_model")
         torch.cuda.empty_cache()
         state_dict = self.state_dict()
+        print(f"[C{self.rank}]: Sync model before training")
         if self.pp_size > 1:
             if self.tp_rank == 0 and self.dp_rank == 0:
                 ray_broadcast_tensor_dict(
@@ -179,7 +180,6 @@ class BaseConsumer:
                 for step in pbar:
                     torch.cuda.reset_peak_memory_stats()
                     i = 0
-
                     self.profiler.enter(f"rollout_episode_{episode}_step_{step}")
                     for _ in range(self.num_recv_per_update):
                         if self.n_behind > 0:

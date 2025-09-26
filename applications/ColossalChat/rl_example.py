@@ -109,7 +109,13 @@ if __name__ == "__main__":
     )
 
     # Sampling parameters
-    parser.add_argument("-b", "--backend", type=str, default="transformers", choices=["transformers", "vllm"])
+    parser.add_argument(
+        "-b",
+        "--backend",
+        type=str,
+        default="transformers",
+        choices=["transformers", "vllm", "async-vllm", "async-agentic-vllm"],
+    )
     parser.add_argument("-temp", "--temperature", type=float, default=1.0, help="Temperature for sampling.")
     parser.add_argument(
         "-topk",
@@ -125,6 +131,7 @@ if __name__ == "__main__":
         default=1.0,
         help="Top p for sampling. Please check the generation arguments documentation for your backend.",
     )
+    parser.add_argument("-ct", "--chat-template", type=str, default=None, help="Chat template to use for the model.")
     parser.add_argument("-s", "--system-prompt", type=str, default=None, help="System prompt for data construction.")
     parser.add_argument("-mnt", "--max-new-tokens", type=int, default=1024 * 4 - 512, help="Max length for generation.")
     parser.add_argument("-mpt", "--max-prompt-tokens", type=int, default=512, help="Max length for prompt.")
@@ -134,6 +141,13 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Tensor parallel size for the producer. Please check the generation arguments documentation for your backend.",
+    )
+    parser.add_argument(
+        "-pdp",
+        "--producer-data-parallel-size",
+        type=int,
+        default=1,
+        help="Data parallel size for the producer. Increase this value to scale up the data parallelism of the inference backend.",
     )
 
     # GRPO parameters
@@ -147,6 +161,13 @@ if __name__ == "__main__":
         default="think_answer_tags",
         choices=["think_answer_tags", "boxed", "code"],
         help="Reward type for GRPO.",
+    )
+    parser.add_argument(
+        "--agentic-type",
+        type=str,
+        default="Agentic",
+        choices=["Agentic"],
+        help="Agentic model type for agentic training.",
     )
     parser.add_argument(
         "-cv",
@@ -207,7 +228,7 @@ if __name__ == "__main__":
             runtime_env={
                 "env_vars": {
                     # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
-                    "TOKENIZERS_PARALLELISM": "false"
+                    "TOKENIZERS_PARALLELISM": "false",
                 },
             },
         )
@@ -220,7 +241,7 @@ if __name__ == "__main__":
             runtime_env={
                 "env_vars": {
                     # "RAY_DEBUG_POST_MORTEM": "1",  # enable post-mortem debugging with ray
-                    "TOKENIZERS_PARALLELISM": "false"
+                    "TOKENIZERS_PARALLELISM": "false",
                 },
             },
         )
@@ -228,7 +249,7 @@ if __name__ == "__main__":
     if args.top_k is None:
         if args.backend == "transformers":
             args.top_k = 50
-        elif args.backend == "vllm":
+        elif "vllm" in args.backend:
             args.top_k = -1
 
     os.environ["TOKENIZERS_PARALLELISM"] = "false"  # Disable tokenizers parallelism to avoid deadlock
@@ -256,11 +277,14 @@ if __name__ == "__main__":
             )
         )
         eval_generation_config = {"temperature": 0.6}  # used to update generation config for evaluation
-    elif args.backend == "vllm":
+    elif args.backend == "vllm" or args.backend == "async-vllm" or args.backend == "async-agentic-vllm":
+        # os.environ["VLLM_DP_SIZE"] = str(args.producer_data_parallel_size)
         inference_model_config.update(
             dict(
-                gpu_memory_utilization=0.7,
-                enforce_eager=True,
+                gpu_memory_utilization=0.8,
+                max_num_batched_tokens=4096,
+                max_num_seqs=1024,
+                enforce_eager=False,
                 enable_chunked_prefill=True,
                 max_model_len=args.max_new_tokens + args.max_prompt_tokens,
                 tensor_parallel_size=args.producer_tensor_parallel_size,
@@ -394,9 +418,34 @@ if __name__ == "__main__":
         # Default system prompt
         args.system_prompt = DEFAUT_SYSTEM_PROMPT[args.reward_type]
 
+    if "agentic" in args.backend:
+        assert "vllm" in args.backend, "Agentic backend only supports async-agentic-vllm backends."
+        generate_config["n"] = 1  # agentic producer use AsyncProducer which processes one request a time
+        if args.agentic_type == "Agentic":
+            generate_config["stop"] = ["<|im_end|>"]
+            generate_config["prompt_logprobs"] = 0
+            agentic_config = {
+                "agentic_producer": "Agentic",
+                "tool_call_budget": 5,
+                "llm_call_budget": 10,
+                "max_tokens": 2048,
+            }
+            grpo_config["forced_patterns"] = [
+                r"<tool_response>\n.+\n</tool_response>"  # please modify based on your tool response format
+            ]  # force at least one correct tool call
+        else:
+            raise ValueError(f"Unsupported agentic model type: {args.agentic_type}")
+    else:
+        agentic_config = None
+
+    tokenizer_config = {"path": args.model, "trust_remote_code": True}
+    if args.chat_template is not None:
+        tokenizer_config["chat_template"] = args.chat_template
+
     launch_distributed(
         num_producers=args.num_inferencer,
-        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size),
+        num_proc_per_producer=inference_model_config.get("tensor_parallel_size", args.producer_tensor_parallel_size)
+        * inference_model_config.get("data_parallel_size", args.producer_data_parallel_size),
         num_consumer_procs=args.num_trainers,
         num_episodes=args.num_episodes,
         inference_batch_size=args.inference_batch_size,
@@ -413,6 +462,8 @@ if __name__ == "__main__":
         num_generations=args.num_generations,
         train_model_config=train_model_config,
         grpo_config=grpo_config,
+        agentic_config=agentic_config,
+        tokenizer_config=tokenizer_config,
         plugin_config={
             "tp_size": args.tensor_parallel_size,
             "pp_size": args.pipeline_parallel_size,
@@ -440,7 +491,7 @@ if __name__ == "__main__":
         eval_interval=args.eval_interval,
         eval_save_dir=os.path.join(args.eval_save_dir, args.project.replace(" ", "_")),
         eval_generation_config=eval_generation_config,
-        log_rollout_interval=20,
+        log_rollout_interval=1,
         rollout_save_dir=args.rollout_save_dir,
         enable_profiling=args.enable_profiling,
         n_behind=args.n_behind,

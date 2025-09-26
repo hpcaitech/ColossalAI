@@ -1,8 +1,11 @@
+import asyncio
 from typing import Any, Dict
+from uuid import uuid4
 
 import torch
 import torch.nn.functional as F
 from transformers import AutoConfig, AutoModelForCausalLM, PreTrainedModel, PreTrainedTokenizer
+from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 
 from colossalai.utils import get_current_device
 
@@ -43,6 +46,27 @@ class BaseInferenceBackend:
         pass
 
 
+class AsyncInferenceBackend(BaseInferenceBackend):
+    async def generate(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """Generate new tokens given input_ids and attention_mask.
+
+        Args:
+            input_ids (torch.Tensor): shape [B, S]
+            attention_mask (torch.Tensor): shape [B, S]
+
+        Returns:
+            Dict[str, torch.Tensor]: containing the
+                - input_ids (torch.Tensor): shape [B, S+N]
+                - attention_mask (torch.Tensor): shape [B, S+N]
+                - action_log_probs (torch.Tensor): shape [B, N]
+                - action_mask (torch.Tensor): shape [B, N]
+                where N is the number of generated tokens. And all tensors should be on CUDA.
+        """
+        raise NotImplementedError("Generate method must be implemented in subclass.")
+
+
 class TransformersInferenceBackend(BaseInferenceBackend):
     DEFAULT_MODEL_CONFIG = dict(
         trust_remote_code=True,
@@ -59,6 +83,8 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         generate_config: Dict[str, Any],
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
+        microbatch_size: int = 1,
+        profiler=None,
     ):
         model_config = update_by_default(model_config, self.DEFAULT_MODEL_CONFIG)
         model_config.update(self.FORCE_MODEL_CONFIG)
@@ -68,6 +94,7 @@ class TransformersInferenceBackend(BaseInferenceBackend):
         self.generate_config.update(self.FORCE_GENERATE_CONFIG)
         self.tokenizer = tokenizer
         self.num_generations = num_generations
+        self.profiler = profiler
 
     @torch.no_grad()
     def generate(self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs) -> Dict[str, torch.Tensor]:
@@ -132,6 +159,8 @@ class SGLangInferenceBackend(BaseInferenceBackend):
         generate_config: Dict[str, Any],
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
+        microbatch_size: int = 1,
+        profiler=None,
     ):
         if sgl is None:
             raise ImportError("sglang is not installed")
@@ -196,6 +225,8 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         generate_config: Dict[str, Any],
         tokenizer: PreTrainedTokenizer,
         num_generations: int = 8,
+        microbatch_size: int = 1,
+        profiler=None,
     ):
         if LLM is None:
             raise ImportError("vllm is not installed")
@@ -220,7 +251,12 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         micro_batch_input_ids_no_padding = [
             micro_batch_input_ids[i][first_non_padding_token_idx[i] :] for i in range(micro_batch_size)
         ]
-        sample_params = kwargs.get("sample_params", self.sample_params)
+        sample_params = self.sample_params
+        if len(kwargs) > 0:
+            sample_params = self.generate_config.copy()
+            sample_params.update({k: v for k, v in kwargs.items() if k not in ["gt_answer", "test_cases", "labels"]})
+            sample_params.update(self.FORCE_GENERATE_CONFIG)
+            sample_params = SamplingParams(**sample_params)
         outputs = self.llm.generate(
             prompt_token_ids=micro_batch_input_ids_no_padding, sampling_params=sample_params, use_tqdm=False
         )
@@ -280,8 +316,149 @@ class VLLMInferenceBackend(BaseInferenceBackend):
         self.llm.llm_engine.model_executor.driver_worker.model_runner.model.load_weights(state_dict.items())
 
 
+class AsyncVLLMInferenceBackend(AsyncInferenceBackend):
+    DEFAULT_MODEL_CONFIG = dict(
+        trust_remote_code=True,
+        enable_sleep_mode=False,
+    )
+    FORCE_GENERATE_CONFIG = dict(
+        logprobs=0,
+    )
+
+    def __init__(
+        self,
+        model_config: Dict[str, Any],
+        generate_config: Dict[str, Any],
+        tokenizer: PreTrainedTokenizer,
+        num_generations: int = 8,
+        microbatch_size: int = 1,
+        profiler=None,
+    ):
+        if LLM is None:
+            raise ImportError("vllm is not installed")
+        model_config = update_by_default(model_config, self.DEFAULT_MODEL_CONFIG)
+        path = model_config.pop("path")
+        engine_args = AsyncEngineArgs(model=path, disable_log_stats=True, **model_config)
+        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
+        generate_config = generate_config.copy()
+        generate_config.update(self.FORCE_GENERATE_CONFIG)
+        if "n" not in generate_config:
+            generate_config.update({"n": num_generations})
+        self.generate_config = generate_config
+        self.sample_params = SamplingParams(**generate_config)
+        self.model_config = model_config
+        self.tokenizer = tokenizer
+        self.num_generations = num_generations
+        self.running_requests = []
+        self.microbatch_size = microbatch_size
+        self.profiler = profiler
+
+    @torch.no_grad()
+    async def generate(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Generate text from the model asynchronously.
+        Args:
+            input_ids (torch.Tensor): shape [B, S], B=1
+            attention_mask (torch.Tensor): shape [B, S]
+        """
+        assert input_ids.size(0) == attention_mask.size(0) == 1, "AsyncVLLMInferenceBackend only supports batch size 1"
+        request_id = (
+            str(uuid4()) if not "request_id" in kwargs else kwargs.pop("request_id")
+        )  # use fixed request_id to reuse kv cache
+        response_start_idx = input_ids.size(1)
+        first_non_padding_token_idx = (input_ids != self.tokenizer.pad_token_id).int().argmax(dim=1)
+        input_ids_no_padding = [input_ids.tolist()[0][first_non_padding_token_idx[0] :]]
+        sample_params = self.sample_params
+        if len(kwargs) > 0:
+            sample_params = self.generate_config.copy()
+            sample_params.update({k: v for k, v in kwargs.items() if k not in ["gt_answer", "test_cases", "labels"]})
+            sample_params.update(self.FORCE_GENERATE_CONFIG)
+            sample_params = SamplingParams(**sample_params)
+        out_tokens = []
+        out_len = []
+        log_probs = []
+        response_idx = []
+        while len(self.running_requests) >= self.microbatch_size:
+            await asyncio.sleep(0.1)
+        self.running_requests.append(request_id)  # enqueue
+        # pop the first input_ids and attention_mask
+        prompt_token_ids = input_ids_no_padding[0]
+        self.profiler.enter(f"vllm generate {request_id}")
+        outputs = self.engine.generate(
+            prompt={"prompt_token_ids": prompt_token_ids}, sampling_params=sample_params, request_id=request_id
+        )
+        async for chunk in outputs:
+            # generate the output tokens, can yield to avoid blocking
+            pass
+        self.running_requests.remove(request_id)  # dequeue
+        if self.generate_config.get("prompt_logprobs", None) is not None:
+            # when prompt_logprobs is not None, vllm will return logprobs for the whole sequence
+            # for agentic producer, we return the logprobs of the whole sequence
+            log_probs = [
+                [m[t].logprob if m is not None else 0.0 for m, t in zip(chunk.prompt_logprobs, chunk.prompt_token_ids)]
+            ]
+            for _ in range(sample_params.n - 1):
+                log_probs.append([t for t in log_probs[0]])  # repeat the same logprobs for num_generations times
+        else:
+            log_probs = [[] for _ in range(sample_params.n)]
+
+        for generation_id, output_i in enumerate(chunk.outputs):
+            out_len.append(len(output_i.token_ids))
+            out_tokens.append(list(output_i.token_ids))
+            response_idx.append((response_start_idx, response_start_idx + len(output_i.token_ids) - 1))
+            assert len(output_i.logprobs) == len(output_i.token_ids)
+            p = [m[t].logprob for m, t in zip(output_i.logprobs, output_i.token_ids)]
+            log_probs[generation_id].extend(p)
+        self.profiler.exit(f"vllm generate {request_id}")
+        # pad them
+        max_len = sample_params.max_tokens
+        action_mask = torch.ones(len(out_tokens), max_len, dtype=attention_mask.dtype)
+
+        for i, new_token_ids in enumerate(out_tokens):
+            pad_len = max_len - out_len[i]
+            out_tokens[i] = new_token_ids + [self.tokenizer.pad_token_id] * pad_len
+            log_probs[i] = log_probs[i] + [0.0] * (max_len - len(log_probs[i]))
+            action_mask[i, out_len[i] :] = 0
+
+        out_tokens = torch.tensor(out_tokens)
+        log_probs = torch.tensor(log_probs)
+        response_idx = torch.tensor(response_idx)
+
+        if attention_mask.size(0) != action_mask.size(0):
+            assert action_mask.size(0) % attention_mask.size(0) == 0
+            num_returns = action_mask.size(0) // attention_mask.size(0)
+            attention_mask = attention_mask.repeat_interleave(num_returns, dim=0)
+            input_ids = input_ids.repeat_interleave(num_returns, dim=0)
+
+        out_tokens = torch.cat((input_ids, out_tokens), dim=1)
+        attention_mask = torch.cat((attention_mask, action_mask), dim=1)
+
+        data = {
+            "input_ids": out_tokens,
+            "attention_mask": attention_mask,
+            "action_log_probs": log_probs,
+            "action_mask": action_mask,
+            "response_idx": response_idx,
+        }
+
+        data = {k: v.view(1, -1, v.size(-1)) for k, v in data.items()}
+        data = {k: v.to(get_current_device()) for k, v in data.items()}
+        if "gt_answer" in kwargs:
+            data["gt_answer"] = kwargs["gt_answer"]
+        if "test_cases" in kwargs:
+            data["test_cases"] = kwargs["test_cases"]
+
+        return data
+
+    def load_state_dict(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        self.engine.engine.model_executor.driver_worker.model_runner.model.load_weights(state_dict.items())
+
+
 BACKEND_MAP = {
     "transformers": TransformersInferenceBackend,
     # "sglang": SGLangInferenceBackend, # sglang backend will stuck the process due to unknown reason
     "vllm": VLLMInferenceBackend,
+    "async-vllm": AsyncVLLMInferenceBackend,
 }
