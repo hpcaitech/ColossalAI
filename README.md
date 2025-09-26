@@ -25,16 +25,16 @@
 
 </div>
 
-## Get Started with Colossal-AI Without Setup
+## Instantly Run Colossal-AI on Enterprise-Grade GPUs
 
-Access high-end, on-demand compute for your research instantly—no setup needed.
+Skip the setup. Access a powerful, pre-configured Colossal-AI environment on [**HPC-AI Cloud**](https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai). 
 
-Sign up now and get $10 in credits!
+Train your models and scale your AI workload in one click! 
 
-Limited Academic Bonuses:
+* **NVIDIA Blackwell B200s**: Experience the next generation of AI performance ([See Benchmarks](https://hpc-ai.com/blog/b200)). Now available on cloud from **$2.47/hr**. 
+* **Cost-Effective H200 Cluster**: Get premier performance with on-demand rental from just **$1.99/hr**. 
 
-* Top up $1,000 and receive 300 credits
-* Top up $500 and receive 100 credits
+[**Get Started Now & Claim Your Free Credits →**](https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai)
 
 <div align="center">
    <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
