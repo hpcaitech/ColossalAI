@@ -27,12 +27,12 @@
 
 ## Instantly Run Colossal-AI on Enterprise-Grade GPUs
 
-Skip the setup. Access a powerful, pre-configured Colossal-AI environment on [**HPC-AI Cloud**](https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai). 
+Skip the setup. Access a powerful, pre-configured Colossal-AI environment on [**HPC-AI Cloud**](https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai).
 
-Train your models and scale your AI workload in one click! 
+Train your models and scale your AI workload in one click!
 
-* **NVIDIA Blackwell B200s**: Experience the next generation of AI performance ([See Benchmarks](https://hpc-ai.com/blog/b200)). Now available on cloud from **$2.47/hr**. 
-* **Cost-Effective H200 Cluster**: Get premier performance with on-demand rental from just **$1.99/hr**. 
+* **NVIDIA Blackwell B200s**: Experience the next generation of AI performance ([See Benchmarks](https://hpc-ai.com/blog/b200)). Now available on cloud from **$2.47/hr**.
+* **Cost-Effective H200 Cluster**: Get premier performance with on-demand rental from just **$1.99/hr**.
 
 [**Get Started Now & Claim Your Free Credits →**](https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai)
 
@@ -44,7 +44,7 @@ Train your models and scale your AI workload in one click!
 
 ### Colossal-AI Benchmark
 
-To see how these performance gains translate to real-world applications, we conducted a large language model training benchmark using Colossal-AI on Llama-like models. The tests were run on both 8-card and 16-card configurations for 7B and 70B models, respectively. 
+To see how these performance gains translate to real-world applications, we conducted a large language model training benchmark using Colossal-AI on Llama-like models. The tests were run on both 8-card and 16-card configurations for 7B and 70B models, respectively.
 
 |              GPU              |  GPUs  | Model Size |    Parallelism    | Batch Size per DP | Seqlen | Throughput | TFLOPS/GPU  | Peak Mem(MiB)  |
 | :-----------------------------: | :--------: | :-------------: | :------------------: | :-----------: | :--------------: | :-------------: | :-------------: | :-------------: |
