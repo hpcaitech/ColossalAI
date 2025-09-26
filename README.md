@@ -38,7 +38,7 @@ Train your models and scale your AI workload in one click!
 
 <div align="center">
    <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
-   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/2-2.gif" width="850" />
+   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/2-3.png" width="850" />
    </a>
 </div>
 
