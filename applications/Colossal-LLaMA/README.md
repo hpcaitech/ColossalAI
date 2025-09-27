@@ -25,6 +25,7 @@ Colossal-LLaMA
   - [Inference](#inference)
     - [Import from HuggingFace](#import-from-huggingface)
     - [Import from Modelscope](#import-from-modelscope)
+    - [Import from openMind_Hub](#import-from-openmind_hub)
     - [Quick Start](#quick-start)
 - [Usage](#usage)
   - [Install](#install)
@@ -259,7 +260,30 @@ inputs = inputs.to('cuda:0')
 output = model.generate(**inputs, **generation_kwargs)
 print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
 ```
-You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary).
+#### Import from openMind_Hub
+You can also load our model using openMind_Hub, use the following code:
+```Python
+from openmind import AutoModelForCausalLM, AutoTokenizer
+from openmind_hub import snapshot_download
+# Colossal-LLaMA-2-7B-base
+model_dir = snapshot_download('HPCAITECH/Colossal-LLaMA-2-7B-base')
+# Colossal-LLaMA-2-13B-base
+model_dir = snapshot_download('HPCAITECH/Colossal-LLaMA-2-13B-base')
+
+tokenizer = AutoTokenizer.from_pretrained(model_dir, device_map="auto", trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto", trust_remote_code=True).eval()
+generation_kwargs = {"max_new_tokens": 256,
+                     "top_p": 0.95,
+                     "temperature": 0.3
+                    }
+
+input = '明月松间照，\n\n->\n\n'
+inputs = tokenizer(input, return_token_type_ids=False, return_tensors='pt')
+inputs = inputs.to('cuda:0')
+output = model.generate(**inputs, **generation_kwargs)
+print(tokenizer.decode(output.cpu()[0], skip_special_tokens=True)[len(input):])
+```
+You can download model weights from [🤗HuggingFace](https://huggingface.co/hpcai-tech/Colossal-LLaMA-2-7b-base) or [👾Modelscope](https://modelscope.cn/models/colossalai/Colossal-LLaMA-2-7b-base/summary) or [openMind_Hub](https://modelers.cn/models/HPCAITECH/Colossal-LLaMA-2-7B-base).
 
 #### Quick Start
 You can run [`inference_example.py`](inference_example.py) to quickly start the inference of our base model by loading model weights from HF.
