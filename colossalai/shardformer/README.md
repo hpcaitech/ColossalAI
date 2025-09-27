@@ -83,6 +83,12 @@ Following are the description `ShardConfig`'s arguments:
 
 - `extra_kwargs`: A dict to store extra kwargs for ShardFormer.
 
+- - `tensor_parallel_mode`: A choice of parallel modes for tensor operations. Supported modes are:
+  - `'1d'`: 1D tensor parallelism
+  - `'2d'`: 2D tensor parallelism
+  - `'2.5d'`: 2.5D tensor parallelism
+  - `'3d'`: 3D tensor parallelism
+
 ### Write your own policy
 
 If you have a custom model, you can also use Shardformer to parallelize it by writing your own sharding policy. More information about the sharding policy can be found in [API Design](#-api-design).
