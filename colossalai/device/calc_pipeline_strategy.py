@@ -49,7 +49,7 @@ def alpa_dp_impl(
         for k in range(num_layers - 1, -1, -1):
             for d in range(1, num_devices + 1):
                 for m, submesh in enumerate(submesh_choices):
-                    n_submesh_devices = np.prod(np.array(submesh))
+                    n_submesh_devices = np.prod(np.asarray(submesh))
                     if n_submesh_devices <= d:
                         # TODO: [luzgh]: Why alpa needs max_n_succ_stages? Delete.
                         # if s - 1 <= max_n_succ_stages[i, k - 1, m, n_config]:
@@ -83,7 +83,7 @@ def alpa_dp_impl(
         res.append(((current_layer, next_start_layer), submesh_choice, autosharding_choice))
         current_s -= 1
         current_layer = next_start_layer
-        current_devices -= np.prod(np.array(submesh_choices[submesh_choice]))
+        current_devices -= np.prod(np.asarray(submesh_choices[submesh_choice]))
     assert current_s == 0 and current_layer == num_layers and current_devices == 0
 
     return total_cost, res
@@ -98,7 +98,7 @@ def alpa_dp(
     Arguments:
         submesh_choices: List[(int,int)]
         num_autosharding_configs: Max number of t_intra(start_layer, end_layer, LogicalMesh)
-        compute_cost: np.array(num_layers,num_layers,num_submesh_choices,num_autosharding_configs)
+        compute_cost: np.asarray(num_layers,num_layers,num_submesh_choices,num_autosharding_configs)
     """
     assert np.shape(compute_cost) == (
         num_layers,

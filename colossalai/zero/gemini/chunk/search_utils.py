@@ -27,7 +27,7 @@ def _filter_exlarge_params(model: nn.Module, size_dict: Dict[int, List[int]]) ->
     if len(agg_size_list) == 0:
         return
 
-    params_size_arr = np.array(agg_size_list)
+    params_size_arr = np.asarray(agg_size_list)
 
     std = np.std(params_size_arr)
     mean = np.mean(params_size_arr)
