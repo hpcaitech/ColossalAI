@@ -64,8 +64,10 @@ class Distributor:
                         )
                         self.profiler.exit(f"sync_model_consumer_pp_{i}")
                         self.weight_version[i] += 1
-                for i in range(self.consumer_pp_size):
-                    if signal.get(f"producer_{self.distributor_id}_pp_{i}", None) == "ready_sync_model":
+                if all(
+                    [signal.get(f"producer_{self.distributor_id}_pp_{i}", None) == "ready_sync_model" for i in range(self.consumer_pp_size)]
+                ):
+                    for i in range(self.consumer_pp_size):
                         self.profiler.enter(f"sync_model_producer_{self.distributor_id}_pp_{i}")
                         # Broadcast the model state dict to all producers
                         ray.get(
@@ -116,4 +118,4 @@ class Distributor:
                 ray.get(self.shared_signal_actor.set_signal.remote("distributor_weight_version", last_weight_version))
 
     def get_weight_version(self):
-        return min(self.weight_version)
+        return self.weight_version[0]

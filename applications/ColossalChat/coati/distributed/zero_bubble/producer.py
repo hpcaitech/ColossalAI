@@ -244,6 +244,7 @@ class BaseProducer:
                                         f"producer_{self.producer_idx}_pp_{pp_idx}", "ready_sync_model"
                                     )
                                 )
+                            for pp_idx in range(self.consumer_pp_size):
                                 print(
                                     f"[P{self.producer_idx}] Sync model PP stage {pp_idx} episode {episode} step {(i + 1) // self.num_microbatches - 1}"
                                 )
