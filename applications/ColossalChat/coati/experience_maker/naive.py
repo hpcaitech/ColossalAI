@@ -122,7 +122,7 @@ class NaiveExperienceMaker(ExperienceMaker):
             generate_kwargs["cache_position"] = torch.arange(
                 0, input_ids.shape[1], dtype=torch.long, device=input_ids.device
             )
-        torch.manual_seed(41)  # for tp, gurantee the same input for reward model
+        torch.manual_seed(41)  # for tp, guarantee the same input for reward model
 
         if self.use_grpo and self.num_generation > 1:
             # Generate multiple responses for each prompt

@@ -38,7 +38,7 @@ class RewardModelTrainer(SLTrainer):
         beta (float, defaults to 0.1): the beta parameter in dpo loss
         accumulation_steps (int): the number of steps to accumulate gradients
         start_epoch (int, defaults to 0): the start epoch, non-zero if resumed from a checkpoint
-        save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during trainning
+        save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during training
         save_dir (str): the directory to save checkpoints
         coordinator (DistCoordinator): the coordinator to use for distributed logging
     """
@@ -127,7 +127,7 @@ class RewardModelTrainer(SLTrainer):
             )
             batch_size = chosen_input_ids.size()[0]
 
-            # Concatenate for better parrallelism
+            # Concatenate for better parallelism
             reward = self.model(
                 torch.cat([chosen_input_ids, reject_input_ids], dim=0),
                 attention_mask=torch.cat([chosen_attention_mask, reject_attention_mask], dim=0),

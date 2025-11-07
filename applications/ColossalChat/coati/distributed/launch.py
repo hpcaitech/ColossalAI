@@ -88,10 +88,10 @@ def launch_distributed(
         f"{project_name.replace(' ','_')}_run_{wandb_group_name}.jsonl",
     )
 
-    # Attention: Ray use complex schedualing method that consider various factors including load-balancing.
+    # Attention: Ray use complex scheduling method that consider various factors including load-balancing.
     # when requesting resources, it is not guaranteed that the resource comes from a node with lower node it
-    # this go against the design principle of our implementation, and we need to manually force the schedualing,
-    # allocating the producer to nodes with lower node id and the consumer to the resouces from nodes with higher
+    # this go against the design principle of our implementation, and we need to manually force the scheduling,
+    # allocating the producer to nodes with lower node id and the consumer to the resources from nodes with higher
     # node id. See the reference here: https://docs.ray.io/en/latest/ray-core/scheduling/index.html#nodeaffinityschedulingstrategy
     nodes = ray.nodes()
     node_info = {
@@ -116,7 +116,7 @@ def launch_distributed(
         for _ in range(num_proc_per_producer):
             gpu_to_node_id.pop(0)
             gpu_to_ip_address.pop(0)
-        print(f"Schedual Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
+        print(f"Schedule Producer P[{i}] which requires {num_proc_per_producer} GPUs on node {producer_ip_address}")
         producer = SimpleProducer.options(num_gpus=num_proc_per_producer).remote(
             producer_idx=i,
             num_producers=num_producers,
@@ -160,7 +160,7 @@ def launch_distributed(
         consumer_ip_address = gpu_to_ip_address[0]
         gpu_to_node_id.pop(0)
         gpu_to_ip_address.pop(0)
-        print(f"Schedual Consumer T[{i}] which requires 1 GPUs on node {consumer_ip_address}")
+        print(f"Schedule Consumer T[{i}] which requires 1 GPUs on node {consumer_ip_address}")
         consumer = core_consumer.options(num_gpus=1).remote(
             num_producers=num_producers,
             num_episodes=num_episodes,

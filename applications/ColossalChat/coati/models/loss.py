@@ -51,7 +51,7 @@ class PolicyLoss(nn.Module):
         else:
             ratio_ = ((log_probs - old_log_probs) * action_mask).exp()
 
-        # note that if dropout is disabled (recommanded), ratio will always be 1.
+        # note that if dropout is disabled (recommended), ratio will always be 1.
         if ratio_.mean() > self.skip_threshold:
             skip = True
 

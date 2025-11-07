@@ -38,7 +38,7 @@ class ORPOTrainer(SLTrainer):
         lam (float, defaults to 0.1): the lambda parameter in ORPO loss
         accumulation_steps (int): the number of steps to accumulate gradients
         start_epoch (int, defaults to 0): the start epoch, non-zero if resumed from a checkpoint
-        save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during trainning
+        save_interval (int): the interval to save model checkpoints, default to 0, which means no checkpoint will be saved during training
         save_dir (str): the directory to save checkpoints
         coordinator (DistCoordinator): the coordinator to use for distributed logging
     """
