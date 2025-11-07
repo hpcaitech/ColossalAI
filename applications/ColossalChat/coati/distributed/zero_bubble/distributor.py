@@ -65,7 +65,10 @@ class Distributor:
                         self.profiler.exit(f"sync_model_consumer_pp_{i}")
                         self.weight_version[i] += 1
                 if all(
-                    [signal.get(f"producer_{self.distributor_id}_pp_{i}", None) == "ready_sync_model" for i in range(self.consumer_pp_size)]
+                    [
+                        signal.get(f"producer_{self.distributor_id}_pp_{i}", None) == "ready_sync_model"
+                        for i in range(self.consumer_pp_size)
+                    ]
                 ):
                     for i in range(self.consumer_pp_size):
                         self.profiler.enter(f"sync_model_producer_{self.distributor_id}_pp_{i}")
