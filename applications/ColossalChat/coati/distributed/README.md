@@ -14,6 +14,7 @@ This repository implements a distributed Reinforcement Learning (RL) training fr
 * **Rollout and Policy Decoupling**: Efficient generation and consumption of data through parallel inferencer-trainer architecture.
 * **Evaluation Integration**: Easily plug in task-specific eval datasets.
 * **Checkpoints and Logging**: Configurable intervals and directories.
+* **[New]**: Zero Bubble training framework that supports GRPO and DAPO. [(read more)](./zero_bubble/README.md)
 
 ---
 
