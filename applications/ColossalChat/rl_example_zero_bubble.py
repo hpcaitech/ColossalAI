@@ -350,7 +350,7 @@ if __name__ == "__main__":
             ),  # microbatch size should be set to train_microbatch_size // pp_size
             "zero_stage": args.zero_stage,
             "max_norm": 1.0,
-            "num_layers_per_stage": [18, 10],
+            # "num_layers_per_stage": [18, 10],  # Example for 28 layers model with pp_size=2, set manually according to your model architecture
         },  # for pp, tp
         tokenizer_config={"path": args.tokenizer_path} if args.tokenizer_path else {"path": args.model},
         inference_backend=args.backend,
