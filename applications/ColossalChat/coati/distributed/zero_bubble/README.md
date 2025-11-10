@@ -63,11 +63,3 @@ python rl_example_zero_bubble.py \
 </div>
 
 **Fig. 3** - Performance of the Zero Bubble pipeline tested with an unlimited buffer size.
-
----
-
-If you'd like, I can:
-
-* Produce a short "What changed" summary for the repo (listing grammar/clarity edits).
-* Create a compact one-paragraph summary for the project page.
-* Convert this into a prettier doc with badges, table of contents, or a changelog. Which would you prefer?
