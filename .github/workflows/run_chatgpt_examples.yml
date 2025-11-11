@@ -39,7 +39,7 @@ jobs:
           CXXFLAGS: "-O1"
           MAX_JOBS: 4
         run: |
-          pip install flash-attn --no-build-isolation
+          pip install flash-attn==2.7.4.post1 --no-build-isolation
           cd applications/ColossalChat
           pip install --no-cache-dir -v .
           pip install --no-cache-dir -r examples/requirements.txt
