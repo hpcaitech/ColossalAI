@@ -1,0 +1,226 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-master-service
+  namespace: default
+  labels:
+    app: colossalai-training
+spec:
+  clusterIP: None  # Headless service for stable DNS
+  selector:
+    app: colossalai-training
+  ports:
+  - name: distributed-comm
+    port: 29500
+    targetPort: 29500
+    protocol: TCP
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: opensora-multinode-test
+  namespace: default
+  labels:
+    app: colossalai-training
+spec:
+  parallelism: 2
+  completions: 2
+  completionMode: Indexed
+  template:
+    metadata:
+      labels:
+        app: colossalai-training
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: training
+        image: pytorch/pytorch:2.4.0-cuda12.1-cudnn9-devel  # Replace with your Open-Sora image
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e  # Exit on error
+
+          echo "=== Node $JOB_COMPLETION_INDEX startup ==="
+          echo "Time: $(date)"
+          echo "Hostname: $(hostname)"
+          echo "Pod IP: $(hostname -i)"
+
+          # Install ColossalAI if not in image (remove if already installed)
+          # pip install colossalai
+
+          # Stagger startup to reduce race conditions
+          sleep_time=$((JOB_COMPLETION_INDEX * 30 + 30))
+          echo "Sleeping for ${sleep_time}s to stagger startup..."
+          sleep $sleep_time
+
+          # Set rank calculations
+          export RANK=$((JOB_COMPLETION_INDEX * 8))
+          export LOCAL_RANK=0
+
+          echo "=== Environment Configuration ==="
+          echo "NODE_RANK: $JOB_COMPLETION_INDEX"
+          echo "RANK: $RANK"
+          echo "LOCAL_RANK: $LOCAL_RANK"
+          echo "WORLD_SIZE: $WORLD_SIZE"
+          echo "MASTER_ADDR: $MASTER_ADDR"
+          echo "MASTER_PORT: $MASTER_PORT"
+
+          # Test DNS resolution
+          echo "=== Testing DNS Resolution ==="
+          nslookup $MASTER_ADDR || echo "DNS resolution failed"
+
+          # Test network connectivity (only for non-master nodes)
+          if [ "$JOB_COMPLETION_INDEX" != "0" ]; then
+            echo "=== Testing Master Connectivity ==="
+            timeout 10 bash -c "cat < /dev/null > /dev/tcp/$MASTER_ADDR/$MASTER_PORT" || echo "Master port not yet accessible"
+          fi
+
+          echo "=== Starting Enhanced Torchrun ==="
+
+          # Create a simple test script if Open-Sora scripts not available
+          cat > /tmp/test_distributed.py << 'EOF'
+          import os
+          import sys
+          import torch
+          import torch.distributed as dist
+
+          # Add the current directory to path for ColossalAI imports
+          sys.path.insert(0, '/workspace')  # Adjust path as needed
+
+          try:
+              import colossalai
+              print("✓ ColossalAI imported successfully")
+          except ImportError as e:
+              print(f"✗ ColossalAI import failed: {e}")
+              print("Installing ColossalAI...")
+              os.system("pip install colossalai")
+              import colossalai
+
+          def main():
+              print(f"=== Process {os.environ.get('RANK', 'unknown')} starting ===")
+
+              # Initialize ColossalAI with enhanced error handling
+              try:
+                  colossalai.launch_from_torch(verbose=True)
+                  print("✓ ColossalAI initialization successful!")
+
+                  # Basic distributed tests
+                  rank = dist.get_rank()
+                  world_size = dist.get_world_size()
+
+                  print(f"Process {rank}/{world_size} initialized successfully!")
+
+                  # Test basic collective operation
+                  if torch.cuda.is_available():
+                      device = torch.cuda.current_device()
+                      tensor = torch.ones(1).cuda() * rank
+                      print(f"[Rank {rank}] Before all_reduce: {tensor.item()}")
+
+                      dist.all_reduce(tensor)
+                      expected = sum(range(world_size))
+
+                      print(f"[Rank {rank}] After all_reduce: {tensor.item()}, expected: {expected}")
+
+                      if abs(tensor.item() - expected) < 1e-6:
+                          print(f"✓ [Rank {rank}] All-reduce test PASSED")
+                      else:
+                          print(f"✗ [Rank {rank}] All-reduce test FAILED")
+
+                  print(f"🎉 [Rank {rank}] All tests completed successfully!")
+                  return 0
+
+              except Exception as e:
+                  print(f"✗ ColossalAI initialization failed: {e}")
+                  import traceback
+                  traceback.print_exc()
+                  return 1
+
+          if __name__ == "__main__":
+              exit_code = main()
+              sys.exit(exit_code)
+          EOF
+
+          # Run the enhanced torchrun command
+          torchrun \
+            --nnodes=2 \
+            --nproc_per_node=8 \
+            --node_rank=$JOB_COMPLETION_INDEX \
+            --rdzv_backend=c10d \
+            --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
+            --rdzv_id=opensora-multinode-test \
+            --rdzv_conf="timeout=1800,read_timeout=120" \
+            --master_addr=$MASTER_ADDR \
+            --master_port=$MASTER_PORT \
+            /tmp/test_distributed.py
+
+          # If you have Open-Sora installed, use this instead:
+          # scripts/diffusion/train.py configs/diffusion/train/demo.py \
+          # --dataset.data-path modified_data.csv
+
+        env:
+        # Essential distributed training variables
+        - name: MASTER_ADDR
+          value: "training-master-service.default.svc.cluster.local"
+        - name: MASTER_PORT
+          value: "29500"
+        - name: WORLD_SIZE
+          value: "16"  # 2 nodes × 8 GPUs
+        - name: NODE_RANK
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+
+        # Enhanced ColossalAI timeout configuration
+        - name: COLOSSALAI_DIST_TIMEOUT
+          value: "1800"  # 30 minutes for initialization
+        - name: COLOSSALAI_MASTER_READY_TIMEOUT
+          value: "600"   # 10 minutes for master readiness
+
+        # Kubernetes networking configuration
+        - name: NCCL_SOCKET_IFNAME
+          value: "eth0"
+        - name: GLOO_SOCKET_IFNAME
+          value: "eth0"
+        - name: NCCL_IB_DISABLE
+          value: "1"
+        - name: NCCL_DEBUG
+          value: "INFO"  # Detailed logging for testing
+
+        # Optional: Enable distributed diagnostics
+        - name: DEBUG_DISTRIBUTED
+          value: "1"
+
+        resources:
+          requests:
+            nvidia.com/gpu: 8
+            memory: "32Gi"
+            cpu: "16"
+          limits:
+            nvidia.com/gpu: 8
+            memory: "64Gi"
+            cpu: "32"
+
+        volumeMounts:
+        - name: shm
+          mountPath: /dev/shm
+        - name: workspace
+          mountPath: /workspace
+
+      volumes:
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Gi  # Large shared memory for distributed training
+      - name: workspace
+        emptyDir: {}  # Temporary workspace
+
+      # Optional: Node selection for GPU nodes
+      # nodeSelector:
+      #   accelerator: nvidia-tesla-v100
+
+      # Optional: Tolerations for GPU nodes
+      # tolerations:
+      # - key: nvidia.com/gpu
+      #   operator: Exists
+      #   effect: NoSchedule
