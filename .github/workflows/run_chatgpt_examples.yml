@@ -19,7 +19,7 @@ jobs:
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: [self-hosted, ubuntu-latest]
     container:
-      image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.2.2-12.1.0
+      image: image-cloud.luchentech.com/hpcaitech/pytorch-cuda:2.5.1-12.4.1
       options: --gpus all --rm -v /data/scratch/examples-data:/data/scratch/examples-data --shm-size=10.24gb
     timeout-minutes: 180
     defaults:
@@ -29,9 +29,18 @@ jobs:
       - name: Checkout ColossalAI
         uses: actions/checkout@v2
 
+      - name: Install torch
+        run: |
+          pip uninstall flash-attn
+          pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+
+      - name: Install flash-attn
+        run: |
+          pip install https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+
       - name: Install Colossal-AI
         run: |
-          pip install --no-cache-dir -v -e .
+          BUILD_EXT=1 pip install --no-cache-dir -v -e .
 
       - name: Install ChatGPT
         env:
@@ -39,14 +48,13 @@ jobs:
           CXXFLAGS: "-O1"
           MAX_JOBS: 4
         run: |
-          pip install flash-attn --no-build-isolation
           cd applications/ColossalChat
-          pip install --no-cache-dir -v .
+          pip install --no-cache-dir -v -e .
           pip install --no-cache-dir -r examples/requirements.txt
 
-      - name: Install Transformers
-        run: |
-          pip install --no-cache-dir transformers==4.36.2
+      # - name: Install Transformers
+      #   run: |
+      #     pip install --no-cache-dir transformers==4.36.2
 
       - name: Execute Examples
         run: |

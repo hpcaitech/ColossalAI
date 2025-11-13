@@ -1,0 +1,2 @@
+ray==2.49.2
+pygloo>=0.2.0  # you need to build from source: https://github.com/ray-project/pygloo  commit 82ae2d72222aefcac54a8e88995735ede3abe9cf   https://github.com/ray-project/pygloo/blob/main/README.md
