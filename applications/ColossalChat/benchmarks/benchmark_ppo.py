@@ -157,7 +157,7 @@ def benchmark_train(args):
         raise ValueError("Conversation template config is not provided or incorrect")
     if hasattr(tokenizer, "pad_token") and hasattr(tokenizer, "eos_token") and tokenizer.eos_token is not None:
         try:
-            # Some tokenizers doesn't allow to set pad_token mannually e.g., Qwen
+            # Some tokenizers doesn't allow to set pad_token manually e.g., Qwen
             tokenizer.pad_token = tokenizer.eos_token
         except AttributeError as e:
             logger.warning(f"Unable to set pad token to eos token, {str(e)}")
