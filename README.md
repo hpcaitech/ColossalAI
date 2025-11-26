@@ -68,10 +68,10 @@ The results from the Colossal-AI benchmark provide the most practical insight. F
 
 ## Table of Contents
 <ul>
- <li><a href="#Why-Colossal-AI">Why Colossal-AI</a> </li>
+ <li><a href="#Why-Colossal-AI">Why Colossal-AI?</a> </li>
  <li><a href="#Features">Features</a> </li>
  <li>
-   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI for Real World Applications</a>
+   <a href="#Colossal-AI-in-the-Real-World">Colossal-AI For Real World Applications</a>
    <ul>
      <li><a href="#Open-Sora">Open-Sora: Revealing Complete Model Parameters, Training Details, and Everything for Sora-like Video Generation Models</a></li>
      <li><a href="#Colossal-LLaMA-2">Colossal-LLaMA-2: One Half-Day of Training Using a Few Hundred Dollars Yields Similar Results to Mainstream Large Models, Open-Source and Commercial-Free Domain-Specific Llm Solution</a></li>
@@ -128,7 +128,10 @@ The results from the Colossal-AI benchmark provide the most practical insight. F
    <img src="https://raw.githubusercontent.com/hpcaitech/public_assets/main/colossalai/img/JamesDemmel_Colossal-AI.png" width="600" />
    </a>
 
-   Prof. James Demmel (UC Berkeley): Colossal-AI makes training AI models efficient, easy, and scalable.
+  > "Colossal-AI makes training AI models efficient, easy, and scalable."
+>
+> <p align="right">— *Prof. James Demmel, UC Berkeley*</p>
+
 </div>
 
 <p align="right">(<a href="#top">back to top</a>)</p>
