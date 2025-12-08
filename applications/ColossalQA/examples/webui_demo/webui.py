@@ -81,11 +81,11 @@ with gr.Blocks(css=CSS) as demo:
     )
     with gr.Row():
         btn = gr.UploadButton("📁", file_types=["file"], file_count="multiple", size="sm")
-        restart_btn = gr.Button(str("\u21BB"), elem_id="restart-btn", scale=1)
+        restart_btn = gr.Button(str("\u21bb"), elem_id="restart-btn", scale=1)
         txt = gr.Textbox(
             scale=8,
             show_label=False,
-            placeholder="Enter text and press enter, or use 📁 to upload files, click \u21BB to clear loaded files and restart chat",
+            placeholder="Enter text and press enter, or use 📁 to upload files, click \u21bb to clear loaded files and restart chat",
             container=True,
             autofocus=True,
         )

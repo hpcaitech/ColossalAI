@@ -1,4 +1,4 @@
-""" PyTorch ChatGLM model. """
+"""PyTorch ChatGLM model."""
 
 from typing import List, Optional, Tuple
 
