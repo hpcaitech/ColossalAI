@@ -205,6 +205,7 @@ class OddsRatioLoss(nn.Module):
         chosen_loss_mask: torch.Tensor,
         reject_loss_mask: torch.Tensor,
     ) -> torch.Tensor:
+        input_dtype = chosen_logp.dtype
         chosen_logp = chosen_logp.to(dtype=torch.float32)
         reject_logp = reject_logp.to(dtype=torch.float32)
         chosen_odds = chosen_logp - torch.log(-torch.exp(chosen_logp) + 1.0001)
@@ -213,7 +214,7 @@ class OddsRatioLoss(nn.Module):
         reject_odds_masked = torch.sum(reject_odds * reject_loss_mask.float()) / torch.sum(reject_loss_mask)
         log_odds_ratio = chosen_odds_masked - reject_odds_masked
         ratio = torch.log(torch.nn.functional.sigmoid(log_odds_ratio))
-        return ratio.to(dtype=torch.bfloat16), log_odds_ratio
+        return ratio.to(dtype=input_dtype), log_odds_ratio
 
 
 class KTOLoss(nn.Module):
