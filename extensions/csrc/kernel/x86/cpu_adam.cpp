@@ -32,8 +32,8 @@ SOFTWARE
 
 // C++ interface
 
-void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
-                            float *_exp_avg_sq, size_t _param_size,
+void Adam_Optimizer::Step_1(float* _params, float* grads, float* _exp_avg,
+                            float* _exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
@@ -44,10 +44,10 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
   float step_size = -1 * _alpha / _bias_correction1;
   float w_decay = -1 * _alpha * _weight_decay;
 
-  __half *params_cast_h = reinterpret_cast<__half *>(_params);
-  __half *grads_cast_h = reinterpret_cast<__half *>(grads);
-  __half *momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
-  __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
+  __half* params_cast_h = reinterpret_cast<__half*>(_params);
+  __half* grads_cast_h = reinterpret_cast<__half*>(grads);
+  __half* momentum_cast_h = reinterpret_cast<__half*>(_exp_avg);
+  __half* variance_cast_h = reinterpret_cast<__half*>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
   AVX_Data betta1_4;
@@ -182,17 +182,17 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
   }
 }
 
-void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
-                            float *_exp_avg_sq, size_t _param_size,
+void Adam_Optimizer::Step_4(float* _params, float* grads, float* _exp_avg,
+                            float* _exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
   size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 4);
 
-  __half *params_cast_h = reinterpret_cast<__half *>(_params);
-  __half *grads_cast_h = reinterpret_cast<__half *>(grads);
-  __half *momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
-  __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
+  __half* params_cast_h = reinterpret_cast<__half*>(_params);
+  __half* grads_cast_h = reinterpret_cast<__half*>(grads);
+  __half* momentum_cast_h = reinterpret_cast<__half*>(_exp_avg);
+  __half* variance_cast_h = reinterpret_cast<__half*>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
   AVX_Data betta1_4;
@@ -285,29 +285,29 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
   }
 #endif
   if (_param_size > rounded_size)
-    Step_1((param_half_precision ? (float *)(params_cast_h + rounded_size)
+    Step_1((param_half_precision ? (float*)(params_cast_h + rounded_size)
                                  : _params + rounded_size),
-           (grad_half_precision ? (float *)(grads_cast_h + rounded_size)
+           (grad_half_precision ? (float*)(grads_cast_h + rounded_size)
                                 : grads + rounded_size),
-           (momentum_half_precision ? (float *)(momentum_cast_h + rounded_size)
+           (momentum_half_precision ? (float*)(momentum_cast_h + rounded_size)
                                     : _exp_avg + rounded_size),
-           (variance_half_precision ? (float *)(variance_cast_h + rounded_size)
+           (variance_half_precision ? (float*)(variance_cast_h + rounded_size)
                                     : _exp_avg_sq + rounded_size),
            (_param_size - rounded_size), param_half_precision,
            grad_half_precision, momentum_half_precision,
            variance_half_precision, loss_scale);
 }
 
-void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
-                            float *_exp_avg_sq, size_t _param_size,
+void Adam_Optimizer::Step_8(float* _params, float* grads, float* _exp_avg,
+                            float* _exp_avg_sq, size_t _param_size,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
   size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 8);
-  __half *params_cast_h = reinterpret_cast<__half *>(_params);
-  __half *grads_cast_h = reinterpret_cast<__half *>(grads);
-  __half *momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
-  __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
+  __half* params_cast_h = reinterpret_cast<__half*>(_params);
+  __half* grads_cast_h = reinterpret_cast<__half*>(grads);
+  __half* momentum_cast_h = reinterpret_cast<__half*>(_exp_avg);
+  __half* variance_cast_h = reinterpret_cast<__half*>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
   AVX_Data betta1_4;
@@ -400,13 +400,13 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
   }
 #endif
   if (_param_size > rounded_size)
-    Step_4((param_half_precision ? (float *)(params_cast_h + rounded_size)
+    Step_4((param_half_precision ? (float*)(params_cast_h + rounded_size)
                                  : _params + rounded_size),
-           (grad_half_precision ? (float *)(grads_cast_h + rounded_size)
+           (grad_half_precision ? (float*)(grads_cast_h + rounded_size)
                                 : grads + rounded_size),
-           (momentum_half_precision ? (float *)(momentum_cast_h + rounded_size)
+           (momentum_half_precision ? (float*)(momentum_cast_h + rounded_size)
                                     : _exp_avg + rounded_size),
-           (variance_half_precision ? (float *)(variance_cast_h + rounded_size)
+           (variance_half_precision ? (float*)(variance_cast_h + rounded_size)
                                     : _exp_avg_sq + rounded_size),
            (_param_size - rounded_size), param_half_precision,
            grad_half_precision, momentum_half_precision,
@@ -415,18 +415,18 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
 
 void Adam_Optimizer::step(size_t step, float lr, float beta1, float beta2,
                           float epsilon, float weight_decay,
-                          bool bias_correction, torch::Tensor &params,
-                          torch::Tensor &grads, torch::Tensor &exp_avg,
-                          torch::Tensor &exp_avg_sq, float loss_scale) {
+                          bool bias_correction, torch::Tensor& params,
+                          torch::Tensor& grads, torch::Tensor& exp_avg,
+                          torch::Tensor& exp_avg_sq, float loss_scale) {
   auto params_c = params.contiguous();
   auto grads_c = grads.contiguous();
   auto exp_avg_c = exp_avg.contiguous();
   auto exp_avg_sq_c = exp_avg_sq.contiguous();
 
-  float *params_ptr = (float *)params_c.data_ptr();
-  float *grads_ptr = (float *)grads_c.data_ptr();
-  float *exp_avg_ptr = (float *)exp_avg_c.data_ptr();
-  float *exp_avg_sq_ptr = (float *)exp_avg_sq_c.data_ptr();
+  float* params_ptr = (float*)params_c.data_ptr();
+  float* grads_ptr = (float*)grads_c.data_ptr();
+  float* exp_avg_ptr = (float*)exp_avg_c.data_ptr();
+  float* exp_avg_sq_ptr = (float*)exp_avg_sq_c.data_ptr();
 
   this->IncrementStep(step, beta1, beta2);
   this->update_state(lr, epsilon, weight_decay, bias_correction);

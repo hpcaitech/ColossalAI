@@ -448,7 +448,7 @@ class BloomInferenceForwards:
         fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
 
         # 3 x [batch_size, seq_length, num_heads, head_dim]
-        (query_layer, key_layer, value_layer) = self._split_heads(fused_qkv)
+        query_layer, key_layer, value_layer = self._split_heads(fused_qkv)
         batch_size, q_length, H, D_HEAD = query_layer.shape
         k = key_layer.reshape(-1, H, D_HEAD)  # batch_size * q_length, H, D_HEAD, q_lenth == 1
         v = value_layer.reshape(-1, H, D_HEAD)  # batch_size * q_length, H, D_HEAD, q_lenth == 1
