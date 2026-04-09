@@ -55,7 +55,7 @@ Build your AI agents, chatbots, and RAG applications with HPC-AI Model APIs!
 [**Get Started Now & Claim Your $4 Free Credits →**](https://www.hpc-ai.com/account/signup?redirectUrl=/models-console/models&invitation_code=HPCAI-MAPI&utm_source=google&utm_medium=social&utm_id=newlaunch)
 
 <div align="center">
-   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
+   <a href="https://hpc-ai.com/model-apis?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
    <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/model%20APIs.png" width="850" />
    </a>
 </div>
