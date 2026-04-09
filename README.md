@@ -52,7 +52,7 @@ Build your AI agents, chatbots, and RAG applications with HPC-AI Model APIs!
 
 * **Unbeatable Pricing**: Stop overpaying for API endpoints. Get premier inference speed at up to 50% cheaper than OpenRouter.
 
-[**Get Started Now & Claim Your $4 Free Credits →**]([https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai)
+[**Get Started Now & Claim Your $4 Free Credits →**](https://www.hpc-ai.com/account/signup?redirectUrl=/models-console/models&invitation_code=HPCAI-MAPI&utm_source=google&utm_medium=social&utm_id=newlaunch)
 
 <div align="center">
    <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
