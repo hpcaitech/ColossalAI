@@ -42,6 +42,24 @@ Train your models and scale your AI workload in one click!
    </a>
 </div>
 
+## Instant Access Top Open Models at Half the Cost
+
+Skip the hassle. Access powerful, long-context LLMs seamlessly through [**HPC-AI Model APIs**](https://hpc-ai.com/model-apis?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai).
+
+Build your AI agents, chatbots, and RAG applications with HPC-AI Model APIs!
+
+* **Latest & Greatest Models**: Experience state-of-the-art performance with Kimi 2.5, MiniMax 2.5, and GLM 5.1. Perfect for massive 2M+ context windows and complex coding tasks.
+
+* **Unbeatable Pricing**: Stop overpaying for API endpoints. Get premier inference speed at up to 50% cheaper than OpenRouter.
+
+[**Get Started Now & Claim Your $4 Free Credits →**]([https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai)
+
+<div align="center">
+   <a href="https://hpc-ai.com/?utm_source=github&utm_medium=social&utm_campaign=promotion-colossalai">
+   <img src="https://github.com/hpcaitech/public_assets/blob/main/colossalai/img/model%20APIs.png" width="850" />
+   </a>
+</div>
+
 ### Colossal-AI Benchmark
 
 To see how these performance gains translate to real-world applications, we conducted a large language model training benchmark using Colossal-AI on Llama-like models. The tests were run on both 8-card and 16-card configurations for 7B and 70B models, respectively.
