@@ -797,7 +797,7 @@ class _LinearFp8(torch.autograd.Function):
         ctx.w_fp8_t = w_fp8.t()
         ctx.inv_scale_x = inv_scale_x
         ctx.inv_scale_w = inv_scale_w
-        
+
         # Dequantize and compute matrix multiplication (compatible with TorchDynamo)
         x_deq = x_fp8.to(ctx.out_dtype) * inv_scale_x
         w_t_deq = ctx.w_fp8_t.to(ctx.out_dtype) * inv_scale_w
