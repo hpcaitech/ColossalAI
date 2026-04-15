@@ -36,7 +36,7 @@ class MultiTensorApply(object):
         # Move tensors to GPU if not already on GPU
         for i, tensor_list in enumerate(tensor_lists):
             for j, tensor in enumerate(tensor_list):
-                if tensor.device.type == 'cpu':
-                    tensor_lists[i][j] = tensor.to('cuda')
+                if tensor.device.type == "cpu":
+                    tensor_lists[i][j] = tensor.to("cuda")
 
         return op(self.chunk_size, noop_flag_buffer, tensor_lists, *args)
