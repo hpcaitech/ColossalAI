@@ -4,6 +4,7 @@
 class MultiTensorApply(object):
     """
     Apply an operation to a list of tensors efficiently.
+    Move tensors to CUDA if they are on CPU.
 
     Args:
         chunk_size (int): Size of a chunk.
@@ -31,5 +32,11 @@ class MultiTensorApply(object):
 
     def __call__(self, op, noop_flag_buffer, tensor_lists, *args):
         self.check_avail()
+
+        # Move tensors to GPU if not already on GPU
+        for i, tensor_list in enumerate(tensor_lists):
+            for j, tensor in enumerate(tensor_list):
+                if tensor.device.type == "cpu":
+                    tensor_lists[i][j] = tensor.to("cuda")
 
         return op(self.chunk_size, noop_flag_buffer, tensor_lists, *args)
