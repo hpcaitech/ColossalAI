@@ -40,4 +40,3 @@ class MultiTensorApply(object):
                     tensor_lists[i][j] = tensor.to("cuda")
 
         return op(self.chunk_size, noop_flag_buffer, tensor_lists, *args)
-
