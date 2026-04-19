@@ -149,6 +149,11 @@ class ColoTracer(Tracer):
 
         return proxy
 
+    def getattr(self, attr, attr_val, parameter_proxy_cache):
+        if getattr(self, "_disable_module_getattr", False):
+            return attr_val
+        return super().getattr(attr, attr_val, parameter_proxy_cache)
+
     def _module_getattr(self, attr, attr_val, parameter_proxy_cache):
         if getattr(self, "_disable_module_getattr", False):
             return attr_val
