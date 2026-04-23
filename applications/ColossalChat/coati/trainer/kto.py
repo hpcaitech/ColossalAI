@@ -273,11 +273,11 @@ class KTOTrainer(SLTrainer):
         self.model.eval()
         self.accumulative_meter.reset()
         step_bar = trange(
-            len(self.train_dataloader) // self.accumulation_steps,
+            len(self.eval_dataloader) // self.accumulation_steps,
             desc=f"Epoch {epoch + 1}/{self.max_epochs}",
             disable=not is_rank_0(),
         )
-        for i, batch in enumerate(self.train_dataloader):
+        for i, batch in enumerate(self.eval_dataloader):
             batch = to_device(batch, self.device)
             (input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask) = (
                 batch["input_ids"],
