@@ -21,7 +21,7 @@ Author: [Baizhou Zhang](https://github.com/Fridge003), [Bin Jia](https://github.
 ## Introduction
 
 When training large transformer models such as LLaMa-2 70B or OPT 175B, model parallelism methods that divide a huge model into smaller shards, including tensor parallelism or pipeline parallelism, are essential so as to meet the limitation of GPU memory.
-However, manually cutting model and rewriting its forward/backword logic could be difficult for users who are not familiar with distributed training.
+However, manually cutting model and rewriting its forward/backward logic could be difficult for users who are not familiar with distributed training.
 Meanwhile, the Huggingface transformers library has gradually become users' first choice of model source, and most mainstream large models have been open-sourced in Huggingface transformers model library.
 
 Out of this motivation, the ColossalAI team develops **Shardformer**, a feature that automatically does preparation of model parallelism (tensor parallelism/pipeline parallelism) for popular transformer models in HuggingFace.
