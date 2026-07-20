@@ -6,9 +6,12 @@ class CustomProfiler:
     def __init__(self, name, disabled=True):
         self.disabled = disabled
         if not disabled:
-            self.name = name
+            safe_name = os.path.basename(name)
+            if not safe_name or os.sep in safe_name or (os.altsep and os.altsep in safe_name):
+                raise ValueError(f"Invalid profiler name: {name!r}")
+            self.name = safe_name
             self.pid = os.getpid()
-            self.file = open(f"{name}.prof", "w")
+            self.file = open(os.path.join(".", self.name + ".prof"), "w")
 
     def _log(self, message):
         if self.disabled:
