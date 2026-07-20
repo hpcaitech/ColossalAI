@@ -59,7 +59,7 @@ def fused_rotary_emb(
         + dim_range0[None, None, :] * head_dim_stride
     )
     off_k1 = (
-        idx * q_token_stride
+        idx * k_token_stride
         + cur_head_range[None, :, None] * k_head_stride
         + dim_range1[None, None, :] * head_dim_stride
     )
@@ -88,10 +88,12 @@ def fused_rotary_emb(
         other=0.0,
     )
 
+    # Standard rotary: [x0, x1] -> [x0*cos - x1*sin, x0*sin + x1*cos]
+    # Previous code cross-wired Q/K for out_q1 and out_k0 (see #6428).
     out_q0 = q_0 * cos - q_1 * sin
-    out_q1 = k_0 * sin + k_1 * cos
+    out_q1 = q_0 * sin + q_1 * cos
 
-    out_k0 = q_0 * cos - q_1 * sin
+    out_k0 = k_0 * cos - k_1 * sin
     out_k1 = k_0 * sin + k_1 * cos
     # concat
     tl.store(
