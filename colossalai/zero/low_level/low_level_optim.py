@@ -208,6 +208,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             master_param_current_rank = self._create_master_param_current_rank(group_params)
             self._master_param_groups_of_current_rank[group_id] = master_param_current_rank
 
+            # Some optimizers, such as Adagrad, eagerly initialize per-parameter
+            # state in their constructor.  Move that state from the working
+            # parameters to the newly-created master shards before replacing the
+            # optimizer parameter group.
+            for working_param, master_param in zip(group_params, master_param_current_rank):
+                self._partition_initialized_state(working_param, master_param)
+
             # need to replace the params in the `params` field in the optimizer
             # so that when the optimizer calls step(), it only updates the tensors
             # managed by this data parallel rank
@@ -297,6 +304,35 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 self.link_master_and_working_param(splited_param_current_rank, param)
 
         return params_current_rank
+
+    def _partition_initialized_state(self, working_param: Tensor, master_param: Tensor) -> None:
+        """Move eagerly initialized optimizer state to the local master shard."""
+        if working_param not in self.optim.state:
+            return
+
+        working_state = self.optim.state.pop(working_param)
+        master_state = {}
+        bucket_store = self.pid_to_bucket_store[id(working_param)]
+        padding_size = self.get_param_padding_size(working_param)
+
+        for key, value in working_state.items():
+            if isinstance(value, Tensor) and key != "step" and value.numel() == working_param.numel():
+                flat_value = value.detach().flatten()
+                if padding_size > 0:
+                    flat_value = torch.nn.functional.pad(flat_value, [0, padding_size])
+                state_shards = flat_value.split(flat_value.numel() // bucket_store.world_size)
+                state_shard = state_shards[bucket_store.local_rank].clone()
+                if torch.is_floating_point(state_shard):
+                    state_shard = state_shard.to(dtype=master_param.dtype)
+                master_state[key] = state_shard.to(master_param.device)
+            elif isinstance(value, Tensor):
+                # Scalar state (for example Adagrad's step counter) has its own
+                # device requirements, so preserve the original device.
+                master_state[key] = value.detach().clone()
+            else:
+                master_state[key] = copy.deepcopy(value)
+
+        self.optim.state[master_param] = master_state
 
     ###########################
     # Backward Reduction Hook #
