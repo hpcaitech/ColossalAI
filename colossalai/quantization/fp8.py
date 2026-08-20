@@ -39,7 +39,8 @@ def process_group_is_intranode(pg):
     local_world_size = None
     for var in ["LOCAL_WORLD_SIZE", "OMPI_COMM_WORLD_LOCAL_SIZE", "SLURM_TASKS_PER_NODE"]:
         if var in os.environ:
-            local_world_size = int(os.environ["LOCAL_WORLD_SIZE"])
+            local_world_size = int(os.environ[var])
+            break
     if local_world_size is None:
         local_world_size = torch.cuda.device_count()
 
