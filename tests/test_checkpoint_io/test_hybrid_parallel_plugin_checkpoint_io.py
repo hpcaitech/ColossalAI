@@ -48,9 +48,7 @@ else:
 def exam_state_dict(
     shard: bool, model_name: str, size_per_shard: int, test_config: dict, use_async: bool, low_cpu_mem_mode: bool
 ):
-    (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
-        iter(model_zoo.get_sub_registry(model_name).values())
-    )
+    model_fn, data_gen_fn, output_transform_fn, loss_fn, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = loss_fn
     plugin = HybridParallelPlugin(**test_config)
     booster = Booster(plugin=plugin)

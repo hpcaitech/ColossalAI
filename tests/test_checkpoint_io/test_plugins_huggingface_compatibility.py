@@ -21,9 +21,7 @@ from tests.kit.model_zoo import model_zoo
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("plugin_type", ["ddp", "zero", "gemini"])
 def exam_from_pretrained(plugin_type: str, model_name: str, shard=True, size_per_shard=32):
-    (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) = next(
-        iter(model_zoo.get_sub_registry(model_name).values())
-    )
+    model_fn, data_gen_fn, output_transform_fn, loss_fn, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = loss_fn
 
     if plugin_type == "ddp":

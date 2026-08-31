@@ -22,7 +22,7 @@ from tests.kit.model_zoo import model_zoo
 @parameterize("shard", [False, True])
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 def exam_torch_load_from_gemini(shard: bool, model_name: str):
-    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    model_fn, data_gen_fn, output_transform_fn, _, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     plugin = GeminiPlugin(precision="fp16", initial_scale=(2**14))
     booster = Booster(plugin=plugin)
@@ -88,7 +88,7 @@ def exam_torch_load_from_gemini(shard: bool, model_name: str):
 @parameterize("shard", [False, True])
 @parameterize("model_name", ["transformers_gpt"])
 def exam_gemini_load_from_torch(shard: bool, model_name: str):
-    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    model_fn, data_gen_fn, output_transform_fn, _, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     plugin = TorchDDPPlugin()
     booster = Booster(plugin=plugin)

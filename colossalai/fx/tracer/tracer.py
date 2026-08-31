@@ -4,6 +4,7 @@ tracer.py:
     Implemented a tracer which supports control flow and user-defined meta arguments.
     The implementation is partly inspired HuggingFace's fx tracer
 """
+
 import enum
 import functools
 import inspect
