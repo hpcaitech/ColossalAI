@@ -1,7 +1,7 @@
 #include "cpu_adam_arm.h"
 
-void AdamOptimizer::Step_1(void *_params, void *grads, void *_exp_avg,
-                           void *_exp_avg_sq, size_t _param_size,
+void AdamOptimizer::Step_1(void* _params, void* grads, void* _exp_avg,
+                           void* _exp_avg_sq, size_t _param_size,
                            at::ScalarType param_dtype,
                            at::ScalarType grad_dtype,
                            at::ScalarType exp_avg_dtype,
@@ -106,8 +106,8 @@ void AdamOptimizer::Step_1(void *_params, void *grads, void *_exp_avg,
   }
 }
 
-void AdamOptimizer::Step_4(void *_params, void *grads, void *_exp_avg,
-                           void *_exp_avg_sq, size_t _param_size,
+void AdamOptimizer::Step_4(void* _params, void* grads, void* _exp_avg,
+                           void* _exp_avg_sq, size_t _param_size,
                            at::ScalarType param_dtype,
                            at::ScalarType grad_dtype,
                            at::ScalarType exp_avg_dtype,
@@ -192,8 +192,8 @@ void AdamOptimizer::Step_4(void *_params, void *grads, void *_exp_avg,
   }
 }
 
-void AdamOptimizer::Step_8(void *_params, void *grads, void *_exp_avg,
-                           void *_exp_avg_sq, size_t _param_size,
+void AdamOptimizer::Step_8(void* _params, void* grads, void* _exp_avg,
+                           void* _exp_avg_sq, size_t _param_size,
                            at::ScalarType param_dtype,
                            at::ScalarType grad_dtype,
                            at::ScalarType exp_avg_dtype,
@@ -279,9 +279,9 @@ void AdamOptimizer::Step_8(void *_params, void *grads, void *_exp_avg,
 
 void AdamOptimizer::step(size_t step, float lr, float beta1, float beta2,
                          float epsilon, float weight_decay,
-                         bool bias_correction, torch::Tensor &params,
-                         torch::Tensor &grads, torch::Tensor &exp_avg,
-                         torch::Tensor &exp_avg_sq, float loss_scale) {
+                         bool bias_correction, torch::Tensor& params,
+                         torch::Tensor& grads, torch::Tensor& exp_avg,
+                         torch::Tensor& exp_avg_sq, float loss_scale) {
   auto params_c = params.contiguous();
   auto grads_c = grads.contiguous();
   auto exp_avg_c = exp_avg.contiguous();
