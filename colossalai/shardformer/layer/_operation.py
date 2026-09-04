@@ -993,18 +993,33 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, dim, process_group, grad_scale=None, fp8_communication=False):
         ctx.process_group = process_group
-        ctx.dim = dim
+        # Keep the unpadded extent so the gradient can be trimmed after the
+        # equal-sized collective.  Sequence-parallel inputs are not always
+        # divisible by the group size (for example, a final packed batch).
+        # Normalising the dimension here also makes ``narrow`` work with
+        # negative dimensions in the backward pass.
+        ctx.dim = dim if dim >= 0 else input_.dim() + dim
+        ctx.input_dim_size = input_.size(ctx.dim)
         ctx.grad_scale = grad_scale
         ctx.fp8_communication = fp8_communication
-        return _split(input_, dim, process_group)
+        return _split(input_, ctx.dim, process_group, pad_to_world_size=True)
 
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.grad_scale is not None:
             grad_output = grad_output * ctx.grad_scale
 
+        grad_input = _gather(grad_output, ctx.dim, ctx.process_group, ctx.fp8_communication, fp8_format="e5m2")
+        # The collective operates on the padded extent, but the input to this
+        # autograd function did not contain those synthetic tokens.  Trim
+        # before returning so padding can never contribute to a valid input
+        # gradient (even when a downstream kernel produced a non-zero padded
+        # gradient).
+        if grad_input.size(ctx.dim) != ctx.input_dim_size:
+            grad_input = grad_input.narrow(ctx.dim, 0, ctx.input_dim_size).contiguous()
+
         return (
-            _gather(grad_output, ctx.dim, ctx.process_group, ctx.fp8_communication, fp8_format="e5m2"),
+            grad_input,
             None,
             None,
             None,
@@ -1065,18 +1080,50 @@ class _GatherForwardSplitBackward(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input_, dim, process_group, grad_scale=None, fp8_communication=False):
+    def forward(ctx, input_, dim, process_group, grad_scale=None, fp8_communication=False, output_dim_size=None):
         ctx.process_group = process_group
         ctx.dim = dim
         ctx.grad_scale = grad_scale
+        ctx.output_dim_size = output_dim_size
+        ctx.input_dim_size = input_.size(dim)
 
-        return _gather(input_, dim, process_group, fp8_communication=fp8_communication, fp8_format="e4m3")
+        output = _gather(input_, dim, process_group, fp8_communication=fp8_communication, fp8_format="e4m3")
+        if output_dim_size is not None:
+            if output_dim_size < 0:
+                output_dim_size += output.size(dim)
+            assert output_dim_size <= output.size(dim), (
+                f"The requested output extent ({output_dim_size}) cannot exceed the gathered extent "
+                f"({output.size(dim)})"
+            )
+            if output_dim_size != output.size(dim):
+                output = output.narrow(dim, 0, output_dim_size).contiguous()
+        return output
 
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.grad_scale is not None:
             grad_output = grad_output * ctx.grad_scale
-        return _split(grad_output, ctx.dim, ctx.process_group), None, None, None, None
+
+        # A trimmed forward output may have an extent which is not divisible by
+        # the process-group size.  Restore the collective extent before
+        # splitting the gradient; the synthetic tail has no corresponding
+        # source value and is therefore discarded by the input-side trim.
+        if ctx.output_dim_size is not None:
+            padded_dim_size = ctx.input_dim_size * dist.get_world_size(ctx.process_group)
+            if grad_output.size(ctx.dim) != padded_dim_size:
+                pad_shape = list(grad_output.shape)
+                pad_shape[ctx.dim] = padded_dim_size - grad_output.size(ctx.dim)
+                grad_output = torch.cat((grad_output, grad_output.new_zeros(pad_shape)), dim=ctx.dim)
+            return (
+                _split(grad_output, ctx.dim, ctx.process_group, pad_to_world_size=True),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+
+        return _split(grad_output, ctx.dim, ctx.process_group), None, None, None, None, None
 
 
 class _AllToAll(torch.autograd.Function):
@@ -1188,7 +1235,62 @@ def _reduce(input_, process_group, fp8_communication=False, fp8_format="e5m2"):
         return input_
 
 
-def _split(input_, dim=-1, process_group=None):
+def _pad_sequence_tensor(tensor, target_length, dim, value=0):
+    """Pad a tensor along one sequence dimension without changing its dtype."""
+    if tensor is None or tensor.size(dim) >= target_length:
+        return tensor
+
+    pad_shape = list(tensor.shape)
+    pad_shape[dim] = target_length - tensor.size(dim)
+    padding = tensor.new_zeros(pad_shape) if value == 0 else tensor.new_full(pad_shape, value)
+    return torch.cat((tensor, padding), dim=dim)
+
+
+def pad_sequence_parallel_inputs(hidden_states, attention_mask, position_ids, cache_position, target_length):
+    """Align sequence metadata with a padded sequence-parallel hidden state.
+
+    Equal-sized communication buffers are needed by sequence-parallel
+    collectives.  This helper pads the hidden state and its positional/mask
+    inputs together; callers can retain the pre-padding length to trim outputs.
+    """
+    hidden_states = _pad_sequence_tensor(hidden_states, target_length, dim=1)
+
+    if attention_mask is not None:
+        if attention_mask.dim() <= 2:
+            attention_mask = _pad_sequence_tensor(attention_mask, target_length, dim=-1)
+        else:
+            mask_pad_value = torch.finfo(attention_mask.dtype).min if attention_mask.is_floating_point() else 0
+            attention_mask = _pad_sequence_tensor(attention_mask, target_length, dim=-1, value=mask_pad_value)
+            attention_mask = _pad_sequence_tensor(attention_mask, target_length, dim=-2, value=mask_pad_value)
+
+    if position_ids is not None:
+        position_ids = _pad_sequence_tensor(position_ids, target_length, dim=-1)
+
+    if cache_position is not None:
+        old_length = cache_position.size(-1)
+        if old_length < target_length:
+            if old_length == 0:
+                next_position = torch.arange(target_length, device=cache_position.device, dtype=cache_position.dtype)
+            else:
+                next_position = cache_position[..., -1:] + torch.arange(
+                    1,
+                    target_length - old_length + 1,
+                    device=cache_position.device,
+                    dtype=cache_position.dtype,
+                )
+            cache_position = torch.cat((cache_position, next_position), dim=-1)
+
+    return hidden_states, attention_mask, position_ids, cache_position
+
+
+def _split(input_, dim=-1, process_group=None, pad_to_world_size=False):
+    """Return the rank-local chunk, optionally padding for an even split.
+
+    Padding is opt-in because callers other than the sequence-parallel
+    autograd operation rely on the existing divisibility check.  When enabled,
+    zeros are appended only to the collective buffer; the corresponding
+    autograd wrapper trims the gathered gradient back to the input extent.
+    """
     # skip if only one rank involved
     world_size = dist.get_world_size(process_group)
     if world_size == 1:
@@ -1196,10 +1298,18 @@ def _split(input_, dim=-1, process_group=None):
 
     # Split along last dimension.
     dim_size = input_.size(dim)
-    assert dim_size % world_size == 0, (
-        f"The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), "
-        f"cannot split tensor evenly"
-    )
+    if dim_size % world_size != 0:
+        if not pad_to_world_size:
+            raise AssertionError(
+                f"The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), "
+                f"cannot split tensor evenly"
+            )
+
+        padded_dim_size = ((dim_size + world_size - 1) // world_size) * world_size
+        pad_shape = list(input_.shape)
+        pad_shape[dim] = padded_dim_size - dim_size
+        input_ = torch.cat((input_, input_.new_zeros(pad_shape)), dim=dim)
+        dim_size = padded_dim_size
 
     tensor_list = torch.split(input_, dim_size // world_size, dim=dim)
     rank = dist.get_rank(process_group)
@@ -1355,8 +1465,10 @@ def matmul_gather_forward_reducescatter_backward(
     )
 
 
-def gather_forward_split_backward(input_, dim, process_group, grad_scale=None, fp8_communication=False):
-    return _GatherForwardSplitBackward.apply(input_, dim, process_group, grad_scale, fp8_communication)
+def gather_forward_split_backward(
+    input_, dim, process_group, grad_scale=None, fp8_communication=False, output_dim_size=None
+):
+    return _GatherForwardSplitBackward.apply(input_, dim, process_group, grad_scale, fp8_communication, output_dim_size)
 
 
 def split_forward_gather_backward(input_, dim, process_group, grad_scale=None, fp8_communication=False):
@@ -1375,7 +1487,7 @@ def all_to_all_comm(input_, process_group=None, scatter_dim=2, gather_dim=1, fp8
     return _AllToAll.apply(input_, process_group, scatter_dim, gather_dim, fp8_communication)
 
 
-def gather_sp_output(hidden_states, shard_config, sp_dim=1):
+def gather_sp_output(hidden_states, shard_config, sp_dim=1, original_dim_size=None):
     """
     Gather the output of the last layer for cross entropy computation
     """
@@ -1388,6 +1500,11 @@ def gather_sp_output(hidden_states, shard_config, sp_dim=1):
     # Rescale grad (HybridParallelPlugin applies ZeRO grad averaging on the DP * SP group)
     scale = None if is_share_sp_tp(sp_mode) else dist.get_world_size(sp_group)
     hidden_states = gather_forward_split_backward(
-        hidden_states, sp_dim, sp_group, grad_scale=scale, fp8_communication=fp8_comm
+        hidden_states,
+        sp_dim,
+        sp_group,
+        grad_scale=scale,
+        fp8_communication=fp8_comm,
+        output_dim_size=original_dim_size,
     )
     return hidden_states
