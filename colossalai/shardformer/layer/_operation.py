@@ -1270,9 +1270,7 @@ def pad_sequence_parallel_inputs(hidden_states, attention_mask, position_ids, ca
         old_length = cache_position.size(-1)
         if old_length < target_length:
             if old_length == 0:
-                next_position = torch.arange(
-                    target_length, device=cache_position.device, dtype=cache_position.dtype
-                )
+                next_position = torch.arange(target_length, device=cache_position.device, dtype=cache_position.dtype)
             else:
                 next_position = cache_position[..., -1:] + torch.arange(
                     1,
@@ -1470,9 +1468,7 @@ def matmul_gather_forward_reducescatter_backward(
 def gather_forward_split_backward(
     input_, dim, process_group, grad_scale=None, fp8_communication=False, output_dim_size=None
 ):
-    return _GatherForwardSplitBackward.apply(
-        input_, dim, process_group, grad_scale, fp8_communication, output_dim_size
-    )
+    return _GatherForwardSplitBackward.apply(input_, dim, process_group, grad_scale, fp8_communication, output_dim_size)
 
 
 def split_forward_gather_backward(input_, dim, process_group, grad_scale=None, fp8_communication=False):

@@ -9,25 +9,18 @@ from colossalai.shardformer.layer._operation import (
     split_forward_gather_backward,
 )
 from colossalai.shardformer.layer.loss import dist_cross_entropy
-from colossalai.shardformer.modeling.llama import (
-    LlamaPipelineForwards,
-    get_llama_flash_attention_forward,
-)
+from colossalai.shardformer.modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def _check_uneven_sequence_split(rank, world_size, port):
-    dist.init_process_group(
-        "gloo", rank=rank, world_size=world_size, init_method=f"tcp://127.0.0.1:{port}"
-    )
+    dist.init_process_group("gloo", rank=rank, world_size=world_size, init_method=f"tcp://127.0.0.1:{port}")
     try:
         # Five tokens cannot be evenly split over two sequence-parallel ranks.
         input_ = torch.arange(2 * 5 * 3, dtype=torch.float32).reshape(2, 5, 3)
         input_.requires_grad_()
 
-        local = split_forward_gather_backward(
-            input_, dim=1, process_group=dist.group.WORLD
-        )
+        local = split_forward_gather_backward(input_, dim=1, process_group=dist.group.WORLD)
         assert local.shape == (2, 3, 3)
 
         gathered = [torch.empty_like(local) for _ in range(world_size)]
@@ -53,10 +46,8 @@ def _check_uneven_sequence_split(rank, world_size, port):
         attention_mask = torch.ones(2, 5, dtype=torch.long)
         position_ids = torch.arange(5, dtype=torch.long).unsqueeze(0)
         cache_position = torch.arange(5, dtype=torch.long)
-        hidden, attention_mask, position_ids, cache_position = (
-            pad_sequence_parallel_inputs(
-                hidden, attention_mask, position_ids, cache_position, target_length=6
-            )
+        hidden, attention_mask, position_ids, cache_position = pad_sequence_parallel_inputs(
+            hidden, attention_mask, position_ids, cache_position, target_length=6
         )
         hidden.retain_grad()
         assert hidden.shape == (2, 6, 3)
@@ -65,9 +56,7 @@ def _check_uneven_sequence_split(rank, world_size, port):
         assert position_ids.shape == (1, 6)
         assert cache_position.tolist() == [0, 1, 2, 3, 4, 5]
 
-        local_hidden = split_forward_gather_backward(
-            hidden, dim=1, process_group=dist.group.WORLD
-        )
+        local_hidden = split_forward_gather_backward(hidden, dim=1, process_group=dist.group.WORLD)
         logical_hidden = gather_forward_split_backward(
             local_hidden, dim=1, process_group=dist.group.WORLD, output_dim_size=5
         )
@@ -81,14 +70,9 @@ def _check_uneven_sequence_split(rank, world_size, port):
         # tail while the reduced loss still match the unsharded reference.
         vocab_size = 7
         global_logits = (
-            torch.arange(2 * 5 * vocab_size, dtype=torch.float32).reshape(
-                2, 5, vocab_size
-            )
-            / vocab_size
+            torch.arange(2 * 5 * vocab_size, dtype=torch.float32).reshape(2, 5, vocab_size) / vocab_size
         ).requires_grad_()
-        local_logits = split_forward_gather_backward(
-            global_logits, dim=1, process_group=dist.group.WORLD
-        )
+        local_logits = split_forward_gather_backward(global_logits, dim=1, process_group=dist.group.WORLD)
         loss_config = type("ShardConfig", (), {})()
         loss_config.sequence_parallel_process_group = dist.group.WORLD
         loss_config.sequence_parallel_size = world_size
@@ -96,9 +80,7 @@ def _check_uneven_sequence_split(rank, world_size, port):
         loss_config.parallel_output = True
         loss_config.enable_tensor_parallelism = False
         labels = torch.tensor([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]])
-        loss = dist_cross_entropy(
-            labels, local_logits, loss_config, vocab_size, global_logits.dtype
-        )
+        loss = dist_cross_entropy(labels, local_logits, loss_config, vocab_size, global_logits.dtype)
         reference = nn.functional.cross_entropy(
             global_logits.detach()[:, :-1].reshape(-1, vocab_size),
             labels[:, 1:].reshape(-1),
@@ -106,10 +88,7 @@ def _check_uneven_sequence_split(rank, world_size, port):
         )
         torch.testing.assert_close(loss, reference)
         loss.backward()
-        assert (
-            global_logits.grad is not None
-            and global_logits.grad.shape == global_logits.shape
-        )
+        assert global_logits.grad is not None and global_logits.grad.shape == global_logits.shape
         assert global_logits.grad[:, -1].abs().sum() == 0
 
         # Exercise the Llama model path: all sequence-side metadata must use
