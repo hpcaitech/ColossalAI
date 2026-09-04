@@ -24,7 +24,12 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
+from colossalai.shardformer.layer._operation import (
+    all_to_all_comm,
+    gather_sp_output,
+    pad_sequence_parallel_inputs,
+    split_forward_gather_backward,
+)
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 
@@ -97,6 +102,27 @@ class LlamaPipelineForwards:
         sp_mode = shard_config.sequence_parallelism_mode
         sp_group = shard_config.sequence_parallel_process_group
         sp_size = shard_config.sequence_parallel_size
+        logical_seq_length = seq_length
+        padded_seq_length = seq_length
+        split_input = disable_pp or stage_manager.is_first_stage()
+
+        # Sequence-parallel collectives require equal-sized buffers.  Pad the
+        # hidden state and every sequence-side argument together, so rotary
+        # embeddings and attention masks observe the same extent as the
+        # communication buffer.  The original extent is retained for trimming
+        # the gathered result and for loss alignment.
+        if split_input and sp_mode in ("all_to_all", "split_gather", "ring") and sp_size > 1:
+            padded_seq_length = ((seq_length + sp_size - 1) // sp_size) * sp_size
+            if padded_seq_length != seq_length:
+                hidden_states, attention_mask, position_ids, cache_position = pad_sequence_parallel_inputs(
+                    hidden_states,
+                    attention_mask,
+                    position_ids,
+                    cache_position,
+                    padded_seq_length,
+                )
+                seq_length = padded_seq_length
+
         # Generating full positions ids for modes that gather sequence before attn
         if stage_manager and (sp_mode != "ring_attn" and not stage_manager.is_first_stage()):
             seq_length *= sp_size
@@ -145,7 +171,6 @@ class LlamaPipelineForwards:
             )
 
         # Support SP + PP. Later stages have already received the split input.
-        split_input = disable_pp or stage_manager.is_first_stage()
         if split_input:
             # Ring Attention zigzag batch processing
             if sp_mode == "ring_attn":
@@ -229,7 +254,11 @@ class LlamaPipelineForwards:
         if disable_pp or stage_manager.is_last_stage():
             hidden_states = self.norm(hidden_states)
             if (not shard_config.parallel_output) or force_sp_gather or is_share_sp_tp(sp_mode):  # noqa
-                hidden_states = gather_sp_output(hidden_states, shard_config)
+                hidden_states = gather_sp_output(
+                    hidden_states,
+                    shard_config,
+                    original_dim_size=(logical_seq_length if padded_seq_length != logical_seq_length else None),
+                )
 
         # add hidden states from the last decoder layer
         if output_hidden_states:

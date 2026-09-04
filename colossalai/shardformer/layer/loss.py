@@ -288,7 +288,19 @@ def dist_cross_entropy(
 
     # Shift labels to predict the next token, and remove the tail logit predicting <EOS>
     is_sp = sp_size > 1 and (not is_share_sp_tp(sp_mode))
-    split_labels_here = seq_len // sp_size == logits.size(seq_dim)  # ring attn splits labels before forward
+    local_seq_len = (seq_len + sp_size - 1) // sp_size
+    split_labels_here = is_sp and local_seq_len == logits.size(seq_dim)  # ring attn splits labels before forward
+
+    # Sequence-parallel collectives use an equal-sized padded buffer.  Extend
+    # labels with ignored targets so synthetic tail logits never contribute to
+    # the loss or its gradient.
+    if split_labels_here:
+        padded_seq_len = local_seq_len * sp_size
+        if labels.size(-1) < padded_seq_len:
+            pad_shape = list(labels.shape)
+            pad_shape[-1] = padded_seq_len - labels.size(-1)
+            padding = torch.full(pad_shape, _IGNORE_IDX, dtype=labels.dtype, device=labels.device)
+            labels = torch.cat((labels, padding), dim=-1)
 
     if sp_mode == "ring_attn":
         # For Zigzag Ring Attention, labels should've been split and
@@ -296,12 +308,12 @@ def dist_cross_entropy(
         if sp_rank == 0:
             logits = logits[..., :-1, :]
             logits = torch.cat([logits, torch.full_like(logits[:, :1, :], _IGNORE_IDX)], dim=seq_dim)
-    elif is_sp:
+    elif split_labels_here:
         # Shift only once: either before splitting or in the last rank without splitting
         if split_labels_here or (sp_rank == sp_size - 1):
             labels = labels[..., 1:]
         if split_labels_here:
-            labels = labels.split(seq_len // sp_size, dim=-1)[sp_rank]
+            labels = labels.split(local_seq_len, dim=-1)[sp_rank]
 
         if sp_rank == sp_size - 1:
             logits = logits[..., :-1, :]
@@ -315,7 +327,16 @@ def dist_cross_entropy(
                 pad_shape = (labels.shape[0], 1) if is_packed else (1,)
                 padding = torch.full(pad_shape, _IGNORE_IDX, dtype=labels.dtype, device=labels.device)
                 labels = torch.cat([labels, padding], dim=seq_dim)
+    elif is_sp:
+        # A gathered sequence-parallel output may retain a synthetic tail.
+        # Trim it before applying the regular next-token shift.
+        if logits.size(seq_dim) > seq_len:
+            logits = logits.narrow(seq_dim, 0, seq_len).contiguous()
+        labels = labels[..., 1:]
+        logits = logits[..., :-1, :]
     else:
+        if logits.size(seq_dim) > seq_len:
+            logits = logits.narrow(seq_dim, 0, seq_len).contiguous()
         labels = labels[..., 1:]
         logits = logits[..., :-1, :]
     labels = labels.contiguous()
