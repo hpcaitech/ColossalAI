@@ -993,18 +993,33 @@ class _SplitForwardGatherBackward(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_, dim, process_group, grad_scale=None, fp8_communication=False):
         ctx.process_group = process_group
-        ctx.dim = dim
+        # Keep the unpadded extent so the gradient can be trimmed after the
+        # equal-sized collective.  Sequence-parallel inputs are not always
+        # divisible by the group size (for example, a final packed batch).
+        # Normalising the dimension here also makes ``narrow`` work with
+        # negative dimensions in the backward pass.
+        ctx.dim = dim if dim >= 0 else input_.dim() + dim
+        ctx.input_dim_size = input_.size(ctx.dim)
         ctx.grad_scale = grad_scale
         ctx.fp8_communication = fp8_communication
-        return _split(input_, dim, process_group)
+        return _split(input_, ctx.dim, process_group, pad_to_world_size=True)
 
     @staticmethod
     def backward(ctx, grad_output):
         if ctx.grad_scale is not None:
             grad_output = grad_output * ctx.grad_scale
 
+        grad_input = _gather(grad_output, ctx.dim, ctx.process_group, ctx.fp8_communication, fp8_format="e5m2")
+        # The collective operates on the padded extent, but the input to this
+        # autograd function did not contain those synthetic tokens.  Trim
+        # before returning so padding can never contribute to a valid input
+        # gradient (even when a downstream kernel produced a non-zero padded
+        # gradient).
+        if grad_input.size(ctx.dim) != ctx.input_dim_size:
+            grad_input = grad_input.narrow(ctx.dim, 0, ctx.input_dim_size).contiguous()
+
         return (
-            _gather(grad_output, ctx.dim, ctx.process_group, ctx.fp8_communication, fp8_format="e5m2"),
+            grad_input,
             None,
             None,
             None,
@@ -1188,7 +1203,14 @@ def _reduce(input_, process_group, fp8_communication=False, fp8_format="e5m2"):
         return input_
 
 
-def _split(input_, dim=-1, process_group=None):
+def _split(input_, dim=-1, process_group=None, pad_to_world_size=False):
+    """Return the rank-local chunk, optionally padding for an even split.
+
+    Padding is opt-in because callers other than the sequence-parallel
+    autograd operation rely on the existing divisibility check.  When enabled,
+    zeros are appended only to the collective buffer; the corresponding
+    autograd wrapper trims the gathered gradient back to the input extent.
+    """
     # skip if only one rank involved
     world_size = dist.get_world_size(process_group)
     if world_size == 1:
@@ -1196,10 +1218,18 @@ def _split(input_, dim=-1, process_group=None):
 
     # Split along last dimension.
     dim_size = input_.size(dim)
-    assert dim_size % world_size == 0, (
-        f"The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), "
-        f"cannot split tensor evenly"
-    )
+    if dim_size % world_size != 0:
+        if not pad_to_world_size:
+            raise AssertionError(
+                f"The dimension to split ({dim_size}) is not a multiple of world size ({world_size}), "
+                f"cannot split tensor evenly"
+            )
+
+        padded_dim_size = ((dim_size + world_size - 1) // world_size) * world_size
+        pad_shape = list(input_.shape)
+        pad_shape[dim] = padded_dim_size - dim_size
+        input_ = torch.cat((input_, input_.new_zeros(pad_shape)), dim=dim)
+        dim_size = padded_dim_size
 
     tensor_list = torch.split(input_, dim_size // world_size, dim=dim)
     rank = dist.get_rank(process_group)
