@@ -13,7 +13,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 def check_mix_gather_S0S1(device_mesh, rank):
     tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
-    (f, b) = (0, 1)
+    f, b = (0, 1)
     f_target_pair = (f, [0])
     b_target_pair = (b, [1])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
@@ -89,7 +89,7 @@ def check_two_all_gather_S0S1(device_mesh, rank):
 
 def check_mix_gather_S1S0(device_mesh, rank):
     tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
-    (f, b) = (0, 1)
+    f, b = (0, 1)
     f_target_pair = (f, [1])
     b_target_pair = (b, [0])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
@@ -165,7 +165,7 @@ def check_two_all_gather_S1S0(device_mesh, rank):
 
 def check_mix_gather_S01R(device_mesh, rank):
     tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
-    (f, b) = (0, 1)
+    f, b = (0, 1)
     f_target_pair = (f, [0, 1])
     b_target_pair = (b, [])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)
@@ -231,7 +231,7 @@ def check_two_all_gather_S01R(device_mesh, rank):
 def check_mix_gather_RS01(device_mesh, rank):
     tensor_to_check = torch.arange(64).reshape((8, 8)).cuda()
 
-    (f, b) = (0, 1)
+    f, b = (0, 1)
     f_target_pair = (f, [])
     b_target_pair = (b, [0, 1])
     gather_dim, logical_process_axes = mix_gather_simulator(f_target_pair, b_target_pair)

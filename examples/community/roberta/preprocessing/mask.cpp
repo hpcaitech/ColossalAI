@@ -75,15 +75,15 @@ auto get_new_segment(
   return new_segment;
 }
 
-bool startsWith(const std::string &s, const std::string &sub) {
+bool startsWith(const std::string& s, const std::string& sub) {
   return s.find(sub) == 0 ? true : false;
 }
 
 auto create_whole_masked_lm_predictions(
-    std::vector<std::string> &tokens,
-    const std::vector<std::string> &original_tokens,
-    const std::vector<std::string> &vocab_words,
-    std::map<std::string, int> &vocab, const int max_predictions_per_seq,
+    std::vector<std::string>& tokens,
+    const std::vector<std::string>& original_tokens,
+    const std::vector<std::string>& vocab_words,
+    std::map<std::string, int>& vocab, const int max_predictions_per_seq,
     const double masked_lm_prob) {
   // for (auto item : vocab) {
   //     std::cout << "key=" << std::string(py::str(item.first)) << ", "

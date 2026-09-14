@@ -56,10 +56,8 @@ def tokenize_sft(
     template.messages = []
     for idx, mess in enumerate(messages):
         if mess["from"] != template.roles[idx % 2]:
-            raise ValueError(
-                f"Message should iterate between user and assistant and starts with a \
-                             line from the user. Got the following data:\n{messages}"
-            )
+            raise ValueError(f"Message should iterate between user and assistant and starts with a \
+                             line from the user. Got the following data:\n{messages}")
         template.append_message(mess["from"], mess["content"])
 
     if len(template.messages) % 2 != 0:
@@ -245,10 +243,8 @@ def tokenize_rlhf(
 
     for idx, mess in enumerate(context):
         if mess["from"] != template.roles[idx % 2]:
-            raise ValueError(
-                f"Message should iterate between user and assistant and starts with a \
-                             line from the user. Got the following data:\n{context}"
-            )
+            raise ValueError(f"Message should iterate between user and assistant and starts with a \
+                             line from the user. Got the following data:\n{context}")
         template.append_message(mess["from"], mess["content"])
 
     if len(template.messages) % 2 != 1:
@@ -272,18 +268,14 @@ def tokenize_rlhf(
     rejected_continuation = data_point["rejected"]
     for round in range(len(chosen_continuation)):
         if chosen_continuation[round]["from"] != template.roles[(round + 1) % 2]:
-            raise ValueError(
-                f"Message should iterate between user and assistant and starts with a \
-                             line from the user. Got the following data:\n{chosen_continuation}"
-            )
+            raise ValueError(f"Message should iterate between user and assistant and starts with a \
+                             line from the user. Got the following data:\n{chosen_continuation}")
         chosen.append_message(chosen_continuation[round]["from"], chosen_continuation[round]["content"])
 
     for round in range(len(rejected_continuation)):
         if rejected_continuation[round]["from"] != template.roles[(round + 1) % 2]:
-            raise ValueError(
-                f"Message should iterate between user and assistant and starts with a \
-                             line from the user. Got the following data:\n{rejected_continuation}"
-            )
+            raise ValueError(f"Message should iterate between user and assistant and starts with a \
+                             line from the user. Got the following data:\n{rejected_continuation}")
         rejected.append_message(rejected_continuation[round]["from"], rejected_continuation[round]["content"])
 
     (
@@ -296,14 +288,14 @@ def tokenize_rlhf(
     ) = (None, None, None, None, None, None)
 
     chosen_data_packed = apply_rlhf_data_format(chosen, tokenizer)
-    (chosen_input_ids, chosen_loss_mask, chosen_label_decode) = (
+    chosen_input_ids, chosen_loss_mask, chosen_label_decode = (
         chosen_data_packed["input_ids"],
         chosen_data_packed["loss_mask"],
         chosen_data_packed["label_decode"],
     )
 
     rejected_data_packed = apply_rlhf_data_format(rejected, tokenizer)
-    (rejected_input_ids, rejected_loss_mask, rejected_label_decode) = (
+    rejected_input_ids, rejected_loss_mask, rejected_label_decode = (
         rejected_data_packed["input_ids"],
         rejected_data_packed["loss_mask"],
         rejected_data_packed["label_decode"],

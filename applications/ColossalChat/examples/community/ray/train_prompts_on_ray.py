@@ -120,7 +120,7 @@ class BasePPORole(DistributedTorchRayActor):
     def _prepare_model_with_strategy(self, has_optimizer: bool):
         if has_optimizer:
             self._init_optimizer()
-            (self._model, self._optimizer) = self._strategy.prepare((self._model, self._optimizer))
+            self._model, self._optimizer = self._strategy.prepare((self._model, self._optimizer))
         else:
             self._model = self._strategy.prepare(self._model)
 
