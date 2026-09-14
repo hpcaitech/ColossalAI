@@ -268,10 +268,8 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
-            raise RuntimeError(
-                f"Invalid index file path {index_file_path} for an optimizer. \
-                               Lacking param group file under current directory."
-            )
+            raise RuntimeError(f"Invalid index file path {index_file_path} for an optimizer. \
+                               Lacking param group file under current directory.")
         id_map = load_param_groups_into_optimizer(optimizer, param_group_path)
 
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()

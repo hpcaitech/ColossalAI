@@ -122,7 +122,7 @@ class TransformerSelfAttentionRing(nn.Module):
             "the last dimension is not a multiple of 3, " "cannot be divided into query, key and value"
         )
         partition_size = last_dim_value // 3
-        (query_layer, key_layer, value_layer) = torch.split(mixed_x_layer, partition_size, dim=last_dim)
+        query_layer, key_layer, value_layer = torch.split(mixed_x_layer, partition_size, dim=last_dim)
 
         # attention scores: [batch_size, num_heads, sub_seq_len, seq_len]
         output_size = (
