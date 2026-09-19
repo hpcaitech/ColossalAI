@@ -1,0 +1,51 @@
+name: E1 Immediate GPU on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - .github/workflows/e1-gpu-on-pr.yml
+      - .github/scripts/e1/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e1-immediate-gpu-h20-5
+  cancel-in-progress: false
+
+jobs:
+  gpu-smoke:
+    if: >-
+      github.repository == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.head.repo.full_name == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.head.ref == 'ci/e1-runner-bootstrap' &&
+      github.event.pull_request.user.login == 'richardoo-707'
+    runs-on: colossalai-e1-h20
+    timeout-minutes: 12
+    env:
+      E1_PR_RESULTS: /mnt/beegfs/ricardoo/ci/gpu-h20-5/test-results/pr-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test resource selection without using GPUs
+        run: python3 -B -m unittest discover -s .github/scripts/e1 -p test_pr_gpu.py -v
+      - name: Immediately run on two idle GPUs
+        run: python3 -B .github/scripts/e1/pr_gpu.py --output "$E1_PR_RESULTS"
+      - name: Record result
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf 'E1 immediate GPU qualification on gpu-h20-5\n\n'
+            printf 'Manual resource authorization; reservation website not used.\n\n'
+            if test -f "$E1_PR_RESULTS/result.json"; then
+              printf '```json\n'
+              cat "$E1_PR_RESULTS/result.json"
+              printf '\n```\n'
+            else
+              printf 'GPU test did not produce a result; inspect the failed step.\n'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
