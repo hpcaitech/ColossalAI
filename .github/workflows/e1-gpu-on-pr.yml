@@ -27,13 +27,31 @@ jobs:
     env:
       E1_PR_RESULTS: /mnt/beegfs/ricardoo/ci/gpu-h20-5/test-results/pr-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+      - name: Fetch E1 scripts from the exact PR merge commit
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          source_dir="$(mktemp -d "$RUNNER_TEMP/e1-source.XXXXXX")"
+          archive="$source_dir/source.tar.gz"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            --connect-timeout 10 --max-time 180 --retry 1 --retry-max-time 200 \
+            --output "$archive" \
+            "https://codeload.github.com/hpcaitech/ColossalAI/tar.gz/$GITHUB_SHA"
+          prefix="ColossalAI-$GITHUB_SHA/.github/scripts/e1"
+          tar --extract --gzip --file "$archive" --directory "$source_dir" \
+            --strip-components=1 --no-same-owner --no-same-permissions -- \
+            "$prefix/pr_gpu.py" "$prefix/test_pr_gpu.py" \
+            "$prefix/run_gpu_smoke.sh" "$prefix/gpu_smoke.py"
+          archive_sha="$(sha256sum "$archive" | cut -d ' ' -f 1)"
+          printf 'Source commit: %s\nArchive SHA256: %s\n' "$GITHUB_SHA" "$archive_sha"
+          printf 'E1_SOURCE_DIR=%s\nE1_SOURCE_ARCHIVE_SHA256=%s\n' \
+            "$source_dir" "$archive_sha" >> "$GITHUB_ENV"
       - name: Test resource selection without using GPUs
-        run: python3 -B -m unittest discover -s .github/scripts/e1 -p test_pr_gpu.py -v
+        run: python3 -B -m unittest discover -s "$E1_SOURCE_DIR/.github/scripts/e1" -p test_pr_gpu.py -v
       - name: Immediately run on two idle GPUs
-        run: python3 -B .github/scripts/e1/pr_gpu.py --output "$E1_PR_RESULTS"
+        run: python3 -B "$E1_SOURCE_DIR/.github/scripts/e1/pr_gpu.py" --output "$E1_PR_RESULTS"
       - name: Record result
         if: always()
         shell: bash

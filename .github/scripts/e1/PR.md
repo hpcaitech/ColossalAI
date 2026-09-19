@@ -14,7 +14,16 @@ reservations. Resource use is authorized manually for this development trial.
 The branch/author restrictions are rollout limits, not a sandbox for untrusted
 code; do not generalize this shared-host workflow to external contributions.
 
-After checkout, CPU-only unit tests validate the GPU selector and event guard.
+The job downloads the official GitHub source archive for the exact PR merge
+commit (`GITHUB_SHA`) over HTTPS, extracts only the four E1 test scripts into a
+fresh temporary directory, and records the archive SHA256. This avoids the
+node's failing connection to the Git HTTPS endpoint on `github.com`; the
+`codeload.github.com` endpoint is reachable. It does not use a mutable branch
+snapshot or a pre-existing developer checkout, and it does not require a PAT.
+This limited extraction is suitable for this infrastructure probe; project-wide
+tests will need a full source checkout. Downloading is bounded to four minutes.
+
+After source preparation, CPU-only unit tests validate the GPU selector and event guard.
 The selector considers memory, utilization and running compute processes,
 chooses two currently idle GPU UUIDs, and passes them to `run_gpu_smoke.sh`.
 That wrapper checks occupancy again immediately before starting the container.

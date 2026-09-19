@@ -113,6 +113,8 @@ def main():
         "pull_request": pr["number"],
         "head_sha": pr["head"]["sha"],
         "checkout_sha": os.environ.get("GITHUB_SHA"),
+        "source_method": "github_codeload_merge_commit",
+        "source_archive_sha256": os.environ.get("E1_SOURCE_ARCHIVE_SHA256"),
         "runner": os.environ.get("RUNNER_NAME"),
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
