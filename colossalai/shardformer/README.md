@@ -113,6 +113,7 @@ We will follow this roadmap to develop Shardformer:
 - [x] API Implementation
 - [x] Unit Testing
 - [ ] Policy Implementation
+- [ ] 2D, 2.5D, 3D Tensor Parallelism
 
 |    model    | tensor parallel | pipeline parallel | lazy initialization | xformer | flash attn2 | jit fused operator | fused layernorm | sequence parallel | overlap |
 |:-----------:|:---------------:|:-----------------:|:-------------------:|:-------:|:-----------:|:------------------:|:---------------:|:-----------------:|:-------:|
