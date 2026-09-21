@@ -70,19 +70,29 @@ class PrGpuTests(unittest.TestCase):
             "repository": {"full_name": "hpcaitech/ColossalAI"},
             "pull_request": {
                 "head": {"repo": {"full_name": "hpcaitech/ColossalAI"}, "ref": "ci/e1-runner-bootstrap"},
-                "base": {"ref": "main"},
+                "base": {"ref": "main", "repo": {"full_name": "hpcaitech/ColossalAI"}},
                 "user": {"login": "richardoo-707"},
             },
         }
         validate_event(event)
-        for change in ("fork", "author", "branch"):
+        for change in ("author", "branch", "base_branch"):
+            other = copy.deepcopy(event)
+            if change == "author":
+                other["pull_request"]["user"]["login"] = "another-developer"
+            elif change == "branch":
+                other["pull_request"]["head"]["ref"] = "feature/another-internal-branch"
+            else:
+                other["pull_request"]["base"]["ref"] = "release/test"
+            with self.subTest(allowed=change):
+                validate_event(other)
+        for change in ("fork", "repository", "base_repository"):
             other = copy.deepcopy(event)
             if change == "fork":
                 other["pull_request"]["head"]["repo"]["full_name"] = "other/ColossalAI"
-            elif change == "author":
-                other["pull_request"]["user"]["login"] = "someone-else"
+            elif change == "repository":
+                other["repository"]["full_name"] = "other/ColossalAI"
             else:
-                other["pull_request"]["head"]["ref"] = "other-branch"
+                other["pull_request"]["base"]["repo"]["full_name"] = "other/ColossalAI"
             with self.subTest(change=change), self.assertRaises(RuntimeError):
                 validate_event(other)
 

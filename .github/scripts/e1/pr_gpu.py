@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Immediate PR qualification using two currently idle GPUs on gpu-h20-5.
 
-Temporary rollout for one trusted internal PR branch, under manual resource
+For same-repository PRs from any internal branch, under manual resource
 authorization. This does not contact or claim a reservation from the website.
 """
 
@@ -24,11 +24,9 @@ def validate_event(event):
     if (
         event["repository"]["full_name"] != "hpcaitech/ColossalAI"
         or pr["head"]["repo"]["full_name"] != "hpcaitech/ColossalAI"
-        or pr["head"]["ref"] != "ci/e1-runner-bootstrap"
-        or pr["base"]["ref"] != "main"
-        or pr["user"]["login"] != "richardoo-707"
+        or pr["base"]["repo"]["full_name"] != "hpcaitech/ColossalAI"
     ):
-        raise RuntimeError("This qualification is restricted to the authorized internal E1 PR")
+        raise RuntimeError("GPU execution requires a same-repository ColossalAI PR")
     return pr
 
 

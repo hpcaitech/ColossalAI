@@ -1,34 +1,21 @@
-name: E1 Immediate GPU on PR
+name: ColossalAI GPU on internal PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/e1-gpu-on-pr.yml
-      - .github/scripts/e1/**
-      - colossalai/**
-      - tests/test_booster/test_accelerator.py
-      - tests/test_booster/test_plugin/test_dp_plugin_base.py
-      - tests/conftest.py
-      - pytest.ini
-      - requirements/**
-      - setup.py
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 concurrency:
-  group: e1-immediate-gpu-h20-5
+  group: e1-colossalai-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   gpu-smoke:
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
-      github.event.pull_request.head.repo.full_name == 'hpcaitech/ColossalAI' &&
-      github.event.pull_request.head.ref == 'ci/e1-runner-bootstrap' &&
-      github.event.pull_request.user.login == 'richardoo-707'
+      github.event.pull_request.head.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: colossalai-e1-h20
     timeout-minutes: 12
     env:
