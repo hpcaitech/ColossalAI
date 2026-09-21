@@ -1,9 +1,6 @@
 name: CI / Layer 1 / PR Gate
 
 on:
-  # Temporary validation trigger. Remove after the branch is accepted by GitHub.
-  push:
-    branches: [ci/three-layer-workflow-validation]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
