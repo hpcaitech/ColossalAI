@@ -1,8 +1,11 @@
 import copy
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from pr_gpu import has_gpu_pass, select_idle, validate_event
+from colossalai_suite import validate_report
+from pr_gpu import has_colossalai_pass, has_gpu_pass, select_idle, validate_event
 
 GPU_A = "GPU-00000000-0000-0000-0000-000000000001"
 GPU_B = "GPU-00000000-0000-0000-0000-000000000002"
@@ -10,6 +13,32 @@ GPU_C = "GPU-00000000-0000-0000-0000-000000000003"
 
 
 class PrGpuTests(unittest.TestCase):
+    def test_colossalai_requires_real_success_marker(self):
+        self.assertFalse(has_colossalai_pass(""))
+        self.assertFalse(has_colossalai_pass(json.dumps({"result": "E1_GPU_SMOKE_PASS", "gpu_tested": True})))
+        self.assertFalse(
+            has_colossalai_pass(json.dumps({"result": "E1_COLOSSALAI_PASS", "gpu_tested": True, "tests_passed": 0}))
+        )
+        self.assertTrue(
+            has_colossalai_pass(json.dumps({"result": "E1_COLOSSALAI_PASS", "gpu_tested": True, "tests_passed": 2}))
+        )
+
+    def test_junit_rejects_skips_failures_missing_and_extra_tests(self):
+        good = '<testcase name="test_accelerator"/><testcase name="test_dp_plugin_dataloader"/>'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "junit.xml"
+            path.write_text("<testsuite>" + good + "</testsuite>")
+            self.assertEqual(validate_report(path), 2)
+            for bad in (
+                "",
+                good + '<testcase name="unexpected"/>',
+                good.replace('name="test_accelerator"/>', 'name="test_accelerator"><skipped/></testcase>'),
+                good.replace('name="test_accelerator"/>', 'name="test_accelerator"><failure/></testcase>'),
+            ):
+                path.write_text("<testsuite>" + bad + "</testsuite>")
+                with self.assertRaises(RuntimeError):
+                    validate_report(path)
+
     def test_busy_memory_is_not_idle_even_at_zero_utilization(self):
         rows = f"0,{GPU_A},26000,0\n1,{GPU_B},4,0\n2,{GPU_C},4,0"
         self.assertEqual(select_idle(rows, ""), [(1, GPU_B), (2, GPU_C)])

@@ -93,9 +93,22 @@ def has_gpu_pass(log):
     return False
 
 
+def has_colossalai_pass(log):
+    for line in log.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict) and record.get("result") == "E1_COLOSSALAI_PASS":
+            if record.get("gpu_tested") is True and record.get("tests_passed") == 2:
+                return True
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--suite", choices=("smoke", "colossalai"), default="smoke")
     args = parser.parse_args()
     if os.name != "posix" or socket.gethostname().split(".")[0] != "gpu-h20-5":
         raise RuntimeError("This job must execute on gpu-h20-5")
@@ -106,6 +119,7 @@ def main():
     args.output.mkdir(parents=True, mode=0o700)
     result = {
         "status": "failed",
+        "suite": args.suite,
         "gpu_tested": False,
         "website_contacted": False,
         "allocation_source": "manual_authorization_idle_selection",
@@ -131,13 +145,24 @@ def main():
         result["gpu_uuids"] = [gpu for index, gpu in selected]
         print("Selected idle GPUs: " + json.dumps(selected), flush=True)
         command = ["bash", str(Path(__file__).with_name("run_gpu_smoke.sh")), "--run", *result["gpu_uuids"]]
+        if args.suite == "colossalai":
+            command = [
+                os.environ["E1_COLOSSALAI_PYTHON"],
+                "-B",
+                str(Path(__file__).with_name("colossalai_suite.py")),
+                "--output",
+                str(args.output / "colossalai"),
+                "--gpus",
+                *result["gpu_uuids"],
+            ]
         env = {key: value for key, value in os.environ.items() if not key.startswith("E1_BOOKING_")}
         with (args.output / "test.log").open("w") as log:
             child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
             code = child.wait(timeout=360)
         log_text = (args.output / "test.log").read_text()
         print(log_text, flush=True)
-        if code != 0 or not has_gpu_pass(log_text):
+        passed = has_gpu_pass(log_text) if args.suite == "smoke" else has_colossalai_pass(log_text)
+        if code != 0 or not passed:
             raise RuntimeError(f"GPU test failed (exit={code}); no successful two-GPU qualification")
         result.update(status="passed", gpu_tested=True)
     except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
