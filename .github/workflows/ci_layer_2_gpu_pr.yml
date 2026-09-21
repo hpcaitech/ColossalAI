@@ -1,6 +1,9 @@
 name: CI / Layer 2 / Trusted PR GPU
 
 on:
+  # Temporary validation trigger. Remove after the branch is accepted by GitHub.
+  push:
+    branches: [ci/three-layer-workflow-validation]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
@@ -29,6 +32,7 @@ jobs:
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
       (github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push' ||
        (github.event.pull_request.head.repo.full_name == github.repository &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)))
     uses: ./.github/workflows/ci_reusable_gpu_batches.yml
