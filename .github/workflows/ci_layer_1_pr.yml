@@ -1,0 +1,69 @@
+name: CI / Layer 1 / PR Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-layer-1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+      - name: Run repository formatting checks
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  cpu-unit:
+    name: CPU unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      FAST_MODE: "1"
+      OMP_NUM_THREADS: "2"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: |
+            setup.py
+            requirements/requirements.txt
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1
+          python -m pip install \
+            pytest numpy tqdm psutil packaging rich click fabric contexttimer ninja \
+            safetensors einops pydantic sentencepiece rpyc==6.0.0 \
+            transformers==4.51.3 peft==0.13.2
+          python -m pip install --no-deps -e .
+      - name: Run tests with CUDA unavailable
+        env:
+          COLOSSAL_RESULTS: ${{ runner.temp }}/colossalai-layer-1-results
+        run: bash .github/scripts/ci/run_colossalai_batch.sh cpu
+      - name: Upload CPU test report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-layer-1-cpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/colossalai-layer-1-results
+          if-no-files-found: warn
+          retention-days: 14

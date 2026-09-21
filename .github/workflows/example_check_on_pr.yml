@@ -46,7 +46,7 @@ jobs:
         with:
           base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
           files: |
-            op_builder/**
+            extensions/**
             colossalai/kernel/**
             setup.py
 

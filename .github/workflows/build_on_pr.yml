@@ -11,8 +11,8 @@ on:
       - ".github/workflows/build_on_pr.yml" # run command & env variables change
       - "colossalai/**" # source code change
       - "!colossalai/**.md" # ignore doc change
-      - "op_builder/**" # cuda extension change
-      - "!op_builder/**.md" # ignore doc change
+      - "extensions/**" # cuda extension change
+      - "!extensions/**.md" # ignore doc change
       - "requirements/**" # requirements change
       - "tests/**" # test change
       - "!tests/**.md" # ignore doc change
@@ -58,7 +58,7 @@ jobs:
         with:
           base_sha: ${{ steps.locate-base-sha.outputs.baseSHA }}
           files: |
-            op_builder/**
+            extensions/**
             colossalai/kernel/**
             setup.py
 
@@ -161,8 +161,6 @@ jobs:
           --ignore tests/test_auto_parallel \
           --ignore tests/test_fx \
           --ignore tests/test_autochunk \
-          --ignore tests/test_gptq \
-          --ignore tests/test_infer_ops \
           --ignore tests/test_legacy \
           --ignore tests/test_smoothquant \
           tests/

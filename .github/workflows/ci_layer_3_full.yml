@@ -1,0 +1,38 @@
+name: CI / Layer 3 / Full GPU Matrix
+
+on:
+  schedule:
+    # Sunday 00:00 Asia/Singapore (Saturday 16:00 UTC).
+    - cron: "0 16 * * 6"
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: Space-separated batches to run
+        required: true
+        default: "2 3 4a 4b 4c 4d 4e 5 6 7 8 9 10 11"
+        type: string
+      fast_mode:
+        description: Use the reduced FAST_TEST model matrix
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-layer-3-full-gpu-matrix
+  cancel-in-progress: false
+
+jobs:
+  torch-213:
+    name: Torch 2.13 / CUDA 13.0 full matrix
+    if: github.repository == 'hpcaitech/ColossalAI'
+    uses: ./.github/workflows/ci_reusable_gpu_batches.yml
+    with:
+      layer: layer-3
+      source_sha: ${{ github.sha }}
+      batches: ${{ github.event_name == 'workflow_dispatch' && inputs.batches || '2 3 4a 4b 4c 4d 4e 5 6 7 8 9 10 11' }}
+      fast_mode: ${{ github.event_name == 'workflow_dispatch' && inputs.fast_mode || false }}
+      timeout_minutes: 1440
+      artifact_retention_days: 30

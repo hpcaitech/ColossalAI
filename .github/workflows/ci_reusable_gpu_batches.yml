@@ -1,0 +1,131 @@
+name: CI / Reusable / GPU Batches
+
+on:
+  workflow_call:
+    inputs:
+      layer:
+        description: Layer identifier used in artifacts and summaries
+        required: true
+        type: string
+      source_sha:
+        description: Exact repository commit to execute
+        required: true
+        type: string
+      batches:
+        description: Space-separated GPU batch identifiers
+        required: true
+        type: string
+      fast_mode:
+        description: Use the reduced FAST_TEST model matrix
+        required: false
+        default: true
+        type: boolean
+      timeout_minutes:
+        description: Maximum duration of the complete batch set
+        required: false
+        default: 240
+        type: number
+      artifact_retention_days:
+        description: Number of days to retain test reports
+        required: false
+        default: 14
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  run-batches:
+    runs-on: colossalai-e1-h20
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    env:
+      CI_SOURCE_SHA: ${{ inputs.source_sha }}
+      COLOSSAL_VENV: ${{ vars.COLOSSAL_TORCH213_VENV || '/mnt/beegfs/ColossalAI/wangzhijian/envs/colossalai-torch213' }}
+      COLOSSAL_CUDA_HOME: ${{ vars.COLOSSAL_CUDA130_HOME || '/mnt/beegfs/ColossalAI/wangzhijian/toolchains/cuda-13.0' }}
+      COLOSSAL_EXPECT_TORCH_PREFIX: "2.13."
+      COLOSSAL_GPU_POOL: ${{ vars.COLOSSAL_GPU_POOL }}
+      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
+      REQUESTED_BATCHES: ${{ inputs.batches }}
+      REQUESTED_FAST_MODE: ${{ inputs.fast_mode }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Initialize result directory
+        shell: bash
+        run: |
+          result_dir="$RUNNER_TEMP/colossalai-${{ inputs.layer }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          printf 'CI_RESULTS_DIR=%s\n' "$result_dir" >> "$GITHUB_ENV"
+          printf 'COLOSSAL_RESULTS=%s\n' "$result_dir" >> "$GITHUB_ENV"
+
+      - name: Fetch the exact GitHub source archive
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CI_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-${{ inputs.layer }}-source.XXXXXX")"
+          archive="$source_root/source.tar.gz"
+          mkdir "$source_root/repo"
+          curl --fail --location --proto '=https' --proto-redir '=https' \
+            --connect-timeout 10 --max-time 240 --retry 1 --retry-max-time 260 \
+            --output "$archive" \
+            "https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$CI_SOURCE_SHA"
+          tar --extract --gzip --file "$archive" --directory "$source_root/repo" \
+            --strip-components=1 --no-same-owner --no-same-permissions
+          printf 'Source commit: %s\nArchive SHA256: %s\n' \
+            "$CI_SOURCE_SHA" "$(sha256sum "$archive" | cut -d ' ' -f 1)"
+          printf 'COLOSSAL_REPO=%s\n' "$source_root/repo" >> "$GITHUB_ENV"
+
+      - name: Validate the batch runner without using GPUs
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n "$COLOSSAL_REPO/.github/scripts/ci/run_colossalai_batch.sh"
+          python3 -B -m unittest discover \
+            -s "$COLOSSAL_REPO/.github/scripts/ci" -p 'test_*.py' -v
+
+      - name: Run selected GPU batches
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [[ "$REQUESTED_FAST_MODE" == "true" ]]; then
+            export FAST_MODE=1
+          else
+            export FAST_MODE=0
+          fi
+
+          status=0
+          for batch in $REQUESTED_BATCHES; do
+            printf '\n===== Starting batch %s =====\n' "$batch"
+            if ! python3 -B "$COLOSSAL_REPO/.github/scripts/ci/run_gpu_batch.py" \
+              --batch "$batch" \
+              --output "$CI_RESULTS_DIR/batch-$batch" \
+              --lock "$CI_GPU_LOCK"; then
+              status=1
+              printf 'Batch %s failed; continuing to collect the remaining results.\n' "$batch" >&2
+            fi
+          done
+          exit "$status"
+
+      - name: Upload GPU test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-${{ inputs.layer }}-gpu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CI_RESULTS_DIR }}
+          if-no-files-found: warn
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '## %s GPU batches\n\n' "$REQUESTED_LAYER"
+            printf -- '- Source SHA: `%s`\n' "$CI_SOURCE_SHA"
+            printf -- '- Runner: `%s`\n' "$RUNNER_NAME"
+            printf -- '- Runtime profile: Torch 2.13 / CUDA 13.0\n'
+            printf -- '- Batches: `%s`\n\n' "$REQUESTED_BATCHES"
+            find "$CI_RESULTS_DIR" -name result.json -print -exec cat {} \; 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          REQUESTED_LAYER: ${{ inputs.layer }}
