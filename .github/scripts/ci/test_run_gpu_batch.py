@@ -1,6 +1,6 @@
 import unittest
 
-from run_gpu_batch import parse_pool, select_idle
+from run_gpu_batch import find_idle, parse_pool, select_idle
 
 GPU_A = "GPU-00000000-0000-0000-0000-000000000001"
 GPU_B = "GPU-00000000-0000-0000-0000-000000000002"
@@ -11,6 +11,10 @@ class GpuSelectionTests(unittest.TestCase):
     def test_selects_requested_idle_devices_in_index_order(self):
         rows = f"2,{GPU_C},4,0\n0,{GPU_A},4,0\n1,{GPU_B},4,0"
         self.assertEqual(select_idle(rows, "", 2), [(0, GPU_A), (1, GPU_B)])
+
+    def test_lists_all_idle_devices(self):
+        rows = f"2,{GPU_C},4,0\n0,{GPU_A},4,0\n1,{GPU_B},257,0"
+        self.assertEqual(find_idle(rows, ""), [(0, GPU_A), (2, GPU_C)])
 
     def test_respects_authorized_pool(self):
         rows = f"0,{GPU_A},4,0\n1,{GPU_B},4,0\n2,{GPU_C},4,0"

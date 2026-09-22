@@ -44,7 +44,7 @@ def parse_pool(value):
     return {int(item) for item in items}
 
 
-def select_idle(inventory, processes, count, allowed=None):
+def find_idle(inventory, processes, allowed=None):
     busy = set()
     for line in processes.splitlines():
         value = line.strip()
@@ -72,6 +72,11 @@ def select_idle(inventory, processes, count, allowed=None):
             candidates.append((index, gpu))
 
     candidates.sort()
+    return candidates
+
+
+def select_idle(inventory, processes, count, allowed=None):
+    candidates = find_idle(inventory, processes, allowed)
     if len(candidates) < count:
         raise RuntimeError(f"Need {count} idle GPU(s), found {len(candidates)} in the authorized pool")
     return candidates[:count]

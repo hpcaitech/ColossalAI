@@ -1,0 +1,72 @@
+name: CI / GPU Idle Monitor
+
+on:
+  # Temporary branch validation trigger; removed after the first live probe.
+  push:
+    branches: [ci/three-layer-workflow-validation]
+  schedule:
+    # Run once an hour, offset from the top of the hour to reduce scheduler load.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-gpu-idle-monitor
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Check idle H20 capacity
+    if: github.repository == 'hpcaitech/ColossalAI'
+    runs-on: colossalai-e1-h20
+    timeout-minutes: 10
+    outputs:
+      idle_gpu_count: ${{ steps.capacity.outputs.idle_gpu_count }}
+      layer2_ready: ${{ steps.capacity.outputs.layer2_ready }}
+      layer3_ready: ${{ steps.capacity.outputs.layer3_ready }}
+    env:
+      COLOSSAL_GPU_POOL: ${{ vars.COLOSSAL_GPU_POOL }}
+      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Query idle GPUs
+        id: capacity
+        shell: bash
+        run: >-
+          python3 -B .github/scripts/ci/check_idle_gpus.py
+          --layer2-required 2
+          --layer3-required 8
+          --lock "$CI_GPU_LOCK"
+
+  layer2:
+    name: Run Layer 2 when at least two GPUs are idle
+    needs: probe
+    if: needs.probe.outputs.layer2_ready == 'true'
+    uses: ./.github/workflows/ci_reusable_gpu_batches.yml
+    with:
+      layer: layer-2-hourly
+      source_sha: ${{ github.sha }}
+      batches: "2 5"
+      fast_mode: true
+      timeout_minutes: 240
+      artifact_retention_days: 14
+
+  layer3:
+    name: Run Layer 3 when all eight GPUs are idle
+    needs: [probe, layer2]
+    if: >-
+      always() &&
+      needs.probe.result == 'success' &&
+      needs.probe.outputs.layer3_ready == 'true'
+    uses: ./.github/workflows/ci_reusable_gpu_batches.yml
+    with:
+      layer: layer-3-hourly
+      source_sha: ${{ github.sha }}
+      batches: "2 3 4a 4b 4c 4d 4e 5 6 7 8 9 10 11"
+      fast_mode: false
+      timeout_minutes: 1440
+      artifact_retention_days: 30

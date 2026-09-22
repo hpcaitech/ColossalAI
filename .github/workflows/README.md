@@ -21,6 +21,7 @@ also migrate required checks, notifications, and repository rules.
 | 1 | `ci_layer_1_pr.yml` | Every pull request to `main` | Formatting and genuinely CPU-only unit tests on GitHub-hosted runners. |
 | 2 | `ci_layer_2_gpu_pr.yml` | Trusted same-repository pull requests and manual dispatch | Core batches 2 and 5 on the dedicated `colossalai-e1-h20` runner. |
 | 3 | `ci_layer_3_full.yml` | Weekly schedule and manual dispatch | The complete GPU batch set, including four- and eight-GPU coverage. |
+| Monitor | `ci_gpu_idle_monitor.yml` | Hourly schedule and manual dispatch | Probes the authorized H20 pool; runs layer 2 with at least two idle GPUs and layer 3 with all eight idle GPUs. |
 | Shared | `ci_reusable_gpu_batches.yml` | Called by layers 2 and 3 | Fetches the pinned source, runs selected batches, uploads reports, and writes the run summary. |
 
 The execution flow is:
@@ -43,6 +44,11 @@ tests. GPU selection fails closed when device occupancy cannot be determined,
 and a host lock prevents two CI jobs on this runner from selecting the same
 devices. The host lock complements rather than replaces the team's external
 reservation policy.
+
+The hourly monitor is deliberately capacity-aware. It skips layer 2 unless
+both of its batches can be admitted, and skips the full layer 3 matrix unless
+all eight GPUs are idle. The normal per-batch selector checks occupancy again
+immediately before every launch, so a stale hourly probe still fails closed.
 
 ### Rollout configuration
 
