@@ -1,9 +1,6 @@
 name: CI / Layer 3 / Full GPU Matrix
 
 on:
-  # Temporary validation trigger; removed after the branch run finishes.
-  push:
-    branches: [ci/three-layer-workflow-validation]
   schedule:
     # Sunday 00:00 Asia/Singapore (Saturday 16:00 UTC).
     - cron: "0 16 * * 6"
