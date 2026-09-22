@@ -230,6 +230,13 @@ _POLICY_LIST = {
     "transformers.models.qwen3.modeling_qwen3.Qwen3ForSequenceClassification": PolicyLocation(
         file_name="qwen3", class_name="Qwen3ForSequenceClassificationPolicy"
     ),
+    # Qwen3-MoE
+    "transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeModel": PolicyLocation(
+        file_name="qwen3_moe", class_name="Qwen3MoeModelPolicy"
+    ),
+    "transformers.models.qwen3_moe.modeling_qwen3_moe.Qwen3MoeForCausalLM": PolicyLocation(
+        file_name="qwen3_moe", class_name="Qwen3MoeForCausalLMPolicy"
+    ),
     # command
     "transformers.models.cohere.modeling_cohere.CohereModel": PolicyLocation(
         file_name="command", class_name="CommandModelPolicy"
