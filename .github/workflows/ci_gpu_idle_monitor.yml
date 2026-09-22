@@ -31,13 +31,26 @@ jobs:
       CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - uses: actions/checkout@v7
+      - name: Fetch the capacity probe scripts
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          probe_root="$(mktemp -d "$RUNNER_TEMP/colossalai-gpu-probe.XXXXXX")"
+          for script in check_idle_gpus.py run_gpu_batch.py; do
+            curl --fail --location --proto '=https' --proto-redir '=https' \
+              --connect-timeout 10 --max-time 60 --retry 1 --retry-max-time 90 \
+              --output "$probe_root/$script" \
+              "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/.github/scripts/ci/$script"
+          done
+          printf 'PROBE_ROOT=%s\n' "$probe_root" >> "$GITHUB_ENV"
 
       - name: Query idle GPUs
         id: capacity
         shell: bash
         run: >-
-          python3 -B .github/scripts/ci/check_idle_gpus.py
+          python3 -B "$PROBE_ROOT/check_idle_gpus.py"
           --layer2-required 2
           --layer3-required 8
           --lock "$CI_GPU_LOCK"
