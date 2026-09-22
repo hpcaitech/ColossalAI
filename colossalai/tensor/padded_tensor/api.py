@@ -14,11 +14,13 @@ def _hijack_detach_and_clone(ptensor: torch.Tensor) -> torch.Tensor:
     ptensor._unpad_detach = ptensor.detach
     ptensor._unpad_clone = ptensor.clone
 
+    # the copies must be full padded tensors too, otherwise to_unpadded_tensor() fails on them
     def new_detach(self):
         t_ = self._unpad_detach()
         t_._padding_dim = self._padding_dim
         t_._origin_length = self._origin_length
         t_._current_length = self._current_length
+        _hijack_detach_and_clone(t_)
         return t_
 
     def new_clone(self, *args, **kwargs):
@@ -26,6 +28,7 @@ def _hijack_detach_and_clone(ptensor: torch.Tensor) -> torch.Tensor:
         t_._padding_dim = self._padding_dim
         t_._origin_length = self._origin_length
         t_._current_length = self._current_length
+        _hijack_detach_and_clone(t_)
         return t_
 
     # bind the new methods to the tensor
