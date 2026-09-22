@@ -37,6 +37,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.d_tensor import is_customized_distributed_tensor
 from colossalai.tensor.moe_tensor.api import is_moe_tensor, is_moe_tensor_ep_fused
+from colossalai.tensor.padded_tensor import is_padded_tensor, to_unpadded_tensor
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
@@ -114,6 +115,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     dist.gather(param_.contiguous(), gather_list=gathered, dst=ep_root, group=ep_group)
                     if ep_rank == 0:
                         param_ = torch.cat(gathered, dim=0)
+            if is_padded_tensor(param_):
+                param_ = to_unpadded_tensor(param_)
             param_ = maybe_pin_tensor(name, param_)
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
