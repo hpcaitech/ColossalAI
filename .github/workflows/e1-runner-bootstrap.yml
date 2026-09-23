@@ -1,0 +1,60 @@
+name: E1 Runner Bootstrap
+
+on:
+  push:
+    branches:
+      - ci/e1-runner-bootstrap
+    paths:
+      - .github/workflows/e1-runner-bootstrap.yml
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  runner-probe:
+    name: Verify runner connectivity and host access
+    runs-on: colossalai-e1-h20
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify target host and temporary workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(hostname -s)" = "gpu-h20-5"
+
+          printf 'Runner: %s\n' "$RUNNER_NAME"
+          printf 'Host: %s\n' "$(hostname -s)"
+          printf 'Commit: %s\n' "$GITHUB_SHA"
+
+          probe_file="$(mktemp "${RUNNER_TEMP}/e1-probe.XXXXXX")"
+          trap 'rm -f -- "$probe_file"' EXIT
+
+          printf 'e1-runner-ok\n' > "$probe_file"
+          test "$(cat "$probe_file")" = "e1-runner-ok"
+
+      - name: Verify Docker access
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker version --format 'Docker server: {{.Server.Version}}'
+
+      - name: Read GPU inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          nvidia-smi \
+            --query-gpu=index,name,uuid,memory.total \
+            --format=csv
+
+      - name: Write run summary
+        shell: bash
+        run: |
+          {
+            printf 'Runner: %s\n\n' "$RUNNER_NAME"
+            printf 'Host: %s\n\n' "$(hostname -s)"
+            printf 'Commit: %s\n\n' "$GITHUB_SHA"
+            printf 'Passed: host, workspace, Docker access and GPU inventory.\n\n'
+            printf 'GPU computation and two-GPU communication were not tested.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
