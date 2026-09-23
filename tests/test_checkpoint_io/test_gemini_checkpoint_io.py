@@ -3,7 +3,7 @@ import os
 import pytest
 import torch
 import torch.distributed as dist
-from transformers import LlamaForCausalLM
+from transformers import GPT2Config, GPT2LMHeadModel, LlamaForCausalLM
 from utils import shared_tempdir
 
 import colossalai
@@ -207,11 +207,37 @@ def exam_lazy_from_pretrained():
         check_state_dict_equal(state_dict, orig_state_dict, ignore_dtype=True)
 
 
+@clear_cache_before_run()
+@parameterize("shard", [True, False])
+def exam_tied_weights_state_dict(shard: bool):
+    # lm_head.weight and transformer.wte.weight are the same parameter, which is saved under both names
+    config = GPT2Config(n_layer=2, n_head=4, n_embd=64, vocab_size=512, n_positions=64)
+
+    def model_fn():
+        model = GPT2LMHeadModel(config)
+        assert model.lm_head.weight is model.transformer.wte.weight
+        return model
+
+    booster = Booster(plugin=GeminiPlugin(precision="fp16", initial_scale=(2**14)))
+    model, *_ = booster.boost(model_fn())
+    new_model, *_ = booster.boost(model_fn())
+
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        booster.save_model(model, model_ckpt_path, shard=shard)
+        dist.barrier()
+        booster.load_model(new_model, model_ckpt_path)
+        state_dict = model.state_dict(only_rank_0=False)
+        assert "lm_head.weight" in state_dict and "transformer.wte.weight" in state_dict
+        check_state_dict_equal(state_dict, new_model.state_dict(only_rank_0=False), ignore_dtype=True)
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
     exam_lazy_from_pretrained()
+    exam_tied_weights_state_dict()
 
 
 @pytest.mark.dist
