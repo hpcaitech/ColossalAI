@@ -28,29 +28,123 @@ jobs:
       CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Fetch the capacity probe scripts
-        timeout-minutes: 2
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-          probe_root="$(mktemp -d "$RUNNER_TEMP/colossalai-gpu-probe.XXXXXX")"
-          for script in check_idle_gpus.py run_gpu_batch.py; do
-            curl --fail --location --proto '=https' --proto-redir '=https' \
-              --connect-timeout 10 --max-time 60 --retry 1 --retry-max-time 90 \
-              --output "$probe_root/$script" \
-              "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/.github/scripts/ci/$script"
-          done
-          printf 'PROBE_ROOT=%s\n' "$probe_root" >> "$GITHUB_ENV"
-
+      # Keep this gate self-contained.  The H20 runners can reach the Actions
+      # service but access to github.com/raw.githubusercontent.com is
+      # intermittent, so downloading a checkout or probe script here can block
+      # the capacity check before nvidia-smi is ever called.
       - name: Query idle GPUs
         id: capacity
         shell: bash
-        run: >-
-          python3 -B "$PROBE_ROOT/check_idle_gpus.py"
-          --layer2-required 2
-          --layer3-required 8
-          --lock "$CI_GPU_LOCK"
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import fcntl
+          import json
+          import os
+          import re
+          import socket
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          GPU_UUID = re.compile(r"GPU-[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}\Z")
+
+
+          def parse_pool(value):
+              if not value:
+                  return None
+              items = value.split(",")
+              if any(not item.isdigit() for item in items) or len(items) != len(set(items)):
+                  raise RuntimeError("COLOSSAL_GPU_POOL must contain unique comma-separated GPU indices")
+              return {int(item) for item in items}
+
+
+          def query(command):
+              return subprocess.run(
+                  command,
+                  check=True,
+                  text=True,
+                  capture_output=True,
+                  timeout=15,
+              ).stdout
+
+
+          def find_idle(inventory, processes, allowed):
+              busy = set()
+              for line in processes.splitlines():
+                  value = line.strip()
+                  if value:
+                      if not GPU_UUID.fullmatch(value):
+                          raise RuntimeError("GPU process information is unknown")
+                      busy.add(value)
+
+              idle = []
+              seen = set()
+              for line in inventory.splitlines():
+                  fields = [part.strip() for part in line.split(",")]
+                  if len(fields) != 4:
+                      raise RuntimeError("Unexpected GPU inventory format")
+                  index, gpu, memory, utilization = fields
+                  if not GPU_UUID.fullmatch(gpu) or gpu in seen:
+                      raise RuntimeError("Invalid or duplicate GPU UUID")
+                  seen.add(gpu)
+                  if not all(value.isdigit() for value in (index, memory, utilization)):
+                      raise RuntimeError("GPU occupancy is unknown")
+                  index = int(index)
+                  if allowed is not None and index not in allowed:
+                      continue
+                  if gpu not in busy and int(memory) <= 256 and int(utilization) == 0:
+                      idle.append(index)
+              return sorted(idle)
+
+
+          result = {
+              "host": socket.gethostname().split(".")[0],
+              "runner": os.environ.get("RUNNER_NAME"),
+              "checked_at": datetime.now(timezone.utc).isoformat(),
+          }
+          try:
+              lock_path = Path(os.environ["CI_GPU_LOCK"])
+              lock_path.parent.mkdir(parents=True, exist_ok=True)
+              with lock_path.open("w") as lock:
+                  fcntl.flock(lock, fcntl.LOCK_EX)
+                  inventory = query([
+                      "nvidia-smi",
+                      "--query-gpu=index,uuid,memory.used,utilization.gpu",
+                      "--format=csv,noheader,nounits",
+                  ])
+                  processes = query([
+                      "nvidia-smi",
+                      "--query-compute-apps=gpu_uuid",
+                      "--format=csv,noheader",
+                  ])
+                  idle = find_idle(inventory, processes, parse_pool(os.environ.get("COLOSSAL_GPU_POOL")))
+
+              result.update({
+                  "idle_gpu_count": len(idle),
+                  "idle_gpu_indices": idle,
+                  "layer2_ready": len(idle) >= 2,
+                  "layer3_ready": len(idle) >= 8,
+              })
+              with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+                  output.write(f"idle_gpu_count={len(idle)}\n")
+                  output.write(f"layer2_ready={str(result['layer2_ready']).lower()}\n")
+                  output.write(f"layer3_ready={str(result['layer3_ready']).lower()}\n")
+              with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+                  summary.write("## Hourly GPU capacity gate\n\n")
+                  summary.write(f"- Host: `{result['host']}`\n")
+                  summary.write(f"- Runner: `{result['runner']}`\n")
+                  summary.write(f"- Idle GPU indices: `{idle}`\n")
+                  summary.write(f"- Layer 2 ready (needs 2): `{str(result['layer2_ready']).lower()}`\n")
+                  summary.write(f"- Layer 3 ready (needs 8): `{str(result['layer3_ready']).lower()}`\n")
+          except (KeyError, OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+              result["error"] = str(error)
+              print(json.dumps(result, indent=2), flush=True)
+              sys.exit(1)
+
+          print(json.dumps(result, indent=2), flush=True)
+          PY
 
   layer2:
     name: Run Layer 2 when at least two GPUs are idle
