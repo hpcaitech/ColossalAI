@@ -1,6 +1,8 @@
 import torch
 from torch.nn import init
-from transformers import AutoConfig, AutoModelForCausalLM
+
+from colossalai.shardformer.modeling.chatglm2_6b.configuration_chatglm import ChatGLMConfig
+from colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -34,27 +36,11 @@ loss_fn_for_chatglm_model = lambda x: torch.nn.functional.mse_loss(
 loss_fn = lambda x: x["loss"]
 
 
-infer_config = AutoConfig.from_pretrained(
-    "THUDM/chatglm2-6b",
-    trust_remote_code=True,
-    num_layers=2,
-    padded_vocab_size=65024,
-    hidden_size=128,
-    num_attention_heads=8,
-    multi_query_attention=True,
-    multi_query_group_num=2,
-    kv_channels=16,
-    rmsnorm=True,
-    original_rope=True,
-    use_cache=True,
-    torch_dtype=torch.float32,
-)
-
-
 def init_chatglm():
-    config = AutoConfig.from_pretrained(
-        "THUDM/chatglm2-6b",
-        trust_remote_code=True,
+    # Keep this model-zoo entry self-contained.  Importing the model zoo happens
+    # during collection for many unrelated tests, so fetching a remote config
+    # here makes the whole suite depend on Hugging Face availability.
+    config = ChatGLMConfig(
         num_layers=2,
         padded_vocab_size=65024,
         hidden_size=64,
@@ -67,7 +53,7 @@ def init_chatglm():
         multi_query_attention=False,
         torch_dtype=torch.float32,
     )
-    model = AutoModelForCausalLM.from_config(config, empty_init=False, trust_remote_code=True)
+    model = ChatGLMForConditionalGeneration(config, empty_init=False)
     for m in model.modules():
         if m.__class__.__name__ == "RMSNorm":
             init.ones_(m.weight)

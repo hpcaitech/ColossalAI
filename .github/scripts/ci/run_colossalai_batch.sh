@@ -41,6 +41,7 @@ Environment:
   COLOSSAL_RESULTS              result directory
   COLOSSAL_EXPECT_TORCH_PREFIX  required torch version prefix (optional)
   COLOSSAL_CUDA_HOME            CUDA toolkit root (optional)
+  COLOSSAL_CACHE_ROOT           local root for per-batch compiler caches (optional)
   FAST_MODE=0                   run the full model matrix
   TIMEOUT_MIN                   override the per-batch timeout
   MAXFAIL                       override pytest --maxfail (default: 10)
@@ -333,7 +334,10 @@ fi
 export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-9.0}"
 export MAX_JOBS="${MAX_JOBS:-4}"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${RUNNER_TEMP:-/tmp}/triton-cache}"
+COMPILE_CACHE_SCOPE="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${BATCH}-${BASHPID}"
+COMPILE_CACHE_ROOT="${COLOSSAL_CACHE_ROOT:-${TMPDIR:-/tmp}/colossalai-ci-cache}/${COMPILE_CACHE_SCOPE}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${COMPILE_CACHE_ROOT}/triton}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-${COMPILE_CACHE_ROOT}/torchinductor}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${RUNNER_TEMP:-/tmp}/torch-extensions}"
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export TORCH_NCCL_ASYNC_ERROR_HANDLING="${TORCH_NCCL_ASYNC_ERROR_HANDLING:-1}"
@@ -356,7 +360,7 @@ if [[ "${NEEDS_CUDA_TOOLKIT}" == "1" && ( -z "${CUDA_HOME:-}" || ! -x "${CUDA_HO
     exit 2
 fi
 
-mkdir -p "${RESULTS_ROOT}" "${TRITON_CACHE_DIR}" "${TORCH_EXTENSIONS_DIR}"
+mkdir -p "${RESULTS_ROOT}" "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}" "${TORCH_EXTENSIONS_DIR}"
 cd "${REPO}"
 
 EXPECTED_GPUS="${EXPECTED_GPUS}" COLOSSAL_EXPECT_TORCH_PREFIX="${COLOSSAL_EXPECT_TORCH_PREFIX:-}" "${PYTHON}" - <<'PY'

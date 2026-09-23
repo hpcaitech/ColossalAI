@@ -1,9 +1,10 @@
 import pytest
 import torch
 import torch.distributed as dist
-from apex import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.testing import assert_close
+
+amp = pytest.importorskip("apex.amp", reason="Apex AMP reference tests require NVIDIA Apex")
 
 import colossalai
 from colossalai.accelerator import get_accelerator
