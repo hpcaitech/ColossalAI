@@ -1,6 +1,9 @@
 name: CI / GPU Idle Monitor
 
 on:
+  # Temporary branch trigger for the live H20 validation run.
+  push:
+    branches: [ci/three-layer-workflow-validation]
   schedule:
     # Run once an hour, offset from the top of the hour to reduce scheduler load.
     - cron: "17 * * * *"
