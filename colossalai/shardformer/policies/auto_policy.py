@@ -160,6 +160,12 @@ _POLICY_LIST = {
     "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLMModelPolicy"
+    ),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
+    ),
     # Deepseek
     "transformers_modules.modeling_deepseek.DeepseekModel": PolicyLocation(
         file_name="deepseek", class_name="DeepseekModelPolicy"

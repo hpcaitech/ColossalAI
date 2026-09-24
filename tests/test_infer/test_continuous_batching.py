@@ -3,12 +3,13 @@ import random
 import numpy as np
 import pytest
 import torch
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit import get_test_tokenizer
 
 
 def setup_seed(seed):
@@ -35,7 +36,7 @@ def generate_inputs(num_sequences, min_length, max_length):
 def check_inference_engine(n_multiple, max_batch_size, max_input_len, max_output_len):
     setup_seed(20)
 
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    tokenizer = get_test_tokenizer()
     model = LlamaForCausalLM(LlamaConfig(num_hidden_layers=2)).cuda()
     model = model.eval()
 

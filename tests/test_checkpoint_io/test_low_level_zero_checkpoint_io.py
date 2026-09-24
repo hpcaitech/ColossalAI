@@ -18,8 +18,11 @@ from colossalai.testing import (
     rerun_if_address_is_in_use,
     spawn,
 )
+from colossalai.utils.safetensors import HAS_TENSORNVME
 from colossalai.zero import LowLevelZeroOptimizer
 from tests.kit.model_zoo import model_zoo
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 
 
 # stage 1 and 2 process the optimizer/mode the same way
@@ -28,7 +31,7 @@ from tests.kit.model_zoo import model_zoo
 @parameterize("stage", [2])
 @parameterize("shard", [False, True])
 @parameterize("offload", [False, True])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 @parameterize("low_cpu_mem_mode", [False, True])
 def check_low_level_zero_checkpointIO(stage: int, shard: bool, offload: bool, use_async: bool, low_cpu_mem_mode: bool):
     plugin = LowLevelZeroPlugin(stage=stage, max_norm=1.0, initial_scale=32, cpu_offload=offload)

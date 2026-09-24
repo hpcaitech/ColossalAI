@@ -1,3 +1,5 @@
+import importlib.util
+
 import pytest
 import torch
 
@@ -17,6 +19,8 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
+HAS_FLASH_ATTN = importlib.util.find_spec("flash_attn") is not None
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
@@ -207,6 +211,11 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
 )
 @clear_cache_before_run()
 def run_gpt2_test(test_config):
+    if test_config.get("sequence_parallelism_mode") == "ring_attn" and not HAS_FLASH_ATTN:
+        if torch.distributed.get_rank() == 0:
+            print("Skipping GPT-2 ring-attention config because flash-attn is not installed")
+        return
+
     sub_model_zoo = model_zoo.get_sub_registry("transformers_gpt", exclude="transformers_gptj")
 
     for name, (

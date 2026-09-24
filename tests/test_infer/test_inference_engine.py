@@ -5,7 +5,7 @@ import pytest
 import torch
 import torch.distributed as dist
 from torch.multiprocessing import Manager
-from transformers import AutoTokenizer, GenerationConfig, LlamaConfig, LlamaForCausalLM
+from transformers import GenerationConfig, LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.config import _DEFAULT_PROMPT_TEMPLATES, InferenceConfig
@@ -13,6 +13,7 @@ from colossalai.inference.core.engine import InferenceEngine
 from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig, GlideLlamaForCausalLM
 from colossalai.inference.modeling.policy import NoPaddingLlamaModelInferPolicy
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from tests.kit import get_test_tokenizer
 
 
 def setup_seed(seed):
@@ -25,7 +26,7 @@ def setup_seed(seed):
 
 def check_inference_engine(use_engine=False, prompt_template=None, do_sample=True, policy=None):
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    tokenizer = get_test_tokenizer(vocab_size=50000)
     model = LlamaForCausalLM(
         LlamaConfig(
             vocab_size=50000,
@@ -96,7 +97,7 @@ def run_engine(world_size, **kwargs):
 def check_spec_dec(num_layers, max_length):
     torch.manual_seed(123)
 
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    tokenizer = get_test_tokenizer()
     # Dummy configs for testing
     toy_config = LlamaConfig(num_hidden_layers=num_layers)
     toy_config.pad_token_id = tokenizer.eos_token_id

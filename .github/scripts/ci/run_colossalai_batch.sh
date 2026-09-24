@@ -42,6 +42,7 @@ Environment:
   COLOSSAL_EXPECT_TORCH_PREFIX  required torch version prefix (optional)
   COLOSSAL_CUDA_HOME            CUDA toolkit root (optional)
   COLOSSAL_CACHE_ROOT           local root for per-batch compiler caches (optional)
+  COLOSSAL_HF_OFFLINE=0         allow Hub-backed integration tests (default: hermetic/offline)
   FAST_MODE=0                   run the full model matrix
   TIMEOUT_MIN                   override the per-batch timeout
   MAXFAIL                       override pytest --maxfail (default: 10)
@@ -334,10 +335,19 @@ fi
 export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-9.0}"
 export MAX_JOBS="${MAX_JOBS:-4}"
-COMPILE_CACHE_SCOPE="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-${BATCH}-${BASHPID}"
-COMPILE_CACHE_ROOT="${COLOSSAL_CACHE_ROOT:-${TMPDIR:-/tmp}/colossalai-ci-cache}/${COMPILE_CACHE_SCOPE}"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${COMPILE_CACHE_ROOT}/triton}"
-export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-${COMPILE_CACHE_ROOT}/torchinductor}"
+# Single-process batches safely reuse the runner's warm cache; this keeps the
+# 1,584-case batch 4e matrix practical.  Distributed batches use local storage
+# so their ranks do not race on BeeGFS cache metadata.
+if [[ "${EXPECTED_GPUS}" -le 1 ]]; then
+    DEFAULT_TRITON_CACHE="${RUNNER_TEMP:-/tmp}/triton-cache"
+    DEFAULT_INDUCTOR_CACHE="${RUNNER_TEMP:-/tmp}/torchinductor-cache"
+else
+    COMPILE_CACHE_ROOT="${COLOSSAL_CACHE_ROOT:-${TMPDIR:-/tmp}/colossalai-ci-cache}"
+    DEFAULT_TRITON_CACHE="${COMPILE_CACHE_ROOT}/triton"
+    DEFAULT_INDUCTOR_CACHE="${COMPILE_CACHE_ROOT}/torchinductor"
+fi
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-${DEFAULT_TRITON_CACHE}}"
+export TORCHINDUCTOR_CACHE_DIR="${TORCHINDUCTOR_CACHE_DIR:-${DEFAULT_INDUCTOR_CACHE}}"
 export TORCH_EXTENSIONS_DIR="${TORCH_EXTENSIONS_DIR:-${RUNNER_TEMP:-/tmp}/torch-extensions}"
 export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export TORCH_NCCL_ASYNC_ERROR_HANDLING="${TORCH_NCCL_ASYNC_ERROR_HANDLING:-1}"
@@ -358,6 +368,29 @@ fi
 if [[ "${NEEDS_CUDA_TOOLKIT}" == "1" && ( -z "${CUDA_HOME:-}" || ! -x "${CUDA_HOME}/bin/nvcc" ) ]]; then
     printf 'Batch %s requires CUDA_HOME with an executable bin/nvcc.\n' "${BATCH}" >&2
     exit 2
+fi
+
+# GPU runners are intentionally hermetic.  Keep locally constructible model
+# tests enabled and omit only remote-code integrations whose Hub snapshots are
+# not present on the runner.  Set COLOSSAL_HF_OFFLINE=0 on a networked runner
+# to exercise those integrations as well.
+if [[ ( "${BATCH}" == "9" || "${BATCH}" == "10" ) && "${COLOSSAL_HF_OFFLINE:-1}" != "0" ]]; then
+    export HF_HUB_OFFLINE=1
+    export TRANSFORMERS_OFFLINE=1
+    if ! "${PYTHON}" -c 'from transformers import AutoConfig; AutoConfig.from_pretrained("deepseek-ai/deepseek-moe-16b-base", trust_remote_code=True, local_files_only=True)' >/dev/null 2>&1; then
+        printf 'Skipping DeepSeek remote-code integration: no local Hub snapshot.\n'
+        PYTEST_EXTRA+=(--ignore=tests/test_shardformer/test_model/test_shard_deepseek.py)
+    fi
+    if ! "${PYTHON}" -c 'from transformers import AutoConfig; AutoConfig.from_pretrained("deepseek-ai/DeepSeek-V3", trust_remote_code=True, local_files_only=True)' >/dev/null 2>&1; then
+        printf 'Skipping DeepSeek-V3 remote-code integration: no local Hub snapshot.\n'
+        PYTEST_EXTRA+=(--ignore=tests/test_shardformer/test_model/test_shard_deepseek_v3.py)
+    fi
+fi
+
+ALLOW_EMPTY_PYTEST=0
+if [[ "${BATCH}" == "11" ]] && ! "${PYTHON}" -c 'import apex.amp' >/dev/null 2>&1; then
+    printf 'Apex is not installed; the optional Gemini/Apex batch will be reported as skipped.\n'
+    ALLOW_EMPTY_PYTEST=1
 fi
 
 mkdir -p "${RESULTS_ROOT}" "${TRITON_CACHE_DIR}" "${TORCHINDUCTOR_CACHE_DIR}" "${TORCH_EXTENSIONS_DIR}"
@@ -424,6 +457,10 @@ if run_pytest_batch; then
     MAIN_STATUS=0
 else
     MAIN_STATUS=$?
+fi
+
+if [[ "${ALLOW_EMPTY_PYTEST}" == "1" && "${MAIN_STATUS}" -eq 5 ]]; then
+    MAIN_STATUS=0
 fi
 
 SUPPLEMENT_STATUS=0

@@ -18,7 +18,10 @@ from colossalai.testing import (
     rerun_if_address_is_in_use,
     spawn,
 )
+from colossalai.utils.safetensors import HAS_TENSORNVME
 from tests.kit.model_zoo import model_zoo
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 
 MODEL_PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.5},
@@ -35,7 +38,7 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("use_safetensors", [False, True])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 def exam_state_dict_with_origin(
     placement_config, model_name, use_safetensors: bool, tp_size: int, zero_size: int, use_async: bool
 ):
@@ -89,7 +92,7 @@ def exam_state_dict_with_origin(
 @parameterize("size_per_shard", [32])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 @parameterize("low_cpu_mem_mode", [True, False])
 def exam_state_dict(
     placement_config,

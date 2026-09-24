@@ -53,7 +53,10 @@ config = MixtralConfig(
     num_attention_heads=8,
     num_hidden_layers=2,
     vocab_size=1000,
-    attn_implementation="flash_attention_2",
+    # The model-zoo entry is imported by generic tests which do not require
+    # FlashAttention2.  ShardFormer tests enable their optimized attention
+    # paths explicitly, so keep this baseline self-contained.
+    attn_implementation="eager",
     torch_dtype="float16",
     output_router_logits=True,
 )

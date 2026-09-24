@@ -1,3 +1,4 @@
+import importlib.util
 import os
 
 import pytest
@@ -23,6 +24,8 @@ from tests.test_shardformer.test_model._utils import (
     run_forward_backward_with_hybrid_plugin,
     unwrap_model,
 )
+
+HAS_FLASH_ATTN = importlib.util.find_spec("flash_attn") is not None
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
 
@@ -280,6 +283,11 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     ],
 )
 def run_llama_test(test_config):
+    if test_config.get("sequence_parallelism_mode") == "ring_attn" and not HAS_FLASH_ATTN:
+        if torch.distributed.get_rank() == 0:
+            print("Skipping Llama ring-attention config because flash-attn is not installed")
+        return
+
     sub_model_zoo = model_zoo.get_sub_registry("transformers_llama")
     if test_config.get("pp_style", None) == "zbv":
         mem_f = 34 * 32 + 5 * 4 * 16

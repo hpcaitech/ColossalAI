@@ -10,7 +10,10 @@ from torch.distributed import ReduceOp
 
 from .fp8_config import dynamic_kernel
 
-SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
+# PyTorch 2.13 cannot lower the FP8 scaled-mm backward graph used below.  Keep
+# the eager implementation as a correctness fallback until that compiler path
+# is supported again.
+SUPPORT_TORCH_COMPILE = Version("2.4.0") <= Version(torch.__version__) < Version("2.13.0")
 SCALE_BYTES = 4
 try:
     cuda_arch = int("".join(str(i) for i in torch.cuda.get_device_capability()))
