@@ -329,18 +329,20 @@ class FusedRMSNorm(BaseLayerNorm):
         eps = module.variance_epsilon if hasattr(module, "variance_epsilon") else module.eps
         elementwise_affine = getattr(module, "elementwise_affine", True)
 
-        try:
-            rmsnorm = FusedRMSNormWithHook(
-                normalized_shape=normalized_shape,
-                eps=eps,
-                elementwise_affine=elementwise_affine,
-            )
-        except ImportError:
+        # FusedRMSNormWithHook stays None when apex (or torch_npu) is not available
+        if FusedRMSNormWithHook is None:
             warnings.warn(
-                "Module replacement failed.\
-                Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel"
+                "Module replacement failed. "
+                "Please install apex from source (https://github.com/NVIDIA/apex) to use the fused RMS normalization kernel. "
+                "Using native RMSNorm instead."
             )
             return module
+
+        rmsnorm = FusedRMSNormWithHook(
+            normalized_shape=normalized_shape,
+            eps=eps,
+            elementwise_affine=elementwise_affine,
+        )
 
         rmsnorm.weight = module.weight
 
