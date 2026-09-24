@@ -36,6 +36,21 @@ def check_padded_tensor(rank, world_size, port):
     assert global_tensor.shape == original_tensor.shape
 
 
+def test_unpad_detached_and_cloned_tensor():
+    # detach() / clone() of a padded tensor must give a padded tensor that can be unpadded on its own,
+    # this is what checkpoint saving does before writing a parameter
+    original = torch.rand(10, 4)
+    padded = to_padded_tensor(original.clone(), current_length=16, padding_dim=0)
+    for tensor_copy in (padded.detach(), padded.clone(), padded.detach().clone()):
+        assert is_padded_tensor(tensor_copy)
+        assert tensor_copy.shape == (16, 4)
+        unpadded = to_unpadded_tensor(tensor_copy)
+        assert not is_padded_tensor(unpadded)
+        assert torch.equal(unpadded, original)
+    # the source tensor is still padded
+    assert is_padded_tensor(padded) and padded.shape == (16, 4)
+
+
 @rerun_if_address_is_in_use()
 def test_padded_tensor():
     world_size = 4
