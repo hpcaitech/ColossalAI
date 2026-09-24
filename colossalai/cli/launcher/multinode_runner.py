@@ -27,7 +27,7 @@ def run_on_host(
 
     fab_conn = fabric.Connection(hostinfo.hostname, port=hostinfo.port)
     finish = False
-    env_msg = " ".join([f'{k}="{v}"' for k, v in env.items()])
+    env_msg = " ".join([f"{k}='{v}'" for k, v in env.items()])
 
     # keep listening until exit
     while not finish:
