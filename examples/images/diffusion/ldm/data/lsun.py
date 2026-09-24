@@ -55,7 +55,7 @@ class LSUNBase(Dataset):
 
         # default to score-sde preprocessing
 
-        img = np.array(image).astype(np.uint8)  # convert image to numpy array
+        img = np.asarray(image).astype(np.uint8)  # convert image to numpy array
         crop = min(img.shape[0], img.shape[1])  # crop the image to a square shape
         (
             h,
@@ -73,7 +73,7 @@ class LSUNBase(Dataset):
             image = image.resize((self.size, self.size), resample=self.interpolation)
 
         image = self.flip(image)  # flip the image horizontally with the given probability
-        image = np.array(image).astype(np.uint8)
+        image = np.asarray(image).astype(np.uint8)
         example["image"] = (image / 127.5 - 1.0).astype(np.float32)  # normalize the image values and convert to float32
         return example  # return the example dictionary containing the image and its file paths
 

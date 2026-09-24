@@ -34,9 +34,9 @@ class ReqQueue:
         self.cache_len_list.append((req.input_len + 1, req.max_output_len - 1))  # hard to analysis
         self.cache_len_list.sort(key=lambda x: -x[1])
 
-        left_out_len_array = np.array([e[1] for e in self.cache_len_list])
+        left_out_len_array = np.asarray([e[1] for e in self.cache_len_list])
         # assert left_out_len_array.min() >= 0
-        has_run_len_array = np.array([e[0] for e in self.cache_len_list])
+        has_run_len_array = np.asarray([e[0] for e in self.cache_len_list])
         cum_run_len_array = np.cumsum(has_run_len_array)
         size_array = np.arange(1, len(self.cache_len_list) + 1, 1)
 

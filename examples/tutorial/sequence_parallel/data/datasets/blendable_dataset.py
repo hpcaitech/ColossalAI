@@ -32,7 +32,7 @@ class BlendableDataset(torch.utils.data.Dataset):
             self.size += len(dataset)
 
         # Normalize weights.
-        weights = np.array(weights, dtype=np.float64)
+        weights = np.asarray(weights, dtype=np.float64)
         sum_weights = np.sum(weights)
         assert sum_weights > 0.0
         weights /= sum_weights
