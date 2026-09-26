@@ -13,6 +13,7 @@ import torch
 from diffusers import DiffusionPipeline
 from torch import nn
 
+from colossalai.accelerator import get_accelerator
 from colossalai.logging import get_dist_logger
 from colossalai.testing import free_port
 
@@ -60,8 +61,9 @@ def init_to_get_rotary(self, base=10000, use_elem=False):
     t = torch.arange(max_seq_len + 1024 * 64, device="cpu", dtype=torch.float32) / rope_scaling_factor
     freqs = torch.outer(t, inv_freq)
 
-    self._cos_cached = torch.cos(freqs).to(self.dtype).cuda()
-    self._sin_cached = torch.sin(freqs).to(self.dtype).cuda()
+    device = get_accelerator().get_current_device()
+    self._cos_cached = torch.cos(freqs).to(self.dtype).to(device)
+    self._sin_cached = torch.sin(freqs).to(self.dtype).to(device)
 
 
 def has_index_file(checkpoint_path: str) -> Tuple[bool, Optional[Path]]:
