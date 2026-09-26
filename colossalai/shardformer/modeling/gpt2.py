@@ -43,7 +43,7 @@ def _get_attention_mask(
     # Received input is already split for non-first pipeline stages,
     # but attn mask isn't
     batch_size = hidden_states.size(0)
-    seq_len = attention_mask.size(-1)
+    seq_len = attention_mask.size(-1) if attention_mask is not None else hidden_states.size(1)
 
     sp_mode = shard_config.sequence_parallelism_mode
     # If a 2D or 3D attention mask is provided for the cross-attention
