@@ -96,8 +96,8 @@ def patches_from_image(img, p_size=512, p_overlap=64, p_max=800):
     w, h = img.shape[:2]
     patches = []
     if w > p_max and h > p_max:
-        w1 = list(np.arange(0, w - p_size, p_size - p_overlap, dtype=np.int))
-        h1 = list(np.arange(0, h - p_size, p_size - p_overlap, dtype=np.int))
+        w1 = list(np.arange(0, w - p_size, p_size - p_overlap, dtype=np.int64))
+        h1 = list(np.arange(0, h - p_size, p_size - p_overlap, dtype=np.int64))
         w1.append(w - p_size)
         h1.append(h - p_size)
         #        print(w1)

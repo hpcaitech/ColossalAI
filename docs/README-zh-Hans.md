@@ -413,7 +413,7 @@ Colossal-AI 为您提供了一系列并行组件。我们的目标是让您的�
 环境要求:
 
 - PyTorch >= 2.1
-- Python >= 3.7
+- Python >= 3.10 且 < 3.13
 - CUDA >= 11.0
 - [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
 - Linux OS
