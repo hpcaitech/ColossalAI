@@ -226,8 +226,10 @@ def _checkpoint_without_reentrant(function, activation_offload=False, *args):
 
             # rerun forward, the inner_pack will store all the activations in storage
             if has_autocast_in_fwd:
-                with torch.enable_grad(), get_accelerator().autocast()(), torch.autograd.graph.saved_tensors_hooks(
-                    inner_pack, inner_unpack
+                with (
+                    torch.enable_grad(),
+                    get_accelerator().autocast()(),
+                    torch.autograd.graph.saved_tensors_hooks(inner_pack, inner_unpack),
                 ):
                     _unused = function(*args)
             else:
