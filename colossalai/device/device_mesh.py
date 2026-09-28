@@ -1,6 +1,6 @@
 """This code is adapted from Alpa
-    https://github.com/alpa-projects/alpa/
-   with some changes. """
+ https://github.com/alpa-projects/alpa/
+with some changes."""
 
 import operator
 from dataclasses import dataclass
