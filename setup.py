@@ -133,9 +133,12 @@ setup(
         [console_scripts]
         colossalai=colossalai.cli:cli
     """,
-    python_requires=">=3.6",
+    python_requires=">=3.10,<3.13",
     classifiers=[
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: Apache Software License",
         "Environment :: GPU :: NVIDIA CUDA",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

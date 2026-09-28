@@ -6,6 +6,15 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.testing import spawn
 
 
+@pytest.mark.cpu
+def test_process_group_mesh_numpy_index_conversion():
+    shape = (2, 3, 4)
+
+    assert ProcessGroupMesh.unravel(17, shape) == (1, 1, 1)
+    assert ProcessGroupMesh.ravel((1, 1, 1), shape) == 17
+    assert ProcessGroupMesh.ravel((2, -2, 5), shape, mode="wrap") == 5
+
+
 def check_process_group_mesh_with_cases():
     DP_DIM, PP_DIM, TP_DIM = 0, 1, 2
     DP_SIZE, PP_SIZE, TP_SIZE = 1, 2, 2
