@@ -20,6 +20,7 @@ on a text file or a dataset without using HuggingFace Trainer.
 Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 https://huggingface.co/models?filter=text-generation
 """
+
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
 import math

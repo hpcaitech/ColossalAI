@@ -11,8 +11,8 @@
 
 namespace {
 
-void compute_n1_n2(at::Tensor input, at::IntArrayRef normalized_shape, int &n1,
-                   int &n2) {
+void compute_n1_n2(at::Tensor input, at::IntArrayRef normalized_shape, int& n1,
+                   int& n2) {
   int idiff = input.ndimension() - normalized_shape.size();
   n2 = 1;
   for (int i = 0; i < (int)normalized_shape.size(); ++i) {
@@ -31,8 +31,8 @@ void check_args(at::IntArrayRef normalized_shape, at::Tensor gamma,
   TORCH_CHECK(!beta.defined() || beta.sizes().equals(normalized_shape));
 }
 
-void check_args(at::Tensor input, at::IntArrayRef normalized_shape, int &n1,
-                int &n2) {
+void check_args(at::Tensor input, at::IntArrayRef normalized_shape, int& n1,
+                int& n2) {
   int64_t normalized_ndim = normalized_shape.size();
 
   if (normalized_ndim < 1) {
@@ -63,16 +63,16 @@ void check_args(at::Tensor input, at::IntArrayRef normalized_shape, int &n1,
 }
 
 void check_args(at::Tensor input, at::IntArrayRef normalized_shape,
-                at::Tensor gamma, at::Tensor beta, int &n1, int &n2) {
+                at::Tensor gamma, at::Tensor beta, int& n1, int& n2) {
   check_args(input, normalized_shape, n1, n2);
   check_args(normalized_shape, gamma, beta);
 }
 }  // namespace
 
-void cuda_layer_norm(at::Tensor *output, at::Tensor *mean, at::Tensor *invvar,
-                     at::Tensor *input, int n1, int n2,
-                     at::IntArrayRef normalized_shape, at::Tensor *gamma,
-                     at::Tensor *beta, double epsilon);
+void cuda_layer_norm(at::Tensor* output, at::Tensor* mean, at::Tensor* invvar,
+                     at::Tensor* input, int n1, int n2,
+                     at::IntArrayRef normalized_shape, at::Tensor* gamma,
+                     at::Tensor* beta, double epsilon);
 
 #define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x " must be a CUDA tensor")
 #define CHECK_CONTIGUOUS(x) \
@@ -103,12 +103,12 @@ std::vector<at::Tensor> layer_norm_affine(at::Tensor input,
   return {output, mean, invvar};
 }
 
-void cuda_layer_norm_gradient(at::Tensor *dout, at::Tensor *mean,
-                              at::Tensor *invvar, at::Tensor *input, int n1,
+void cuda_layer_norm_gradient(at::Tensor* dout, at::Tensor* mean,
+                              at::Tensor* invvar, at::Tensor* input, int n1,
                               int n2, at::IntArrayRef normalized_shape,
-                              at::Tensor *gamma, at::Tensor *beta,
-                              double epsilon, at::Tensor *grad_input,
-                              at::Tensor *grad_gamma, at::Tensor *grad_beta);
+                              at::Tensor* gamma, at::Tensor* beta,
+                              double epsilon, at::Tensor* grad_input,
+                              at::Tensor* grad_gamma, at::Tensor* grad_beta);
 
 std::vector<at::Tensor> layer_norm_gradient_affine(
     at::Tensor dout, at::Tensor mean, at::Tensor invvar, at::Tensor input,

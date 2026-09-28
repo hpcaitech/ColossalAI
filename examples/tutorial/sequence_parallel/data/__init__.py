@@ -18,7 +18,7 @@ def cyclic_iter(iter):
 def build_train_valid_test_data_iterators(
     train_iters, global_batch_size, eval_interval, eval_iters, dataloader_type="single", **kwargs
 ):
-    (train_dataloader, valid_dataloader, test_dataloader) = (None, None, None)
+    train_dataloader, valid_dataloader, test_dataloader = (None, None, None)
 
     logger = get_dist_logger()
     logger.info("> building train, validation, and test datasets ...", ranks=[0])

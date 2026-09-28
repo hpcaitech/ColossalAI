@@ -559,10 +559,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
         if param_group_path is None:
-            raise RuntimeError(
-                f"Invalid index file path {checkpoint_index_file} for an optimizer. \
-                               Lacking param group file under current directory."
-            )
+            raise RuntimeError(f"Invalid index file path {checkpoint_index_file} for an optimizer. \
+                               Lacking param group file under current directory.")
         saved_groups = torch.load(param_group_path)
 
         updated_groups = []
