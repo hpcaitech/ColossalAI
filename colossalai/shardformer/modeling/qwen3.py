@@ -112,6 +112,7 @@ class Qwen3PipelineForwards:
         # For generating full positions ids (the states will be gathered along the seq dim before attention fwd).
         if sp_mode != "ring_attn" and not stage_manager.is_first_stage():
             seq_length *= sp_size
+            seq_length_with_past = seq_length + past_key_values_length
 
         if position_ids is None:
             device = input_ids.device if input_ids is not None else inputs_embeds.device
@@ -133,6 +134,16 @@ class Qwen3PipelineForwards:
                 hidden_states.device,
                 q_padding_mask=attention_mask,
                 is_causal=True,
+            )
+        elif shard_config.enable_sequence_parallelism:
+            # the attention forward is replaced for sequence parallelism (see the policy), and it takes
+            # a 4d causal mask, rather than the mask for the attention implementation of transformers
+            attention_mask = _prepare_4d_causal_attention_mask(
+                attention_mask,
+                (batch_size, seq_length),
+                hidden_states,
+                past_key_values_length,
+                sliding_window=self.config.sliding_window,
             )
         else:
             if self.config._attn_implementation == "flash_attention_2":
