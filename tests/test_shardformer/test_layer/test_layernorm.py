@@ -1,12 +1,13 @@
 from contextlib import nullcontext
 
+import pytest
 import torch
 import torch.nn as nn
 from torch.testing import assert_close
 
 import colossalai
 from colossalai.lazy import LazyInitContext
-from colossalai.shardformer.layer import FusedLayerNorm
+from colossalai.shardformer.layer import FusedLayerNorm, FusedRMSNorm, normalization
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 
@@ -48,6 +49,21 @@ def run_dist(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_layernorm():
     spawn(run_dist, nprocs=2)
+
+
+def test_fused_rmsnorm_fallback_without_apex(monkeypatch):
+    # FusedRMSNormWithHook is None when apex is not installed, the native module should be kept in that case
+    monkeypatch.setattr(normalization, "FusedRMSNormWithHook", None)
+
+    class RMSNorm(nn.Module):
+        def __init__(self, hidden_size, eps=1e-6):
+            super().__init__()
+            self.weight = nn.Parameter(torch.ones(hidden_size))
+            self.variance_epsilon = eps
+
+    norm = RMSNorm(128)
+    with pytest.warns(UserWarning, match="apex"):
+        assert FusedRMSNorm.from_native_module(norm) is norm
 
 
 if __name__ == "__main__":
