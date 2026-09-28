@@ -34,6 +34,7 @@ from colossalai.checkpoint_io.utils import (
 )
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.tensor.padded_tensor import is_padded_tensor, to_unpadded_tensor
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
@@ -87,6 +88,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 continue
             # Gather tensor pieces when using tensor parallel.
             param_ = gather_distributed_param(param, keep_vars=False)
+            if is_padded_tensor(param_):
+                param_ = to_unpadded_tensor(param_)
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
                 yield block, block_size

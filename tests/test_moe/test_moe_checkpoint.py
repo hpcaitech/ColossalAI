@@ -82,12 +82,15 @@ def check_optimizer_snapshot_equal(snapshot1, snapshot2, param2name, moe_dp_grou
                 num_attention_heads=2,
                 num_key_value_heads=2,
                 num_hidden_layers=2,
+                # not a multiple of make_vocab_size_divisible_by * tp_size, so the embedding is padded with tp
+                vocab_size=1000,
             ),
             MixtralForCausalLM,
         ],
     ],
 )
-def check_moe_checkpoint(test_config):
+@parameterize("plugin_config", [{"pp_size": 2, "ep_size": 2, "tp_size": 1}, {"pp_size": 2, "ep_size": 1, "tp_size": 2}])
+def check_moe_checkpoint(test_config, plugin_config):
     dtype, precision = torch.float16, "fp16"
     config, model_cls = test_config
     torch.cuda.set_device(dist.get_rank())
@@ -106,9 +109,7 @@ def check_moe_checkpoint(test_config):
         seed_all(10086)
         model = deepcopy(orig_model)
         optimizer = SGD(model.parameters(), lr=1e-3)
-        plugin = MoeHybridParallelPlugin(
-            pp_size=2, ep_size=2, tp_size=1, microbatch_size=1, zero_stage=1, precision=precision
-        )
+        plugin = MoeHybridParallelPlugin(**plugin_config, microbatch_size=1, zero_stage=1, precision=precision)
         booster = Booster(plugin=plugin)
         model, optimizer, *_ = booster.boost(model=model, optimizer=optimizer)
         # initialize grads
