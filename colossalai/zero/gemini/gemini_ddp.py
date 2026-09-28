@@ -813,7 +813,9 @@ class GeminiDDP(ModelWrapper):
             for key in state_dict.keys():
                 if key.startswith(prefix) and key != extra_state_key:
                     input_name = key[len(prefix) :]
-                    if input_name not in local_state:
+                    # tied parameters are saved under every name they have (same as torch.nn.Module.state_dict),
+                    # while local_state only holds the first one, so the other names are expected too
+                    if input_name not in local_state and input_name not in self.name2param:
                         unexpected_keys.append(key)
 
     def _init_chunks(self, param_order, strict_ddp_mode: bool, cpu_offload: bool, pin_memory: bool):
