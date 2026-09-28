@@ -40,7 +40,7 @@ def synthesize_1d_sparse_feature(
     indices = torch.randint(low=0, high=num_embed, size=(indices_in_batch,), device=device, dtype=torch.long)
     offsets = (
         torch.from_numpy(
-            np.array(
+            np.asarray(
                 [
                     0,
                     *np.sort(np.random.randint(low=0, high=indices_in_batch, size=(indices_in_batch - 1,))),
@@ -267,7 +267,7 @@ def run_parallel_freq_aware_embed_tablewise(rank, world_size):
     input0      [1,2,3]         [6,7]           []
     input1      []              [9]             [13,15]
     input2      [1,5]           [6,8]           [11]
-                  â†‘               â†‘               â†‘
+                  â†?               â†?               â†?
                 rank 0          rank 0          rank 1
     in KJT format
     """

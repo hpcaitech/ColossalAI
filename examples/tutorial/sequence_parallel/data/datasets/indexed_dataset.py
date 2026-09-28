@@ -84,7 +84,7 @@ def read_longs(f, n):
 
 
 def write_longs(f, a):
-    f.write(np.array(a, dtype=np.int64))
+    f.write(np.asarray(a, dtype=np.int64))
 
 
 dtypes = {1: np.uint8, 2: np.int8, 3: np.int16, 4: np.int32, 5: np.int64, 6: float, 7: np.double, 8: np.uint16}
@@ -260,7 +260,7 @@ class IndexedDatasetBuilder(object):
         self.doc_idx = [0]
 
     def add_item(self, tensor):
-        bytes = self.out_file.write(np.array(tensor.numpy(), dtype=self.dtype))
+        bytes = self.out_file.write(np.asarray(tensor.numpy(), dtype=self.dtype))
         self.data_offsets.append(self.data_offsets[-1] + bytes / self.element_size)
         for s in tensor.size():
             self.sizes.append(s)
@@ -344,15 +344,15 @@ class MMapIndexedDataset(torch.utils.data.Dataset):
                     self._file.write(struct.pack("<Q", len(sizes)))
                     self._file.write(struct.pack("<Q", len(doc_idx)))
 
-                    sizes = np.array(sizes, dtype=np.int32)
+                    sizes = np.asarray(sizes, dtype=np.int32)
                     self._file.write(sizes.tobytes(order="C"))
                     del sizes
 
-                    pointers = np.array(pointers, dtype=np.int64)
+                    pointers = np.asarray(pointers, dtype=np.int64)
                     self._file.write(pointers.tobytes(order="C"))
                     del pointers
 
-                    doc_idx = np.array(doc_idx, dtype=np.int64)
+                    doc_idx = np.asarray(doc_idx, dtype=np.int64)
                     self._file.write(doc_idx.tobytes(order="C"))
 
                 def __exit__(self, exc_type, exc_val, exc_tb):
@@ -517,7 +517,7 @@ class MMapIndexedDatasetBuilder(object):
         self._doc_idx = [0]
 
     def add_item(self, tensor):
-        np_array = np.array(tensor.numpy(), dtype=self._dtype)
+        np_array = np.asarray(tensor.numpy(), dtype=self._dtype)
         self._data_file.write(np_array.tobytes(order="C"))
         self._sizes.append(np_array.size)
 
