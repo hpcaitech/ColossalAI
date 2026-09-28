@@ -1,8 +1,11 @@
+import glob
+
 import pytest
 import torch
 import torch.distributed as dist
 from packaging.version import Version
 from torch.optim import Adam
+from transformers import GPT2Config, GPT2LMHeadModel
 from utils import shared_tempdir
 
 import colossalai
@@ -143,9 +146,39 @@ def exam_state_dict(
     clear_layout_converter()
 
 
+@clear_cache_before_run()
+@parameterize("shard", [True, False])
+@parameterize("test_config", [{"tp_size": 1, "pp_size": 1}, {"tp_size": 1, "pp_size": 2, "num_microbatches": 2}])
+def exam_state_dict_padded_vocab(shard: bool, test_config: dict):
+    # a vocab size that is not a multiple of make_vocab_size_divisible_by (64), so the embedding and
+    # lm_head weights are padded tensors, which must be unpadded when saving (#6253)
+    config = GPT2Config(n_layer=2, n_head=4, n_embd=64, vocab_size=1000, n_positions=64)
+    booster = Booster(plugin=HybridParallelPlugin(**test_config, precision="fp16", initial_scale=1))
+    model = GPT2LMHeadModel(config).cuda()
+    model, *_ = booster.boost(model, Adam(model.parameters(), lr=1e-3))
+
+    with shared_tempdir() as tempdir:
+        model_ckpt_path = f"{tempdir}/model"
+        booster.save_model(model, model_ckpt_path, shard=shard)
+        dist.barrier()
+        if dist.get_rank() == 0:
+            # the checkpoint must hold the original (unpadded) vocab size
+            files = glob.glob(f"{model_ckpt_path}/*.bin") if shard else [model_ckpt_path]
+            saved = {}
+            for f in files:
+                saved.update(torch.load(f, map_location="cpu"))
+            assert saved["transformer.wte.weight"].shape == (config.vocab_size, config.n_embd)
+        new_model = GPT2LMHeadModel(config).cuda()
+        new_model, *_ = booster.boost(new_model, Adam(new_model.parameters(), lr=1e-3))
+        booster.load_model(new_model, model_ckpt_path)
+        check_state_dict_equal(model.unwrap().state_dict(), new_model.unwrap().state_dict())
+    dist.barrier()
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
+    exam_state_dict_padded_vocab()
 
 
 @pytest.mark.dist
