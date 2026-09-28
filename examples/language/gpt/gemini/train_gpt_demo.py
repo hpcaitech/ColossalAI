@@ -176,7 +176,6 @@ def main():
 
         logger.info(get_mem_info(prefix="After init optim, "), ranks=[0])
     elif args.distplan.startswith("Pytorch"):
-        assert args.tp_degree == 1, "The degree of TP should be 1 for DDP examples."
         model = model_builder(args.model_type)(checkpoint=True).cuda()
         plugin = TorchDDPPlugin()
         if args.distplan.endswith("DDP"):
