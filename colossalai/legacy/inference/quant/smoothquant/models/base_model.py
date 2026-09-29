@@ -227,7 +227,7 @@ class BaseSmoothForCausalLM(nn.Module, PushToHubMixin):
                             new_value = str(value)
                         except Exception as e:
                             raise TypeError(
-                                f"safetensors_metadata: both keys and values must be strings and an error occured when trying to convert them: {e}"
+                                f"safetensors_metadata: both keys and values must be strings and an error occurred when trying to convert them: {e}"
                             )
                         if new_key in new_safetensors_metadata:
                             print(
