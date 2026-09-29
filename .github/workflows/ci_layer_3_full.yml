@@ -1,6 +1,10 @@
 name: CI / Layer 3 / Full GPU Matrix
 
 on:
+  # Temporary branch trigger for validating the full Layer 3 matrix without
+  # rerunning the already-verified Layer 2 gate.
+  push:
+    branches: [ci/three-layer-workflow-validation]
   schedule:
     # Sunday 00:00 Asia/Singapore (Saturday 16:00 UTC).
     - cron: "0 16 * * 6"
