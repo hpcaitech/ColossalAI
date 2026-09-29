@@ -29,7 +29,7 @@ More details can be found in our [blog of Stable Diffusion v1](https://www.hpc-a
 ## Roadmap
 This project is in rapid development.
 
-- [X] Train a stable diffusion model v1/v2 from scatch
+- [X] Train a stable diffusion model v1/v2 from scratch
 - [X] Finetune a pretrained Stable diffusion v1 model
 - [X] Inference a pretrained model using PyTorch
 - [ ] Finetune a pretrained Stable diffusion v2 model
@@ -40,7 +40,7 @@ This project is in rapid development.
 ### Option #1: Install from source
 #### Step 1: Requirements
 
-To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6/11.8. For your convience, we have set up the rest of packages here. You can create and activate a suitable [conda](https://conda.io/) environment named `ldm` :
+To begin with, make sure your operating system has the cuda version suitable for this exciting training session, which is cuda11.6/11.8. For your convenience, we have set up the rest of packages here. You can create and activate a suitable [conda](https://conda.io/) environment named `ldm` :
 
 ```
 conda env create -f environment.yaml
@@ -202,7 +202,7 @@ python main.py --logdir /tmp/ -t -b configs/Teyvat/train_colossalai_teyvat.yaml
 ```
 
 ## Inference
-if you want to test with pretrain model,as bellow:
+if you want to test with pretrain model,as below:
 python scripts/txt2img.py --prompt "a photograph of an astronaut riding a horse" --plms    --outdir ./output     --ckpt 512-base-ema.ckpt     --config configs/train_ddp.yaml
 
 You can get your training last.ckpt and train config.yaml in your `--logdir`, and run by
