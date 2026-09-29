@@ -8,7 +8,7 @@ from torch.testing import assert_close
 import colossalai
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.logging import disable_existing_loggers
-from colossalai.nn.optimizer import DistGaloreAwamW, GaLoreAdamW8bit
+from colossalai.nn.optimizer import DistGaloreAdamW, DistGaloreAwamW, GaLoreAdamW8bit
 from colossalai.nn.optimizer.galore import get_galore_param_groups
 from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 from colossalai.tensor.d_tensor.api import clear_layout_converter
@@ -59,6 +59,10 @@ test_config = [
         "precision": "bf16",
     },
 ]
+
+
+def test_distributed_galore_compatibility_alias():
+    assert DistGaloreAwamW is DistGaloreAdamW
 
 
 def assert_grad_close(tp_model, torch_model, tp_group):
@@ -138,7 +142,7 @@ def run_dist_galore_basic(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_si
         block_wise=False,
         min_8bit_size=1e10,  # Disable quantization
     )
-    optim = DistGaloreAwamW(
+    optim = DistGaloreAdamW(
         get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
@@ -202,7 +206,7 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
         block_wise=False,
         min_8bit_size=1e10,
     )
-    optim = DistGaloreAwamW(
+    optim = DistGaloreAdamW(
         get_galore_param_groups(tp_model, decay, rank=8),
         lr=lr,
         betas=(beta1, beta2),
