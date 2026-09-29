@@ -1,4 +1,5 @@
 import os
+from importlib.util import find_spec
 
 import pytest
 import torch
@@ -22,6 +23,7 @@ from colossalai.utils.safetensors import HAS_TENSORNVME
 from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
+APEX_AVAILABLE = find_spec("apex") is not None
 
 MODEL_PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.5},
@@ -48,7 +50,7 @@ def exam_state_dict_with_origin(
     bert_model = model_fn()
 
     enable_flash_attention = True if tp_size > 1 else False
-    enable_fused_normalization = True if tp_size > 1 else False
+    enable_fused_normalization = tp_size > 1 and APEX_AVAILABLE
     enable_jit_fused = True if tp_size > 1 else False
 
     with shared_tempdir() as tempdir:
@@ -107,7 +109,7 @@ def exam_state_dict(
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     enable_flash_attention = True if tp_size > 1 else False
-    enable_fused_normalization = True if tp_size > 1 else False
+    enable_fused_normalization = tp_size > 1 and APEX_AVAILABLE
     enable_jit_fused = True if tp_size > 1 else False
     extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
     plugin = GeminiPlugin(

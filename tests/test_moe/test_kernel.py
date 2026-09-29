@@ -11,6 +11,7 @@ BATCH_SIZE = 4
 SEQ_LEN = 4
 
 MOE_TENSOR_PATH = os.getenv("MOE_TENSOR_PATH")
+MOE_TENSOR_DATA_AVAILABLE = MOE_TENSOR_PATH is not None and os.path.isdir(MOE_TENSOR_PATH)
 
 
 def check_equal(tensor_a, tensor_b, atol=1e-06):
@@ -88,6 +89,7 @@ def run_moe_dispatch_combine_fwd_bwd(data_type=torch.float32, hidden_size=128, n
 
 
 @pytest.mark.parametrize("data_type", [torch.float32, torch.float16])
+@pytest.mark.skipif(not MOE_TENSOR_DATA_AVAILABLE, reason="requires MOE_TENSOR_PATH reference tensors")
 def test_moe_kernel(data_type):
     torch.manual_seed(1024)
     run_moe_cumsum()

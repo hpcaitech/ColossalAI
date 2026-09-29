@@ -9,6 +9,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -127,13 +128,38 @@ def stream_process(command, log_path, env):
     finally:
         signal.signal(signal.SIGTERM, old_term)
         signal.signal(signal.SIGINT, old_int)
-        if child.poll() is None:
+        # The batch shell is a process-group leader.  Always clean the whole
+        # group, even when the shell has already exited: GNU timeout can reap
+        # pytest while torch multiprocessing workers remain alive and keep the
+        # GPUs allocated for the following batch.
+        try:
             os.killpg(child.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        if child.poll() is None:
             try:
                 child.wait(timeout=30)
             except subprocess.TimeoutExpired:
+                pass
+
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.2)
+        else:
+            try:
                 os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+        if child.poll() is None:
+            try:
                 child.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
 
 
 def main():

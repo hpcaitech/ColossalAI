@@ -504,6 +504,24 @@ def save_param_groups(state_dict: dict, group_file_path: str) -> None:
     torch.save(param_groups, group_file_path)
 
 
+def merge_optimizer_param_group_defaults(saved_groups: List[dict], current_groups: List[dict]) -> None:
+    """Preserve optimizer options introduced after a checkpoint was written.
+
+    PyTorch replaces complete parameter groups in ``Optimizer.load_state_dict``.
+    Consequently, loading a HybridAdam checkpoint into a newer torch optimizer
+    can remove newly-added options such as ``decoupled_weight_decay`` and make
+    the next optimizer step fail.  Checkpoint values remain authoritative while
+    options absent from the checkpoint inherit the initialized optimizer's
+    compatible defaults.
+    """
+    if len(saved_groups) != len(current_groups):
+        return
+    for saved_group, current_group in zip(saved_groups, current_groups):
+        for key, value in current_group.items():
+            if key != "params":
+                saved_group.setdefault(key, value)
+
+
 def clean_folder(
     checkpoint_path: str,
     weights_name: str,
@@ -752,6 +770,7 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
     # The params in param_groups are in the form of pytorch tensors.
     # For more details, please view source code of Optimizer class in pytorch.
     param_groups = optimizer.param_groups
+    merge_optimizer_param_group_defaults(saved_groups, param_groups)
 
     # Check the compatibility of saved_groups and param_groups.
     if len(param_groups) != len(saved_groups):

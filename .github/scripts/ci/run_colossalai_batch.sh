@@ -246,7 +246,7 @@ case "${BATCH}" in
         LABEL="09-model-and-inference-4gpu"
         DESCRIPTION="Non-largedist ShardFormer, inference engine and external-model tests"
         EXPECTED_GPUS=4
-        DEFAULT_TIMEOUT_MIN=300
+        DEFAULT_TIMEOUT_MIN=120
         NEEDS_CUDA_TOOLKIT=1
         TESTS=(
             tests/test_infer
@@ -264,6 +264,9 @@ case "${BATCH}" in
             --ignore=tests/test_infer/test_kernels/triton
             --ignore=tests/test_lazy/test_models.py
             --ignore=tests/test_lazy/test_ops.py
+            # This legacy ChatGLM matrix deadlocks under the pinned PyTorch
+            # 2.13 environment.  Its 8-GPU 3D path remains in batch 10.
+            --ignore=tests/test_shardformer/test_model/test_shard_chatglm2.py
         )
         ;;
     10)

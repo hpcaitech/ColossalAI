@@ -47,7 +47,12 @@ def check_torch_ddp_plugin():
         registry = model_zoo
 
     for name, (model_fn, data_gen_fn, output_transform_fn, _, _) in registry.items():
-        if name in ("dlrm_interactionarch", "transformers_mixtral") or name.startswith("simple_"):
+        # DeepSeek loads executable model code from the Hub.  Its dedicated
+        # ShardFormer test covers it when that snapshot is available; generic
+        # plugin coverage must stay runnable on hermetic GPU workers.
+        if name in ("dlrm_interactionarch", "transformers_deepseek", "transformers_mixtral") or name.startswith(
+            "simple_"
+        ):
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)
         torch.cuda.empty_cache()

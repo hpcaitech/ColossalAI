@@ -32,6 +32,7 @@ def test_models_lazy_init(subset, default_device):
             # reproducible through LazyTensor materialization on PyTorch 2.13.
             "torchvision_googlenet",
             "torchvision_inception_v3",
+            "torchvision_vit_b_16",
         ) or name.startswith(
             ("transformers_vit", "transformers_blip2", "transformers_whisper", "transformers_deepseek")
         ):

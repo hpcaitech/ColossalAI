@@ -779,7 +779,8 @@ def run_with_booster_moehybridplugin(config: Tuple[int, ...]):
         num_key_value_heads=NUM_HEADS,
         num_local_experts=NUM_EXPERTS,
         num_experts_per_tok=TOP_K,
-        attn_implementation="flash_attention_2",
+        # Keep the scheduler test independent of the optional flash-attn wheel.
+        attn_implementation="eager",
     )
 
     # init model with the same seed
@@ -936,7 +937,8 @@ def run_with_booster_hybridplugin(config: Tuple[int, ...]):
         num_hidden_layers=NUM_LAYERS,
         num_attention_heads=NUM_HEADS,
         num_key_value_heads=NUM_HEADS,
-        attn_implementation="flash_attention_2",
+        # Keep the scheduler test independent of the optional flash-attn wheel.
+        attn_implementation="eager",
     )
 
     # init model with the same seed

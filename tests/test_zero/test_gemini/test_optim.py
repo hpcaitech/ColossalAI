@@ -1,3 +1,5 @@
+from importlib.util import find_spec
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -189,6 +191,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
+@pytest.mark.skipif(find_spec("apex") is None, reason="requires NVIDIA Apex AMP")
 def test_optim(world_size):
     spawn(run_dist, world_size)
 
