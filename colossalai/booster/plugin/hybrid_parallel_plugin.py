@@ -29,7 +29,7 @@ from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.model import PeftUnwrapMixin
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
+from colossalai.nn.optimizer import DistGaloreAdamW, cast_to_distributed
 from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
@@ -37,6 +37,7 @@ from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.shardformer import GradientCheckpointConfig, ShardConfig, ShardFormer
 from colossalai.shardformer.layer.utils import SeqParallelUtils, is_share_sp_tp
 from colossalai.shardformer.policies.base_policy import Policy
+from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.d_tensor.api import is_distributed_tensor
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
@@ -44,8 +45,6 @@ from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
 
 from .pp_plugin_base import PipelinePluginBase
-
-SUPPORT_SP_MODE = ["split_gather", "ring", "all_to_all", "ring_attn"]
 
 PRECISION_TORCH_TYPE = {"fp16": torch.float16, "fp32": torch.float32, "bf16": torch.bfloat16}
 
@@ -1298,7 +1297,7 @@ class HybridParallelPlugin(PipelinePluginBase):
 
         # Replace with distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
-        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and self.dp_size > 0:
+        if isinstance(optimizer, DistGaloreAdamW) and zero_stage > 0 and self.dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
                 ranks=[0],

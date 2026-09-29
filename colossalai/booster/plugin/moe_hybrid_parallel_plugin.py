@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader
 
 from colossalai.booster.plugin.hybrid_parallel_plugin import (
     PRECISION_TORCH_TYPE,
-    SUPPORT_SP_MODE,
     HybridParallelAMPOptimizer,
     HybridParallelModule,
     HybridParallelNaiveOptimizer,
@@ -32,7 +31,7 @@ from colossalai.pipeline.schedule.zero_bubble_pp import ZeroBubbleVPipeScheduler
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.shard.grad_ckpt_config import GradientCheckpointConfig
-from colossalai.shardformer.shard.shard_config import ShardConfig
+from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE, ShardConfig
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
 
 

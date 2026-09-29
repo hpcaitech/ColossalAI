@@ -1,5 +1,4 @@
 from ...cuda_extension import _CudaExtension
-from ...utils import get_cuda_cc_flag
 
 
 class FusedOptimizerCudaExtension(_CudaExtension):
@@ -25,5 +24,4 @@ class FusedOptimizerCudaExtension(_CudaExtension):
 
     def nvcc_flags(self):
         extra_cuda_flags = ["-lineinfo"]
-        extra_cuda_flags.extend(get_cuda_cc_flag())
         return ["-O3", "--use_fast_math"] + extra_cuda_flags + super().nvcc_flags()

@@ -68,11 +68,12 @@ class KernelLoader:
             usable_exts = []
             for ext in exts:
                 if ext.is_available():
-                    # make sure the machine is compatible during kernel loading
-                    ext.assert_compatible()
                     usable_exts.append(ext)
 
         assert len(usable_exts) != 0, f"No usable kernel found for {self.__class__.__name__} on the current machine."
+
+        for ext in usable_exts:
+            ext.assert_compatible()
 
         if len(usable_exts) > 1:
             # if more than one usable kernel is found, we will try to load the kernel with the highest priority

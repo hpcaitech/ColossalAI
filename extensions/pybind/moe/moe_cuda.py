@@ -1,5 +1,5 @@
 from ...cuda_extension import _CudaExtension
-from ...utils import append_nvcc_threads, get_cuda_cc_flag
+from ...utils import append_nvcc_threads
 
 
 class MoeCudaExtension(_CudaExtension):
@@ -22,6 +22,5 @@ class MoeCudaExtension(_CudaExtension):
             "--expt-relaxed-constexpr",
             "--expt-extended-lambda",
         ]
-        extra_cuda_flags.extend(get_cuda_cc_flag())
         ret = ["-O3", "--use_fast_math"] + extra_cuda_flags + super().nvcc_flags()
         return append_nvcc_threads(ret)

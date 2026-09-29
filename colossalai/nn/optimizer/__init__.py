@@ -6,7 +6,7 @@ from .came import CAME
 from .cpu_adam import CPUAdam
 from .distributed_adafactor import DistributedAdaFactor
 from .distributed_came import DistributedCAME
-from .distributed_galore import DistGaloreAwamW
+from .distributed_galore import DistGaloreAdamW, DistGaloreAwamW
 from .distributed_lamb import DistributedLamb
 from .fused_adam import FusedAdam
 from .fused_lamb import FusedLAMB
@@ -27,6 +27,7 @@ __all__ = [
     "CPUAdam",
     "HybridAdam",
     "DistributedLamb",
+    "DistGaloreAdamW",
     "DistGaloreAwamW",
     "GaLoreAdamW",
     "GaLoreAdafactor",
@@ -38,7 +39,7 @@ __all__ = [
 ]
 
 optim2DistOptim = {
-    GaLoreAdamW8bit: DistGaloreAwamW,
+    GaLoreAdamW8bit: DistGaloreAdamW,
     Lamb: DistributedLamb,
     CAME: DistributedCAME,
     Adafactor: DistributedAdaFactor,

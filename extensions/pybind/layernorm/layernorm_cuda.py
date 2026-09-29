@@ -1,5 +1,5 @@
 from ...cuda_extension import _CudaExtension
-from ...utils import append_nvcc_threads, get_cuda_cc_flag
+from ...utils import append_nvcc_threads
 
 
 class LayerNormCudaExtension(_CudaExtension):
@@ -21,6 +21,5 @@ class LayerNormCudaExtension(_CudaExtension):
 
     def nvcc_flags(self):
         extra_cuda_flags = ["-maxrregcount=50"]
-        extra_cuda_flags.extend(get_cuda_cc_flag())
         ret = ["-O3", "--use_fast_math"] + extra_cuda_flags + self.version_dependent_macros + super().nvcc_flags()
         return append_nvcc_threads(ret)
