@@ -117,5 +117,4 @@ jobs:
       - name: Test the example
         run: |
           example_dir=${{ matrix.directory }}
-          cd "${PWD}/examples/${example_dir}"
-          bash test_ci.sh
+          python3 .github/workflows/scripts/example_checks/run_test_ci.py "examples/${example_dir}/test_ci.sh"
