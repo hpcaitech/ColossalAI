@@ -58,5 +58,4 @@ jobs:
         run: |
           dir=${{ matrix.directory }}
           echo "Testing ${dir} now"
-          cd "${PWD}/examples/${dir}"
-          bash test_ci.sh
+          python3 .github/workflows/scripts/example_checks/run_test_ci.py "examples/${dir}/test_ci.sh"
