@@ -134,6 +134,12 @@ class MyExtension(_Extension):
 
 ```
 
+`assert_compatible()` checks runtime and hardware requirements; `assert_build_compatible()`
+adds compiler checks for AOT/JIT builds. Loading a prebuilt CUDA extension does not require nvcc.
+
+Set `COLOSSAL_CPU_ARCH=x86-64` when building portable x86 CPUAdam wheels; the default
+`native` target is intended for local source/JIT builds.
+
 ## ✏️ Acknowledgement
 
 This module is written from scratch but we learnt a lot by looking into [DeepSpeed'

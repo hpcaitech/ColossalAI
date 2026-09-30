@@ -1,3 +1,4 @@
+import os
 import platform
 
 from ...cuda_extension import _CudaExtension
@@ -26,6 +27,9 @@ class CpuAdamX86Extension(_CudaExtension):
         return ret
 
     def cxx_flags(self):
+        cpu_arch = os.environ.get("COLOSSAL_CPU_ARCH", "native")
+        if cpu_arch not in ("native", "x86-64"):
+            raise ValueError("COLOSSAL_CPU_ARCH must be 'native' or 'x86-64'")
         extra_cxx_flags = [
             "-std=c++14",
             "-std=c++17",
@@ -34,7 +38,7 @@ class CpuAdamX86Extension(_CudaExtension):
             "-g",
             "-Wno-reorder",
             "-fopenmp",
-            "-march=native",
+            f"-march={cpu_arch}",
         ]
         return ["-O3"] + self.version_dependent_macros + extra_cxx_flags
 
