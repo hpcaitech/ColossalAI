@@ -277,7 +277,9 @@ class GPT2Policy(Policy):
                 target_key=GPT2Attention,
             )
 
-        if not self.shard_config.pipeline_stage_manager and self.shard_config.enable_sequence_parallelism:
+        if not self.shard_config.pipeline_stage_manager and (
+            self.shard_config.enable_sequence_parallelism or use_flash_attention
+        ):
             policy[GPT2Model].method_replacement = {
                 "forward": partial(GPT2PipelineForwards.gpt2_model_forward, shard_config=self.shard_config)
             }
