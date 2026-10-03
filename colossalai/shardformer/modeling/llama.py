@@ -8,6 +8,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -138,6 +139,13 @@ class LlamaPipelineForwards:
                 q_padding_mask=attention_mask,
                 is_causal=True,
                 invert=(sp_mode != "ring_attn"),
+            )
+        elif shard_config.enable_sequence_parallelism:
+            # the attention forward is replaced for sequence parallelism (see the policy), and it takes a 4d causal
+            # mask over the full sequence. `_update_causal_mask` returns None for sdpa without padding (relying on
+            # sdpa's is_causal), and on later pipeline stages `hidden_states` only holds the local part of the sequence
+            attn_kwargs: torch.Tensor = _prepare_4d_causal_attention_mask(
+                attention_mask, (batch_size, seq_length), hidden_states, past_seen_tokens
             )
         else:
             attn_kwargs: torch.Tensor = self._update_causal_mask(
