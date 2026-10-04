@@ -1,6 +1,4 @@
 import os
-from importlib.util import find_spec
-
 import pytest
 import torch
 import torch.distributed as dist
@@ -23,7 +21,12 @@ from colossalai.utils.safetensors import HAS_TENSORNVME
 from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
-APEX_AVAILABLE = find_spec("apex") is not None
+try:
+    import apex.amp  # noqa: F401
+
+    APEX_AVAILABLE = True
+except ImportError:
+    APEX_AVAILABLE = False
 
 MODEL_PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.5},
@@ -216,7 +219,10 @@ def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
-    exam_lazy_from_pretrained()
+    if os.environ.get("LLAMA_PATH"):
+        exam_lazy_from_pretrained()
+    elif rank == 0:
+        print("Skipping lazy from_pretrained checkpoint coverage: LLAMA_PATH is not configured.")
 
 
 @pytest.mark.dist

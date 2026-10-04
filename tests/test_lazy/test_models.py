@@ -34,6 +34,7 @@ def test_models_lazy_init(subset, default_device):
             "torchvision_inception_v3",
             "torchvision_vit_b_16",
             "torchvision_convnext_base",
+            "torchvision_swin_s",
         ) or name.startswith(
             ("transformers_vit", "transformers_blip2", "transformers_whisper", "transformers_deepseek")
         ):

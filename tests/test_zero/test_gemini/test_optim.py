@@ -1,5 +1,3 @@
-from importlib.util import find_spec
-
 import pytest
 import torch
 import torch.distributed as dist
@@ -15,6 +13,13 @@ from colossalai.utils import set_seed
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
+
+try:
+    import apex.amp  # noqa: F401
+
+    APEX_AMP_AVAILABLE = True
+except ImportError:
+    APEX_AMP_AVAILABLE = False
 
 PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.3, "offload_param_frac": 0.3, "offload_optim_frac": 0.3},
@@ -191,7 +196,7 @@ def run_dist(rank, world_size, port):
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
-@pytest.mark.skipif(find_spec("apex") is None, reason="requires NVIDIA Apex AMP")
+@pytest.mark.skipif(not APEX_AMP_AVAILABLE, reason="requires NVIDIA Apex AMP")
 def test_optim(world_size):
     spawn(run_dist, world_size)
 

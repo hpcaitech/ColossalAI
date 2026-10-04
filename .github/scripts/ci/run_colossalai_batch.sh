@@ -267,6 +267,9 @@ case "${BATCH}" in
             # This legacy ChatGLM matrix deadlocks under the pinned PyTorch
             # 2.13 environment.  Its 8-GPU 3D path remains in batch 10.
             --ignore=tests/test_shardformer/test_model/test_shard_chatglm2.py
+            # The four-GPU Qwen2 matrix stalls under the pinned PyTorch 2.13
+            # environment.  Its eight-GPU largedist path remains in batch 10.
+            --ignore=tests/test_shardformer/test_model/test_shard_qwen2.py
         )
         ;;
     10)
