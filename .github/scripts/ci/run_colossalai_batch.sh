@@ -31,6 +31,7 @@ Batches:
   7    Four-GPU FP8 collectives and DDP/FSDP communication hooks
   8    Four-GPU Booster/Gemini/checkpoint/pipeline/ZeRO/MoE/optimizers
   9    Four-GPU non-largedist ShardFormer/inference/model tests
+  9q   Four-GPU non-largedist Qwen2 ShardFormer matrix
   10   Eight-GPU tests marked largedist
   11   Two-GPU Apex-dependent Gemini regression files
 
@@ -267,10 +268,20 @@ case "${BATCH}" in
             # This legacy ChatGLM matrix deadlocks under the pinned PyTorch
             # 2.13 environment.  Its 8-GPU 3D path remains in batch 10.
             --ignore=tests/test_shardformer/test_model/test_shard_chatglm2.py
-            # The four-GPU Qwen2 matrix stalls under the pinned PyTorch 2.13
-            # environment.  Its eight-GPU largedist path remains in batch 10.
+            # Qwen2 has a large internal configuration matrix, so run its
+            # four-GPU path separately in batch 9q instead of timing out all
+            # remaining batch-9 coverage.  Its 8-GPU path remains in batch 10.
             --ignore=tests/test_shardformer/test_model/test_shard_qwen2.py
         )
+        ;;
+    9q|09q)
+        LABEL="09q-qwen2-4gpu"
+        DESCRIPTION="Non-largedist Qwen2 ShardFormer configuration matrix"
+        EXPECTED_GPUS=4
+        DEFAULT_TIMEOUT_MIN=240
+        NEEDS_CUDA_TOOLKIT=1
+        TESTS=(tests/test_shardformer/test_model/test_shard_qwen2.py)
+        PYTEST_EXTRA=(-m "not largedist")
         ;;
     10)
         LABEL="10-largedist-8gpu"

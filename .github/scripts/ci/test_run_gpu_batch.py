@@ -1,6 +1,6 @@
 import unittest
 
-from run_gpu_batch import find_idle, parse_pool, select_idle
+from run_gpu_batch import GPU_COUNTS, find_idle, parse_pool, select_idle
 
 GPU_A = "GPU-00000000-0000-0000-0000-000000000001"
 GPU_B = "GPU-00000000-0000-0000-0000-000000000002"
@@ -36,6 +36,9 @@ class GpuSelectionTests(unittest.TestCase):
         for value in ("0,0", "0,a", "0, 1"):
             with self.subTest(value=value), self.assertRaises(RuntimeError):
                 parse_pool(value)
+
+    def test_qwen2_batch_uses_four_gpus(self):
+        self.assertEqual(GPU_COUNTS["9q"], 4)
 
 
 if __name__ == "__main__":

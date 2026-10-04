@@ -9,7 +9,7 @@ on:
       batches:
         description: Space-separated batches to run
         required: true
-        default: "10 2 3 4a 4b 4c 4d 4e 5 6 7 8 9 11"
+        default: "10 2 3 4a 4b 4c 4d 4e 5 6 7 8 9 9q 11"
         type: string
       fast_mode:
         description: Use the reduced FAST_TEST model matrix
@@ -32,7 +32,7 @@ jobs:
     with:
       layer: layer-3
       source_sha: ${{ github.sha }}
-      batches: ${{ github.event_name == 'workflow_dispatch' && inputs.batches || '10 2 3 4a 4b 4c 4d 4e 5 6 7 8 9 11' }}
+      batches: ${{ github.event_name == 'workflow_dispatch' && inputs.batches || '10 2 3 4a 4b 4c 4d 4e 5 6 7 8 9 9q 11' }}
       fast_mode: ${{ github.event_name == 'workflow_dispatch' && inputs.fast_mode || false }}
       timeout_minutes: 1440
       artifact_retention_days: 30
