@@ -1,6 +1,6 @@
 """This code is from NVIDIA apex:
-      https://github.com/NVIDIA/apex
-   with some changes. """
+   https://github.com/NVIDIA/apex
+with some changes."""
 
 import numbers
 
