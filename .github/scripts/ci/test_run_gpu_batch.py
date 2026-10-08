@@ -1,6 +1,12 @@
+import os
+import sys
+import tempfile
+import time
 import unittest
+from pathlib import Path
 
-from run_gpu_batch import GPU_COUNTS, find_idle, parse_pool, select_idle
+from run_gpu_batch import GPU_COUNTS, find_idle, parse_pool, select_idle, stream_process
+from run_with_timeout import run_with_timeout
 
 GPU_A = "GPU-00000000-0000-0000-0000-000000000001"
 GPU_B = "GPU-00000000-0000-0000-0000-000000000002"
@@ -39,6 +45,47 @@ class GpuSelectionTests(unittest.TestCase):
 
     def test_qwen2_batch_uses_four_gpus(self):
         self.assertEqual(GPU_COUNTS["9q"], 4)
+
+    @unittest.skipUnless(os.name == "posix", "process groups require Linux")
+    def test_exited_parent_does_not_wait_for_worker_stdout(self):
+        command = [
+            sys.executable,
+            "-c",
+            "import subprocess, sys; "
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+            "print('parent completed', flush=True); sys.exit(5)",
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "test.log"
+            start = time.monotonic()
+            self.assertEqual(stream_process(command, log, os.environ.copy()), 5)
+            self.assertLess(time.monotonic() - start, 15)
+            self.assertIn("parent completed", log.read_text())
+
+    @unittest.skipUnless(os.name == "posix", "process groups require Linux")
+    def test_timeout_reaps_worker_before_tee_eof(self):
+        wrapper = Path(__file__).with_name("run_with_timeout.py")
+        command = [
+            "bash",
+            "-o",
+            "pipefail",
+            "-c",
+            '"$1" "$2" --timeout-seconds 0.2 -- "$1" -c '
+            '"import subprocess, sys, time; '
+            "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+            'time.sleep(60)" | tee /dev/null',
+            "test",
+            sys.executable,
+            str(wrapper),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            start = time.monotonic()
+            self.assertEqual(stream_process(command, Path(directory) / "timeout.log", os.environ.copy()), 124)
+            self.assertLess(time.monotonic() - start, 25)
+
+    @unittest.skipUnless(os.name == "posix", "process groups require Linux")
+    def test_timeout_preserves_normal_exit_status(self):
+        self.assertEqual(run_with_timeout([sys.executable, "-c", "import sys; sys.exit(7)"], 5), 7)
 
 
 if __name__ == "__main__":

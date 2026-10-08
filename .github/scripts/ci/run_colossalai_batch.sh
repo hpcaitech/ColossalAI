@@ -96,6 +96,7 @@ case "${BATCH}" in
             tests/test_infer/test_config_and_struct.py
             tests/test_infer/test_kvcache_manager.py
             tests/test_infer/test_request_handler.py
+            tests/test_infer/test_runtime_compatibility.py
         )
         ;;
     3|03)
@@ -444,6 +445,10 @@ if [[ -n "${CUDA_HOME:-}" && -x "${CUDA_HOME}/bin/nvcc" ]]; then
 fi
 
 TIMEOUT_MIN="${TIMEOUT_MIN:-${DEFAULT_TIMEOUT_MIN}}"
+if [[ ! "${TIMEOUT_MIN}" =~ ^[1-9][0-9]*$ ]]; then
+    printf 'TIMEOUT_MIN must be a positive integer number of minutes\n' >&2
+    exit 2
+fi
 RUN_ID="${GITHUB_RUN_ID:-local}-$(date -u +%Y%m%dT%H%M%SZ)"
 RESULT_PREFIX="${RESULTS_ROOT}/${RUN_ID}-${LABEL}"
 
@@ -456,7 +461,7 @@ printf 'result_prefix=%s\n' "${RESULT_PREFIX}"
 
 run_pytest_batch() {
     set +e
-    timeout --signal=TERM --kill-after=60s "${TIMEOUT_MIN}m" \
+    "${PYTHON}" "${SCRIPT_DIR}/run_with_timeout.py" --timeout-seconds "$((TIMEOUT_MIN * 60))" -- \
         "${PYTHON}" -m pytest \
         -v -s -ra --tb=short \
         --maxfail="${MAXFAIL}" \
@@ -489,7 +494,7 @@ if [[ "${RUN_DDP_HOOK_SUPPLEMENT}" == "1" ]]; then
     set -e
     if [[ "${COLLECT_STATUS}" -eq 0 && "${COLLECT_OUTPUT}" == *"::test_"* ]]; then
         set +e
-        timeout --signal=TERM --kill-after=60s "${TIMEOUT_MIN}m" \
+        "${PYTHON}" "${SCRIPT_DIR}/run_with_timeout.py" --timeout-seconds "$((TIMEOUT_MIN * 60))" -- \
             "${PYTHON}" -m pytest -v -s -ra --tb=short --maxfail="${MAXFAIL}" \
             --junitxml="${RESULT_PREFIX}-ddp-hook.xml" "${DDP_HOOK_FILE}" \
             2>&1 | tee "${RESULT_PREFIX}-ddp-hook.log"
@@ -497,7 +502,7 @@ if [[ "${RUN_DDP_HOOK_SUPPLEMENT}" == "1" ]]; then
         set -e
     else
         set +e
-        timeout --signal=TERM --kill-after=60s "${TIMEOUT_MIN}m" \
+        "${PYTHON}" "${SCRIPT_DIR}/run_with_timeout.py" --timeout-seconds "$((TIMEOUT_MIN * 60))" -- \
             "${PYTHON}" "${DDP_HOOK_FILE}" 2>&1 | tee "${RESULT_PREFIX}-ddp-hook.log"
         SUPPLEMENT_STATUS="${PIPESTATUS[0]}"
         set -e

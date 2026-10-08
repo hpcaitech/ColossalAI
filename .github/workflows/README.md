@@ -67,6 +67,29 @@ immediately before every launch, so a stale hourly probe still fails closed.
 6. Add another Torch/CUDA profile to layer 3 only after its isolated environment
    or pinned image has been provisioned.
 
+### Failure diagnosis and targeted validation
+
+Layer 3 accepts an explicit `batches` input. After changing code, rerun the
+affected batches (for example `10 8 9 9q`) with `fast_mode=false` before another
+complete matrix. A capacity skip is not a successful GPU test, and an optional
+dependency skip is not validation of that dependency's kernel. Keep skipped
+test counts and reasons visible in the uploaded pytest reports.
+
+Qwen2/Qwen3 combine pipeline and sequence parallelism: later pipeline stages
+receive a local sequence slice, but both query and key mask lengths must match
+the full sequence used by attention. A rank-local shape error can otherwise
+look like a communication timeout if collective process-group destruction
+blocks while the other ranks wait for messages. Avoid collective destruction
+while unwinding an exception so the original worker error can reach pytest.
+
+The batch wrapper uses `run_with_timeout.py` to supervise a dedicated test
+process group and clean its workers before the logging `tee` waits for EOF.
+The GPU runner also checks whether the batch process exited
+while streaming logs; it must not wait indefinitely for EOF held open by
+orphaned workers. Its finalizer terminates only that batch's process group,
+including on timeout, before releasing the CI GPU lock. This does not cancel
+unrelated GPU jobs.
+
 ## Active workflow inventory
 
 ### Tests and builds

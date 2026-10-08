@@ -27,6 +27,8 @@ def setup_seed(seed):
 def check_inference_engine(use_engine=False, prompt_template=None, do_sample=True, policy=None):
     setup_seed(20)
     tokenizer = get_test_tokenizer(vocab_size=50000)
+    # Decoder-only batched generation must align real tokens at the right.
+    tokenizer.padding_side = "left"
     model = LlamaForCausalLM(
         LlamaConfig(
             vocab_size=50000,
@@ -70,8 +72,9 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
             inputs = [_DEFAULT_PROMPT_TEMPLATES[prompt_template].format(input_text=input_text) for input_text in inputs]
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
-        inputs = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")["input_ids"]
-        inputs = inputs.cuda()
+        encoded = tokenizer.batch_encode_plus(inputs, padding=True, return_tensors="pt")
+        inputs = encoded["input_ids"].cuda()
+        attention_mask = encoded["attention_mask"].cuda()
         generation_config = GenerationConfig(
             do_sample=do_sample,
             dtype="fp32",
@@ -80,7 +83,7 @@ def check_inference_engine(use_engine=False, prompt_template=None, do_sample=Tru
             pad_token_id=tokenizer.pad_token_id,
             max_new_tokens=output_len,
         )
-        outputs = model.generate(inputs, generation_config=generation_config)
+        outputs = model.generate(inputs, attention_mask=attention_mask, generation_config=generation_config)
         outputs = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
     return outputs

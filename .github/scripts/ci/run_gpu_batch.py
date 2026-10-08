@@ -2,9 +2,11 @@
 """Select idle GPUs and run one ColossalAI CI batch while holding a CI lock."""
 
 import argparse
+import codecs
 import json
 import os
 import re
+import selectors
 import signal
 import socket
 import subprocess
@@ -102,13 +104,40 @@ def query_gpus():
     return inventory, processes
 
 
+def terminate_process_group(child):
+    """Clean only the process group created for this child, even after its exit."""
+    try:
+        os.killpg(child.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    if child.poll() is None:
+        try:
+            child.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(child.pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.2)
+    else:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    if child.poll() is None:
+        child.wait(timeout=10)
+
+
 def stream_process(command, log_path, env):
     child = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        bufsize=0,
         env=env,
         start_new_session=True,
     )
@@ -121,46 +150,33 @@ def stream_process(command, log_path, env):
     old_term = signal.signal(signal.SIGTERM, interrupted)
     old_int = signal.signal(signal.SIGINT, interrupted)
     try:
-        with log_path.open("w", encoding="utf-8") as log:
-            for line in child.stdout:
-                sys.stdout.write(line)
-                log.write(line)
+        with log_path.open("w", encoding="utf-8") as log, selectors.DefaultSelector() as selector:
+            selector.register(child.stdout, selectors.EVENT_READ)
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            while True:
+                for key, _ in selector.select(timeout=1):
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(child.stdout)
+                        break
+                    output = decoder.decode(chunk)
+                    sys.stdout.write(output)
+                    sys.stdout.flush()
+                    log.write(output)
+                    log.flush()
+                # A timed-out pytest process can leave workers holding stdout
+                # open. Do not wait for pipe EOF before cleaning its group.
+                if child.poll() is not None or not selector.get_map():
+                    output = decoder.decode(b"", final=True)
+                    sys.stdout.write(output)
+                    log.write(output)
+                    break
         return child.wait()
     finally:
+        child.stdout.close()
         signal.signal(signal.SIGTERM, old_term)
         signal.signal(signal.SIGINT, old_int)
-        # The batch shell is a process-group leader.  Always clean the whole
-        # group, even when the shell has already exited: GNU timeout can reap
-        # pytest while torch multiprocessing workers remain alive and keep the
-        # GPUs allocated for the following batch.
-        try:
-            os.killpg(child.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        if child.poll() is None:
-            try:
-                child.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                pass
-
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(child.pid, 0)
-            except ProcessLookupError:
-                break
-            time.sleep(0.2)
-        else:
-            try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-
-        if child.poll() is None:
-            try:
-                child.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                pass
+        terminate_process_group(child)
 
 
 def main():
