@@ -432,7 +432,10 @@ class Qwen2PipelineForwards:
                 sequence_lengths = -1
             else:
                 if input_ids is not None:
-                    sequence_lengths = (torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1).to(logits.device)
+                    # Take the rightmost non-pad token so that both left and right padding work
+                    non_pad_mask = (input_ids != self.config.pad_token_id).to(logits.device, torch.int32)
+                    token_indices = torch.arange(input_ids.shape[-1], device=logits.device, dtype=torch.int32)
+                    sequence_lengths = (token_indices * non_pad_mask).argmax(-1)
                 else:
                     sequence_lengths = -1
 
