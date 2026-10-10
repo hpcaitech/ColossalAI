@@ -16,7 +16,8 @@ jobs:
   detect-changed-example:
     if: |
       github.event.pull_request.draft == false &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request'
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.setup-matrix.outputs.matrix }}
@@ -82,6 +83,7 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' && github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
       needs.detect-changed-example.outputs.anyChanged == 'true'
     name: Test the changed example
     needs: detect-changed-example

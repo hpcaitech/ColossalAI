@@ -6,6 +6,7 @@
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
   - [Workflows](#workflows)
+    - [Fork-safe Pull Request Checks](#fork-safe-pull-request-checks)
     - [Code Style Check](#code-style-check)
     - [Unit Test](#unit-test)
     - [Example Test](#example-test)
@@ -31,6 +32,22 @@ Refer to this [documentation](https://docs.github.com/en/actions/managing-workfl
 I will provide the details of each workflow below.
 
 **A PR which changes the `version.txt` is considered as a release PR in the following context.**
+
+### Fork-safe Pull Request Checks
+
+| Workflow Name            | File name            | Description                                                                                         |
+| ------------------------ | -------------------- | --------------------------------------------------------------------------------------------------- |
+| `CI / Fork-safe PR Gate` | `fork_pr_checks.yml` | Runs repository lint and selected CPU unit tests on isolated GitHub-hosted runners for every PR.    |
+
+The workflow uses the `pull_request` event, a read-only token, no secrets, and no GPU or self-hosted
+runner. Results are reported on the upstream pull request's Checks page, including pull requests from
+forks. GitHub may require a maintainer to approve the first workflow run from an outside contributor.
+
+Existing jobs that execute unmerged code on GPU or private runners are limited to branches in this repository. Because a
+`pull_request` workflow definition is itself part of the untrusted pull request merge commit, that
+condition is defense in depth rather than an administrative security boundary. Repository owners must
+also enforce organization or enterprise Actions policies, or restrict self-hosted runner groups to
+approved workflows, in GitHub settings.
 
 
 ### Code Style Check
