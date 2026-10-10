@@ -22,6 +22,7 @@ from .utils import (
     load_state_dict_into_model,
     load_state_dict_shards,
     load_states_into_optimizer,
+    merge_optimizer_param_group_defaults,
     save_config_file,
     save_param_groups,
     save_state_dict,
@@ -180,6 +181,7 @@ class GeneralCheckpointIO(CheckpointIO):
             checkpoint = load_state_dict(checkpoint)
         if not low_cpu_mem_mode:
             checkpoint = create_pinned_state_dict(checkpoint, empty=False, num_threads=num_threads)
+        merge_optimizer_param_group_defaults(checkpoint["param_groups"], optimizer.param_groups)
         optimizer.load_state_dict(checkpoint)
 
     def save_unsharded_optimizer(

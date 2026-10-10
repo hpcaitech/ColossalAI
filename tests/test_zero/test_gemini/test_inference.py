@@ -1,3 +1,4 @@
+from importlib.util import find_spec
 from typing import Callable
 
 import pytest
@@ -116,6 +117,7 @@ def run_dist(rank, world_size, port):
 
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [1, 4])
+@pytest.mark.skipif(find_spec("apex") is None, reason="requires NVIDIA Apex AMP")
 def test_inference(world_size):
     spawn(run_dist, world_size)
 

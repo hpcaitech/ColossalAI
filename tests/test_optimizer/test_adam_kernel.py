@@ -153,7 +153,9 @@ def check_adam_kernel(
 def test_fused_adam_kernel(adamw, weight_decay, p_dtype, g_dtype):
     rtol, atol = 1e-5, 1e-8
     if p_dtype is torch.float16 or g_dtype is torch.float16:
-        rtol, atol = 1e-3, 1e-3
+        # CUDA 13 fused arithmetic can differ from the FP32 reference by just
+        # over 1e-3 after several FP16 Adam steps with weight decay.
+        rtol, atol = 2e-3, 2e-3
     if p_dtype is torch.bfloat16 or g_dtype is torch.bfloat16:
         rtol, atol = 4e-3, 4e-3
     check_adam_kernel(

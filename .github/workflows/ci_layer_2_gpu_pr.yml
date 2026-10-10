@@ -1,0 +1,41 @@
+name: CI / Layer 2 / Trusted PR GPU
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - .github/scripts/ci/**
+      - .github/workflows/ci_layer_2_gpu_pr.yml
+      - .github/workflows/ci_reusable_gpu_batches.yml
+      - colossalai/**
+      - extensions/**
+      - requirements/**
+      - tests/**
+      - pytest.ini
+      - setup.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-layer-2-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gpu-regression:
+    name: Torch 2.13 GPU core (batches 2 and 5)
+    if: >-
+      github.repository == 'hpcaitech/ColossalAI' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)))
+    uses: ./.github/workflows/ci_reusable_gpu_batches.yml
+    with:
+      layer: layer-2
+      source_sha: ${{ github.sha }}
+      batches: "2 5"
+      fast_mode: true
+      timeout_minutes: 240
+      artifact_retention_days: 14

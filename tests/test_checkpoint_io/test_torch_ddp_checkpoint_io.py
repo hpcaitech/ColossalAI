@@ -10,11 +10,14 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.interface import OptimizerWrapper
 from colossalai.testing import check_state_dict_equal, parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils.safetensors import HAS_TENSORNVME
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 
 
 @parameterize("shard", [False, True])
 @parameterize("size_per_shard", [16, 128])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 @parameterize("low_cpu_mem_mode", [False, True])
 def check_torch_ddp_checkpointIO(shard: bool, size_per_shard: int, use_async: bool, low_cpu_mem_mode: bool):
     plugin = TorchDDPPlugin()

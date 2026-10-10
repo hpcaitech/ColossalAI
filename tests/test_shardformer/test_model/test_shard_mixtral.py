@@ -9,6 +9,7 @@ import torch.distributed
 import torch.distributed as dist
 from transformers.models.mixtral.configuration_mixtral import MixtralConfig
 from transformers.models.mixtral.modeling_mixtral import MixtralModel
+from transformers.utils import is_flash_attn_2_available
 
 import colossalai
 from colossalai.booster.booster import Booster
@@ -61,7 +62,7 @@ def run_mixtral_commom(config: Tuple[int, ...]):
         num_key_value_heads=NUM_HEADS,
         num_local_experts=NUM_EXPERTS,
         num_experts_per_tok=TOP_K,
-        attn_implementation="flash_attention_2",
+        attn_implementation="flash_attention_2" if is_flash_attn_2_available() else "sdpa",
     )
 
     # init model with the same seed

@@ -1,5 +1,6 @@
 import ctypes
 import random
+import sys
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -1255,7 +1256,14 @@ class HybridParallelPlugin(PipelinePluginBase):
 
     def __del__(self):
         """Destroy the process groups in ProcessGroupMesh"""
-        self.pg_mesh.destroy_mesh_process_groups()
+        # NCCL shutdown is collective. If one rank is unwinding an exception,
+        # its peers may still be waiting for pipeline messages. A collective
+        # destructor would hide the original error and prevent spawn from
+        # terminating the other workers.
+        if sys.is_finalizing() or sys.exc_info()[0] is not None:
+            return
+        if hasattr(self, "pg_mesh"):
+            self.pg_mesh.destroy_mesh_process_groups()
 
     @property
     def enable_pipeline_parallelism(self) -> bool:

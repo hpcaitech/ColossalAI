@@ -18,7 +18,10 @@ from colossalai.testing import (
     rerun_if_address_is_in_use,
     spawn,
 )
+from colossalai.utils.safetensors import HAS_TENSORNVME
 from tests.kit.model_zoo import model_zoo
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 
 if Version(torch.__version__) < Version("2.0.0"):
     TEST_CONFIGS = [
@@ -42,7 +45,7 @@ else:
 @parameterize("model_name", ["transformers_llama_for_causal_lm"])
 @parameterize("size_per_shard", [32])
 @parameterize("test_config", TEST_CONFIGS)
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 @parameterize("low_cpu_mem_mode", [False, True])
 @clear_cache_before_run()
 def exam_state_dict(

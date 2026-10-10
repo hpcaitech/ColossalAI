@@ -72,20 +72,20 @@ model_zoo.register(
 
 
 def data_gen_for_qa():
-    question, text = "Who was Jim Henson?", "Jim Henson was a nice puppet"
-    tokenizer = transformers.BertTokenizer.from_pretrained("bert-base-uncased")
-    inputs = tokenizer(question, text, return_tensors="pt")
-    return inputs
+    input_ids = torch.arange(SEQ_LENGTH, dtype=torch.int64).unsqueeze(0)
+    attention_mask = torch.ones_like(input_ids)
+    token_type_ids = torch.cat(
+        [torch.zeros(1, SEQ_LENGTH // 2), torch.ones(1, SEQ_LENGTH - SEQ_LENGTH // 2)], dim=1
+    ).to(torch.int64)
+    return dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
 
 
 def data_gen_for_mcq():
-    prompt = "In Italy, pizza served in formal settings, such as at a restaurant, is presented unsliced."
-    choice0 = "It is eaten with a fork and a knife."
-    choice1 = "It is eaten while held in the hand."
-    tokenizer = transformers.BertTokenizer.from_pretrained("bert-base-uncased")
-    encoding = tokenizer([prompt, prompt], [choice0, choice1], return_tensors="pt", padding=True)
-    encoding = {k: v.unsqueeze(0) for k, v in encoding.items()}
-    return encoding
+    input_ids = torch.arange(2 * SEQ_LENGTH, dtype=torch.int64).reshape(1, 2, SEQ_LENGTH)
+    attention_mask = torch.ones_like(input_ids)
+    token_type_ids = torch.zeros_like(input_ids)
+    token_type_ids[:, :, SEQ_LENGTH // 2 :] = 1
+    return dict(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)
 
 
 model_zoo.register(

@@ -9,7 +9,11 @@ from safetensors.torch import _TYPES, load_file, safe_open
 
 try:
     from tensornvme.async_file_io import AsyncFileWriter
+
+    HAS_TENSORNVME = True
 except Exception:
+    AsyncFileWriter = None
+    HAS_TENSORNVME = False
     warnings.warn(
         "Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git"
     )
@@ -19,6 +23,12 @@ import io
 from torch.distributed.distributed_c10d import _pickler, _unpickler
 
 ASYNC_WRITE_ENTRIES = 32
+
+
+def _require_async_file_writer():
+    if AsyncFileWriter is None:
+        raise RuntimeError("Async checkpoint I/O requires TensorNVMe")
+    return AsyncFileWriter
 
 
 def _object_to_tensor(obj, device):
@@ -162,7 +172,8 @@ def prepare(
 def save(path: str, state_dict: Dict[str, torch.Tensor], metadata: Optional[Dict[str, str]] = None) -> None:
     prepared_data, tensors, _ = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
-    f_writer = AsyncFileWriter(path, n_entries=ASYNC_WRITE_ENTRIES, backend="pthread", n_tasks=2 + len(tensors))
+    writer_cls = _require_async_file_writer()
+    f_writer = writer_cls(path, n_entries=ASYNC_WRITE_ENTRIES, backend="pthread", n_tasks=2 + len(tensors))
     f_writer.write(n.to_bytes(8, byteorder="little"))
     f_writer.write(header_bytes)
 
@@ -184,7 +195,8 @@ def move_and_save(
 ) -> None:
     prepared_data, _, tensor_keys = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
-    f_writer = AsyncFileWriter(path, n_entries=ASYNC_WRITE_ENTRIES, backend="pthread", n_tasks=2 + len(tensor_keys))
+    writer_cls = _require_async_file_writer()
+    f_writer = writer_cls(path, n_entries=ASYNC_WRITE_ENTRIES, backend="pthread", n_tasks=2 + len(tensor_keys))
     f_writer.write(n.to_bytes(8, byteorder="little"))
     f_writer.write(header_bytes)
 
