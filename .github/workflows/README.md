@@ -92,6 +92,28 @@ unrelated GPU jobs.
 
 ## Active workflow inventory
 
+### Fork-safe pull request checks
+
+| Workflow file | Trigger | Purpose |
+| --- | --- | --- |
+| `fork_pr_checks.yml` | Every pull request to `main` | Runs repository lint, runner-policy checks, and selected CPU unit tests on isolated GitHub-hosted runners. |
+
+The workflow uses the `pull_request` event, a read-only token, no secrets, and no
+GPU or self-hosted runner. Results are reported on the upstream pull request's
+Checks page, including pull requests from forks. GitHub may require a maintainer
+to approve the first workflow run from an outside contributor.
+
+This existing fork-safe gate remains enabled alongside layer 1 during rollout.
+Consolidating their overlapping CPU and formatting checks and migrating required
+check names is a separate change.
+
+Existing jobs that execute unmerged code on GPU or private runners are limited
+to branches in this repository. Because a `pull_request` workflow definition is
+itself part of the untrusted pull request merge commit, that condition is defense
+in depth rather than an administrative security boundary. Repository owners must
+also enforce organization or enterprise Actions policies, or restrict self-hosted
+runner groups to approved workflows, in GitHub settings.
+
 ### Tests and builds
 
 | Workflow file | Trigger | Purpose |
@@ -106,6 +128,7 @@ unrelated GPU jobs.
 | `compatibility_test_on_dispatch.yml` | Manual dispatch | Runs the required Torch and CUDA version inputs. Neither input has an implicit `all` default. |
 | `cuda_ext_check_before_merge.yml` | Release pull request or manual dispatch | Checks CUDA extension builds before release. |
 | `report_test_coverage.yml` | Completion of the legacy PR build | Reports test coverage back to the pull request. |
+| `requirements_compatibility.yml` | Scoped requirements changes or manual dispatch | Validates dependency installation and compatibility. |
 | `run_chatgpt_examples.yml` | Pull request | Runs ChatGPT example checks when their scoped files change. |
 | `run_chatgpt_unit_tests.yml` | Pull request | Runs ChatGPT unit tests when their scoped files change. |
 | `run_colossalqa_unit_tests.yml` | Pull request | Runs ColossalQA unit tests when their scoped files change. |

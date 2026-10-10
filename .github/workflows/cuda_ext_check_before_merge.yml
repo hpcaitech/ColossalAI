@@ -9,7 +9,10 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    if: github.repository == 'hpcaitech/ColossalAI'
+    if: >-
+      github.repository == 'hpcaitech/ColossalAI' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -24,6 +27,9 @@ jobs:
   build:
     name: Release bdist wheels
     needs: matrix_preparation
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false

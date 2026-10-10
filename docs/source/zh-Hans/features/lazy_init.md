@@ -61,7 +61,7 @@ model, *_ = booster.boost(model)
 
 不是所有的模型都可以懒惰初始化。在某些情况下，一部分参数/缓冲区可能会被提前初始化。但是不用担心，这部分通常只占整个模型的一小部分。
 
-并且一些模型完全不支持，会引发错误。我们测试了 torchvision, diffusers, timm, transformers, torchaudio 和 torchrec 中的模型。以下模型不受支持：
+并且一些模型完全不支持，会引发错误。我们测试了 torchvision, diffusers, timm, transformers 和 torchaudio 中的模型。以下模型不受支持：
 
 | 模型                          | 分类         |
 |-------------------------------|--------------|

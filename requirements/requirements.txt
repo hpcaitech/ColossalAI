@@ -1,8 +1,7 @@
-numpy
+numpy>=1.24,<3
 tqdm
 psutil
 packaging
-pre-commit
 rich
 click
 fabric
