@@ -35,7 +35,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
+from colossalai.nn.optimizer import DistGaloreAdamW, cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
@@ -595,7 +595,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         # Replace with the distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
 
-        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
+        if isinstance(optimizer, DistGaloreAdamW) and zero_stage > 0 and dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
                 ranks=[0],

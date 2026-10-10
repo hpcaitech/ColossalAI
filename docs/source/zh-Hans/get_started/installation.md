@@ -2,7 +2,7 @@
 
 环境要求:
 
-- PyTorch >= 2.1
+- 2.2 <= PyTorch <= 2.5.1
 - Python >= 3.10 且 < 3.13
 - CUDA >= 11.0
 - [NVIDIA GPU Compute Capability](https://developer.nvidia.com/cuda-gpus) >= 7.0 (V100/RTX20 and higher)
@@ -23,7 +23,7 @@ pip install colossalai
 如果你想同时安装PyTorch扩展的话，可以添加`BUILD_EXT=1`。如果不添加的话，PyTorch扩展会在运行时自动安装。
 
 ```shell
-BUILD_EXT=1 pip install colossalai
+BUILD_EXT=1 pip install --no-binary=colossalai --no-build-isolation colossalai
 ```
 
 ## 从源安装
@@ -38,7 +38,7 @@ cd ColossalAI
 pip install -r requirements/requirements.txt
 
 # install colossalai
-BUILD_EXT=1 pip install .
+BUILD_EXT=1 pip install --no-build-isolation .
 ```
 
 如果您不想安装和启用 CUDA 内核融合（使用融合优化器时强制安装），您可以不添加`BUILD_EXT=1`：
@@ -60,7 +60,7 @@ unzip 1.8.0.zip
 cp -r cub-1.8.0/cub/ colossalai/kernel/cuda_native/csrc/kernels/include/
 
 # install
-BUILD_EXT=1 pip install .
+BUILD_EXT=1 pip install --no-build-isolation .
 ```
 
 <!-- doc-test-command: echo "installation.md does not need test" -->

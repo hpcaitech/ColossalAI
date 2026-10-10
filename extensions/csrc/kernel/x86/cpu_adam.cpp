@@ -37,7 +37,7 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
-  size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH);
+  size_t rounded_size = 0;
 
   float betta1_minus1 = 1 - _betta1;
   float betta2_minus1 = 1 - _betta2;
@@ -50,6 +50,7 @@ void Adam_Optimizer::Step_1(float *_params, float *grads, float *_exp_avg,
   __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
+  rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH);
   AVX_Data betta1_4;
   betta1_4.data = SIMD_SET(_betta1);
   AVX_Data betta2_4;
@@ -187,7 +188,7 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
-  size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 4);
+  size_t rounded_size = 0;
 
   __half *params_cast_h = reinterpret_cast<__half *>(_params);
   __half *grads_cast_h = reinterpret_cast<__half *>(grads);
@@ -195,6 +196,7 @@ void Adam_Optimizer::Step_4(float *_params, float *grads, float *_exp_avg,
   __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
+  rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 4);
   AVX_Data betta1_4;
   betta1_4.data = SIMD_SET(_betta1);
   AVX_Data betta2_4;
@@ -303,13 +305,14 @@ void Adam_Optimizer::Step_8(float *_params, float *grads, float *_exp_avg,
                             bool param_half_precision, bool grad_half_precision,
                             bool momentum_half_precision,
                             bool variance_half_precision, float loss_scale) {
-  size_t rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 8);
+  size_t rounded_size = 0;
   __half *params_cast_h = reinterpret_cast<__half *>(_params);
   __half *grads_cast_h = reinterpret_cast<__half *>(grads);
   __half *momentum_cast_h = reinterpret_cast<__half *>(_exp_avg);
   __half *variance_cast_h = reinterpret_cast<__half *>(_exp_avg_sq);
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
+  rounded_size = ROUND_DOWN(_param_size, SIMD_WIDTH * 8);
   AVX_Data betta1_4;
   betta1_4.data = SIMD_SET(_betta1);
   AVX_Data betta2_4;
