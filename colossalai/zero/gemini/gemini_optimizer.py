@@ -116,6 +116,18 @@ class GeminiOptimizer(OptimizerWrapper):
         verbose: bool = False,
         **defaults: Any,
     ):
+        if type(optim) is FusedAdam and any(device.type == "cpu" for device in module.grads_device.values()):
+            # FusedAdam only has a CUDA update kernel. Static placement can put
+            # master parameters, gradients, and optimizer states on CPU, so use
+            # the hybrid implementation when at least one optimizer shard is
+            # actually offloaded. Existing parameter groups preserve all user
+            # hyperparameters and per-group overrides.
+            get_dist_logger().warning(
+                "FusedAdam does not support CPU optimizer shards; switching to HybridAdam for Gemini offload.",
+                ranks=[0],
+            )
+            optim = HybridAdam(optim.param_groups, adamw_mode=bool(optim.adamw_mode))
+
         super().__init__(optim)
         assert isinstance(module, GeminiDDP)
         assert type(optim) in _AVAIL_OPTIM_LIST, (
