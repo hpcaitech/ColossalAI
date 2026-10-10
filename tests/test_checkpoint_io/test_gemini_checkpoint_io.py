@@ -1,4 +1,5 @@
 import os
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -22,7 +23,7 @@ from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 try:
-    import apex.amp  # noqa: F401
+    import apex.amp
 
     APEX_AVAILABLE = True
 except ImportError:
