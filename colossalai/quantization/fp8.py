@@ -10,7 +10,10 @@ from torch.distributed import ReduceOp
 
 from .fp8_config import dynamic_kernel
 
-SUPPORT_TORCH_COMPILE = Version(torch.__version__) >= Version("2.4.0")
+# PyTorch 2.13 cannot lower the FP8 scaled-mm backward graph used below.  Keep
+# the eager implementation as a correctness fallback until that compiler path
+# is supported again.
+SUPPORT_TORCH_COMPILE = Version("2.4.0") <= Version(torch.__version__) < Version("2.13.0")
 SCALE_BYTES = 4
 try:
     cuda_arch = int("".join(str(i) for i in torch.cuda.get_device_capability()))
@@ -521,7 +524,9 @@ def fp8_compress_ddp_grad_comm_hook_sync(
     """
 
     buffer = bucket.buffer()
-    all_reduce_fp8(buffer, fp8_format=fp8_format)
+    # A DDP communication hook must return the averaged gradient.  Registering
+    # a custom hook disables DDP's built-in divide-by-world-size step.
+    all_reduce_fp8(buffer, fp8_format=fp8_format, op=ReduceOp.AVG)
 
     fut: torch.futures.Future[torch.Tensor] = torch.futures.Future()
     fut.set_result(bucket.buffer())
@@ -805,7 +810,11 @@ class _LinearFp8(torch.autograd.Function):
             scale_a=inv_scale_x,
             scale_b=inv_scale_w,
             use_fast_accum=True,
-        )[0]
+        )
+        # torch._scaled_mm returned (output, amax) in older PyTorch versions,
+        # but returns the output tensor directly in newer releases.
+        if isinstance(out, tuple):
+            out = out[0]
         return out.reshape(*ctx.x_shape[:-1], w.shape[0])
 
     @staticmethod
@@ -819,7 +828,9 @@ class _LinearFp8(torch.autograd.Function):
             scale_a=out_grad_scale,
             scale_b=ctx.inv_scale_w,
             use_fast_accum=True,
-        )[0]
+        )
+        if isinstance(x_grad, tuple):
+            x_grad = x_grad[0]
         w_grad = torch._scaled_mm(
             out_grad_fp8.t().contiguous(),
             ctx.x_fp8.t().contiguous().t(),
@@ -827,7 +838,9 @@ class _LinearFp8(torch.autograd.Function):
             scale_a=out_grad_scale,
             scale_b=ctx.inv_scale_x,
             use_fast_accum=True,
-        )[0]
+        )
+        if isinstance(w_grad, tuple):
+            w_grad = w_grad[0]
         bias_grad = None
         if ctx.has_bias:
             bias_grad = out_grad.sum(0)

@@ -92,6 +92,11 @@ class Drafter:
             # required only when using glide model
             kwargs["glide_input"] = glide_input
 
+        # The engine stores legacy tuples between speculation calls. Modern
+        # Transformers models require Cache objects when resuming generation.
+        if isinstance(past_key_values, tuple) and getattr(self._drafter_model, "_supports_cache_class", False):
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+
         for _ in range(n_spec_tokens):
             # update past key values
 

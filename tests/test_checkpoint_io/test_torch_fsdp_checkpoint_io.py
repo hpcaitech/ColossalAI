@@ -13,6 +13,9 @@ if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
+from colossalai.utils.safetensors import HAS_TENSORNVME
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 
 
 def compare_nested_dict(dict1, dict2):
@@ -43,7 +46,7 @@ def compare_nested_dict(dict1, dict2):
     return True
 
 
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 def check_torch_fsdp_ckpt(use_async: bool):
     model = resnet18()
     plugin = TorchFSDPPlugin()

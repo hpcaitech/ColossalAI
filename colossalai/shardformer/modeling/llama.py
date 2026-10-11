@@ -8,6 +8,7 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 from transformers.modeling_outputs import (
     BaseModelOutputWithPast,
     CausalLMOutputWithPast,
@@ -140,8 +141,11 @@ class LlamaPipelineForwards:
                 invert=(sp_mode != "ring_attn"),
             )
         else:
-            attn_kwargs: torch.Tensor = self._update_causal_mask(
-                attention_mask, hidden_states, cache_position, past_key_values
+            # Later pipeline stages hold an SP slice, whereas Q/K are gathered
+            # before attention. Build the mask from the full sequence shape,
+            # not the local hidden_states length used by _update_causal_mask.
+            attn_kwargs: torch.Tensor = _prepare_4d_causal_attention_mask(
+                attention_mask, (batch_size, seq_length), hidden_states, past_seen_tokens
             )
 
         # Support SP + PP. Later stages have already received the split input.
@@ -574,6 +578,9 @@ def get_llama_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, s
                 )
 
             if attention_mask is not None:
+                # Modern Transformers may reserve one extra cache position in
+                # its causal mask; native attention slices it to actual keys.
+                attention_mask = attention_mask[:, :, :, :kv_seq_len]
                 if attention_mask.size() != (bsz, 1, q_len, kv_seq_len):
                     raise ValueError(
                         f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.size()}"

@@ -110,11 +110,13 @@ class Qwen3PipelineForwards:
         sp_group = shard_config.sequence_parallel_process_group
         sp_mode = shard_config.sequence_parallelism_mode
         # For generating full positions ids (the states will be gathered along the seq dim before attention fwd).
-        if sp_mode != "ring_attn" and not stage_manager.is_first_stage():
+        if shard_config.enable_sequence_parallelism and sp_mode != "ring_attn" and not stage_manager.is_first_stage():
             seq_length *= sp_size
+        # Incoming pipeline states contain only the local SP slice. Both mask
+        # dimensions must describe the full sequence used by attention.
+        seq_length_with_past = seq_length + past_key_values_length
 
         if position_ids is None:
-            device = input_ids.device if input_ids is not None else inputs_embeds.device
             position_ids = torch.arange(
                 past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
             )

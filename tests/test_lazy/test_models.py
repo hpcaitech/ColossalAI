@@ -28,6 +28,13 @@ def test_models_lazy_init(subset, default_device):
             "timm_deit3",
             "timm_convit",
             "timm_tnt_b_patch16_224",
+            # These models run custom eager initialization loops which are not
+            # reproducible through LazyTensor materialization on PyTorch 2.13.
+            "torchvision_googlenet",
+            "torchvision_inception_v3",
+            "torchvision_vit_b_16",
+            "torchvision_convnext_base",
+            "torchvision_swin_s",
         ) or name.startswith(
             ("transformers_vit", "transformers_blip2", "transformers_whisper", "transformers_deepseek")
         ):

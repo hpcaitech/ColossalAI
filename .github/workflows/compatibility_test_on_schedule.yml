@@ -1,7 +1,7 @@
 name: Compatibility Test on Schedule
 
 on:
-  # run at 03:00 of every Sunday(singapore time) so here is UTC time Saturday 16:00
+  # Run at 03:00 every Sunday in Singapore (Saturday 19:00 UTC).
   schedule:
     - cron:  '0 19 * * 6'
   workflow_dispatch:
@@ -68,8 +68,6 @@ jobs:
           --ignore tests/test_auto_parallel \
           --ignore tests/test_fx \
           --ignore tests/test_autochunk \
-          --ignore tests/test_gptq \
-          --ignore tests/test_infer_ops \
           --ignore tests/test_legacy \
           --ignore tests/test_smoothquant \
           tests/

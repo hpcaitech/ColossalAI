@@ -2,7 +2,7 @@ import gc
 import random
 import re
 import socket
-from functools import partial
+from functools import partial, wraps
 from inspect import signature
 from typing import Any, Callable, List
 
@@ -121,6 +121,7 @@ def rerun_on_exception(exception_type: Exception = Exception, pattern: str = Non
         return False
 
     def _wrapper(func):
+        @wraps(func)
         def _run_until_success(*args, **kwargs):
             try_count = 0
             assert max_try is None or isinstance(

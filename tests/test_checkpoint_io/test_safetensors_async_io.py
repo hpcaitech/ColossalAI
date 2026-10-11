@@ -7,7 +7,7 @@ from safetensors.torch import load_file
 from colossalai.checkpoint_io.utils import create_pinned_state_dict
 from colossalai.testing import check_state_dict_equal, clear_cache_before_run
 from colossalai.utils import get_current_device
-from colossalai.utils.safetensors import load_flat, move_and_save, save, save_nested
+from colossalai.utils.safetensors import HAS_TENSORNVME, load_flat, move_and_save, save, save_nested
 
 
 def gen_optim_state_dict():
@@ -135,6 +135,7 @@ def test_create_pin(empty: bool, num_threads: int):
             assert optim_state_dict[k] == optim_state_dict_pinned[k]
 
 
+@pytest.mark.skipif(not HAS_TENSORNVME, reason="TensorNVMe is not installed")
 @clear_cache_before_run()
 def test_save_load():
     with tempfile.TemporaryDirectory() as tempdir:

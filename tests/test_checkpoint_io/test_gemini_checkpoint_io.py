@@ -18,7 +18,16 @@ from colossalai.testing import (
     rerun_if_address_is_in_use,
     spawn,
 )
+from colossalai.utils.safetensors import HAS_TENSORNVME
 from tests.kit.model_zoo import model_zoo
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
+try:
+    import apex.amp
+
+    APEX_AVAILABLE = True
+except ImportError:
+    APEX_AVAILABLE = False
 
 MODEL_PLACEMENT_CONFIGS = [
     {"placement_policy": "static", "shard_param_frac": 0.5},
@@ -35,7 +44,7 @@ OPTIM_PLACEMENT_CONFIGS = [
 @parameterize("use_safetensors", [False, True])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 def exam_state_dict_with_origin(
     placement_config, model_name, use_safetensors: bool, tp_size: int, zero_size: int, use_async: bool
 ):
@@ -45,7 +54,7 @@ def exam_state_dict_with_origin(
     bert_model = model_fn()
 
     enable_flash_attention = True if tp_size > 1 else False
-    enable_fused_normalization = True if tp_size > 1 else False
+    enable_fused_normalization = tp_size > 1 and APEX_AVAILABLE
     enable_jit_fused = True if tp_size > 1 else False
 
     with shared_tempdir() as tempdir:
@@ -89,7 +98,7 @@ def exam_state_dict_with_origin(
 @parameterize("size_per_shard", [32])
 @parameterize("tp_size", [1, 2])
 @parameterize("zero_size", [2])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 @parameterize("low_cpu_mem_mode", [True, False])
 def exam_state_dict(
     placement_config,
@@ -104,7 +113,7 @@ def exam_state_dict(
     (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     enable_flash_attention = True if tp_size > 1 else False
-    enable_fused_normalization = True if tp_size > 1 else False
+    enable_fused_normalization = tp_size > 1 and APEX_AVAILABLE
     enable_jit_fused = True if tp_size > 1 else False
     extra_dp_size = dist.get_world_size() // (zero_size * tp_size)
     plugin = GeminiPlugin(
@@ -211,7 +220,10 @@ def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
     exam_state_dict()
     exam_state_dict_with_origin()
-    exam_lazy_from_pretrained()
+    if os.environ.get("LLAMA_PATH"):
+        exam_lazy_from_pretrained()
+    elif rank == 0:
+        print("Skipping lazy from_pretrained checkpoint coverage: LLAMA_PATH is not configured.")
 
 
 @pytest.mark.dist
