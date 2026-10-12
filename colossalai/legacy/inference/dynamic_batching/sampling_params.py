@@ -1,6 +1,7 @@
 # Adapted from https://github.com/ModelTC/lightllm
 
 """Sampling parameters for text generation."""
+
 from typing import List, Optional, Union
 
 _SAMPLING_EPS = 1e-5

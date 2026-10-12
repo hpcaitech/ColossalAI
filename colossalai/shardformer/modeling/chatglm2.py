@@ -1,4 +1,4 @@
-""" PyTorch ChatGLM model. """
+"""PyTorch ChatGLM model."""
 
 from typing import List, Optional, Tuple
 
@@ -482,7 +482,7 @@ def get_chatglm_sequence_parallel_attention_forward(shard_config: ShardConfig, s
 
         mixed_x_layer = self.query_key_value(hidden_states)
         if self.multi_query_attention:
-            (query_layer, key_layer, value_layer) = mixed_x_layer.split(
+            query_layer, key_layer, value_layer = mixed_x_layer.split(
                 [
                     self.num_attention_heads_per_partition * self.hidden_size_per_attention_head,
                     self.num_multi_query_groups_per_partition * self.hidden_size_per_attention_head,
@@ -518,7 +518,7 @@ def get_chatglm_sequence_parallel_attention_forward(shard_config: ShardConfig, s
             )
             mixed_x_layer = mixed_x_layer.view(*new_tensor_shape)
             # [sq, b, np, 3 * hn] --> 3 [sq, b, np, hn]
-            (query_layer, key_layer, value_layer) = split_tensor_along_last_dim(mixed_x_layer, 3)
+            query_layer, key_layer, value_layer = split_tensor_along_last_dim(mixed_x_layer, 3)
 
         # sp: all-to-all comminucation when introducing sequence parallel
         if sp_mode == "all_to_all":

@@ -15,7 +15,7 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 try:
-    import apex.amp
+    pass
 
     APEX_AMP_AVAILABLE = True
 except ImportError:

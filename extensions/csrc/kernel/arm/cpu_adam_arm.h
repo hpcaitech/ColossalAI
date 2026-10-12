@@ -11,15 +11,15 @@
 #include <arm_neon.h>
 #define SIMD_WIDTH 4
 
-inline float32x4_t simd_load_offset(const void *ptr, at::ScalarType dtype,
+inline float32x4_t simd_load_offset(const void* ptr, at::ScalarType dtype,
                                     size_t offset) {
   switch (dtype) {
     case at::ScalarType::Float: {
-      auto ptr_f = reinterpret_cast<const float32_t *>(ptr);
+      auto ptr_f = reinterpret_cast<const float32_t*>(ptr);
       return vld1q_f32(ptr_f + offset);
     }
     case at::ScalarType::Half: {
-      auto ptr_h = reinterpret_cast<const float16_t *>(ptr);
+      auto ptr_h = reinterpret_cast<const float16_t*>(ptr);
       return vcvt_f32_f16(vld1_f16(ptr_h + offset));
     }
     // case at::ScalarType::BFloat16: {
@@ -31,20 +31,20 @@ inline float32x4_t simd_load_offset(const void *ptr, at::ScalarType dtype,
       break;
   }
 }
-inline float32x4_t simd_load(void const *ptr, at::ScalarType dtype) {
+inline float32x4_t simd_load(void const* ptr, at::ScalarType dtype) {
   return simd_load_offset(ptr, dtype, 0);
 }
 
-inline void simd_store_offset(void *ptr, at::ScalarType dtype, float32x4_t data,
+inline void simd_store_offset(void* ptr, at::ScalarType dtype, float32x4_t data,
                               size_t offset) {
   switch (dtype) {
     case at::ScalarType::Float: {
-      auto ptr_f = reinterpret_cast<float32_t *>(ptr);
+      auto ptr_f = reinterpret_cast<float32_t*>(ptr);
       vst1q_f32(ptr_f + offset, data);
       break;
     }
     case at::ScalarType::Half: {
-      auto ptr_h = reinterpret_cast<float16_t *>(ptr);
+      auto ptr_h = reinterpret_cast<float16_t*>(ptr);
       vst1_f16(ptr_h + offset, vcvt_f16_f32(data));
       break;
     }
@@ -59,7 +59,7 @@ inline void simd_store_offset(void *ptr, at::ScalarType dtype, float32x4_t data,
   }
 }
 
-inline void simd_store(void *ptr, at::ScalarType dtype, float32x4_t data) {
+inline void simd_store(void* ptr, at::ScalarType dtype, float32x4_t data) {
   return simd_store_offset(ptr, dtype, data, 0);
 }
 
@@ -70,14 +70,14 @@ inline float32x4_t simd_set(float value) {
 
 #endif
 
-inline float scalar_load_offset(const void *ptr, at::ScalarType dtype,
+inline float scalar_load_offset(const void* ptr, at::ScalarType dtype,
                                 size_t offset) {
   switch (dtype) {
     case at::ScalarType::Float:
-      return *(reinterpret_cast<const float *>(ptr) + offset);
+      return *(reinterpret_cast<const float*>(ptr) + offset);
     case at::ScalarType::Half:
       return static_cast<float>(
-          *(reinterpret_cast<const at::Half *>(ptr) + offset));
+          *(reinterpret_cast<const at::Half*>(ptr) + offset));
     // case at::ScalarType::BFloat16:
     //   return static_cast<float>(
     //       *(reinterpret_cast<const at::BFloat16 *>(ptr) + offset));
@@ -87,14 +87,14 @@ inline float scalar_load_offset(const void *ptr, at::ScalarType dtype,
   }
 }
 
-inline void scalar_store_offset(void *ptr, at::ScalarType dtype, float data,
+inline void scalar_store_offset(void* ptr, at::ScalarType dtype, float data,
                                 size_t offset) {
   switch (dtype) {
     case at::ScalarType::Float:
-      *(reinterpret_cast<float *>(ptr) + offset) = data;
+      *(reinterpret_cast<float*>(ptr) + offset) = data;
       break;
     case at::ScalarType::Half:
-      *(reinterpret_cast<at::Half *>(ptr) + offset) = data;
+      *(reinterpret_cast<at::Half*>(ptr) + offset) = data;
       break;
       // case at::ScalarType::BFloat16:
       //   *(reinterpret_cast<at::BFloat16 *>(ptr) + offset) = data;
@@ -105,13 +105,13 @@ inline void scalar_store_offset(void *ptr, at::ScalarType dtype, float data,
   }
 }
 
-inline void *scalar_seek_offset(void *ptr, at::ScalarType dtype,
+inline void* scalar_seek_offset(void* ptr, at::ScalarType dtype,
                                 size_t offset) {
   switch (dtype) {
     case at::ScalarType::Float:
-      return reinterpret_cast<float *>(ptr) + offset;
+      return reinterpret_cast<float*>(ptr) + offset;
     case at::ScalarType::Half:
-      return reinterpret_cast<at::Half *>(ptr) + offset;
+      return reinterpret_cast<at::Half*>(ptr) + offset;
     // case at::ScalarType::BFloat16:
     //   return reinterpret_cast<at::BFloat16 *>(ptr) + offset;
     default:
@@ -120,8 +120,8 @@ inline void *scalar_seek_offset(void *ptr, at::ScalarType dtype,
   }
 }
 #define STEP(SPAN)                                                        \
-  void Step_##SPAN(void *_params, void *grads, void *_exp_avg,            \
-                   void *_exp_avg_sq, size_t _param_size,                 \
+  void Step_##SPAN(void* _params, void* grads, void* _exp_avg,            \
+                   void* _exp_avg_sq, size_t _param_size,                 \
                    at::ScalarType param_dtype, at::ScalarType grad_dtype, \
                    at::ScalarType exp_avg_dtype,                          \
                    at::ScalarType exp_avg_sq_dtype, float loss_scale = -1);
@@ -195,7 +195,7 @@ class AdamOptimizer {
   }
 
   void step(size_t step, float lr, float beta1, float beta2, float epsilon,
-            float weight_decay, bool bias_correction, torch::Tensor &params,
-            torch::Tensor &grads, torch::Tensor &exp_avg,
-            torch::Tensor &exp_avg_sq, float loss_scale);
+            float weight_decay, bool bias_correction, torch::Tensor& params,
+            torch::Tensor& grads, torch::Tensor& exp_avg,
+            torch::Tensor& exp_avg_sq, float loss_scale);
 };

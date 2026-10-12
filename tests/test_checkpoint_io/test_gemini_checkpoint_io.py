@@ -23,7 +23,7 @@ from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 try:
-    import apex.amp
+    pass
 
     APEX_AVAILABLE = True
 except ImportError:
@@ -50,7 +50,7 @@ def exam_state_dict_with_origin(
 ):
     from transformers import BertForSequenceClassification
 
-    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    model_fn, data_gen_fn, output_transform_fn, _, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     bert_model = model_fn()
 
     enable_flash_attention = True if tp_size > 1 else False
@@ -110,7 +110,7 @@ def exam_state_dict(
     use_async: bool,
     low_cpu_mem_mode: bool,
 ):
-    (model_fn, data_gen_fn, output_transform_fn, _, _) = next(iter(model_zoo.get_sub_registry(model_name).values()))
+    model_fn, data_gen_fn, output_transform_fn, _, _ = next(iter(model_zoo.get_sub_registry(model_name).values()))
     criterion = lambda x: x.mean()
     enable_flash_attention = True if tp_size > 1 else False
     enable_fused_normalization = tp_size > 1 and APEX_AVAILABLE
