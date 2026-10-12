@@ -4,6 +4,7 @@
 """
 Initialize new model with updated tokenizer by calculating the mean values from original model
 """
+
 import argparse
 
 import numpy as np

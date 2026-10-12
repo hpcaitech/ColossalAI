@@ -135,8 +135,6 @@ class BaseSchedule(ABC):
         elif isinstance(outputs, dict) and isinstance(labels, (list, tuple)):
             raise ValueError(f"Expected labels to be a dict when the model outputs are dict, but got {type(labels)}")
         else:
-            raise TypeError(
-                f"Expected model outputs and labels to be of type torch.Tensor ' \
+            raise TypeError(f"Expected model outputs and labels to be of type torch.Tensor ' \
                 '(which is auto-converted to tuple), list, tuple, or dict, ' \
-                'but got {type(outputs)} (model outputs) and {type(labels)} (labels)"
-            )
+                'but got {type(outputs)} (model outputs) and {type(labels)} (labels)")
