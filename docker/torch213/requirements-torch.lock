@@ -1,0 +1,7 @@
+# Linux x86_64 / CPython 3.10 / CUDA 13.0. Hashes identify the tested artifacts.
+# torchaudio is the existing 2.11 build; its metadata has no torch requirement.
+# verify_image.py checks import and resampling, not general audio compatibility.
+torch==2.13.0+cu130 --hash=sha256:83767298109148f10de124287b392bc58d74f9938e9430f26f9fd669efb8af9c
+torchvision==0.28.0+cu130 --hash=sha256:19c2d18bbc8c3b1a666f0d41f91d8f624f912faffad421371061dddda52ba8ea
+torchaudio==2.11.0+cu130 --hash=sha256:91497b6525569dcd0871991d32bb4beda90775bcbe9050328ea7b8022106e2fa
+triton==3.7.1 --hash=sha256:3d62b1df358f49fcc229d5b77e7a346d66a93e93c19f6872936eadba9aac5f01

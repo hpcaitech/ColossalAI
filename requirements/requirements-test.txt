@@ -1,6 +1,6 @@
 pytest
 coverage==7.2.3
-git+https://github.com/hpcaitech/pytest-testmon
+pytest-testmon==2.2.0
 torchvision
 timm
 torchaudio>=0.13.1

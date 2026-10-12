@@ -63,8 +63,16 @@ jobs:
           assert all(Version(version) in python_versions for version in ("3.10", "3.11", "3.12"))
           assert Version("3.13") not in python_versions
 
-          requirements = {Requirement(item).name.lower() for item in requires("colossalai") or []}
+          requirements = {
+              Requirement(item).name.lower(): Requirement(item)
+              for item in requires("colossalai") or []
+          }
           assert "pre-commit" not in requirements
+          # Keep the CPU baseline installable while allowing the GPU CI profile.
+          torch_versions = requirements["torch"].specifier
+          assert Version("2.5.1") in torch_versions
+          assert Version("2.13.0+cu130") in torch_versions
+          assert Version("2.14.0") not in torch_versions
           PY
 
       - name: Check removed NumPy APIs
