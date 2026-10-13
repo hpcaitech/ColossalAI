@@ -1,3 +1,5 @@
+from importlib import import_module
+
 import pytest
 import torch
 import torch.distributed as dist
@@ -15,8 +17,8 @@ from colossalai.zero.gemini.chunk import search_chunk_configuration
 from tests.kit.model_zoo import model_zoo, run_fwd_bwd
 
 try:
-    pass
-
+    # Keep the capability probe visible to unused-import cleanup tools.
+    import_module("apex.amp")
     APEX_AMP_AVAILABLE = True
 except ImportError:
     APEX_AMP_AVAILABLE = False
