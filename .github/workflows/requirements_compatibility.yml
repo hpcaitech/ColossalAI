@@ -79,6 +79,8 @@ jobs:
         run: ruff check --select NPY201 colossalai tests applications examples
 
       - name: Run compatibility smoke tests
+        working-directory: ${{ github.workspace }}
         run: |
-          pytest -m cpu tests/test_cluster/test_process_group_mesh.py
-          pytest applications/ColossalChat/tests/test_code_reward_testing_util.py
+          # Keep the repository root on sys.path for applications.* imports.
+          python -m pytest -m cpu tests/test_cluster/test_process_group_mesh.py
+          python -m pytest applications/ColossalChat/tests/test_code_reward_testing_util.py
