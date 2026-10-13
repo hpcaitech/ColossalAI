@@ -193,6 +193,40 @@ class DraftPullRequestRoutingTests(unittest.TestCase):
                     self.assertTrue(gated(job_id), "Private Draft PR jobs must be gated before runner allocation")
 
 
+class LegacyPrBuildRetirementTests(unittest.TestCase):
+    def test_legacy_pr_build_and_coverage_workflows_are_removed(self):
+        for name in ("build_on_pr", "report_test_coverage"):
+            for suffix in (".yml", ".yaml"):
+                with self.subTest(workflow=name + suffix):
+                    self.assertFalse((WORKFLOWS / (name + suffix)).exists())
+
+    def test_active_workflows_do_not_reference_retired_pr_builds(self):
+        for path in workflow_paths(WORKFLOWS):
+            source = path.read_text(encoding="utf-8")
+            for entry in ("Build on PR", "Report Test Coverage", "build_on_pr.yml", "report_test_coverage.yml"):
+                with self.subTest(workflow=path.name, entry=entry):
+                    self.assertNotIn(entry, source)
+
+    def test_layer3_retains_batch_three_aot_compilation(self):
+        workflow = load_workflow(WORKFLOWS / "ci_layer_3_full.yml")
+        default = workflow["on"]["workflow_dispatch"]["inputs"]["batches"]["default"]
+        self.assertIn("3", default.split())
+        self.assertIn(f"|| '{default}'", workflow["jobs"]["torch-213"]["with"]["batches"])
+        entrypoint = (ROOT / ".github/scripts/ci/run_container_batch.sh").read_text(encoding="utf-8")
+        build_mode = "BUILD_EXT=0\n" + entrypoint.split("\nBUILD_EXT=0\n", 1)[1].split("\nexport BUILD_EXT\n", 1)[0]
+        for batch, expected in (("3", "1"), ("2", "0"), ("4a", "0"), ("5", "0")):
+            with self.subTest(batch=batch):
+                result = subprocess.run(
+                    ["bash", "-eu", "-c", build_mode + '\nprintf "%s" "$BUILD_EXT"'],
+                    env={"PATH": os.defpath, "BATCH": batch},
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=10,
+                )
+                self.assertEqual(result.stdout, expected)
+
+
 class GpuPoolConfigurationTests(unittest.TestCase):
     def setUp(self):
         self.workflow = load_workflow(WORKFLOWS / "ci_reusable_gpu_batches.yml")

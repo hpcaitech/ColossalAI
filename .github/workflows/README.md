@@ -12,8 +12,8 @@ by the release workflows.
 ## Three-layer CI rollout
 
 The replacement test pipeline is being qualified in three resource tiers. The
-legacy build, example, and compatibility workflows remain enabled for non-Draft
-PRs while the new tiers are validated. Retiring any additional legacy workflow
+legacy example and compatibility workflows remain enabled for non-Draft PRs
+while the new tiers are validated. Retiring any additional legacy workflow
 must also account for required checks, notifications, and repository rules.
 
 The initial `e1-gpu-on-pr.yml` host-venv workflow has been retired in favor of
@@ -30,6 +30,23 @@ migrate that specific requirement to the qualified full Layer 2 check
 Draft-only smoke check or remove unrelated requirements. Removing a workflow
 file does not update repository settings or cancel existing runs. Other PRs
 will stop using E1 once their workflow snapshot includes this removal.
+
+The legacy `Build on PR` workflow (`build_on_pr.yml`) and its dedicated
+`report_test_coverage.yml` consumer have also been retired. CPU checks and GPU
+regressions use the three-layer pipeline; container batch 3 retains the
+`BUILD_EXT=1` AOT compilation check. The batch manifest, not the old broad
+`pytest tests/` invocation, defines the replacement's coverage. Dependency,
+toolchain, and kernel changes still need the relevant Layer 3 batches; a Layer
+2 pass alone does not replace that validation.
+
+Before merging, also check for required statuses named `Detect file change`
+or `Build and Test Colossal-AI` from the old PR build and migrate their policy
+to qualified layer checks. Deleting these files does not change branch
+protection, cancel queued/running jobs, or unregister any runner. Old runs
+retain their workflow snapshots. The old coverage-comment feature is removed,
+not migrated: the new pytest reports do not imply code-coverage measurement.
+Legacy scheduled builds, example/compatibility checks, and release workflows
+are outside this retirement and remain enabled.
 
 | Layer | Workflow file | Trigger | Coverage and resources |
 | --- | --- | --- | --- |
@@ -198,9 +215,10 @@ or restrict the job to the provisioned runner. No registry credentials are neede
 
 For rollback, select a previously **qualified** image ID compatible with
 the source under test, or revert the executor switch. Do not silently fall back
-to a developer's venv. The E1 host-venv PR workflow is retired; other legacy
-Ready-PR jobs and the release pipeline are retained. The remaining legacy
-GPU/private-runner PR jobs are gated out for Drafts.
+to a developer's venv. The E1 host-venv PR workflow and legacy `Build on PR`
+workflow are retired. Legacy scheduled builds, example/compatibility checks,
+and the release pipeline are retained. The remaining legacy GPU/private-runner
+PR jobs are gated out for Drafts.
 
 `FAST_MODE=1` continues to reduce the model matrices of batches 2 and 5; batch
 4a is unaffected. Layer 3 defaults to `FAST_MODE=0`, which unsets `FAST_TEST`.
@@ -264,7 +282,6 @@ runner groups to approved workflows, in GitHub settings.
 
 | Workflow file | Trigger | Purpose |
 | --- | --- | --- |
-| `build_on_pr.yml` | Pull request and branch lifecycle events | Legacy Colossal-AI build and unit-test workflow. |
 | `build_on_schedule.yml` | Schedule or manual dispatch | Legacy scheduled full unit tests. |
 | `example_check_on_pr.yml` | Pull request | Runs tests for examples affected by a pull request. |
 | `example_check_on_schedule.yml` | Schedule or manual dispatch | Runs the scheduled example suite. |
@@ -273,7 +290,6 @@ runner groups to approved workflows, in GitHub settings.
 | `compatibility_test_on_schedule.yml` | Schedule or manual dispatch | Runs the compatibility matrix from `.compatibility`. |
 | `compatibility_test_on_dispatch.yml` | Manual dispatch | Runs the required Torch and CUDA version inputs. Neither input has an implicit `all` default. |
 | `cuda_ext_check_before_merge.yml` | Release pull request or manual dispatch | Checks CUDA extension builds before release. |
-| `report_test_coverage.yml` | Completion of the legacy PR build | Reports test coverage back to the pull request. |
 | `requirements_compatibility.yml` | Scoped requirements changes or manual dispatch | Validates dependency installation and compatibility. |
 | `run_chatgpt_examples.yml` | Pull request | Runs ChatGPT example checks when their scoped files change. |
 | `run_chatgpt_unit_tests.yml` | Pull request | Runs ChatGPT unit tests when their scoped files change. |
