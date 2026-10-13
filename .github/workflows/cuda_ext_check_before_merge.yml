@@ -3,6 +3,7 @@ name: Check CUDA Extension Build Before Merge
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'version.txt'
 
@@ -12,7 +13,8 @@ jobs:
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
       (github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+       (github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -29,7 +31,8 @@ jobs:
     needs: matrix_preparation
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, ubuntu-latest]
     strategy:
       fail-fast: false

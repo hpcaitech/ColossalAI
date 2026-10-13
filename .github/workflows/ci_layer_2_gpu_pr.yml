@@ -2,7 +2,7 @@ name: CI / Layer 2 / Trusted PR GPU
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
     paths:
       - .github/scripts/ci/**
@@ -25,6 +25,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  container-smoke:
+    # This is a separate check, not a successful full Layer 2 regression.
+    name: Torch 2.13 container smoke (batch 4a)
+    if: >-
+      github.repository == 'hpcaitech/ColossalAI' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    uses: ./.github/workflows/ci_reusable_gpu_batches.yml
+    with:
+      layer: draft-smoke
+      source_sha: ${{ github.sha }}
+      batches: "4a"
+      gpu_pool_variable: COLOSSAL_CI_SMOKE_GPU_POOL
+      fast_mode: false
+      timeout_minutes: 15
+      artifact_retention_days: 14
+
   gpu-regression:
     # Preserve the existing check name until branch-protection rules migrate.
     # Batch 4a is also included below for the FP8 compatibility regression.
@@ -32,7 +51,9 @@ jobs:
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
       (github.event_name == 'workflow_dispatch' ||
-       (github.event.pull_request.head.repo.full_name == github.repository &&
+       (github.event_name == 'pull_request' &&
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)))
     uses: ./.github/workflows/ci_reusable_gpu_batches.yml
     with:

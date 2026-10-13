@@ -15,6 +15,11 @@ on:
         description: Space-separated GPU batch identifiers
         required: true
         type: string
+      gpu_pool_variable:
+        description: Repository variable holding the authorized GPU pool (core or Draft smoke)
+        required: false
+        default: COLOSSAL_GPU_POOL
+        type: string
       fast_mode:
         description: Use the reduced FAST_TEST model matrix
         required: false
@@ -45,7 +50,10 @@ jobs:
       COLOSSAL_CI_MEMORY: ${{ vars.COLOSSAL_CI_MEMORY || '64g' }}
       COLOSSAL_CI_SHM: ${{ vars.COLOSSAL_CI_SHM || '8g' }}
       CI_CONTAINER_SCOPE: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.layer }}
-      COLOSSAL_GPU_POOL: ${{ vars.COLOSSAL_GPU_POOL }}
+      # Direct lookup is intentional: an unset smoke pool must never fall back
+      # to the main pool used by Ready PRs, schedules and manual regressions.
+      GPU_POOL_VARIABLE: ${{ inputs.gpu_pool_variable }}
+      COLOSSAL_GPU_POOL: ${{ vars[inputs.gpu_pool_variable] }}
       CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK }}
       REQUESTED_BATCHES: ${{ inputs.batches }}
       REQUESTED_FAST_MODE: ${{ inputs.fast_mode }}
@@ -58,7 +66,24 @@ jobs:
           : "${COLOSSAL_CI_IMAGE:?Set COLOSSAL_CI_IMAGE to the validated local sha256:image-ID}"
           [[ "$COLOSSAL_CI_IMAGE" =~ ^(sha256:[0-9a-f]{64}|[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64})$ ]]
           : "${CI_GPU_LOCK:?Set COLOSSAL_GPU_LOCK to the shared CI GPU lock path}"
-          : "${COLOSSAL_GPU_POOL:?Set COLOSSAL_GPU_POOL to the authorized physical GPU indices}"
+          case "$GPU_POOL_VARIABLE" in
+            COLOSSAL_GPU_POOL) ;;
+            COLOSSAL_CI_SMOKE_GPU_POOL)
+              [[ "$REQUESTED_BATCHES" == "4a" ]] || {
+                printf 'The Draft smoke pool may only run batch 4a.\n' >&2
+                exit 1
+              }
+              ;;
+            *) printf 'Unsupported GPU pool variable: %s\n' "$GPU_POOL_VARIABLE" >&2; exit 1 ;;
+          esac
+          if [[ -z "$COLOSSAL_GPU_POOL" ]]; then
+            printf 'Set %s to the authorized physical GPU indices; no pool fallback is allowed.\n' "$GPU_POOL_VARIABLE" >&2
+            exit 1
+          fi
+          [[ "$COLOSSAL_GPU_POOL" =~ ^[0-9]+(,[0-9]+)*$ ]] || {
+            printf '%s must contain comma-separated physical GPU indices.\n' "$GPU_POOL_VARIABLE" >&2
+            exit 1
+          }
           result_dir="$RUNNER_TEMP/colossalai-${{ inputs.layer }}-${{ github.run_id }}-${{ github.run_attempt }}"
           mkdir -p "$result_dir"
           printf 'CI_RESULTS_DIR=%s\n' "$result_dir" >> "$GITHUB_ENV"
@@ -152,6 +177,7 @@ jobs:
             printf -- '- Runner: `%s`\n' "$RUNNER_NAME"
             printf -- '- Runtime profile: Torch 2.13 / CUDA 13.0\n'
             printf -- '- Dependency image: `%s`\n' "$COLOSSAL_CI_IMAGE"
+            printf -- '- GPU pool variable: `%s`\n' "$GPU_POOL_VARIABLE"
             printf -- '- Batches: `%s`\n\n' "$REQUESTED_BATCHES"
             find "$CI_RESULTS_DIR" -name result.json -print -exec cat {} \; 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"

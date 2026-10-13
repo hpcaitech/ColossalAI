@@ -15,6 +15,7 @@ jobs:
   gpu-smoke:
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == 'hpcaitech/ColossalAI'
     runs-on: colossalai-e1-h20
     timeout-minutes: 12

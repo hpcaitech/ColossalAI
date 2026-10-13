@@ -12,14 +12,15 @@ by the release workflows.
 ## Three-layer CI rollout
 
 The replacement test pipeline is being qualified in three resource tiers. The
-legacy build, example, and compatibility workflows remain enabled while the new
-tiers are validated. Retiring a legacy workflow is a separate change that must
+legacy build, example, and compatibility workflows remain enabled for non-Draft
+PRs while the new tiers are validated. Retiring a legacy workflow is a separate change that must
 also migrate required checks, notifications, and repository rules.
 
 | Layer | Workflow file | Trigger | Coverage and resources |
 | --- | --- | --- | --- |
 | 1 | `ci_layer_1_pr.yml` | Every pull request to `main` | Formatting and genuinely CPU-only unit tests on GitHub-hosted runners. |
-| 2 | `ci_layer_2_gpu_pr.yml` | Trusted same-repository pull requests and manual dispatch | Core batches 2, 4a and 5 in containers on the `colossalai-e1-h20` runner. |
+| Draft smoke | `ci_layer_2_gpu_pr.yml` | Trusted same-repository Draft pull requests | Only batch 4a, in a container on `colossalai-e1-h20`, using the separate smoke GPU pool. |
+| 2 | `ci_layer_2_gpu_pr.yml` | Trusted same-repository Ready pull requests and manual dispatch | Core batches 2, 4a and 5 in containers on the `colossalai-e1-h20` runner. |
 | 3 | `ci_layer_3_full.yml` | Weekly schedule and manual dispatch | The complete GPU batch set, including four- and eight-GPU coverage. |
 | Monitor | `ci_gpu_idle_monitor.yml` | Hourly schedule and manual dispatch | Probes the authorized H20 pool; runs layer 2 with at least two idle GPUs and layer 3 with all eight idle GPUs. |
 | Shared | `ci_reusable_gpu_batches.yml` | Called by layers 2 and 3 | Fetches the pinned source, runs selected batches, uploads reports, and writes the run summary. |
@@ -27,6 +28,39 @@ also migrate required checks, notifications, and repository rules.
 Layer 2 retains its historical check name, `Torch 2.13 GPU core (batches 2 and 5)`,
 so existing required-check rules do not break; its actual batch list now also
 includes `4a`. Rename that check only together with branch-protection settings.
+
+### Draft PR container validation
+
+A trusted same-repository Draft PR runs the separate check
+`Torch 2.13 container smoke (batch 4a)`. It calls the same container executor as
+the full GPU jobs, tests the PR merge SHA, uploads its own reports, and removes
+only its own containers. Batch 4a requires one GPU, runs with `FAST_MODE=0`, and
+is unaffected by `FAST_TEST`. The entire smoke job has a 15-minute limit,
+including source download and waiting for the shared GPU lock.
+
+Set `COLOSSAL_CI_SMOKE_GPU_POOL` to GPUs explicitly authorized for the smoke
+test window (for example `3` for physical GPU 3 on the runner host). It is a
+separate repository variable, **not** a replacement for `COLOSSAL_GPU_POOL`.
+An unset/empty smoke pool fails before starting containers or allocating GPUs;
+it never falls back to the main pool. Clear the smoke variable when temporary
+authorization expires. Both profiles use the same `COLOSSAL_GPU_LOCK` and
+`COLOSSAL_CI_IMAGE`; a smoke-only lock would not coordinate with scheduled CI.
+
+When the PR becomes Ready, `ready_for_review` starts the full `2 4a 5` check
+using the main pool. Converting it back to Draft cancels the previous Layer 2
+run through the existing per-PR concurrency group and starts the smoke route.
+The two jobs have different check names: a green smoke is not evidence that
+the skipped full regression passed. Do not bypass required full checks to merge.
+External forks and authors outside OWNER/MEMBER/COLLABORATOR do not run either
+GPU route. Manual Layer 2 dispatch remains a full regression, not a smoke run.
+
+Legacy PR GPU/private-runner jobs are gated out for Draft PRs, including E1,
+compatibility matrices and CUDA extension builds. Their Ready-PR behavior and
+existing explicit manual triggers are retained. These admission conditions do
+not cancel legacy runs already started while a PR was Ready; inspect those runs
+separately before assuming that converting a PR to Draft has freed every GPU.
+Scheduled jobs are unchanged and may still hold the shared lock. CPU/lint jobs
+remain available for Drafts and forks.
 
 Execution path:
 
@@ -108,6 +142,7 @@ restrictions.
 | --- | --- |
 | `COLOSSAL_CI_IMAGE` | Required, full local `sha256:image-ID` (or an already-loaded registry digest). No tag, automatic pull or host-environment fallback. |
 | `COLOSSAL_GPU_POOL` | Required, GPUs reserved/authorized for CI. Idle does not mean authorized. |
+| `COLOSSAL_CI_SMOKE_GPU_POOL` | Required for Draft smoke only. Authorized candidate GPUs for its one-GPU batch 4a; never falls back to the main pool. |
 | `COLOSSAL_GPU_LOCK` | Required, agreed shared host lock. Use the same path as legacy executors. |
 | `COLOSSAL_CI_CPUS` | `8`, CPU quota per active container. |
 | `COLOSSAL_CI_MEMORY` | `64g`, RAM limit; swap does not add to this limit. |
@@ -129,6 +164,11 @@ Save the qualified image ID, source SHA and test reports, optionally archive the
 image with `docker save`, then configure the runner/repository variables and
 open the single combined PR. GitHub event triggering, permissions and artifact
 upload still need verification on that PR; fix them on the same branch/PR.
+Open it as a **Draft** first to qualify only the container smoke route. Configure
+the smoke pool independently; do not shrink the main pool to one GPU, which
+would prevent normal two-/four-/eight-GPU jobs from running. After the Draft
+check succeeds, arrange resources for the full Layer 2 job and mark the same PR
+Ready. The GPU profile is not fully qualified by one FP8 smoke test alone.
 Merge only after reviewing failures and skipped coverage.
 Do not merge the workflow switch before the image and runner are ready.
 Subsequent code-only PRs reuse the image and install their own source. Rebuild
@@ -143,7 +183,8 @@ or restrict the job to the provisioned runner. No registry credentials are neede
 
 For rollback, select a previously **qualified** image ID compatible with
 the source under test, or revert the executor switch. Do not silently fall back
-to a developer's venv. The legacy workflows and release pipeline are unchanged.
+to a developer's venv. Legacy Ready-PR jobs and the release pipeline are retained;
+only Draft admission of the legacy GPU/private-runner jobs changes here.
 
 `FAST_MODE=1` continues to reduce the model matrices of batches 2 and 5; batch
 4a is unaffected. Layer 3 defaults to `FAST_MODE=0`, which unsets `FAST_TEST`.

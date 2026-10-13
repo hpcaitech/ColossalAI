@@ -228,7 +228,13 @@ image. When changing the recipe, qualify the candidate before pointing CI at it.
 After candidate qualification, set repository variables documented in the
 [workflow README](../../.github/workflows/README.md#container-execution-and-image-rollout),
 then open the **one combined PR** and exercise its workflow before merging the
-switch. The runner checks the preloaded local image before acquiring GPUs; it
+switch. Start with a Draft PR: its separate container-smoke check runs only 4a
+using `COLOSSAL_CI_SMOKE_GPU_POOL`, not the main `COLOSSAL_GPU_POOL`. Missing
+smoke authorization fails closed. Mark the same PR Ready only after arranging
+the resources for the full Layer 2 batches `2 4a 5`; smoke success does not
+replace those checks. No dependency-image rebuild is needed for routing-only
+workflow/script changes because none of the embedded image inputs changes.
+The runner checks the preloaded local image before acquiring GPUs; it
 does not pull, push or repeatedly reload archives. A local image on another
 daemon is insufficient, even when a tar is present on a shared filesystem.
 Preload every machine eligible for the runner label or restrict that label to
