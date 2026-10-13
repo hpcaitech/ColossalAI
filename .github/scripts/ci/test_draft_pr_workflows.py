@@ -122,8 +122,33 @@ class DraftPullRequestRoutingTests(unittest.TestCase):
         self.assertIn("converted_to_draft", types)
         self.assertEqual(self.layer2["concurrency"]["cancel-in-progress"], "true")
 
+    def test_retired_e1_host_workflow_cannot_run_alongside_containers(self):
+        self.assertFalse((WORKFLOWS / "e1-gpu-on-pr.yml").exists())
+        self.assertFalse((WORKFLOWS / "e1-gpu-on-pr.yaml").exists())
+        for path in workflow_paths(WORKFLOWS):
+            source = path.read_text(encoding="utf-8")
+            for legacy_entry in (
+                "E1_COLOSSALAI_PYTHON",
+                ".github/scripts/e1/pr_gpu.py",
+                ".github/scripts/e1/colossalai_suite.py",
+            ):
+                with self.subTest(workflow=path.name, entry=legacy_entry):
+                    self.assertNotIn(legacy_entry, source)
+
+    def test_retired_e1_tests_remain_in_container_core_batches(self):
+        manifest = (ROOT / ".github/scripts/ci/run_colossalai_batch.sh").read_text(encoding="utf-8")
+        for case, path, test_name in (
+            ("2|02", "tests/test_booster/test_accelerator.py", "test_accelerator"),
+            ("5|05", "tests/test_booster/test_plugin/test_dp_plugin_base.py", "test_dp_plugin_dataloader"),
+        ):
+            with self.subTest(batch=case, test=test_name):
+                batch = manifest.split(f"    {case})\n", 1)[1].split("        ;;", 1)[0]
+                self.assertIn(path, batch)
+                module = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+                self.assertIn(test_name, [node.name for node in module.body if isinstance(node, ast.FunctionDef)])
+
     def test_legacy_gpu_entrypoints_skip_drafts_but_keep_ready_prs(self):
-        for filename in ("e1-gpu-on-pr.yml", "compatibility_test_on_pr.yml", "cuda_ext_check_before_merge.yml"):
+        for filename in ("compatibility_test_on_pr.yml", "cuda_ext_check_before_merge.yml"):
             workflow = load_workflow(WORKFLOWS / filename)
             self.assertIn("ready_for_review", workflow["on"]["pull_request"]["types"])
             for job_id, job in workflow["jobs"].items():

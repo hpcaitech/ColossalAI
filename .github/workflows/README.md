@@ -13,8 +13,23 @@ by the release workflows.
 
 The replacement test pipeline is being qualified in three resource tiers. The
 legacy build, example, and compatibility workflows remain enabled for non-Draft
-PRs while the new tiers are validated. Retiring a legacy workflow is a separate change that must
-also migrate required checks, notifications, and repository rules.
+PRs while the new tiers are validated. Retiring any additional legacy workflow
+must also account for required checks, notifications, and repository rules.
+
+The initial `e1-gpu-on-pr.yml` host-venv workflow has been retired in favor of
+the container-based Layer 2 workflow. Its accelerator test is covered by batch
+2 and its two-rank DP dataloader test by batch 5. Do not restore the personal
+Python-environment path as a fallback. The `colossalai-e1-h20` runner label and
+the infrastructure-only `e1-runner-bootstrap.yml` probe are retained; retiring
+a workflow does not unregister or reconfigure the runner.
+
+Before merging this retirement, check branch protection and rulesets for the
+old `gpu-smoke` check from `ColossalAI GPU on internal PR`. If it is required,
+migrate that specific requirement to the qualified full Layer 2 check
+`Torch 2.13 GPU core (batches 2 and 5) / run-batches`; do not substitute the
+Draft-only smoke check or remove unrelated requirements. Removing a workflow
+file does not update repository settings or cancel existing runs. Other PRs
+will stop using E1 once their workflow snapshot includes this removal.
 
 | Layer | Workflow file | Trigger | Coverage and resources |
 | --- | --- | --- | --- |
@@ -54,9 +69,9 @@ the skipped full regression passed. Do not bypass required full checks to merge.
 External forks and authors outside OWNER/MEMBER/COLLABORATOR do not run either
 GPU route. Manual Layer 2 dispatch remains a full regression, not a smoke run.
 
-Legacy PR GPU/private-runner jobs are gated out for Draft PRs, including E1,
-compatibility matrices and CUDA extension builds. Their Ready-PR behavior and
-existing explicit manual triggers are retained. These admission conditions do
+Remaining legacy PR GPU/private-runner jobs are gated out for Draft PRs,
+including compatibility matrices and CUDA extension builds. Their Ready-PR
+behavior and existing explicit manual triggers are retained. These admission conditions do
 not cancel legacy runs already started while a PR was Ready; inspect those runs
 separately before assuming that converting a PR to Draft has freed every GPU.
 Scheduled jobs are unchanged and may still hold the shared lock. CPU/lint jobs
@@ -183,8 +198,9 @@ or restrict the job to the provisioned runner. No registry credentials are neede
 
 For rollback, select a previously **qualified** image ID compatible with
 the source under test, or revert the executor switch. Do not silently fall back
-to a developer's venv. Legacy Ready-PR jobs and the release pipeline are retained;
-only Draft admission of the legacy GPU/private-runner jobs changes here.
+to a developer's venv. The E1 host-venv PR workflow is retired; other legacy
+Ready-PR jobs and the release pipeline are retained. The remaining legacy
+GPU/private-runner PR jobs are gated out for Drafts.
 
 `FAST_MODE=1` continues to reduce the model matrices of batches 2 and 5; batch
 4a is unaffected. Layer 3 defaults to `FAST_MODE=0`, which unsets `FAST_TEST`.
@@ -287,7 +303,6 @@ runner groups to approved workflows, in GitHub settings.
 | Workflow file | Trigger | Purpose |
 | --- | --- | --- |
 | `e1-runner-bootstrap.yml` | Scoped push or manual dispatch | Qualifies the E1 self-hosted runner and its runtime. |
-| `e1-gpu-on-pr.yml` | Trusted internal pull request | Runs the existing E1 GPU regression while the layered pipeline is qualified. |
 
 ### Repository maintenance
 
