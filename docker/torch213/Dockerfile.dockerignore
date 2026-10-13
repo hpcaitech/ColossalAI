@@ -4,6 +4,7 @@
 !docker/
 !docker/torch213/
 !docker/torch213/Dockerfile
+!docker/torch213/Dockerfile.dockerignore
 !docker/torch213/requirements.lock
 !docker/torch213/requirements-torch.lock
 !docker/torch213/verify_image.py

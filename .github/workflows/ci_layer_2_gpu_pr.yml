@@ -10,6 +10,7 @@ on:
       - .github/workflows/ci_reusable_gpu_batches.yml
       - colossalai/**
       - extensions/**
+      - docker/torch213/**
       - requirements/**
       - tests/**
       - pytest.ini
@@ -25,6 +26,8 @@ concurrency:
 
 jobs:
   gpu-regression:
+    # Preserve the existing check name until branch-protection rules migrate.
+    # Batch 4a is also included below for the FP8 compatibility regression.
     name: Torch 2.13 GPU core (batches 2 and 5)
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
@@ -35,7 +38,7 @@ jobs:
     with:
       layer: layer-2
       source_sha: ${{ github.sha }}
-      batches: "2 5"
+      batches: "2 4a 5"
       fast_mode: true
       timeout_minutes: 240
       artifact_retention_days: 14

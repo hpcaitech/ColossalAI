@@ -25,7 +25,7 @@ jobs:
       layer3_ready: ${{ steps.capacity.outputs.layer3_ready }}
     env:
       COLOSSAL_GPU_POOL: ${{ vars.COLOSSAL_GPU_POOL }}
-      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
+      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK }}
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       # Keep this gate self-contained.  The H20 runners can reach the Actions
@@ -37,6 +37,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          : "${CI_GPU_LOCK:?Set COLOSSAL_GPU_LOCK to the shared CI GPU lock path}"
+          : "${COLOSSAL_GPU_POOL:?Set COLOSSAL_GPU_POOL to the authorized physical GPU indices}"
           python3 -B - <<'PY'
           import fcntl
           import json
@@ -154,7 +156,7 @@ jobs:
     with:
       layer: layer-2-hourly
       source_sha: ${{ github.sha }}
-      batches: "2 5"
+      batches: "2 4a 5"
       fast_mode: true
       timeout_minutes: 240
       artifact_retention_days: 14

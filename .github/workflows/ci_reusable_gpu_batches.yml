@@ -40,21 +40,38 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
       CI_SOURCE_SHA: ${{ inputs.source_sha }}
-      COLOSSAL_VENV: ${{ vars.COLOSSAL_TORCH213_VENV || '/mnt/beegfs/ColossalAI/wangzhijian/envs/colossalai-torch213' }}
-      COLOSSAL_CUDA_HOME: ${{ vars.COLOSSAL_CUDA130_HOME || '/mnt/beegfs/ColossalAI/wangzhijian/toolchains/cuda-13.0' }}
-      COLOSSAL_EXPECT_TORCH_PREFIX: "2.13."
+      COLOSSAL_CI_IMAGE: ${{ vars.COLOSSAL_CI_IMAGE }}
+      COLOSSAL_CI_CPUS: ${{ vars.COLOSSAL_CI_CPUS || '8' }}
+      COLOSSAL_CI_MEMORY: ${{ vars.COLOSSAL_CI_MEMORY || '64g' }}
+      COLOSSAL_CI_SHM: ${{ vars.COLOSSAL_CI_SHM || '8g' }}
+      CI_CONTAINER_SCOPE: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.layer }}
       COLOSSAL_GPU_POOL: ${{ vars.COLOSSAL_GPU_POOL }}
-      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK || '/mnt/beegfs/ricardoo/ci/gpu-h20-5/locks/ci-gpu.lock' }}
+      CI_GPU_LOCK: ${{ vars.COLOSSAL_GPU_LOCK }}
       REQUESTED_BATCHES: ${{ inputs.batches }}
       REQUESTED_FAST_MODE: ${{ inputs.fast_mode }}
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - name: Initialize result directory
+      - name: Validate configuration and initialize results
         shell: bash
         run: |
+          set -euo pipefail
+          : "${COLOSSAL_CI_IMAGE:?Set COLOSSAL_CI_IMAGE to the validated local sha256:image-ID}"
+          [[ "$COLOSSAL_CI_IMAGE" =~ ^(sha256:[0-9a-f]{64}|[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64})$ ]]
+          : "${CI_GPU_LOCK:?Set COLOSSAL_GPU_LOCK to the shared CI GPU lock path}"
+          : "${COLOSSAL_GPU_POOL:?Set COLOSSAL_GPU_POOL to the authorized physical GPU indices}"
           result_dir="$RUNNER_TEMP/colossalai-${{ inputs.layer }}-${{ github.run_id }}-${{ github.run_attempt }}"
+          mkdir -p "$result_dir"
           printf 'CI_RESULTS_DIR=%s\n' "$result_dir" >> "$GITHUB_ENV"
-          printf 'COLOSSAL_RESULTS=%s\n' "$result_dir" >> "$GITHUB_ENV"
+
+      - name: Verify the preloaded local dependency image
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Build on this Docker daemon, or load the approved local image tar
+          # once beforehand. Missing images fail; CI never pulls or pushes.
+          docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE" \
+            | tee "$CI_RESULTS_DIR/image-id.txt"
 
       - name: Fetch the exact GitHub source archive
         timeout-minutes: 5
@@ -80,6 +97,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n "$COLOSSAL_REPO/.github/scripts/ci/run_colossalai_batch.sh"
+          bash -n "$COLOSSAL_REPO/.github/scripts/ci/run_container_batch.sh"
           python3 -B -m unittest discover \
             -s "$COLOSSAL_REPO/.github/scripts/ci" -p 'test_*.py' -v
 
@@ -99,12 +117,21 @@ jobs:
             if ! python3 -B "$COLOSSAL_REPO/.github/scripts/ci/run_gpu_batch.py" \
               --batch "$batch" \
               --output "$CI_RESULTS_DIR/batch-$batch" \
-              --lock "$CI_GPU_LOCK"; then
+              --lock "$CI_GPU_LOCK" \
+              --image "$COLOSSAL_CI_IMAGE"; then
               status=1
               printf 'Batch %s failed; continuing to collect the remaining results.\n' "$batch" >&2
             fi
           done
           exit "$status"
+
+      - name: Clean up only this job's containers
+        if: always() && env.COLOSSAL_REPO != ''
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          python3 -B "$COLOSSAL_REPO/.github/scripts/ci/container_batch.py" \
+            --cleanup-scope "$CI_CONTAINER_SCOPE"
 
       - name: Upload GPU test reports
         if: always()
@@ -124,6 +151,7 @@ jobs:
             printf -- '- Source SHA: `%s`\n' "$CI_SOURCE_SHA"
             printf -- '- Runner: `%s`\n' "$RUNNER_NAME"
             printf -- '- Runtime profile: Torch 2.13 / CUDA 13.0\n'
+            printf -- '- Dependency image: `%s`\n' "$COLOSSAL_CI_IMAGE"
             printf -- '- Batches: `%s`\n\n' "$REQUESTED_BATCHES"
             find "$CI_RESULTS_DIR" -name result.json -print -exec cat {} \; 2>/dev/null || true
           } >> "$GITHUB_STEP_SUMMARY"

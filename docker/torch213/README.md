@@ -6,9 +6,10 @@ ColossalAI distribution or prebuilt ColossalAI extensions**. Install the exact
 CI source commit after starting a container. This prevents a new PR's Python
 code from using an older image's CUDA kernels.
 
-The image recipe does not change runner selection, GPU allocation, required
-checks, the release image or `version.txt`. Switching the reusable GPU workflow
-from its host virtual environment to containers is a separate change.
+The reusable GPU workflow uses this dependency-image profile while retaining
+host-side GPU allocation and locking. Runner labels, required checks, the user
+release image and `version.txt` are unchanged. The first CPU dependency check
+and actual container/GPU qualification are separate acceptance steps.
 
 ## Dependency profile
 
@@ -37,7 +38,7 @@ with `--no-deps`, then `pip check` verifies that the snapshot is complete. This 
 a Python 3.10/Linux profile, not a universal lock for all supported platforms.
 Non-core packages are version-pinned but not hash-locked; Ubuntu packages still
 come from apt repositories. For published images record the resolved base digest
-and publish/use the final image by digest.
+and use the final local image by its full immutable image ID. A registry is optional.
 
 The existing torchaudio wheel has no `Requires-Dist: torch` declaration. Its
 successful `pip check` is therefore **not** evidence of general TorchAudio 2.13
@@ -60,7 +61,7 @@ fallback; passing FP8 tests does not establish `torch.compile` support.
 
 ## Build
 
-Use a dedicated or explicitly approved build host. A normal Docker build/pull
+Use a dedicated or explicitly approved build host. A normal Docker build/load/run
 writes to the shared daemon's storage outside the checkout; keeping this recipe
 in a personal directory does **not** confine those writes to that directory.
 Do not run these commands on a shared server when only personal-directory writes
@@ -71,10 +72,15 @@ needed during the dependency image build. The Dockerfile-specific ignore file
 restricts the context to the lock files, verification script and optional wheels.
 The default package mirror is Huawei Cloud; core wheels use the PyTorch cu130
 index. An approved registry mirror or base digest can be supplied via `CUDA_IMAGE`.
+The recipe uses BuildKit's bundled Dockerfile frontend so it does not need an
+extra `docker/dockerfile` download from Docker Hub. The inspected build host
+uses BuildKit 0.27.1; use a recent BuildKit with support for bind/cache mounts.
+GPU devices are hidden by default, and the CI executor overrides that setting
+only with its allocated UUIDs.
 
 ```bash
 # Build a candidate from the committed recipe; use a fresh tag for each revision.
-docker build --progress=plain \
+docker build --platform linux/amd64 --progress=plain \
   --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" \
   -f docker/torch213/Dockerfile \
   -t colossalai-ci:torch2.13-cu130-candidate .
@@ -108,52 +114,132 @@ docker run --rm --runtime=runc \
   python /opt/ci/verify_image.py
 ```
 
-## Validate a source commit in the container
+## Keep the image on the SSH server (no registry required)
 
-First obtain an authorized idle GPU. The following example uses physical GPU 4;
-replace it with the allocated GPU or UUID. The container sees that device as
-logical `cuda:0`. The host needs a compatible NVIDIA driver, Docker and NVIDIA
-Container Toolkit; it does not need the personal Python venv or CUDA toolkit.
+Building with `docker build` already puts the image into that Docker daemon's
+local image store. Record its full image ID and use that same daemon for tests
+and the runner. A tag is convenient for humans but can be overwritten; CI pins
+the content ID. No image upload, registry account or publishing workflow is
+needed. The initial build still downloads base images and dependencies unless
+they are already cached or supplied locally.
 
 ```bash
-# Use a clean checkout of the exact revision to test, not a shared development tree.
-CI_SOURCE_DIR="$PWD"
-CI_RESULTS_DIR="$PWD/test-results/torch213-container"
-mkdir -p "$CI_RESULTS_DIR"
-
-# Compile this checkout's extensions after the allocated GPU is visible.
-# --no-deps keeps the image pins; pip check still validates package metadata.
-docker run --rm \
-  --gpus '"device=4"' --shm-size=8g \
-  --mount "type=bind,src=$CI_SOURCE_DIR,dst=/workspace" \
-  --mount "type=bind,src=$CI_RESULTS_DIR,dst=/results" \
-  -w /workspace \
-  -e COLOSSAL_REPO=/workspace -e COLOSSAL_RESULTS=/results \
-  -e COLOSSAL_VENV= -e COLOSSAL_PYTHON=/opt/venv/bin/python \
-  -e COLOSSAL_CUDA_HOME=/usr/local/cuda -e COLOSSAL_EXPECT_TORCH_PREFIX=2.13. \
-  -e TORCH_CUDA_ARCH_LIST=9.0 -e MAX_JOBS=4 \
-  -e CUDA_VISIBLE_DEVICES=0 -e FAST_MODE=0 \
-  colossalai-ci:torch2.13-cu130-candidate bash -euc '
-    BUILD_EXT=1 python -m pip install --no-deps --no-build-isolation -e .
-    python -m pip check
-    python -c "import colossalai; print(colossalai.__file__)"
-    bash .github/scripts/ci/run_colossalai_batch.sh 4a 0
-  '
+# Record the full immutable ID from the local Docker store; this does not pull.
+export COLOSSAL_CI_IMAGE="$(docker image inspect --format '{{.Id}}' colossalai-ci:torch2.13-cu130-candidate)"
+printf 'CI image ID: %s\n' "$COLOSSAL_CI_IMAGE"
 ```
 
-Batch 4a is the FP8 cast/linear/hook regression and does not reduce coverage based
-on `FAST_TEST`. Batch 3 (Adam kernels) and 4b (inference CUDA kernels) are also
-unaffected. The existing Layer 2 selects batches 2 and 5 with `FAST_MODE=1`, which
-enables `FAST_TEST` in tests that reduce their model matrices. Use `FAST_MODE=0`
-for Layer 3; the batch script **unsets** `FAST_TEST` instead of setting it to zero.
+Optionally save an image archive in an approved personal directory. Set
+`CI_IMAGE_ARCHIVE_ROOT`, for example, to
+`/mnt/beegfs/ColossalAI/wangzhijian/images`. Each export below gets a new directory
+so it does not overwrite an existing archive. Do not commit large image tars to Git.
 
-For CI, hold the existing host GPU lock from allocation through container exit,
-mount only the exact source checkout/results, and stop/remove the named container
-on cancellation before releasing the lock. Killing only the `docker run` client
-does not provide that guarantee. Cache extensions by image digest, source revision
-and GPU architecture; do not reuse an unrelated checkout's prebuilt `.so` files.
+```bash
+# Export a local backup and record both its checksum and Docker image ID.
+: "${CI_IMAGE_ARCHIVE_ROOT:?Set an approved directory for image archives}"
+: "${COLOSSAL_CI_IMAGE:?Set the full local sha256:image-ID}"
+mkdir -p "$CI_IMAGE_ARCHIVE_ROOT"
+CI_IMAGE_BUNDLE="$(mktemp -d "$CI_IMAGE_ARCHIVE_ROOT/torch213-cu130.XXXXXX")"
+docker image save --output "$CI_IMAGE_BUNDLE/image.tar" "$COLOSSAL_CI_IMAGE"
+printf '%s\n' "$COLOSSAL_CI_IMAGE" > "$CI_IMAGE_BUNDLE/image.id"
+(cd "$CI_IMAGE_BUNDLE" && sha256sum image.tar > image.tar.sha256)
+printf 'Saved image bundle: %s\n' "$CI_IMAGE_BUNDLE"
 
-Build/validate the image on the actual runner and distribute it through the team
-registry before switching the reusable workflow. A local image on another server
-does not automatically exist in the runner's Docker daemon. This recipe neither
-publishes an image nor changes the release Dockerfile or GitHub required checks.
+# Only when restoring or provisioning another daemon: check the archive first,
+# then load it. Do not repeat this on every CI run if the image is already present.
+(cd "$CI_IMAGE_BUNDLE" && sha256sum --check image.tar.sha256) && \
+  docker image load --input "$CI_IMAGE_BUNDLE/image.tar"
+export COLOSSAL_CI_IMAGE="$(tr -d '\n' < "$CI_IMAGE_BUNDLE/image.id")"
+docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE"
+```
+
+The tar file and Docker's active storage are different things. Docker does not
+run directly from `image.tar`: loading it writes layers/metadata to daemon
+storage, and starting containers writes there too. A personal archive path does
+not bypass shared-server restrictions. Do not change the shared daemon's data
+root, restart it, prune unrelated data or claim this is zero-impact on the host.
+If all writes must remain private, arrange an administrator-approved isolated
+runtime first; this change does not install one automatically.
+
+## Validate before opening the single PR
+
+Use the unmerged branch's scripts directly; they are the same entry points that
+the workflow calls. Local Git commits are fine and do not create a PR. This
+proves the container execution path before GitHub needs the new workflow.
+
+Qualify the immutable candidate on an approved GPU machine. The host needs a
+compatible NVIDIA driver, Docker, NVIDIA Container Toolkit and Python 3.10+;
+it does not need your Python environment or host CUDA toolkit. Reserve GPUs
+with the team **before** adding them to `COLOSSAL_GPU_POOL`. An idle GPU is not
+automatically available for CI use. All executors must use the same agreed lock.
+
+```bash
+# Required pre-agreed settings. Missing values stop the example rather than
+# using every idle GPU or inventing a second, ineffective lock.
+: "${COLOSSAL_CI_IMAGE:?Set the candidate's full local sha256:image-ID}"
+: "${COLOSSAL_GPU_POOL:?Set authorized physical GPU indices, e.g. 4 for one allocated GPU}"
+: "${COLOSSAL_GPU_LOCK:?Set the existing shared CI GPU lock file}"
+: "${CI_QUALIFICATION_ROOT:?Set an approved personal directory for source and reports}"
+export COLOSSAL_GPU_POOL
+export CI_SOURCE_SHA="$(git rev-parse HEAD)"
+export FAST_MODE=0
+
+# Test committed source only. No local .so, editable install or .git credentials
+# are carried into the container. Commit the proposed changes before this step.
+mkdir -p "$CI_QUALIFICATION_ROOT"
+CI_SOURCE_DIR="$(mktemp -d "$CI_QUALIFICATION_ROOT/source.XXXXXX")"
+git archive "$CI_SOURCE_SHA" | tar -x -C "$CI_SOURCE_DIR"
+docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE"
+
+# First run FP8 batch 4a through the same allocation, container and cleanup code
+# used by Actions. Logs, JUnit XML and runtime/result JSON go into this directory.
+python3 -B "$CI_SOURCE_DIR/.github/scripts/ci/run_gpu_batch.py" \
+  --image "$COLOSSAL_CI_IMAGE" --batch 4a \
+  --lock "$COLOSSAL_GPU_LOCK" \
+  --output "$CI_QUALIFICATION_ROOT/results-$CI_SOURCE_SHA/batch-4a"
+```
+
+Repeat the last command with batch `3` (AOT build + Adam), `4b` (inference CUDA),
+then `2` and `5` (single-/two-GPU core); batch 5 requires two authorized GPUs.
+For cancellation qualification, interrupt **only this test command**, then
+check its reported container name is absent from `docker ps -a` and that no
+test-owned GPU processes remain. Do not kill or prune unrelated jobs.
+
+Batch 4a is the FP8 cast/linear/hook regression and is unaffected by `FAST_TEST`.
+Batch 3 (Adam kernels) and 4b (inference CUDA kernels) are also unaffected. Layer 2
+selects batches `2 4a 5` with `FAST_MODE=1`, which reduces model matrices in 2/5.
+Layer 3 defaults to `FAST_MODE=0`; the batch script **unsets** `FAST_TEST` instead
+of setting it to zero. Testmon selection is not enabled.
+
+The executor holds the host lock through named-container cleanup, filters
+devices by UUID and supplies logical `0,1,...` inside the container. Source is
+mounted read-only and copied into the container; reports are the only writable
+bind, owned by the runner UID/GID. A lightweight private venv references image
+dependencies without copying Torch or modifying the base venv. All compiler
+caches are initially disposable. Batch 3 compiles AOT with `BUILD_EXT=1`; other
+batches exercise JIT as needed. No old ColossalAI binary is reused.
+
+Before installation, the container compares its embedded Dockerfile, context
+ignore file, locks and verifier with the selected source. A mismatch fails with
+an explicit rebuild message rather than testing a dependency-upgrade PR against
+the old environment. Documentation-only and normal source changes reuse the
+image. When changing the recipe, qualify the candidate before pointing CI at it.
+
+After candidate qualification, set repository variables documented in the
+[workflow README](../../.github/workflows/README.md#container-execution-and-image-rollout),
+then open the **one combined PR** and exercise its workflow before merging the
+switch. The runner checks the preloaded local image before acquiring GPUs; it
+does not pull, push or repeatedly reload archives. A local image on another
+daemon is insufficient, even when a tar is present on a shared filesystem.
+Preload every machine eligible for the runner label or restrict that label to
+the provisioned host. Source download and artifact upload still use GitHub.
+
+Pre-PR script runs do not prove GitHub event dispatch, permissions, Checks or
+artifact upload. Verify those on the single PR, and make any further fixes on
+that same branch. Do not merge first just to discover whether containers work.
+
+This recipe does not automatically publish images, configure Docker on the
+shared server, or change GitHub required checks. Build/load once per dependency
+profile change; code-only PRs reuse the image. Keep the local image ID, optional
+archive checksum, base digest, source SHA, build log and qualification reports together. A recipe
+or successful CPU check alone is not proof that the GPU CI profile passes.

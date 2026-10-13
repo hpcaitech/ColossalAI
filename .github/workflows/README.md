@@ -19,18 +19,25 @@ also migrate required checks, notifications, and repository rules.
 | Layer | Workflow file | Trigger | Coverage and resources |
 | --- | --- | --- | --- |
 | 1 | `ci_layer_1_pr.yml` | Every pull request to `main` | Formatting and genuinely CPU-only unit tests on GitHub-hosted runners. |
-| 2 | `ci_layer_2_gpu_pr.yml` | Trusted same-repository pull requests and manual dispatch | Core batches 2 and 5 on the dedicated `colossalai-e1-h20` runner. |
+| 2 | `ci_layer_2_gpu_pr.yml` | Trusted same-repository pull requests and manual dispatch | Core batches 2, 4a and 5 in containers on the `colossalai-e1-h20` runner. |
 | 3 | `ci_layer_3_full.yml` | Weekly schedule and manual dispatch | The complete GPU batch set, including four- and eight-GPU coverage. |
 | Monitor | `ci_gpu_idle_monitor.yml` | Hourly schedule and manual dispatch | Probes the authorized H20 pool; runs layer 2 with at least two idle GPUs and layer 3 with all eight idle GPUs. |
 | Shared | `ci_reusable_gpu_batches.yml` | Called by layers 2 and 3 | Fetches the pinned source, runs selected batches, uploads reports, and writes the run summary. |
 
-The execution flow is:
+Layer 2 retains its historical check name, `Torch 2.13 GPU core (batches 2 and 5)`,
+so existing required-check rules do not break; its actual batch list now also
+includes `4a`. Rename that check only together with branch-protection settings.
+
+Execution path:
 
 ```text
 layer trigger
     -> reusable GPU workflow
-        -> run_gpu_batch.py
-            -> run_colossalai_batch.sh
+        -> verify the preloaded dependency image by immutable image ID
+        -> run_gpu_batch.py (host GPU lock + idle-device checks)
+            -> container_batch.py (one disposable container per batch)
+                -> run_container_batch.sh (install this source SHA)
+                    -> run_colossalai_batch.sh (existing test membership)
 ```
 
 `.github/scripts/ci/run_colossalai_batch.sh` is the source of truth for batch
@@ -46,18 +53,24 @@ devices. The host lock complements rather than replaces the team's external
 reservation policy.
 
 The hourly monitor is deliberately capacity-aware. It skips layer 2 unless
-both of its batches can be admitted, and skips the full layer 3 matrix unless
+all of its batches can be admitted, and skips the full layer 3 matrix unless
 all eight GPUs are idle. The normal per-batch selector checks occupancy again
 immediately before every launch, so a stale hourly probe still fails closed.
 
 ### Rollout configuration
 
 1. Keep the `colossalai-e1-h20` runner label restricted to this repository.
-2. Set `COLOSSAL_GPU_POOL` when CI may use only a subset of physical GPU
-   indices.
-3. Optionally set `COLOSSAL_TORCH213_VENV`, `COLOSSAL_CUDA130_HOME`, and
-   `COLOSSAL_GPU_LOCK`. The reusable workflow contains the current E1 paths as
-   rollout defaults.
+2. Set `COLOSSAL_GPU_POOL` to the **authorized** comma-separated physical GPU
+   indices, and `COLOSSAL_GPU_LOCK` to the shared lock file used by every CI
+   executor on this machine. Both variables are required; there is no personal
+   directory default. The monitor and GPU jobs must use the same lock.
+3. Build and validate the [dependency image](../../docker/torch213/README.md)
+   on the runner's Docker daemon (or import it once with `docker load`). Set
+   `COLOSSAL_CI_IMAGE` to its full local `sha256:<64 hex digits>` image ID.
+   The runner needs Docker access, NVIDIA Container Toolkit, a compatible driver,
+   and host Python 3.10+ with PyYAML. Publishing the image is **not required**.
+   The Docker daemon/context used for provisioning and CI must match. CI no longer needs
+   `COLOSSAL_TORCH213_VENV` or `COLOSSAL_CUDA130_HOME`. Layer 1 remains CPU-only.
 4. Make `Formatting` and `CPU unit tests` required only after layer 1 has passed
    repeatedly. Make layer 2 required only after GPU capacity and the trusted-PR
    policy have been agreed.
@@ -66,6 +79,78 @@ immediately before every launch, so a stale hourly probe still fails closed.
    a trusted ref.
 6. Add another Torch/CUDA profile to layer 3 only after its isolated environment
    or pinned image has been provisioned.
+
+### Container execution and image rollout
+
+The image holds Python dependencies and CUDA build tools, **not ColossalAI**.
+The workflow fetches the exact source SHA and mounts it read-only. Each batch
+copies it into its private container layer, creates a small writable venv that
+references the image dependencies, and installs the checkout with `--no-deps
+--no-build-isolation`. Batch 3 sets `BUILD_EXT=1` to check AOT compilation;
+other batches use source-specific JIT kernels as needed. Compiler caches are
+fresh per container. The initial rollout intentionally has no shared cache or
+testmon incremental selection.
+
+The container rejects a mismatch between the source's image recipe/locks and
+the files embedded in the image. Updating a lock file alone cannot make CI
+silently validate the old dependency environment.
+
+The host selector passes **GPU UUIDs** to Docker, not `--gpus all`. Inside the
+container, the allocated devices become logical `0,1,...`; host indices must
+not be reused there. No personal venv, host CUDA toolkit, home directory,
+credentials or Docker socket is mounted. Only the report bind is writable;
+containers run as the runner UID/GID so artifact ownership stays correct.
+Containers are not a security boundary for hostile pull requests: the host
+scripts still have Docker access. Keep the trusted-ref policy and runner-group
+restrictions.
+
+| Repository variable | Default / purpose |
+| --- | --- |
+| `COLOSSAL_CI_IMAGE` | Required, full local `sha256:image-ID` (or an already-loaded registry digest). No tag, automatic pull or host-environment fallback. |
+| `COLOSSAL_GPU_POOL` | Required, GPUs reserved/authorized for CI. Idle does not mean authorized. |
+| `COLOSSAL_GPU_LOCK` | Required, agreed shared host lock. Use the same path as legacy executors. |
+| `COLOSSAL_CI_CPUS` | `8`, CPU quota per active container. |
+| `COLOSSAL_CI_MEMORY` | `64g`, RAM limit; swap does not add to this limit. |
+| `COLOSSAL_CI_SHM` | `8g`, private shared memory for multiprocessing/NCCL. |
+
+Tune RAM/CPU limits with the administrator before the full eight-GPU matrix;
+CPU-offload tests can need more RAM than the initial smoke profile. These limits
+do not reserve GPU memory or cap image/layer disk usage. Docker build/load/run
+write to daemon storage, so keeping the checkout and exported image `.tar` in a
+personal directory is **not** equivalent to confining all writes there. Do not
+move the shared daemon's data root or restart it to achieve personal isolation.
+
+Bootstrap with **one PR**: first build the candidate from the local branch on
+an approved builder; verify dependencies; build/load it on the test daemon;
+qualify batches `4a`, `3`, `4b`, then `2 5` and cancellation cleanup on allocated
+GPUs using `run_gpu_batch.py --image sha256:...`. None of these steps requires
+opening or merging a PR, publishing the image, or upgrading the host venv.
+Save the qualified image ID, source SHA and test reports, optionally archive the
+image with `docker save`, then configure the runner/repository variables and
+open the single combined PR. GitHub event triggering, permissions and artifact
+upload still need verification on that PR; fix them on the same branch/PR.
+Merge only after reviewing failures and skipped coverage.
+Do not merge the workflow switch before the image and runner are ready.
+Subsequent code-only PRs reuse the image and install their own source. Rebuild
+the image when the lock files, base/toolchain or Dockerfile change, not on every
+PR or `version.txt` change. This CI image is separate from the user release image.
+
+An image tar is a portable backup, not an executable container directory.
+Load it once into the actual runner daemon when restoring or moving machines;
+ordinary runs reuse the local image without repeatedly loading the tar. If
+several machines share the runner label, preload the same image on each one
+or restrict the job to the provisioned runner. No registry credentials are needed.
+
+For rollback, select a previously **qualified** image ID compatible with
+the source under test, or revert the executor switch. Do not silently fall back
+to a developer's venv. The legacy workflows and release pipeline are unchanged.
+
+`FAST_MODE=1` continues to reduce the model matrices of batches 2 and 5; batch
+4a is unaffected. Layer 3 defaults to `FAST_MODE=0`, which unsets `FAST_TEST`.
+Installing testmon does not enable selection: a later change must validate
+coverage recording, image/batch-scoped persistent data, multiprocessing and
+CUDA/C++ change invalidation before opting in. Core smoke and full regressions
+must remain unconditional.
 
 ### Failure diagnosis and targeted validation
 
@@ -86,9 +171,13 @@ The batch wrapper uses `run_with_timeout.py` to supervise a dedicated test
 process group and clean its workers before the logging `tee` waits for EOF.
 The GPU runner also checks whether the batch process exited
 while streaming logs; it must not wait indefinitely for EOF held open by
-orphaned workers. Its finalizer terminates only that batch's process group,
-including on timeout, before releasing the CI GPU lock. This does not cancel
-unrelated GPU jobs.
+orphaned workers. In container mode it also removes the uniquely named container
+while still holding the lock; both ownership labels and the exact name must
+match. An `always()` step retries cleanup for this job's scope on cancellation.
+It never runs `docker system prune`, daemon-wide cleanup or unrelated-process
+termination. A runner crash, forced kill or unavailable Docker daemon can still
+prevent cleanup: stop admitting jobs and have the administrator inspect the
+reported container name/scope before returning the runner to service.
 
 ## Active workflow inventory
 
