@@ -18,5 +18,5 @@ __all__ = [
     "GlideLlamaModelPolicy",
     "StableDiffusion3InferPolicy",
     "PixArtAlphaInferPolicy",
-    "model_polic_map",
+    "model_policy_map",
 ]
