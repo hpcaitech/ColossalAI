@@ -23,7 +23,7 @@ from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 try:
-    import apex.amp
+    pass
 
     APEX_AVAILABLE = True
 except ImportError:
