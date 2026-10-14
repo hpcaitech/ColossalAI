@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from container_batch import resolve_image, run_container
+
 GPU_UUID = re.compile(r"GPU-[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}\Z")
 GPU_COUNTS = {
     "2": 1,
@@ -88,7 +90,11 @@ def select_idle(inventory, processes, count, allowed=None):
 
 def query_gpus():
     inventory = subprocess.run(
-        ["nvidia-smi", "--query-gpu=index,uuid,memory.used,utilization.gpu", "--format=csv,noheader,nounits"],
+        [
+            "nvidia-smi",
+            "--query-gpu=index,uuid,memory.used,utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ],
         check=True,
         text=True,
         capture_output=True,
@@ -184,6 +190,10 @@ def main():
     parser.add_argument("--batch", required=True, choices=sorted(GPU_COUNTS))
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--lock", type=Path, default=Path("/tmp/colossalai-ci-gpu.lock"))
+    parser.add_argument(
+        "--image",
+        help="Preloaded dependency image: full sha256:ID or registry@sha256:digest; omit for host mode",
+    )
     args = parser.parse_args()
 
     if os.name != "posix":
@@ -202,6 +212,9 @@ def main():
     }
 
     try:
+        image_id = resolve_image(args.image) if args.image is not None else None
+        result["executor"] = "docker" if image_id else "host"
+        result["image_reference"] = args.image
         with args.lock.open("w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             inventory, processes = query_gpus()
@@ -223,13 +236,31 @@ def main():
                 GPU_COUNTS[args.batch],
                 {index for index, _ in selected},
             )
-            if [index for index, _ in still_idle] != result["gpu_indices"]:
+            if still_idle != selected:
                 raise RuntimeError("GPU occupancy changed before the batch could start")
 
             script = Path(__file__).with_name("run_colossalai_batch.sh")
             gpu_list = ",".join(str(index) for index, _ in selected)
             env = os.environ.copy()
-            code = stream_process(["bash", str(script), args.batch, gpu_list], args.output / "pytest.log", env)
+            if image_id:
+                # Cleanup is part of run_container and completes BEFORE this
+                # lock context exits. Killing the Docker client is not enough.
+                code = run_container(
+                    args.batch,
+                    selected,
+                    Path(__file__).resolve().parents[3],
+                    args.output,
+                    image_id,
+                    env,
+                    stream_process,
+                    result,
+                )
+            else:
+                code = stream_process(
+                    ["bash", str(script), args.batch, gpu_list],
+                    args.output / "pytest.log",
+                    env,
+                )
             if code != 0:
                 raise RuntimeError(f"Batch {args.batch} failed with exit code {code}")
             result["status"] = "passed"

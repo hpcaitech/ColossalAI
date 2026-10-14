@@ -7,7 +7,7 @@ click
 fabric
 contexttimer
 ninja
-torch>=2.2.0,<=2.5.1
+torch>=2.2.0,<2.14
 safetensors
 einops
 pydantic

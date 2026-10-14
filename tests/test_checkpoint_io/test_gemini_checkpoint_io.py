@@ -1,4 +1,5 @@
 import os
+from importlib import import_module
 
 import pytest
 import torch
@@ -23,9 +24,10 @@ from tests.kit.model_zoo import model_zoo
 
 ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
 try:
-    import apex.amp
-
-    APEX_AVAILABLE = True
+    apex_normalization = import_module("apex.normalization")
+    # Apex's Python-only installation lacks the CUDA kernel used by both norms.
+    import_module("fused_layer_norm_cuda")
+    APEX_AVAILABLE = all(hasattr(apex_normalization, name) for name in ("FusedLayerNorm", "FusedRMSNorm"))
 except ImportError:
     APEX_AVAILABLE = False
 

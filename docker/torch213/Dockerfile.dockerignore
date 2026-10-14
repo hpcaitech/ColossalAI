@@ -1,0 +1,13 @@
+# Only dependency build inputs belong in this context. In particular, do not
+# copy the checkout, prebuilt extensions, personal environments or credentials.
+**
+!docker/
+!docker/torch213/
+!docker/torch213/Dockerfile
+!docker/torch213/Dockerfile.dockerignore
+!docker/torch213/requirements.lock
+!docker/torch213/requirements-torch.lock
+!docker/torch213/verify_image.py
+!docker/torch213/wheelhouse/
+!docker/torch213/wheelhouse/.gitkeep
+!docker/torch213/wheelhouse/*.whl

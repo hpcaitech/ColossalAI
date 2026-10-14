@@ -2,6 +2,7 @@ name: Compatibility Test on PR
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "version.txt"
       - ".compatibility"
@@ -9,7 +10,9 @@ on:
 jobs:
   matrix_preparation:
     name: Prepare Container List
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -37,6 +40,7 @@ jobs:
     needs: matrix_preparation
     if: >-
       github.repository == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     strategy:
