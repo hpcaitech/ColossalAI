@@ -266,6 +266,41 @@ def run_dist_galore_fwd_bwd(p_g_dtype: tuple[torch.dtype, torch.dtype], tp_zero_
         raise e
 
 
+def run_dist_galore_cpu_offload() -> None:
+    """Regression test for bitsandbytes updates on CPU-offloaded master shards."""
+    rank = dist.get_rank()
+    seed_all(_SEED)
+    model = Net(_IN_DIM, _HID_DIM).to(rank)
+    optim = DistGaloreAwamW(model.parameters(), lr=lr)
+    optim = LowLevelZeroOptimizer(
+        optim,
+        cpu_offload=True,
+        partition_grad=False,
+        initial_scale=128,
+    )
+    optim.optim.setup_distributed(
+        dp_group=dist.group.WORLD,
+        shard_to_working_param=optim.get_master_to_working_map(),
+        padding_map=optim.get_param_padding_map(),
+        is_zero=False,
+    )
+
+    for _ in range(2):
+        optim.zero_grad()
+        x = data_gen().cuda()
+        output = model(x)
+        optim.backward(output.square().mean())
+        optim.step()
+
+    for master_params in optim._master_param_groups_of_current_rank.values():
+        assert all(param.device.type == "cpu" for param in master_params)
+        for param in master_params:
+            assert all(
+                not isinstance(value, torch.Tensor) or value.device.type == "cpu"
+                for value in optim.optim.state[param].values()
+            )
+
+
 def check_dist_galore(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
@@ -278,6 +313,9 @@ def check_dist_galore(rank, world_size, port):
     coordinator.print_on_master("Skipping forward-backward tests due to SVD instability")
     # run_dist_galore_fwd_bwd()
     # _COORDINATOR.print_on_master("Forward-backward tests passed")
+
+    run_dist_galore_cpu_offload()
+    coordinator.print_on_master("CPU-offload test passed")
 
     coordinator.print_on_master(
         "Running bert tests, which are expected to produce minor errors due to instability in SVD convergence. \

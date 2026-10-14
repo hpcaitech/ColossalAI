@@ -9,6 +9,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from bitsandbytes.optim.optimizer import Optimizer2State
 
+from colossalai.accelerator import get_accelerator
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 
@@ -163,6 +164,17 @@ class DistGaloreAwamW(DistributedOptim, Optimizer2State):
                     continue
                 state = self.state[p]
 
+                # bitsandbytes only provides CUDA update kernels.  ZeRO CPU
+                # offload keeps the master shard, gradient, and optimizer state
+                # on CPU, so stage one parameter at a time on the accelerator
+                # for the update and move it back afterwards.
+                cpu_offload = p.device.type == "cpu"
+                if cpu_offload:
+                    compute_device = get_accelerator().get_current_device()
+                    p.data = p.data.to(compute_device)
+                    p.grad = p.grad.to(compute_device)
+                    self._move_state(state, compute_device)
+
                 if "step" not in state:
                     state["step"] = 0
 
@@ -259,11 +271,33 @@ class DistGaloreAwamW(DistributedOptim, Optimizer2State):
                     group["weight_decay"] = group["weight_decay_saved"]
                     del group["weight_decay_saved"]
 
+                if cpu_offload:
+                    p.data = p.data.cpu()
+                    p.grad = p.grad.cpu()
+                    self._move_state(state, torch.device("cpu"))
+                    if hasattr(p, "saved_data"):
+                        del p.saved_data
+
         if self.is_paged:
             # all paged operation are asynchronous, we need
             # to sync to make sure all tensors are in the right state
             torch.cuda.synchronize()
         return loss
+
+    @staticmethod
+    def _move_state(state, device) -> None:
+        """Move non-paged bitsandbytes and GaLore projector state to ``device``."""
+        for key, value in state.items():
+            if isinstance(value, torch.Tensor) and not getattr(value, "is_paged", False):
+                state[key] = value.to(device)
+
+        projector = state.get("projector")
+        if projector is not None:
+            ortho_matrix = projector.ortho_matrix
+            if isinstance(ortho_matrix, torch.Tensor):
+                projector.ortho_matrix = ortho_matrix.to(device)
+            elif isinstance(ortho_matrix, list):
+                projector.ortho_matrix = [matrix.to(device) for matrix in ortho_matrix]
 
     def to_master_shape(self, data, padding):
         """Pad to master (optimizer) param shape"""
