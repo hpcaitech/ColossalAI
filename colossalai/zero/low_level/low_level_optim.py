@@ -99,6 +99,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
         backward_context=None,
+        grad_norm_process_group: Optional[Union[ProcessGroup, Tuple[ProcessGroup, ...]]] = None,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
 
@@ -124,6 +125,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 pg_to_param_list[unique_dp_group].extend(group["params"])
 
         self.pg_to_param_list = pg_to_param_list
+        # The grad norm is reduced once over this group (see _compute_grad_norm), so it must contain every rank that
+        # owns a distinct gradient shard of any store. With a single store this is the store's own group.
+        if grad_norm_process_group is None:
+            if len(pg_to_param_list) > 1:
+                raise ValueError(
+                    "grad_norm_process_group should be provided when parameters are split across several process groups."
+                )
+            grad_norm_process_group = next(iter(pg_to_param_list))
+        self._grad_norm_process_group = grad_norm_process_group
         param_to_pg = {}
         for grp, param_list in pg_to_param_list.items():
             for p in param_list:
@@ -550,7 +560,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             working_params = self._working_param_groups[group_id]
             real_working_params[group_id] = []
             real_master_params[group_id] = []
-            working_grads = []
             for working_param, master_param in zip(working_params, master_params):
                 # if a working param requires grad and has no grad
                 # it is not 'really' working, e.g. the droped layer
@@ -568,13 +577,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     grad_partition_groups.append(grad)
                     real_master_params[group_id].append(master_param)
 
-            # compute norm
-            norm_group = 0
-            for grad_store in self.pg_to_grad_store.values():
-                working_grads = grad_store.get_working_grads_by_group_id(group_id)
-                norm_group += self._compute_grad_norm(dp_pg=grad_store.torch_pg, gradients=working_grads)
-
-            norm_groups.append(norm_group)
+            # one norm over the grads of all stores, so that experts and dense params are combined correctly
+            norm_groups.append(self._compute_grad_norm(self.get_working_grads_by_group_id(group_id)))
 
             # update the params in the optimizer
             self.optim.param_groups[group_id]["params"] = real_master_params[group_id]
@@ -634,66 +638,45 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if not tensor_bucket.is_empty():
                     tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
-    def _compute_grad_norm(
-        self, dp_pg: Union[ProcessGroup, Tuple[ProcessGroup, ...]], gradients: List[Tensor], norm_type: int = 2
-    ) -> float:
+    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
         r"""
-        Compute and return the gradient norm for gradient clipping.
+        Compute the norm of the whole gradient, viewed as a single vector, for gradient clipping.
+
+        Each rank passes the gradient shards it owns, from all gradient stores. Their p-th power sum (or max for the
+        infinity norm) is reduced once over the groups of ``_grad_norm_process_groups`` and the root is taken once,
+        so every element is counted once and all ranks get the same value. Copies of the same element held by several
+        ranks are handled by ``_grad_norm_weight``. Every rank must call this, even without gradients.
 
         Args:
-            gradients (List[Tensor]): The gradients to compute norm
+            gradients (List[Tensor]): The gradient shards owned by this rank
             norm_type (int, optional): type of the used p-norm, Can be ``'inf'`` for infinity norm. Defaults to 2.
 
         Returns:
-            float: The total norm of given gradients
+            float: The total norm of the gradients
         """
-
-        if len(gradients) == 0:
-            return 0.0
-
         norm_type = float(norm_type)
         if norm_type == inf:
-            total_norm = max(grad.data.abs().max() for grad in gradients)
-            total_norm_cuda = torch.tensor(
-                [float(total_norm)],
-                device=get_accelerator().get_current_device(),
-                dtype=torch.float,
-            )
-            if isinstance(dp_pg, tuple):
-                for grp in dp_pg:
-                    dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=grp)
-            else:
-                dist.all_reduce(total_norm_cuda, op=torch.distributed.ReduceOp.MAX, group=dp_pg)
-            total_norm = total_norm_cuda.item()
-
+            local = max((float(grad.data.abs().max()) for grad in gradients), default=0.0)
+            op = dist.ReduceOp.MAX
         else:
-            total_norm_exponentiated = 0.0
+            local = 0.0
             for grad in gradients:
-                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
-                total_norm_exponentiated += grad_norm_exponentiated
+                local += self._grad_norm_weight(grad) * grad.data.double().norm(norm_type) ** norm_type
+            op = dist.ReduceOp.SUM
 
-            # Sum across all model parallel GPUs.
-            total_norm_exponentiated_cuda = torch.tensor(
-                [float(total_norm_exponentiated)],
-                device=get_accelerator().get_current_device(),
-                dtype=torch.float,
-            )
-            if isinstance(dp_pg, tuple):
-                for grp in dp_pg:
-                    dist.all_reduce(
-                        total_norm_exponentiated_cuda,
-                        op=torch.distributed.ReduceOp.SUM,
-                        group=grp,
-                    )
-            else:
-                torch.distributed.all_reduce(
-                    total_norm_exponentiated_cuda,
-                    op=torch.distributed.ReduceOp.SUM,
-                    group=dp_pg,
-                )
-            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
+        total = torch.tensor([float(local)], device=get_accelerator().get_current_device(), dtype=torch.float)
+        for group in self._grad_norm_process_groups():
+            dist.all_reduce(total, op=op, group=group)
+        return total.item() if norm_type == inf else total.item() ** (1.0 / norm_type)
 
-        return total_norm
+    def _grad_norm_process_groups(self) -> List[ProcessGroup]:
+        """The groups the local grad norm is reduced over, one after another."""
+        group = self._grad_norm_process_group
+        return list(group) if isinstance(group, tuple) else [group]
+
+    def _grad_norm_weight(self, grad: Tensor) -> float:
+        """How much this rank's copy of a gradient counts towards the norm; copies of one gradient sum to 1."""
+        return 1.0
 
     #############################
     # Mixed Precision Utilities #

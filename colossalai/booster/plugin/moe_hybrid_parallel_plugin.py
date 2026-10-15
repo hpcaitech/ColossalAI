@@ -101,6 +101,8 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             forced_dtype=forced_dtype,
             pg_to_param_list=pg_param_list,
             overlap_allgather=overlap_allgather,
+            # the dp group spans the moe_dp and ep axes, so it covers every shard of dense and expert grads
+            grad_norm_process_group=dp_process_group,
         )
 
 

@@ -692,6 +692,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         forced_dtype: Optional[torch.dtype] = None,
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
+        grad_norm_process_group: Optional[ProcessGroup] = None,
     ):
         self.model = model
         self.param_info = param_info
@@ -723,6 +724,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             overlap_allgather=overlap_allgather,
             fp8_communication=fp8_communication,
             backward_context=model._hook_context,
+            grad_norm_process_group=grad_norm_process_group,
         )
 
     def sync_dp_grads(self):
@@ -840,90 +842,29 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             # If gradient synchronization is is not required, return.
             return
 
-    def _compute_grad_norm(self, dp_pg, gradients: List[Tensor], norm_type: int = 2) -> float:
-        r"""
-        Compute and return the gradient norm for gradient clipping.
+    def _grad_norm_process_groups(self) -> List[ProcessGroup]:
+        # gradients are also split across tp and pp ranks, so the norm is summed over them too
+        groups = super()._grad_norm_process_groups()
+        for group in (self.tp_pg, self.pp_pg):
+            if group is not None and get_world_size(group) > 1:
+                groups.append(group)
+        return groups
 
-        Args:
-            gradients (List[Tensor]): A list of tensors containing gradients.
-            norm_type (int, optional): Type of the p-norm to be computed. Defaults to 2.
-
-        Returns:
-            float: The computed gradient norm.
-        """
-
-        # Check if the list of gradients is empty
-        if len(gradients) == 0:
-            return 0.0
-
-        dp_size = get_world_size(dp_pg) if dp_pg is not None else 1
-        tp_size = get_world_size(self.tp_pg) if self.tp_pg is not None else 1
-        pp_size = get_world_size(self.pp_pg) if self.pp_pg is not None else 1
-        norm_type = float(norm_type)
-
-        if norm_type == inf:
-            # The parent class calculates the norm of 'dp' gradients,
-            # so we only need to calculate the norm 'tp' of 'pp' gradients.
-            total_norm = super()._compute_grad_norm(gradients, norm_type)
-
-            total_norm_cuda = torch.tensor(
-                [float(total_norm)], device=get_accelerator().get_current_device(), dtype=torch.float32
-            )
-
-            if tp_size > 1:
-                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.tp_pg)
-            if pp_size > 1:
-                dist.all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX, group=self.pp_pg)
-
-            total_norm = total_norm_cuda.item()
-        else:
-            total_norm_exponentiated = 0.0
-            for grad in gradients:
-                grad_norm_exponentiated = grad.data.double().norm(norm_type) ** norm_type
-
-                # If 'tp_size' is greater than 1 and the parameter for the gradient is not a distributed tensor,
-                # it indicates that the parameter is not distributed across devices of the 'tp_group'.
-                # Consequently, there is no need to perform an 'all_reduce' operation for 'grad_norm'.
-                # However, we still perform the 'all_reduce' operation for the sake of good coding practices.
-                # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
-                if tp_size > 1:
-                    param_id_for_grad = self.get_param_id_for_grad(grad)
-                    param_for_grad = ctypes.cast(param_id_for_grad, ctypes.py_object).value
-
-                    if not is_distributed_tensor(param_for_grad):
-                        grad_norm_exponentiated /= tp_size
-
-                # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
-                # it means that this parameter is used in two different pipeline stages.
-                # To avoid redundant norm calculations, we divide the exponent of this norm by
-                # the number of shared stages.
-                if pp_size > 1:
-                    for shared_param in self.shared_params:
-                        if self.stage_manager.stage in shared_param:
-                            stage_shared_param = shared_param[self.stage_manager.stage]
-                            working_grad = self.get_working_grad_by_param_id(id(stage_shared_param))
-                            if grad is working_grad:
-                                grad_norm_exponentiated /= len(shared_param)
-
-                total_norm_exponentiated += grad_norm_exponentiated
-
-            total_norm_exponentiated_cuda = torch.tensor(
-                [float(total_norm_exponentiated)], device=get_accelerator().get_current_device(), dtype=torch.float32
-            )
-            if dp_size > 1:
-                # compute norm in dp process group
-                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=dp_pg)
-            if tp_size > 1:
-                # compute norm in tp process group
-                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.tp_pg)
-            if pp_size > 1:
-                # compute norm in pp process group
-                dist.all_reduce(tensor=total_norm_exponentiated_cuda, op=dist.ReduceOp.SUM, group=self.pp_pg)
-
-            # Compute the 'total_norm' from 'total_norm_exponentiated'
-            total_norm = total_norm_exponentiated_cuda.item() ** (1.0 / norm_type)
-
-        return total_norm
+    def _grad_norm_weight(self, grad: Tensor) -> float:
+        weight = 1.0
+        # a parameter not split by tp is replicated on every tp rank: each copy counts 1 / tp_size
+        if self.tp_pg is not None and get_world_size(self.tp_pg) > 1:
+            param_for_grad = ctypes.cast(self.get_param_id_for_grad(grad), ctypes.py_object).value
+            if not is_distributed_tensor(param_for_grad):
+                weight /= get_world_size(self.tp_pg)
+        # a parameter shared by several pipeline stages (e.g. tied embeddings) counts 1 / num_stages per stage
+        if self.pp_pg is not None and get_world_size(self.pp_pg) > 1:
+            for shared_param in self.shared_params:
+                if self.stage_manager.stage in shared_param:
+                    stage_shared_param = shared_param[self.stage_manager.stage]
+                    if grad is self.get_working_grad_by_param_id(id(stage_shared_param)):
+                        weight /= len(shared_param)
+        return weight
 
 
 class HybridParallelPlugin(PipelinePluginBase):
