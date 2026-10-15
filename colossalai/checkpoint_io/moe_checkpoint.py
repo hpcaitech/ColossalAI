@@ -664,9 +664,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                         v = v.split(slice_size, dim=0)[self.global_dp_rank]
 
                 elif self.use_zero and is_moe_param and self.moe_dp_size > 1:
-                    # LowLevelZeRO pads by global dp size for now.
-                    # TODO: update both to use moe dp size
-                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
+                    # LowLevelZeRO pads each param by the size of the group it is sharded over
+                    padding_size = (self.moe_dp_size - v.numel() % self.moe_dp_size) % self.moe_dp_size
                     with torch.no_grad():
                         v = v.flatten()
                         if padding_size > 0:
