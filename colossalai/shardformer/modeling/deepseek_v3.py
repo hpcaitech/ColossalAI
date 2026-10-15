@@ -10,13 +10,7 @@ from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_m
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import (
-    DPGradScalerIn,
-    DPGradScalerOut,
-    EPGradScalerIn,
-    EPGradScalerOut,
-    all_to_all_uneven,
-)
+from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer.linear import ParallelModule
 from colossalai.shardformer.shard.utils import set_tensors_to_none
@@ -108,11 +102,6 @@ class EpDeepseekV3MoE(ParallelModule):
             sorted_tokens = gathered_tokens[gatherd_idxs]
             tokens_per_expert = tokens_per_expert_post_gather
 
-            # moe-dp related code
-            activate_experts = tokens_per_expert_post_gather > 0
-            activate_experts = activate_experts.int()
-            dist.all_reduce(activate_experts, group=self.moe_dp_group)
-
             # ep related code
             sorted_tokens = EPGradScalerIn.apply(sorted_tokens, self.ep_size)
 
@@ -126,11 +115,7 @@ class EpDeepseekV3MoE(ParallelModule):
                 continue
             expert = self.experts[i + self.ep_rank * self.experts_per_rank]
             tokens_for_this_expert = sorted_tokens[start_idx:end_idx]
-            # moe-dp related code
-            tokens_for_this_expert = DPGradScalerIn.apply(tokens_for_this_expert, self.moe_dp_size, activate_experts[i])
             expert_out = expert(tokens_for_this_expert)
-            # moe-dp related code
-            expert_out = DPGradScalerOut.apply(expert_out, self.moe_dp_size, activate_experts[i])
             outputs.append(expert_out)
             start_idx = end_idx
 
