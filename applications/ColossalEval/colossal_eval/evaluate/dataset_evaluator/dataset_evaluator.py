@@ -60,7 +60,7 @@ class DatasetEvaluator(object):
         flag = False
         logits = []
         for i, sample in enumerate(self.data[category]["data"]):
-            if np.any(np.isnan(np.array(list(sample["logits_over_choices"].values())))):
+            if np.any(np.isnan(np.asarray(list(sample["logits_over_choices"].values())))):
                 if not flag:
                     print(
                         f"NaN in the logits, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
@@ -81,10 +81,10 @@ class DatasetEvaluator(object):
                     )
                 logits.append(references[i] if score == 1 else -1)
             else:
-                logits.append(np.argmax(np.array(list(sample["logits_over_choices"].values()))))
+                logits.append(np.argmax(np.asarray(list(sample["logits_over_choices"].values()))))
 
-        references = np.array(references)
-        logits = np.array(logits)
+        references = np.asarray(references)
+        logits = np.asarray(logits)
         scores = np.sum(references == logits) / len(self.data[category]["data"]) * 100
 
         self.evaluation_results[metric][category] = (scores, len(self.data[category]["data"]))
@@ -107,7 +107,7 @@ class DatasetEvaluator(object):
         flag = False
         logits = []
         for i, sample in enumerate(self.data[category]["data"]):
-            if np.any(np.isnan(np.array(list(sample["logits_over_choices"].values())))):
+            if np.any(np.isnan(np.asarray(list(sample["logits_over_choices"].values())))):
                 if not flag:
                     print(
                         f"NaN in the logits, switch to exact match for category {category} in dataset {self.dataset_name} in model {self.model_name}."
@@ -123,7 +123,7 @@ class DatasetEvaluator(object):
                     )
                 logits.append(references[i] if score == 1 else -1)
             else:
-                logits.append(np.argmax(np.array(list(sample["logits_over_choices"].values()))))
+                logits.append(np.argmax(np.asarray(list(sample["logits_over_choices"].values()))))
 
         metric_method = eval("metric_helper." + metric)
 
@@ -194,21 +194,21 @@ class DatasetEvaluator(object):
         if metric == "perplexity":
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             losses = [min(sample["loss"]) for sample in self.data[category]["data"]]
-            perplexity = np.mean(np.exp(np.array(losses)))
+            perplexity = np.mean(np.exp(np.asarray(losses)))
 
             self.evaluation_results["perplexity"][category] = (perplexity, len(self.data[category]["data"]))
             self.evaluation_results["perplexity"]["ALL"] += perplexity * weight
         elif metric == "ppl_score":
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             losses = [min(sample["loss"]) for sample in self.data[category]["data"]]
-            perplexity_score = np.mean(np.exp(-np.array(losses))) * 100
+            perplexity_score = np.mean(np.exp(-np.asarray(losses))) * 100
 
             self.evaluation_results["ppl_score"][category] = (perplexity_score, len(self.data[category]["data"]))
             self.evaluation_results["ppl_score"]["ALL"] += perplexity_score * weight
         elif metric == "ppl_score_over_choices" and self.data[category]["inference_kwargs"]["all_classes"] is not None:
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             loss_over_choices = [sample["loss_over_choices"] for sample in self.data[category]["data"]]
-            perplexity_score_over_choices = np.mean(np.exp(-np.array(loss_over_choices))) * 100
+            perplexity_score_over_choices = np.mean(np.exp(-np.asarray(loss_over_choices))) * 100
 
             self.evaluation_results["ppl_score_over_choices"][category] = (
                 perplexity_score_over_choices,
@@ -218,14 +218,14 @@ class DatasetEvaluator(object):
         elif metric == "per_byte_perplexity":
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             losses = [min(sample["loss_sum"]) for sample in self.data[category]["data"]]
-            perplexity = np.mean(np.exp(np.array(losses) / np.array(self.N_bytes[category])))
+            perplexity = np.mean(np.exp(np.asarray(losses) / np.asarray(self.N_bytes[category])))
 
             self.evaluation_results["per_byte_perplexity"][category] = perplexity
             self.evaluation_results["per_byte_perplexity"]["ALL"] += perplexity * weight
         elif metric == "per_byte_ppl_score":
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             losses = [min(sample["loss_sum"]) for sample in self.data[category]["data"]]
-            perplexity_score = np.mean(np.exp(-np.array(losses) / np.array(self.N_bytes[category]))) * 100
+            perplexity_score = np.mean(np.exp(-np.asarray(losses) / np.asarray(self.N_bytes[category]))) * 100
 
             self.evaluation_results["per_byte_ppl_score"][category] = perplexity_score
             self.evaluation_results["per_byte_ppl_score"]["ALL"] += perplexity_score * weight
@@ -233,14 +233,14 @@ class DatasetEvaluator(object):
             weight = len(self.data[category]["data"]) / self.metric_total_length[metric]
             losses = [min(sample["loss_sum"]) for sample in self.data[category]["data"]]
             token_nums = [sample["token_num"][np.argmin(sample["loss_sum"])] for sample in self.data[category]["data"]]
-            perplexity = np.sum(np.array(losses)) / np.sum(np.array(token_nums))
+            perplexity = np.sum(np.asarray(losses)) / np.sum(np.asarray(token_nums))
 
             self.evaluation_results["loss_over_all_tokens"][category] = perplexity
             self.evaluation_results["loss_over_all_tokens"]["ALL"] += perplexity * weight
 
             # The number of tokens can be used for normalizing.
             # See https://github.com/SkyworkAI/Skywork/issues/43#issuecomment-1811733834
-            print(f"{self.model_name} {category} token num: {np.sum(np.array(token_nums))}")
+            print(f"{self.model_name} {category} token num: {np.sum(np.asarray(token_nums))}")
 
     def _evaluate(self):
         """Calculate and return evaluation results"""
