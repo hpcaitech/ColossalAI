@@ -78,8 +78,7 @@ def test_load_runtime_module_reports_syntax_errors():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="The code verifier uses Unix process controls")
 def test_run_test_executes_call_based_code_without_pyext():
-    _run_isolated(
-        """
+    _run_isolated("""
 from applications.ColossalChat.coati.distributed.reward.code_reward.testing_util import run_test
 
 result, metadata = run_test(
@@ -87,14 +86,12 @@ result, metadata = run_test(
     test="def add(a, b):\\n    return a + b",
 )
 assert result == [True], (result, metadata)
-"""
-    )
+""")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="The code verifier uses Unix process controls")
 def test_run_test_executes_standard_input_code_without_pyext():
-    _run_isolated(
-        """
+    _run_isolated("""
 from applications.ColossalChat.coati.distributed.reward.code_reward.testing_util import run_test
 
 result, metadata = run_test(
@@ -102,5 +99,4 @@ result, metadata = run_test(
     test="value = int(input())\\nprint(value * 2)",
 )
 assert result == [True], (result, metadata)
-"""
-    )
+""")

@@ -130,7 +130,7 @@ class KTOTrainer(SLTrainer):
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, self.device)
-            (input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask) = (
+            input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask = (
                 batch["input_ids"],
                 batch["attention_mask"],
                 batch["loss_mask"],
@@ -279,7 +279,7 @@ class KTOTrainer(SLTrainer):
         )
         for i, batch in enumerate(self.train_dataloader):
             batch = to_device(batch, self.device)
-            (input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask) = (
+            input_ids, attention_mask, loss_mask, label, kl_input_ids, kl_attention_mask, kl_loss_mask = (
                 batch["input_ids"],
                 batch["attention_mask"],
                 batch["loss_mask"],
