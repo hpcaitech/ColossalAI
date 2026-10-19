@@ -355,8 +355,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         if self.enable_sequence_parallelism and self.sequence_parallelism_mode == "all_to_all":
             self.mixed_dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.ep_axis, self.sp_axis])
             self.dp_size = dist.get_world_size(self.mixed_dp_group)
+            # sp ranks hold the same experts but see different tokens, so expert grads are synced over moe_dp * sp
+            self.mixed_moe_dp_group = self.pg_mesh.create_group_along_axis([self.moe_dp_axis, self.sp_axis])
         else:
             self.mixed_dp_group = self.dp_group
+            self.mixed_moe_dp_group = self.moe_dp_group
 
         self.use_fp8 = use_fp8
 
@@ -416,7 +419,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.tp_group,
             self.sp_group,
             self.ep_group,
-            self.moe_dp_group,
+            self.mixed_moe_dp_group,
             self.zero_stage,
         )
 
@@ -506,7 +509,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     dp_process_group=self.mixed_dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
-                    moe_dp_group=self.moe_dp_group,
+                    moe_dp_group=self.mixed_moe_dp_group,
                     verbose=True,
                     clip_grad_norm=self.max_norm,
                     **self.zero_config,
