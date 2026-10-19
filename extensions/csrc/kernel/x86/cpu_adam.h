@@ -49,10 +49,10 @@ SOFTWARE
 #define SIMD_SQRT(x) _mm512_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm512_div_ps(x, y)
 #define SIMD_LOAD_HALF(x) \
-  _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i *)(x)))
-#define SIMD_STORE_HALF(x, d)                                         \
-  _mm256_storeu_ps((float *)(x), _mm256_castsi256_ps(_mm512_cvtps_ph( \
-                                     d, _MM_FROUND_TO_NEAREST_INT)))
+  _mm512_cvtph_ps(_mm256_loadu_si256((const __m256i*)(x)))
+#define SIMD_STORE_HALF(x, d)                                        \
+  _mm256_storeu_ps((float*)(x), _mm256_castsi256_ps(_mm512_cvtps_ph( \
+                                    d, _MM_FROUND_TO_NEAREST_INT)))
 
 #elif defined(__AVX256__) or defined(__AVX2__)
 #define SIMD_WIDTH 8
@@ -65,10 +65,10 @@ SOFTWARE
 #define SIMD_FMA(x, y, c) _mm256_fmadd_ps(x, y, c)
 #define SIMD_SQRT(x) _mm256_sqrt_ps(x)
 #define SIMD_DIV(x, y) _mm256_div_ps(x, y)
-#define SIMD_LOAD_HALF(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i *)(x)))
-#define SIMD_STORE_HALF(x, d)                                   \
-  _mm_storeu_ps((float *)(x), _mm_castsi128_ps(_mm256_cvtps_ph( \
-                                  d, _MM_FROUND_TO_NEAREST_INT)))
+#define SIMD_LOAD_HALF(x) _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(x)))
+#define SIMD_STORE_HALF(x, d)                                  \
+  _mm_storeu_ps((float*)(x), _mm_castsi128_ps(_mm256_cvtps_ph( \
+                                 d, _MM_FROUND_TO_NEAREST_INT)))
 
 #endif
 
@@ -85,7 +85,7 @@ union AVX_Data {
 
 #define STEP(SPAN)                                                            \
   void Step_##SPAN(                                                           \
-      float *_params, float *grads, float *_exp_avg, float *_exp_avg_sq,      \
+      float* _params, float* grads, float* _exp_avg, float* _exp_avg_sq,      \
       size_t _param_size, bool param_half_precision = false,                  \
       bool grad_half_precision = false, bool momentum_half_precision = false, \
       bool variance_half_precision = false, float loss_scale = -1);
@@ -143,8 +143,8 @@ class Adam_Optimizer {
   }
 
 #if defined(__AVX512__) or defined(__AVX256__) or defined(__AVX2__)
-  inline void simd_load(bool is_half, float *ptr, __half *h_ptr,
-                        AVX_Data &data) {
+  inline void simd_load(bool is_half, float* ptr, __half* h_ptr,
+                        AVX_Data& data) {
     if (is_half) {
       data.data = SIMD_LOAD_HALF(h_ptr);
     } else {
@@ -152,8 +152,8 @@ class Adam_Optimizer {
     }
   }
 
-  inline void simd_store(bool is_half, float *ptr, __half *h_ptr,
-                         AVX_Data &data) {
+  inline void simd_store(bool is_half, float* ptr, __half* h_ptr,
+                         AVX_Data& data) {
     if (is_half) {
       SIMD_STORE_HALF(h_ptr, data.data);
     } else {
@@ -163,9 +163,9 @@ class Adam_Optimizer {
 #endif
 
   void step(size_t step, float lr, float beta1, float beta2, float epsilon,
-            float weight_decay, bool bias_correction, torch::Tensor &params,
-            torch::Tensor &grads, torch::Tensor &exp_avg,
-            torch::Tensor &exp_avg_sq, float loss_scale);
+            float weight_decay, bool bias_correction, torch::Tensor& params,
+            torch::Tensor& grads, torch::Tensor& exp_avg,
+            torch::Tensor& exp_avg_sq, float loss_scale);
 
  private:
   float _alpha;

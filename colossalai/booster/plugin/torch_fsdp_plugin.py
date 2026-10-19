@@ -8,9 +8,8 @@ from packaging import version
 from torch.distributed import ProcessGroup
 
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
-    from torch.distributed.fsdp import FullStateDictConfig
+    from torch.distributed.fsdp import FullStateDictConfig, StateDictType
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-    from torch.distributed.fsdp import StateDictType
     from torch.distributed.fsdp.fully_sharded_data_parallel import (
         BackwardPrefetch,
         CPUOffload,

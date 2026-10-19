@@ -168,9 +168,7 @@ class Sequence:
         """
         Recycle a running sequnce to waiitting list
         """
-        assert (
-            not self.check_finish() and not self.status == RequestStatus.ABORTED
-        ), "The running sequence \
+        assert not self.check_finish() and not self.status == RequestStatus.ABORTED, "The running sequence \
         is already done but it still in running list"
         self.status = RequestStatus.RECYCLED
 

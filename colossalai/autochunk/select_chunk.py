@@ -176,7 +176,7 @@ class SelectChunk(object):
         return best_region
 
     def _is_legal_region(self, cur_chunk_info, chunk_infos):
-        (chunk_region_start, chunk_region_end) = cur_chunk_info["region"]
+        chunk_region_start, chunk_region_end = cur_chunk_info["region"]
         if cur_chunk_info in chunk_infos:
             return False
         if chunk_region_end < chunk_region_start:

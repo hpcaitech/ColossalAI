@@ -34,8 +34,8 @@ class PreTrainingDataset:
         self.do_whole_word_mask = do_whole_word_mask
         self.max_predictions_per_seq = max_predictions_per_seq
         self.vocab_words = list(tokenizer.vocab.keys())
-        self.rec = re.compile("[\u4E00-\u9FA5]")
-        self.whole_rec = re.compile("##[\u4E00-\u9FA5]")
+        self.rec = re.compile("[\u4e00-\u9fa5]")
+        self.whole_rec = re.compile("##[\u4e00-\u9fa5]")
 
         self.mlm_p = 0.15
         self.mlm_mask_p = 0.8
