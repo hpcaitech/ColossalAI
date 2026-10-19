@@ -332,50 +332,6 @@ class EPGradScalerOut(torch.autograd.Function):
         return grad, None
 
 
-class DPGradScalerIn(torch.autograd.Function):
-    """
-    Scale the gradient back by the number of experts
-    because the batch size increases in the moe stage
-    """
-
-    @staticmethod
-    def forward(ctx: Any, inputs: Tensor, moe_dp_size: int, activated_experts: int) -> Tensor:
-        assert activated_experts != 0, f"shouldn't be called when no expert is activated"
-        ctx.moe_dp_size = moe_dp_size
-        ctx.activated_experts = activated_experts
-        return inputs
-
-    @staticmethod
-    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None, None]:
-        assert len(grad_outputs) == 1
-        grad = grad_outputs[0]
-        if ctx.moe_dp_size != ctx.activated_experts:
-            grad.mul_(ctx.activated_experts / ctx.moe_dp_size)
-        return grad, None, None
-
-
-class DPGradScalerOut(torch.autograd.Function):
-    """
-    Scale the gradient by the number of experts
-    because the batch size increases in the moe stage
-    """
-
-    @staticmethod
-    def forward(ctx: Any, inputs: Tensor, moe_dp_size: int, activated_experts: int) -> Tensor:
-        assert activated_experts != 0, f"shouldn't be called when no expert is activated"
-        ctx.moe_dp_size = moe_dp_size
-        ctx.activated_experts = activated_experts
-        return inputs
-
-    @staticmethod
-    def backward(ctx: Any, *grad_outputs: Tensor) -> Tuple[Tensor, None, None]:
-        assert len(grad_outputs) == 1
-        grad = grad_outputs[0]
-        if ctx.moe_dp_size != ctx.activated_experts:
-            grad.mul_(ctx.moe_dp_size / ctx.activated_experts)
-        return grad, None, None
-
-
 def _all_to_all(
     inputs: torch.Tensor,
     input_split_sizes: Optional[List[int]] = None,
