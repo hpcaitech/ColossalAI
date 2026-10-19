@@ -326,7 +326,6 @@ runner groups to approved workflows, in GitHub settings.
 | --- | --- | --- |
 | `close_inactive.yml` | Schedule | Closes inactive issues according to the repository policy. |
 | `translate_comment.yml` | Issue or issue-comment event | Translates issue content and comments. |
-| `submodule.yml` | Schedule or manual dispatch | Detects and proposes submodule updates. |
 | `report_leaderboard_to_lark.yml` | Schedule or manual dispatch | Sends the community activity report to Lark. |
 
 ## Compatibility configuration
