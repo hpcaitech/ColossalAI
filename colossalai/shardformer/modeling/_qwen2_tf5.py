@@ -22,17 +22,10 @@ from transformers.utils.generic import merge_with_config_defaults
 from transformers.utils.output_capturing import capture_outputs
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import (
-    all_to_all_comm,
-    split_forward_gather_backward,
-)
+from colossalai.shardformer.layer._operation import all_to_all_comm, split_forward_gather_backward
 from colossalai.shardformer.shard import ShardConfig
 
-from .._utils import (
-    get_hf_cache_seq_length,
-    get_hf_flash_attention_kwargs,
-    prepare_hf_causal_masks,
-)
+from .._utils import get_hf_cache_seq_length, get_hf_flash_attention_kwargs, prepare_hf_causal_masks
 from ..layer import ColoAttention, dist_cross_entropy
 from ..layer._operation import gather_sp_output
 from ..layer.utils import is_share_sp_tp

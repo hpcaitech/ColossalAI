@@ -5,13 +5,7 @@ import torch
 import torch.cuda
 from packaging.version import Version
 from torch.nn import Module
-from torch.utils._pytree import (
-    SUPPORTED_NODES,
-    TreeSpec,
-    tree_flatten,
-    tree_map,
-    tree_unflatten,
-)
+from torch.utils._pytree import SUPPORTED_NODES, TreeSpec, tree_flatten, tree_map, tree_unflatten
 
 
 # this register are for torch under version 1.13.1, maybe removed in the future

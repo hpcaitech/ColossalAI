@@ -58,9 +58,7 @@ def _get_attention_mask(
     if past_key_values is None and past_key_values_length:
         # Preserve the length-only helper interface for callers without a Cache.
         # Normal decode below always supplies the real Cache to masking_utils.
-        from transformers.modeling_attn_mask_utils import (
-            _prepare_4d_causal_attention_mask,
-        )
+        from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
 
         return _prepare_4d_causal_attention_mask(
             attention_mask, hidden_states.shape[:2], hidden_states, past_key_values_length

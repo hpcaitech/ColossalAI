@@ -7,10 +7,7 @@ from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask
-from transformers.modeling_outputs import (
-    BaseModelOutputWithPast,
-    CausalLMOutputWithPast,
-)
+from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut, all_to_all_uneven

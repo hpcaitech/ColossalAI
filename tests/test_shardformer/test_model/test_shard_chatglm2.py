@@ -8,12 +8,7 @@ from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
-from colossalai.testing import (
-    clear_cache_before_run,
-    parameterize,
-    rerun_if_address_is_in_use,
-    spawn,
-)
+from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
 
 
 def _load_test_dependencies():

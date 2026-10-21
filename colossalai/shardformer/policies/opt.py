@@ -26,11 +26,7 @@ from ..modeling.opt import (
     get_opt_decoder_forward_for_flash_attention,
     get_opt_flash_attention_forward,
 )
-from .base_policy import (
-    ModulePolicyDescription,
-    Policy,
-    SubModuleReplacementDescription,
-)
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
     "OPTPolicy",
@@ -54,11 +50,7 @@ class OPTPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.opt.modeling_opt import (
-            OPTAttention,
-            OPTDecoder,
-            OPTDecoderLayer,
-        )
+        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
         from .._utils import is_hf5
 

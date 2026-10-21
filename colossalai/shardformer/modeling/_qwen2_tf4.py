@@ -24,10 +24,7 @@ from transformers.models.qwen2.modeling_qwen2 import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import (
-    all_to_all_comm,
-    split_forward_gather_backward,
-)
+from colossalai.shardformer.layer._operation import all_to_all_comm, split_forward_gather_backward
 from colossalai.shardformer.shard import ShardConfig
 
 from ..layer import ColoAttention, dist_cross_entropy

@@ -133,10 +133,7 @@ def prepare_hf_causal_masks(config, inputs_embeds, attention_mask, past_key_valu
     from copy import copy
 
     import torch
-    from transformers.masking_utils import (
-        create_causal_mask,
-        create_sliding_window_causal_mask,
-    )
+    from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 
     if eager:
         config = copy(config)

@@ -9,11 +9,7 @@ from colossalai.shardformer.modeling.deepseek_v3 import (
     deepseek_v3_for_causal_lm_forward,
     deepseek_v3_model_forward,
 )
-from colossalai.shardformer.policies.base_policy import (
-    ModulePolicyDescription,
-    Policy,
-    SubModuleReplacementDescription,
-)
+from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["DeepseekPolicy", "DeepseekForCausalLMPolicy"]
 

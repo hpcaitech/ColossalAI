@@ -1,10 +1,7 @@
 import pytest
 import torch
 
-from tests.test_shardformer.test_hf5_compat.bf16_checks import (
-    compare_parameters,
-    compare_tensor,
-)
+from tests.test_shardformer.test_hf5_compat.bf16_checks import compare_parameters, compare_tensor
 
 
 def test_finite_and_threshold():

@@ -31,10 +31,7 @@ from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer import ShardConfig
-from colossalai.shardformer.layer._operation import (
-    gather_forward_split_backward,
-    split_forward_gather_backward,
-)
+from colossalai.shardformer.layer._operation import gather_forward_split_backward, split_forward_gather_backward
 
 
 class BertPipelineForwards:
@@ -1063,10 +1060,7 @@ def get_jit_fused_bert_output_forward():
 # everything else follows v5's own ``BertSelfAttention.forward``.
 def get_bert_sequence_parallel_attention_forward(shard_config: ShardConfig):
     from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
-    from transformers.models.bert.modeling_bert import (
-        BertSelfAttention,
-        eager_attention_forward,
-    )
+    from transformers.models.bert.modeling_bert import BertSelfAttention, eager_attention_forward
 
     def forward(
         self: BertSelfAttention,

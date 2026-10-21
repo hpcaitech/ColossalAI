@@ -24,11 +24,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.utils import logging
 
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.shardformer.layer._operation import (
-    all_to_all_comm,
-    gather_sp_output,
-    split_forward_gather_backward,
-)
+from colossalai.shardformer.layer._operation import all_to_all_comm, gather_sp_output, split_forward_gather_backward
 from colossalai.shardformer.layer.utils import is_share_sp_tp, split_batch_zigzag
 from colossalai.shardformer.shard import ShardConfig
 

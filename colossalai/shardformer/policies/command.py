@@ -21,11 +21,7 @@ from ..modeling.command import (
     get_command_flash_attention_model_forward,
     get_lm_forward_with_dist_cross_entropy,
 )
-from .base_policy import (
-    ModulePolicyDescription,
-    Policy,
-    SubModuleReplacementDescription,
-)
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["CommandPolicy", "CommandForCausalLMPolicy"]
 
@@ -40,11 +36,7 @@ class CommandPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.cohere.modeling_cohere import (
-            CohereAttention,
-            CohereDecoderLayer,
-            CohereModel,
-        )
+        from transformers.models.cohere.modeling_cohere import CohereAttention, CohereDecoderLayer, CohereModel
 
         # The eager, flash_attention_2, sdpa will all be passed to CohereAttention in v4.51.3 transformers.
         ATTN_IMPLEMENTATION = {

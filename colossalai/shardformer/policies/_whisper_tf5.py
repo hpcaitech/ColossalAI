@@ -16,11 +16,7 @@ from ..modeling.whisper import (
     get_whisper_decoder_forward_for_flash_attention,
     get_whisper_flash_attention_forward,
 )
-from .base_policy import (
-    ModulePolicyDescription,
-    Policy,
-    SubModuleReplacementDescription,
-)
+from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = [
     "WhisperPolicy",
@@ -494,9 +490,7 @@ class WhisperPolicy(Policy):
         return policy
 
     def add_lm_head_policy(self, base_policy):
-        from transformers.models.whisper.modeling_whisper import (
-            WhisperForConditionalGeneration,
-        )
+        from transformers.models.whisper.modeling_whisper import WhisperForConditionalGeneration
 
         # optimize for tensor parallelism
         if self.shard_config.enable_tensor_parallelism:

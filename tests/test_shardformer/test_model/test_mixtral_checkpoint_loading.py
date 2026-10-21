@@ -21,10 +21,7 @@ from colossalai.testing.utils import spawn
 if not is_transformers_v5():
     pytest.skip("fused Mixtral experts only exist in transformers v5", allow_module_level=True)
 
-from colossalai.shardformer.modeling.mixtral import (
-    _mark_fused_expert_tp_shard,
-    _register_fused_expert_checkpoint_hook,
-)
+from colossalai.shardformer.modeling.mixtral import _mark_fused_expert_tp_shard, _register_fused_expert_checkpoint_hook
 
 
 class _FusedExperts(nn.Module):

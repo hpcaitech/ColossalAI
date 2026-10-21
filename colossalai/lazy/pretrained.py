@@ -38,20 +38,8 @@ def new_from_pretrained(
 ) -> Module:
     from transformers import GenerationConfig
     from transformers.configuration_utils import PretrainedConfig
-    from transformers.modeling_utils import (
-        ContextManagers,
-        _add_variant,
-        cached_file,
-        has_file,
-        is_offline_mode,
-    )
-    from transformers.utils import (
-        SAFE_WEIGHTS_INDEX_NAME,
-        SAFE_WEIGHTS_NAME,
-        WEIGHTS_INDEX_NAME,
-        WEIGHTS_NAME,
-        logging,
-    )
+    from transformers.modeling_utils import ContextManagers, _add_variant, cached_file, has_file, is_offline_mode
+    from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME, WEIGHTS_INDEX_NAME, WEIGHTS_NAME, logging
 
     from colossalai._compat import (
         auth_kwargs,

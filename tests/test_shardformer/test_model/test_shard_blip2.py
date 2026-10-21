@@ -18,11 +18,7 @@ from colossalai.testing import (
 def _load_test_dependencies():
     global model_zoo, build_model, check_grad, run_forward
     from tests.kit.model_zoo import model_zoo
-    from tests.test_shardformer.test_model._utils import (
-        build_model,
-        check_grad,
-        run_forward,
-    )
+    from tests.test_shardformer.test_model._utils import build_model, check_grad, run_forward
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):
