@@ -15,11 +15,13 @@ jobs:
       (github.event_name != 'pull_request' ||
        (github.event.pull_request.draft == false &&
         github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: colossalai-e1-h20
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: a71bcb69042eda5ebccae055034f660a9fa18ba6
 
       - id: set-matrix
         run: |
@@ -33,7 +35,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.draft == false &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: colossalai-e1-h20
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.matrix_preparation.outputs.matrix)}}
@@ -48,6 +50,8 @@ jobs:
       MAX_JOBS: '2'
     steps:
       - uses: actions/checkout@v2
+        with:
+          ref: a71bcb69042eda5ebccae055034f660a9fa18ba6
 
       - name: Install PyTorch
         run: eval ${{ matrix.build.torch_command }}
