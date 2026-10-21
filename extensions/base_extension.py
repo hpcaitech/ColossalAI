@@ -69,6 +69,10 @@ class _Extension(ABC):
         Check if the hardware required by the kernel is compatible.
         """
 
+    def assert_build_compatible(self) -> None:
+        """Check build requirements in addition to an extension's existing compatibility checks."""
+        self.assert_compatible()
+
     @abstractmethod
     def build_aot(self) -> Union["CppExtension", "CUDAExtension"]:
         pass

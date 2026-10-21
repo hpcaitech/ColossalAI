@@ -1,5 +1,4 @@
 import os
-import re
 import subprocess
 import warnings
 from typing import List
@@ -153,65 +152,53 @@ def check_cuda_availability():
 
 def set_cuda_arch_list(cuda_dir):
     """
-    This function sets the PyTorch TORCH_CUDA_ARCH_LIST variable for ahead-of-time extension compilation.
-    Ahead-of-time compilation occurs when BUILD_EXT=1 is set when running 'pip install'.
+    Set default targets when building CUDA extensions without a visible GPU.
+
+    Preserve explicit targets and let PyTorch's extension build backend generate
+    architecture flags for both AOT and JIT builds. With visible GPUs and no
+    override, PyTorch selects the targets itself.
     """
     cuda_available = check_cuda_availability()
+    if cuda_available:
+        return True
 
-    # we only need to set this when CUDA is not available for cross-compilation
-    if not cuda_available:
-        warnings.warn(
-            "\n[extension]  PyTorch did not find available GPUs on this system.\n"
-            "If your intention is to cross-compile, this is not an error.\n"
-            "By default, Colossal-AI will cross-compile for \n"
-            "1. Pascal (compute capabilities 6.0, 6.1, 6.2),\n"
-            "2. Volta (compute capability 7.0)\n"
-            "3. Turing (compute capability 7.5),\n"
-            "4. Ampere (compute capability 8.0, 8.6)if the CUDA version is >= 11.0\n"
-            "\nIf you wish to cross-compile for a single specific architecture,\n"
-            'export TORCH_CUDA_ARCH_LIST="compute capability" before running setup.py.\n'
-        )
+    if not os.environ.get("TORCH_CUDA_ARCH_LIST"):
+        cuda_version = tuple(int(part) for part in get_cuda_bare_metal_version(cuda_dir))
 
-        if os.environ.get("TORCH_CUDA_ARCH_LIST", None) is None:
-            bare_metal_major, bare_metal_minor = get_cuda_bare_metal_version(cuda_dir)
+        # CUDA 13 removed offline compilation for Pascal and Volta.
+        arch_list = ["7.5"] if cuda_version >= (13, 0) else ["6.0", "6.1", "6.2", "7.0", "7.5"]
+        if cuda_version >= (11, 0):
+            arch_list.append("8.0")
+        if cuda_version >= (11, 1):
+            arch_list.append("8.6")
+        if cuda_version >= (11, 8):
+            arch_list.extend(["8.9", "9.0"])
+        if cuda_version >= (12, 8):
+            import torch
 
-            arch_list = ["6.0", "6.1", "6.2", "7.0", "7.5"]
+            # Both nvcc and PyTorch's architecture parser must recognize these
+            # Blackwell targets. Only parse major/minor to allow nightly/RC builds.
+            torch_version = tuple(int(part) for part in torch.__version__.split(".")[:2])
+            if torch_version >= (2, 7):
+                arch_list.extend(["10.0", "12.0"])
+            else:
+                warnings.warn(
+                    "[extension] Omitting native Blackwell targets from the default architecture list: "
+                    "PyTorch >= 2.7 is required to parse both 10.0 and 12.0.",
+                    stacklevel=2,
+                )
 
-            if int(bare_metal_major) == 11:
-                if int(bare_metal_minor) == 0:
-                    arch_list.append("8.0")
-                else:
-                    arch_list.append("8.0")
-                    arch_list.append("8.6")
+        os.environ["TORCH_CUDA_ARCH_LIST"] = ";".join(arch_list)
 
-            arch_list_str = ";".join(arch_list)
-            os.environ["TORCH_CUDA_ARCH_LIST"] = arch_list_str
-        return False
-    return True
-
-
-def get_cuda_cc_flag() -> List[str]:
-    """
-    This function produces the cc flags for your GPU arch
-
-    Returns:
-        The CUDA cc flags for compilation.
-    """
-
-    # only import torch when needed
-    # this is to avoid importing torch when building on a machine without torch pre-installed
-    # one case is to build wheel for pypi release
-    import torch
-
-    cc_flag = []
-    max_arch = "".join(str(i) for i in torch.cuda.get_device_capability())
-    for arch in torch.cuda.get_arch_list():
-        res = re.search(r"sm_(\d+)", arch)
-        if res:
-            arch_cap = res[1]
-            if int(arch_cap) >= 60 and int(arch_cap) <= int(max_arch):
-                cc_flag.extend(["-gencode", f"arch=compute_{arch_cap},code={arch}"])
-    return cc_flag
+    warnings.warn(
+        "\n[extension] PyTorch did not find available GPUs on this system. "
+        "This is expected when cross-compiling CUDA extensions.\n"
+        f"Building for TORCH_CUDA_ARCH_LIST={os.environ['TORCH_CUDA_ARCH_LIST']}.\n"
+        "Set TORCH_CUDA_ARCH_LIST before building to choose different target architectures. "
+        "The targets must be supported by both the CUDA Toolkit and PyTorch.\n",
+        stacklevel=2,
+    )
+    return False
 
 
 def append_nvcc_threads(nvcc_extra_args: List[str]) -> List[str]:

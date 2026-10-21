@@ -1,8 +1,9 @@
 import os
+import re
 import sys
 from typing import List
 
-from setuptools import find_packages, setup
+from setuptools import find_namespace_packages, setup
 
 try:
     import torch  # noqa
@@ -32,6 +33,25 @@ def fetch_requirements(path) -> List[str]:
     """
     with open(path, "r") as fd:
         return [r.strip() for r in fd.readlines()]
+
+
+def get_install_requirements(path, torch_version=None) -> List[str]:
+    """Pin binary builds to their Torch public version; preserve JIT requirements."""
+    requirements = fetch_requirements(path)
+    if torch_version is None:
+        return requirements
+    # CUDA flavor is validated separately; a public version pin cannot encode it.
+    pinned = f"torch=={str(torch_version).split('+', 1)[0]}"
+    result = []
+    for requirement in requirements:
+        if re.match(r"^torch(?=[\s<>=!~;\[]|$)", requirement, re.IGNORECASE):
+            if pinned not in result:
+                result.append(pinned)
+        else:
+            result.append(requirement)
+    if pinned not in result:
+        result.append(pinned)
+    return result
 
 
 def fetch_readme() -> str:
@@ -81,7 +101,7 @@ if BUILD_EXT:
     for ext_cls in ALL_EXTENSIONS:
         ext = ext_cls()
         if ext.support_aot and ext.is_available():
-            ext.assert_compatible()
+            ext.assert_build_compatible()
             op_names.append(ext.name)
             ext_modules.append(ext.build_aot())
 
@@ -100,20 +120,8 @@ package_name = "colossalai"
 setup(
     name=package_name,
     version=version,
-    packages=find_packages(
-        exclude=(
-            "extensions",
-            "benchmark",
-            "docker",
-            "tests",
-            "docs",
-            "examples",
-            "tests",
-            "scripts",
-            "requirements",
-            "*.egg-info",
-        ),
-    ),
+    # Some public modules, including autochunk and legacy.moe, use namespace packages.
+    packages=find_namespace_packages(include=("colossalai", "colossalai.*"), exclude=("*.__pycache__",)),
     description="An integrated large-scale model training system with efficient parallelization techniques",
     long_description=fetch_readme(),
     long_description_content_type="text/markdown",
@@ -128,7 +136,9 @@ setup(
     },
     ext_modules=ext_modules,
     cmdclass={"build_ext": BuildExtension} if ext_modules else {},
-    install_requires=fetch_requirements("requirements/requirements.txt"),
+    install_requires=get_install_requirements(
+        "requirements/requirements.txt", torch.__version__ if BUILD_EXT else None
+    ),
     entry_points="""
         [console_scripts]
         colossalai=colossalai.cli:cli

@@ -130,9 +130,12 @@ class _CppExtension(_Extension):
     def load(self):
         try:
             op_kernel = self.import_op()
-        except (ImportError, ModuleNotFoundError):
-            # if import error occurs, it means that the kernel is not pre-built
-            # so we build it jit
+        except ModuleNotFoundError as error:
+            # Only a missing prebuilt module (or its namespace) permits JIT.
+            # Preserve missing dependencies and native-library/ABI import errors.
+            if error.name not in (self.prebuilt_module_path, self.prebuilt_import_path):
+                raise
+            self.assert_build_compatible()
             op_kernel = self.build_jit()
 
         return op_kernel
