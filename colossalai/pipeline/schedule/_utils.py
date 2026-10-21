@@ -53,6 +53,35 @@ def tree_flatten_hf(pytree: Any) -> Tuple[List[Any], TreeSpec]:
         return result, tree_spec
 
 
+def collect_gradients(pytree: Any) -> Any:
+    """Collect gradients from every tensor leaf in a pipeline pytree.
+
+    Pipeline stage outputs may contain nested tensor structures, such as the tuple of
+    Mixtral router logits.  Returning ``None`` when a pytree has no tensor gradient lets
+    callers preserve the existing convention of omitting non-differentiable outputs.
+    """
+
+    gradients = tree_map(
+        lambda value: value.grad if isinstance(value, torch.Tensor) and value.grad is not None else None,
+        pytree,
+    )
+    return gradients if any(isinstance(value, torch.Tensor) for value in tree_flatten(gradients)[0]) else None
+
+
+def flatten_tensors_and_grads(tensors: Any, gradients: Any) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+    """Flatten matching tensor/gradient pytrees for ``autograd.backward``."""
+
+    tensor_leaves, tensor_spec = tree_flatten(tensors)
+    gradient_leaves, gradient_spec = tree_flatten(gradients)
+    if tensor_spec != gradient_spec:
+        raise ValueError("Pipeline tensor and gradient structures must match")
+    return [
+        (tensor, gradient)
+        for tensor, gradient in zip(tensor_leaves, gradient_leaves)
+        if isinstance(tensor, torch.Tensor) and isinstance(gradient, torch.Tensor)
+    ]
+
+
 def to_device(x: Any, device: Optional[torch.device] = None) -> Any:
     """Move object to device if it is a tensor.
 

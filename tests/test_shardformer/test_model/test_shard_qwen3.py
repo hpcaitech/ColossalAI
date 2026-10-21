@@ -1,3 +1,5 @@
+import copy
+
 import pytest
 import torch
 import transformers
@@ -55,6 +57,24 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
         grads_to_check.update(col_layer_grads)
         grads_to_check.update(row_layer_grads)
 
+    norm_params = []
+    if booster.plugin.zero_stage == 0:
+        reference_params = dict(qwen3_model.named_parameters())
+        for name, param in shard_qwen3_model.named_parameters():
+            if name.endswith(("q_norm.weight", "k_norm.weight")) and param is not None:
+                reference = reference_params[name]
+                assert (reference.grad is None) == (param.grad is None), name
+                if param.grad is None:
+                    continue
+                atol, rtol = (1e-6, 1e-4) if test_config["precision"] == "fp32" else (5e-3, 5e-3)
+                grads_to_check[name] = {
+                    "org_grad": reference.grad.detach().float().clone(),
+                    "shard_grad": param.grad.detach().float().clone(),
+                    "atol": atol,
+                    "rtol": rtol,
+                }
+                norm_params.append((reference, param))
+
     # optimizer executes step
     org_optimizer.step()
     sharded_optimizer.step()
@@ -81,9 +101,19 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             qwen3_model, shard_qwen3_model, col_layer_for_check, tp_group, atol=atol, rtol=rtol, dim=1, verbose=False
         )
 
+    norm_atol, norm_rtol = (1e-3, 1e-3) if test_config["precision"] == "fp32" else (5e-3, 5e-3)
+    for reference, param in norm_params:
+        torch.testing.assert_close(param.float(), reference.float(), atol=norm_atol, rtol=norm_rtol)
+
     # check grads
     check_all_grad_tensors(grads_to_check)
 
+    # NCCL group destruction must happen in the same order on every rank,
+    # rather than during rank-dependent collection of model/optimizer cycles.
+    torch.distributed.barrier()
+    booster.plugin.pg_mesh.destroy_mesh_process_groups()
+    del booster.plugin.pg_mesh
+    torch.distributed.barrier()
     torch.cuda.empty_cache()
 
 
@@ -210,7 +240,7 @@ def run_qwen3_test(test_config):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
-            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, copy.deepcopy(test_config))
         except Exception as e:
             print(f"Failed config: {test_config}")
             raise e
@@ -259,7 +289,7 @@ def run_qwen3_3d_test(test_config):
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
-            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config)
+            check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, copy.deepcopy(test_config))
         except Exception as e:
             print(f"Failed config: {test_config}")
             raise e

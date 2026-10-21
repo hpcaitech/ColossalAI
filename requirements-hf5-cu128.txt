@@ -1,0 +1,6 @@
+# Install separately BEFORE requirements-hf5.lock.txt on Linux NVIDIA.
+# Keep this CUDA index isolated from the general dependency installation.
+--index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0

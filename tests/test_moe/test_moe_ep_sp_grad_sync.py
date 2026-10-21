@@ -15,7 +15,7 @@ from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.moe_utils import check_model_equal
+from tests.test_moe.moe_utils import check_model_equal, ep_local_slice
 
 # Relative L2 error allowed between ZeRO grads (bf16) and an fp32 single-GPU reference. bf16 noise stays below 2e-2
 # here, while without the sp reduction the expert grads are off by 0.8-1.0.
@@ -54,6 +54,9 @@ def build_model() -> MixtralModel:
         num_local_experts=4,
         num_experts_per_tok=2,
         attn_implementation="sdpa",
+        # transformers v5 defaults to grouped_mm experts, which need 16-byte aligned strides that these tiny
+        # sizes do not have; v4 ignores this argument
+        experts_implementation="eager",
     )
     return MixtralModel(config).to(torch.bfloat16).cuda()
 
@@ -97,7 +100,7 @@ def run_grad_sync(zero_stage: int):
         grad = zero_optimizer.get_param_grad(param)
         grad = torch.zeros_like(param, dtype=torch.float) if grad is None else grad.float()
         ref = single_params[name].grad
-        ref = torch.zeros_like(grad) if ref is None else ref.float()
+        ref = torch.zeros_like(grad) if ref is None else ep_local_slice(ref.float(), param)
         err, ref_norm = (grad - ref).norm().item(), ref.norm().item()
         if err > GRAD_RTOL * ref_norm + 1e-6:
             errors.append(f"{name}: |zero - single| / |single| = {err / max(ref_norm, 1e-12):.3f}")

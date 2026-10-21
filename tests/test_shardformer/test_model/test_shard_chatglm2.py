@@ -1,25 +1,36 @@
+from types import SimpleNamespace
+
 import pytest
+
 import torch
 
 import colossalai
+from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
 from colossalai.testing import clear_cache_before_run, parameterize, rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo import model_zoo
-from tests.test_shardformer.test_model._utils import (
-    build_model_from_hybrid_plugin,
-    check_all_grad_tensors,
-    check_loss,
-    check_output_hidden_state,
-    check_weight,
-    get_grad_tensors_for_check,
-    run_forward_backward_with_hybrid_plugin,
-    unwrap_model,
-)
+
+
+def _load_test_dependencies():
+    global model_zoo, build_model_from_hybrid_plugin, check_all_grad_tensors
+    global check_loss, check_output_hidden_state, check_weight
+    global get_grad_tensors_for_check, run_forward_backward_with_hybrid_plugin, unwrap_model
+    from tests.kit.model_zoo import model_zoo
+    from tests.test_shardformer.test_model._utils import (
+        build_model_from_hybrid_plugin,
+        check_all_grad_tensors,
+        check_loss,
+        check_output_hidden_state,
+        check_weight,
+        get_grad_tensors_for_check,
+        run_forward_backward_with_hybrid_plugin,
+        unwrap_model,
+    )
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
+    _load_test_dependencies()
     org_model, org_optimizer, sharded_model, sharded_optimizer, criterion, booster = build_model_from_hybrid_plugin(
         model_fn, loss_fn, test_config
     )
@@ -287,6 +298,7 @@ def run_chatglm_3d_test(test_config):
 
 
 def check_chatglm(rank, world_size, port):
+    _load_test_dependencies()
     disable_existing_loggers()
     colossalai.launch(
         rank=rank,
@@ -299,6 +311,7 @@ def check_chatglm(rank, world_size, port):
 
 
 def check_chatglm_3d(rank, world_size, port):
+    _load_test_dependencies()
     disable_existing_loggers()
     colossalai.launch(
         rank=rank,
@@ -310,6 +323,10 @@ def check_chatglm_3d(rank, world_size, port):
     run_chatglm_3d_test()
 
 
+@pytest.mark.skipif(
+    hf5_policy_error("chatglm2", SimpleNamespace(enable_tensor_parallelism=True)) is not None,
+    reason=hf5_policy_error("chatglm2", SimpleNamespace(enable_tensor_parallelism=True)) or "",
+)
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()
@@ -317,6 +334,10 @@ def test_chatglm():
     spawn(check_chatglm, 4)
 
 
+@pytest.mark.skipif(
+    hf5_policy_error("chatglm2", SimpleNamespace(enable_tensor_parallelism=True)) is not None,
+    reason=hf5_policy_error("chatglm2", SimpleNamespace(enable_tensor_parallelism=True)) or "",
+)
 @pytest.mark.largedist
 @rerun_if_address_is_in_use()
 @clear_cache_before_run()

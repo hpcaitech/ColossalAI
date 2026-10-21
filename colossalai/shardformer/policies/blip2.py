@@ -684,6 +684,21 @@ class BlipPolicy(Policy):
                 target_key=Blip2QFormerOutput,
             )
 
+        from .._utils import is_hf5
+
+        if is_hf5():
+            removed_dropout_paths = {
+                "self_attn.dropout",
+                "attention.attention.dropout",
+                "crossattention.attention.dropout",
+            }
+            for description in policy.values():
+                if description.sub_module_replacement is not None:
+                    description.sub_module_replacement = [
+                        replacement
+                        for replacement in description.sub_module_replacement
+                        if replacement.suffix not in removed_dropout_paths
+                    ]
         return policy
 
     def postprocess(self):

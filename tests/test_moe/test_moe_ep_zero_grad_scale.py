@@ -12,7 +12,7 @@ from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_moe.moe_utils import assert_loose_close
+from tests.test_moe.moe_utils import assert_loose_close, ep_local_slice
 
 # Relative L2 error allowed against the reference grads. bf16 noise stays below 1e-2 here, while the old moe_dp
 # scaling was off by 0.33x-3x on the experts. The atol of assert_loose_close (4e-3) exceeds these tiny grads.
@@ -60,7 +60,9 @@ def run_forced_routing():
     torch_model = MixtralModel(config).to(dtype).cuda()
     with torch.no_grad():
         for layer in torch_model.layers:
-            gate = layer.block_sparse_moe.gate.weight
+            # transformers v5 renamed `block_sparse_moe` to `mlp`
+            moe_block = layer.block_sparse_moe if hasattr(layer, "block_sparse_moe") else layer.mlp
+            gate = moe_block.gate.weight
             gate.zero_()
             gate[0, 0], gate[1, 0] = 10.0, -10.0
 
@@ -98,6 +100,7 @@ def run_forced_routing():
             "single": single_params[n].grad,
         }
         grads = {k: torch.zeros_like(p, dtype=torch.float) if g is None else g.float() for k, g in grads.items()}
+        grads = {k: ep_local_slice(g, p) for k, g in grads.items()}
         for name, ref_name in (("zero", "ddp"), ("zero", "single"), ("ddp", "single")):
             grad, ref_grad = grads[name], grads[ref_name]
             err, ref = (grad - ref_grad).norm().item(), ref_grad.norm().item()

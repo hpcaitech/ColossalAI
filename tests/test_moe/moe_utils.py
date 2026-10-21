@@ -8,6 +8,8 @@ import torch
 import torch.distributed as dist
 from torch.utils._pytree import tree_map
 
+from colossalai.tensor.moe_tensor.api import get_ep_rank, is_moe_tensor_ep_fused
+
 
 def assert_loose_close(a, b, dtype: torch.dtype = torch.float32, name=""):
     assert loose_close(a, b, dtype), f"{name} not close {a.mean()} {b.mean()}"
@@ -31,6 +33,20 @@ def loose_close(a, b, dtype: torch.dtype = torch.float32):
     b = b.detach().to(dtype).to(a.device)
 
     return torch.allclose(a, b, rtol=rtol, atol=atol)
+
+
+def ep_local_slice(full: torch.Tensor, param: torch.Tensor) -> torch.Tensor:
+    """Take the part of a full (unsharded) tensor that ``param`` holds on this rank.
+
+    Transformers v5 fuses the experts of a MoE block into one ``[num_experts, ...]`` parameter, which expert
+    parallelism shards along dim 0, so a reference model's tensor has to be sliced before comparing. Parameters that
+    are not EP-fused are returned unchanged.
+    """
+    if not is_moe_tensor_ep_fused(param) or full.shape == param.shape:
+        return full
+    num_local = param.shape[0]
+    start = get_ep_rank(param) * num_local
+    return full[start : start + num_local]
 
 
 def check_model_equal(model1, model2, dtype):

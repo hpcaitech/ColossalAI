@@ -28,7 +28,28 @@ class ModelSharder(object):
     def __init__(self, model: nn.Module, policy: Policy, shard_config: ShardConfig = None) -> None:
         self.model = model
         self.shard_config = shard_config
-        self.policy = get_autopolicy(self.model) if policy is None else policy
+        if policy is None:
+            from ..policies.auto_policy import _POLICY_LIST, _fullname
+            from .._utils import check_hf5_policy
+
+            location = _POLICY_LIST.get(_fullname(model))
+            if location is not None:
+                check_hf5_policy(location.file_name, shard_config)
+            self.policy = get_autopolicy(self.model)
+        else:
+            from ..policies.auto_policy import _POLICY_LIST
+            from .._utils import check_hf5_policy
+
+            policy_type = type(policy)
+            for location in _POLICY_LIST.values():
+                if policy_type.__module__ in {
+                    f"colossalai.shardformer.policies.{location.file_name}",
+                    f"colossalai.shardformer.policies._{location.file_name}_tf4",
+                    f"colossalai.shardformer.policies._{location.file_name}_tf5",
+                }:
+                    check_hf5_policy(location.file_name, shard_config)
+                    break
+            self.policy = policy
 
     def shard(self) -> List[Dict[int, Tensor]]:
         r"""
