@@ -1,20 +1,19 @@
 import os
-from types import SimpleNamespace
 import shutil
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Tuple
 
 import pytest
-
 import torch
 import torch.distributed
 import torch.distributed as dist
 from transformers import AutoConfig, AutoModel
 
 import colossalai
-from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all

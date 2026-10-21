@@ -180,7 +180,10 @@ def patch_flash(model, family):
             if isinstance(child, ViTAttention):
                 child.forward = MethodType(module.get_vit_flash_self_attention_forward(), child)
     else:
-        from transformers.models.whisper.modeling_whisper import WhisperAttention, WhisperDecoder
+        from transformers.models.whisper.modeling_whisper import (
+            WhisperAttention,
+            WhisperDecoder,
+        )
 
         for child in model.modules():
             if isinstance(child, WhisperAttention):

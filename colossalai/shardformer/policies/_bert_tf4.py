@@ -17,7 +17,11 @@ from ..modeling.bert import (
     get_jit_fused_bert_self_output_forward,
 )
 from ..modeling.jit import get_jit_fused_dropout_add_func
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = [
     "BertPolicy",

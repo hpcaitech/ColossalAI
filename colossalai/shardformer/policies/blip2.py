@@ -8,7 +8,11 @@ from ..modeling.blip2 import (
     get_jit_fused_blip2_QFormer_self_output_forward,
 )
 from ..modeling.jit import get_jit_fused_dropout_add_func
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["BlipPolicy", "BlipModelPolicy"]
 

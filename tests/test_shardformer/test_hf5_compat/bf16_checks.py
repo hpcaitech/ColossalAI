@@ -22,9 +22,7 @@ def compare_parameters(reference, actual, *, group=None, shard_dims=None, gradie
     """
     expected = dict(reference.named_parameters())
     candidate = dict(actual.named_parameters())
-    assert expected.keys() == candidate.keys(), (
-        expected.keys() - candidate.keys(), candidate.keys() - expected.keys()
-    )
+    assert expected.keys() == candidate.keys(), (expected.keys() - candidate.keys(), candidate.keys() - expected.keys())
     shard_dims = shard_dims or {}
     assert shard_dims.keys() <= expected.keys()
     errors = {}

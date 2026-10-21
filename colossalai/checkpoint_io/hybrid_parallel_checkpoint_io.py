@@ -82,7 +82,9 @@ def _route_padded_parameter_aliases(model: nn.Module, state_dict: Dict[str, torc
         def logical_value(value):
             dim = parameter._padding_dim
             if value.shape[dim] == parameter._current_length:
-                padding = value.narrow(dim, parameter._origin_length, parameter._current_length - parameter._origin_length)
+                padding = value.narrow(
+                    dim, parameter._origin_length, parameter._current_length - parameter._origin_length
+                )
                 if torch.count_nonzero(padding):
                     raise ValueError(f"Nonzero padding in checkpoint aliases: {present}")
                 return value.narrow(dim, 0, parameter._origin_length)

@@ -1,7 +1,9 @@
 import torch
 from torch import nn
 
-from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import _route_padded_parameter_aliases
+from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import (
+    _route_padded_parameter_aliases,
+)
 from colossalai.shardformer.layer.parallel_module import PaddingParallelModule
 
 

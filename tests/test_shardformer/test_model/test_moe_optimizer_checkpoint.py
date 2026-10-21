@@ -17,7 +17,10 @@ from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
-from tests.test_shardformer.test_model.test_moe_optimizer_coverage import NUM_TOKENS, _build
+from tests.test_shardformer.test_model.test_moe_optimizer_coverage import (
+    NUM_TOKENS,
+    _build,
+)
 
 
 def _state_snapshot(optimizer):

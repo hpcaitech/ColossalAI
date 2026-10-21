@@ -13,6 +13,7 @@ import pytest
 import torch
 import transformers
 from packaging.version import Version
+
 if Version(transformers.__version__) < Version("5.17.0"):
     pytest.skip("HF 5.17 contract", allow_module_level=True)
 
@@ -282,7 +283,9 @@ def test_left_padding_chunked_decode(family):
 
 
 def test_pipeline_default_positions_and_checkpoint_selection(family):
-    from colossalai.shardformer.shard.grad_ckpt_config import PipelineGradientCheckpointConfig
+    from colossalai.shardformer.shard.grad_ckpt_config import (
+        PipelineGradientCheckpointConfig,
+    )
 
     reference, actual = make_pair(family)
     actual.train()
@@ -370,7 +373,10 @@ def test_cache_length_helper(family):
 
 
 def test_flash_mask_contract(family):
-    from colossalai.shardformer._utils import get_hf_flash_attention_kwargs, prepare_hf_causal_masks
+    from colossalai.shardformer._utils import (
+        get_hf_flash_attention_kwargs,
+        prepare_hf_causal_masks,
+    )
     from colossalai.shardformer.layer import AttnMaskType
 
     reference, _ = make_pair(family, sliding=True)

@@ -8,12 +8,11 @@ from torch import Tensor
 from torch.nn import Parameter
 from torch.utils._pytree import tree_map
 
+import colossalai._analyzer._subclasses._meta_registration  # noqa
 from colossalai.logging import get_dist_logger
 
 from .construction import ConstructorManager
 from .pretrained import PretrainedManager
-
-import colossalai._analyzer._subclasses._meta_registration  # noqa
 
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [

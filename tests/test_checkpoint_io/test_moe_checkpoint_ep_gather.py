@@ -7,7 +7,10 @@ from torch import nn
 
 from colossalai.checkpoint_io.moe_checkpoint import MoECheckpointIO
 from colossalai.interface.model import ModelWrapper
-from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_fused, set_moe_tensor_ep_group
+from colossalai.tensor.moe_tensor.api import (
+    set_moe_tensor_ep_fused,
+    set_moe_tensor_ep_group,
+)
 from colossalai.testing.utils import spawn
 
 NUM_EXPERTS = 4

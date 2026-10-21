@@ -12,9 +12,20 @@ from colossalai.lazy import LazyInitContext, LazyTensor
 
 
 def small_model():
-    return OPTForCausalLM(OPTConfig(vocab_size=64, hidden_size=32, word_embed_proj_dim=32, ffn_dim=48,
-                                  num_hidden_layers=1, num_attention_heads=4, max_position_embeddings=16,
-                                  bos_token_id=1, eos_token_id=2, pad_token_id=0))
+    return OPTForCausalLM(
+        OPTConfig(
+            vocab_size=64,
+            hidden_size=32,
+            word_embed_proj_dim=32,
+            ffn_dim=48,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            max_position_embeddings=16,
+            bos_token_id=1,
+            eos_token_id=2,
+            pad_token_id=0,
+        )
+    )
 
 
 def test_config_roundtrip(tmp_path):

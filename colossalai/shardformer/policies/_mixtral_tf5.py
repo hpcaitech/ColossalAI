@@ -5,7 +5,10 @@ from typing import Callable, Dict, List, Union
 import torch.nn as nn
 from torch import Tensor
 from torch.nn import Module
-from transformers.models.mixtral.modeling_mixtral import MixtralForCausalLM, MixtralModel
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralForCausalLM,
+    MixtralModel,
+)
 
 from colossalai.shardformer.layer import (
     FusedRMSNorm,
@@ -27,7 +30,11 @@ from colossalai.shardformer.modeling.mixtral import (
     get_mixtral_flash_attention_forward,
     get_mixtral_flash_attention_model_forward,
 )
-from colossalai.shardformer.policies.base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from colossalai.shardformer.policies.base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["MixtralPolicy", "MixtralForCausalLMPolicy"]
 
@@ -42,7 +49,11 @@ class MixtralPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralDecoderLayer, MixtralModel
+        from transformers.models.mixtral.modeling_mixtral import (
+            MixtralAttention,
+            MixtralDecoderLayer,
+            MixtralModel,
+        )
 
         policy = {}
 

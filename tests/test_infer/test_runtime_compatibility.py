@@ -7,12 +7,22 @@ from unittest.mock import Mock
 import pytest
 import torch
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaRotaryEmbedding
-from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralConfig, MixtralRotaryEmbedding
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaRotaryEmbedding,
+)
+from transformers.models.mixtral.modeling_mixtral import (
+    MixtralAttention,
+    MixtralConfig,
+    MixtralRotaryEmbedding,
+)
 
 from colossalai._compat import is_transformers_v5
 from colossalai.booster.plugin import HybridParallelPlugin
-from colossalai.shardformer.modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
+from colossalai.shardformer.modeling.llama import (
+    LlamaPipelineForwards,
+    get_llama_flash_attention_forward,
+)
 from colossalai.shardformer.modeling.mixtral import get_mixtral_flash_attention_forward
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.testing import rerun_on_exception

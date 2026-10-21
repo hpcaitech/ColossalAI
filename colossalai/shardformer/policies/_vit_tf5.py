@@ -14,7 +14,11 @@ from ..modeling.vit import (
     get_jit_fused_vit_layer_forward,
     get_vit_flash_self_attention_forward,
 )
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["ViTPolicy", "ViTModelPolicy", "ViTForImageClassificationPolicy", "ViTForMaskedImageModelingPolicy"]
 
@@ -27,7 +31,11 @@ class ViTPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.vit.modeling_vit import ViTAttention, ViTEmbeddings, ViTLayer
+        from transformers.models.vit.modeling_vit import (
+            ViTAttention,
+            ViTEmbeddings,
+            ViTLayer,
+        )
 
         policy = {}
         if self.shard_config.enable_sequence_parallelism:
@@ -178,7 +186,10 @@ class ViTModelPolicy(ViTPolicy):
 # ViTForImageClassification
 class ViTForImageClassificationPolicy(ViTPolicy):
     def module_policy(self):
-        from transformers.models.vit.modeling_vit import ViTForImageClassification, ViTModel
+        from transformers.models.vit.modeling_vit import (
+            ViTForImageClassification,
+            ViTModel,
+        )
 
         policy = super().module_policy()
 
@@ -251,7 +262,10 @@ class ViTForImageClassificationPolicy(ViTPolicy):
 # ViTForMaskedImageModeling
 class ViTForMaskedImageModelingPolicy(ViTPolicy):
     def module_policy(self):
-        from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel
+        from transformers.models.vit.modeling_vit import (
+            ViTForMaskedImageModeling,
+            ViTModel,
+        )
 
         policy = super().module_policy()
 

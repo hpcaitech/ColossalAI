@@ -13,7 +13,9 @@ from torch.distributed.distributed_c10d import get_global_rank
 from torch.utils._pytree import tree_map
 
 from colossalai.checkpoint_io import CheckpointIndexFile
-from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParallelCheckpointIO
+from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import (
+    HybridParallelCheckpointIO,
+)
 from colossalai.checkpoint_io.index_file import CheckpointIndexFile
 from colossalai.checkpoint_io.utils import (
     StateDictSharder,

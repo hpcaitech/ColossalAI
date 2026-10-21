@@ -17,9 +17,7 @@ class GroupedColumn(torch.autograd.Function):
         ctx.rows = rows
         ctx.parts = parts
         biases = padded_bias.chunk(parts) if padded_bias is not None else [None] * parts
-        output = torch.cat(
-            [F.linear(inputs, w, b) for w, b in zip(padded_weight.chunk(parts, 0), biases)], dim=-1
-        )
+        output = torch.cat([F.linear(inputs, w, b) for w, b in zip(padded_weight.chunk(parts, 0), biases)], dim=-1)
         return output[..., :rows]
 
     @staticmethod
@@ -32,9 +30,7 @@ class GroupedColumn(torch.autograd.Function):
         for partial in input_gradients[1:]:
             grad_input = grad_input + partial
         flat_input = inputs.reshape(-1, inputs.shape[-1])
-        grad_weight = torch.cat(
-            [g.reshape(-1, g.shape[-1]).t().matmul(flat_input) for g in slices], dim=0
-        )[: ctx.rows]
+        grad_weight = torch.cat([g.reshape(-1, g.shape[-1]).t().matmul(flat_input) for g in slices], dim=0)[: ctx.rows]
         grad_bias = grad_output.reshape(-1, grad_output.shape[-1]).sum(0)[: ctx.rows] if ctx.has_bias else None
         return grad_input, grad_weight, grad_bias, None, None
 

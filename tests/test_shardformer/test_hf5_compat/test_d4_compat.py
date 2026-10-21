@@ -22,22 +22,53 @@ from tests.test_shardformer.test_hf5_compat.bf16_checks import compare_parameter
 def model_and_data(family, backend):
     if family == "opt":
         config = hf.OPTConfig(
-            vocab_size=64, hidden_size=32, word_embed_proj_dim=32, ffn_dim=48,
-            num_hidden_layers=1, num_attention_heads=4, max_position_embeddings=16,
-            dropout=0, attention_dropout=0, use_cache=False, attn_implementation=backend,
+            vocab_size=64,
+            hidden_size=32,
+            word_embed_proj_dim=32,
+            ffn_dim=48,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            max_position_embeddings=16,
+            dropout=0,
+            attention_dropout=0,
+            use_cache=False,
+            attn_implementation=backend,
         )
         model = hf.OPTForCausalLM(config)
     elif family == "blip2":
         config = hf.Blip2Config(
-            vision_config=dict(hidden_size=32, intermediate_size=48, num_hidden_layers=1, num_attention_heads=4,
-                               image_size=16, patch_size=8, attention_dropout=0),
-            qformer_config=dict(hidden_size=32, intermediate_size=48, num_hidden_layers=1,
-                                num_attention_heads=4, encoder_hidden_size=32, hidden_dropout_prob=0,
-                                attention_probs_dropout_prob=0),
-            text_config=dict(model_type="opt", vocab_size=64, hidden_size=32, ffn_dim=48,
-                             num_hidden_layers=1, num_attention_heads=4, word_embed_proj_dim=32,
-                             dropout=0, attention_dropout=0, use_cache=False),
-            num_query_tokens=2, image_token_id=63,
+            vision_config=dict(
+                hidden_size=32,
+                intermediate_size=48,
+                num_hidden_layers=1,
+                num_attention_heads=4,
+                image_size=16,
+                patch_size=8,
+                attention_dropout=0,
+            ),
+            qformer_config=dict(
+                hidden_size=32,
+                intermediate_size=48,
+                num_hidden_layers=1,
+                num_attention_heads=4,
+                encoder_hidden_size=32,
+                hidden_dropout_prob=0,
+                attention_probs_dropout_prob=0,
+            ),
+            text_config=dict(
+                model_type="opt",
+                vocab_size=64,
+                hidden_size=32,
+                ffn_dim=48,
+                num_hidden_layers=1,
+                num_attention_heads=4,
+                word_embed_proj_dim=32,
+                dropout=0,
+                attention_dropout=0,
+                use_cache=False,
+            ),
+            num_query_tokens=2,
+            image_token_id=63,
         )
         config._attn_implementation = backend
         model = hf.Blip2ForConditionalGeneration(config).eval()
@@ -48,9 +79,16 @@ def model_and_data(family, backend):
         return model, dict(pixel_values=torch.randn(2, 3, 16, 16), input_ids=inputs, labels=labels)
     else:
         config = hf.CohereConfig(
-            vocab_size=64, hidden_size=32, intermediate_size=48, num_hidden_layers=1,
-            num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=16,
-            attention_dropout=0, use_cache=False, attn_implementation=backend,
+            vocab_size=64,
+            hidden_size=32,
+            intermediate_size=48,
+            num_hidden_layers=1,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            max_position_embeddings=16,
+            attention_dropout=0,
+            use_cache=False,
+            attn_implementation=backend,
         )
         model = hf.CohereForCausalLM(config)
     inputs = torch.tensor([[2, 3, 4, 5], [2, 6, 7, 8]])
@@ -75,7 +113,9 @@ def test_native_training_integration(family, backend):
 
 
 @pytest.mark.parametrize("family", ["opt", "command", "blip2"])
-@pytest.mark.parametrize("flag", ["enable_tensor_parallelism", "enable_flash_attention", "enable_jit_fused", "pipeline_stage_manager"])
+@pytest.mark.parametrize(
+    "flag", ["enable_tensor_parallelism", "enable_flash_attention", "enable_jit_fused", "pipeline_stage_manager"]
+)
 def test_unsupported_configuration_error(family, flag):
     config = SimpleNamespace(**{flag: True})
     with pytest.raises(NotImplementedError, match="HF5-COMPATIBILITY") as exc:
@@ -90,6 +130,7 @@ def test_remote_code_gate_before_import(family, monkeypatch):
 
     def forbidden_import(*args, **kwargs):
         pytest.fail("Denied policy must not be imported")
+
     monkeypatch.setattr(auto_policy.importlib, "import_module", forbidden_import)
     with pytest.raises(NotImplementedError, match="remote-code"):
         import_policy(PolicyLocation(family, "UnusedPolicy"))
@@ -152,10 +193,13 @@ def test_custom_policy_not_gated():
     class CustomPolicy(Policy):
         def config_sanity_check(self):
             pass
+
         def preprocess(self):
             return self.model
+
         def module_policy(self):
             return {}
+
         def postprocess(self):
             return self.model
 

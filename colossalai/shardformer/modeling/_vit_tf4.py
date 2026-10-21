@@ -226,7 +226,10 @@ def ViTForMaskedImageModeling_pipeline_forward(stage_manager: PipelineStageManag
     import math
 
     import torch.nn as nn
-    from transformers.models.vit.modeling_vit import ImageClassifierOutput, MaskedImageModelingOutput
+    from transformers.models.vit.modeling_vit import (
+        ImageClassifierOutput,
+        MaskedImageModelingOutput,
+    )
 
     def pp_forward(
         self,

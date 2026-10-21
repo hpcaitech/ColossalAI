@@ -7,7 +7,17 @@ from collections import abc as container_abcs
 from collections import defaultdict
 from itertools import chain
 from pathlib import Path
-from typing import Dict, Generator, Iterator, List, Mapping, Optional, OrderedDict, Tuple, Union
+from typing import (
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    OrderedDict,
+    Tuple,
+    Union,
+)
 
 import torch
 import torch.distributed as dist
@@ -15,7 +25,10 @@ import torch.nn as nn
 from packaging.version import Version
 from peft import PeftModel, PeftType
 from peft.utils.other import EMBEDDING_LAYER_NAMES, check_file_exists_on_hf_hub
-from peft.utils.save_and_load import get_embedding_layer_name, has_valid_embedding_base_layer
+from peft.utils.save_and_load import (
+    get_embedding_layer_name,
+    has_valid_embedding_base_layer,
+)
 from torch.optim import Optimizer
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 

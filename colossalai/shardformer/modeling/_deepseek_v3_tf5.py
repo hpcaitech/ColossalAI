@@ -7,14 +7,20 @@ from torch.distributed import ProcessGroup
 from torch.nn import CrossEntropyLoss
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.masking_utils import create_causal_mask
-from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+)
 from transformers.utils.output_capturing import capture_outputs
 
 from colossalai.lazy import LazyInitContext
 from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.shardformer.layer.linear import ParallelModule
-from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_fused, set_moe_tensor_ep_group
+from colossalai.tensor.moe_tensor.api import (
+    set_moe_tensor_ep_fused,
+    set_moe_tensor_ep_group,
+)
 
 
 class EpDeepseekV3MoE(ParallelModule):

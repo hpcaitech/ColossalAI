@@ -15,7 +15,11 @@ from ..modeling.vit import (
     get_jit_fused_vit_output_forward,
     get_vit_flash_self_attention_forward,
 )
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["ViTPolicy", "ViTModelPolicy", "ViTForImageClassificationPolicy", "ViTForMaskedImageModelingPolicy"]
 
@@ -328,7 +332,10 @@ class ViTModelPolicy(ViTPolicy):
 # ViTForImageClassification
 class ViTForImageClassificationPolicy(ViTPolicy):
     def module_policy(self):
-        from transformers.models.vit.modeling_vit import ViTForImageClassification, ViTModel
+        from transformers.models.vit.modeling_vit import (
+            ViTForImageClassification,
+            ViTModel,
+        )
 
         policy = super().module_policy()
 
@@ -401,7 +408,10 @@ class ViTForImageClassificationPolicy(ViTPolicy):
 # ViTForMaskedImageModeling
 class ViTForMaskedImageModelingPolicy(ViTPolicy):
     def module_policy(self):
-        from transformers.models.vit.modeling_vit import ViTForMaskedImageModeling, ViTModel
+        from transformers.models.vit.modeling_vit import (
+            ViTForMaskedImageModeling,
+            ViTModel,
+        )
 
         policy = super().module_policy()
 

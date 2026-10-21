@@ -18,7 +18,11 @@ from colossalai.shardformer.layer import (
 )
 
 from ..modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["LlamaPolicy", "LlamaForCausalLMPolicy", "LlamaForSequenceClassificationPolicy"]
 
@@ -33,7 +37,11 @@ class LlamaPolicy(Policy):
         return self.model
 
     def module_policy(self) -> Dict[Union[str, nn.Module], ModulePolicyDescription]:
-        from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaModel
+        from transformers.models.llama.modeling_llama import (
+            LlamaAttention,
+            LlamaDecoderLayer,
+            LlamaModel,
+        )
 
         policy = {}
         embedding_cls = None

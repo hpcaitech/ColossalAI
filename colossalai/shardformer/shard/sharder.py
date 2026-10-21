@@ -29,16 +29,16 @@ class ModelSharder(object):
         self.model = model
         self.shard_config = shard_config
         if policy is None:
-            from ..policies.auto_policy import _POLICY_LIST, _fullname
             from .._utils import check_hf5_policy
+            from ..policies.auto_policy import _POLICY_LIST, _fullname
 
             location = _POLICY_LIST.get(_fullname(model))
             if location is not None:
                 check_hf5_policy(location.file_name, shard_config)
             self.policy = get_autopolicy(self.model)
         else:
-            from ..policies.auto_policy import _POLICY_LIST
             from .._utils import check_hf5_policy
+            from ..policies.auto_policy import _POLICY_LIST
 
             policy_type = type(policy)
             for location in _POLICY_LIST.values():

@@ -10,6 +10,7 @@ import torch
 import torch.distributed as dist
 import transformers
 from packaging.version import Version
+
 if Version(transformers.__version__) < Version("5.17.0"):
     pytest.skip("HF 5.17 contract", allow_module_level=True)
 

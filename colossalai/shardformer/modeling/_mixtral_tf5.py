@@ -31,10 +31,17 @@ from colossalai.shardformer.layer._operation import (
     reduce_forward,
     split_forward_gather_backward,
 )
-from colossalai.shardformer.layer.linear import Linear1D_Col, LinearWithGradAccum, ParallelModule
+from colossalai.shardformer.layer.linear import (
+    Linear1D_Col,
+    LinearWithGradAccum,
+    ParallelModule,
+)
 from colossalai.shardformer.shard import ShardConfig
 from colossalai.tensor.d_tensor import init_tensor_as_customization_distributed
-from colossalai.tensor.moe_tensor.api import set_moe_tensor_ep_fused, set_moe_tensor_ep_group
+from colossalai.tensor.moe_tensor.api import (
+    set_moe_tensor_ep_fused,
+    set_moe_tensor_ep_group,
+)
 
 # v4-era flag, read by `get_mixtral_flash_attention_forward` for a one-off warning. It is only
 # populated below when flash-attn is actually installed; default to "supported" so the reference
@@ -43,7 +50,6 @@ _flash_supports_window_size = True
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func
-
     from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
 
     _flash_supports_window_size = "window_size" in list(inspect.signature(flash_attn_func).parameters)

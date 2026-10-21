@@ -18,23 +18,57 @@ from colossalai.shardformer.policies.auto_policy import get_autopolicy
 
 
 def model_and_data(family):
-    common = dict(vocab_size=64, hidden_size=32, intermediate_size=48, num_hidden_layers=1,
-                  num_attention_heads=4, num_key_value_heads=2, max_position_embeddings=16,
-                  use_cache=False, attn_implementation="eager", bos_token_id=1, eos_token_id=2, pad_token_id=0)
+    common = dict(
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=48,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        max_position_embeddings=16,
+        use_cache=False,
+        attn_implementation="eager",
+        bos_token_id=1,
+        eos_token_id=2,
+        pad_token_id=0,
+    )
     if family == "bert":
-        model = hf.BertForMaskedLM(hf.BertConfig(vocab_size=64, hidden_size=32, intermediate_size=48,
-                    num_hidden_layers=1, num_attention_heads=4, max_position_embeddings=16,
-                    hidden_dropout_prob=0, attention_probs_dropout_prob=0, attn_implementation="eager"))
+        model = hf.BertForMaskedLM(
+            hf.BertConfig(
+                vocab_size=64,
+                hidden_size=32,
+                intermediate_size=48,
+                num_hidden_layers=1,
+                num_attention_heads=4,
+                max_position_embeddings=16,
+                hidden_dropout_prob=0,
+                attention_probs_dropout_prob=0,
+                attn_implementation="eager",
+            )
+        )
     elif family == "llama":
         model = hf.LlamaForCausalLM(hf.LlamaConfig(**common))
     elif family == "mixtral":
         model = hf.MixtralForCausalLM(hf.MixtralConfig(**common, num_local_experts=4, num_experts_per_tok=2))
     else:
         common["num_key_value_heads"] = 4
-        model = hf.DeepseekV3ForCausalLM(hf.DeepseekV3Config(**common, q_lora_rank=None, kv_lora_rank=8,
-                    qk_nope_head_dim=4, qk_rope_head_dim=4, v_head_dim=8, n_routed_experts=4,
-                    n_shared_experts=1, num_experts_per_tok=2, n_group=1, topk_group=1,
-                    moe_intermediate_size=16, first_k_dense_replace=0))
+        model = hf.DeepseekV3ForCausalLM(
+            hf.DeepseekV3Config(
+                **common,
+                q_lora_rank=None,
+                kv_lora_rank=8,
+                qk_nope_head_dim=4,
+                qk_rope_head_dim=4,
+                v_head_dim=8,
+                n_routed_experts=4,
+                n_shared_experts=1,
+                num_experts_per_tok=2,
+                n_group=1,
+                topk_group=1,
+                moe_intermediate_size=16,
+                first_k_dense_replace=0,
+            )
+        )
     tokens = torch.tensor([[1, 3, 4, 5], [1, 6, 7, 8]])
     return model.eval(), dict(input_ids=tokens, labels=tokens.clone())
 
@@ -47,7 +81,9 @@ def test_integrated_non_ep_training(family, seed):
     candidate = copy.deepcopy(reference)
     policy = get_autopolicy(candidate)
     assert type(policy).__module__.endswith(f"_{family}_tf5")
-    assert importlib.import_module("colossalai.shardformer.policies." + family).__dict__[type(policy).__name__] is type(policy)
+    assert importlib.import_module("colossalai.shardformer.policies." + family).__dict__[type(policy).__name__] is type(
+        policy
+    )
     candidate, _ = ShardFormer(ShardConfig(enable_tensor_parallelism=False)).optimize(candidate)
     ref_optimizer = torch.optim.SGD(reference.parameters(), lr=0.01)
     optimizer = torch.optim.SGD(candidate.parameters(), lr=0.01)
@@ -108,9 +144,11 @@ def test_dispatch_selects_actual_implementation(monkeypatch, v5):
     calls = []
     exported = SimpleNamespace(public_name=object(), _private_name=object(), __name__="implementation")
     monkeypatch.setattr(_compat, "is_transformers_v5", lambda: v5)
+
     def import_impl(name):
         calls.append(name)
         return exported
+
     monkeypatch.setattr(_compat, "import_module", import_impl)
     namespace = {}
     _compat.reexport_transformers_impl(namespace, "example", "_llama")

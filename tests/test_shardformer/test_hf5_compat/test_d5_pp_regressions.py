@@ -27,7 +27,7 @@ def stage(index, total=2):
         is_first_stage=lambda **kwargs: index == 0,
         is_last_stage=lambda **kwargs: index == total - 1,
         distribute_layers=lambda count: [count // total] * total,
-        get_stage_index=lambda counts: (sum(counts[:index]), sum(counts[:index + 1])),
+        get_stage_index=lambda counts: (sum(counts[:index]), sum(counts[: index + 1])),
     )
 
 
@@ -36,19 +36,31 @@ def test_mixtral_pp_causal_mask_with_flash_installed(monkeypatch, backend):
     from colossalai.shardformer.modeling import _mixtral_tf5 as implementation
 
     monkeypatch.setattr(implementation, "is_flash_attn_2_available", lambda: True)
-    config = MixtralConfig(vocab_size=64, hidden_size=32, intermediate_size=48, num_hidden_layers=2,
-                          num_attention_heads=4, num_key_value_heads=2, num_local_experts=4,
-                          num_experts_per_tok=2, use_cache=False, attn_implementation=backend)
+    config = MixtralConfig(
+        vocab_size=64,
+        hidden_size=32,
+        intermediate_size=48,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        num_local_experts=4,
+        num_experts_per_tok=2,
+        use_cache=False,
+        attn_implementation=backend,
+    )
     model = MixtralModel(config).eval()
     candidate = copy.deepcopy(model)
     tokens = torch.tensor([[1, 3, 4, 5], [1, 6, 7, 8]])
     expected = model(input_ids=tokens).last_hidden_state
+
     def run(ids):
         first = MixtralPipelineForwards.mixtral_model_forward(
-            candidate, input_ids=ids, stage_manager=stage(0), stage_index=(0, 1), use_cache=False)
+            candidate, input_ids=ids, stage_manager=stage(0), stage_index=(0, 1), use_cache=False
+        )
         return MixtralPipelineForwards.mixtral_model_forward(
-            candidate, hidden_states=first["hidden_states"], stage_manager=stage(1),
-            stage_index=(1, 2), use_cache=False).last_hidden_state
+            candidate, hidden_states=first["hidden_states"], stage_manager=stage(1), stage_index=(1, 2), use_cache=False
+        ).last_hidden_state
+
     actual = run(tokens)
     torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-3)
     changed = tokens.clone()

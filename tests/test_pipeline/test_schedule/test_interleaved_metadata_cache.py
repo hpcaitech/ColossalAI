@@ -49,9 +49,7 @@ class _Communication:
         self.backward_send_metadata.append(send_metadata)
         return []
 
-    def send_forward_recv_forward(
-        self, _output_tensor, _is_send, _is_recv, send_metadata, metadata_recv, send_first
-    ):
+    def send_forward_recv_forward(self, _output_tensor, _is_send, _is_recv, send_metadata, metadata_recv, send_first):
         del send_first
         self.forward_send_recv_metadata.append((send_metadata, metadata_recv))
         return torch.ones(1), []
@@ -119,14 +117,19 @@ def test_chunk_metadata_structure_and_no_send_state():
     schedule = InterleavedSchedule(stage_manager, num_model_chunks=2, num_microbatch=2)
     communication = _Communication()
     communication.recv_forward = lambda rank, metadata_recv: (
-        {"hidden": torch.ones(2)} if len(communication.forward_recv_metadata) == 1 else
-        {"hidden": torch.ones(3), "router": (torch.ones(1),)},
+        (
+            {"hidden": torch.ones(2)}
+            if len(communication.forward_recv_metadata) == 1
+            else {"hidden": torch.ones(3), "router": (torch.ones(1),)}
+        ),
         [],
     )
     original_recv = communication.recv_forward
+
     def record_recv(rank, metadata_recv):
         communication.forward_recv_metadata.append(metadata_recv)
         return original_recv(rank, metadata_recv)
+
     communication.recv_forward = record_recv
     schedule.comm = communication
     schedule.recv_forward(0)

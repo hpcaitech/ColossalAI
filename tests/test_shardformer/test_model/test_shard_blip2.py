@@ -1,12 +1,11 @@
 from types import SimpleNamespace
 
 import pytest
-
 import torch
 
 import colossalai
-from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.logging import disable_existing_loggers
+from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.testing import (
     assert_hf_output_close,
     clear_cache_before_run,
@@ -19,7 +18,11 @@ from colossalai.testing import (
 def _load_test_dependencies():
     global model_zoo, build_model, check_grad, run_forward
     from tests.kit.model_zoo import model_zoo
-    from tests.test_shardformer.test_model._utils import build_model, check_grad, run_forward
+    from tests.test_shardformer.test_model._utils import (
+        build_model,
+        check_grad,
+        run_forward,
+    )
 
 
 def check_forward_backward(org_model, sharded_model, data_gen_fn, output_transform_fn, loss_fn):

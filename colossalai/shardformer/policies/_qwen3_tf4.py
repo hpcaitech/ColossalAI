@@ -29,7 +29,11 @@ from ..modeling.qwen3 import (
     get_qwen3_flash_attention_forward,
     get_qwen3_model_forward_for_flash_attn,
 )
-from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
+from .base_policy import (
+    ModulePolicyDescription,
+    Policy,
+    SubModuleReplacementDescription,
+)
 
 __all__ = ["Qwen3Policy", "Qwen3ForCausalLMPolicy", "Qwen3ForSequenceClassificationPolicy"]
 

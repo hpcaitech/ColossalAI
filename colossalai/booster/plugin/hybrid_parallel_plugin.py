@@ -6,7 +6,17 @@ from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from functools import partial
 from types import MethodType
-from typing import Any, Callable, Dict, Iterator, List, Optional, OrderedDict, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    OrderedDict,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 import torch
@@ -31,7 +41,11 @@ from colossalai.interface.model import PeftUnwrapMixin
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
 from colossalai.nn.optimizer import DistGaloreAdamW, cast_to_distributed
-from colossalai.pipeline.schedule import InterleavedSchedule, OneForwardOneBackwardSchedule, ZeroBubbleVPipeScheduler
+from colossalai.pipeline.schedule import (
+    InterleavedSchedule,
+    OneForwardOneBackwardSchedule,
+    ZeroBubbleVPipeScheduler,
+)
 from colossalai.pipeline.stage_manager import PipelineStageManager
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
@@ -40,7 +54,10 @@ from colossalai.shardformer.layer.utils import SeqParallelUtils, is_share_sp_tp
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.tensor.d_tensor.api import (
+    is_customized_distributed_tensor,
+    is_distributed_tensor,
+)
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle

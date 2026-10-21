@@ -28,17 +28,26 @@ def hf5_policy_error(family, shard_config=None):
                 "See docs/HF5-COMPATIBILITY.md."
             )
         unsupported = [
-            name for name in (
-                "enable_tensor_parallelism", "enable_sequence_parallelism", "enable_flash_attention",
-                "enable_jit_fused", "enable_fused_normalization", "enable_all_optimization",
+            name
+            for name in (
+                "enable_tensor_parallelism",
+                "enable_sequence_parallelism",
+                "enable_flash_attention",
+                "enable_jit_fused",
+                "enable_fused_normalization",
+                "enable_all_optimization",
                 "fp8_communication",
-            ) if getattr(shard_config, name, False)
+            )
+            if getattr(shard_config, name, False)
         ]
         if getattr(shard_config, "pipeline_stage_manager", None) is not None:
             unsupported.append("pipeline_parallelism")
         if not unsupported:
             return None
-        reason = "HF5 migration is currently validated only without parallel/optional optimization; requested " + ", ".join(unsupported)
+        reason = (
+            "HF5 migration is currently validated only without parallel/optional optimization; requested "
+            + ", ".join(unsupported)
+        )
     else:
         return None
     from transformers import __version__
@@ -124,7 +133,10 @@ def prepare_hf_causal_masks(config, inputs_embeds, attention_mask, past_key_valu
     from copy import copy
 
     import torch
-    from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
+    from transformers.masking_utils import (
+        create_causal_mask,
+        create_sliding_window_causal_mask,
+    )
 
     if eager:
         config = copy(config)

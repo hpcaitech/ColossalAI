@@ -194,7 +194,10 @@ class GeneralCheckpointIO(CheckpointIO):
         # TODO(FrankLeeeee): handle distributed tensors
         state_dict = optimizer.state_dict()
         if use_async:
-            from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save
+            from colossalai.utils.safetensors import (
+                _flatten_optim_state_dict,
+                move_and_save,
+            )
 
             flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
             if id(optimizer) not in self.pinned_state_dicts:
