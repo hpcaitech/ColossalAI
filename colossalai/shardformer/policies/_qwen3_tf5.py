@@ -436,7 +436,11 @@ class Qwen3ForCausalLMPolicy(Qwen3Policy):
                         SubModuleReplacementDescription(
                             suffix="lm_head",
                             target_module=Linear1D_Col,
-                            kwargs=dict(fp8_communication=self.shard_config.fp8_communication, use_zbv=use_zbv),
+                            kwargs=dict(
+                                gather_output=not self.shard_config.parallel_output,
+                                fp8_communication=self.shard_config.fp8_communication,
+                                use_zbv=use_zbv,
+                            ),
                         )
                     ],
                     method_replacement={"forward": get_lm_forward_with_dist_cross_entropy(self.shard_config)},
