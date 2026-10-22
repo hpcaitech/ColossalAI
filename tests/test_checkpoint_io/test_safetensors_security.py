@@ -60,9 +60,7 @@ def test_optimizer_state_dict_round_trip(tmp_path):
 
     state_dict = optimizer.state_dict()
     flat, metadata = _flatten_optim_state_dict(state_dict)
-    restored = _unflatten_optim_state_dict(
-        dict(flat), {"non_tensor_keys": json.dumps(metadata["non_tensor_keys"])}
-    )
+    restored = _unflatten_optim_state_dict(dict(flat), {"non_tensor_keys": json.dumps(metadata["non_tensor_keys"])})
     assert restored["param_groups"] == state_dict["param_groups"]
     for idx, fields in state_dict["state"].items():
         for name, value in fields.items():
@@ -83,9 +81,7 @@ def test_tensor_nested_in_non_tensor_value_round_trips():
         "param_groups": [{"lr": 0.1, "params": [0]}],
     }
     flat, metadata = _flatten_optim_state_dict(state_dict)
-    restored = _unflatten_optim_state_dict(
-        dict(flat), {"non_tensor_keys": json.dumps(metadata["non_tensor_keys"])}
-    )
+    restored = _unflatten_optim_state_dict(dict(flat), {"non_tensor_keys": json.dumps(metadata["non_tensor_keys"])})
     bundle = restored["state"][0]["bundle"]
     assert bundle["name"] == "x"
     assert torch.equal(bundle["vec"], torch.tensor([1.0, 2.0]))
