@@ -15,6 +15,7 @@ from .pretrained import PretrainedManager
 
 import colossalai._analyzer._subclasses._meta_registration  # noqa
 
+
 # reference: https://pytorch.org/cppdocs/notes/tensor_creation.html
 _NORMAL_FACTORY = [
     "arange",
@@ -313,6 +314,9 @@ class LazyTensor(torch.Tensor):
             return target
         else:
             meta_to_lazy = {}
+            recorded_inplace = set()
+            # torch.nn.init forwards its tensor as a keyword argument.
+            inplace_target = args[0] if args else kwargs.get("tensor", kwargs.get("input", kwargs.get("self")))
 
             def unwrap(x):
                 if isinstance(x, LazyTensor):
@@ -320,8 +324,14 @@ class LazyTensor(torch.Tensor):
                         # for early materialized tensor, use its materialized data directly
                         return x._materialized_data if is_change_meta_op else x._materialized_data.data
                     t = x if is_inplace else x.clone()
-                    if func.__name__ not in _NO_RERUN_OPS:
+                    # An in-place operation mutates its first argument only.
+                    # Recording copy_(destination, source) on source as well
+                    # creates a cycle when either tensor is materialized.
+                    record_op = not is_inplace or (x is inplace_target and id(x) not in recorded_inplace)
+                    if func.__name__ not in _NO_RERUN_OPS and record_op:
                         t._op_buffer.append((func, args, kwargs))
+                        if is_inplace:
+                            recorded_inplace.add(id(x))
                     meta = x._meta_data if is_change_meta_op else x._meta_data.data
                     meta_to_lazy[meta] = t
                     return meta
@@ -520,25 +530,48 @@ class LazyInitContext:
         def wrap_legacy_constructor(target, dtype):
             # legacy constructor (e.g. torch.LongTensor())
             def wrapper(*args, **kwargs):
-                if len(args) == 1 and isinstance(args[0], torch.Tensor):
+                if _is_int_tuple(args):
+                    # (tuple of ints size, *, torch.device device)
+                    kwargs = {**kwargs, "dtype": dtype}
+                    replaced, orig = overrides["empty"]
+                    return replaced(*(args or (0,)), **kwargs)
+                elif len(args) == 1 and isinstance(args[0], torch.Tensor):
                     # (Tensor other)
                     return args[0]
                 elif len(args) == 1:
                     # (object data, *, torch.device device)
                     kwargs = {**kwargs, "dtype": dtype}
-                    replaced, orig = self.overrides["tensor"]
-                    return replaced(*args, **kwargs)
-                elif _is_int_tuple(args):
-                    # (tuple of ints size, *, torch.device device)
-                    kwargs = {**kwargs, "dtype": dtype}
-                    replaced, orig = self.overrides["empty"]
+                    replaced, orig = overrides["tensor"]
                     return replaced(*args, **kwargs)
                 else:
                     raise TypeError(
                         f"new() received an invalid combination of arguments - got {tuple(type(x) for x in args)}, but expected one of:\n * (Tensor other)\n * (tuple of ints size, *, torch.device device)\n * (object data, *, torch.device device)"
                     )
 
-            return wrapper, target
+            # HF evaluates annotations such as torch.LongTensor | None while
+            # importing modeling modules inside this context. Keep a type-like
+            # constructor instead of replacing the class with a function.
+            class LegacyTensorMeta(type):
+                def __call__(cls, *args, **kwargs):
+                    return wrapper(*args, **kwargs)
+
+                def __instancecheck__(cls, instance):
+                    return isinstance(instance, target)
+
+                def __subclasscheck__(cls, subclass):
+                    return issubclass(subclass, target)
+
+                def __or__(cls, other):
+                    return target | other
+
+                def __ror__(cls, other):
+                    return other | target
+
+                def __getattr__(cls, name):
+                    return getattr(target, name)
+
+            proxy = LegacyTensorMeta(target.__name__, (), {"__module__": target.__module__})
+            return proxy, target
 
         def wrap_no_meta_factory(target):
             # factory functions which don't support meta tensor backend

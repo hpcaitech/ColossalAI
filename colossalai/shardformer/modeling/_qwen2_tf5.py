@@ -1,0 +1,618 @@
+from functools import partial
+from typing import List, Optional, Tuple, Union
+
+import torch
+from torch import nn
+from transformers.cache_utils import Cache, DynamicCache
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPast,
+    CausalLMOutputWithPast,
+    SequenceClassifierOutputWithPast,
+)
+from transformers.models.qwen2.modeling_qwen2 import (
+    Qwen2Attention,
+    Qwen2ForCausalLM,
+    Qwen2ForSequenceClassification,
+    Qwen2Model,
+    apply_rotary_pos_emb,
+    repeat_kv,
+)
+from transformers.utils import logging
+from transformers.utils.generic import merge_with_config_defaults
+from transformers.utils.output_capturing import capture_outputs
+
+from colossalai.pipeline.stage_manager import PipelineStageManager
+from colossalai.shardformer.layer._operation import all_to_all_comm, split_forward_gather_backward
+from colossalai.shardformer.shard import ShardConfig
+
+from .._utils import get_hf_cache_seq_length, get_hf_flash_attention_kwargs, prepare_hf_causal_masks
+from ..layer import ColoAttention, dist_cross_entropy
+from ..layer._operation import gather_sp_output
+from ..layer.utils import is_share_sp_tp
+
+
+class Qwen2PipelineForwards:
+    """
+    This class serves as a micro library for forward function substitution of Qwen2 models
+    under pipeline setting.
+    """
+
+    @staticmethod
+    def qwen2_model_forward(
+        self: Qwen2Model,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+        shard_config: ShardConfig = None,
+        force_sp_output_gather: bool = True,
+    ) -> Union[Tuple, BaseModelOutputWithPast]:
+        logger = logging.get_logger(__name__)
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        use_cache = use_cache if use_cache is not None else self.config.use_cache
+
+        return_dict = return_dict if return_dict is not None else self.config.return_dict
+
+        # retrieve input_ids and inputs_embeds
+        if stage_manager.is_first_stage():
+            if input_ids is not None and inputs_embeds is not None:
+                raise ValueError("You cannot specify both decoder_input_ids and decoder_inputs_embeds at the same time")
+            elif input_ids is not None:
+                batch_size, seq_length = input_ids.shape
+            elif inputs_embeds is not None:
+                batch_size, seq_length, _ = inputs_embeds.shape
+            else:
+                raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
+
+            device = input_ids.device if input_ids is not None else inputs_embeds.device
+            if inputs_embeds is None:
+                inputs_embeds = self.embed_tokens(input_ids)
+            hidden_states = inputs_embeds
+        else:
+            input_shape = hidden_states.shape[:-1]
+            batch_size, seq_length = input_shape
+            device = hidden_states.device
+
+        # Pipeline generation was not supported by this forward. Do not silently
+        # consume/mutate a cache while returning no cache to the caller.
+        if past_key_values is not None:
+            raise ValueError("past_key_values is not supported in the Qwen pipeline forward")
+        if output_attentions or output_hidden_states:
+            logger.warning_once("Recording attentions/hidden states is not supported in pipeline models.")
+        if use_cache:
+            logger.warning_once("use_cache=True is not supported for pipeline models; disabling it.")
+        use_cache = False
+
+        sp_size = shard_config.sequence_parallel_size
+        sp_group = shard_config.sequence_parallel_process_group
+        sp_mode = shard_config.sequence_parallelism_mode
+        if shard_config.enable_sequence_parallelism and sp_mode != "ring_attn" and not stage_manager.is_first_stage():
+            seq_length *= sp_size
+        if position_ids is None:
+            positions = cache_position if cache_position is not None else torch.arange(seq_length, device=device)
+            position_ids = positions.unsqueeze(0)
+        # Later stages may only own a sequence shard. HF uses embeddings here
+        # solely for mask shape/dtype; positions and attention operate on the full sequence.
+        mask_inputs = hidden_states
+        if hidden_states.shape[1] != seq_length:
+            mask_inputs = hidden_states.new_empty((batch_size, seq_length, 1))
+        causal_masks = prepare_hf_causal_masks(
+            self.config,
+            mask_inputs,
+            attention_mask,
+            None,
+            position_ids,
+            eager=shard_config.enable_flash_attention or shard_config.enable_sequence_parallelism,
+        )
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+
+        if stage_manager.is_first_stage() and shard_config.enable_sequence_parallelism:
+            if is_share_sp_tp(sp_mode):
+                hidden_states = split_forward_gather_backward(hidden_states, dim=1, process_group=sp_group)
+            elif sp_mode == "all_to_all":
+                hidden_states = split_forward_gather_backward(
+                    hidden_states, dim=1, process_group=sp_group, grad_scale=1 / sp_size
+                )
+
+        start_idx, end_idx = stage_index
+        num_ckpt_layers = 0
+        if self.gradient_checkpointing and self.training:
+            num_ckpt_layers = end_idx - start_idx
+            # TODO: We can replace `gradient_checkpointing_enable` fn and initialize a gradient_checkpointing (List[bool]) for each layer
+            if shard_config.gradient_checkpoint_config is not None:
+                num_ckpt_layers = shard_config.gradient_checkpoint_config.get_num_ckpt_layers(
+                    stage=stage_manager.stage,
+                    num_stages=stage_manager.num_stages,
+                    num_layers=end_idx - start_idx,
+                    model_chunk_id=(stage_manager.model_chunk_id if stage_manager.is_interleave else 0),
+                    num_model_chunks=stage_manager.num_model_chunks,
+                )
+            assert num_ckpt_layers <= end_idx - start_idx
+
+        for idx, decoder_layer in enumerate(self.layers[start_idx:end_idx], start=start_idx):
+            layer_kwargs = dict(
+                attention_mask=causal_masks[self.config.layer_types[idx]],
+                position_ids=position_ids,
+                past_key_values=None,
+                use_cache=False,
+                position_embeddings=position_embeddings,
+            )
+            # PP selects checkpointed layers itself. Bypass HF's automatic
+            # checkpoint wrapper, but retain nn.Module hooks and keyword binding.
+            layer_call = partial(nn.Module.__call__, decoder_layer, **layer_kwargs)
+            if idx - start_idx < num_ckpt_layers:
+                hidden_states = decoder_layer._gradient_checkpointing_func(layer_call, hidden_states)
+            else:
+                hidden_states = layer_call(hidden_states)
+
+        if stage_manager.is_last_stage():
+            hidden_states = self.norm(hidden_states)
+            if shard_config.enable_sequence_parallelism:
+                if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                    hidden_states = gather_sp_output(hidden_states, shard_config)
+            if not return_dict:
+                return (hidden_states,)
+            return BaseModelOutputWithPast(last_hidden_state=hidden_states)
+        # always return dict for imediate stage
+        return {"hidden_states": hidden_states}
+
+    @staticmethod
+    def qwen2_for_causal_lm_forward(
+        self: Qwen2ForCausalLM,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+        shard_config: ShardConfig = None,
+        **kwargs,
+    ):
+        r"""
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, Qwen2ForCausalLM
+
+        >>> model = Qwen2ForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+
+        >>> prompt = "Hey, are you consciours? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you consciours? Can you talk to me?\nI'm not consciours, but I can talk to you."
+        ```"""
+        logger = logging.get_logger(__name__)
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.return_dict
+
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        if output_attentions:
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
+            output_attentions = False
+        if output_hidden_states:
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
+            output_hidden_states = False
+
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        outputs = Qwen2PipelineForwards.qwen2_model_forward(
+            self.model,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
+            shard_config=shard_config,
+            force_sp_output_gather=False,
+        )
+        past_key_values = None
+
+        if stage_manager.is_last_stage():
+            hidden_states = outputs[0]
+            logits = self.lm_head(hidden_states)
+            loss = None
+            if labels is not None:
+                # Match HF's FP32 cross entropy while preserving the output logits dtype.
+                loss = dist_cross_entropy(
+                    labels, logits.float(), shard_config, self.lm_head.out_features, torch.float32
+                )
+
+            if not return_dict:
+                output = (logits,) + outputs[1:]
+                return (loss,) + output if loss is not None else output
+
+            return CausalLMOutputWithPast(
+                loss=loss,
+                logits=logits,
+                past_key_values=outputs.past_key_values,
+                hidden_states=outputs.hidden_states,
+                attentions=outputs.attentions,
+            )
+        else:
+            hidden_states = outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
+
+    @staticmethod
+    def qwen2_for_sequence_classification_forward(
+        self: Qwen2ForSequenceClassification,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        stage_manager: Optional[PipelineStageManager] = None,
+        hidden_states: Optional[torch.FloatTensor] = None,
+        stage_index: Optional[List[int]] = None,
+        shard_config: ShardConfig = None,
+    ):
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        logger = logging.get_logger(__name__)
+
+        return_dict = return_dict if return_dict is not None else self.config.return_dict
+
+        # TODO(jianghai): left the recording kv-value tensors as () or None type, this feature may be added in the future.
+        if output_attentions:
+            logger.warning_once("output_attentions=True is not supported for pipeline models at the moment.")
+            output_attentions = False
+        if output_hidden_states:
+            logger.warning_once("output_hidden_states=True is not supported for pipeline models at the moment.")
+            output_hidden_states = False
+
+        transformer_outputs = Qwen2PipelineForwards.qwen2_model_forward(
+            self.model,
+            input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            stage_manager=stage_manager,
+            hidden_states=hidden_states,
+            stage_index=stage_index,
+            shard_config=shard_config,
+        )
+
+        if input_ids is not None:
+            batch_size = input_ids.shape[0]
+        elif inputs_embeds is not None:
+            batch_size = inputs_embeds.shape[0]
+        else:
+            batch_size = hidden_states.shape[0]
+
+        if stage_manager.is_last_stage():
+            hidden_states = transformer_outputs[0]
+            logits = self.score(hidden_states)
+
+            if self.config.pad_token_id is None and batch_size != 1:
+                raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
+
+            if self.config.pad_token_id is None:
+                last_non_pad_token = -1
+            elif input_ids is not None:
+                # To handle both left- and right- padding, we take the rightmost token that is not equal to pad_token_id
+                non_pad_mask = (input_ids != self.config.pad_token_id).to(logits.device, torch.int32)
+                token_indices = torch.arange(input_ids.shape[-1], device=logits.device, dtype=torch.int32)
+                last_non_pad_token = (token_indices * non_pad_mask).argmax(-1)
+            else:
+                last_non_pad_token = -1
+                logger.warning_once(
+                    f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
+                    "unexpected if using padding tokens in conjunction with `inputs_embeds.`"
+                )
+
+            pooled_logits = logits[torch.arange(batch_size, device=logits.device), last_non_pad_token]
+
+            loss = None
+            if labels is not None:
+                loss = self.loss_function(logits=logits, labels=labels, pooled_logits=pooled_logits, config=self.config)
+
+            if not return_dict:
+                output = (pooled_logits,) + transformer_outputs[1:]
+                return ((loss,) + output) if loss is not None else output
+
+            return SequenceClassifierOutputWithPast(
+                loss=loss,
+                logits=pooled_logits,
+                past_key_values=transformer_outputs.past_key_values,
+                hidden_states=transformer_outputs.hidden_states,
+                attentions=transformer_outputs.attentions,
+            )
+
+        else:
+            hidden_states = transformer_outputs.get("hidden_states")
+            return {"hidden_states": hidden_states}
+
+
+def get_qwen2_flash_attention_forward(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+    def forward(
+        self: Qwen2Attention,
+        hidden_states: torch.Tensor,
+        position_embeddings: Tuple[torch.Tensor, torch.Tensor],
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Cache] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        **kwargs,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if sp_mode is not None:
+            assert sp_mode in ["all_to_all", "split_gather", "ring"], "Invalid sp_mode"
+            assert (sp_size is not None) and (
+                sp_group is not None
+            ), "Must specify sp_size and sp_group for sequence parallel"
+
+        bsz, q_len, _ = hidden_states.size()
+        # sp: modify sp_len when sequence parallel mode is ring
+        if sp_mode in ["split_gather", "ring"]:
+            q_len *= sp_size
+
+        query_states = self.q_proj(hidden_states)
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
+        # sp: all-to-all comminucation when introducing sequence parallel
+        if sp_mode == "all_to_all":
+            query_states = all_to_all_comm(query_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            key_states = all_to_all_comm(key_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            value_states = all_to_all_comm(value_states, sp_group, fp8_communication=shard_config.fp8_communication)
+            bsz, q_len, _ = query_states.size()
+
+        query_states = query_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        key_states = key_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+        value_states = value_states.view(bsz, q_len, -1, self.head_dim).transpose(1, 2)
+
+        cos, sin = position_embeddings
+        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
+        if past_key_values is not None:
+            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx)
+        num_heads = query_states.shape[1]
+
+        # repeat k/v heads if n_kv_heads < n_heads
+        key_states = repeat_kv(key_states, self.num_key_value_groups)
+        value_states = repeat_kv(value_states, self.num_key_value_groups)
+
+        attn_weights = None
+        dropout = self.attention_dropout if self.training else 0.0
+        if shard_config.enable_flash_attention:
+            attn_output = ColoAttention.attention(
+                query_states,
+                key_states,
+                value_states,
+                dropout_p=dropout,
+                scale=self.scaling,
+                **get_hf_flash_attention_kwargs(attention_mask),
+            )
+        else:
+            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) * self.scaling
+            if attention_mask is not None:
+                if attention_mask.dtype == torch.bool:
+                    attn_weights = attn_weights.masked_fill(~attention_mask, torch.finfo(attn_weights.dtype).min)
+                else:
+                    attn_weights = attn_weights + attention_mask
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+            attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=self.training)
+            attn_output = torch.matmul(attn_weights, value_states)
+            if attn_output.shape != (bsz, num_heads, q_len, self.head_dim):
+                raise ValueError(f"Unexpected attention output shape: {attn_output.shape}")
+        attn_output = attn_output.transpose(1, 2).contiguous()
+        if sp_mode == "all_to_all":
+            attn_output = attn_output.reshape(bsz, q_len, num_heads * self.head_dim)
+            attn_output = all_to_all_comm(
+                attn_output, sp_group, scatter_dim=1, gather_dim=2, fp8_communication=shard_config.fp8_communication
+            )
+        else:
+            attn_output = attn_output.reshape(bsz, q_len, -1)
+
+        attn_output = self.o_proj(attn_output)
+
+        return attn_output, attn_weights
+
+    return forward
+
+
+def get_qwen2_model_forward_for_flash_attn(shard_config: ShardConfig, sp_mode=None, sp_size=None, sp_group=None):
+    @merge_with_config_defaults
+    @capture_outputs
+    def forward(
+        self,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        cache_position: Optional[torch.LongTensor] = None,
+        force_sp_output_gather: bool = True,
+        **kwargs,
+    ) -> BaseModelOutputWithPast:
+        if (input_ids is None) == (inputs_embeds is None):
+            raise ValueError("Specify exactly one of input_ids or inputs_embeds")
+        if inputs_embeds is None:
+            inputs_embeds = self.embed_tokens(input_ids)
+        if self.gradient_checkpointing and self.training:
+            # Do not let backward recomputation mutate an existing cache.
+            use_cache = False
+            past_key_values = None
+        if sp_mode in ["ring", "all_to_all"] and self.training:
+            use_cache = False
+            past_key_values = None
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache(config=self.config)
+        if position_ids is None:
+            positions = cache_position
+            if positions is None:
+                positions = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device)
+                positions = positions + get_hf_cache_seq_length(past_key_values)
+            position_ids = positions.unsqueeze(0)
+
+        causal_masks = prepare_hf_causal_masks(
+            self.config, inputs_embeds, attention_mask, past_key_values, position_ids, eager=True
+        )
+        hidden_states = inputs_embeds
+        position_embeddings = self.rotary_emb(hidden_states, position_ids)
+        if sp_mode in ["ring", "split_gather"]:
+            hidden_states = split_forward_gather_backward(
+                hidden_states, 1, sp_group, fp8_communication=shard_config.fp8_communication
+            )
+        elif sp_mode == "all_to_all":
+            hidden_states = split_forward_gather_backward(
+                hidden_states, 1, sp_group, 1 / sp_size, fp8_communication=shard_config.fp8_communication
+            )
+
+        for idx, decoder_layer in enumerate(self.layers):
+            hidden_states = decoder_layer(
+                hidden_states,
+                attention_mask=causal_masks[self.config.layer_types[idx]],
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                position_embeddings=position_embeddings,
+                **kwargs,
+            )
+        hidden_states = self.norm(hidden_states)
+        if shard_config.enable_sequence_parallelism:
+            if (not shard_config.parallel_output) or force_sp_output_gather or is_share_sp_tp(sp_mode):
+                hidden_states = gather_sp_output(hidden_states, shard_config)
+        return BaseModelOutputWithPast(
+            last_hidden_state=hidden_states,
+            past_key_values=past_key_values if use_cache else None,
+        )
+
+    return forward
+
+
+def get_lm_forward_with_dist_cross_entropy(shard_config: ShardConfig):
+    def forward(
+        self: Qwen2ForCausalLM,
+        input_ids: torch.LongTensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[Cache] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
+        **kwargs,
+    ) -> Union[Tuple, CausalLMOutputWithPast]:
+        r"""
+        Args:
+            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
+                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
+                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
+
+        Returns:
+
+        Example:
+
+        ```python
+        >>> from transformers import AutoTokenizer, Qwen2ForCausalLM
+
+        >>> model = Qwen2ForCausalLM.from_pretrained(PATH_TO_CONVERTED_WEIGHTS)
+        >>> tokenizer = AutoTokenizer.from_pretrained(PATH_TO_CONVERTED_TOKENIZER)
+
+        >>> prompt = "Hey, are you conscious? Can you talk to me?"
+        >>> inputs = tokenizer(prompt, return_tensors="pt")
+
+        >>> # Generate
+        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
+        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        "Hey, are you conscious? Can you talk to me?\nI'm not conscious, but I can talk to you."
+        ```"""
+
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.return_dict
+
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        outputs = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=past_key_values,
+            inputs_embeds=inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            force_sp_output_gather=False,
+            **kwargs,
+        )
+
+        hidden_states = outputs[0]
+        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+        logits = self.lm_head(hidden_states[:, slice_indices, :])
+        logits = logits.float()
+        loss = None
+        if labels is not None:
+            loss = dist_cross_entropy(labels, logits, shard_config, self.lm_head.out_features, logits.dtype)
+        if not return_dict:
+            output = (logits,) + outputs[1:]
+            return (loss,) + output if loss is not None else output
+
+        return CausalLMOutputWithPast(
+            loss=loss,
+            logits=logits,
+            past_key_values=outputs.past_key_values,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+    return forward

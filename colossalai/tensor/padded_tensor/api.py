@@ -44,11 +44,12 @@ def _hijack_back_detach_and_clone(ptensor: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The hijacked tensor.
     """
-    ptensor.detach = ptensor._unpad_detach
-    ptensor.clone = ptensor._unpad_clone
-
-    delattr(ptensor, "_unpad_detach")
-    delattr(ptensor, "_unpad_clone")
+    if hasattr(ptensor, "_unpad_detach"):
+        ptensor.detach = ptensor._unpad_detach
+        delattr(ptensor, "_unpad_detach")
+    if hasattr(ptensor, "_unpad_clone"):
+        ptensor.clone = ptensor._unpad_clone
+        delattr(ptensor, "_unpad_clone")
 
     return ptensor
 

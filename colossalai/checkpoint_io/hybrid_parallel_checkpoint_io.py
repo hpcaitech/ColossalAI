@@ -56,6 +56,53 @@ except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
 
+def _route_padded_parameter_aliases(model: nn.Module, state_dict: Dict[str, torch.Tensor]) -> None:
+    """Route shared padded weights only through padding-aware module loaders."""
+    from colossalai.shardformer.layer.parallel_module import PaddingParallelModule
+
+    modules = dict(model.named_modules(remove_duplicate=False))
+    aliases = defaultdict(lambda: {"managed": [], "regular": []})
+    for name, param in model.named_parameters(remove_duplicate=False):
+        if not is_padded_tensor(param):
+            continue
+        module_name, _, _ = name.rpartition(".")
+        module = modules[module_name]
+        managed = isinstance(module, PaddingParallelModule)
+        aliases[id(param)]["managed" if managed else "regular"].append(name)
+        aliases[id(param)]["parameter"] = param
+    routes = []
+    for names in aliases.values():
+        if not names["managed"] or not names["regular"]:
+            continue
+        present = [name for name in names["managed"] + names["regular"] if name in state_dict]
+        if not present:
+            continue
+        parameter = names["parameter"]
+
+        def logical_value(value):
+            dim = parameter._padding_dim
+            if value.shape[dim] == parameter._current_length:
+                padding = value.narrow(
+                    dim, parameter._origin_length, parameter._current_length - parameter._origin_length
+                )
+                if torch.count_nonzero(padding):
+                    raise ValueError(f"Nonzero padding in checkpoint aliases: {present}")
+                return value.narrow(dim, 0, parameter._origin_length)
+            return value
+
+        value = logical_value(state_dict[present[0]])
+        for name in present[1:]:
+            other = logical_value(state_dict[name])
+            if value.shape != other.shape or not torch.equal(value, other):
+                raise ValueError(f"Conflicting checkpoint values for shared padded aliases: {present}")
+        routes.append((names, value))
+    for names, value in routes:
+        for name in names["managed"]:
+            state_dict[name] = value
+        for name in names["regular"]:
+            state_dict.pop(name, None)
+
+
 class HybridParallelCheckpointIO(GeneralCheckpointIO):
     """
     CheckpointIO for Hybrid Parallel Training.
@@ -851,6 +898,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # has been implemented by _load_from_state_dict method of ParallelModule in Shardformer,
         # model.load_state_dict can be directly called.
         state_dict = load_state_dict(checkpoint)
+        _route_padded_parameter_aliases(model, state_dict)
         if not low_cpu_mem_mode:
             state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
         model.load_state_dict(state_dict, strict=strict)

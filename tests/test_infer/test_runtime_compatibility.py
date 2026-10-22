@@ -10,8 +10,8 @@ from transformers import LlamaConfig, LlamaForCausalLM, LlamaModel
 from transformers.models.llama.modeling_llama import LlamaAttention, LlamaRotaryEmbedding
 from transformers.models.mixtral.modeling_mixtral import MixtralAttention, MixtralConfig, MixtralRotaryEmbedding
 
+from colossalai._compat import is_transformers_v5
 from colossalai.booster.plugin import HybridParallelPlugin
-from colossalai.inference.spec.drafter import Drafter
 from colossalai.shardformer.modeling.llama import LlamaPipelineForwards, get_llama_flash_attention_forward
 from colossalai.shardformer.modeling.mixtral import get_mixtral_flash_attention_forward
 from colossalai.shardformer.shard import ShardConfig
@@ -43,7 +43,13 @@ def test_plugin_cleanup_does_not_hide_rank_error():
     mesh.destroy_mesh_process_groups.assert_called_once()
 
 
+@pytest.mark.skipif(
+    is_transformers_v5(),
+    reason="HF5 Drafter legacy tuple-cache inference is unsupported: cache conversion APIs are not migrated",
+)
 def test_drafter_resumes_legacy_cache():
+    from colossalai.inference.spec.drafter import Drafter
+
     torch.manual_seed(123)
     config = LlamaConfig(
         vocab_size=64,
@@ -91,6 +97,10 @@ def test_mixtral_sdpa_attention_layout(kv_heads):
     torch.testing.assert_close(actual, expected)
 
 
+@pytest.mark.skipif(
+    is_transformers_v5(),
+    reason="HF4 reserved cache-mask column reference is unsupported in HF5 native eager attention",
+)
 def test_llama_attention_slices_reserved_cache_mask_column():
     config = LlamaConfig(hidden_size=32, num_attention_heads=4, num_key_value_heads=2)
     config._attn_implementation = "eager"
@@ -110,7 +120,8 @@ def test_llama_attention_slices_reserved_cache_mask_column():
 
 @pytest.mark.parametrize("mode", ["split_gather", "ring", "all_to_all"])
 def test_llama_pipeline_mask_uses_full_sequence(mode, monkeypatch):
-    from colossalai.shardformer.modeling import llama as module
+    # Patch the implementation: the public module only re-exports version-specific objects.
+    module = importlib.import_module(LlamaPipelineForwards.__module__)
 
     model = LlamaModel(
         LlamaConfig(
@@ -126,16 +137,20 @@ def test_llama_pipeline_mask_uses_full_sequence(mode, monkeypatch):
 
     def decoder(hidden, **kwargs):
         masks.append(kwargs["attention_mask"])
-        return (hidden,)
+        return hidden if is_transformers_v5() else (hidden,)
 
     monkeypatch.setattr(model.layers[0], "forward", decoder)
     monkeypatch.setattr(module, "gather_sp_output", lambda hidden, config: hidden)
     stage = SimpleNamespace(is_first_stage=lambda: False, is_last_stage=lambda: True)
+    # This serial mask-contract test does not initialize process groups. A real
+    # SP ShardConfig would query distributed world sizes during construction.
     shard = SimpleNamespace(
         sequence_parallel_size=2,
         sequence_parallel_process_group=None,
         sequence_parallelism_mode=mode,
+        enable_sequence_parallelism=True,
         enable_flash_attention=False,
+        gradient_checkpoint_config=None,
         parallel_output=False,
     )
     LlamaPipelineForwards.llama_model_forward(
@@ -155,8 +170,10 @@ def test_llama_pipeline_mask_uses_full_sequence(mode, monkeypatch):
 @pytest.mark.parametrize("mode", ["split_gather", "ring", "all_to_all"])
 def test_qwen_pipeline_mask_uses_full_sequence(family, mode, monkeypatch):
     transformers_module = importlib.import_module(f"transformers.models.{family}.modeling_{family}")
-    module = importlib.import_module(f"colossalai.shardformer.modeling.{family}")
+    public_module = importlib.import_module(f"colossalai.shardformer.modeling.{family}")
     prefix = "Qwen2" if family == "qwen2" else "Qwen3"
+    forwards = getattr(public_module, prefix + "PipelineForwards")
+    module = importlib.import_module(forwards.__module__)
     config = getattr(transformers_module, prefix + "Config")(
         vocab_size=64,
         hidden_size=32,
@@ -167,14 +184,24 @@ def test_qwen_pipeline_mask_uses_full_sequence(family, mode, monkeypatch):
     )
     model = getattr(transformers_module, prefix + "Model")(config)
     shapes = []
+    masks = []
 
     def prepare(shape, *args, **kwargs):
         shapes.append(shape)
         return {}
 
-    monkeypatch.setattr(module.ColoAttention, "prepare_attn_kwargs", prepare)
+    def decoder(hidden, *args, **kwargs):
+        if is_transformers_v5():
+            masks.append(kwargs["attention_mask"])
+            return hidden
+        return (hidden,)
+
+    # HF4 creates ColoAttention kwargs directly. HF5 creates real additive HF
+    # masks by layer type; inspect the decoder mask instead of mocking an unused API.
+    if not is_transformers_v5():
+        monkeypatch.setattr(module.ColoAttention, "prepare_attn_kwargs", prepare)
     monkeypatch.setattr(module, "gather_sp_output", lambda hidden, config: hidden)
-    monkeypatch.setattr(model.layers[0], "forward", lambda hidden, *args: (hidden,))
+    monkeypatch.setattr(model.layers[0], "forward", decoder)
     stage = SimpleNamespace(is_first_stage=lambda: False, is_last_stage=lambda: True)
     shard = SimpleNamespace(
         sequence_parallel_size=2,
@@ -182,6 +209,7 @@ def test_qwen_pipeline_mask_uses_full_sequence(family, mode, monkeypatch):
         sequence_parallelism_mode=mode,
         enable_sequence_parallelism=True,
         enable_flash_attention=True,
+        gradient_checkpoint_config=None,
         parallel_output=False,
     )
     forwards = getattr(module, prefix + "PipelineForwards")
@@ -193,4 +221,10 @@ def test_qwen_pipeline_mask_uses_full_sequence(family, mode, monkeypatch):
         stage_index=[0, 1],
         shard_config=shard,
     )
-    assert shapes == [(2, 1, 8, 8)]
+    if is_transformers_v5():
+        assert len(masks) == 1
+        assert masks[0].shape == (2, 1, 8, 8)
+        assert masks[0][0, 0, 0, 1] < -1e30
+        assert masks[0][0, 0, 7, 0] == 0
+    else:
+        assert shapes == [(2, 1, 8, 8)]

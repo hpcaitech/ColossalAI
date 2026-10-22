@@ -20,24 +20,25 @@ HIDDEN_SIZE = 8
 NUM_EXPERTS = 8
 
 
+@parameterize("tp_size", [1, 2])
 @parameterize("ep_size", [2, 4])
 @parameterize("moe_only", [True, False])
-def run_grad_norm(ep_size: int, moe_only: bool):
+def run_grad_norm(tp_size: int, ep_size: int, moe_only: bool):
     """The ZeRO grad norm must be the norm of the whole gradient and equal on every rank.
 
     Dense and expert grads live in two ZeRO stores, and every EP rank holds different experts, so the norm has to
     combine both stores and all EP ranks. Training only the MoE blocks makes experts carry most of the norm, as in a
     real MoE model; training everything mixes dense and expert grads. Routing is random, so every expert is used on
-    every moe_dp replica and the moe_dp scaling of #6464 cannot interfere.
+    every moe_dp replica and the moe_dp scaling of #6464 cannot interfere. With tp, the norm must also count the
+    tp-split params (fused MoE experts in transformers v5 are customized distributed tensors) on every tp rank.
     """
-    if dist.get_world_size() % ep_size != 0:
+    if dist.get_world_size() % (ep_size * tp_size) != 0:
         return
     dtype = torch.bfloat16
-    rank = dist.get_rank()
 
     plugin = MoeHybridParallelPlugin(
         pp_size=1,
-        tp_size=1,
+        tp_size=tp_size,
         ep_size=ep_size,
         zero_stage=1,
         precision="bf16",
@@ -57,31 +58,35 @@ def run_grad_norm(ep_size: int, moe_only: bool):
     )
     torch_model = MixtralModel(config).to(dtype).cuda()
     for name, param in torch_model.named_parameters():
-        param.requires_grad_(not moe_only or "block_sparse_moe" in name)
+        # transformers v5 renamed `block_sparse_moe` to `mlp`
+        param.requires_grad_(not moe_only or "block_sparse_moe" in name or ".mlp." in name)
 
-    # single-GPU reference: same weights in fp32 on the concatenation of every rank's batch (= global mean loss)
+    # single-GPU reference: same weights in fp32 on the concatenation of every data replica's batch (= global mean loss)
     single_model = deepcopy(torch_model).float()
     zero_model = deepcopy(torch_model)
     zero_optimizer = torch.optim.SGD(zero_model.parameters(), lr=0.0)
     zero_model, zero_optimizer, _, _, _ = booster.boost(zero_model, zero_optimizer)
 
-    seed_all(1453 + rank)
+    # ranks of one tp group must see the same batch
+    seed_all(1453 + dist.get_rank(plugin.dp_group))
     input_data = torch.rand(8, 16, HIDDEN_SIZE).cuda().to(dtype)
     zero_optimizer.backward(zero_model(inputs_embeds=input_data).last_hidden_state.mean())
     zero_optimizer.step()  # lr = 0: nothing moves, but this computes the norm used for clipping
     zero_norm = zero_optimizer.get_grad_norm()
 
-    all_inputs = [torch.empty_like(input_data) for _ in range(dist.get_world_size())]
-    dist.all_gather(all_inputs, input_data)
+    all_inputs = [torch.empty_like(input_data) for _ in range(dist.get_world_size(plugin.dp_group))]
+    dist.all_gather(all_inputs, input_data, group=plugin.dp_group)
     single_model(inputs_embeds=torch.cat(all_inputs).float()).last_hidden_state.mean().backward()
     grads = [p.grad.double() for p in single_model.parameters() if p.grad is not None]
     ref_norm = sum(g.pow(2).sum() for g in grads).sqrt().item()
 
     norms = [None] * dist.get_world_size()
     dist.all_gather_object(norms, zero_norm)
-    assert len(set(norms)) == 1, f"ep_size={ep_size} moe_only={moe_only}: grad norm differs across ranks: {norms}"
+    assert (
+        len(set(norms)) == 1
+    ), f"tp_size={tp_size} ep_size={ep_size} moe_only={moe_only}: grad norm differs across ranks: {norms}"
     assert abs(zero_norm - ref_norm) <= NORM_RTOL * ref_norm, (
-        f"ep_size={ep_size} moe_only={moe_only}: ZeRO grad norm {zero_norm:.6g}, reference {ref_norm:.6g}, "
+        f"tp_size={tp_size} ep_size={ep_size} moe_only={moe_only}: ZeRO grad norm {zero_norm:.6g}, reference {ref_norm:.6g}, "
         f"ratio {zero_norm / ref_norm:.4f}"
     )
 

@@ -292,14 +292,24 @@ class GeneralCheckpointIO(CheckpointIO):
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         missing_keys = []
+        loaded_keys = set()
 
         for state_dict in load_state_dict_shards(checkpoint_files, False, use_safetensors, low_cpu_mem_mode):
+            loaded_keys.update(state_dict)
             if not low_cpu_mem_mode:
                 state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
             load_state_dict_into_model(model, state_dict, missing_keys, strict, load_sub_module)
 
         if strict:
             remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
+            # Safetensors may store only one name of a tied Parameter. A
+            # missing alias is satisfied only by a loaded name of that object.
+            aliases = {}
+            for name, parameter in model.named_parameters(remove_duplicate=False):
+                aliases.setdefault(id(parameter), set()).add(name)
+            for names in aliases.values():
+                if names & loaded_keys:
+                    remain_keys.difference_update(names)
             if len(remain_keys) > 0:
                 error_msgs = [
                     "Missing key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in remain_keys))

@@ -180,6 +180,13 @@ _POLICY_LIST = {
     "transformers_modules.modeling_deepseek.DeepseekV3ForCausalLM": PolicyLocation(
         file_name="deepseek_v3", class_name="DeepseekV3ForCausalLMPolicy"
     ),
+    # HF5 native DeepSeek-V3; legacy remote-code registrations remain distinct.
+    "transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3Model": PolicyLocation(
+        file_name="deepseek_v3", class_name="DeepseekV3ModelPolicy"
+    ),
+    "transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM": PolicyLocation(
+        file_name="deepseek_v3", class_name="DeepseekV3ForCausalLMPolicy"
+    ),
     # Falcon
     "transformers.models.falcon.modeling_falcon.FalconModel": PolicyLocation(
         file_name="falcon", class_name="FalconModelPolicy"
@@ -250,6 +257,9 @@ def import_policy(policy_location: PolicyLocation) -> Policy:
     """
     Dynamically import a Policy class based on the policy location.
     """
+    from .._utils import check_hf5_policy
+
+    check_hf5_policy(policy_location.file_name)
     module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
     module = importlib.import_module(module_name)
     return getattr(module, policy_location.class_name)

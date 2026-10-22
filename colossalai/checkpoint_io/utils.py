@@ -568,8 +568,10 @@ def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = T
         checkpoint_path (str): Path to the checkpoint directory.
         is_master (bool): Whether current rank is main process.
     """
+    # `get_parameter_dtype` was removed in Transformers v5; importing it here made this function return
+    # silently, so sharded checkpoints lost config.json. `PreTrainedModel.dtype` exists in v4 and v5.
     try:
-        from transformers.modeling_utils import PreTrainedModel, get_parameter_dtype
+        from transformers.modeling_utils import PreTrainedModel
         from transformers.modeling_utils import unwrap_model as unwrap_huggingface_model
     except ImportError:
         return
@@ -581,8 +583,12 @@ def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = T
     model = unwrap_huggingface_model(model)
 
     # save the string version of dtype to the config, e.g. convert torch.float32 => "float32"
-    dtype = get_parameter_dtype(model)
-    model.config.torch_dtype = str(dtype).split(".")[1]
+    dtype_name = str(model.dtype).split(".")[1]
+    # v5 renamed `config.torch_dtype` to `config.dtype` and keeps the old name as a deprecated property.
+    if isinstance(getattr(type(model.config), "torch_dtype", None), property):
+        model.config.dtype = dtype_name
+    else:
+        model.config.torch_dtype = dtype_name
 
     # Attach architecture to the config
     model.config.architectures = [model.__class__.__name__]

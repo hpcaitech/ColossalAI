@@ -7,6 +7,7 @@ import torch.distributed as dist
 from torch.testing import assert_close
 
 import colossalai
+from colossalai._compat import is_transformers_v5
 from colossalai.logging import disable_existing_loggers
 from colossalai.pipeline.schedule.v_schedule import PipelineGraph
 from colossalai.shardformer import PipelineGradientCheckpointConfig
@@ -28,6 +29,71 @@ from tests.test_shardformer.test_model._utils import (
 HAS_FLASH_ATTN = importlib.util.find_spec("flash_attn") is not None
 
 os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "true"
+
+
+@pytest.mark.skipif(not is_transformers_v5(), reason="`create_causal_mask` is only used by the v5 implementation")
+def test_llama_pp_all_to_all_causal_mask_uses_full_query_length():
+    from transformers.masking_utils import create_causal_mask
+    from transformers.models.llama.configuration_llama import LlamaConfig
+
+    from colossalai.shardformer.modeling.llama import _get_causal_mask_input_embeddings
+
+    hidden_states = torch.empty(4, 2, 8)
+    assert _get_causal_mask_input_embeddings(hidden_states, query_length=2, sequence_is_sharded=True) is hidden_states
+    assert _get_causal_mask_input_embeddings(hidden_states, query_length=4, sequence_is_sharded=False) is hidden_states
+    mask_inputs_embeds = _get_causal_mask_input_embeddings(hidden_states, query_length=4, sequence_is_sharded=True)
+    assert mask_inputs_embeds.shape == (4, 4, 8)
+    assert mask_inputs_embeds.stride(1) == 0
+    assert mask_inputs_embeds.untyped_storage().data_ptr() == hidden_states.untyped_storage().data_ptr()
+
+    config = LlamaConfig()
+    config._attn_implementation = "eager"
+    position_ids = torch.arange(4).unsqueeze(0).expand(4, -1)
+    mask = create_causal_mask(
+        config=config,
+        inputs_embeds=mask_inputs_embeds,
+        attention_mask=None,
+        past_key_values=None,
+        position_ids=position_ids,
+        allow_is_causal_skip=False,
+    )
+    assert mask is not None and mask.shape == (4, 1, 4, 4)
+
+
+@pytest.mark.skipif(not is_transformers_v5(), reason="`create_causal_mask` is only used by the v5 implementation")
+@pytest.mark.parametrize("attn_implementation", ["sdpa", "flash_attention_2", "flex_attention"])
+def test_llama_explicit_softmax_mask_is_additive(attn_implementation):
+    from transformers.masking_utils import create_causal_mask
+    from transformers.models.llama.configuration_llama import LlamaConfig
+
+    from colossalai.shardformer.modeling.llama import _EagerMaskConfig
+
+    # Under these implementations `create_causal_mask` returns a boolean mask, None / a 2D padding
+    # mask, or a BlockMask; the explicit-softmax attention needs an additive float mask instead.
+    config = LlamaConfig(num_hidden_layers=1, hidden_size=32, intermediate_size=64, num_attention_heads=4)
+    config._attn_implementation = attn_implementation
+    mask_config = _EagerMaskConfig(config)
+    assert mask_config._attn_implementation == "eager"
+    assert config._attn_implementation == attn_implementation
+    # Every other field is read from the live config, so later changes are seen at once.
+    config.num_attention_heads = 8
+    assert mask_config.num_attention_heads == 8
+    config.num_attention_heads = 4
+
+    future = torch.ones(4, 4, dtype=torch.bool).triu(1)
+    for attention_mask in (torch.ones(2, 4, dtype=torch.long), torch.tensor([[1, 1, 1, 0], [1, 1, 1, 1]])):
+        mask = create_causal_mask(
+            config=mask_config,
+            inputs_embeds=torch.empty(2, 4, 32, dtype=torch.float16),
+            attention_mask=attention_mask,
+            past_key_values=None,
+            position_ids=torch.arange(4).unsqueeze(0).expand(2, -1),
+            allow_is_causal_skip=False,
+        )
+        assert mask.dtype == torch.float16 and mask.shape == (2, 1, 4, 4)
+        assert (mask[:, :, future] == torch.finfo(torch.float16).min).all()
+    assert (mask[0, 0, :, 3] == torch.finfo(torch.float16).min).all()  # the padded key
+    assert (mask[1, :, ~future] == 0).all()
 
 
 def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, test_config):
@@ -228,6 +294,49 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
             "precision": "fp16",
             "initial_scale": 1,
         },
+        # SP + PP without flash attention: later stages build the eager causal mask from a sequence shard.
+        # v5 only: the v4 implementation (`_llama_tf4`, upstream as-is) builds that mask from the shard
+        # length and fails there with a 12 vs 24 size mismatch, leaving the other stage blocked in P2P.
+        *(
+            [
+                {  # Ulysess + PP
+                    "tp_size": 1,
+                    "pp_size": 2,
+                    "sp_size": 2,
+                    "num_microbatches": 2,
+                    "enable_sequence_parallelism": True,
+                    "sequence_parallelism_mode": "all_to_all",
+                    "use_lazy_init": False,
+                    "zero_stage": 1,
+                    "precision": "fp16",
+                    "initial_scale": 1,
+                },
+                {  # split_gather + PP
+                    "tp_size": 2,
+                    "pp_size": 2,
+                    "num_microbatches": 2,
+                    "enable_sequence_parallelism": True,
+                    "sequence_parallelism_mode": "split_gather",
+                    "use_lazy_init": False,
+                    "zero_stage": 0,
+                    "precision": "fp32",
+                    "initial_scale": 1,
+                },
+                {  # ring + PP; zero_stage 0 so that the weight gradients are checked
+                    "tp_size": 2,
+                    "pp_size": 2,
+                    "num_microbatches": 2,
+                    "enable_sequence_parallelism": True,
+                    "sequence_parallelism_mode": "ring",
+                    "use_lazy_init": False,
+                    "zero_stage": 0,
+                    "precision": "fp32",
+                    "initial_scale": 1,
+                },
+            ]
+            if is_transformers_v5()
+            else []
+        ),
         {
             "tp_size": 2,
             "pp_size": 1,

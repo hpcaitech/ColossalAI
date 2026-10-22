@@ -40,7 +40,7 @@ from colossalai.shardformer.layer.utils import SeqParallelUtils, is_share_sp_tp
 from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE
 from colossalai.tensor.colo_parameter import ColoParameter
-from colossalai.tensor.d_tensor.api import is_distributed_tensor
+from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
@@ -54,6 +54,12 @@ def _convert_floating_point(x, dtype: torch.dtype = torch.float16):
     if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
         return x.to(dtype)
     return x
+
+
+def _is_tp_split(param: Tensor) -> bool:
+    """Whether ``param`` is split across the tp group: a distributed tensor with a layout, or a customized one that
+    keeps its own shard / gather functions (e.g. fused QKV or fused MoE experts)."""
+    return is_distributed_tensor(param) or is_customized_distributed_tensor(param)
 
 
 class HybridParallelModule(ModelWrapper, AMPModelMixin):
@@ -424,7 +430,7 @@ class HybridParallelNaiveOptimizer(OptimizerWrapper):
                 # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
                 if self.tp_size > 1:
                     param_for_grad = grad_to_param_mapping[id(grad)]
-                    if not is_distributed_tensor(param_for_grad):
+                    if not _is_tp_split(param_for_grad):
                         grad_norm_exponentiated /= self.tp_size
 
                 # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
@@ -630,7 +636,7 @@ class HybridParallelAMPOptimizer(MixedPrecisionOptimizer):
                 # To ensure mathematical equivalence, we divide the 'grad_norm' by 'tp_size.'
                 if self.tp_size > 1:
                     param_for_grad = grad_to_param_mapping[id(grad)]
-                    if not is_distributed_tensor(param_for_grad):
+                    if not _is_tp_split(param_for_grad):
                         grad_norm_exponentiated /= self.tp_size
 
                 # If 'pp_size' is greater than 1 and the gradient belongs to shared parameters,
@@ -854,7 +860,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         # a parameter not split by tp is replicated on every tp rank: each copy counts 1 / tp_size
         if self.tp_pg is not None and get_world_size(self.tp_pg) > 1:
             param_for_grad = ctypes.cast(self.get_param_id_for_grad(grad), ctypes.py_object).value
-            if not is_distributed_tensor(param_for_grad):
+            if not _is_tp_split(param_for_grad):
                 weight /= get_world_size(self.tp_pg)
         # a parameter shared by several pipeline stages (e.g. tied embeddings) counts 1 / num_stages per stage
         if self.pp_pg is not None and get_world_size(self.pp_pg) > 1:

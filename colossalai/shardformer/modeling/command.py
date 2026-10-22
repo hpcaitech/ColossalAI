@@ -2,14 +2,13 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from transformers.cache_utils import Cache, DynamicCache
+from transformers.cache_utils import Cache, DynamicCache, StaticCache
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
 from transformers.models.cohere.modeling_cohere import (
     CohereAttention,
     CohereForCausalLM,
     CohereModel,
-    StaticCache,
     apply_rotary_pos_emb,
     repeat_kv,
 )

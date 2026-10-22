@@ -1,0 +1,9 @@
+# Conda bootstrap ONLY; follow the pip installation steps in HF5-ENVIRONMENT.md.
+# No macOS build strings or local prefix. Linux resolution is not yet verified.
+name: colossalai-hf5-gpu
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11.16
+  - pip
