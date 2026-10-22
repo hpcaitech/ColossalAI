@@ -43,12 +43,13 @@ RUN --mount=type=bind,source=docker/torch213/wheelhouse,target=/wheelhouse,reado
 # resurrect their old .dist-info entries alongside the locked versions.
 FROM dependencies AS ci
 ARG SOURCE_COMMIT=unknown
-LABEL org.opencontainers.image.title="ColossalAI Torch 2.13 CI dependencies" \
+LABEL org.opencontainers.image.title="ColossalAI Torch 2.13 / Transformers 5.17 CI dependencies" \
     org.opencontainers.image.source="https://github.com/hpcaitech/ColossalAI" \
     org.opencontainers.image.revision="${SOURCE_COMMIT}"
 COPY docker/torch213/requirements*.lock docker/torch213/verify_image.py \
     docker/torch213/Dockerfile docker/torch213/Dockerfile.dockerignore /opt/ci/
 WORKDIR /workspace
-# This checks metadata, imports and CPU operations; CUDA remains hidden.
-RUN NVIDIA_VISIBLE_DEVICES=void CUDA_VISIBLE_DEVICES="" python /opt/ci/verify_image.py
+# Check metadata, CPU operations and tiny LoRA training without GPU/model downloads.
+RUN NVIDIA_VISIBLE_DEVICES=void CUDA_VISIBLE_DEVICES="" \
+    HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python /opt/ci/verify_image.py
 CMD ["/bin/bash"]

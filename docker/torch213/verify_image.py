@@ -12,6 +12,68 @@ from packaging.requirements import Requirement
 from packaging.version import Version
 
 
+def verify_transformers_peft():
+    """Exercise offline CPU LoRA training, not just the packages' lazy imports."""
+    import torch
+    from peft import LoraConfig, get_peft_model
+    from transformers import LlamaConfig, LlamaForCausalLM
+
+    previous_threads = torch.get_num_threads()
+    try:
+        torch.set_num_threads(2)
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(42)
+            config = LlamaConfig(
+                vocab_size=64,
+                hidden_size=32,
+                intermediate_size=64,
+                num_hidden_layers=2,
+                num_attention_heads=4,
+                num_key_value_heads=2,
+                max_position_embeddings=64,
+                attn_implementation="eager",
+                use_cache=False,
+            )
+            model = get_peft_model(
+                LlamaForCausalLM(config).to(device="cpu", dtype=torch.float32),
+                LoraConfig(task_type="CAUSAL_LM", r=4, lora_alpha=8, target_modules=["q_proj", "v_proj"]),
+            )
+            model.train()
+            trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
+            assert trainable, "LoRA has no trainable parameters"
+            assert all(parameter.device.type == "cpu" for parameter in model.parameters())
+            before = [parameter.detach().clone() for parameter in trainable]
+            optimizer = torch.optim.AdamW(trainable, lr=1e-3)
+            tokens = torch.randint(0, config.vocab_size, (2, 16), device="cpu")
+            losses = []
+            for _ in range(2):
+                optimizer.zero_grad(set_to_none=True)
+                loss = model(input_ids=tokens, labels=tokens).loss
+                assert torch.isfinite(loss), "LoRA loss is not finite"
+                loss.backward()
+                gradients = [parameter.grad for parameter in trainable]
+                assert all(gradient is not None and torch.isfinite(gradient).all() for gradient in gradients)
+                assert any(
+                    torch.count_nonzero(gradient).item() for gradient in gradients
+                ), "LoRA gradients are all zero"
+                optimizer.step()
+                losses.append(loss.item())
+            assert any(not torch.equal(old, new) for old, new in zip(before, trainable)), "LoRA weights did not update"
+            return {"device": "cpu", "steps": len(losses), "losses": losses}
+    finally:
+        torch.set_num_threads(previous_threads)
+
+
+def verify_diffusers_pipelines():
+    """Resolve lazy pipeline imports used by ColossalAI, without downloading models."""
+    import diffusers
+
+    pipelines = ("DiffusionPipeline", "PixArtAlphaPipeline", "StableDiffusion3Pipeline")
+    for name in pipelines:
+        assert issubclass(getattr(diffusers, name), diffusers.DiffusionPipeline)
+    return list(pipelines)
+
+
 def main():
     assert sys.version_info[:2] == (3, 10), sys.version
     root = Path(__file__).resolve().parent
@@ -53,9 +115,22 @@ def main():
     assert torchvision.ops.nms(boxes, torch.tensor([0.9, 0.8]), 0.5).tolist() == [0]
     waveform = torch.zeros(1, 160)
     assert torchaudio.functional.resample(waveform, 16000, 8000).shape == (1, 80)
+    hf_smoke = verify_transformers_peft()
+    diffusion_imports = verify_diffusers_pipelines()
     # pytest --help loads installed entry points, including pytest-testmon.
     subprocess.run([sys.executable, "-m", "pytest", "--help"], check=True, stdout=subprocess.DEVNULL)
-    print(json.dumps({"python": sys.version, "torch_cuda": torch.version.cuda, "packages": versions}, indent=2))
+    print(
+        json.dumps(
+            {
+                "python": sys.version,
+                "torch_cuda": torch.version.cuda,
+                "packages": versions,
+                "hf_smoke": hf_smoke,
+                "diffusion_pipeline_imports": diffusion_imports,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
