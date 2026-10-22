@@ -1,5 +1,6 @@
 # a python safetensors serializer modified from https://github.com/huggingface/safetensors/blob/41bd1acf38ad28ac559522d40596c6c802f79453/safetensors/src/tensor.rs#L214
 import json
+import pickle
 import warnings
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple
@@ -20,7 +21,7 @@ except Exception:
 _TYPES_INV = {v: k for k, v in _TYPES.items()}
 import io
 
-from torch.distributed.distributed_c10d import _pickler, _unpickler
+from torch.distributed.distributed_c10d import _pickler
 
 ASYNC_WRITE_ENTRIES = 32
 
@@ -29,6 +30,51 @@ def _require_async_file_writer():
     if AsyncFileWriter is None:
         raise RuntimeError("Async checkpoint I/O requires TensorNVMe")
     return AsyncFileWriter
+
+
+class _RestrictedUnpickler(pickle.Unpickler):
+    """Unpickler for the non-tensor values stored by :func:`_flatten_optim_state_dict`.
+
+    Those values are plain optimizer data (``param_groups`` and non-tensor state
+    entries such as steps and hyperparameters). Only the small allow-list of
+    globals below may be referenced by the pickle stream; anything else -- for
+    example ``os.system`` referenced by a crafted checkpoint file -- is rejected
+    before it can execute. See issue #6471: previously the set of keys to unpickle
+    came from the checkpoint's own metadata and the unpickler was unrestricted,
+    so a malicious ``.safetensors`` optimizer checkpoint achieved arbitrary code
+    execution on load.
+    """
+
+    _ALLOWED_GLOBALS = {
+        ("builtins", "bytearray"),
+        ("builtins", "complex"),
+        ("builtins", "frozenset"),
+        ("builtins", "range"),
+        ("builtins", "set"),
+        ("builtins", "slice"),
+        ("collections", "Counter"),
+        ("collections", "OrderedDict"),
+        ("collections", "defaultdict"),
+        # Tensors nested inside a non-tensor container are rebuilt with the same
+        # constructors that torch.load(weights_only=True) permits.
+        ("torch", "Tensor"),
+        ("torch._utils", "_rebuild_meta_tensor_no_storage"),
+        ("torch._utils", "_rebuild_parameter"),
+        ("torch._utils", "_rebuild_parameter_with_state"),
+        ("torch._utils", "_rebuild_tensor"),
+        ("torch._utils", "_rebuild_tensor_v2"),
+        ("torch.storage", "TypedStorage"),
+        ("torch.storage", "UntypedStorage"),
+        ("torch.storage", "_load_from_bytes"),
+    }
+
+    def find_class(self, module, name):
+        if (module, name) in self._ALLOWED_GLOBALS:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(
+            f"global '{module}.{name}' is forbidden when loading optimizer checkpoints; "
+            "only plain data and tensors may be restored from non-tensor entries"
+        )
 
 
 def _object_to_tensor(obj, device):
@@ -45,7 +91,7 @@ def _object_to_tensor(obj, device):
 def _tensor_to_object(tensor, tensor_size):
     tensor = tensor.cpu()
     buf = tensor.numpy().tobytes()[:tensor_size]
-    return _unpickler(io.BytesIO(buf)).load()
+    return _RestrictedUnpickler(io.BytesIO(buf)).load()
 
 
 @dataclass
@@ -107,6 +153,15 @@ def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None
         non_tensor_keys = json.loads(metadata["non_tensor_keys"])
     else:
         non_tensor_keys = []
+    # The metadata comes from the checkpoint file itself, so only accept the key
+    # shapes _flatten_optim_state_dict() can produce: "param_groups" and
+    # "state<seperator><idx><seperator><field>".
+    for key in non_tensor_keys:
+        if key == "param_groups":
+            continue
+        parts = key.split(seperator)
+        if len(parts) != 3 or parts[0] != "state" or not parts[1].isdigit():
+            raise ValueError(f"invalid non-tensor key in checkpoint metadata: {key!r}")
     flat_dict = {k: _cast_to_object(v) if k in non_tensor_keys else v for k, v in flat_dict.items()}
     if "param_groups" in flat_dict:
         # 3-level dict
