@@ -6,14 +6,80 @@ import json
 import shutil
 import subprocess
 import sys
+from copy import deepcopy
+from datetime import timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from packaging.requirements import Requirement
 from packaging.version import Version
 
 
+def verify_lora_checkpoints(model, base_model, tokens):
+    """Check adapter reload and resumed updates, including the distributed PEFT path."""
+    import torch
+    import torch.distributed as dist
+    from peft import PeftModel, get_peft_model_state_dict
+
+    assert dist.is_available() and dist.is_gloo_available(), "CPU LoRA checkpoint checks require Gloo"
+    assert not dist.is_initialized(), "Run image validation outside an existing process group"
+    model.eval()
+    with torch.no_grad():
+        reference_logits = model(input_ids=tokens).logits
+    expected_adapter = get_peft_model_state_dict(model)
+    checked = []
+    with TemporaryDirectory(prefix="ci-lora-checkpoint-") as temporary:
+        for distributed in (False, True):
+            if distributed:
+                # PEFT 0.19.1 only takes the broken TP import path when a process
+                # group exists, even for a non-TP model. One CPU rank reproduces it.
+                dist.init_process_group(
+                    "gloo",
+                    init_method=Path(temporary, "rendezvous").as_uri(),
+                    rank=0,
+                    world_size=1,
+                    timeout=timedelta(seconds=30),
+                )
+            try:
+                for safe_serialization in (False, True):
+                    mode = f"{'gloo' if distributed else 'local'}-{'safetensors' if safe_serialization else 'bin'}"
+                    checkpoint = Path(temporary, mode)
+                    model.save_pretrained(checkpoint, safe_serialization=safe_serialization)
+                    expected_file = "adapter_model.safetensors" if safe_serialization else "adapter_model.bin"
+                    assert (checkpoint / expected_file).is_file(), f"Missing {mode} checkpoint"
+                    restored = PeftModel.from_pretrained(
+                        deepcopy(base_model), checkpoint, is_trainable=True, local_files_only=True
+                    )
+                    actual_adapter = get_peft_model_state_dict(restored)
+                    assert actual_adapter.keys() == expected_adapter.keys(), f"Adapter keys changed for {mode}"
+                    for name, expected in expected_adapter.items():
+                        torch.testing.assert_close(actual_adapter[name], expected, rtol=0, atol=0)
+                    restored.eval()
+                    with torch.no_grad():
+                        torch.testing.assert_close(restored(input_ids=tokens).logits, reference_logits)
+                    restored.train()
+                    trainable = [parameter for parameter in restored.parameters() if parameter.requires_grad]
+                    assert trainable, f"Reloaded {mode} adapter is not trainable"
+                    before = [parameter.detach().clone() for parameter in trainable]
+                    optimizer = torch.optim.AdamW(trainable, lr=1e-3)
+                    optimizer.zero_grad(set_to_none=True)
+                    loss = restored(input_ids=tokens, labels=tokens).loss
+                    assert torch.isfinite(loss), f"Non-finite resumed loss for {mode}"
+                    loss.backward()
+                    gradients = [parameter.grad for parameter in trainable]
+                    assert all(gradient is not None and torch.isfinite(gradient).all() for gradient in gradients)
+                    assert any(torch.count_nonzero(gradient).item() for gradient in gradients)
+                    optimizer.step()
+                    assert any(not torch.equal(old, new) for old, new in zip(before, trainable))
+                    checked.append(mode)
+            finally:
+                if distributed:
+                    dist.destroy_process_group()
+    return checked
+
+
 def verify_transformers_peft():
-    """Exercise offline CPU LoRA training, not just the packages' lazy imports."""
+    """Exercise offline CPU LoRA training, checkpoint reload and resumed training."""
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import LlamaConfig, LlamaForCausalLM
@@ -34,8 +100,9 @@ def verify_transformers_peft():
                 attn_implementation="eager",
                 use_cache=False,
             )
+            base_model = LlamaForCausalLM(config).to(device="cpu", dtype=torch.float32)
             model = get_peft_model(
-                LlamaForCausalLM(config).to(device="cpu", dtype=torch.float32),
+                deepcopy(base_model),
                 LoraConfig(task_type="CAUSAL_LM", r=4, lora_alpha=8, target_modules=["q_proj", "v_proj"]),
             )
             model.train()
@@ -59,7 +126,8 @@ def verify_transformers_peft():
                 optimizer.step()
                 losses.append(loss.item())
             assert any(not torch.equal(old, new) for old, new in zip(before, trainable)), "LoRA weights did not update"
-            return {"device": "cpu", "steps": len(losses), "losses": losses}
+            checkpoints = verify_lora_checkpoints(model, base_model, tokens)
+            return {"device": "cpu", "steps": len(losses), "losses": losses, "checkpoint_checks": checkpoints}
     finally:
         torch.set_num_threads(previous_threads)
 

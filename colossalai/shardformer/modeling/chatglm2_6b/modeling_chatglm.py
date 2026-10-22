@@ -1004,7 +1004,9 @@ class ChatGLMForConditionalGeneration(ChatGLMPreTrainedModel):
     def __init__(self, config: ChatGLMConfig, empty_init=True, device=None):
         super().__init__(config)
 
-        self.max_sequence_length = config.max_length
+        # Transformers 5 no longer supplies generation defaults on PretrainedConfig.
+        # Preserve an explicit legacy value, otherwise use ChatGLM's context length.
+        self.max_sequence_length = getattr(config, "max_length", config.seq_length)
         self.transformer = ChatGLMModel(config, empty_init=empty_init, device=device)
         self.config = config
         self.quantized = False

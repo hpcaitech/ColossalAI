@@ -16,7 +16,7 @@ sentencepiece
 google
 protobuf
 transformers==5.17.0
-peft==0.19.1
+peft==0.21.2
 bitsandbytes>=0.39.0
 rpyc==6.0.0
 fastapi

@@ -30,6 +30,7 @@ class ChatGLMConfig(PretrainedConfig):
         quantization_bit=0,
         pre_seq_len=None,
         prefix_projection=False,
+        use_cache=True,
         **kwargs,
     ):
         self.num_layers = num_layers
@@ -58,3 +59,6 @@ class ChatGLMConfig(PretrainedConfig):
         self.pre_seq_len = pre_seq_len
         self.prefix_projection = prefix_projection
         super().__init__(**kwargs)
+        # Transformers 5 no longer preserves this generation option from kwargs.
+        # It is also part of ChatGLM's forward contract, so own it explicitly.
+        self.use_cache = use_cache

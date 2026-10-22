@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.title="ColossalAI Torch 2.13 / Transformers 5.17 
 COPY docker/torch213/requirements*.lock docker/torch213/verify_image.py \
     docker/torch213/Dockerfile docker/torch213/Dockerfile.dockerignore /opt/ci/
 WORKDIR /workspace
-# Check metadata, CPU operations and tiny LoRA training without GPU/model downloads.
+# Check metadata, CPU operations and LoRA train/save/reload without GPU/model downloads.
 RUN NVIDIA_VISIBLE_DEVICES=void CUDA_VISIBLE_DEVICES="" \
     HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python /opt/ci/verify_image.py
 CMD ["/bin/bash"]

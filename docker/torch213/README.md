@@ -21,7 +21,7 @@ and actual container/GPU qualification are separate acceptance steps.
 | torchvision | 0.28.0+cu130 |
 | torchaudio | 2.11.0+cu130 (existing development artifact; see below) |
 | Triton | 3.7.1 |
-| Transformers / PEFT | 5.17.0 / 0.19.1 |
+| Transformers / PEFT | 5.17.0 / 0.21.2 |
 | Hugging Face Hub / Tokenizers | 1.5.0 / 0.23.1 |
 | Diffusers | 0.35.2 |
 | pytest / pytest-testmon | 7.4.4 / 2.2.0 |
@@ -59,10 +59,19 @@ The library permits `torch>=2.5,<2.14`, matching Transformers 5.17's minimum Tor
 requirement and retaining the 2.5.1 CPU baseline. That
 installation range is distinct from this exact GPU profile and does not imply
 that every intermediate Torch/CUDA combination has been tested. Transformers and
-PEFT are pinned to 5.17.0 and 0.19.1 respectively. The image verifier runs two
+PEFT are pinned to 5.17.0 and 0.21.2 respectively. The image verifier runs two
 offline CPU optimizer steps on a tiny Llama with LoRA, checking finite losses,
-finite nonzero gradients and actual adapter updates. This is a dependency smoke
-check, not a substitute for ColossalAI's GPU/distributed regressions. On Torch
+finite nonzero gradients and actual adapter updates. It then saves and reloads
+both `.bin` and safetensors adapters, checks adapter weights and evaluation
+logits, and verifies another optimizer update after loading. These checks run
+both without a process group and with a single-rank CPU Gloo group. PEFT 0.19.1
+attempts to import the removed `EmbeddingParallel` symbol only when a process
+group is initialized, so ordinary single-process training and reload checks
+alone miss this regression. PEFT 0.21.2 includes the upstream TP compatibility
+fixes; the image must be rebuilt when updating this pin.
+
+This is a dependency smoke check, not a substitute for ColossalAI's
+GPU/distributed regressions. On Torch
 2.13 the FP8 implementation currently uses its eager
 fallback; passing FP8 tests does not establish `torch.compile` support.
 
@@ -93,6 +102,8 @@ python -m pip check
 unset FAST_TEST
 HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 \
   python -m pytest -q -ra \
+    docker/torch213/test_verify_image.py \
+    tests/test_lazy/test_chatglm_cpu.py \
     tests/test_shardformer/test_hf5_compat/test_cpu_rng.py \
     tests/test_shardformer/test_hf5_compat/test_integrated_core.py \
     tests/test_shardformer/test_hf5_compat/test_integration_alias.py \
@@ -100,8 +111,10 @@ HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 \
     tests/test_shardformer/test_hf5_compat/test_qwen_loss.py
 ```
 
-This covers HF5 policy dispatch, small non-TP/EP training, checkpoint/loading
-contracts and single-rank CPU Gloo Qwen losses. It does not validate CUDA kernels,
+This covers ChatGLM initialization/lazy materialization, LoRA checkpoint
+roundtrips, HF5 policy dispatch, small non-TP/EP training, checkpoint/loading
+contracts and single-rank CPU Gloo Qwen losses. The new ChatGLM and LoRA checks
+also run in the Layer 1 and fork-safe CPU gates. This does not validate CUDA kernels,
 tensor/expert parallelism, multi-GPU communication or the Torch 2.5.1 CPU baseline.
 The complete image verifier must run **before** installing ColossalAI: it
 deliberately rejects images containing an installed ColossalAI distribution.
