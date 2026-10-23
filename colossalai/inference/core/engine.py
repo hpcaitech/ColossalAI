@@ -78,7 +78,6 @@ class InferenceEngine:
 
         Args:
             request_ids (List[int], optional): The request ID. Defaults to None.
-            prompts (Union[List[str], optional): Input prompts. Defaults to None.
         """
 
         assert self.engine is not None, "Please init Engine first"
