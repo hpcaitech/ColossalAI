@@ -72,6 +72,7 @@ case "${BATCH}" in
         DEFAULT_TIMEOUT_MIN=15
         TESTS=(
             docker/torch213/test_verify_image.py
+            tests/test_checkpoint_io/test_optimizer_safetensors_v2.py
             tests/test_config/test_load_config.py
             tests/test_infer/test_async_engine/test_request_tracer.py
             tests/test_lazy/test_chatglm_cpu.py

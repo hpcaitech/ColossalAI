@@ -53,6 +53,23 @@ Optimizer must be boosted by `colossalai.booster.Booster` before saving.
 
 Optimizer must be boosted by `colossalai.booster.Booster` before loading.
 
+### Optimizer safetensors format v2
+
+Async optimizer checkpoints use a versioned, data-only safetensors format. Tensor values remain in the tensor data area; parameter groups and nested values use a typed JSON schema. The format preserves lists, tuples, integers, explicit `None`, tensor learning rates and nested tensors. New sharded saves write parameter groups to `optimizer_group.safetensors`; index metadata identifies the group and shard formats. Tensor keys are stable across shards and repeated saves.
+
+The normal loader rejects legacy safetensors files with `non_tensor_keys`, including files produced by older ColossalAI versions. It never falls back to pickle. Tensor-only legacy shards can still be read, but they do not provide the parameter groups required for a complete resume. Existing synchronous PyTorch `.bin` checkpoints retain their format and are read with explicit `weights_only=True`; unsupported Python objects are rejected.
+
+To migrate a **trusted** legacy optimizer file or optimizer checkpoint directory, use a new destination:
+
+```bash
+colossalai checkpoint migrate-optimizer --trust-legacy-pickle old_optimizer.safetensors new_optimizer.safetensors
+colossalai checkpoint migrate-optimizer --trust-legacy-pickle old_optimizer_directory new_optimizer_directory
+```
+
+Legacy decoding can execute code. Run this opt-in tool only for trusted inputs in an isolated environment without network access or credentials. It is separate from training loaders, never overwrites an existing destination, and prints input/output SHA-256 hashes as JSON. Conversion is not a way to certify untrusted input. Arbitrary custom Python classes are not supported by v2. Old ColossalAI versions cannot read v2 checkpoints; retain the originals when planning a rollback.
+
+The schema has limits of 16 MiB of JSON, depth 64 and 1,000,000 nodes; integer values are limited to 4096 bits. Unsupported types and oversized schemas raise errors rather than silently dropping optimizer state. Plugin-specific optimizer and sharding constraints still apply.
+
 ## LR Scheduler Checkpoint
 
 {{ autodoc:colossalai.booster.Booster.save_lr_scheduler }}

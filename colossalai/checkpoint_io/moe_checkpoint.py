@@ -23,8 +23,9 @@ from colossalai.checkpoint_io.utils import (
     get_lora_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    load_shard_state_dict,
-    load_state_dict,
+    load_optim_or_model_shard,
+    load_optimizer_state,
+    load_param_groups,
     load_states_into_optimizer,
     save_config_file,
     save_param_groups,
@@ -496,6 +497,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             if control_saving:
                 # Store param groups.
                 index_file.append_meta_data("param_groups", param_group_file)
+                index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -551,13 +553,16 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 final_index_file.append_meta_data("total_size", 0)
 
                 for filename in os.listdir(tmp_index_file_folder):
-                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
+                    stage_index_file = CheckpointIndexFile.from_file(
+                        os.path.join(tmp_index_file_folder, filename), is_optimizer=True
+                    )
                     final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
                     for param_id, state_filename in stage_index_file.weight_map.items():
                         final_index_file.append_weight_map(param_id, state_filename)
 
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)
+                final_index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -613,7 +618,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 id_map[param_id] = param
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file, is_optimizer=True)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
@@ -625,7 +630,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 f"Invalid index file path {checkpoint_index_file} for an optimizer. \
                                Lacking param group file under current directory."
             )
-        saved_groups = torch.load(param_group_path)
+        saved_groups = load_param_groups(param_group_path)
 
         updated_groups = []
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
@@ -657,7 +662,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     continue
 
                 file_path = os.path.join(ckpt_root_path, filename)
-                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                state_dict = load_optim_or_model_shard(file_path, is_optim=True, use_safetensors=False)
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 loaded_file.add(filename)
 
@@ -961,7 +966,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
 
         # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
-        state_dict = load_state_dict(checkpoint)
+        state_dict = load_optimizer_state(checkpoint)
 
         # Load param_groups.
         updated_groups = []

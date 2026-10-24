@@ -1,6 +1,7 @@
 import click
 
 from .check import check
+from .checkpoint import checkpoint
 from .launcher import run
 
 
@@ -17,6 +18,7 @@ def cli():
 
 cli.add_command(run)
 cli.add_command(check)
+cli.add_command(checkpoint)
 
 if __name__ == "__main__":
     cli()

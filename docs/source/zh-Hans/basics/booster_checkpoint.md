@@ -54,6 +54,23 @@ booster.load(model, model_dir)
 
 优化器在加载前必须被 `colossalai.booster.Booster` 封装。
 
+### 优化器 safetensors v2 格式
+
+异步优化器 checkpoint 使用带版本的纯数据 safetensors 格式：tensor 保存在数据区，参数组及嵌套结构使用有类型 JSON 描述。它保留列表、元组、整数、显式 None、tensor 学习率和嵌套 tensor。新分片保存将参数组写到 `optimizer_group.safetensors`，索引记录参数组和 shard 的格式；tensor key 在分片与重复保存之间保持稳定。
+
+默认加载器拒绝包含 `non_tensor_keys` 的旧 safetensors 优化器文件，包括旧版 ColossalAI 正常写出的文件，不会回退到 pickle。旧纯 tensor shard 仍可读取，但它本身没有完整恢复需要的参数组。已有同步 PyTorch `.bin` checkpoint 保留原格式，读取显式使用 `weights_only=True`；不支持的 Python 对象会被拒绝。
+
+来源可信的旧优化器文件或目录，可以显式迁移到一个不存在的新目标：
+
+```bash
+colossalai checkpoint migrate-optimizer --trust-legacy-pickle old_optimizer.safetensors new_optimizer.safetensors
+colossalai checkpoint migrate-optimizer --trust-legacy-pickle old_optimizer_directory new_optimizer_directory
+```
+
+旧格式解码仍可能执行代码。此独立工具只用于可信输入，应在无网络、无凭据的隔离环境运行；训练加载器不自动调用它。迁移不覆盖已有目标，完成后输出含输入 / 输出 SHA-256 的 JSON 摘要。迁移不能为不可信输入作安全认证。v2 不支持任意 Python 自定义类；旧版本程序无法读取 v2，回滚计划应保留原文件。
+
+JSON schema 限制为 16 MiB、深度 64、1,000,000 个节点，整数值限制 4096 bit。不支持的类型或超限数据会明确报错，不静默丢弃优化器状态。各插件原有的优化器与分片约束仍然适用。
+
 ## 学习率调度器 Checkpoint
 
 {{ autodoc:colossalai.booster.Booster.save_lr_scheduler }}
