@@ -506,16 +506,27 @@ def save_param_groups(state_dict: dict, group_file_path: str) -> None:
     save_optimizer_file(group_file_path, {"param_groups": param_groups})
 
 
+def _load_legacy_optimizer_file(path):
+    """Restrict PyTorch optimizer files to versions fixing known weights-only issues."""
+    if Version(torch.__version__) < Version("2.10.0"):
+        raise RuntimeError(
+            "Loading legacy optimizer checkpoints requires torch >= 2.10.0. "
+            "Upgrade torch, or explicitly migrate a trusted checkpoint with "
+            "colossalai checkpoint migrate-optimizer --trust-legacy-pickle."
+        )
+    return torch.load(path, map_location="cpu", weights_only=True)
+
+
 def load_param_groups(group_file_path):
     if str(group_file_path).endswith(".safetensors"):
         return load_flat(group_file_path, expected_kind="param_groups")["param_groups"]
-    return torch.load(group_file_path, map_location="cpu", weights_only=True)
+    return _load_legacy_optimizer_file(group_file_path)
 
 
 def load_optimizer_state(checkpoint):
     if str(checkpoint).endswith(".safetensors"):
         return load_flat(checkpoint, expected_kind="full")
-    return torch.load(checkpoint, map_location="cpu", weights_only=True)
+    return _load_legacy_optimizer_file(checkpoint)
 
 
 def merge_optimizer_param_group_defaults(saved_groups: List[dict], current_groups: List[dict]) -> None:
@@ -1046,7 +1057,7 @@ def load_optim_or_model_shard(path: str, is_optim: bool, use_safetensors: bool) 
         if path.endswith(".safetensors"):
             state_dict = load_flat(path, expected_kind="state_shard")
         else:
-            state_dict = load_shard_state_dict(Path(path), use_safetensors=False)
+            state_dict = _load_legacy_optimizer_file(path)
     else:
         state_dict = load_shard_state_dict(Path(path), use_safetensors)
     return state_dict

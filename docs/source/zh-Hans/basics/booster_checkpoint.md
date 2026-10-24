@@ -60,6 +60,8 @@ booster.load(model, model_dir)
 
 默认加载器拒绝包含 `non_tensor_keys` 的旧 safetensors 优化器文件，包括旧版 ColossalAI 正常写出的文件，不会回退到 pickle。旧纯 tensor shard 仍可读取，但它本身没有完整恢复需要的参数组。已有同步 PyTorch `.bin` checkpoint 保留原格式，读取显式使用 `weights_only=True`；不支持的 Python 对象会被拒绝。
 
+普通读取 PyTorch 优化器文件要求 torch 2.10.0 或更高版本，因为更早版本存在已知的 `weights_only` 漏洞。这项检查覆盖完整优化器、状态分片和旧参数组伴随文件，不提升整个项目的 torch 最低依赖，也不对 v2 safetensors 应用旧格式门槛。版本检查不能认证文件来源。旧 torch 环境仍可显式迁移可信旧文件。
+
 来源可信的旧优化器文件或目录，可以显式迁移到一个不存在的新目标：
 
 ```bash

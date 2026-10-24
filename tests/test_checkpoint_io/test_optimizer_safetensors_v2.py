@@ -4,6 +4,7 @@ import pickle
 
 import pytest
 import torch
+from packaging.version import Version
 from safetensors.torch import save_file
 
 from colossalai.checkpoint_io import GeneralCheckpointIO
@@ -188,9 +189,58 @@ def test_torch_optimizer_load_is_explicitly_restricted(tmp_path):
 
     path = tmp_path / "optimizer.bin"
     torch.save(Payload(), path)
-    with pytest.raises(pickle.UnpicklingError):
+    error = RuntimeError if Version(torch.__version__) < Version("2.10.0") else pickle.UnpicklingError
+    with pytest.raises(error):
         load_optimizer_state(path)
     assert not marker.exists()
+
+
+def optimizer_file_case(kind):
+    from colossalai.checkpoint_io.utils import load_optim_or_model_shard
+
+    state = adam().state_dict()
+    if kind == "full":
+        return state, load_optimizer_state
+    if kind == "param_groups":
+        return state["param_groups"], load_param_groups
+    return state["state"], lambda path: load_optim_or_model_shard(str(path), True, False)
+
+
+@pytest.mark.parametrize("kind", ["full", "param_groups", "state_shard"])
+@pytest.mark.parametrize("version", ["2.5.1", "2.9.1", "2.10.0rc1"])
+def test_legacy_torch_version_rejected_before_deserialization(tmp_path, monkeypatch, kind, version):
+    payload, reader = optimizer_file_case(kind)
+    path = tmp_path / "legacy.bin"
+    torch.save(payload, path)
+
+    def must_not_load(*args, **kwargs):
+        pytest.fail("Unsupported torch must be rejected before torch.load")
+
+    monkeypatch.setattr(torch, "__version__", version)
+    monkeypatch.setattr(torch, "load", must_not_load)
+    with pytest.raises(RuntimeError, match="requires torch >= 2.10.0"):
+        reader(path)
+
+
+@pytest.mark.parametrize("kind", ["full", "param_groups", "state_shard"])
+@pytest.mark.parametrize("version", ["2.10.0", "2.11.0+cu128"])
+def test_legacy_torch_version_policy_accepts_patched_versions(tmp_path, monkeypatch, kind, version):
+    # This checks version dispatch on the installed torch, not compatibility
+    # with an actual installation of each version string.
+    payload, reader = optimizer_file_case(kind)
+    path = tmp_path / "legacy.bin"
+    torch.save(payload, path)
+    monkeypatch.setattr(torch, "__version__", version)
+    assert_equal(payload, reader(path))
+
+
+@pytest.mark.parametrize("kind", ["full", "param_groups", "state_shard"])
+def test_v2_does_not_use_legacy_torch_version_gate(tmp_path, monkeypatch, kind):
+    payload, reader = optimizer_file_case(kind)
+    path = tmp_path / "optimizer.safetensors"
+    save_optimizer_file(path, {"param_groups": payload} if kind == "param_groups" else payload)
+    monkeypatch.setattr(torch, "__version__", "2.5.1")
+    assert_equal(payload, reader(path))
 
 
 def test_legacy_tensor_only_shard(tmp_path):
@@ -428,6 +478,9 @@ def cpu_sync(monkeypatch):
         monkeypatch.setattr(accelerator, "synchronize", lambda: None)
 
 
+@pytest.mark.skipif(
+    Version(torch.__version__) < Version("2.10.0"), reason="Legacy optimizer loading requires torch >= 2.10"
+)
 def test_general_sync_checkpoint_next_step(tmp_path, cpu_sync):
     original = adam()
     restored = adam()
@@ -636,16 +689,24 @@ def test_migration_cli_requires_flag(tmp_path):
     from colossalai.cli.cli import cli
 
     source = tmp_path / "old.bin"
-    torch.save(adam().state_dict(), source)
+    expected = adam().state_dict()
+    torch.save(expected, source)
     destination = tmp_path / "new.safetensors"
     runner = CliRunner()
     missing = runner.invoke(cli, ["checkpoint", "migrate-optimizer", str(source), str(destination)])
     assert missing.exit_code != 0 and not destination.exists()
     result = runner.invoke(
-        cli, ["checkpoint", "migrate-optimizer", "--trust-legacy-pickle", str(source), str(destination)]
+        cli,
+        [
+            "checkpoint",
+            "migrate-optimizer",
+            "--trust-legacy-pickle",
+            str(source),
+            str(destination),
+        ],
     )
     assert result.exit_code == 0, result.output
-    assert_equal(load_optimizer_state(source), load_flat(destination))
+    assert_equal(expected, load_flat(destination))
 
 
 @pytest.mark.skipif(

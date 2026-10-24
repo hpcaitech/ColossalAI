@@ -59,6 +59,8 @@ Async optimizer checkpoints use a versioned, data-only safetensors format. Tenso
 
 The normal loader rejects legacy safetensors files with `non_tensor_keys`, including files produced by older ColossalAI versions. It never falls back to pickle. Tensor-only legacy shards can still be read, but they do not provide the parameter groups required for a complete resume. Existing synchronous PyTorch `.bin` checkpoints retain their format and are read with explicit `weights_only=True`; unsupported Python objects are rejected.
 
+Normal loading of PyTorch optimizer files requires torch 2.10.0 or later because earlier versions have known `weights_only` vulnerabilities. This check applies to full optimizer files, state shards and legacy parameter-group companions; it does not change the project's overall torch dependency or impose this legacy-file check on v2 safetensors. A version check does not certify checkpoint provenance. The explicit trusted migration tool remains available on older torch versions.
+
 To migrate a **trusted** legacy optimizer file or optimizer checkpoint directory, use a new destination:
 
 ```bash
