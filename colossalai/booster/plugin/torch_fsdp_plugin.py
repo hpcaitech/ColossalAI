@@ -26,7 +26,11 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO, utils
-from colossalai.checkpoint_io.utils import async_save_state_dict_shards, create_pinned_state_dict
+from colossalai.checkpoint_io.utils import (
+    async_save_state_dict_shards,
+    create_pinned_state_dict,
+    prepare_pinned_state_dict,
+)
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
@@ -56,9 +60,9 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
     ):
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before loading!"
         if checkpoint.endswith(".safetensors"):
-            checkpoint = load_flat(checkpoint, seperator=".")
+            checkpoint = load_flat(checkpoint, seperator=".", expected_kind="full")
         else:
-            checkpoint = utils.load_state_dict(checkpoint)
+            checkpoint = utils.load_optimizer_state(checkpoint)
 
         fsdp_model = optimizer.unwrap_model()
         full_optimizer_state = FSDP.full_optim_state_dict(fsdp_model, optim=optimizer, rank0_only=False)
@@ -151,8 +155,9 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                 from colossalai.utils.safetensors import _flatten_optim_state_dict, save
 
                 flatten_state_dict, metadata = _flatten_optim_state_dict(full_optimizer_state, seperator=".")
-                if id(optimizer) not in self.pinned_state_dicts:
-                    self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+                self.pinned_state_dicts[id(optimizer)] = prepare_pinned_state_dict(
+                    flatten_state_dict, self.pinned_state_dicts.get(id(optimizer))
+                )
                 for k, v in flatten_state_dict.items():
                     self.pinned_state_dicts[id(optimizer)][k].copy_(v)
                     flatten_state_dict[k] = self.pinned_state_dicts[id(optimizer)][k]
@@ -318,6 +323,8 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
             index_file = CheckpointIndexFile(checkpoint)
 
             index_file.append_meta_data("param_groups", param_group_file)
+
+            index_file.append_meta_data("param_groups_format", 2)
             group_file_path = os.path.join(checkpoint, param_group_file)
             utils.save_param_groups(fsdp_optim_state, group_file_path)
 
@@ -373,7 +380,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         """
         assert isinstance(optimizer, FSDPOptimizerWrapper), "Please boost the optimizer before saving!"
 
-        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
+        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path, is_optimizer=True)
 
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -383,7 +390,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
                 "Looking param group file under current directory."
             )
 
-        saved_param_groups = torch.load(param_group_path)
+        saved_param_groups = utils.load_param_groups(param_group_path)
 
         # Load param
         fsdp_optim_state = {}

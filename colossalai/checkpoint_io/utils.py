@@ -28,7 +28,7 @@ from colossalai.tensor.d_tensor import (
     to_global_for_customized_distributed_tensor,
 )
 from colossalai.utils import get_current_device
-from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat
+from colossalai.utils.safetensors import _flatten_optim_state_dict, load_flat, save_optimizer_file
 
 SAFE_WEIGHTS_NAME = "model.safetensors"
 WEIGHTS_NAME = "pytorch_model.bin"
@@ -38,7 +38,7 @@ SAFE_WEIGHTS_INDEX_NAME = "model.safetensors.index.json"
 WEIGHTS_INDEX_NAME = "pytorch_model.bin.index.json"
 STATES_INDEX_NAME = "pytorch_optim.bin.index.json"
 SAFE_STATES_INDEX_NAME = "optimizer.safetensors.index.json"
-GROUP_FILE_NAME = "pytorch_optim_group.bin"
+GROUP_FILE_NAME = "optimizer_group.safetensors"
 
 # ======================================
 # General helper functions
@@ -300,6 +300,9 @@ def async_save_state_dict_shards(
     """
     from colossalai.utils.safetensors import save
 
+    if state_preprocess:
+        index_file.append_meta_data("optimizer_format", 2)
+
     total_size = 0
     shard_filenames = []
     writers = []
@@ -359,6 +362,9 @@ def async_move_save_state_dict_shards(
     """
     from colossalai.utils.safetensors import move_and_save
 
+    if state_preprocess:
+        index_file.append_meta_data("optimizer_format", 2)
+
     total_size = 0
     shard_filenames = []
     if pinned_state_dict is None:
@@ -384,11 +390,7 @@ def async_move_save_state_dict_shards(
             state_dict = shard
             metadata = None
 
-        if pinned_state_dict is not None:
-            sub_pinned_state_dict = {k: pinned_state_dict[k] for k in state_dict.keys()}
-        else:
-            sub_pinned_state_dict = create_pinned_state_dict(state_dict)
-            returned_state_dict.update(sub_pinned_state_dict)
+        sub_pinned_state_dict = prepare_pinned_state_dict(state_dict, returned_state_dict)
 
         # Only save on master rank.
         writer = move_and_save(checkpoint_file_path, state_dict, sub_pinned_state_dict, metadata)
@@ -501,7 +503,30 @@ def save_param_groups(state_dict: dict, group_file_path: str) -> None:
         group_file_path (str): path to the group file.
     """
     param_groups = state_dict["param_groups"]
-    torch.save(param_groups, group_file_path)
+    save_optimizer_file(group_file_path, {"param_groups": param_groups})
+
+
+def _load_legacy_optimizer_file(path):
+    """Restrict PyTorch optimizer files to versions fixing known weights-only issues."""
+    if Version(torch.__version__) < Version("2.10.0"):
+        raise RuntimeError(
+            "Loading legacy optimizer checkpoints requires torch >= 2.10.0. "
+            "Upgrade torch, or explicitly migrate a trusted checkpoint with "
+            "colossalai checkpoint migrate-optimizer --trust-legacy-pickle."
+        )
+    return torch.load(path, map_location="cpu", weights_only=True)
+
+
+def load_param_groups(group_file_path):
+    if str(group_file_path).endswith(".safetensors"):
+        return load_flat(group_file_path, expected_kind="param_groups")["param_groups"]
+    return _load_legacy_optimizer_file(group_file_path)
+
+
+def load_optimizer_state(checkpoint):
+    if str(checkpoint).endswith(".safetensors"):
+        return load_flat(checkpoint, expected_kind="full")
+    return _load_legacy_optimizer_file(checkpoint)
 
 
 def merge_optimizer_param_group_defaults(saved_groups: List[dict], current_groups: List[dict]) -> None:
@@ -706,7 +731,7 @@ def load_shard_state_dict(checkpoint_file: Path, use_safetensors: bool = False):
 
         return safe_load_file(checkpoint_file)
     else:
-        return torch.load(checkpoint_file, map_location=torch.device("cpu"))
+        return torch.load(checkpoint_file, map_location=torch.device("cpu"), weights_only=True)
 
 
 def load_state_dict_into_model(
@@ -769,7 +794,7 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
 
     # Load list of param_groups from given file path.
     # The params in saved_groups are in the form of integer indices.
-    saved_groups = torch.load(param_group_path, map_location=torch.device("cpu"))
+    saved_groups = load_param_groups(param_group_path)
     if not isinstance(saved_groups, List):
         raise ValueError(f"The param_groups saved at {param_group_path} is not of List type")
 
@@ -937,7 +962,7 @@ def load_state_dict(checkpoint_file_path: Path):
 
     else:
         # load with torch
-        return torch.load(checkpoint_file_path, map_location=torch.device("cpu"))
+        return torch.load(checkpoint_file_path, map_location=torch.device("cpu"), weights_only=True)
 
 
 def add_prefix(weights_name: str, prefix: Optional[str] = None) -> str:
@@ -1013,12 +1038,26 @@ def create_pinned_state_dict(
             return tree_unflatten(elems, spec)
 
 
+def prepare_pinned_state_dict(state_dict, cache=None):
+    """Reuse compatible buffers, including newly initialized optimizer state."""
+    if cache is None:
+        cache = {}
+    result = {}
+    for key, tensor in state_dict.items():
+        previous = cache.get(key)
+        if not isinstance(previous, torch.Tensor) or previous.shape != tensor.shape or previous.dtype != tensor.dtype:
+            previous = _pin_tensor(tensor)
+            cache[key] = previous
+        result[key] = previous
+    return result
+
+
 def load_optim_or_model_shard(path: str, is_optim: bool, use_safetensors: bool) -> dict:
     if is_optim:
         if path.endswith(".safetensors"):
-            state_dict = load_flat(path)
+            state_dict = load_flat(path, expected_kind="state_shard")
         else:
-            state_dict = load_shard_state_dict(Path(path), use_safetensors=False)
+            state_dict = _load_legacy_optimizer_file(path)
     else:
         state_dict = load_shard_state_dict(Path(path), use_safetensors)
     return state_dict

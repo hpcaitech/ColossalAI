@@ -1,11 +1,14 @@
 # a python safetensors serializer modified from https://github.com/huggingface/safetensors/blob/41bd1acf38ad28ac559522d40596c6c802f79453/safetensors/src/tensor.rs#L214
 import json
 import warnings
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional, Tuple
 
 import torch
-from safetensors.torch import _TYPES, load_file, safe_open
+from safetensors.torch import _TYPES, safe_open, save_file
+
+from ._optimizer_safetensors import flatten_optimizer, unflatten_optimizer
 
 try:
     from tensornvme.async_file_io import AsyncFileWriter
@@ -18,10 +21,6 @@ except Exception:
         "Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git"
     )
 _TYPES_INV = {v: k for k, v in _TYPES.items()}
-import io
-
-from torch.distributed.distributed_c10d import _pickler, _unpickler
-
 ASYNC_WRITE_ENTRIES = 32
 
 
@@ -29,23 +28,6 @@ def _require_async_file_writer():
     if AsyncFileWriter is None:
         raise RuntimeError("Async checkpoint I/O requires TensorNVMe")
     return AsyncFileWriter
-
-
-def _object_to_tensor(obj, device):
-    f = io.BytesIO()
-    _pickler(f).dump(obj)
-    byte_storage = torch.ByteStorage._from_buffer(f.getvalue())  # type: ignore[attr-defined]
-    # Do not replace `torch.ByteTensor` or `torch.LongTensor` with torch.tensor and specifying dtype.
-    # Otherwise, it will casue 100X slowdown.
-    # See: https://github.com/pytorch/pytorch/issues/65696
-    byte_tensor = torch.ByteTensor(byte_storage).to(device)
-    return byte_tensor
-
-
-def _tensor_to_object(tensor, tensor_size):
-    tensor = tensor.cpu()
-    buf = tensor.numpy().tobytes()[:tensor_size]
-    return _unpickler(io.BytesIO(buf)).load()
 
 
 @dataclass
@@ -62,82 +44,25 @@ class PreparedData:
     offset: int
 
 
-def _cast_to_tensor(obj):
-    if isinstance(obj, torch.Tensor):
-        return obj
-    return _object_to_tensor(obj, "cpu")
+def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[dict, dict]:
+    """Encode optimizer data with the versioned, non-executable schema."""
+    return flatten_optimizer(state_dict)
 
 
-def _cast_to_object(tensor: torch.Tensor):
-    return _tensor_to_object(tensor, tensor.numel() * tensor.element_size())
-
-
-def _flatten_optim_state_dict(state_dict: dict, seperator: str = ".") -> Tuple[dict, Optional[dict]]:
-    flat_dict = {}
-    non_tensor_keys = []
-    if "state" in state_dict:
-        # 3-level dict
-        states = state_dict["state"]
-    else:
-        # 2-level dict, usually for optimizer state dict shard
-        states = state_dict
-
-    for idx, d in states.items():
-        for k, v in d.items():
-            if v is None:
-                continue
-            nested_key = f"state{seperator}{idx}{seperator}{k}"
-            if not isinstance(v, torch.Tensor):
-                non_tensor_keys.append(nested_key)
-            flat_dict[nested_key] = _cast_to_tensor(v)
-    if "param_groups" in state_dict:
-        flat_dict["param_groups"] = _cast_to_tensor(state_dict["param_groups"])
-        non_tensor_keys.append("param_groups")
-    if len(non_tensor_keys) > 0:
-        metadata = {"non_tensor_keys": non_tensor_keys}
-    else:
-        metadata = None
-    return flat_dict, metadata
-
-
-def _unflatten_optim_state_dict(flat_dict: dict, metadata: Optional[dict] = None, seperator: str = "."):
-    state_dict = {}
-
-    if metadata is not None and "non_tensor_keys" in metadata:
-        non_tensor_keys = json.loads(metadata["non_tensor_keys"])
-    else:
-        non_tensor_keys = []
-    flat_dict = {k: _cast_to_object(v) if k in non_tensor_keys else v for k, v in flat_dict.items()}
-    if "param_groups" in flat_dict:
-        # 3-level dict
-        state_dict["param_groups"] = flat_dict.pop("param_groups")
-        state_dict["state"] = {}
-        states = state_dict["state"]
-    else:
-        # 2-level dict, usually for optimizer state dict shard
-        states = state_dict
-
-    for k, v in flat_dict.items():
-        parts = k.split(seperator)
-        assert len(parts) == 3 and parts[0] == "state"
-        idx = int(parts[1])
-        key = parts[2]
-        if idx not in states:
-            states[idx] = {}
-        states[idx][key] = v
-
-    return state_dict
+def _unflatten_optim_state_dict(
+    flat_dict: dict, metadata: Optional[dict] = None, seperator: str = ".", *, expected_kind=None
+):
+    return unflatten_optimizer(flat_dict, metadata, expected_kind, seperator)
 
 
 def prepare(
     data: Dict[str, torch.Tensor], metadata: Optional[Dict[str, str]] = None
 ) -> Tuple[PreparedData, List[torch.Tensor], List[str]]:
-    if metadata is not None:
-        assert isinstance(metadata, dict)
-        for k, v in metadata.items():
-            metadata[k] = json.dumps(v)
-            assert isinstance(k, str)
-            assert isinstance(metadata[k], str)
+    # Safetensors metadata values are strings. Do not mutate cached metadata or
+    # JSON-encode already encoded optimizer schemas a second time.
+    metadata = {k: v if isinstance(v, str) else json.dumps(v) for k, v in (metadata or {}).items()}
+    if any(type(k) is not str for k in metadata):
+        raise TypeError("Safetensors metadata keys must be strings")
 
     tensors = []
     tensor_keys = []
@@ -200,7 +125,8 @@ def move_and_save(
     f_writer.write(n.to_bytes(8, byteorder="little"))
     f_writer.write(header_bytes)
 
-    f_writer.register_h2d(len(tensor_keys))
+    if tensor_keys:
+        f_writer.register_h2d(len(tensor_keys))
     for name in tensor_keys:
         if state_dict_pinned:
             f_writer.write_tensor(state_dict[name], state_dict_pinned[name])
@@ -209,9 +135,50 @@ def move_and_save(
     return f_writer
 
 
-def load_flat(checkpoint_path, seperator: str = "."):
-    with safe_open(checkpoint_path, framework="pt") as f:
-        metadata = f.metadata()
-    state_dict_load = load_file(checkpoint_path)
-    state_dict = _unflatten_optim_state_dict(state_dict_load, metadata, seperator)
-    return state_dict
+class _FileTensors(Mapping):
+    def __init__(self, reader):
+        self.reader = reader
+        self.names = set(reader.keys())
+
+    def __getitem__(self, key):
+        if key not in self.names:
+            raise KeyError(key)
+        return self.reader.get_tensor(key)
+
+    def __contains__(self, key):
+        return key in self.names
+
+    def __iter__(self):
+        return iter(self.names)
+
+    def __len__(self):
+        return len(self.names)
+
+
+def load_flat(checkpoint_path, seperator: str = ".", *, expected_kind=None):
+    """Load data-only optimizer state; legacy embedded pickle is rejected."""
+    with safe_open(checkpoint_path, framework="pt", device="cpu") as reader:
+        metadata = reader.metadata()
+        # The lazy mapping validates metadata before fetching tensor values;
+        # both metadata and values come from this one open file.
+        return _unflatten_optim_state_dict(_FileTensors(reader), metadata, seperator, expected_kind=expected_kind)
+
+
+def save_optimizer_file(path, state_dict):
+    """Synchronously write the same data-only schema used by async optimizers."""
+    import os
+    import tempfile
+    from pathlib import Path
+
+    tensors, metadata = flatten_optimizer(state_dict)
+    path = Path(path)
+    # Private storage also supports aliased tensors with safetensors.save_file.
+    tensors = {key: tensor.cpu().clone().contiguous() for key, tensor in tensors.items()}
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".optimizer-", delete=False) as temporary:
+        temporary_path = temporary.name
+    try:
+        save_file(tensors, temporary_path, metadata=metadata)
+        os.replace(temporary_path, path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.unlink(temporary_path)

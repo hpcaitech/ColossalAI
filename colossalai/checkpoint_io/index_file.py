@@ -20,25 +20,27 @@ class CheckpointIndexFile:
         >>> index.export('new_index.json')
     """
 
-    def __init__(self, root_path=None) -> None:
+    def __init__(self, root_path=None, *, is_optimizer: bool = False) -> None:
         self.root_path = root_path
+        self.is_optimizer = is_optimizer
 
         # use ordered dict to preserve the tensor checkpoint order
         self.metadata: Dict = OrderedDict()
         self.weight_map: Dict = OrderedDict()
 
     @staticmethod
-    def from_file(index_path: Union[str, Path]):
+    def from_file(index_path: Union[str, Path], *, is_optimizer: bool = False):
         """
         Create a CheckpointIndexFile object from a json file.
 
         Args:
             index_path (str): path to the json file.
+            is_optimizer (bool): enforce optimizer metadata and path limits.
 
         Returns:
             CheckpointIndexFile: CheckpointIndexFile object.
         """
-        index = CheckpointIndexFile()
+        index = CheckpointIndexFile(is_optimizer=is_optimizer)
         index.load(index_path)
         return index
 
@@ -49,9 +51,18 @@ class CheckpointIndexFile:
         Args:
             json_path (str): path to the json file.
         """
-        # load the json file
-        with open(json_path, "r") as f:
-            index = json.load(f)
+        with open(json_path, "r", encoding="utf-8") as f:
+            if self.is_optimizer:
+                from colossalai.utils._optimizer_safetensors import MAX_SCHEMA_BYTES, _pairs
+
+                raw = f.read(MAX_SCHEMA_BYTES + 1)
+                if len(raw.encode("utf-8")) > MAX_SCHEMA_BYTES:
+                    raise ValueError("Checkpoint index exceeds the metadata byte limit")
+                index = json.loads(raw, object_pairs_hook=_pairs)
+            else:
+                index = json.load(f)
+        if type(index) is not dict:
+            raise ValueError("Checkpoint index must be a dictionary")
 
         # assign attributes if exists
         if "metadata" in index:
@@ -61,6 +72,26 @@ class CheckpointIndexFile:
 
         # assign the root directory for the index file
         self.root_path = Path(json_path).absolute().parent
+        if not isinstance(self.metadata, dict) or not isinstance(self.weight_map, dict):
+            raise ValueError("Invalid checkpoint index metadata or weight map")
+        for filename in self.weight_map.values():
+            self._resolve_file(filename)
+        if "param_groups" in self.metadata:
+            self._resolve_file(self.metadata["param_groups"])
+
+    def _resolve_file(self, filename):
+        if type(filename) is not str or not filename:
+            raise ValueError("Checkpoint index filenames must be nonempty strings")
+        path = Path(self.root_path) / filename
+        if self.is_optimizer:
+            if Path(filename).is_absolute():
+                raise ValueError("Checkpoint index filenames must be relative paths")
+            root = Path(self.root_path).resolve()
+            if not path.resolve().is_relative_to(root):
+                raise ValueError("Checkpoint index path escapes its root directory")
+        # Validate real paths, but retain the named path for format dispatch.
+        # Model snapshots may link to a shared blob directory outside the root.
+        return str(path)
 
     def export(self, json_path: str):
         """
@@ -122,7 +153,7 @@ class CheckpointIndexFile:
         checkpoint_files = sorted(list(set(self.weight_map.values())))
 
         # get the absolute paths for all checkpoint files
-        checkpoint_files = [str(self.root_path.joinpath(f)) for f in checkpoint_files]
+        checkpoint_files = [self._resolve_file(f) for f in checkpoint_files]
 
         dtensor_list = []
         checkpoint_list = []
@@ -151,6 +182,7 @@ class CheckpointIndexFile:
             str: checkpoint file name.
         """
         ckpt_path = self.weight_map[param_name]
+        self._resolve_file(ckpt_path)
         return ckpt_path
 
     def get_all_param_names(self):
@@ -167,7 +199,7 @@ class CheckpointIndexFile:
         """
         filename = self.metadata.get("param_groups", None)
         if filename:
-            return str(self.root_path.joinpath(filename))
+            return self._resolve_file(filename)
         else:
             return None
 

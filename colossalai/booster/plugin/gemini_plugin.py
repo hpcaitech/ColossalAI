@@ -20,8 +20,11 @@ from colossalai.checkpoint_io.utils import (
     create_pinned_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
+    load_param_groups,
     load_state_dict_shards,
+    prepare_pinned_state_dict,
     save_config_file,
+    save_param_groups,
     save_state_dict,
     save_state_dict_shards,
 )
@@ -128,8 +131,9 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                 from colossalai.utils.safetensors import _flatten_optim_state_dict, save
 
                 flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-                if id(optimizer) not in self.pinned_state_dicts:
-                    self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+                self.pinned_state_dicts[id(optimizer)] = prepare_pinned_state_dict(
+                    flatten_state_dict, self.pinned_state_dicts.get(id(optimizer))
+                )
                 for k, v in flatten_state_dict.items():
                     self.pinned_state_dicts[id(optimizer)][k].copy_(v)
                     flatten_state_dict[k] = self.pinned_state_dicts[id(optimizer)][k]
@@ -264,12 +268,13 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix, use_safetensors=use_async)
         index_file = CheckpointIndexFile(checkpoint)
         index_file.append_meta_data("param_groups", param_group_file)
+        index_file.append_meta_data("param_groups_format", 2)
 
         # Store the information of param groups to param_group_file.
         if self.coordinator.is_master():
             group_file_path = os.path.join(checkpoint, param_group_file)
             param_groups = optimizer.get_param_groups_for_saving()
-            torch.save(param_groups, group_file_path)
+            save_param_groups({"param_groups": param_groups}, group_file_path)
 
         # States are broken into shards within max_shard_size.
         if use_async and self.coordinator.is_master():
@@ -333,7 +338,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, GeminiOptimizer)
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file, is_optimizer=True)
 
         # Load param_groups.
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -342,7 +347,7 @@ class GeminiCheckpointIO(GeneralCheckpointIO):
                 f"Invalid index file path {checkpoint_index_file} for an optimizer. \
                                Lacking param group file under current directory."
             )
-        saved_param_groups = torch.load(param_group_path)
+        saved_param_groups = load_param_groups(param_group_path)
         optimizer.load_param_groups(saved_param_groups)
 
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
