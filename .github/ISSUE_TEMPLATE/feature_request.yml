@@ -1,4 +1,4 @@
-name: 🚀 Feature request
+name: Feature request
 description: Suggest an idea for this project
 title: "[FEATURE]: "
 labels: [enhancement]
@@ -32,4 +32,4 @@ body:
 - type: markdown
   attributes:
     value: >
-      Thanks for contributing 🎉!
+      Thanks for contributing!
