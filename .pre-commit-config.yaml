@@ -38,3 +38,12 @@ repos:
       - id: end-of-file-fixer
       - id: mixed-line-ending
         args: ['--fix=lf']
+
+  - repo: local
+    hooks:
+      - id: no-hardcoded-device
+        name: no hardcoded device in guarded dirs
+        entry: python .github/scripts/ci/check_no_hardcoded_device.py
+        language: system
+        pass_filenames: false
+        always_run: true
