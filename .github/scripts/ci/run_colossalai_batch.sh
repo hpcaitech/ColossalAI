@@ -75,6 +75,7 @@ case "${BATCH}" in
             tests/test_config/test_load_config.py
             tests/test_infer/test_async_engine/test_request_tracer.py
             tests/test_lazy/test_chatglm_cpu.py
+            tests/test_moe/test_ep_moe_layer_cpu.py
             tests/test_optimizer/test_lr_scheduler.py
             tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
             tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
