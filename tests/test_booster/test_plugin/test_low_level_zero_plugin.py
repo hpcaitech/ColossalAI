@@ -114,7 +114,7 @@ def check_low_level_zero_lora(stage, model_name, early_stop: bool = True):
         lora_config = LoraConfig(task_type=task_type, r=8, lora_alpha=32, lora_dropout=0.1)
         err = run_fn(stage, model_fn, data_gen_fn, output_transform_fn, lora_config)
 
-        torch.cuda.empty_cache()
+        get_accelerator().empty_cache()
 
         if err is None:
             passed_models.append(name)
