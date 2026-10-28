@@ -196,7 +196,6 @@ class RotaryEmbedding(nn.Module):
         )
 
 
-@torch.jit.script
 def apply_rotary_pos_emb(x: torch.Tensor, rope_cache: torch.Tensor) -> torch.Tensor:
     # x: [sq, b, np, hn]
     sq, b, np, hn = x.size(0), x.size(1), x.size(2), x.size(3)
