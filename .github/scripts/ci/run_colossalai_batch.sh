@@ -81,6 +81,7 @@ case "${BATCH}" in
             tests/test_benchmark/test_benchmark_search.py
             tests/test_benchmark/test_benchmark_scaling.py
             tests/test_lazy/test_chatglm_cpu.py
+            tests/test_moe/test_ep_moe_layer_cpu.py
             tests/test_numerics/test_numerics_acceptance.py
             tests/test_numerics/test_numerics_core.py
             tests/test_model_zoo/test_gemma4.py

@@ -14,6 +14,7 @@ TESTS=(
     tests/test_config/test_load_config.py
     tests/test_infer/test_async_engine/test_request_tracer.py
     tests/test_lazy/test_chatglm_cpu.py
+    tests/test_moe/test_ep_moe_layer_cpu.py
     tests/test_numerics/test_numerics_acceptance.py
     tests/test_numerics/test_numerics_core.py
     tests/test_model_zoo/test_gemma4.py
