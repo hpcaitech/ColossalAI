@@ -67,6 +67,8 @@ class EPMoELayer(nn.Module):
         dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
+        if ep_group is None and dist.is_initialized():
+            ep_group = dist.group.WORLD
         self.ep_group = ep_group
         self.ep_size = dist.get_world_size(ep_group) if dist.is_initialized() else 1
         self.ep_rank = dist.get_rank(ep_group) if dist.is_initialized() else 0

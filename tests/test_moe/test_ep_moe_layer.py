@@ -5,7 +5,13 @@ import torch.nn.functional as F
 
 import colossalai
 from colossalai.moe import EPMoELayer, GroupedMMExperts, NCCLAllToAllDispatcher, ReferenceExperts
-from colossalai.tensor.moe_tensor.api import ExpertGradScale, get_ep_group, get_expert_grad_scale, is_moe_tensor
+from colossalai.tensor.moe_tensor.api import (
+    ExpertGradScale,
+    get_ep_group,
+    get_ep_size,
+    get_expert_grad_scale,
+    is_moe_tensor,
+)
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 
 # Relative L2 error allowed between the bf16 layer and an fp32 single-GPU reference. The largest error over all checks
@@ -152,15 +158,23 @@ def run_layer_vs_reference(ep_size: int, backend: str, grad_scale: ExpertGradSca
                 assert err < RTOL, f"{config}: {name}[{expert}] grad {err:.3e}"
 
 
-def run_param_contract():
+@parameterize("use_default_group", [False, True])
+def run_param_contract(use_default_group: bool):
     """Expert params carry their EP tags, and loading weights keeps the parameter objects."""
-    group = ep_groups(2)
+    group = None if use_default_group else ep_groups(2)
+    expected_group = dist.group.WORLD if use_default_group else group
+    ep_size = dist.get_world_size(expected_group)
+    ep_rank = dist.get_rank(expected_group)
     layer = EPMoELayer(NUM_EXPERTS, HIDDEN_SIZE, INTERMEDIATE_SIZE, ep_group=group, device="cuda")
-    assert layer.num_local_experts == NUM_EXPERTS // 2
-    assert layer.local_expert_range == range(dist.get_rank(group) * 4, dist.get_rank(group) * 4 + 4)
+    assert layer.ep_group is expected_group
+    assert layer.dispatcher.ep_group is expected_group
+    assert layer.num_local_experts == NUM_EXPERTS // ep_size
+    start = ep_rank * layer.num_local_experts
+    assert layer.local_expert_range == range(start, start + layer.num_local_experts)
     params = (layer.gate_up_proj, layer.down_proj)
     for param in params:
-        assert is_moe_tensor(param) and get_ep_group(param) is group
+        assert is_moe_tensor(param) and get_ep_group(param) is expected_group
+        assert get_ep_size(param) == ep_size
         assert get_expert_grad_scale(param) == ExpertGradScale.IN_FORWARD
     ids = [id(p) for p in params]
     layer.load_full_weights(
