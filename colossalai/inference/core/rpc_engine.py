@@ -1,4 +1,5 @@
 import asyncio
+import pickle
 from itertools import count
 from time import sleep
 from typing import List, Tuple, Union
@@ -11,7 +12,7 @@ from torch import multiprocessing as mp
 from transformers import AutoConfig, PreTrainedTokenizer, PreTrainedTokenizerFast
 from transformers.configuration_utils import PretrainedConfig
 
-from colossalai.inference.batch_bucket import BatchBucket
+from colossalai.inference.batch_bucket import RPCBatchBucket
 from colossalai.inference.config import InferenceConfig, InputMetaData
 from colossalai.inference.executor.rpc_worker import rpcWorkerService
 from colossalai.inference.utils import find_available_ports
@@ -120,6 +121,9 @@ class RPCInferenceEngine(InferenceEngine):
         self.counter = count()
         self._verify_args()
 
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
         self.logger.info("engine init over ")
 
     def _verify_args(self) -> None:
@@ -162,7 +166,15 @@ class RPCInferenceEngine(InferenceEngine):
                 raise Exception("conn error!")
         self.logger.info(f"Build RPC Connection Success! Begin to load model...")
         asyncio.run(self.init_worker_env())
+        self._init_worker_forward()
         self.logger.info(f"init dist env over")
+
+    def _init_worker_forward(self):
+        """
+        Async wrappers for forward, because it will be invoked many times.
+        """
+        assert len(self.workers) == self.tp_size, "init workers first"
+        self.worker_forwards = [rpyc.async_(worker.execute_model_forward) for worker in self.workers]
 
     async def async_parallel_wrapper(self, f, *args, **kwargs):
         async_res = rpyc.async_(f)(*args, **kwargs)
@@ -210,7 +222,8 @@ class RPCInferenceEngine(InferenceEngine):
     def init_device_cache(self, alloc_shape: Tuple[Tuple[int, ...], Tuple[int, ...]]):
         asyncio.run(self._init_device_cache(alloc_shape))
 
-    def prepare_input(self, batch: BatchBucket) -> Tuple[List[int], InputMetaData]:
+    def prepare_input(self, batch: RPCBatchBucket) -> Tuple[List[int], InputMetaData]:
+        assert batch.is_rpc, "the batch must be RPCBatchBucket"
         input_ids = batch.get_1D_inputs()
         sequence_lengths = batch.get_sequence_lengths()
 
@@ -220,7 +233,7 @@ class RPCInferenceEngine(InferenceEngine):
             n_tokens = batch.current_batch_size
             if batch.use_spec_dec:
                 n_tokens = batch.num_tokens_to_verify + 1
-                assert n_tokens == input_ids.size(0)
+                assert n_tokens == len(input_ids)
                 n_tokens = n_tokens * batch.current_batch_size
 
         batch_token_ids = None
@@ -252,40 +265,60 @@ class RPCInferenceEngine(InferenceEngine):
             batch_token_ids=batch_token_ids,
         )
 
-        return input_ids.tolist(), input_meta_data
+        return input_ids, input_meta_data
 
-    async def step_(self, input_token_ids, input_meta_data: InputMetaData):
+    async def async_parallel_forward(self, async_f, *args, **kwargs):
+        async_res = async_f(*args, **kwargs)
+        await asyncio.to_thread(async_res.wait)
+        assert async_res.ready
+        return async_res.value
+
+    async def step_async(self, input_token_ids, input_meta_data: InputMetaData):
         assert len(self.workers) == self.tp_size, "init workers first"
 
-        init_tasks = [
-            self.async_parallel_wrapper(
-                worker.execute_model_forward,
-                input_token_ids,
-                input_meta_data.to_rpc_param(),
-                self.generation_config_dict,
-            )
-            for worker in self.workers
-        ]
+        init_tasks = []
+        for rank, async_forward in enumerate(self.worker_forwards):
+            if rank == 0:
+                init_tasks.append(
+                    self.async_parallel_forward(
+                        async_forward,
+                        pickle.dumps(input_token_ids),
+                        pickle.dumps(input_meta_data.to_rpc_param()),
+                        pickle.dumps(self.generation_config_dict),
+                    )
+                )
+            else:
+                init_tasks.append(
+                    self.async_parallel_forward(
+                        async_forward,
+                        None,
+                        None,
+                        None,
+                    )
+                )
+
         ret = await asyncio.gather(*init_tasks)
 
         return ret[0]
 
     def step(self) -> List[str]:
-        batch = self.request_handler.schedule()
+        with self.t_prepare:
+            batch = self.request_handler.schedule()
 
-        input_token_ids, input_meta_data = self.prepare_input(batch)
-        # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
-        next_tokens = asyncio.run(self.step_(input_token_ids, input_meta_data))
+            input_token_ids, input_meta_data = self.prepare_input(batch)
+
+        with self.t_exe:
+            # TODO: padding_id is used for generating attn_mask and will be removed if nopad version is supported.
+            next_tokens = self.loop.run_until_complete(self.step_async(input_token_ids, input_meta_data))
 
         # update the request_handler
-        next_tokens = torch.tensor(next_tokens, dtype=torch.int)
         self.request_handler.append_next_tokens(next_tokens)
         finished_sequences = self.request_handler.update()
         return finished_sequences
 
     def kill_workers(self):
         """
-        I don't find a good way to implicit invoke self.kill_workers
+        NOTE(@lry89757) Don't find a good way to implicit invoke self.kill_workers
         """
         assert len(self.workers) != 0
         for proc in self.worker_processes:
