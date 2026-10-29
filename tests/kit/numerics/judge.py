@@ -1,8 +1,13 @@
 """Pass/fail rules for numerical alignment.
 
-The baseline-error rule follows PyTorch's TorchInductor accuracy check (``same()`` in ``torch/_dynamo/utils.py``):
-the baseline error is how far the reference implementation itself deviates from a float64 ground truth at the
-precision being tested, and the implementation under test may deviate at most ``multiplier`` times as much.
+The baseline-error rule (``judge``) follows PyTorch's TorchInductor accuracy check (``same()`` in
+``torch/_dynamo/utils.py``): the baseline error is how far the reference implementation itself deviates from a float64
+ground truth at the precision being tested, and the implementation under test may deviate at most ``multiplier`` times
+as much.
+
+The relative-bound rule (``judge_relative_bound``) follows Megatron-LM's ``test_optimizer_grads_match.py`` for runs of
+the same code under different parallel layouts, where there is no reference at a lower precision to measure a
+baseline error with: the relative Frobenius error may be at most ``k * C**depth * eps`` (arXiv 2506.09280, theorem 5.3).
 """
 
 import math
@@ -52,6 +57,8 @@ class Entry:
 @dataclass
 class AlignmentReport:
     entries: List[Entry] = field(default_factory=list)
+    # what Entry.baseline_error holds: the baseline error, or the allowed bound of judge_relative_bound
+    baseline_label: str = "baseline"
 
     @property
     def failures(self) -> List[Entry]:
@@ -65,7 +72,7 @@ class AlignmentReport:
         rows = sorted(self.entries, key=lambda e: (e.passed, -e.ratio if not math.isnan(e.ratio) else 0.0))
         lines = [
             f"{len(self.entries) - len(self.failures)}/{len(self.entries)} tensors aligned",
-            f"{'tensor':<56} {'baseline':>9} {'test_err':>9} {'ratio':>8}  verdict",
+            f"{'tensor':<56} {self.baseline_label:>9} {'test_err':>9} {'ratio':>8}  verdict",
         ]
         for e in rows[:limit]:
             verdict = "PASS" if e.passed else f"FAIL ({e.reason})"
@@ -153,4 +160,68 @@ def assert_aligned(test: Any, ref: Any, truth: Any, **kwargs) -> AlignmentReport
     """``judge`` and raise ``AssertionError`` with a per-tensor table if anything is not aligned."""
     report = judge(test, ref, truth, **kwargs)
     report.assert_pass()
+    return report
+
+
+def machine_epsilon(dtype: torch.dtype) -> float:
+    """Machine epsilon of ``dtype``; float8 formats use the bfloat16 one, as Megatron-LM does."""
+    if dtype.is_floating_point and torch.finfo(dtype).bits >= 16:
+        return float(torch.finfo(dtype).eps)
+    return float(torch.finfo(torch.bfloat16).eps)
+
+
+def relative_bound(dtype: torch.dtype, k: float = 4.0, C: float = 1.03, depth: int = 33) -> float:
+    """``k * C**depth * eps``. The defaults are Megatron-LM's, which always uses layer 0 of 32 (the most permissive)
+    and, in ``assert_grads_close``, the bfloat16 epsilon whatever the training precision."""
+    return k * C**depth * machine_epsilon(dtype)
+
+
+def judge_relative_bound(
+    test: Any,
+    ref: Any,
+    dtype: torch.dtype,
+    k: float = 4.0,
+    C: float = 1.03,
+    depth: int = 33,
+    zero_scale: float = 1e-4,
+) -> AlignmentReport:
+    """Judge ``test`` against ``ref`` from the same code: ``||test - ref||_F / ||ref||_F <= relative_bound(dtype)``.
+
+    As in Megatron-LM, tensors whose largest magnitude is at most ``zero_scale`` on both sides pass trivially, and the
+    report fails if every tensor is that small (nothing was really compared). ``Entry.baseline_error`` holds the
+    bound, so ``ratio`` is the error over the bound and must be at most 1.
+    """
+    test_flat, ref_flat = flatten_tensors(test), flatten_tensors(ref)
+    bound = relative_bound(dtype, k, C, depth)
+    report = AlignmentReport(baseline_label="bound")
+    for name in sorted(set(ref_flat) - set(test_flat)):
+        report.entries.append(Entry(name, False, "missing in test"))
+    for name in sorted(set(test_flat) - set(ref_flat)):
+        report.entries.append(Entry(name, False, "missing in ref"))
+    nonzero = False
+    for name in sorted(set(ref_flat) & set(test_flat)):
+        a, b = test_flat[name], ref_flat[name]
+        if a.shape != b.shape:
+            report.entries.append(Entry(name, False, f"shape {tuple(a.shape)} vs {tuple(b.shape)}"))
+            continue
+        a64, b64 = as_float64(a), as_float64(b)
+        if not a.is_floating_point():
+            equal = bool(torch.equal(a64, b64))
+            report.entries.append(Entry(name, equal, "exact" if equal else "non-float tensors differ", 0.0, 0.0, 0.0))
+            continue
+        error = float((a64 - b64).norm() / (b64.norm() + 1e-30))
+        entry = Entry(name, False, "", bound, error, bound, tensor_metrics(a64, b64))
+        if not torch.isfinite(a64).all():
+            entry.reason = "non-finite test output"
+        elif a64.abs().max() <= zero_scale and b64.abs().max() <= zero_scale:
+            entry.passed, entry.reason, entry.test_error = True, "both ~0", 0.0
+        elif error <= bound:
+            nonzero = True
+            entry.passed, entry.reason = True, "within bound"
+        else:
+            nonzero = True
+            entry.reason = f"relative error > {bound:.2e}"
+        report.entries.append(entry)
+    if report.entries and not nonzero and report.passed:
+        report.entries.append(Entry("<all>", False, f"every tensor is ~0 (<= {zero_scale:g}), nothing was compared"))
     return report

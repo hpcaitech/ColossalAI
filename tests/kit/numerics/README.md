@@ -248,17 +248,51 @@ AdamW step: the first update is about `lr * sign(grad)`, which hardly depends on
 These checks are run by hand while developing a model and attached to its review; CI runs only the tool's own tests
 in `tests/test_numerics`.
 
+## Data-parallel equivalence
+
+`scenarios.data_parallel.check` checks that N-way data parallelism computes what one device computes when it accumulates
+the same N micro-batches. Both sides run the same plugin at the same precision, so there is no reference
+implementation and no float64 truth; the rule is Megatron-LM's relative bound instead
+(`test_optimizer_grads_match.py`): per gradient, `||test - ref|| / ||ref|| <= k * C**depth * eps`, with Megatron's
+constants `k = 4`, `C = 1.03`, depth 33 and the bfloat16 epsilon, about 8.3%.
+
+Call it from the main process; it spawns a one-device run and a `world_size`-device run, saves both traces and
+compares them. The plugin is passed as a function building it, since each process builds its own:
+
+```python
+from functools import partial
+
+from colossalai.booster.plugin import LowLevelZeroPlugin
+from tests.kit.numerics.scenarios import data_parallel
+
+report = data_parallel.check(
+    "transformers_mixtral", partial(LowLevelZeroPlugin, stage=2, precision="bf16"), world_size=2, micro_batches=4
+)
+report.assert_pass()
+```
+
+The report has the same columns as `judge`, with the bound in place of the baseline error, so `ratio` must be at most
+1. Measured on Mixtral, Llama, GPT and BERT with 2 devices and 4 micro-batches: at most 5% of the bound in bf16 and
+about 1e-7 relative error in fp32; a parameter left out of gradient synchronization is off by 99.8%, 12 times the
+bound.
+
+As in Megatron-LM only the gradients of one step are judged. The traces also hold the weights after the AdamW step
+and the micro-batch losses, but neither is a stable target: the first Adam update is about `lr * sign(grad)`, so a
+rounding difference in a near-zero gradient flips that element's update (a GPT-2 bias was 365 times beyond the
+float32 bound after one step while every gradient was within it), and the random-projection loss mostly cancels,
+which inflates its relative error.
+
 ## Layout
 
 Three layers, passing `Trace`s:
 
 | Layer | Modules | Role |
 | --- | --- | --- |
-| Scenarios | `scenarios.independent_impl` | which runs to make and which rule judges them, one module per question |
+| Scenarios | `scenarios.independent_impl`, `data_parallel` | which runs to make and which rule judges them, one module per question |
 | Capture | `capture.fwd_bwd` (one forward and backward, torch only), `capture.training` and `capture.recipes` (training through a plugin, ColossalAI) | run once, return a `Trace` |
-| Judge | `judge` | compare traces, return an `AlignmentReport` |
+| Judge | `judge`, `judge_relative_bound` | compare traces, return an `AlignmentReport` |
 
-Only `independent_impl` compares against another codebase; Every layer can be used on its own. For an operator or module, `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` does the three `run_fwd_bwd` runs and the `judge` of the examples above in one call.
+Only `independent_impl` compares against another codebase; the other scenarios compare two runs of the same code that differ in one condition. Every layer can be used on its own. For an operator or module, `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` does the three `run_fwd_bwd` runs and the `judge` of the examples above in one call.
 
 ## API
 
@@ -271,8 +305,11 @@ Only `independent_impl` compares against another codebase; Every layer can be us
 | `NumericsSpec(reference_fn=None, param_map=None, output_fn=None)` | opts a model_zoo entry into whole-model alignment |
 | `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
 | `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
+| `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None)` | run on `world_size` devices and on one, return `(test, ref)` |
+| `scenarios.data_parallel.check(...)` | `judge_relative_bound` on the gradients of the above |
+| `judge_relative_bound(test, ref, dtype, k=4.0, C=1.03, depth=33)`, `relative_bound(dtype)` | Megatron-LM's rule for runs of the same code |
 | `capture.recipes.recipe_for(plugin, mixed_precision)` | the reference recipe for a configuration, or `UnsupportedRecipe` |
-| `capture.training`: `prepare`, `run_reference`, `run_boosted` | the individual runs, for new scenarios |
+| `capture.training`: `prepare`, `run_reference`, `run_boosted`, `run_data_parallel` | the individual runs, for new scenarios |
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |

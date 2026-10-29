@@ -10,6 +10,7 @@ from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import torch
+import torch.distributed as dist
 from torch import Tensor, nn
 from torch.utils._pytree import tree_flatten, tree_map
 
@@ -192,6 +193,79 @@ def run_boosted(
     return Trace.capture(results, dtypes=audit.records, **_meta(s, grad_seed, meta))
 
 
+def run_data_parallel(
+    s: Prepared,
+    plugin: Plugin,
+    micro_batches: int,
+    mixed_precision: Union[str, MixedPrecision, None] = None,
+    optimizer_fn: Callable = default_optimizer,
+    grad_seed: int = 0,
+    **meta,
+) -> Trace:
+    """Train through the plugin with ``micro_batches`` micro-batches per step, spread over the data-parallel ranks.
+
+    With world size W, rank r runs micro-batches r, r + W, ... and accumulates their gradients; the plugin then
+    averages over the ranks. Each micro-batch loss is scaled by W / micro_batches, so every world size computes the
+    gradient of the mean loss over all micro-batches. ``s`` must hold ``steps * micro_batches`` batches; micro-batch i
+    of step t is ``s.batches[t * micro_batches + i]`` with upstream gradient seed ``grad_seed + t * micro_batches + i``.
+
+    Records ``grad/param/<name>`` (the averaged gradient of the first step), ``param/<name>`` (the weights after it)
+    and ``loss/<step>/<micro-batch>``. The trace is the same on every rank.
+    """
+    world_size, rank = dist.get_world_size(), dist.get_rank()
+    if micro_batches % world_size or len(s.batches) % micro_batches:
+        raise ValueError(
+            f"{micro_batches} micro-batches cannot be split over {world_size} ranks and {len(s.batches)} batches"
+        )
+    recipe = recipe_for(plugin, mixed_precision)
+    module = copy.deepcopy(s.model)
+    optimizer = optimizer_fn(module.parameters())
+    booster = Booster(plugin=plugin, mixed_precision=mixed_precision)
+    module, optimizer, *_ = booster.boost(module, optimizer)
+    module.train()
+    inner = module.unwrap()
+    get_grad = getattr(optimizer, "get_param_grad", lambda p: p.grad)
+
+    torch.manual_seed(s.seed)
+    results = {}
+    with full_precision_matmul():
+        for step in range(len(s.batches) // micro_batches):
+            losses = {}
+            for micro in range(rank, micro_batches, world_size):
+                index = step * micro_batches + micro
+                outputs = flatten_tensors(s.select(module(**_leaves(s.batches[index], None))), "out")
+                loss = _loss(outputs, grad_seed + index)
+                booster.backward(loss * (world_size / micro_batches), optimizer)
+                losses[f"loss/{step}/{micro}"] = loss.detach().float().cpu()
+            if isinstance(optimizer, TorchAMPOptimizer):
+                scale = optimizer.scaler.get_scale()
+                optimizer.unscale_grad()
+            named = list(inner.named_parameters())
+            if step == 0:
+                # get_param_grad is collective: every rank gathers every parameter
+                grads = {f"grad/param/{n}": get_grad(p) for n, p in named}
+                results.update({k: g.detach().clone() for k, g in grads.items() if g is not None})
+            optimizer.step()
+            if isinstance(optimizer, TorchAMPOptimizer) and optimizer.scaler.get_scale() < scale:
+                raise RuntimeError(
+                    f"step {step}: fp16 gradients overflowed at loss scale {scale}, the step was skipped"
+                )
+            if step == 0:
+                results.update(_params(named, None))
+            optimizer.zero_grad()
+            gathered = [None] * world_size
+            dist.all_gather_object(gathered, losses)
+            for part in gathered:
+                results.update(part)
+    steps = len(s.batches) // micro_batches
+    meta = dict(
+        meta, plugin=type(plugin).__name__, mixed_precision=str(mixed_precision), world_size=world_size, steps=steps
+    )
+    return Trace.capture(
+        results, dtype=str(recipe.dtype).replace("torch.", ""), micro_batches=micro_batches, **_meta(s, grad_seed, meta)
+    )
+
+
 def _unwrap_optimizer(optimizer) -> torch.optim.Optimizer:
     # plugins and mixed precision may each wrap the torch optimizer
     while hasattr(optimizer, "optim"):
@@ -208,7 +282,7 @@ def _loss(outputs: Dict[str, Tensor], grad_seed: int) -> Tensor:
 
 
 def _meta(s: Prepared, grad_seed: int, meta: Dict[str, Any]) -> Dict[str, Any]:
-    return dict(model=s.name, seed=s.seed, grad_seed=grad_seed, steps=len(s.batches), **meta)
+    return {**dict(model=s.name, seed=s.seed, grad_seed=grad_seed, steps=len(s.batches)), **meta}
 
 
 def _describe(recipe: Recipe) -> str:
