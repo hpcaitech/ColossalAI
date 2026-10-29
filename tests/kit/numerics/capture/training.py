@@ -4,6 +4,7 @@ Each function runs once and returns one ``Trace``; ``scenarios`` decide which ru
 Depends on ColossalAI, so ``capture/__init__`` does not import it."""
 
 import copy
+import os
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
@@ -264,6 +265,74 @@ def run_data_parallel(
     return Trace.capture(
         results, dtype=str(recipe.dtype).replace("torch.", ""), micro_batches=micro_batches, **_meta(s, grad_seed, meta)
     )
+
+
+CHECKPOINT_PARTS = ("model", "optimizer", "lr_scheduler")
+
+
+def run_steps(
+    s: Prepared,
+    plugin: Plugin,
+    start: int,
+    stop: int,
+    mixed_precision: Union[str, MixedPrecision, None] = None,
+    optimizer_fn: Callable = default_optimizer,
+    grad_seed: int = 0,
+    load: Optional[str] = None,
+    save: Optional[str] = None,
+    parts: Iterable[str] = CHECKPOINT_PARTS,
+    shard_optimizer: bool = True,
+    **meta,
+) -> Trace:
+    """Train steps ``start`` to ``stop - 1`` of a ``len(s.batches)``-step run through the plugin, one batch per step.
+
+    The learning rate warms up linearly over the whole run (``LinearLR``), so it differs at every step. With ``load``,
+    the ``parts`` of a checkpoint written by ``save`` are loaded first (with the booster's own ``load_*`` methods);
+    with ``save``, they are written after the last step, the model sharded in safetensors with its HuggingFace config,
+    the optimizer sharded unless ``shard_optimizer=False``.
+
+    Records ``loss/<step>`` for every step run and ``param/<name>`` after the last one. Each rank runs the same batch;
+    data parallelism itself is checked by ``run_data_parallel``.
+    """
+    module = copy.deepcopy(s.model)
+    optimizer = optimizer_fn(module.parameters())
+    scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.25, total_iters=len(s.batches))
+    booster = Booster(plugin=plugin, mixed_precision=mixed_precision)
+    module, optimizer, _, _, scheduler = booster.boost(module, optimizer, lr_scheduler=scheduler)
+    module.train()
+    parts = set(parts)
+    if load is not None:
+        if "model" in parts:
+            booster.load_model(module, os.path.join(load, "model"))
+        if "optimizer" in parts:
+            booster.load_optimizer(optimizer, os.path.join(load, "optimizer"))
+        if "lr_scheduler" in parts:
+            booster.load_lr_scheduler(scheduler, os.path.join(load, "lr_scheduler.pt"))
+
+    torch.manual_seed(s.seed)
+    results = {}
+    with full_precision_matmul():
+        for step in range(start, stop):
+            outputs = flatten_tensors(s.select(module(**_leaves(s.batches[step], None))), "out")
+            loss = _loss(outputs, grad_seed + step)
+            booster.backward(loss, optimizer)
+            optimizer.step()
+            if isinstance(optimizer, TorchAMPOptimizer) and optimizer.scaler.get_scale() != _initial_scale(optimizer):
+                raise RuntimeError(f"step {step}: the fp16 loss scale changed, so the run is not reproducible")
+            optimizer.zero_grad()
+            scheduler.step()
+            results[f"loss/{step}"] = loss.detach().float().cpu()
+    results.update(_params(list(module.unwrap().named_parameters()), None))
+    if save is not None:
+        booster.save_model(module, os.path.join(save, "model"), shard=True, use_safetensors=True)
+        booster.save_optimizer(optimizer, os.path.join(save, "optimizer"), shard=shard_optimizer)
+        booster.save_lr_scheduler(scheduler, os.path.join(save, "lr_scheduler.pt"))
+    meta = dict(meta, plugin=type(plugin).__name__, mixed_precision=str(mixed_precision), start=start, stop=stop)
+    return Trace.capture(results, **_meta(s, grad_seed, meta))
+
+
+def _initial_scale(optimizer: TorchAMPOptimizer) -> float:
+    return optimizer.scaler._init_scale
 
 
 def _unwrap_optimizer(optimizer) -> torch.optim.Optimizer:

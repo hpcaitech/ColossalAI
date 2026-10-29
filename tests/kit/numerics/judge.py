@@ -5,6 +5,9 @@ The baseline-error rule (``judge``) follows PyTorch's TorchInductor accuracy che
 ground truth at the precision being tested, and the implementation under test may deviate at most ``multiplier`` times
 as much.
 
+The exact rule (``judge_equal``) follows Megatron-LM's ``DeterministicTest``: runs that must not differ at all, such
+as training resumed from a checkpoint against training that was never interrupted.
+
 The relative-bound rule (``judge_relative_bound``) follows Megatron-LM's ``test_optimizer_grads_match.py`` for runs of
 the same code under different parallel layouts, where there is no reference at a lower precision to measure a
 baseline error with: the relative Frobenius error may be at most ``k * C**depth * eps`` (arXiv 2506.09280, theorem 5.3).
@@ -224,4 +227,27 @@ def judge_relative_bound(
         report.entries.append(entry)
     if report.entries and not nonzero and report.passed:
         report.entries.append(Entry("<all>", False, f"every tensor is ~0 (<= {zero_scale:g}), nothing was compared"))
+    return report
+
+
+def judge_equal(test: Any, ref: Any) -> AlignmentReport:
+    """Every tensor of ``test`` must equal the one in ``ref`` bit for bit (same dtype and values).
+
+    ``Entry.test_error`` is the largest absolute difference; the allowed difference is 0.
+    """
+    test_flat, ref_flat = flatten_tensors(test), flatten_tensors(ref)
+    report = AlignmentReport(baseline_label="allowed")
+    for name in sorted(set(ref_flat) - set(test_flat)):
+        report.entries.append(Entry(name, False, "missing in test"))
+    for name in sorted(set(test_flat) - set(ref_flat)):
+        report.entries.append(Entry(name, False, "missing in ref"))
+    for name in sorted(set(ref_flat) & set(test_flat)):
+        a, b = test_flat[name], ref_flat[name]
+        if a.shape != b.shape or a.dtype != b.dtype:
+            reason = f"{tuple(a.shape)} {a.dtype} vs {tuple(b.shape)} {b.dtype}"
+            report.entries.append(Entry(name, False, reason))
+            continue
+        equal = bool(torch.equal(a.cpu(), b.cpu()))
+        diff = 0.0 if equal else float((as_float64(a) - as_float64(b)).abs().max())
+        report.entries.append(Entry(name, equal, "equal" if equal else "differs", 0.0, diff, 0.0))
     return report

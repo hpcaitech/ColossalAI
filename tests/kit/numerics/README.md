@@ -282,15 +282,56 @@ rounding difference in a near-zero gradient flips that element's update (a GPT-2
 float32 bound after one step while every gradient was within it), and the random-projection loss mostly cancels,
 which inflates its relative error.
 
+## Resuming from a checkpoint
+
+`scenarios.resume.check` checks that training resumed from a checkpoint is identical to training that was never
+interrupted. It spawns three runs of the same plugin: `steps_before + steps_after` steps without interruption,
+`steps_before` steps that save a checkpoint with the booster (model sharded in safetensors with its HuggingFace
+config, optimizer, learning rate scheduler), and a fresh process group that builds everything anew, loads the
+checkpoint and runs the remaining steps. Every step is deterministic, so the rule is exact equality
+(`judge_equal`, Megatron-LM's `DeterministicTest`): the losses of the resumed steps and the final weights must be the
+same bits. The learning rate warms up over the whole run, so a schedule that was not restored shows too. The saved
+model must also load with HuggingFace `from_pretrained` and give exactly the weights it was saved with.
+
+```python
+from functools import partial
+
+from colossalai.booster.plugin import LowLevelZeroPlugin
+from tests.kit.numerics.scenarios import resume
+
+report = resume.check("transformers_mixtral", partial(LowLevelZeroPlugin, stage=2, precision="fp32"), world_size=2)
+report.assert_pass()
+```
+
+`parts=("model", "optimizer")` and the like leave a part out of the checkpoint; each omission is detected. Results on
+Mixtral, Llama, GPT and BERT with 1 and 2 devices:
+
+| Configuration | Resumed run |
+| --- | --- |
+| `TorchDDPPlugin()` fp32, `LowLevelZeroPlugin(precision="fp32")` stage 1 and 2 | identical; `from_pretrained` reads every weight back |
+| `TorchDDPPlugin()` with `mixed_precision="fp16"` | identical with `shard_optimizer=False`; a sharded optimizer fails to load (see below) |
+| `LowLevelZeroPlugin(precision="bf16")` stage 1 and 2 | **not identical**: weights differ in the last bf16 bit (e.g. 2**-8 around 1) |
+
+The bf16 difference is real: LowLevelZero does not save the float32 master weights. On load,
+`update_master_params` rebuilds them from the bf16 weights, so their low bits are lost and later updates round
+differently. Megatron-LM, for comparison, checkpoints the float32 parameters with the optimizer state.
+
+Two loading failures, not specific to this tool, are worked around with `shard_optimizer=False`:
+
+- On CPU, loading a sharded optimizer raises: `load_states_into_optimizer` calls `get_accelerator().synchronize()`,
+  which the CPU accelerator does not support. The CPU self-tests save the optimizer unsharded.
+- With `TorchDDPPlugin` and `mixed_precision="fp16"`, loading a sharded optimizer raises
+  `'OptimizerWrapper' object has no attribute 'state'`: the optimizer is wrapped twice and only one wrapper is removed.
+
 ## Layout
 
 Three layers, passing `Trace`s:
 
 | Layer | Modules | Role |
 | --- | --- | --- |
-| Scenarios | `scenarios.independent_impl`, `data_parallel` | which runs to make and which rule judges them, one module per question |
+| Scenarios | `scenarios.independent_impl`, `data_parallel`, `resume` | which runs to make and which rule judges them, one module per question |
 | Capture | `capture.fwd_bwd` (one forward and backward, torch only), `capture.training` and `capture.recipes` (training through a plugin, ColossalAI) | run once, return a `Trace` |
-| Judge | `judge`, `judge_relative_bound` | compare traces, return an `AlignmentReport` |
+| Judge | `judge`, `judge_relative_bound`, `judge_equal` | compare traces, return an `AlignmentReport` |
 
 Only `independent_impl` compares against another codebase; the other scenarios compare two runs of the same code that differ in one condition. Every layer can be used on its own. For an operator or module, `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` does the three `run_fwd_bwd` runs and the `judge` of the examples above in one call.
 
@@ -307,9 +348,12 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
 | `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None)` | run on `world_size` devices and on one, return `(test, ref)` |
 | `scenarios.data_parallel.check(...)` | `judge_relative_bound` on the gradients of the above |
+| `scenarios.resume.traces(entry, plugin_fn, mixed_precision=None, world_size=1, steps_before=2, steps_after=2, parts=..., shard_optimizer=True)` | uninterrupted, saved and resumed runs |
+| `scenarios.resume.check(...)` | `judge_equal` on the resumed steps, plus the HuggingFace round trip |
+| `judge_equal(test, ref)` | bitwise equality, Megatron-LM's `DeterministicTest` |
 | `judge_relative_bound(test, ref, dtype, k=4.0, C=1.03, depth=33)`, `relative_bound(dtype)` | Megatron-LM's rule for runs of the same code |
 | `capture.recipes.recipe_for(plugin, mixed_precision)` | the reference recipe for a configuration, or `UnsupportedRecipe` |
-| `capture.training`: `prepare`, `run_reference`, `run_boosted`, `run_data_parallel` | the individual runs, for new scenarios |
+| `capture.training`: `prepare`, `run_reference`, `run_boosted`, `run_data_parallel`, `run_steps` | the individual runs, for new scenarios |
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |

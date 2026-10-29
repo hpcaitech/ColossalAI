@@ -1,0 +1,107 @@
+from functools import partial
+
+import pytest
+import torch
+import transformers
+from torch import nn
+
+from colossalai.accelerator import get_accelerator
+from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.testing import rerun_if_address_is_in_use
+from tests.kit.model_zoo.registry import ModelAttribute
+from tests.kit.numerics import NumericsSpec, judge_equal
+from tests.kit.numerics.scenarios import resume
+
+# loading a sharded optimizer fails on CPU (load_states_into_optimizer calls the CPU accelerator's synchronize,
+# which raises), so the CPU tests save it unsharded
+CPU = dict(world_size=1, shard_optimizer=False)
+
+
+class TinyMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(64, 128)
+        self.fc2 = nn.Linear(128, 32)
+
+    def forward(self, x):
+        return {"y": self.fc2(torch.relu(self.fc1(x)))}
+
+
+def _data():
+    return {"x": torch.randn(16, 64)}
+
+
+def _identity(output):
+    return output
+
+
+def _tiny_llama():
+    config = transformers.LlamaConfig(
+        hidden_size=32,
+        intermediate_size=64,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        num_hidden_layers=2,
+        vocab_size=128,
+        attn_implementation="eager",
+    )
+    return transformers.LlamaModel(config)
+
+
+def _tokens():
+    return {"input_ids": torch.randint(0, 128, (2, 8))}
+
+
+def _hidden(output):
+    return {"hidden": output.last_hidden_state}
+
+
+# module-level parts only: the entries are sent to spawned processes
+MLP = (TinyMLP, _data, _identity, None, ModelAttribute(numerics=NumericsSpec()))
+LLAMA = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+RESUMED = {"loss/2", "loss/3"} | {f"param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
+
+
+@rerun_if_address_is_in_use()
+def test_resume_is_exact():
+    report = resume.check(MLP, TorchDDPPlugin, **CPU)
+    assert {e.name for e in report.entries} == RESUMED | {"hf/<from_pretrained>"}
+    report.assert_pass()
+
+
+@pytest.mark.parametrize("missing", ["model", "optimizer", "lr_scheduler"])
+@rerun_if_address_is_in_use()
+def test_missing_checkpoint_part_detected(missing):
+    parts = [p for p in ("model", "optimizer", "lr_scheduler") if p != missing]
+    report = resume.check(MLP, TorchDDPPlugin, parts=parts, **CPU)
+    # the weights after the resumed steps always differ; the losses only if the forward already sees the loss
+    assert {f"param/fc{i}.weight" for i in (1, 2)} <= {e.name for e in report.failures}, report.format()
+
+
+@rerun_if_address_is_in_use()
+def test_huggingface_round_trip():
+    report = resume.check(LLAMA, TorchDDPPlugin, **CPU)
+    exported = [e for e in report.entries if e.name.startswith("hf/param/")]
+    assert len(exported) == sum(1 for _ in _tiny_llama().parameters())
+    report.assert_pass()
+
+
+@pytest.mark.skipif(
+    get_accelerator().name == "cpu" or get_accelerator().device_count() < 2,
+    reason="LowLevelZero requires two CUDA or NPU devices",
+)
+@rerun_if_address_is_in_use()
+def test_low_level_zero_fp32_resume_is_exact():
+    # sharded optimizer, as in real training; in bf16 the resumed run is not exact (see the README)
+    plugin_fn = partial(LowLevelZeroPlugin, stage=2, precision="fp32")
+    resume.check(MLP, plugin_fn, world_size=2).assert_pass()
+
+
+def test_judge_equal():
+    a = {"x": torch.arange(4.0), "n": torch.arange(4)}
+    assert judge_equal(a, {"x": torch.arange(4.0), "n": torch.arange(4)}).passed
+    report = judge_equal({"x": torch.arange(4.0) + 1e-6, "n": torch.arange(4)}, a)
+    assert [e.name for e in report.failures] == ["x"] and report.failures[0].test_error > 0
+    # the same values in another dtype are not the same run
+    report = judge_equal({"x": torch.arange(4.0, dtype=torch.float64), "n": torch.arange(4)}, a)
+    assert [e.name for e in report.failures] == ["x"]
