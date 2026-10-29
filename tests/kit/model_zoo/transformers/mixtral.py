@@ -3,6 +3,8 @@ import torch
 import transformers
 from transformers import MixtralConfig
 
+from tests.kit.numerics.spec import NumericsSpec
+
 from ..registry import ModelAttribute, model_zoo
 
 # ===============================
@@ -57,6 +59,9 @@ config = MixtralConfig(
     # FlashAttention2.  ShardFormer tests enable their optimized attention
     # paths explicitly, so keep this baseline self-contained.
     attn_implementation="eager",
+    # The default grouped_mm experts kernel has no float64 path, which the
+    # float64 ground truth of numerical alignment (tests/kit/numerics) needs.
+    experts_implementation="eager",
     torch_dtype="float16",
     output_router_logits=True,
 )
@@ -70,7 +75,7 @@ model_zoo.register(
     data_gen_fn=data_gen,
     output_transform_fn=output_transform_fn,
     loss_fn=loss_fn_for_mixtral_model,
-    model_attribute=ModelAttribute(has_control_flow=True),
+    model_attribute=ModelAttribute(has_control_flow=True, numerics=NumericsSpec()),
 )
 # model_zoo.register(
 #     name="transformers_mixtral_for_casual_lm",
