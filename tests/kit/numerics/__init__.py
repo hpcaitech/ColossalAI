@@ -1,11 +1,13 @@
-from .capture import cast_floating, full_precision_matmul, run_fwd_bwd
+from .capture import cast_floating, full_precision_matmul, run_fwd_bwd, upstream_loss
 from .compare import TensorMetrics, flatten_tensors, tensor_metrics
 from .judge import AlignmentReport, Entry, assert_aligned, error_multiplier, judge
+from .spec import NumericsSpec
 from .trace import Trace
 
 __all__ = [
     "AlignmentReport",
     "Entry",
+    "NumericsSpec",
     "TensorMetrics",
     "Trace",
     "assert_aligned",
@@ -16,4 +18,5 @@ __all__ = [
     "judge",
     "run_fwd_bwd",
     "tensor_metrics",
+    "upstream_loss",
 ]

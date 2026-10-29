@@ -155,17 +155,125 @@ report = judge(Trace.load("test.safetensors"), Trace.load("ref.safetensors"), Tr
 - **Randomness inside the function.** Generate noise, timesteps, dropout masks and the like once, outside, and pass
   them in `inputs` so all three runs see the same values.
 
+## A whole model through a booster plugin
+
+`tests.kit.numerics.scenarios.independent_impl.check_training` trains a `tests/kit/model_zoo` entry for a few steps through a booster
+plugin (`test`) and as plain PyTorch (`ref` at the plugin's precision, `truth` in float64), from the same weights,
+batches and upstream gradients. An entry takes part once its `ModelAttribute` carries a `NumericsSpec`; for a
+HuggingFace model nothing else is needed:
+
+```python
+model_zoo.register(
+    name="transformers_mixtral",
+    model_fn=lambda: transformers.MixtralModel(config),
+    ...,
+    model_attribute=ModelAttribute(has_control_flow=True, numerics=NumericsSpec()),
+)
+```
+
+Pass the entry's model_zoo name and the plugin exactly as training code would build it. Plugins need
+`torch.distributed`, so run inside `colossalai.testing.spawn`:
+
+```python
+import colossalai
+from colossalai.booster.plugin import LowLevelZeroPlugin
+from colossalai.testing import spawn
+from tests.kit.numerics import judge
+from tests.kit.numerics.scenarios.independent_impl import blank_control, training_traces
+
+
+def run(rank, world_size, port):
+    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
+    blank_control("transformers_mixtral")
+    plugin = LowLevelZeroPlugin(stage=2, precision="bf16")
+    test, ref, truth = training_traces("transformers_mixtral", plugin, steps=3)
+    print(judge(test, ref, truth))
+
+
+if __name__ == "__main__":
+    spawn(run, 1)
+```
+
+The traces hold, for the first step, the outputs `out/...`, input and parameter gradients `grad/...` and the weights
+after the optimizer step `param/...` (AdamW, lr 1e-3, on both sides), and `loss/<step>` for every step, so `steps=N`
+also compares a short loss curve step by step. The loss is a fixed random projection of all outputs, so every output
+receives a gradient.
+
+### Keeping the precision recipes equal
+
+A comparison is only meaningful if `ref` reduces precision exactly where the plugin does. Three checks enforce this:
+
+1. **The recipe follows from the configuration.** `capture.recipes.recipe_for(plugin, mixed_precision)` derives how the
+   reference runs; anything not checked against the plugin source raises `UnsupportedRecipe`:
+
+   | Configuration | Reference | Device |
+   | --- | --- | --- |
+   | `TorchDDPPlugin()` | float32 | CPU or GPU |
+   | `TorchDDPPlugin()`, `mixed_precision="fp16"` | float32 weights, `torch.autocast(float16)`, loss scale 2**16 | CUDA |
+   | `TorchDDPPlugin()`, `mixed_precision="bf16"` | refused: `BF16MixedPrecision` is not implemented | |
+   | `LowLevelZeroPlugin(precision="fp32")`, stage 1 or 2 | float32 | CUDA or NPU |
+   | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
+   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8` or `cast_inputs=False`; other plugins | refused: not verified yet | |
+
+2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
+   the gradient dtypes and the optimizer state dtypes. Any difference raises `RecipeMismatch` before numbers are
+   compared: with an autocast plugin and a whole-cast reference, 68 records differ for Mixtral, while judging the
+   numbers would have reported 40 of 44 correct tensors as failures.
+3. **Blank control.** `blank_control(entry)` runs a configuration in which the plugin changes no arithmetic (one
+   device, `LowLevelZeroPlugin(stage=1, precision="bf16")`, or `TorchDDPPlugin()` on CPU) and requires every ratio to
+   be 1. Run it first for a new entry: it catches a wrong reference implementation, before any real comparison.
+
+The reference is also run twice. Tensors that differ between the two runs come from nondeterministic kernels; they
+are listed in `ref.meta["nondeterministic"]`, and the worse of the two runs is used as their baseline.
+
+On a single device every supported configuration reproduces the reference exactly (all ratios 1.00 for Mixtral,
+Llama, GPT and BERT). Ratios above 1 appear once a plugin changes the arithmetic: more devices, replaced kernels,
+other parallel layouts.
+
+### What an entry has to satisfy
+
+- **Runs in float64.** Its config must choose implementations that support float64: `attn_implementation="eager"`,
+  and for HuggingFace MoE models `experts_implementation="eager"` (the default `grouped_mm` kernel has no float64).
+- **No randomness inside `forward`.** Models run in train mode with every dropout probability set to 0, so that
+  training-only paths (auxiliary losses, routers) are exercised. Noise, timesteps and masks must be generated in
+  `data_gen_fn`, which is called once per step.
+- **Other references.** If the reference is not the entry's own model (e.g. an official repository), pass
+  `NumericsSpec(reference_fn=..., param_map=...)`: `reference_fn` builds it with the same inputs and output structure,
+  `param_map` maps its parameter names to the model's. `output_fn` selects which outputs are compared.
+
+What a check can detect depends on the tensor. In the self-tests a dropped column of a bf16 MLP moves the outputs,
+the affected gradients and every step's loss 17 to 26 times beyond the baseline error, but not the weights after one
+AdamW step: the first update is about `lr * sign(grad)`, which hardly depends on the size of a gradient error.
+
+These checks are run by hand while developing a model and attached to its review; CI runs only the tool's own tests
+in `tests/test_numerics`.
+
+## Layout
+
+Three layers, passing `Trace`s:
+
+| Layer | Modules | Role |
+| --- | --- | --- |
+| Scenarios | `scenarios.independent_impl` | which runs to make and which rule judges them, one module per question |
+| Capture | `capture.fwd_bwd` (one forward and backward, torch only), `capture.training` and `capture.recipes` (training through a plugin, ColossalAI) | run once, return a `Trace` |
+| Judge | `judge` | compare traces, return an `AlignmentReport` |
+
+Only `independent_impl` compares against another codebase; Every layer can be used on its own. For an operator or module, `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` does the three `run_fwd_bwd` runs and the `judge` of the examples above in one call.
+
 ## API
 
 | Name | Purpose |
 | --- | --- |
 | `assert_aligned(test, ref, truth, tol=1e-4)` | judge and raise with the report if anything is not aligned |
 | `judge(test, ref, truth, tol=1e-4, small_tensor_multiplier=False)` | return an `AlignmentReport` |
+| `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` | the three runs and the judge of an operator or module check |
 | `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, **meta)` | run a function or module forward and backward, return a `Trace` |
+| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None)` | opts a model_zoo entry into whole-model alignment |
+| `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
+| `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
+| `capture.recipes.recipe_for(plugin, mixed_precision)` | the reference recipe for a configuration, or `UnsupportedRecipe` |
+| `capture.training`: `prepare`, `run_reference`, `run_boosted` | the individual runs, for new scenarios |
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |
-| `cast_floating`, `full_precision_matmul`, `flatten_tensors` | helpers used by the above |
-
-Whole-model alignment that builds models from `tests/kit/model_zoo` and runs them through booster plugins is not part
-of this module yet.
+| `cast_floating`, `full_precision_matmul`, `flatten_tensors`, `upstream_loss` | helpers used by the above |
