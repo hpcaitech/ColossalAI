@@ -61,7 +61,7 @@ As we claimed, lazy initialization must be used with booster. And only several p
 
 Not all models can be lazily initialized. In some cases, a part of parameters/buffers may be early initialized. But don't worry, this part usually takes a small proportion of the whole model.
 
-And some models are not supported at all which will raise an error. We tested models in torchvision, diffusers, timm, transformers, torchaudio and torchrec. Below models are not supported:
+And some models are not supported at all which will raise an error. We tested models in torchvision, diffusers, timm, transformers and torchaudio. Below models are not supported:
 
 | Model                         | Category     |
 |-------------------------------|--------------|

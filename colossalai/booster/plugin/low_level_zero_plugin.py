@@ -23,8 +23,8 @@ from colossalai.checkpoint_io.utils import (
     create_pinned_state_dict,
     get_optimizer_base_filenames,
     get_shard_filename,
+    load_optimizer_state,
     load_param_groups_into_optimizer,
-    load_state_dict,
     load_state_dict_shards,
     load_states_into_optimizer,
     save_param_groups,
@@ -35,7 +35,7 @@ from colossalai.cluster import ProcessGroupMesh
 from colossalai.interface import AMPModelMixin, ModelWrapper, OptimizerWrapper
 from colossalai.interface.optimizer import DistributedOptim
 from colossalai.logging import get_dist_logger
-from colossalai.nn.optimizer import DistGaloreAwamW, cast_to_distributed
+from colossalai.nn.optimizer import DistGaloreAdamW, cast_to_distributed
 from colossalai.quantization import BnbQuantizationConfig, quantize_model
 from colossalai.quantization.fp8_hook import FP8Hook
 from colossalai.tensor.colo_parameter import ColoParameter
@@ -153,9 +153,9 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         if use_async:
             from colossalai.utils.safetensors import load_flat
 
-            checkpoint = load_flat(checkpoint)
+            checkpoint = load_flat(checkpoint, expected_kind="full")
         else:
-            checkpoint = load_state_dict(checkpoint)
+            checkpoint = load_optimizer_state(checkpoint)
         if not low_cpu_mem_mode:
             checkpoint = create_pinned_state_dict(checkpoint, empty=False, num_threads=num_threads)
         optimizer.load_state_dict(checkpoint)
@@ -207,6 +207,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         states_name, save_index_file, param_group_file = get_optimizer_base_filenames(prefix, use_safetensors=use_async)
         index_file = CheckpointIndexFile(checkpoint)
         index_file.append_meta_data("param_groups", param_group_file)
+        index_file.append_meta_data("param_groups_format", 2)
 
         # Store the information of param groups to param_group_file.
         if self.coordinator.is_master():
@@ -263,7 +264,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
         optimizer = optimizer.unwrap()
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
+        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path, is_optimizer=True)
 
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -595,7 +596,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         # Replace with the distributed implementation if exists
         optimizer = cast_to_distributed(optimizer)
 
-        if isinstance(optimizer, DistGaloreAwamW) and zero_stage > 0 and dp_size > 0:
+        if isinstance(optimizer, DistGaloreAdamW) and zero_stage > 0 and dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
                 ranks=[0],

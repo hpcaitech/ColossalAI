@@ -32,6 +32,31 @@ def set_moe_tensor_ep_group(tensor: torch.Tensor, ep_group: ProcessGroup) -> Non
     tensor.__setattr__("ep_group", ep_group)
 
 
+def set_moe_tensor_ep_fused(tensor: torch.Tensor) -> None:
+    """
+    Mark the given moe tensor as fused experts: all experts are stacked along dim 0 and the
+    tensor is sharded along dim 0 by its expert parallel group, so every EP rank holds a slice
+    under the same parameter name.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be marked.
+    """
+    tensor.__setattr__("ep_fused", True)
+
+
+def is_moe_tensor_ep_fused(tensor: torch.Tensor) -> bool:
+    """
+    Check whether the given tensor holds fused experts sharded along dim 0 by expert parallelism.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        bool: Whether the given tensor holds fused experts.
+    """
+    return getattr(tensor, "ep_fused", False)
+
+
 def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> MoeParallelInfo:
     """
     Get moe info for the given tensor.

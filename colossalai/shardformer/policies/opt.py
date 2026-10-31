@@ -50,12 +50,19 @@ class OPTPolicy(Policy):
         return self.model
 
     def module_policy(self):
-        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer, OptFlashAttention2
+        from transformers.models.opt.modeling_opt import OPTAttention, OPTDecoder, OPTDecoderLayer
 
-        ATTN_IMPLEMENTATION = {
-            "eager": OPTAttention,
-            "flash_attention_2": OptFlashAttention2,
-        }
+        from .._utils import is_hf5
+
+        if is_hf5():
+            ATTN_IMPLEMENTATION = dict.fromkeys(("eager", "sdpa", "flash_attention_2"), OPTAttention)
+        else:
+            from transformers.models.opt.modeling_opt import OptFlashAttention2
+
+            ATTN_IMPLEMENTATION = {
+                "eager": OPTAttention,
+                "flash_attention_2": OptFlashAttention2,
+            }
 
         policy = {}
 

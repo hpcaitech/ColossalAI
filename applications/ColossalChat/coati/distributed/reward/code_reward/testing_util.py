@@ -32,12 +32,30 @@ from enum import Enum
 
 # for capturing the stdout
 from io import StringIO
+from types import ModuleType
 
 # used for testing the code that reads from input
 from unittest.mock import mock_open, patch
 
 import numpy as np
-from pyext import RuntimeModule
+
+
+def _load_runtime_module(name: str, source: str) -> ModuleType:
+    """Compile source code into an isolated in-memory module."""
+    module = ModuleType(name)
+    module.__file__ = "<string>"
+    code = compile(source, module.__file__, "exec")
+    previous_module = sys.modules.get(name)
+    sys.modules[name] = module
+    try:
+        exec(code, module.__dict__)
+    except Exception:
+        if previous_module is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = previous_module
+        raise
+    return module
 
 
 def truncatefn(s, length=300):
@@ -125,7 +143,7 @@ def run_test(in_outs, test=None, debug=False, timeout=15, run_all_tests=False):
                 print(f"sol = {sol}")
             signal.alarm(timeout)
             try:
-                tmp_sol = RuntimeModule.from_string("tmp_sol", "", sol)
+                tmp_sol = _load_runtime_module("tmp_sol", sol)
                 tmp = tmp_sol if "class Solution" not in test else tmp_sol.Solution()
                 signal.alarm(0)
             except Exception as e:
@@ -183,7 +201,7 @@ def run_test(in_outs, test=None, debug=False, timeout=15, run_all_tests=False):
             method_name = "code"
             signal.alarm(timeout)
             try:
-                tmp_sol = RuntimeModule.from_string("tmp_sol", "", sol)
+                tmp_sol = _load_runtime_module("tmp_sol", sol)
                 tmp = tmp_sol
                 signal.alarm(0)
             except Exception as e:

@@ -16,15 +16,8 @@ from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
 from transformers.utils import is_flash_attn_2_available, logging
 
 from colossalai.lazy import LazyInitContext
-from colossalai.moe._operation import (
-    DPGradScalerIn,
-    DPGradScalerOut,
-    EPGradScalerIn,
-    EPGradScalerOut,
-    all_to_all_uneven,
-)
+from colossalai.moe._operation import EPGradScalerIn, EPGradScalerOut, all_to_all_uneven
 from colossalai.pipeline.stage_manager import PipelineStageManager
-from colossalai.quantization.fp8 import all_reduce_fp8
 from colossalai.shardformer.layer._operation import (
     all_to_all_comm,
     gather_forward_split_backward,
@@ -166,17 +159,6 @@ class EPDeepseekMoE(ParallelModule):
             group=self.ep_group,
         )
 
-        with torch.no_grad():
-            activate_experts = output_split_sizes[: self.num_experts_per_ep].clone()
-            for i in range(1, self.ep_size):
-                activate_experts += output_split_sizes[i * self.num_experts_per_ep : (i + 1) * self.num_experts_per_ep]
-            activate_experts = (activate_experts > 0).float()
-
-        if self.fp8_communication:
-            all_reduce_fp8(activate_experts, group=self.moe_dp_group)
-        else:
-            dist.all_reduce(activate_experts, group=self.moe_dp_group)
-
         input_split_list = input_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_split_list = output_split_sizes.view(self.ep_size, self.num_experts_per_ep).sum(dim=-1).tolist()
         output_states, _ = all_to_all_uneven(
@@ -191,9 +173,7 @@ class EPDeepseekMoE(ParallelModule):
         if output_states.size(0) > 0:
             if self.num_experts_per_ep == 1:
                 expert = self.experts[self.expert_start_idx]
-                output_states = DPGradScalerIn.apply(output_states, self.moe_dp_size, activate_experts[0])
                 output_states = expert(output_states)
-                output_states = DPGradScalerOut.apply(output_states, self.moe_dp_size, activate_experts[0])
             else:
                 output_states_splits = output_states.split(output_split_sizes.tolist())
                 output_states_list = []
@@ -201,13 +181,7 @@ class EPDeepseekMoE(ParallelModule):
                     if split_states.size(0) == 0:  # no token routed to this experts
                         continue
                     expert = self.experts[self.expert_start_idx + i % self.num_experts_per_ep]
-                    split_states = DPGradScalerIn.apply(
-                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
-                    )
                     split_states = expert(split_states)
-                    split_states = DPGradScalerOut.apply(
-                        split_states, self.moe_dp_size, activate_experts[i % self.num_experts_per_ep]
-                    )
                     output_states_list.append(split_states)
                 output_states = torch.cat(output_states_list)
         output_states = EPGradScalerOut.apply(output_states, self.ep_size)

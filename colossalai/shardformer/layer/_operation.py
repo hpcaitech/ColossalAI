@@ -461,13 +461,15 @@ def _ring_as_gather(func, input_to_gather=None, input_local=None, process_group=
         handles = communicate_step()
 
         # actual computation
-        input_tensors.append(send_tensors)
+        # The communication dictionaries and their buffers are reused by the
+        # next round. Backward needs an immutable snapshot of each input shard.
+        input_tensors.append({k: v.clone() for k, v in send_tensors.items()})
         output_tensors.append(func(**send_tensors, **input_local))
 
     # final round: special case, no need to send/recv again
     for handle in handles:
         handle.wait()
-    input_tensors.append(send_tensors)
+    input_tensors.append({k: v.clone() for k, v in recv_tensors.items()})
     output_tensors.append(func(**recv_tensors, **input_local))
 
     gathered_input = {}
@@ -552,6 +554,7 @@ class _LinearWithGatherForwardReduceScatterBackward(torch.autograd.Function):
                 input_to_gather=input_to_gather,
                 input_local=input_local,
                 process_group=process_group,
+                gather_dim=dim,
             )
             ctx.gathered_input = input_dict["input"]
 

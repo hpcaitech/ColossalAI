@@ -1,10 +1,11 @@
 import pytest
 import torch
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM
 
 from colossalai.inference.modeling.models.glide_llama import GlideLlamaConfig, GlideLlamaForCausalLM
 from colossalai.inference.spec.drafter import Drafter
 from colossalai.utils import get_current_device
+from tests.kit import get_test_tokenizer
 
 NUM_LAYERS = 1
 MAX_LEN = 100
@@ -13,7 +14,7 @@ SPEC_NUM = 5
 
 @pytest.fixture(scope="module")
 def tokenizer():
-    return AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    return get_test_tokenizer()
 
 
 @pytest.mark.parametrize("spec_num", [SPEC_NUM])
@@ -69,6 +70,6 @@ def test_spec_dec(tokenizer):
 
 
 if __name__ == "__main__":
-    dummy_tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    dummy_tokenizer = get_test_tokenizer()
     test_drafter(dummy_tokenizer, spec_num=SPEC_NUM)
     test_spec_dec(dummy_tokenizer)

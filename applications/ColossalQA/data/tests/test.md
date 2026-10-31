@@ -18,7 +18,7 @@
 
 Install colossalqa
 ```bash
-# python==3.8.17
+# python>=3.10,<3.13
 cd ColossalAI/applications/ColossalQA
 pip install -e .
 ```

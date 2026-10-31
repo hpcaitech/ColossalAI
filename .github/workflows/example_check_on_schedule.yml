@@ -49,8 +49,7 @@ jobs:
         run: |
           example_dir=${{ matrix.directory }}
           echo "Testing ${example_dir} now"
-          cd "${PWD}/examples/${example_dir}"
-          bash test_ci.sh
+          python3 .github/workflows/scripts/example_checks/run_test_ci.py "examples/${example_dir}/test_ci.sh"
 
       - name: Notify Lark
         id: message-preparation

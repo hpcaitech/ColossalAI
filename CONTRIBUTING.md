@@ -34,7 +34,6 @@ To set up the environment for unit testing, first change your current directory 
 ```bash
 pip install -r requirements/requirements-test.txt
 ```
-If you encounter an error telling "Could not find a version that satisfies the requirement fbgemm-gpu==0.2.0", please downgrade your python version to 3.8 or 3.9 and try again.
 
 If you only want to run CPU tests, you can run
 

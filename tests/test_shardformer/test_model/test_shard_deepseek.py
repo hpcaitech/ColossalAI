@@ -1,6 +1,7 @@
 import os
 import shutil
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Tuple
 
 import pytest
@@ -12,6 +13,7 @@ from transformers import AutoConfig, AutoModel
 import colossalai
 from colossalai.booster.booster import Booster
 from colossalai.booster.plugin.moe_hybrid_parallel_plugin import MoeHybridParallelPlugin
+from colossalai.shardformer._utils import hf5_policy_error
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.testing.random import seed_all
@@ -222,6 +224,10 @@ def check_deepseek_3d(rank, world_size, port):
     run_deepseek_3d_test()
 
 
+@pytest.mark.skipif(
+    hf5_policy_error("deepseek", SimpleNamespace(enable_tensor_parallelism=True)) is not None,
+    reason=hf5_policy_error("deepseek", SimpleNamespace(enable_tensor_parallelism=True)) or "",
+)
 @pytest.mark.dist
 @pytest.mark.parametrize("world_size", [4])
 @rerun_if_address_is_in_use()
@@ -229,6 +235,10 @@ def test_deepseek(world_size):
     spawn(check_deepseek, world_size)
 
 
+@pytest.mark.skipif(
+    hf5_policy_error("deepseek", SimpleNamespace(enable_tensor_parallelism=True)) is not None,
+    reason=hf5_policy_error("deepseek", SimpleNamespace(enable_tensor_parallelism=True)) or "",
+)
 @pytest.mark.largedist
 @pytest.mark.parametrize("world_size", [8])
 @rerun_if_address_is_in_use()

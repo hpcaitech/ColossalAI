@@ -3,12 +3,13 @@ import random
 import numpy as np
 import torch
 from torch.multiprocessing import Manager
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers import LlamaConfig, LlamaForCausalLM
 
 import colossalai
 from colossalai.inference.config import InferenceConfig
 from colossalai.inference.core.engine import InferenceEngine
 from colossalai.testing import rerun_if_address_is_in_use, spawn
+from tests.kit import get_test_tokenizer
 
 
 def data_gen(batch_size: int = 4, seq_len: int = 512):
@@ -26,7 +27,7 @@ def setup_seed(seed):
 
 def check_streamingllm():
     setup_seed(20)
-    tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/llama-tokenizer")
+    tokenizer = get_test_tokenizer(vocab_size=50000)
     model = LlamaForCausalLM(
         LlamaConfig(
             vocab_size=50000,

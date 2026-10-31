@@ -100,10 +100,8 @@ class CpuAccelerator(BaseAccelerator):
     # random number generator APIs
     # =======================
     def get_rng_state(self, device=None) -> torch.Tensor:
-        """
-        Returns the random number generator state of the specified GPU as a ByteTensor.
-        """
-        return torch.get_rng_state(device)
+        """Return the CPU generator state; device is retained for API compatibility."""
+        return torch.get_rng_state()
 
     def get_rng_state_all(self) -> List[torch.Tensor]:
         """

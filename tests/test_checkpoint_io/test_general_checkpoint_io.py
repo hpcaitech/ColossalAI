@@ -8,6 +8,14 @@ from torchvision.models import resnet18
 from colossalai.checkpoint_io import GeneralCheckpointIO
 from colossalai.nn.lr_scheduler import CosineAnnealingWarmupLR
 from colossalai.testing import check_state_dict_equal, clear_cache_before_run, parameterize
+from colossalai.utils.safetensors import HAS_TENSORNVME
+
+ASYNC_MODES = [False, True] if HAS_TENSORNVME else [False]
+ASYNC_PARAMS = (
+    [False, True]
+    if HAS_TENSORNVME
+    else [False, pytest.param(True, marks=pytest.mark.skip(reason="TensorNVMe is not installed"))]
+)
 
 # ========
 # Note:
@@ -19,7 +27,7 @@ from colossalai.testing import check_state_dict_equal, clear_cache_before_run, p
 
 @clear_cache_before_run()
 @parameterize("use_safetensors", [True, False])
-@parameterize("use_async", [False, True])
+@parameterize("use_async", ASYNC_MODES)
 def test_unsharded_checkpoint(use_safetensors: bool, use_async: bool):
     # create a model and optimizer
     model = resnet18()
@@ -57,7 +65,7 @@ def test_unsharded_checkpoint(use_safetensors: bool, use_async: bool):
     # create new model
     new_model = resnet18()
     new_optimizer = Adam(new_model.parameters(), lr=0.001)
-    new_lr_scheduler = CosineAnnealingWarmupLR(optimizer, total_steps=10)
+    new_lr_scheduler = CosineAnnealingWarmupLR(new_optimizer, total_steps=10)
 
     ckpt_io._sync_d2h()
     ckpt_io._sync_io()
@@ -73,7 +81,7 @@ def test_unsharded_checkpoint(use_safetensors: bool, use_async: bool):
 
 
 @pytest.mark.parametrize("use_safetensors", [True, False])
-@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("use_async", ASYNC_PARAMS)
 def test_sharded_model_checkpoint(use_safetensors: bool, use_async: bool):
     # create a model and optimizer
     model = resnet18()
@@ -113,7 +121,7 @@ def test_sharded_model_checkpoint(use_safetensors: bool, use_async: bool):
     check_state_dict_equal(optimizer.state_dict(), new_optimizer.state_dict())
 
 
-@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("use_async", ASYNC_PARAMS)
 def test_sharded_optimizer_checkpoint(use_async: bool):
     # create a model and optimizer
     model = resnet18()
@@ -182,7 +190,7 @@ def test_sharded_optimizer_checkpoint(use_async: bool):
     check_state_dict_equal(new_optimizer.state_dict(), new_new_optimizer.state_dict())
 
 
-@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("use_async", ASYNC_PARAMS)
 def test_sharded_optimizer_multiple_param_groups(use_async: bool):
     # create a model and optimizer
     model = resnet18()

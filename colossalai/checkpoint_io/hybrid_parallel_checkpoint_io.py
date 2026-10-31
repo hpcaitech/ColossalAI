@@ -38,9 +38,13 @@ from .utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
     is_safetensors_available,
+    load_optim_or_model_shard,
+    load_optimizer_state,
+    load_param_groups,
     load_shard_state_dict,
     load_state_dict,
     load_state_dict_into_model,
+    prepare_pinned_state_dict,
     save_config_file,
     save_param_groups,
     save_state_dict,
@@ -54,6 +58,53 @@ try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
 except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
+
+
+def _route_padded_parameter_aliases(model: nn.Module, state_dict: Dict[str, torch.Tensor]) -> None:
+    """Route shared padded weights only through padding-aware module loaders."""
+    from colossalai.shardformer.layer.parallel_module import PaddingParallelModule
+
+    modules = dict(model.named_modules(remove_duplicate=False))
+    aliases = defaultdict(lambda: {"managed": [], "regular": []})
+    for name, param in model.named_parameters(remove_duplicate=False):
+        if not is_padded_tensor(param):
+            continue
+        module_name, _, _ = name.rpartition(".")
+        module = modules[module_name]
+        managed = isinstance(module, PaddingParallelModule)
+        aliases[id(param)]["managed" if managed else "regular"].append(name)
+        aliases[id(param)]["parameter"] = param
+    routes = []
+    for names in aliases.values():
+        if not names["managed"] or not names["regular"]:
+            continue
+        present = [name for name in names["managed"] + names["regular"] if name in state_dict]
+        if not present:
+            continue
+        parameter = names["parameter"]
+
+        def logical_value(value):
+            dim = parameter._padding_dim
+            if value.shape[dim] == parameter._current_length:
+                padding = value.narrow(
+                    dim, parameter._origin_length, parameter._current_length - parameter._origin_length
+                )
+                if torch.count_nonzero(padding):
+                    raise ValueError(f"Nonzero padding in checkpoint aliases: {present}")
+                return value.narrow(dim, 0, parameter._origin_length)
+            return value
+
+        value = logical_value(state_dict[present[0]])
+        for name in present[1:]:
+            other = logical_value(state_dict[name])
+            if value.shape != other.shape or not torch.equal(value, other):
+                raise ValueError(f"Conflicting checkpoint values for shared padded aliases: {present}")
+        routes.append((names, value))
+    for names, value in routes:
+        for name in names["managed"]:
+            state_dict[name] = value
+        for name in names["regular"]:
+            state_dict.pop(name, None)
 
 
 class HybridParallelCheckpointIO(GeneralCheckpointIO):
@@ -549,6 +600,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if control_saving:
                 # Store param groups.
                 index_file.append_meta_data("param_groups", param_group_file)
+                index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -618,15 +670,20 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             if self.pp_rank == 0:
                 final_index_file = CheckpointIndexFile(checkpoint)
                 final_index_file.append_meta_data("total_size", 0)
+                if use_async:
+                    final_index_file.append_meta_data("optimizer_format", 2)
 
                 for filename in os.listdir(tmp_index_file_folder):
-                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
+                    stage_index_file = CheckpointIndexFile.from_file(
+                        os.path.join(tmp_index_file_folder, filename), is_optimizer=True
+                    )
                     final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
                     for param_id, state_filename in stage_index_file.weight_map.items():
                         final_index_file.append_weight_map(param_id, state_filename)
 
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)
+                final_index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -682,7 +739,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 id_map[param_id] = param
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file, is_optimizer=True)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
@@ -694,7 +751,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 f"Invalid index file path {checkpoint_index_file} for an optimizer. \
                                Lacking param group file under current directory."
             )
-        saved_groups = torch.load(param_group_path)
+        saved_groups = load_param_groups(param_group_path)
 
         updated_groups = []
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
@@ -721,10 +778,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     continue
 
                 file_path = os.path.join(ckpt_root_path, filename)
-                if file_path.endswith(".safetensors"):
-                    state_dict = load_flat(file_path)
-                else:
-                    state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                state_dict = load_optim_or_model_shard(file_path, is_optim=True, use_safetensors=False)
                 if not low_cpu_mem_mode:
                     state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
                 self.load_states_into_optimizer(optimizer, state_dict, id_map)
@@ -851,6 +905,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # has been implemented by _load_from_state_dict method of ParallelModule in Shardformer,
         # model.load_state_dict can be directly called.
         state_dict = load_state_dict(checkpoint)
+        _route_padded_parameter_aliases(model, state_dict)
         if not low_cpu_mem_mode:
             state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
         model.load_state_dict(state_dict, strict=strict)
@@ -915,11 +970,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     from colossalai.utils.safetensors import save
 
                     flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-                    if id(optimizer) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts = create_pinned_state_dict(flatten_state_dict)
+                    buffers = prepare_pinned_state_dict(flatten_state_dict, self.pinned_state_dicts.get(id(optimizer)))
+                    self.pinned_state_dicts[id(optimizer)] = buffers
                     for k, v in flatten_state_dict.items():
-                        self.pinned_state_dicts[k].copy_(v)
-                        flatten_state_dict[k] = self.pinned_state_dicts[k]
+                        buffers[k].copy_(v)
+                        flatten_state_dict[k] = buffers[k]
                     writer = save(path=checkpoint, state_dict=flatten_state_dict, metadata=metadata)
                     self.async_writers.append(writer)
                 else:
@@ -943,11 +998,11 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     from colossalai.utils.safetensors import save
 
                     flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-                    if id(optimizer) not in self.pinned_state_dicts:
-                        self.pinned_state_dicts = create_pinned_state_dict(flatten_state_dict)
+                    buffers = prepare_pinned_state_dict(flatten_state_dict, self.pinned_state_dicts.get(id(optimizer)))
+                    self.pinned_state_dicts[id(optimizer)] = buffers
                     for k, v in flatten_state_dict.items():
-                        self.pinned_state_dicts[k].copy_(v)
-                        flatten_state_dict[k] = self.pinned_state_dicts[k]
+                        buffers[k].copy_(v)
+                        flatten_state_dict[k] = buffers[k]
                     writer = save(path=checkpoint, state_dict=flatten_state_dict, metadata=metadata)
                     self.async_writers.append(writer)
                 else:
@@ -980,9 +1035,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
         if checkpoint.endswith(".safetensors"):
-            state_dict = load_flat(checkpoint)
+            state_dict = load_flat(checkpoint, expected_kind="full")
         else:
-            state_dict = load_state_dict(checkpoint)
+            state_dict = load_optimizer_state(checkpoint)
         if not low_cpu_mem_mode:
             state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
 

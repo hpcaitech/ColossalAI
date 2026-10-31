@@ -19,7 +19,7 @@ repos:
     hooks:
     - id: black
       name: black formatter
-      args: ['--line-length=120', '--target-version=py37', '--target-version=py38', '--target-version=py39','--target-version=py310']
+      args: ['--line-length=120', '--target-version=py310', '--target-version=py311', '--target-version=py312']
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v19.1.5

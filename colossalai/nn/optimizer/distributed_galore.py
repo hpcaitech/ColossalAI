@@ -14,11 +14,11 @@ from colossalai.tensor.d_tensor import get_shard_dim_1d, is_distributed_tensor
 
 from .galore import GaLoreProjector, make_low_rank_buffer
 
-__all__ = ["DistributedGalore"]
+__all__ = ["DistGaloreAdamW", "DistGaloreAwamW"]
 # Mark sharded dimension
 
 
-class DistGaloreAwamW(DistributedOptim, Optimizer2State):
+class DistGaloreAdamW(DistributedOptim, Optimizer2State):
     r"""Implements Galore, a optimizer-agonistic gradient compression technique on 8-bit AdamW.
     It largely compresses gradient via low-rank projection and is claimed to be insensitive to hyperparams like lr.
     Supports Tensor Parallel and ZeRO stage 1 and 2 via booster and plugin.
@@ -280,3 +280,7 @@ class DistGaloreAwamW(DistributedOptim, Optimizer2State):
             for p in group["params"]:
                 if hasattr(p, "saved_data"):
                     del p.saved_data
+
+
+# Keep the original misspelling importable for existing users and serialized objects.
+DistGaloreAwamW = DistGaloreAdamW

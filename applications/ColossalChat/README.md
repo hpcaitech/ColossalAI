@@ -89,7 +89,7 @@ More details can be found in the latest news.
 
 ```bash
 # Create new environment
-conda create -n colossal-chat python=3.10.9 (>=3.8.7)
+conda create -n colossal-chat python=3.10.9  # supported versions: >=3.10,<3.13
 conda activate colossal-chat
 
 # Clone ColossalAI

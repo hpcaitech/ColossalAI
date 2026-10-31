@@ -17,11 +17,14 @@ from .utils import (
     get_model_base_filenames,
     get_optimizer_base_filenames,
     is_safetensors_available,
+    load_optimizer_state,
     load_param_groups_into_optimizer,
     load_state_dict,
     load_state_dict_into_model,
     load_state_dict_shards,
     load_states_into_optimizer,
+    merge_optimizer_param_group_defaults,
+    prepare_pinned_state_dict,
     save_config_file,
     save_param_groups,
     save_state_dict,
@@ -81,7 +84,7 @@ class GeneralCheckpointIO(CheckpointIO):
         """
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path)
+        ckpt_index_file = CheckpointIndexFile.from_file(index_file_path, is_optimizer=True)
 
         # Load param_groups
         param_group_path = ckpt_index_file.get_param_group_filename()
@@ -134,6 +137,7 @@ class GeneralCheckpointIO(CheckpointIO):
 
         # Store the information of param groups to param_group_file.
         index_file.append_meta_data("param_groups", param_group_file)
+        index_file.append_meta_data("param_groups_format", 2)
         group_file_path = os.path.join(checkpoint, param_group_file)
         save_param_groups(state_dict, group_file_path)
 
@@ -175,11 +179,12 @@ class GeneralCheckpointIO(CheckpointIO):
         self, optimizer: Optimizer, checkpoint: Path, low_cpu_mem_mode: bool = True, num_threads: int = 1
     ):
         if checkpoint.endswith(".safetensors"):
-            checkpoint = load_flat(checkpoint)
+            checkpoint = load_flat(checkpoint, expected_kind="full")
         else:
-            checkpoint = load_state_dict(checkpoint)
+            checkpoint = load_optimizer_state(checkpoint)
         if not low_cpu_mem_mode:
             checkpoint = create_pinned_state_dict(checkpoint, empty=False, num_threads=num_threads)
+        merge_optimizer_param_group_defaults(checkpoint["param_groups"], optimizer.param_groups)
         optimizer.load_state_dict(checkpoint)
 
     def save_unsharded_optimizer(
@@ -195,8 +200,9 @@ class GeneralCheckpointIO(CheckpointIO):
             from colossalai.utils.safetensors import _flatten_optim_state_dict, move_and_save
 
             flatten_state_dict, metadata = _flatten_optim_state_dict(state_dict)
-            if id(optimizer) not in self.pinned_state_dicts:
-                self.pinned_state_dicts[id(optimizer)] = create_pinned_state_dict(flatten_state_dict)
+            self.pinned_state_dicts[id(optimizer)] = prepare_pinned_state_dict(
+                flatten_state_dict, self.pinned_state_dicts.get(id(optimizer))
+            )
             writer = move_and_save(
                 path=checkpoint,
                 state_dict=flatten_state_dict,
@@ -290,14 +296,24 @@ class GeneralCheckpointIO(CheckpointIO):
         ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
         checkpoint_files, _ = ckpt_index_file.get_checkpoint_filenames()
         missing_keys = []
+        loaded_keys = set()
 
         for state_dict in load_state_dict_shards(checkpoint_files, False, use_safetensors, low_cpu_mem_mode):
+            loaded_keys.update(state_dict)
             if not low_cpu_mem_mode:
                 state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
             load_state_dict_into_model(model, state_dict, missing_keys, strict, load_sub_module)
 
         if strict:
             remain_keys = reduce(lambda a, b: a & b, map(set, missing_keys))
+            # Safetensors may store only one name of a tied Parameter. A
+            # missing alias is satisfied only by a loaded name of that object.
+            aliases = {}
+            for name, parameter in model.named_parameters(remove_duplicate=False):
+                aliases.setdefault(id(parameter), set()).add(name)
+            for names in aliases.values():
+                if names & loaded_keys:
+                    remain_keys.difference_update(names)
             if len(remain_keys) > 0:
                 error_msgs = [
                     "Missing key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in remain_keys))

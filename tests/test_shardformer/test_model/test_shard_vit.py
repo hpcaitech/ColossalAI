@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import colossalai
+from colossalai._compat import is_transformers_v5
 from colossalai.logging import disable_existing_loggers
 from colossalai.shardformer.layer.utils import Randomizer
 from colossalai.tensor.d_tensor.api import clear_layout_converter
@@ -36,8 +37,12 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     shard_vit_model = unwrap_model(sharded_model, "ViTModel", "vit")
 
     # check grad
-    row_layer_for_check = ["encoder.layer[0].attention.attention.query", "embeddings.patch_embeddings.projection"]
-    col_layer_for_check = ["encoder.layer[0].attention.output.dense"]
+    if is_transformers_v5():
+        row_layer_for_check = ["layers[0].attention.q_proj", "embeddings.patch_embeddings.projection"]
+        col_layer_for_check = ["layers[0].attention.o_proj"]
+    else:
+        row_layer_for_check = ["encoder.layer[0].attention.attention.query", "embeddings.patch_embeddings.projection"]
+        col_layer_for_check = ["encoder.layer[0].attention.output.dense"]
 
     # Save gradient tensors for comparison between the original model and the sharded model before optimizer step.
     grads_to_check = {}

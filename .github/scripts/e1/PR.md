@@ -1,6 +1,16 @@
-# E1 ColossalAI PR regression
+# E1 ColossalAI PR regression (retired)
 
-The `ColossalAI GPU on internal PR` workflow runs two existing ColossalAI tests:
+> Historical reference only. The `e1-gpu-on-pr.yml` workflow has been removed;
+> no active workflow invokes this host-venv PR suite. PR GPU regression now uses
+> the container-based Layer 2 workflow: batch 2 covers the accelerator test and
+> batch 5 covers the two-rank DP dataloader test. See the
+> [current CI workflow documentation](../../workflows/README.md#three-layer-ci-rollout).
+> The scripts are retained for history, not as an automatic CI fallback.
+> The runner registration and infrastructure bootstrap probe are unchanged.
+
+The sections below describe the retired implementation, not the current PR flow.
+
+The `ColossalAI GPU on internal PR` workflow ran two existing ColossalAI tests:
 
 - `tests/test_booster/test_accelerator.py::test_accelerator`: verifies model placement on CPU and CUDA.
 - `tests/test_booster/test_plugin/test_dp_plugin_base.py::test_dp_plugin_dataloader`: launches two NCCL workers through `colossalai.launch`, prepares a DPPlugin dataloader, and checks that ranks receive different data.

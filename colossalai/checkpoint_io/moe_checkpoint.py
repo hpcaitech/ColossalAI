@@ -17,13 +17,15 @@ from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import HybridParalle
 from colossalai.checkpoint_io.index_file import CheckpointIndexFile
 from colossalai.checkpoint_io.utils import (
     StateDictSharder,
+    async_save_state_dict_shards,
     gather_distributed_param,
     gather_state_dict_fast,
     get_lora_state_dict,
     get_model_base_filenames,
     get_optimizer_base_filenames,
-    load_shard_state_dict,
-    load_state_dict,
+    load_optim_or_model_shard,
+    load_optimizer_state,
+    load_param_groups,
     load_states_into_optimizer,
     save_config_file,
     save_param_groups,
@@ -33,7 +35,8 @@ from colossalai.checkpoint_io.utils import (
     sharded_optimizer_loading_epilogue,
 )
 from colossalai.interface import ModelWrapper, OptimizerWrapper
-from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.tensor.d_tensor import is_customized_distributed_tensor
+from colossalai.tensor.moe_tensor.api import is_moe_tensor, is_moe_tensor_ep_fused
 
 try:
     from torch.nn.modules.module import _EXTRA_STATE_KEY_SUFFIX
@@ -74,10 +77,20 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         keep_vars: bool = False,
         size_per_shard: int = 1024,
         param_name_pattern: Optional[str] = None,
+        pinned_state_dicts: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Iterator[Tuple[OrderedDict, int]]:
         # An internel method that breaks state_dict of model into shards within limited size.
 
         state_dict_sharder = StateDictSharder(size_per_shard)
+
+        def maybe_pin_tensor(name: str, tensor: torch.Tensor) -> torch.Tensor:
+            if pinned_state_dicts is None or not torch.is_tensor(tensor) or tensor.device.type != "cuda":
+                return tensor
+            full_name = prefix + name
+            if full_name not in pinned_state_dicts:
+                pinned_state_dicts[full_name] = torch.empty_like(tensor, device="cpu", pin_memory=True)
+            pinned_state_dicts[full_name].copy_(tensor)
+            return pinned_state_dicts[full_name]
 
         # Save parameters.
         for name, param in model.named_parameters():
@@ -87,6 +100,21 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 continue
             # Gather tensor pieces when using tensor parallel.
             param_ = gather_distributed_param(param, keep_vars=False)
+            # Fused experts have the same name on every EP rank, while a sharded checkpoint has one
+            # weight-map entry per name. Gather their EP-local slices to the EP root so every rank can
+            # reload the same full tensor and let the model's load hook select its local slice.
+            # Per-expert parameters already have distinct names on each EP rank and are not gathered.
+            if is_moe_tensor_ep_fused(param):
+                ep_group = param.ep_group
+                ep_size = dist.get_world_size(ep_group)
+                if ep_size > 1:
+                    ep_rank = dist.get_rank(ep_group)
+                    ep_root = get_global_rank(ep_group, 0)
+                    gathered = [torch.empty_like(param_) for _ in range(ep_size)] if ep_rank == 0 else None
+                    dist.gather(param_.contiguous(), gather_list=gathered, dst=ep_root, group=ep_group)
+                    if ep_rank == 0:
+                        param_ = torch.cat(gathered, dim=0)
+            param_ = maybe_pin_tensor(name, param_)
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
             if block is not None:
                 yield block, block_size
@@ -95,6 +123,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         for name, buf in model.named_buffers():
             if buf is not None and name not in model._non_persistent_buffers_set:
                 buffer = buf if keep_vars else buf.detach()
+                buffer = maybe_pin_tensor(name, buffer)
                 block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
                 if block is not None:
                     yield block, block_size
@@ -106,6 +135,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             is not torch.nn.Module.get_extra_state
         ):
             extra_state = model.get_extra_state()
+            extra_state = maybe_pin_tensor(_EXTRA_STATE_KEY_SUFFIX, extra_state)
             block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
             if block is not None:
                 yield block, block_size
@@ -154,20 +184,33 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             dist.barrier()
             return
 
-        # ep_rank 0 saves all the parameters and buffers.
-        # other ep_ranks save only experts
+        # Fused experts are gathered across EP by `_model_sharder`, so only ep_rank 0 writes them.
+        # Otherwise ep_rank 0 saves all the parameters and buffers, and other ep_ranks save their own experts.
+        gathers_fused_experts = self.ep_size > 1 and any(is_moe_tensor_ep_fused(p) for p in model.parameters())
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
-        state_dict_shard = MoECheckpointIO._model_sharder(model, size_per_shard=size_per_shard)
         weights_name, save_index_file = get_model_base_filenames(prefix, use_safetensors)
         index_file = CheckpointIndexFile(checkpoint)
-        control_saving = self.tp_rank == 0 and self.sp_rank == 0
+        control_saving = self.tp_rank == 0 and self.sp_rank == 0 and (self.ep_rank == 0 or not gathers_fused_experts)
+        pinned_state_dicts = None
+        if self.pp_size == 1 and self.ep_size == 1 and use_async and control_saving:
+            pinned_state_dicts = self.pinned_state_dicts.setdefault(hash(model), {})
+        state_dict_shard = MoECheckpointIO._model_sharder(
+            model, size_per_shard=size_per_shard, pinned_state_dicts=pinned_state_dicts
+        )
 
         if self.pp_size == 1 and self.ep_size == 1:
             # When pipeline is not used, save the model shards as in general checkpointIO
             if use_async:
-                super().save_unsharded_model(model, checkpoint, gather_dtensor, use_safetensors, use_async=use_async)
+                total_size, writers = async_save_state_dict_shards(
+                    sharded_state_dict=state_dict_shard,
+                    checkpoint=checkpoint,
+                    index_file=index_file,
+                    base_filename=weights_name,
+                    is_master=control_saving,
+                )
+                self.async_writers.extend(writers)
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -177,21 +220,21 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     is_master=control_saving,
                     use_safetensors=use_safetensors,
                 )
-                if control_saving:
-                    index_file.append_meta_data("total_size", total_size)
-                    index_file.write_index_file(save_index_file)
-                    save_config_file(model, checkpoint)
-                    if self.verbose and self.coordinator.is_master():
-                        logging.info(
-                            f"The model is split into checkpoint shards. "
-                            f"You can find where each parameters has been saved in the "
-                            f"index located at {save_index_file}."
-                        )
+            if control_saving:
+                index_file.append_meta_data("total_size", total_size)
+                index_file.write_index_file(save_index_file)
+                save_config_file(model, checkpoint)
+                if self.verbose and self.coordinator.is_master():
+                    logging.info(
+                        f"The model is split into checkpoint shards. "
+                        f"You can find where each parameters has been saved in the "
+                        f"index located at {save_index_file}."
+                    )
 
             dist.barrier()
         else:
-            # When pipeline is used, each stage produces its own shard files and index files.
-            # Index files belonging to each stage are saved under a temporary folder ./tmp_index_files/
+            # When pipeline or expert parallelism is used, each stage (and each EP rank that saves) produces
+            # its own shard files and index files under a temporary folder ./tmp_index_files/.
             # After all the state_dicts have been saved, the master rank integrates all the index files into one final index file and deletes the tmp folder.
 
             final_index_file_path = copy.deepcopy(save_index_file)
@@ -282,6 +325,9 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         for k, v in state_.items():
             if isinstance(v, torch.Tensor) and k != "step":
                 v = v.cuda()
+                # Only the root of the Zero group gets the complete state; the other ranks keep a flat shard.
+                # Ranks in one TP / EP group share their Zero group position, so they skip the gathers below together.
+                holds_full_state = True
 
                 # First gather Zero shards.
                 if use_zero and is_moe_param and moe_dp_size > 1:
@@ -293,6 +339,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                         v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
                     else:
                         dist.gather(v, group=moe_dp_group, dst=dst)
+                        holds_full_state = False
 
                 elif use_zero and not is_moe_param and global_dp_size > 1:
                     dp_rank = dist.get_rank(global_dp_group)
@@ -303,6 +350,19 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                         v = torch.stack(gather_tensor).view(-1)[: param.numel()].reshape_as(param)
                     else:
                         dist.gather(v, group=global_dp_group, dst=dst)
+                        holds_full_state = False
+
+                if not holds_full_state:
+                    # This rank does not save the state; a flat shard cannot be concatenated along a TP dimension.
+                    state_[k] = v.detach().clone().to(device)
+                    continue
+
+                if is_moe_tensor_ep_fused(param):
+                    # Fused experts are sharded along dim 0 by EP (and possibly along other dims by TP),
+                    # which `search_tp_partition_dim` cannot tell apart. Gather them like the model weights.
+                    v = MoECheckpointIO._gather_fused_expert_state(v, param)
+                    state_[k] = v.detach().clone().to(device)
+                    continue
 
                 # Then gather TP shards.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, tp_size)
@@ -357,6 +417,9 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             )
 
             if only_moe_param and not is_moe_tensor(working_param):
+                continue
+            # Fused expert states were gathered to the EP root, which saves them.
+            if is_moe_tensor_ep_fused(working_param) and dist.get_rank(working_param.ep_group) != 0:
                 continue
 
             block, block_size = state_dict_sharder.append_optim_state(param_id, state_)
@@ -434,6 +497,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             if control_saving:
                 # Store param groups.
                 index_file.append_meta_data("param_groups", param_group_file)
+                index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -489,13 +553,16 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 final_index_file.append_meta_data("total_size", 0)
 
                 for filename in os.listdir(tmp_index_file_folder):
-                    stage_index_file = CheckpointIndexFile.from_file(os.path.join(tmp_index_file_folder, filename))
+                    stage_index_file = CheckpointIndexFile.from_file(
+                        os.path.join(tmp_index_file_folder, filename), is_optimizer=True
+                    )
                     final_index_file.metadata["total_size"] += stage_index_file.metadata["total_size"]
                     for param_id, state_filename in stage_index_file.weight_map.items():
                         final_index_file.append_weight_map(param_id, state_filename)
 
                 # Store param groups.
                 final_index_file.append_meta_data("param_groups", param_group_file)
+                final_index_file.append_meta_data("param_groups_format", 2)
                 group_file_path = os.path.join(checkpoint, param_group_file)
                 param_groups = [
                     {**group, "params": group_info["params"]}
@@ -551,7 +618,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 id_map[param_id] = param
 
         # Read checkpoint index file.
-        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file)
+        ckpt_index_file = CheckpointIndexFile.from_file(checkpoint_index_file, is_optimizer=True)
         ckpt_root_path = ckpt_index_file.root_path
         weight_map = ckpt_index_file.weight_map
         weight_map = {int(k): v for k, v in weight_map.items()}  # convert saved id from str to int
@@ -563,7 +630,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 f"Invalid index file path {checkpoint_index_file} for an optimizer. \
                                Lacking param group file under current directory."
             )
-        saved_groups = torch.load(param_group_path)
+        saved_groups = load_param_groups(param_group_path)
 
         updated_groups = []
         for old_pg, saved_pg in zip(optimizer.optim.param_groups, saved_groups):
@@ -595,7 +662,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                     continue
 
                 file_path = os.path.join(ckpt_root_path, filename)
-                state_dict = load_shard_state_dict(Path(file_path), use_safetensors=False)
+                state_dict = load_optim_or_model_shard(file_path, is_optim=True, use_safetensors=False)
                 load_states_into_optimizer(optimizer.optim, state_dict, id_map, strict=True)
                 loaded_file.add(filename)
 
@@ -614,12 +681,60 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                 device=device,
                 inplace=True,
                 is_moe_param=is_moe_tensor(working_param),
+                working_param=working_param,
+                master_param=param,
             )
             optimizer.optim.state[param] = sharded_state
 
         sharded_optimizer_loading_epilogue(optimizer.optim)
         if self.verbose and self.coordinator.is_master():
             logging.info(f"The optimizer has been successfully loaded from sharded checkpoint: {ckpt_root_path}.")
+
+    @staticmethod
+    def _gather_fused_expert_state(state: torch.Tensor, param: torch.Tensor) -> torch.Tensor:
+        """
+        Gather the optimizer state of a fused expert parameter into the full ``[num_experts, ...]`` layout
+        on the EP root. ``state`` holds this rank's complete (Zero-gathered) state, possibly flattened.
+        """
+        state = state.reshape(-1)[: param.numel()].reshape(param.shape)
+        # Expert TP slices use the same gather function as the model checkpoint.
+        if is_customized_distributed_tensor(param):
+            state = param.gather_fn(state)
+        ep_group = param.ep_group
+        ep_size = dist.get_world_size(ep_group)
+        if ep_size > 1:
+            ep_rank = dist.get_rank(ep_group)
+            gathered = [torch.empty_like(state) for _ in range(ep_size)] if ep_rank == 0 else None
+            dist.gather(state.contiguous(), gather_list=gathered, dst=get_global_rank(ep_group, 0), group=ep_group)
+            if ep_rank == 0:
+                state = torch.cat(gathered, dim=0)
+        return state
+
+    def _shard_fused_expert_state(
+        self, state: torch.Tensor, param: torch.Tensor, master_param: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """
+        Slice this rank's part out of the full ``[num_experts, ...]`` optimizer state of a fused expert parameter.
+        """
+        if is_customized_distributed_tensor(param):
+            # Selects this rank's EP experts and TP columns, as when loading the model weights.
+            state = param.shard_fn(state)
+        else:
+            num_local_experts = param.shape[0]
+            start = dist.get_rank(param.ep_group) * num_local_experts
+            state = state[start : start + num_local_experts]
+
+        if self.use_zero and self.moe_dp_size > 1:
+            # LowLevelZeRO pads each param by the size of the group it is sharded over
+            padding_size = (self.moe_dp_size - state.numel() % self.moe_dp_size) % self.moe_dp_size
+            state = state.flatten()
+            if padding_size > 0:
+                state = torch.nn.functional.pad(state, [0, padding_size])
+            state = state.split(state.numel() // self.moe_dp_size, dim=0)[self.moe_dp_rank]
+        elif master_param is not None and state.numel() == master_param.numel():
+            # Zero keeps flattened master parameters.
+            state = state.reshape(master_param.shape)
+        return state
 
     def shard_from_complete_optimizer_state(
         self,
@@ -629,6 +744,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         device: torch.device,
         inplace: bool,
         is_moe_param: bool,
+        working_param: Optional[torch.Tensor] = None,
+        master_param: Optional[torch.Tensor] = None,
     ) -> OrderedDict:
         """
         With complete optimizer states of a specific parameter loaded from checkpoint,
@@ -640,6 +757,9 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
             original_shape (torch.Size): The size of parameter before sharding.
             device (torch.device): The destination device of loaded optimizer states.
             inplace (bool): If set to True, will update the values of argument 'state' in place. Else will make a copy of state.
+            working_param (torch.Tensor, optional): The model parameter; needed to shard fused expert states.
+            master_param (torch.Tensor, optional): The parameter the optimizer keeps states for (the fp32 master
+                parameter when using Zero); fused expert states are reshaped to it.
 
         Returns:
             OrderedDict: The sharded optimizer state of the given parameter.
@@ -647,6 +767,11 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         state_ = state if inplace else copy.deepcopy(state)
         for k, v in state_.items():
             if isinstance(v, torch.Tensor) and k != "step":
+                if working_param is not None and is_moe_tensor_ep_fused(working_param):
+                    v = self._shard_fused_expert_state(v, working_param, master_param)
+                    state_[k] = v.detach().clone().to(device)
+                    continue
+
                 # Shard state along tensor parallel group.
                 partition_dim = search_tp_partition_dim(current_shape, original_shape, self.tp_size)
                 if partition_dim is not None:
@@ -664,9 +789,8 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
                         v = v.split(slice_size, dim=0)[self.global_dp_rank]
 
                 elif self.use_zero and is_moe_param and self.moe_dp_size > 1:
-                    # LowLevelZeRO pads by global dp size for now.
-                    # TODO: update both to use moe dp size
-                    padding_size = (self.global_dp_size - v.numel() % self.global_dp_size) % self.global_dp_size
+                    # LowLevelZeRO pads each param by the size of the group it is sharded over
+                    padding_size = (self.moe_dp_size - v.numel() % self.moe_dp_size) % self.moe_dp_size
                     with torch.no_grad():
                         v = v.flatten()
                         if padding_size > 0:
@@ -842,7 +966,7 @@ class MoECheckpointIO(HybridParallelCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before loading!"
 
         # Complete optimizer state_dict loaded from checkpoint, need to be processed later.
-        state_dict = load_state_dict(checkpoint)
+        state_dict = load_optimizer_state(checkpoint)
 
         # Load param_groups.
         updated_groups = []

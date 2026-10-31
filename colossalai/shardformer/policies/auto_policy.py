@@ -160,6 +160,12 @@ _POLICY_LIST = {
     "transformers_modules.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
         file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
     ),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMModel": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLMModelPolicy"
+    ),
+    "colossalai.shardformer.modeling.chatglm2_6b.modeling_chatglm.ChatGLMForConditionalGeneration": PolicyLocation(
+        file_name="chatglm2", class_name="ChatGLMForConditionalGenerationPolicy"
+    ),
     # Deepseek
     "transformers_modules.modeling_deepseek.DeepseekModel": PolicyLocation(
         file_name="deepseek", class_name="DeepseekModelPolicy"
@@ -172,6 +178,13 @@ _POLICY_LIST = {
         file_name="deepseek_v3", class_name="DeepseekV3ModelPolicy"
     ),
     "transformers_modules.modeling_deepseek.DeepseekV3ForCausalLM": PolicyLocation(
+        file_name="deepseek_v3", class_name="DeepseekV3ForCausalLMPolicy"
+    ),
+    # HF5 native DeepSeek-V3; legacy remote-code registrations remain distinct.
+    "transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3Model": PolicyLocation(
+        file_name="deepseek_v3", class_name="DeepseekV3ModelPolicy"
+    ),
+    "transformers.models.deepseek_v3.modeling_deepseek_v3.DeepseekV3ForCausalLM": PolicyLocation(
         file_name="deepseek_v3", class_name="DeepseekV3ForCausalLMPolicy"
     ),
     # Falcon
@@ -244,6 +257,9 @@ def import_policy(policy_location: PolicyLocation) -> Policy:
     """
     Dynamically import a Policy class based on the policy location.
     """
+    from .._utils import check_hf5_policy
+
+    check_hf5_policy(policy_location.file_name)
     module_name = f"colossalai.shardformer.policies.{policy_location.file_name}"
     module = importlib.import_module(module_name)
     return getattr(module, policy_location.class_name)

@@ -14,7 +14,8 @@ jobs:
     name: Check docs in diff languages
     if: |
       github.event.pull_request.draft == false &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-i18n
@@ -32,7 +33,8 @@ jobs:
     name: Test if the docs can be built
     if: |
       github.event.pull_request.draft == false &&
-      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI'
+      github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, ubuntu-latest]
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-doc
@@ -50,7 +52,7 @@ jobs:
 
       - uses: actions/setup-python@v2
         with:
-          python-version: "3.9"
+          python-version: "3.10"
 
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch
