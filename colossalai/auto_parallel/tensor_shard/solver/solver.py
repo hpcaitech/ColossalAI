@@ -109,7 +109,7 @@ class Solver:
         strategies_len = []
         for node in self.nodes:
             strategies_len.append(self.cost_graph.node_lens[node])
-        strategies_len = np.array(strategies_len)
+        strategies_len = np.asarray(strategies_len)
 
         # prepare following_nodes
         following_nodes = self.cost_graph.following_dict
@@ -137,8 +137,8 @@ class Solver:
             for i in range(strategies_len[src_node_index]):
                 for j in range(strategies_len[dst_node_index]):
                     resharding_costs.append(edge_cost[(i, j)])
-        edge_pairs = np.array(edge_pairs)
-        resharding_costs = np.array(resharding_costs)
+        edge_pairs = np.asarray(edge_pairs)
+        resharding_costs = np.asarray(resharding_costs)
 
         # prepare liveness_set
         liveness_set = self.liveness_list
@@ -184,9 +184,9 @@ class Solver:
                     communication_costs.append(origin_communication_cost)
                 memory_costs.append(memory_cost)
 
-        compute_costs = np.array(compute_costs)
-        communication_costs = np.array(communication_costs)
-        memory_costs = np.array(memory_costs)
+        compute_costs = np.asarray(compute_costs)
+        communication_costs = np.asarray(communication_costs)
+        memory_costs = np.asarray(memory_costs)
 
         # omit initial value for nodes
         s_init_np = None

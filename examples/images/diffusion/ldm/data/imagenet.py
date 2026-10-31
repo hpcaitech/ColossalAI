@@ -118,10 +118,10 @@ class ImageNetBase(Dataset):
         self.human_labels = [human_dict[s] for s in self.synsets]
 
         labels = {
-            "relpath": np.array(self.relpaths),
-            "synsets": np.array(self.synsets),
-            "class_label": np.array(self.class_labels),
-            "human_label": np.array(self.human_labels),
+            "relpath": np.asarray(self.relpaths),
+            "synsets": np.asarray(self.synsets),
+            "class_label": np.asarray(self.class_labels),
+            "human_label": np.asarray(self.human_labels),
         }
 
         if self.process_images:
@@ -346,7 +346,7 @@ class ImageNetSR(Dataset):
         if not image.mode == "RGB":
             image = image.convert("RGB")
 
-        image = np.array(image).astype(np.uint8)
+        image = np.asarray(image).astype(np.uint8)
 
         min_side_len = min(image.shape[:2])
         crop_side_len = min_side_len * np.random.uniform(self.min_crop_f, self.max_crop_f, size=None)
@@ -364,7 +364,7 @@ class ImageNetSR(Dataset):
         if self.pil_interpolation:
             image_pil = PIL.Image.fromarray(image)
             LR_image = self.degradation_process(image_pil)
-            LR_image = np.array(LR_image).astype(np.uint8)
+            LR_image = np.asarray(LR_image).astype(np.uint8)
 
         else:
             LR_image = self.degradation_process(image=image)["image"]
