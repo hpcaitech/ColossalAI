@@ -29,7 +29,7 @@ We will cover the whole workflow in the `basic tutorials` section.
 The Colossal-AI system will be expanded to include more training skills, these new developments may include but are not limited to:
 
 1. optimization of distributed operations
-2. optimization of training on heterogenous system
+2. optimization of training on heterogeneous system
 3. implementation of training utilities to reduce model size and speed up training while preserving model performance
 4. expansion of existing parallelism methods
 

@@ -133,7 +133,7 @@ model on a single machine.
 
 <figure style={{textAlign: "center"}}>
 <img src="https://s2.loli.net/2022/01/28/qLHD5lk97hXQdbv.png"/>
-<figcaption>Heterogenous system illustration</figcaption>
+<figcaption>Heterogeneous system illustration</figcaption>
 </figure>
 
 Related paper:
