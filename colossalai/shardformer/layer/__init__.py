@@ -14,6 +14,7 @@ from .qkv_fused_linear import (
     GPT2FusedLinearConv1D_Col,
     GPT2FusedLinearConv1D_Row,
 )
+from .segmented_attn import SegmentMaskSpec, SegmentRule, build_segment_mask, naive_segment_attention
 
 __all__ = [
     "Embedding1D",
@@ -47,4 +48,8 @@ __all__ = [
     "get_pad_info",
     "all_to_all_comm",
     "FusedLinear1D_Row",
+    "SegmentMaskSpec",
+    "SegmentRule",
+    "build_segment_mask",
+    "naive_segment_attention",
 ]
