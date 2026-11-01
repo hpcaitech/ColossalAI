@@ -15,6 +15,14 @@ from .qkv_fused_linear import (
     GPT2FusedLinearConv1D_Row,
 )
 from .segmented_attn import SegmentMaskSpec, SegmentRule, build_segment_mask, naive_segment_attention
+from .two_way_attn import (
+    TwoWayPackedMeta,
+    build_two_way_kv_gather_index,
+    naive_two_way_flat_attention,
+    npu_two_way_flat_attention,
+    two_way_flat_attention,
+    validate_two_way_varlen_limits,
+)
 
 __all__ = [
     "Embedding1D",
@@ -52,4 +60,10 @@ __all__ = [
     "SegmentRule",
     "build_segment_mask",
     "naive_segment_attention",
+    "TwoWayPackedMeta",
+    "build_two_way_kv_gather_index",
+    "validate_two_way_varlen_limits",
+    "naive_two_way_flat_attention",
+    "npu_two_way_flat_attention",
+    "two_way_flat_attention",
 ]
