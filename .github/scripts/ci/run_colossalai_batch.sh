@@ -77,6 +77,7 @@ case "${BATCH}" in
             tests/test_infer/test_async_engine/test_request_tracer.py
             tests/test_lazy/test_chatglm_cpu.py
             tests/test_numerics/test_numerics_core.py
+            tests/test_model_zoo/test_gemma4.py
             tests/test_optimizer/test_lr_scheduler.py
             tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
             tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
@@ -175,6 +176,7 @@ case "${BATCH}" in
             tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             tests/test_booster/test_plugin/test_low_level_zero_plugin.py
+            tests/test_booster/test_plugin/test_gemma4.py
             tests/test_lora/test_lora.py
         )
         ;;
@@ -238,6 +240,7 @@ case "${BATCH}" in
             --ignore=tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_low_level_zero_plugin.py
+            --ignore=tests/test_booster/test_plugin/test_gemma4.py
             --ignore=tests/test_optimizer/test_lr_scheduler.py
             --ignore=tests/test_optimizer/test_adam_kernel.py
             --ignore=tests/test_optimizer/test_adam_optim.py
