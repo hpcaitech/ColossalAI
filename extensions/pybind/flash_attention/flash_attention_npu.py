@@ -3,8 +3,12 @@
 Two input shapes are supported and they are deliberately kept apart. Dense tensors of shape ``[batch, heads, seq,
 head_dim]`` (``BNSD``) or ``[batch, seq, heads, head_dim]`` (``BSND``) carry an explicit visibility mask. Packed
 tensors of shape ``[total_tokens, heads, head_dim]`` (``TND``) carry :class:`cu_seqlens` instead: the kernel needs the
-cumulative sequence lengths to know where one sequence ends and the next one starts, and it builds the causal window
-itself, so no ``[seq, seq]`` mask is ever materialised.
+cumulative sequence lengths to know where one sequence ends and the next one starts.
+
+A causal call always hands the kernel a lower-triangular mask, dense or packed. The Ascend kernel ignores
+``sparse_mode`` (and therefore the causal window) when ``atten_mask`` is ``None`` and silently computes full
+attention, which is not what a caller asking for ``is_causal=True`` expects. The mask is cached per
+``(maxSq, maxSkv)`` and reused, so callers still never materialise a ``[seq, seq]`` mask themselves.
 
 A padded batch produced by ``ColoAttention.prepare_attn_kwargs`` arrives in one of the dense layouts together with
 ``q_indices``/``kv_indices``. Those indices are used to drop the padding and continue on the packed path, which is
@@ -12,6 +16,7 @@ what makes the NPU backend save the work that padding would otherwise cause.
 """
 
 import math
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -26,9 +31,13 @@ _RANK = {"BNSD": 4, "BSND": 4, "TND": 3}
 QKV_LAYOUTS = tuple(_HEAD_DIM_INDEX)
 
 # ``sparse_mode`` of ``npu_fusion_attention``: 0 reads the dense mask it is given, 3 is the right-down causal window
-# that the kernel builds itself.
+# that the kernel applies to the mask it is given.
 _DENSE_MASK_MODE = 0
 _CAUSAL_WINDOW_MODE = 3
+
+# A mask of a long sequence is large, so keep only a few shapes around. A training step reuses one shape for every
+# layer, and a handful of recent shapes covers consecutive steps without letting the cache grow with sequence length.
+_CAUSAL_MASK_CACHE_SIZE = 4
 
 __all__ = ["FlashAttentionNpuExtension", "resolve_fusion_attention_args", "QKV_LAYOUTS"]
 
@@ -69,6 +78,36 @@ def _as_actual_seq_lengths(cu_seqlens: torch.Tensor) -> List[int]:
     return [int(length) for length in cu_seqlens[1:].tolist()]
 
 
+def _max_sequence_length(cu_seqlens: torch.Tensor) -> int:
+    """Largest per-sequence length of a cumulative-length prefix sum."""
+    return int((cu_seqlens[1:] - cu_seqlens[:-1]).max().item())
+
+
+@lru_cache(maxsize=_CAUSAL_MASK_CACHE_SIZE)
+def _causal_mask(max_seqlen_q: int, max_seqlen_kv: int, device: torch.device) -> torch.Tensor:
+    """Return the cached lower-triangular mask of shape ``[max_seqlen_q, max_seqlen_kv]``.
+
+    ``True`` means masked, which is the convention of ``npu_fusion_attention``. ``sparse_mode=3`` aligns the window
+    to the bottom-right, so a shorter sequence cuts the bottom-right corner out of this mask and still sees a causal
+    window; a rectangular mask is therefore valid for a batch whose query and key lengths differ.
+
+    The mask is cached because the same shape is reused by every layer of a training step. Caching does not change a
+    caller's contract: ``ColoAttention`` still hands a causal call to the backend without a dense mask.
+
+    Args:
+        max_seqlen_q (int): Number of query rows of the mask.
+        max_seqlen_kv (int): Number of key columns of the mask.
+        device (torch.device): Device of the mask. The key includes it, so a call on another device does not reuse a
+            mask that lives on the previous one.
+
+    Returns:
+        torch.Tensor: Boolean mask of shape ``[max_seqlen_q, max_seqlen_kv]``.
+    """
+    allowed = torch.ones(max_seqlen_q, max_seqlen_kv, dtype=torch.bool, device=device)
+    allowed.tril_(diagonal=max_seqlen_kv - max_seqlen_q)
+    return allowed.logical_not_()
+
+
 def resolve_fusion_attention_args(
     q,
     k,
@@ -80,13 +119,16 @@ def resolve_fusion_attention_args(
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
     qkv_layout: str = "BNSD",
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_kv: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Translate the arguments of the ``ColoAttention`` entry into arguments of ``torch_npu.npu_fusion_attention``.
 
-    The translation is kept free of any device call so that it can be unit tested on CPU. It decides the head count
-    and the layout the kernel is told about, picks the dense or the packed path from the layout, normalises the mask
-    to the boolean "``True`` means masked" form the NPU kernel expects, and turns the cumulative sequence lengths of
-    the packed path into the form the kernel wants.
+    The translation keeps the device calls to building the causal mask, so that everything else can be unit tested on
+    CPU. It decides the head count and the layout the kernel is told about, picks the dense or the packed path from
+    the layout, normalises the mask to the boolean "``True`` means masked" form the NPU kernel expects, turns the
+    cumulative sequence lengths of the packed path into the form the kernel wants, and supplies the cached causal
+    mask the kernel needs when the caller asks for causality without one.
 
     Args:
         q: Query tensor in ``qkv_layout``.
@@ -98,11 +140,12 @@ def resolve_fusion_attention_args(
         attention_mask (optional): Mask in the ColossalAI convention, where a **non-zero** value means "masked". A
             floating point mask is converted with ``.bool()``, a boolean mask is passed through, and ``None`` means
             "nothing masked". An **empty** tensor is the sentinel ``ColoAttention.prepare_attn_kwargs`` uses when the
-            dense mask would exceed ``MEMORY_BOUND``; it is read as ``None`` as well, and ``is_causal`` then asks the
-            kernel to build the window. Only the dense layouts accept a mask. Defaults to None.
-        is_causal (bool, optional): Whether a causal mask applies. A causal call without a mask does not build one:
-            the kernel receives ``sparse_mode=3`` and generates the right-down causal window itself. Defaults to
-            False.
+            dense mask would exceed ``MEMORY_BOUND``; it is read as ``None`` as well, and ``is_causal`` then makes this
+            backend supply its cached lower-triangular mask. Only the dense layouts accept a mask. Defaults to None.
+        is_causal (bool, optional): Whether a causal mask applies. A causal call without a mask still receives one:
+            the Ascend kernel ignores ``sparse_mode`` when ``atten_mask`` is ``None``, so this backend caches a
+            lower-triangular mask per ``(max_seqlen_q, max_seqlen_kv)`` and passes it with ``sparse_mode=3``.
+            Defaults to False.
         cu_seqlens_q (optional): Cumulative query lengths of a packed batch, i.e. ``[0, l0, l0 + l1, ...]``. The
             leading zero is dropped before the lengths reach the kernel, which expects the cumulative ends. Required
             by ``TND`` and rejected by the dense layouts. Defaults to None.
@@ -112,6 +155,12 @@ def resolve_fusion_attention_args(
             ``[batch, heads, sequence, head_dim]``, ``BSND`` is ``[batch, sequence, heads, head_dim]`` and ``TND`` is
             the packed ``[total_tokens, heads, head_dim]``. The tensors must already be contiguous in that layout,
             because re-ordering them here would reintroduce the copy this option exists to avoid. Defaults to "BNSD".
+        max_seqlen_q (Optional[int], optional): Largest query length of a packed batch. A causal packed call needs it
+            to size the cached mask without reading the device copy of ``cu_seqlens_q``. When it is None the maximum
+            is derived from ``cu_seqlens_q``. It may be larger than the actual maximum, because the mask is cut from
+            its bottom-right corner. Defaults to None.
+        max_seqlen_kv (Optional[int], optional): Largest key/value length of a packed batch, used for the same reason
+            as ``max_seqlen_q``. Defaults to None.
 
     Returns:
         Dict[str, Any]: Keyword arguments for ``npu_fusion_attention``, plus ``head_num`` and ``input_layout`` which
@@ -158,7 +207,18 @@ def resolve_fusion_attention_args(
 
     if qkv_layout == "TND":
         return _resolve_packed_arguments(
-            q, k, v, head_num, scale, dropout_p, attention_mask, is_causal, cu_seqlens_q, cu_seqlens_kv
+            q,
+            k,
+            v,
+            head_num,
+            scale,
+            dropout_p,
+            attention_mask,
+            is_causal,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
         )
     return _resolve_dense_arguments(
         q, k, v, head_num, scale, dropout_p, attention_mask, is_causal, cu_seqlens_q, cu_seqlens_kv, qkv_layout
@@ -188,7 +248,9 @@ def _resolve_dense_arguments(
         )
 
     if attention_mask is None:
-        atten_mask = None
+        # BNSD is [batch, heads, sequence, head_dim] and BSND is [batch, sequence, heads, head_dim].
+        sequence_dim = -3 if qkv_layout == "BSND" else -2
+        atten_mask = _causal_mask(q.size(sequence_dim), v.size(sequence_dim), q.device) if is_causal else None
         sparse_mode = _CAUSAL_WINDOW_MODE if is_causal else _DENSE_MASK_MODE
     elif attention_mask.dtype is torch.bool or attention_mask.is_floating_point():
         if attention_mask.dim() == 2:
@@ -233,8 +295,16 @@ def _resolve_packed_arguments(
     is_causal: bool,
     cu_seqlens_q,
     cu_seqlens_kv,
+    max_seqlen_q: Optional[int],
+    max_seqlen_kv: Optional[int],
 ) -> Dict[str, Any]:
-    """Arguments of the packed ``TND`` path, where the sequences are delimited by ``actual_seq_*len``."""
+    """Arguments of the packed ``TND`` path, where the sequences are delimited by ``actual_seq_*len``.
+
+    The varlen kernel only accepts the ``SS`` mask form, i.e. one ``[maxSq, maxSkv]`` mask shared by every sequence,
+    so a causal call gets the cached lower-triangular mask of that shape. A full call gets no mask at all: the
+    sequences are already separated by ``actual_seq_*len``, which is what makes the second call of the two-way
+    attention block-diagonal without materialising a block mask.
+    """
     if attention_mask is not None:
         raise NotImplementedError(
             f"The TND (packed) layout does not accept a dense attention_mask, got shape "
@@ -266,15 +336,31 @@ def _resolve_packed_arguments(
             f"{len(cu_seqlens_q) - 1} and {len(cu_seqlens_kv) - 1}."
         )
 
+    if is_causal:
+        # Reading the maxima back from the device would synchronise every layer, so accept the host-side values the
+        # packing step already knows. They may overshoot the real maximum: sparse_mode=3 cuts the window out of the
+        # bottom-right corner, so a larger mask is still correct for every shorter sequence.
+        if max_seqlen_q is not None and int(max_seqlen_q) < 0:
+            raise ValueError(f"max_seqlen_q must be non-negative, got {max_seqlen_q}.")
+        if max_seqlen_kv is not None and int(max_seqlen_kv) < 0:
+            raise ValueError(f"max_seqlen_kv must be non-negative, got {max_seqlen_kv}.")
+        max_q = int(max_seqlen_q) if max_seqlen_q is not None else _max_sequence_length(cu_seqlens_q)
+        max_kv = int(max_seqlen_kv) if max_seqlen_kv is not None else _max_sequence_length(cu_seqlens_kv)
+        atten_mask = _causal_mask(max_q, max_kv, q.device)
+        sparse_mode = _CAUSAL_WINDOW_MODE
+    else:
+        atten_mask = None
+        sparse_mode = _DENSE_MASK_MODE
+
     return {
         "head_num": head_num,
         "input_layout": "TND",
-        "atten_mask": None,
+        "atten_mask": atten_mask,
         "scale": scale,
         "keep_prob": 1.0 - dropout_p,
         "actual_seq_qlen": _as_actual_seq_lengths(cu_seqlens_q),
         "actual_seq_kvlen": _as_actual_seq_lengths(cu_seqlens_kv),
-        "sparse_mode": _CAUSAL_WINDOW_MODE if is_causal else _DENSE_MASK_MODE,
+        "sparse_mode": sparse_mode,
     }
 
 
@@ -312,6 +398,8 @@ def _run_fusion_attention(
     cu_seqlens_q,
     cu_seqlens_kv,
     qkv_layout: str,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_kv: Optional[int] = None,
 ) -> torch.Tensor:
     """Resolve the arguments and call the kernel, dropping the ones this path leaves unset."""
     arguments = resolve_fusion_attention_args(
@@ -325,6 +413,8 @@ def _run_fusion_attention(
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         qkv_layout=qkv_layout,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
     )
     head_num = arguments.pop("head_num")
     input_layout = arguments.pop("input_layout")
@@ -345,6 +435,8 @@ def _attention_over_padded_batch(
     q_indices,
     kv_indices,
     qkv_layout: str,
+    max_seqlen_q: Optional[int] = None,
+    max_seqlen_kv: Optional[int] = None,
 ) -> torch.Tensor:
     """Drop the padding of a padded batch, run the packed path and scatter the output back into the padded shape."""
     if kv_indices is None:
@@ -368,6 +460,8 @@ def _attention_over_padded_batch(
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         qkv_layout="TND",
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_kv=max_seqlen_kv,
     )
     return _restore_tokens(packed_output, q_indices, batch_size, sequence_length, qkv_layout)
 
@@ -421,8 +515,9 @@ class FlashAttentionNpuExtension(_Extension):
             """Attention on the NPU, in either the dense or the packed layout.
 
             A padded dense batch, i.e. a 4D call that carries ``cu_seqlens_*`` and ``q_indices``, is un-padded first
-            and then served by the packed path. ``max_seqlen_q``/``max_seqlen_kv`` are not used because the kernel
-            derives the maxima from ``actual_seq_*len``.
+            and then served by the packed path. ``max_seqlen_q``/``max_seqlen_kv`` size the cached causal mask when
+            the padded path has to carry causality over; the kernel itself derives the maxima from
+            ``actual_seq_*len``.
             """
             if q.dim() == 4 and qkv_layout in ("BNSD", "BSND") and cu_seqlens_q is not None and q_indices is not None:
                 return _attention_over_padded_batch(
@@ -438,6 +533,8 @@ class FlashAttentionNpuExtension(_Extension):
                     q_indices=q_indices,
                     kv_indices=kv_indices,
                     qkv_layout=qkv_layout,
+                    max_seqlen_q=max_seqlen_q,
+                    max_seqlen_kv=max_seqlen_kv,
                 )
             return _run_fusion_attention(
                 torch_npu,
@@ -451,9 +548,12 @@ class FlashAttentionNpuExtension(_Extension):
                 cu_seqlens_q=cu_seqlens_q,
                 cu_seqlens_kv=cu_seqlens_kv,
                 qkv_layout=qkv_layout,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_kv=max_seqlen_kv,
             )
 
-        # A causal call without a mask is served by ``sparse_mode=3``, so an omitted
-        # ``[batch, 1, seq, seq]`` mask is not a missing capability here.
+        # A causal call may still arrive without a dense mask. The backend then has to build the window itself,
+        # because the Ascend kernel ignores ``sparse_mode`` when ``atten_mask`` is None; it does so by passing the
+        # cached lower-triangular mask, which keeps the caller's contract and the kernel's semantics apart.
         flash_attention.supports_internal_causal_window = True
         return flash_attention

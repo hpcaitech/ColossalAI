@@ -260,7 +260,7 @@ class ColoAttention:
             v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D] in the default ``BNSD`` layout, and
                 [T, nHeads, D] in the packed ``TND`` layout.
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. It is only accepted by the dense layouts, because the packed one delimits its sequences with ``cu_seqlens``. Defaults to None.
-            attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
+            attention_mask_type (AttnMaskType, optional): Attention mask type. ``AttnMaskType.CAUSAL`` is also accepted without a mask, in which case the backend builds the causal window itself; pass ``CUSTOM`` for a full call that has no mask. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
                 of the sequences in the batch, used to index into q.
                 Shape should be [B+1]. Defaults to None.
@@ -314,8 +314,15 @@ class ColoAttention:
                     and kv_indices is not None
                 )
         else:
-            # if attention_mask is None, attention_mask_type should be the default value
-            assert attention_mask_type == AttnMaskType.CUSTOM
+            # A causal call may omit the dense mask and let the backend build the window, which is what
+            # ``supports_internal_causal_window`` advertises. Any other type without a mask is meaningless: PADDED
+            # cannot describe its padding and CUSTOM has nothing to apply.
+            if attention_mask_type not in (AttnMaskType.CUSTOM, AttnMaskType.CAUSAL):
+                raise ValueError(
+                    f"attention_mask is None, so attention_mask_type must be AttnMaskType.CUSTOM or "
+                    f"AttnMaskType.CAUSAL, got {attention_mask_type}. Pass a mask if you need padding or custom "
+                    f"visibility."
+                )
 
         # kernel dispatch
         if qkv_layout not in ("BNSD", "BSND", "TND"):
@@ -325,14 +332,22 @@ class ColoAttention:
         # BNSD is [B, N, S, D], BSND is [B, S, N, D] and the packed TND is [S, N, D], so the sequence is the second to
         # last dimension of the first, the third to last of the second and the first of the packed one.
         sequence_dim = {"BNSD": -2, "BSND": -3, "TND": 0}[qkv_layout]
-        s_q = q.size(sequence_dim)
-        s_kv = v.size(sequence_dim)
+        # A packed call has no dense mask at all, so its memory is bounded by one sequence rather than by the number
+        # of packed tokens. The caller already knows the maxima and passes them, which keeps this out of a device
+        # synchronisation on the packed lengths.
+        if qkv_layout == "TND" and max_seqlen_q is not None and max_seqlen_kv is not None:
+            s_q, s_kv = max_seqlen_q, max_seqlen_kv
+        else:
+            s_q = q.size(sequence_dim)
+            s_kv = v.size(sequence_dim)
         element_size = torch.tensor([], dtype=q.dtype).element_size()
         memory_size = s_q * s_kv * element_size
-        mask_type = attention_mask_type if attention_mask is not None else None
+        mask_type = (
+            attention_mask_type if attention_mask is not None or attention_mask_type is AttnMaskType.CAUSAL else None
+        )
         attn_func = ColoAttention._dispatch_kernel(q.dtype, mask_type, memory_size)
         # Above MEMORY_BOUND prepare_attn_kwargs stops building the mask, because a dense one would not fit, and
-        # expects the backend to generate the window itself. Not every backend can do that, so fail here with the
+        # expects the backend to build the causal mask itself. Not every backend can do that, so fail here with the
         # sizes instead of letting it compute an unmasked attention.
         if (
             memory_size >= MEMORY_BOUND
@@ -345,7 +360,7 @@ class ColoAttention:
                 f"(accelerator: '{get_accelerator().name}'). Pass attention_mask explicitly and lower the sequence "
                 f"length, or split the sequence before calling ColoAttention.attention."
             )
-        is_causal = attention_mask is not None and attention_mask_type in (
+        is_causal = attention_mask_type in (
             AttnMaskType.CAUSAL,
             AttnMaskType.PADDED_CAUSAL,
         )

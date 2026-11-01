@@ -79,7 +79,7 @@ def test_missing_mask_is_passed_as_none_instead_of_crashing(qkv_layout):
     assert arguments["actual_seq_kvlen"] is None
 
 
-def test_packed_layout_never_receives_a_mask():
+def test_packed_full_attention_never_receives_a_mask():
     q, k, v = _tensors("TND")
 
     arguments = resolve_fusion_attention_args(q, k, v, **_layout_kwargs("TND"))
@@ -94,14 +94,81 @@ def test_dropout_is_turned_into_keep_probability():
     assert resolve_fusion_attention_args(q, k, v, dropout_p=0.1)["keep_prob"] == pytest.approx(0.9)
 
 
-@pytest.mark.parametrize("qkv_layout", QKV_LAYOUTS)
-def test_causal_without_a_mask_asks_the_kernel_for_the_window(qkv_layout):
+@pytest.mark.parametrize("qkv_layout", DENSE_LAYOUTS)
+def test_dense_causal_call_passes_a_lower_triangular_mask(qkv_layout):
     q, k, v = _tensors(qkv_layout)
 
-    arguments = resolve_fusion_attention_args(q, k, v, is_causal=True, **_layout_kwargs(qkv_layout))
+    arguments = resolve_fusion_attention_args(q, k, v, is_causal=True, qkv_layout=qkv_layout)
 
-    assert arguments["atten_mask"] is None, "a causal call must not materialise a [seq, seq] mask"
-    assert arguments["sparse_mode"] == 3, "the kernel is asked to build the right-down causal window"
+    atten_mask = arguments["atten_mask"]
+    assert atten_mask.dtype is torch.bool
+    assert atten_mask.shape == (SEQUENCE, SEQUENCE)
+    assert torch.equal(atten_mask, ~torch.ones(SEQUENCE, SEQUENCE, dtype=torch.bool).tril())
+    assert arguments["sparse_mode"] == 3, "the mask is read with the right-down causal window"
+
+
+def test_packed_causal_call_passes_a_mask_sized_by_the_longest_sequence():
+    q, k, v = _tensors("TND")
+
+    arguments = resolve_fusion_attention_args(q, k, v, is_causal=True, **_layout_kwargs("TND"))
+
+    # cu_seqlens [0, 7, 16] describes sequences of 7 and 9 tokens, so the SS mask is [9, 9].
+    longest = 9
+    atten_mask = arguments["atten_mask"]
+    assert atten_mask.dtype is torch.bool
+    assert atten_mask.shape == (longest, longest)
+    assert torch.equal(atten_mask, ~torch.ones(longest, longest, dtype=torch.bool).tril())
+    assert arguments["sparse_mode"] == 3, "the mask is read with the right-down causal window"
+
+
+def test_packed_causal_call_accepts_a_host_side_maximum():
+    q, k, v = _tensors("TND")
+
+    arguments = resolve_fusion_attention_args(
+        q,
+        k,
+        v,
+        is_causal=True,
+        **_layout_kwargs("TND"),
+        max_seqlen_q=12,
+        max_seqlen_kv=12,
+    )
+
+    # The mask may overshoot the real maximum: sparse_mode=3 cuts each sequence out of its bottom-right corner.
+    assert arguments["atten_mask"].shape == (12, 12)
+    assert torch.equal(arguments["atten_mask"], ~torch.ones(12, 12, dtype=torch.bool).tril())
+
+
+def test_packed_causal_mask_is_rectangular_when_query_and_key_lengths_differ():
+    q = torch.randn(6, HEADS, HEAD_DIM)
+    k = torch.randn(8, HEADS, HEAD_DIM)
+    v = torch.randn(8, HEADS, HEAD_DIM)
+
+    arguments = resolve_fusion_attention_args(
+        q,
+        k,
+        v,
+        is_causal=True,
+        cu_seqlens_q=torch.tensor([0, 2, 6], dtype=torch.int32),
+        cu_seqlens_kv=torch.tensor([0, 3, 8], dtype=torch.int32),
+        qkv_layout="TND",
+    )
+
+    expected = ~torch.ones(4, 5, dtype=torch.bool).tril(diagonal=1)
+    assert arguments["atten_mask"].shape == (4, 5)
+    assert torch.equal(arguments["atten_mask"], expected)
+
+
+def test_causal_mask_is_cached_per_shape():
+    q, k, v = _tensors("BNSD")
+
+    first = resolve_fusion_attention_args(q, k, v, is_causal=True)["atten_mask"]
+    second = resolve_fusion_attention_args(q, k, v, is_causal=True)["atten_mask"]
+    other = resolve_fusion_attention_args(q, k[:, :, :4], v[:, :, :4], is_causal=True)["atten_mask"]
+
+    assert first is second, "the same (maxSq, maxSkv) must reuse the cached mask"
+    assert other.shape == (SEQUENCE, 4)
+    assert other.data_ptr() != first.data_ptr()
 
 
 def test_floating_point_mask_is_read_as_non_zero_means_masked():
@@ -288,12 +355,40 @@ def test_padded_batch_is_unpadded_before_the_kernel(monkeypatch):
     assert torch.count_nonzero(restored) == packed_q.numel()
 
 
-def test_empty_mask_means_the_kernel_builds_the_window():
+def test_padded_causal_batch_receives_the_cached_mask(monkeypatch):
+    recorder = _RecordingFusionAttention()
+    monkeypatch.setitem(sys.modules, "torch_npu", recorder)
+    flash_attention = FlashAttentionNpuExtension().load()
+    q, k, v = _tensors("BNSD")
+    q_indices = torch.tensor([0, 1, 2, 8, 9, 10, 11, 12])
+    cu_seqlens = torch.tensor([0, 3, 8], dtype=torch.int32)
+
+    flash_attention(
+        q,
+        k,
+        v,
+        is_causal=True,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_kv=cu_seqlens,
+        q_indices=q_indices,
+        kv_indices=q_indices,
+        max_seqlen_q=5,
+        max_seqlen_kv=5,
+    )
+
+    _, keywords = recorder.calls[0]
+    assert keywords["sparse_mode"] == 3
+    assert keywords["atten_mask"].shape == (5, 5)
+    assert torch.equal(keywords["atten_mask"], ~torch.ones(5, 5, dtype=torch.bool).tril())
+
+
+def test_empty_mask_sentinel_still_gets_the_cached_causal_mask():
     q, k, v = _tensors("BNSD")
 
     arguments = resolve_fusion_attention_args(q, k, v, attention_mask=torch.empty(0), is_causal=True)
 
-    assert arguments["atten_mask"] is None
+    assert arguments["atten_mask"] is not None
+    assert arguments["atten_mask"].shape == (SEQUENCE, SEQUENCE)
     assert arguments["sparse_mode"] == 3
 
 
@@ -323,6 +418,29 @@ def test_entry_rejects_unsupported_layouts(qkv_layout):
 
     with pytest.raises(ValueError, match="Unsupported qkv_layout"):
         ColoAttention.attention(q, k, v, qkv_layout=qkv_layout)
+
+
+def test_entry_can_request_causal_attention_without_a_dense_mask():
+    q, k, v = _tensors("BNSD")
+    forwarded = []
+
+    def fake_attention(*args, **kwargs):
+        forwarded.append(kwargs)
+        return args[0]
+
+    with mock.patch.object(ColoAttention, "_dispatch_kernel", return_value=fake_attention) as dispatch:
+        ColoAttention.attention(q, k, v, attention_mask_type=AttnMaskType.CAUSAL)
+
+    assert dispatch.call_args.args[1] is AttnMaskType.CAUSAL
+    assert forwarded[-1]["attention_mask"] is None
+    assert forwarded[-1]["is_causal"] is True
+
+
+def test_entry_rejects_padding_attention_without_a_mask():
+    q, k, v = _tensors("BNSD")
+
+    with pytest.raises(ValueError, match="AttnMaskType.CUSTOM or AttnMaskType.CAUSAL"):
+        ColoAttention.attention(q, k, v, attention_mask_type=AttnMaskType.PADDED)
 
 
 def test_oversized_mask_needs_a_backend_that_builds_the_window_itself():
