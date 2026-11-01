@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from packaging import version
 
+from colossalai.accelerator import get_accelerator
 from colossalai.kernel.kernel_loader import (
     FlashAttentionDaoLoader,
     FlashAttentionForFloatAndCustomMaskLoader,
@@ -219,6 +220,8 @@ class ColoAttention:
                 outputs["attention_mask_type"] = AttnMaskType.PADDED
                 if memory_size < MEMORY_BOUND:
                     attention_mask = kv_padding_mask[:, None, :].expand(b, s_q, s_kv).to(dtype=dtype, device=device)
+                else:
+                    attention_mask = torch.empty((0,), dtype=dtype, device=device)
 
         if invert:
             attention_mask = invert_mask(attention_mask).unsqueeze(1)
@@ -240,6 +243,7 @@ class ColoAttention:
         kv_indices: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: Optional[float] = None,
+        qkv_layout: str = "BNSD",
         **kwargs,
     ) -> torch.Tensor:
         """Flash Attention function. It supports 4 mask type.
@@ -249,10 +253,13 @@ class ColoAttention:
         4. padded causal mask: recv attention_mask, attention_mask_type, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv, indices
 
         Args:
-            q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D]
-            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Skv, D]
-            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D]
-            attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. Defaults to None.
+            q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D] in the default ``BNSD`` layout, and
+                [T, nHeads, D] in the packed ``TND`` layout, where ``T`` is the number of packed tokens.
+            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Skv, D] in the default ``BNSD`` layout, and
+                [T, nHeads, D] in the packed ``TND`` layout.
+            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D] in the default ``BNSD`` layout, and
+                [T, nHeads, D] in the packed ``TND`` layout.
+            attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. It is only accepted by the dense layouts, because the packed one delimits its sequences with ``cu_seqlens``. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths
                 of the sequences in the batch, used to index into q.
@@ -266,9 +273,16 @@ class ColoAttention:
                 Shape should be [NUM_TOKENS]. Defaults to None.
             dropout_p (float, optional): Dropout probability. Defaults to 0.0.
             scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
+            qkv_layout (str, optional): Memory layout of ``q``, ``k`` and ``v``. ``BNSD`` is
+                ``[B, nHeads, S, D]``, ``BSND`` is ``[B, S, nHeads, D]`` and ``TND`` is the packed
+                ``[S, nHeads, D]`` whose sequence boundaries are given by ``cu_seqlens_q``/``cu_seqlens_kv``. Only the
+                NPU backend honours the non-default layouts; the CUDA backends raise ``NotImplementedError`` for
+                anything but the default. The tensors must already be contiguous in that layout, as re-ordering them
+                here is the copy this option exists to avoid. Defaults to "BNSD".
 
         Returns:
-            torch.Tensor: Output tensor. Shape should be [B, nHeads, Sq, D]
+            torch.Tensor: Output tensor. Shape should be [B, nHeads, Sq, D], or [S, nHeads, D] for the packed ``TND``
+            layout.
         """
         # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
         # this case is usaul when padding mask is used and self attention is performed
@@ -304,16 +318,40 @@ class ColoAttention:
             assert attention_mask_type == AttnMaskType.CUSTOM
 
         # kernel dispatch
-        b, _, s_q, _ = q.shape
-        b, _, s_kv, _ = v.shape
+        if qkv_layout not in ("BNSD", "BSND", "TND"):
+            raise ValueError(
+                f"Unsupported qkv_layout {qkv_layout!r}; expected 'BNSD', 'BSND' (dense) or 'TND' (packed)."
+            )
+        # BNSD is [B, N, S, D], BSND is [B, S, N, D] and the packed TND is [S, N, D], so the sequence is the second to
+        # last dimension of the first, the third to last of the second and the first of the packed one.
+        sequence_dim = {"BNSD": -2, "BSND": -3, "TND": 0}[qkv_layout]
+        s_q = q.size(sequence_dim)
+        s_kv = v.size(sequence_dim)
         element_size = torch.tensor([], dtype=q.dtype).element_size()
         memory_size = s_q * s_kv * element_size
         mask_type = attention_mask_type if attention_mask is not None else None
         attn_func = ColoAttention._dispatch_kernel(q.dtype, mask_type, memory_size)
+        # Above MEMORY_BOUND prepare_attn_kwargs stops building the mask, because a dense one would not fit, and
+        # expects the backend to generate the window itself. Not every backend can do that, so fail here with the
+        # sizes instead of letting it compute an unmasked attention.
+        if (
+            memory_size >= MEMORY_BOUND
+            and mask_type in (AttnMaskType.CAUSAL, AttnMaskType.PADDED_CAUSAL, AttnMaskType.PADDED)
+            and not getattr(attn_func, "supports_internal_causal_window", False)
+        ):
+            raise NotImplementedError(
+                f"A {s_q}x{s_kv} {q.dtype} {mask_type} mask needs {memory_size / 1e9:.2f} GB >= MEMORY_BOUND "
+                f"({MEMORY_BOUND / 1e9:.0f} GB) and the selected backend cannot build the mask window itself "
+                f"(accelerator: '{get_accelerator().name}'). Pass attention_mask explicitly and lower the sequence "
+                f"length, or split the sequence before calling ColoAttention.attention."
+            )
         is_causal = attention_mask is not None and attention_mask_type in (
             AttnMaskType.CAUSAL,
             AttnMaskType.PADDED_CAUSAL,
         )
+        # Only forward the layout when it is not the default, so that kernels registered through KernelLoader that
+        # predate this option keep working unchanged.
+        layout_kwargs = {} if qkv_layout == "BNSD" else {"qkv_layout": qkv_layout}
         return attn_func(
             q,
             k,
@@ -328,6 +366,7 @@ class ColoAttention:
             max_seqlen_kv=max_seqlen_kv,
             q_indices=q_indices,
             kv_indices=kv_indices,
+            **layout_kwargs,
         )
 
 
