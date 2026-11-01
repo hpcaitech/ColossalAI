@@ -18,6 +18,7 @@ import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
+from colossalai.shardformer import ShardConfig, ShardFormer
 
 
 def parse_args():
@@ -77,6 +78,7 @@ def main():
         model = Gemma4ForConditionalGeneration.from_pretrained(
             args.model, dtype=torch.bfloat16, attn_implementation=args.attention, local_files_only=True
         ).train()
+        model, _ = ShardFormer(ShardConfig(enable_tensor_parallelism=False)).optimize(model)
         model.config.text_config.use_cache = False
         freeze_non_text(model)
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})

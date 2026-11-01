@@ -11,6 +11,7 @@ from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin, TorchFSDPPlugin
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
+from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import spawn
 from tests.kit.model_zoo.transformers.gemma4 import gemma4_data, tiny_gemma4
 
@@ -48,6 +49,7 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
             )
         if lazy and plugin_name != "gemini":
             LazyInitContext.materialize(model)
+        model, _ = ShardFormer(ShardConfig(enable_tensor_parallelism=False)).optimize(model)
         optimizer = (
             HybridAdam(model.parameters(), lr=1e-3)
             if plugin_name == "gemini"

@@ -110,22 +110,34 @@ def _ddp_equivalence(rank, world_size, port, variant):
     try:
         reference = tiny_gemma4(variant)
         truth = copy.deepcopy(reference).double()
+        accumulated = copy.deepcopy(reference)
         candidate = copy.deepcopy(reference)
         candidate.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         optimizer = torch.optim.AdamW(candidate.parameters(), lr=1e-3)
         booster = Booster(plugin=TorchDDPPlugin())
         candidate, optimizer, _, _, _ = booster.boost(model=candidate, optimizer=optimizer)
         batch = gemma4_data()
-        # Equal token counts per rank: mean-reduced causal losses then match a global batch.
-        batch["attention_mask"] = torch.ones_like(batch["input_ids"])
-        batch["labels"] = batch["input_ids"].clone()
+        # Causal losses average valid target tokens, not examples. Preserve unequal padding.
+        total_tokens = batch["labels"][:, 1:].ne(-100).sum()
         reference(**batch).loss.backward()
         truth(**batch).loss.backward()
+        for index in range(batch["input_ids"].shape[0]):
+            micro_batch = {k: v[index : index + 1] for k, v in batch.items()}
+            tokens = micro_batch["labels"][:, 1:].ne(-100).sum()
+            (accumulated(**micro_batch).loss * (tokens / total_tokens)).backward()
         local_batch = {k: v[rank::world_size] for k, v in batch.items()}
-        booster.backward(candidate(**local_batch).loss, optimizer)
+        local_tokens = local_batch["labels"][:, 1:].ne(-100).sum()
+        # DDP averages rank gradients; compensate using the global valid-token count.
+        booster.backward(candidate(**local_batch).loss * (world_size * local_tokens / total_tokens), optimizer)
         grads = lambda m: {n: p.grad.detach() for n, p in m.named_parameters()}
-        assert_aligned(grads(candidate.unwrap()), grads(reference), grads(truth))
+        assert_aligned(grads(accumulated), grads(reference), grads(truth))
+        assert_aligned(grads(candidate.unwrap()), grads(accumulated), grads(truth))
         optimizer.step()
+        for model in (reference, truth, accumulated):
+            torch.optim.AdamW(model.parameters(), lr=1e-3).step()
+        params = lambda m: {n: p.detach() for n, p in m.named_parameters()}
+        assert_aligned(params(candidate.unwrap()), params(accumulated), params(truth))
+        assert_aligned(params(accumulated), params(reference), params(truth))
     finally:
         dist.destroy_process_group()
 

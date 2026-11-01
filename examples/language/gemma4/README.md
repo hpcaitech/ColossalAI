@@ -41,8 +41,9 @@ python -m pytest -q tests/test_booster/test_plugin/test_gemma4.py
 ```
 
 The GPU matrix is in batch 5 (excluded from batch 8 to avoid duplication); CPU checks are in both CPU entry lists.
-These tests do not claim E2B L1/L2 complete: DP-vs-accumulation equivalence, plugin numerical comparisons and exact
-plugin checkpoint resume need their own reports. DDP BF16's existing precision-wrapper problem is not hidden with
+CPU/Gloo checks also compare 1/2-process DDP with single-process gradient accumulation, retaining unequal valid-token
+counts, and compare one-step weights. These tests do not claim E2B L1/L2 complete: GPU plugin numerical comparisons,
+GPU DP-vs-accumulation equivalence and exact plugin checkpoint resume need their own reports. DDP BF16's existing precision-wrapper problem is not hidden with
 an xfail. Neither fused kernels nor their numerical/performance claims are part of the native policy.
 
 ## Current validation status
