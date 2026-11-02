@@ -19,7 +19,7 @@ The reference is also run twice (as PyTorch does before its accuracy checks): te
 runs come from nondeterministic kernels, and the worse of the two runs is used as ``ref`` for them.
 """
 
-from typing import Any, Callable, Dict, List, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Tuple, Union
 
 import torch
 
@@ -31,7 +31,7 @@ from ..capture.fwd_bwd import run_fwd_bwd
 from ..capture.recipes import FLOAT64, recipe_for
 from ..capture.training import default_optimizer, prepare, run_boosted, run_reference
 from ..compare import as_float64
-from ..judge import AlignmentReport, judge
+from ..judge import AlignmentReport, judge, require_gradients
 from ..trace import Trace
 
 
@@ -70,8 +70,10 @@ def training_traces(
 
 
 def check_training(*args, **kwargs) -> AlignmentReport:
-    """``judge(*training_traces(...))``."""
-    return judge(*training_traces(*args, **kwargs))
+    """``judge(*training_traces(...))``, failing trainable parameters left without a gradient in any run unless the
+    entry's ``NumericsSpec.unused_params`` names them."""
+    test, ref, truth = training_traces(*args, **kwargs)
+    return require_gradients(judge(test, ref, truth), test=test, ref=ref, truth=truth)
 
 
 def check_fwd_bwd(
@@ -80,15 +82,17 @@ def check_fwd_bwd(
     inputs: Dict[str, Any],
     dtype: torch.dtype,
     grad_seed: int = 0,
+    unused_params: Iterable[str] = (),
     **judge_kwargs,
 ) -> AlignmentReport:
     """Judge one forward and backward of ``test_fn`` against ``ref_fn`` at ``dtype``, with ``ref_fn`` in float64 as
     the truth. Both take ``inputs`` as keyword arguments; modules are copied, so give ``test_fn`` the reference weights
-    first (``load_state_dict``). ``judge_kwargs`` go to ``judge`` (``tol``, ``small_tensor_multiplier``)."""
-    truth = run_fwd_bwd(ref_fn, inputs, torch.float64, grad_seed, role="truth")
-    ref = run_fwd_bwd(ref_fn, inputs, dtype, grad_seed, role="ref")
-    test = run_fwd_bwd(test_fn, inputs, dtype, grad_seed, role="test")
-    return judge(test, ref, truth, **judge_kwargs)
+    first (``load_state_dict``). A parameter that requires a gradient and gets none fails, unless ``unused_params``
+    names it. ``judge_kwargs`` go to ``judge`` (``tol``, ``small_tensor_multiplier``)."""
+    truth = run_fwd_bwd(ref_fn, inputs, torch.float64, grad_seed, unused_params, role="truth")
+    ref = run_fwd_bwd(ref_fn, inputs, dtype, grad_seed, unused_params, role="ref")
+    test = run_fwd_bwd(test_fn, inputs, dtype, grad_seed, unused_params, role="test")
+    return require_gradients(judge(test, ref, truth, **judge_kwargs), test=test, ref=ref, truth=truth)
 
 
 def dtype_mismatches(test: Trace, ref: Trace) -> List[str]:

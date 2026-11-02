@@ -26,7 +26,7 @@ from colossalai.booster.mixed_precision import MixedPrecision
 from colossalai.testing import spawn
 
 from ..capture.training import default_optimizer, prepare, run_data_parallel
-from ..judge import AlignmentReport, judge_relative_bound
+from ..judge import AlignmentReport, judge_relative_bound, require_gradients
 from ..trace import Trace
 
 
@@ -69,9 +69,11 @@ def traces(
 def check(
     *args, bound_dtype: torch.dtype = torch.bfloat16, k: float = 4.0, C: float = 1.03, depth: int = 33, **kwargs
 ) -> AlignmentReport:
-    """``judge_relative_bound`` on the gradients of ``traces(...)``, with Megatron-LM's constants by default."""
+    """``judge_relative_bound`` on the gradients of ``traces(...)``, with Megatron-LM's constants by default; trainable
+    parameters left without a gradient fail unless the entry's ``NumericsSpec.unused_params`` names them."""
     test, ref = traces(*args, **kwargs)
-    return judge_relative_bound(_gradients(test), _gradients(ref), bound_dtype, k=k, C=C, depth=depth)
+    report = judge_relative_bound(_gradients(test), _gradients(ref), bound_dtype, k=k, C=C, depth=depth)
+    return require_gradients(report, test=test, ref=ref)
 
 
 def _gradients(trace: Trace) -> Trace:

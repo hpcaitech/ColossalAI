@@ -1,7 +1,7 @@
 """Per-model settings for whole-model alignment, attached to a model_zoo entry through ``ModelAttribute.numerics``."""
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 from torch import nn
 
@@ -28,8 +28,12 @@ class NumericsSpec:
             gradients. Only needed together with ``reference_fn`` when the names differ.
         output_fn: Selects what to compare from ``output_transform_fn(output)``, returning a tensor or a nested
             dict / list / tuple of tensors. ``None`` compares every floating-point tensor in it.
+        unused_params: Names (in the model under test) of trainable parameters that legitimately get no gradient from
+            ``data_gen_fn``'s batches, e.g. a branch the inputs never reach. Any other parameter with
+            ``requires_grad=True`` and no gradient fails the check; frozen parameters are not expected to have one.
     """
 
     reference_fn: Optional[Callable[[], nn.Module]] = None
     param_map: Optional[Callable[[str], Optional[str]]] = None
     output_fn: Optional[Callable[[Any], Any]] = None
+    unused_params: Tuple[str, ...] = ()

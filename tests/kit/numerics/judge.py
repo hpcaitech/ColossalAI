@@ -15,7 +15,7 @@ baseline error with: the relative Frobenius error may be at most ``k * C**depth 
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import torch
 
@@ -111,7 +111,7 @@ def judge(
             ``tol / 10`` is also added to the allowed error, as in PyTorch.
 
     Each argument may be a tensor or any nesting of dicts / lists / tuples / ``ModelOutput``; tensors are matched
-    by their flattened names (see ``flatten_tensors``).
+    by their flattened names (see ``flatten_tensors``). Comparing nothing at all fails.
     """
     test_flat, ref_flat, truth_flat = flatten_tensors(test), flatten_tensors(ref), flatten_tensors(truth)
     report = AlignmentReport()
@@ -123,6 +123,8 @@ def judge(
         report.entries.append(
             _judge_one(name, test_flat[name], ref_flat.get(name), truth_flat[name], tol, small_tensor_multiplier)
         )
+    if not report.entries:
+        report.entries.append(Entry("<all>", False, "nothing was compared"))
     return report
 
 
@@ -163,6 +165,21 @@ def assert_aligned(test: Any, ref: Any, truth: Any, **kwargs) -> AlignmentReport
     """``judge`` and raise ``AssertionError`` with a per-tensor table if anything is not aligned."""
     report = judge(test, ref, truth, **kwargs)
     report.assert_pass()
+    return report
+
+
+def require_gradients(report: AlignmentReport, **traces: Any) -> AlignmentReport:
+    """Fail every parameter that a run (keyword: its role) recorded as left without a gradient.
+
+    Runs list such parameters in ``meta["missing_grads"]`` (parameters declared unused excluded). The judges compare
+    only the tensors the runs recorded, so a gradient missing from every run would otherwise pass unnoticed.
+    """
+    roles: Dict[str, List[str]] = {}
+    for role, trace in traces.items():
+        for name in getattr(trace, "meta", {}).get("missing_grads", ()):
+            roles.setdefault(name, []).append(role)
+    for name, missing_in in sorted(roles.items()):
+        report.entries.append(Entry(f"grad/param/{name}", False, f"no gradient in {', '.join(missing_in)}"))
     return report
 
 
@@ -225,13 +242,16 @@ def judge_relative_bound(
             nonzero = True
             entry.reason = f"relative error > {bound:.2e}"
         report.entries.append(entry)
-    if report.entries and not nonzero and report.passed:
+    if not report.entries:
+        report.entries.append(Entry("<all>", False, "nothing was compared"))
+    elif not nonzero and report.passed:
         report.entries.append(Entry("<all>", False, f"every tensor is ~0 (<= {zero_scale:g}), nothing was compared"))
     return report
 
 
 def judge_equal(test: Any, ref: Any) -> AlignmentReport:
-    """Every tensor of ``test`` must equal the one in ``ref`` bit for bit (same dtype and values).
+    """Every tensor of ``test`` must equal the one in ``ref`` bit for bit (same dtype and values); comparing nothing
+    fails.
 
     ``Entry.test_error`` is the largest absolute difference; the allowed difference is 0.
     """
@@ -250,4 +270,6 @@ def judge_equal(test: Any, ref: Any) -> AlignmentReport:
         equal = bool(torch.equal(a.cpu(), b.cpu()))
         diff = 0.0 if equal else float((as_float64(a) - as_float64(b)).abs().max())
         report.entries.append(Entry(name, equal, "equal" if equal else "differs", 0.0, diff, 0.0))
+    if not report.entries:
+        report.entries.append(Entry("<all>", False, "nothing was compared"))
     return report

@@ -48,8 +48,10 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
         if mixed_precision is not None:
             raise UnsupportedRecipe("LowLevelZeroPlugin controls precision itself; pass precision= to the plugin")
         kwargs = plugin.zero_optim_kwargs
-        if kwargs["clip_grad_norm"] > 0 or not plugin.cast_inputs or plugin.use_fp8:
-            raise UnsupportedRecipe("LowLevelZeroPlugin with max_norm, cast_inputs=False or use_fp8 is not verified")
+        if kwargs["clip_grad_norm"] > 0 or not plugin.cast_inputs or plugin.use_fp8 or kwargs["cpu_offload"]:
+            raise UnsupportedRecipe(
+                "LowLevelZeroPlugin with max_norm, cast_inputs=False, use_fp8 or cpu_offload is not verified"
+            )
         if plugin.precision == "fp32":
             return Recipe(torch.float32, source="LowLevelZeroModel leaves a float32 module unchanged")
         if plugin.precision == "bf16":

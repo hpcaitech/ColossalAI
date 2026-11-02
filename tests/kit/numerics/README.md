@@ -125,7 +125,15 @@ grad/x                                                    3.27e-02  6.72e-01    
 `baseline` and `test_err` are RMSE against the float64 truth, `ratio` is their quotient. Failures are listed first,
 largest ratio first. Other verdicts: `missing in test` / `missing in truth` (names differ), `shape ...`,
 `non-finite test output`, and `non-float tensors differ` for integer tensors, which must match exactly. Each entry
-also carries `metrics` with max abs error, relative L2 error and cosine similarity.
+also carries `metrics` with max abs error, relative L2 error and cosine similarity. A comparison of no tensors at all
+fails (`<all>: nothing was compared`).
+
+The judges only compare the tensors the runs recorded, so a parameter that gets no gradient on every side would go
+unnoticed. Each run therefore lists the parameters that require a gradient but got none in
+`meta["missing_grads"]`, and the scenarios fail them (`no gradient in ...`, via `require_gradients`). A parameter
+that legitimately gets none, such as a branch the inputs never reach, must be declared: `unused_params` of
+`check_fwd_bwd`, or `NumericsSpec(unused_params=...)` for a model_zoo entry. Frozen parameters are not expected to
+have a gradient.
 
 ## Comparing runs from different machines
 
@@ -213,7 +221,7 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `TorchDDPPlugin()`, `mixed_precision="bf16"` | refused: `BF16MixedPrecision` is not implemented | |
    | `LowLevelZeroPlugin(precision="fp32")`, stage 1 or 2 | float32 | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
-   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8` or `cast_inputs=False`; other plugins | refused: not verified yet | |
+   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cpu_offload` or `cast_inputs=False`; other plugins | refused: not verified yet | |
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
    the gradient dtypes and the optimizer state dtypes. Any difference raises `RecipeMismatch` before numbers are
@@ -240,6 +248,8 @@ other parallel layouts.
 - **Other references.** If the reference is not the entry's own model (e.g. an official repository), pass
   `NumericsSpec(reference_fn=..., param_map=...)`: `reference_fn` builds it with the same inputs and output structure,
   `param_map` maps its parameter names to the model's. `output_fn` selects which outputs are compared.
+- **Unused parameters.** Trainable parameters that the entry's inputs never reach must be listed in
+  `NumericsSpec(unused_params=...)`; any other parameter left without a gradient fails.
 
 What a check can detect depends on the tensor. In the self-tests a dropped column of a bf16 MLP moves the outputs,
 the affected gradients and every step's loss 17 to 26 times beyond the baseline error, but not the weights after one
@@ -341,9 +351,9 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | --- | --- |
 | `assert_aligned(test, ref, truth, tol=1e-4)` | judge and raise with the report if anything is not aligned |
 | `judge(test, ref, truth, tol=1e-4, small_tensor_multiplier=False)` | return an `AlignmentReport` |
-| `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` | the three runs and the judge of an operator or module check |
-| `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, **meta)` | run a function or module forward and backward, return a `Trace` |
-| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None)` | opts a model_zoo entry into whole-model alignment |
+| `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=())` | the three runs and the judge of an operator or module check |
+| `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, unused_params=(), **meta)` | run a function or module forward and backward, return a `Trace` |
+| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=())` | opts a model_zoo entry into whole-model alignment |
 | `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
 | `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
 | `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None)` | run on `world_size` devices and on one, return `(test, ref)` |
@@ -352,9 +362,10 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `scenarios.resume.check(...)` | `judge_equal` on the resumed steps, plus the HuggingFace round trip |
 | `judge_equal(test, ref)` | bitwise equality, Megatron-LM's `DeterministicTest` |
 | `judge_relative_bound(test, ref, dtype, k=4.0, C=1.03, depth=33)`, `relative_bound(dtype)` | Megatron-LM's rule for runs of the same code |
+| `require_gradients(report, **traces)` | fail the parameters the runs recorded in `meta["missing_grads"]` |
 | `capture.recipes.recipe_for(plugin, mixed_precision)` | the reference recipe for a configuration, or `UnsupportedRecipe` |
 | `capture.training`: `prepare`, `run_reference`, `run_boosted`, `run_data_parallel`, `run_steps` | the individual runs, for new scenarios |
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |
-| `cast_floating`, `full_precision_matmul`, `flatten_tensors`, `upstream_loss` | helpers used by the above |
+| `cast_floating`, `full_precision_matmul`, `flatten_tensors`, `missing_grads`, `upstream_loss` | helpers used by the above |

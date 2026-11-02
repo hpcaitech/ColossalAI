@@ -1,7 +1,7 @@
 """Helpers shared by both kinds of run: one forward and backward (``fwd_bwd``) and training steps (``training``)."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 import torch
 from torch import Tensor
@@ -25,6 +25,17 @@ def full_precision_matmul():
     finally:
         torch.set_float32_matmul_precision(matmul_precision)
         torch.backends.cudnn.allow_tf32 = cudnn_tf32
+
+
+def missing_grads(grads: Dict[str, Optional[Tensor]], unused_params: Iterable[str] = ()) -> List[str]:
+    """Names in ``grads`` (parameter name to gradient, for the parameters that require one) whose gradient is None,
+    except ``unused_params``.
+
+    Recorded by every run as ``meta["missing_grads"]`` and failed by ``judge.require_gradients``: the judges compare
+    only the tensors the runs recorded, so a gradient missing from every run would otherwise go unnoticed.
+    """
+    unused = set(unused_params)
+    return sorted(name for name, grad in grads.items() if grad is None and name not in unused)
 
 
 def upstream_loss(outputs: Dict[str, Tensor], grad_seed: int = 0) -> Optional[Tensor]:

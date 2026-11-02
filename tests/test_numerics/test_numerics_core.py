@@ -4,7 +4,17 @@ import pytest
 import torch
 from safetensors.torch import save_file
 
-from tests.kit.numerics import Trace, assert_aligned, error_multiplier, flatten_tensors, judge, run_fwd_bwd
+from tests.kit.numerics import (
+    Trace,
+    assert_aligned,
+    error_multiplier,
+    flatten_tensors,
+    judge,
+    judge_equal,
+    judge_relative_bound,
+    require_gradients,
+    run_fwd_bwd,
+)
 
 HIDDEN = 256
 
@@ -150,3 +160,47 @@ def test_load_rejects_plain_safetensors(tmp_path):
     save_file({"a": torch.ones(1)}, tmp_path / "plain.safetensors")
     with pytest.raises(ValueError, match="not a numerics trace"):
         Trace.load(tmp_path / "plain.safetensors")
+
+
+def test_trace_is_a_snapshot(tmp_path):
+    # CPU tensors are copied: an in-place update after capture (e.g. an optimizer step) does not reach the trace
+    weight = torch.tensor([1.0])
+    storage = torch.arange(4.0)
+    trace = Trace.capture({"w": weight, "a": storage, "view": storage[1:3]})
+    weight.add_(1.0)
+    storage.zero_()
+    trace.save(tmp_path / "t.safetensors")
+    for t in (trace, Trace.load(tmp_path / "t.safetensors")):
+        assert t["w"].tolist() == [1.0]
+        assert t["a"].tolist() == [0.0, 1.0, 2.0, 3.0] and t["view"].tolist() == [1.0, 2.0]
+
+
+def test_comparing_nothing_fails():
+    for report in (judge({}, {}, {}), judge_equal({}, {}), judge_relative_bound({}, {}, torch.bfloat16)):
+        assert [(e.name, e.reason) for e in report.failures] == [("<all>", "nothing was compared")]
+
+
+class _PartlyUsed(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.used = torch.nn.Linear(4, 4)
+        self.unused = torch.nn.Linear(4, 4)
+        self.frozen = torch.nn.Linear(4, 4).requires_grad_(False)
+
+    def forward(self, x):
+        return self.frozen(self.used(x))
+
+
+def test_missing_gradients_fail_unless_declared():
+    inputs = {"x": torch.randn(2, 4, dtype=torch.float64)}
+    runs = [run_fwd_bwd(_PartlyUsed(), inputs, dtype) for dtype in (torch.float32, torch.float32, torch.float64)]
+    # no run records the unused gradients, so judging the recorded tensors alone passes
+    assert judge(*runs).passed
+    assert runs[0].meta["missing_grads"] == ["unused.bias", "unused.weight"]
+    report = require_gradients(judge(*runs), test=runs[0], ref=runs[1], truth=runs[2])
+    assert {(e.name, e.reason) for e in report.failures} == {
+        (f"grad/param/unused.{p}", "no gradient in test, ref, truth") for p in ("weight", "bias")
+    }
+    # declared unused, and frozen parameters are never expected to have a gradient
+    declared = run_fwd_bwd(_PartlyUsed(), inputs, torch.float32, unused_params=("unused.weight", "unused.bias"))
+    assert declared.meta["missing_grads"] == []

@@ -8,7 +8,7 @@ import os
 from contextlib import nullcontext
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
@@ -25,7 +25,7 @@ from ..compare import flatten_tensors
 from ..spec import NumericsSpec
 from ..trace import Trace
 from .recipes import Recipe, recipe_for
-from .utils import cast_floating, full_precision_matmul, upstream_loss
+from .utils import cast_floating, full_precision_matmul, missing_grads, upstream_loss
 
 
 def default_optimizer(params: Iterable[nn.Parameter]) -> torch.optim.Optimizer:
@@ -43,6 +43,7 @@ class Prepared:
     select: Callable[[Any], Any]
     param_map: Optional[Callable[[str], Optional[str]]]
     seed: int
+    unused_params: Tuple[str, ...] = ()
 
 
 def prepare(entry: Union[str, tuple], steps: int = 1, seed: int = 0) -> Prepared:
@@ -77,7 +78,7 @@ def prepare(entry: Union[str, tuple], steps: int = 1, seed: int = 0) -> Prepared
         output = output_transform_fn(output)
         return spec.output_fn(output) if spec.output_fn is not None else output
 
-    return Prepared(name, model, reference, batches, select, spec.param_map, seed)
+    return Prepared(name, model, reference, batches, select, spec.param_map, seed, spec.unused_params)
 
 
 def run_reference(
@@ -87,7 +88,8 @@ def run_reference(
 
     Records ``out/...``, input gradients ``grad/<input>`` and parameter gradients ``grad/param/<name>`` of the first
     step, the weights after it as ``param/<name>``, and ``loss/<step>`` for every step. Parameter names are those of the
-    model under test (``param_map`` is applied). The dtypes seen on the way are recorded in ``meta["dtypes"]``.
+    model under test (``param_map`` is applied). The dtypes seen on the way are recorded in ``meta["dtypes"]``, the
+    trainable parameters left without a gradient in ``meta["missing_grads"]``.
     """
     device = get_accelerator().get_current_device()
     module = copy.deepcopy(s.reference)
@@ -118,6 +120,7 @@ def run_reference(
                         p.grad.mul_(1.0 / recipe.loss_scale)
             if step == 0:
                 results.update(_first_step(outputs, inputs, {n: p.grad for n, p in named}, s.param_map))
+                missing = _missing_grads(named, lambda p: p.grad, s)
             if recipe.master_weights:
                 for (_, p), m in zip(named, master):
                     m.grad = None if p.grad is None else p.grad.float()
@@ -133,7 +136,9 @@ def run_reference(
             module.zero_grad(set_to_none=True)
             results[f"loss/{step}"] = loss.detach()
     audit.remove()
-    return Trace.capture(results, dtypes=audit.records, recipe=_describe(recipe), **_meta(s, grad_seed, meta))
+    return Trace.capture(
+        results, dtypes=audit.records, recipe=_describe(recipe), missing_grads=missing, **_meta(s, grad_seed, meta)
+    )
 
 
 def run_boosted(
@@ -174,6 +179,7 @@ def run_boosted(
             named = list(inner.named_parameters())
             if step == 0:
                 results.update(_first_step(outputs, inputs, {n: get_grad(p) for n, p in named}, None))
+                missing = _missing_grads(named, get_grad, s, mapped=False)
                 # inputs went in as float32 and the plugin cast them; report their gradients in the dtype it computed
                 # in (exact: the values come from that dtype), as the reference does
                 for key in inputs:
@@ -191,7 +197,7 @@ def run_boosted(
             results[f"loss/{step}"] = loss.detach()
     audit.remove()
     meta = dict(meta, plugin=type(plugin).__name__, mixed_precision=str(mixed_precision))
-    return Trace.capture(results, dtypes=audit.records, **_meta(s, grad_seed, meta))
+    return Trace.capture(results, dtypes=audit.records, missing_grads=missing, **_meta(s, grad_seed, meta))
 
 
 def run_data_parallel(
@@ -211,7 +217,8 @@ def run_data_parallel(
     of step t is ``s.batches[t * micro_batches + i]`` with upstream gradient seed ``grad_seed + t * micro_batches + i``.
 
     Records ``grad/param/<name>`` (the averaged gradient of the first step), ``param/<name>`` (the weights after it)
-    and ``loss/<step>/<micro-batch>``. The trace is the same on every rank.
+    and ``loss/<step>/<micro-batch>``, and in ``meta["missing_grads"]`` the trainable parameters without a gradient.
+    The trace is the same on every rank.
     """
     world_size, rank = dist.get_world_size(), dist.get_rank()
     if micro_batches % world_size or len(s.batches) % micro_batches:
@@ -246,6 +253,9 @@ def run_data_parallel(
                 # get_param_grad is collective: every rank gathers every parameter
                 grads = {f"grad/param/{n}": get_grad(p) for n, p in named}
                 results.update({k: g.detach().clone() for k, g in grads.items() if g is not None})
+                missing = missing_grads(
+                    {n: grads[f"grad/param/{n}"] for n, p in named if p.requires_grad}, s.unused_params
+                )
             optimizer.step()
             if isinstance(optimizer, TorchAMPOptimizer) and optimizer.scaler.get_scale() < scale:
                 raise RuntimeError(
@@ -263,7 +273,11 @@ def run_data_parallel(
         meta, plugin=type(plugin).__name__, mixed_precision=str(mixed_precision), world_size=world_size, steps=steps
     )
     return Trace.capture(
-        results, dtype=str(recipe.dtype).replace("torch.", ""), micro_batches=micro_batches, **_meta(s, grad_seed, meta)
+        results,
+        dtype=str(recipe.dtype).replace("torch.", ""),
+        micro_batches=micro_batches,
+        missing_grads=missing,
+        **_meta(s, grad_seed, meta),
     )
 
 
@@ -386,6 +400,16 @@ def _first_step(outputs, inputs, grads, param_map) -> Dict[str, Tensor]:
         if name is not None and grad is not None:
             results[f"grad/param/{name}"] = grad.detach().clone()
     return results
+
+
+def _missing_grads(named, get_grad, s: Prepared, mapped: bool = True) -> List[str]:
+    # names of the model under test: the reference's are mapped with param_map, the boosted model's already are
+    grads = {}
+    for name, p in named:
+        name = _rename(name, s.param_map) if mapped else name
+        if name is not None and p.requires_grad:
+            grads[name] = get_grad(p)
+    return missing_grads(grads, s.unused_params)
 
 
 def _params(named, param_map) -> Dict[str, Tensor]:

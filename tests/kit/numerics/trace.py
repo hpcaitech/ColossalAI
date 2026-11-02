@@ -40,12 +40,13 @@ def environment_meta() -> Dict[str, Any]:
 class Trace(Mapping):
     """Read-only mapping of tensor name to tensor, with a ``meta`` dict describing how the run was made.
 
-    Tensors are detached and kept on CPU in their original dtype. Anything accepted by ``judge``, including another
-    trace, can be turned into a trace with ``Trace.capture``.
+    Tensors are copied to CPU in their original dtype, so updating the source tensors in place afterwards (an optimizer
+    step on CPU parameters, say) does not change the trace. Anything accepted by ``judge``, including another trace,
+    can be turned into a trace with ``Trace.capture``.
     """
 
     def __init__(self, tensors: Dict[str, Tensor], meta: Optional[Dict[str, Any]] = None):
-        self._tensors = {name: t.detach().cpu() for name, t in tensors.items()}
+        self._tensors = {name: t.detach().to("cpu", copy=True) for name, t in tensors.items()}
         self.meta = dict(meta or {})
 
     @classmethod

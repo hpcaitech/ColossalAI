@@ -1,3 +1,4 @@
+import copy
 from functools import partial
 
 import pytest
@@ -12,7 +13,13 @@ from tests.kit.model_zoo.registry import ModelAttribute
 from tests.kit.numerics import NumericsSpec, Trace
 from tests.kit.numerics.capture.recipes import Recipe, UnsupportedRecipe, recipe_for
 from tests.kit.numerics.capture.training import prepare, run_reference
-from tests.kit.numerics.scenarios.independent_impl import _worse_of, blank_control, check_training, dtype_mismatches
+from tests.kit.numerics.scenarios.independent_impl import (
+    _worse_of,
+    blank_control,
+    check_fwd_bwd,
+    check_training,
+    dtype_mismatches,
+)
 
 STEPS = 3
 NO_ACCELERATOR = get_accelerator().name == "cpu"
@@ -161,6 +168,7 @@ REJECTED = [
     (TorchDDPPlugin, "bf16", "BF16MixedPrecision"),
     (partial(LowLevelZeroPlugin, precision="fp16"), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="bf16", max_norm=1.0), None, "not verified"),
+    (partial(LowLevelZeroPlugin, precision="bf16", cpu_offload=True), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="bf16"), "fp16", "controls precision itself"),
     (object, None, "not supported yet"),
 ]
@@ -181,3 +189,45 @@ def test_unverified_recipes_rejected():
 def test_entry_without_spec_rejected():
     with pytest.raises(ValueError, match="no NumericsSpec"):
         prepare((TinyMLP, _data, lambda out: out, None, None))
+
+
+class _WithUnusedBranch(TinyMLP):
+    def __init__(self):
+        super().__init__()
+        self.head = nn.Linear(32, 8)  # never called
+
+
+def _check_missing_gradients(rank, world_size, port):
+    _launch(rank, world_size, port)
+    # DDP must be told about the unused branch, or it waits for its gradient
+    plugin_fn = partial(TorchDDPPlugin, find_unused_parameters=True)
+    entry = (_WithUnusedBranch, _data, lambda out: out, None, ModelAttribute(numerics=NumericsSpec()))
+    report = check_training(entry, plugin_fn())
+    failed = {e.name: e.reason for e in report.failures}
+    assert failed == {f"grad/param/head.{p}": "no gradient in test, ref, truth" for p in ("weight", "bias")}, failed
+    spec = NumericsSpec(unused_params=("head.weight", "head.bias"))
+    check_training((_WithUnusedBranch, _data, lambda out: out, None, ModelAttribute(numerics=spec)), plugin_fn())
+
+
+@rerun_if_address_is_in_use()
+def test_missing_gradients_detected():
+    spawn(_check_missing_gradients, 1)
+
+
+class _DropColumn(nn.Linear):
+    def forward(self, input):
+        return super().forward(torch.cat([input[:, :63], torch.zeros_like(input[:, 63:])], dim=1))
+
+
+def test_check_fwd_bwd():
+    torch.manual_seed(0)
+    ref_fn = nn.Linear(64, 32)
+    inputs = {"input": torch.randn(16, 64, dtype=torch.float64)}
+    report = check_fwd_bwd(copy.deepcopy(ref_fn), ref_fn, inputs, torch.bfloat16)
+    assert {e.name for e in report.entries} == {"out", "grad/input", "grad/param/weight", "grad/param/bias"}
+    report.assert_pass()
+
+    buggy = _DropColumn(64, 32)
+    buggy.load_state_dict(ref_fn.state_dict())
+    failed = {e.name for e in check_fwd_bwd(buggy, ref_fn, inputs, torch.bfloat16).failures}
+    assert {"out", "grad/input", "grad/param/weight"} <= failed
