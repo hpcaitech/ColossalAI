@@ -545,9 +545,7 @@ class RingAttention(torch.autograd.Function):
             RingAttention.ATTN_DONE = torch.cuda.Event()
         if RingAttention.SP_STREAM is None:
             RingAttention.SP_STREAM = torch.cuda.Stream()
-        assert (
-            q.shape[2] == k.shape[2]
-        ), "Q, K and V having different sequence lengths (inference or cross-attn)\
+        assert q.shape[2] == k.shape[2], "Q, K and V having different sequence lengths (inference or cross-attn)\
             is not supported yet in training."
         assert (
             attention_mask_type in RingAttention.SUPPORTED_MASK_TYPES
@@ -719,7 +717,7 @@ class RingAttention(torch.autograd.Function):
         # Helper to pass args to FA
         def _forward(q, k, v, causal):
             if version.parse(flash_attn.__version__) > version.parse("2.6.3"):
-                (out, softmax_lse, S_dmask, rng_state) = _flash_attn_forward(
+                out, softmax_lse, S_dmask, rng_state = _flash_attn_forward(
                     q,
                     k,
                     v,
@@ -778,7 +776,7 @@ class RingAttention(torch.autograd.Function):
                         # Compute with local KV; no mask
                         kv_block = kv_buffers[0]
                         q_block = q
-                        (block_out[i % 2], block_softmax_lse[i % 2], rng_states[i]) = _forward(  # (T, H, D)  # (H, T)
+                        block_out[i % 2], block_softmax_lse[i % 2], rng_states[i] = _forward(  # (T, H, D)  # (H, T)
                             q_block, kv_block[0], kv_block[1], causal=True
                         )
                     elif i <= local_sp_rank:
@@ -945,7 +943,7 @@ class RingAttention(torch.autograd.Function):
         over all ranks for accumulation. We avoid using two streams due to backward using doubled
         buffers and more comm cost.
         """
-        (q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_kv, half_idx_front, half_idx_back) = ctx.saved_tensors[:9]
+        q, k, v, out, softmax_lse, cu_seqlens_q, cu_seqlens_kv, half_idx_front, half_idx_back = ctx.saved_tensors[:9]
         rng_states = ctx.saved_tensors[9:]
 
         is_packed = ctx.is_packed
