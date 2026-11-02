@@ -126,11 +126,9 @@ def evaluate_model(
     avg_loss = "{:.4f}".format(accum_loss.item())
     accuracy = "{:.4f}".format(accum_correct.item() / total_num.item())
     if coordinator.is_master():
-        print(
-            f"Evaluation result for epoch {epoch + 1}: \
+        print(f"Evaluation result for epoch {epoch + 1}: \
                 average_loss={avg_loss}, \
-                accuracy={accuracy}."
-        )
+                accuracy={accuracy}.")
 
 
 def main():

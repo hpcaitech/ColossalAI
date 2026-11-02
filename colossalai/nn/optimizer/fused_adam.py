@@ -6,6 +6,7 @@ Copyright NVIDIA/apex
 This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 Licensed under the MIT License.
 """
+
 import torch
 
 from colossalai.utils import get_current_device, multi_tensor_applier
