@@ -70,14 +70,27 @@ def _hidden(output):
 MLP = (TinyMLP, _data, _identity, None, _attribute(NumericsSpec()))
 LLAMA = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
 RESUMED = {"loss/2", "loss/3"} | {f"param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
+# the optimizer's tensors (here the parameters themselves, in fc1.weight, fc1.bias, fc2.weight, fc2.bias order) and
+# Adam's state, the scheduler's state and the random number generators
+OPTIMIZER = {f"optim/0.{i}/{key}" for i in range(4) for key in ("param", "exp_avg", "exp_avg_sq", "step")}
 
 
 @unsharded
 @rerun_if_address_is_in_use()
 def test_resume_is_exact():
     report = resume.check(MLP, TorchDDPPlugin, **CPU)
-    assert {e.name for e in report.entries} == RESUMED | {"hf/<from_pretrained>"}
+    names = {e.name for e in report.entries}
+    assert RESUMED | OPTIMIZER | {"hf/<from_pretrained>", "rng/cpu", "scheduler/last_epoch"} <= names
+    assert all(n.startswith(("scheduler/", "rng/")) for n in names - RESUMED - OPTIMIZER - {"hf/<from_pretrained>"})
     report.assert_pass()
+
+
+# what a missing part changes besides the final weights, read directly
+LOST = {
+    "model": "optim/0.0/param",
+    "optimizer": "optim/0.0/exp_avg",
+    "lr_scheduler": "scheduler/last_epoch",
+}
 
 
 @unsharded
@@ -87,7 +100,24 @@ def test_missing_checkpoint_part_detected(missing):
     parts = [p for p in ("model", "optimizer", "lr_scheduler") if p != missing]
     report = resume.check(MLP, TorchDDPPlugin, parts=parts, **CPU)
     # the weights after the resumed steps always differ; the losses only if the forward already sees the loss
-    assert {f"param/fc{i}.weight" for i in (1, 2)} <= {e.name for e in report.failures}, report.format()
+    failed = {e.name for e in report.failures}
+    assert {f"param/fc{i}.weight" for i in (1, 2)} | {LOST[missing]} <= failed, report.format()
+
+
+class _DrawsNoise(TinyMLP):
+    def forward(self, x):
+        # random numbers drawn in training (here without effect on the result): a booster checkpoint does not carry
+        # the generator state, so a resumed run continues from another one
+        return super().forward(x + 0.0 * torch.rand_like(x))
+
+
+@unsharded
+@rerun_if_address_is_in_use()
+def test_random_numbers_drawn_in_training_detected():
+    report = resume.check((_DrawsNoise, _data, _identity, None, _attribute(NumericsSpec())), TorchDDPPlugin, **CPU)
+    # drawn on the device the model runs on
+    generator = "rng/cpu" if get_accelerator().name == "cpu" else "rng/cuda"
+    assert [e.name for e in report.failures] == [generator], report.format()
 
 
 @unsharded

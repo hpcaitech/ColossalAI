@@ -21,9 +21,12 @@ class Recipe:
             whole model and the floating-point inputs are cast to ``dtype``.
         master_weights: Keep a float32 copy of the cast weights; gradients are cast to float32, the optimizer updates
             the copy and the result is cast back.
-        loss_scale: Fixed factor the loss is multiplied by before backward; gradients are divided by it afterwards.
+        loss_scale: Fixed factor the loss is multiplied by before backward; gradients are divided by it afterwards, in
+            float32 with ``master_weights`` (as they reach the master weights), otherwise in their own dtype.
         optimizer_device: Where the master weights and the optimizer live (``"cpu"`` for offloading plugins); ``None``
             keeps them on the accelerator. Only meaningful with ``master_weights``.
+        master_from_float32: The master weights start from the float32 weights the model was built with, not from
+            their cast to ``dtype`` (whose low bits are lost). Only meaningful with ``master_weights``.
         source: Where the plugin does this, so that a change on its side can be traced back here.
     """
 
@@ -32,6 +35,7 @@ class Recipe:
     master_weights: bool = False
     loss_scale: Optional[float] = None
     optimizer_device: Optional[str] = None
+    master_from_float32: bool = False
     source: str = ""
 
 
@@ -132,7 +136,8 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
             master_weights=True,
             loss_scale=optim["initial_scale"],
             source=source + "; GeminiFP16MixedPrecisionMixin scales the loss with a dynamic scaler starting at "
-            "initial_scale, which stays constant over a short run without overflow",
+            "initial_scale, which stays constant over a short run without overflow; GeminiOptimizer divides it out "
+            "in float32, in the optimizer step (div_scale)",
         )
 
     if isinstance(plugin, TorchFSDPPlugin):
@@ -158,8 +163,10 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
         return Recipe(
             dtype,
             master_weights=True,
+            master_from_float32=True,
             source="FSDP MixedPrecision: sharded float32 parameters cast to param_dtype for forward and backward, "
-            "root forward casts floating inputs, gradients cast back to float32 for the optimizer; "
+            "root forward casts floating inputs, gradients cast back to float32 for the optimizer; the sharded "
+            "parameters are the model's own float32 weights, so the master weights start unrounded; "
             "torch_fsdp_plugin.py applies no loss scaling",
         )
 

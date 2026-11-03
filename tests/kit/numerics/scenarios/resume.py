@@ -5,7 +5,19 @@ steps that save a checkpoint with the booster; and a fresh process group that bu
 checkpoint and runs the remaining ``steps_after`` steps. The losses of the resumed steps and the final weights must
 equal the uninterrupted ones bit for bit (``judge_equal``, Megatron-LM's ``DeterministicTest``): every step is
 deterministic, so any difference is state the checkpoint did not carry, typically optimizer state, the learning rate
-schedule or float32 master weights.
+schedule or float32 master weights. That state is also compared directly at the end (``training.run_steps``): the
+tensors the optimizer updates (``optim/<group>.<index>/param``, the float32 master weights where the plugin keeps
+them), Adam's moments and step, the scheduler's state and the fp16 loss scale. A difference there shows which part
+was lost even when the following steps hide it.
+
+What the scenario carries itself, not the checkpoint (the boundary of what is tested):
+
+- Data progress: the resumed run starts at batch ``steps_before`` because it is told so; a booster checkpoint holds
+  no dataloader position. A training loop must save its own.
+- Random number generators: a booster checkpoint does not save them. Every run seeds them with the same seed when
+  training starts and the runs draw nothing while training (dropout is off; random inputs come from ``data_gen_fn``),
+  which ``rng/cpu`` and ``rng/cuda`` (the generator states at the end) confirm: a model that draws random numbers in
+  training fails there, and resuming it exactly needs a loop that saves and restores the generator states.
 
 The checkpointed model must also load with HuggingFace ``from_pretrained`` (if it is a ``PreTrainedModel``) and give
 exactly the weights it was saved with.

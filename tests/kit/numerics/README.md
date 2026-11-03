@@ -231,14 +231,15 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="bf16", cpu_offload=True)` | as bf16, with the master weights and the optimizer step on the CPU | CUDA or NPU |
    | `GeminiPlugin(precision="bf16")` | whole model and inputs cast to bf16, float32 master weights | CUDA |
-   | `GeminiPlugin(precision="fp16")` | whole model and inputs cast to fp16, float32 master weights, loss scale `initial_scale` (2**16) | CUDA |
+   | `GeminiPlugin(precision="fp16")` | whole model and inputs cast to fp16, float32 master weights, loss scale `initial_scale` (2**16), divided out in float32 | CUDA |
    | `TorchFSDPPlugin()` | float32 | CUDA |
-   | `TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=bf16 or fp16, buffer_dtype=the same))` | whole model and inputs cast, float32 master weights (FSDP's sharded parameters), no loss scaling | CUDA |
+   | `TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=bf16 or fp16, buffer_dtype=the same))` | whole model and inputs cast, float32 master weights (FSDP's sharded parameters, which start from the model's own float32 weights, not from their cast), no loss scaling | CUDA |
    | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cast_inputs=False`, or `cpu_offload` with fp32 or `master_weights=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; `GeminiPlugin` with offloading (`placement_policy="auto"`, `offload_*_frac`), `max_norm`, `use_fp8`, `master_weights=False`, `tp_size` or `extra_dp_size` above 1; `TorchFSDPPlugin` with `cpu_offload`, `auto_wrap_policy`, `ignored_modules`, `fp8_communication`, a `buffer_dtype` other than `param_dtype` or `keep_low_precision_grads`; other plugins | refused: not verified yet | |
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
-   the gradient dtypes and the optimizer state dtypes. Any difference raises `RecipeMismatch` before numbers are
-   compared: with an autocast plugin and a whole-cast reference, 68 records differ for Mixtral, while judging the
+   the gradient dtypes, the dtypes of what the optimizer updates (the master weights where there are any) and of its
+   state, each with its device type (`float32@cpu`), so that master weights and Adam's moments offloaded on one side
+   only are caught as well. Any difference raises `RecipeMismatch` before numbers are compared: with an autocast plugin and a whole-cast reference, 68 records differ for Mixtral, while judging the
    numbers would have reported 40 of 44 correct tensors as failures.
 3. **Blank control.** `blank_control(entry)` runs a configuration in which the plugin changes no arithmetic (one
    device, `LowLevelZeroPlugin(stage=1, precision="bf16")`, or `TorchDDPPlugin()` on CPU) and requires every ratio to
@@ -280,10 +281,24 @@ other parallel layouts.
   `param_map` maps its parameter names to the model's. `output_fn` selects which outputs are compared.
 - **Unused parameters.** Trainable parameters that the entry's inputs never reach must be listed in
   `NumericsSpec(unused_params=...)`; any other parameter left without a gradient fails.
+- **Every trainable parameter in the optimizer.** Each run checks, by identity, that the optimizer holds every
+  parameter with `requires_grad=True`. An `optimizer_fn` that builds its own parameter groups and leaves one out does
+  so on both sides, so every comparison would pass; it fails as `optim/param/<name>` instead.
+- **Tied parameters.** Parameters that must be one `Parameter`, such as tied input and output embeddings, are declared
+  with `NumericsSpec(tied_params=(("embed_tokens.weight", "lm_head.weight"),))`. Each run checks within its own model,
+  and again after the plugin has wrapped it (FSDP excepted: its module holds plain tensors then), that every declared
+  group is one Parameter and that no other names share one; a broken or undeclared tie fails as `tied/<names>`. A
+  tied parameter is compared once, under its first name in `named_parameters()`.
 - **Preparing the model.** `NumericsSpec(prepare_fn=...)` is called on every freshly built model, the one under test
   and the reference, before any run, e.g. to freeze a vision tower for a text-only training path
   (`model.visual.requires_grad_(False)`) or to replace a branch the training path skips. It may change the module in
   place or return a replacement. Frozen parameters need no gradient and keep their weights.
+- **Gradient checkpointing.** Enable it in `prepare_fn`, so that every run recomputes the same way, and non-reentrant:
+  `model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})` for a HuggingFace
+  model. The self-tests check that each layer really runs again in backward, and that the result aligns, through
+  `TorchDDPPlugin`, `LowLevelZeroPlugin` (bf16 with offload), `GeminiPlugin`, `TorchFSDPPlugin` and
+  `HybridParallelPlugin` (bf16, `tp_size=1`). The reentrant variant leaves parameters without gradients when no input
+  of a checkpointed block requires one, which then fails as a missing gradient.
 
 What a check can detect depends on the tensor. In the self-tests a dropped column of a bf16 MLP moves the outputs,
 the affected gradients and every step's loss 17 to 26 times beyond the baseline error, but not the weights after one
@@ -291,6 +306,17 @@ AdamW step: the first update is about `lr * sign(grad)`, which hardly depends on
 
 These checks are run by hand while developing a model and attached to its review; CI runs only the tool's own tests
 in `tests/test_numerics`.
+
+### Large models: one model on the device at a time
+
+`prepare` keeps the model (and the reference) on the CPU. Each run copies the one it needs to the device and drops it
+when it returns, so the runs never hold two models on the device together, and the float64 truth is cast on the way
+to the device rather than copied there in float32 first. A run's peak is its own model, gradients and optimizer
+state (16 bytes per parameter with AdamW in float32, 32 for the float64 truth), plus activations and the optimizer's
+temporaries. A Llama with 111M parameters peaks at 5.05 GiB for the truth, 2.83 GiB for `ref` and 3.03 GiB through
+`LowLevelZeroPlugin(stage=2, precision="bf16")` on one device. A model whose float64 truth does not fit is aligned
+with a reduced configuration (fewer layers, same layer types); say so wherever the result is reported, as it does
+not cover the full model.
 
 ### Real weights: caching the reference
 
@@ -383,6 +409,13 @@ report = data_parallel.check(entry, plugin_fn, world_size=2, micro_batches=4, to
 `count` reads the batch alone, as a training loop counts valid labels before the forward; every rank holds every
 batch, so the step's total needs no communication. Each micro-batch's summed loss is scaled by
 `world_size / total`, so N devices and one device both compute the gradient of the mean over all valid tokens.
+Compared with DDP's own averaging over ranks (each rank's gradient divided by `world_size`), the factor `world_size`
+cancels it, leaving one division by the step's valid tokens.
+
+A micro-batch without any valid token (a sequence of padding only) still runs forward and backward: its gradient is
+zero, the rank that holds it takes part in the reduction as usual, and its recorded loss is its sum, 0, not `0 / 0`.
+A step without any valid token at all has no defined mean and raises `ValueError` on every rank before the first
+forward, so no rank is left waiting in a collective.
 
 The report has the same columns as `judge`, with the bound in place of the baseline error, so `ratio` must be at most
 1. Measured on Mixtral, Llama, GPT and BERT with 2 devices and 4 micro-batches: at most 5% of the bound in bf16 and
@@ -403,8 +436,22 @@ interrupted. It spawns three runs of the same plugin: `steps_before + steps_afte
 config, optimizer, learning rate scheduler), and a fresh process group that builds everything anew, loads the
 checkpoint and runs the remaining steps. Every step is deterministic, so the rule is exact equality
 (`judge_equal`, Megatron-LM's `DeterministicTest`): the losses of the resumed steps and the final weights must be the
-same bits. The learning rate warms up over the whole run, so a schedule that was not restored shows too. The saved
-model must also load with HuggingFace `from_pretrained` and give exactly the weights it was saved with.
+same bits. The learning rate warms up over the whole run, so a schedule that was not restored shows too. The state
+the checkpoint must carry is also compared directly after the last step, as the plugin holds it (its shards, flat
+parameters or chunks, the same in both runs of one configuration): the tensors the optimizer updates
+(`optim/<group>.<index>/param`, the float32 master weights where the plugin keeps them), Adam's moments and step,
+the scheduler's state (`scheduler/...`) and the fp16 loss scale. A lost part then shows by name even where the
+following steps happen to hide it. The saved model must also load with HuggingFace `from_pretrained` and give exactly
+the weights it was saved with.
+
+What the scenario carries itself, and a training loop must too, since a booster checkpoint does not:
+
+- **Data progress.** The resumed run is told to start at batch `steps_before`; the checkpoint holds no dataloader
+  position.
+- **Random number generators.** Every run seeds them with the same seed when training starts and draws nothing while
+  training (dropout is off; random inputs come from `data_gen_fn`). The generator states at the end (`rng/cpu`,
+  `rng/cuda`) are compared too, so a model that does draw random numbers in training fails there: resuming it exactly
+  needs the loop to save and restore the generator states.
 
 ```python
 from functools import partial
@@ -471,7 +518,14 @@ over each case's outputs and gradients:
 | bug: RMSNorm / LayerNorm epsilon 1e-2 instead of 1e-6 / 1e-5 | 1.4-1.5 / 1.2-1.3 | 10 / 8.8 |
 | bug: cross-entropy with label smoothing 0.01 | 2.7-2.8 | 17-18 |
 
-Whole models through plugins add two points: Gemini fp16 and FSDP bf16 reach 1.68 and 1.42 on Mixtral.
+Whole models through plugins on one device are exact (1.00) in every supported configuration but one, once the
+reference follows the plugin in every detail: with master weights started from the bf16-cast weights instead of
+FSDP's unrounded float32 ones, FSDP bf16 reached 1.42 on Mixtral and 237 on one loss of a model with tied embeddings.
+With the fp16 loss scale divided out in fp16 instead of in float32 as Gemini does, Gemini fp16 reached 1.68 on
+Mixtral. Both stayed below 3, so the self-tests require ratios of exactly 1 on one device. The exception is Gemini
+fp16, now 1.07 on Mixtral: its fused `HybridAdam` and torch's `AdamW`, the independent reference, differ in the last
+float32 bit of a few elements, which fp16's finer rounding sometimes shows (one element in 512 of a test model, one
+fp16 unit, the same without loss scaling).
 
 No correct implementation came near 3, so the multiplier stays. What bf16 cannot show is a bug smaller than its own
 rounding: a 1% scale or an epsilon of 1e-2 changes results by about one bf16 unit, and lands at 1.2 to 3 whatever the
@@ -591,6 +645,8 @@ theirs.
 | --- | --- | --- |
 | Mixture of experts | a router flip makes single tensors jump | declare `NumericsSpec(routers=...)` (and `routers=` of `check_fwd_bwd`); the report counts flips in test and ref |
 | Multimodal model trained on its text path | the vision tower is frozen or skipped | freeze or replace it with `NumericsSpec(prepare_fn=...)`, applied to every run; list skipped trainable branches in `unused_params` |
+| Tied embeddings | one Parameter under two names | declare them in `NumericsSpec(tied_params=...)`; compared once, under the first name |
+| Gradient checkpointing | layers run again in backward | enable it in `prepare_fn`, non-reentrant: `model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})`, see [What an entry has to satisfy](#what-an-entry-has-to-satisfy) |
 | Diffusion models | random masks, noise, timesteps | generate them in `data_gen_fn` |
 | Optimizers | no reference model; the update rule is compared | `check_optimizer(test_fn, ref_fn, params, dtype, steps)` against the reference implementation, see [An optimizer's update rule](#an-optimizers-update-rule) |
 | Video generation, other non-HuggingFace models | outputs are not logits; the reference is an official repository | `output_fn` selects the tensors, `reference_fn` builds the official implementation |
@@ -620,7 +676,7 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=(), expect_calls=(), routers=None)` | the three runs and the judge of an operator or module check; `expect_calls` must each be called by the test run |
 | `count_calls(targets)` | context manager counting the calls of each `(owner, name)` |
 | `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, unused_params=(), **meta)` | run a function or module forward and backward, return a `Trace` |
-| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=(), routers=None, prepare_fn=None, token_loss=None)` | opts a model_zoo entry into whole-model alignment |
+| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=(), routers=None, prepare_fn=None, token_loss=None, tied_params=())` | opts a model_zoo entry into whole-model alignment |
 | `TokenLoss(loss, count)` | a model's own loss summed over valid tokens, and the count of valid tokens, for `token_weighted` |
 | `Routers(select, top_k, scores_fn=...)` | the router modules of a mixture-of-experts model, for routing-flip counts |
 | `diagnose_routing(report, test, ref, truth)`, `RoutingRecorder(module, routers)` | count the flips recorded in `meta["routing"]`; the hook that records them |
