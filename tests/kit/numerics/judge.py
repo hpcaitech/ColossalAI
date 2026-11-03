@@ -3,7 +3,8 @@
 The baseline-error rule (``judge``) follows PyTorch's TorchInductor accuracy check (``same()`` in
 ``torch/_dynamo/utils.py``): the baseline error is how far the reference implementation itself deviates from a float64
 ground truth at the precision being tested, and the implementation under test may deviate at most ``multiplier`` times
-as much.
+as much. Unlike ``same()``, its tolerance ``tol`` is relative to each tensor's size (its RMS in the truth): an absolute
+``tol`` exceeds the whole error of small tensors such as mean-loss gradients and lets any bug in them pass.
 
 The exact rule (``judge_equal``) follows Megatron-LM's ``DeterministicTest``: runs that must not differ at all, such
 as training resumed from a checkpoint against training that was never interrupted.
@@ -111,8 +112,10 @@ def judge(
         test: Outputs of the implementation under test, at the precision being tested.
         ref: Outputs of the reference implementation run with the same precision recipe as ``test``.
         truth: Outputs of the reference implementation in float64.
-        tol: Fast-path tolerance: ``test`` within ``allclose(ref, atol=tol, rtol=tol)`` passes outright;
-            ``tol / 10`` is also added to the allowed error, as in PyTorch.
+        tol: Tolerance relative to the tensor's RMS in the truth (``scale``): ``test`` within
+            ``allclose(ref, atol=tol * scale, rtol=tol)`` passes outright, and ``tol / 10 * scale`` is added to the
+            allowed error, a floor for tensors whose baseline error is about 0. PyTorch adds the same terms unscaled;
+            scaling keeps verdicts unchanged when a tensor is multiplied by a constant.
 
     Each argument may be a tensor or any nesting of dicts / lists / tuples / ``ModelOutput``; tensors are matched
     by their flattened names (see ``flatten_tensors``). Comparing nothing at all fails.
@@ -147,14 +150,16 @@ def _judge_one(name, test, ref, truth, tol, small_tensor_multiplier) -> Entry:
     metrics = tensor_metrics(test64, truth64)
     baseline_error, test_error = tensor_metrics(ref64, truth64).rmse, metrics.rmse
     multiplier = error_multiplier(test.dtype, test.numel(), small_tensor_multiplier)
-    allowed = multiplier * baseline_error + tol / 10.0
+    # tolerances relative to the tensor's size: absolute ones would exceed the whole error of small tensors
+    scale = truth64.pow(2).mean().sqrt().item() if truth64.numel() else 0.0
+    allowed = multiplier * baseline_error + tol / 10.0 * scale
     entry = Entry(name, False, "", baseline_error, test_error, allowed, metrics)
 
     if not torch.isfinite(truth64).all():
         entry.reason = "non-finite truth, rerun the reference in higher precision"
     elif not torch.isfinite(test64).all():
         entry.reason = "non-finite test output"
-    elif torch.allclose(test64, ref64, atol=tol, rtol=tol):
+    elif torch.allclose(test64, ref64, atol=tol * scale, rtol=tol):
         entry.passed, entry.reason = True, "allclose to ref"
     elif math.isnan(baseline_error):
         entry.reason = "non-finite ref output"

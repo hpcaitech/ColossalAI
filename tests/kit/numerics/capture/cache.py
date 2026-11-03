@@ -10,7 +10,8 @@ A cached trace is reused only if everything that determines it is unchanged; the
 - the torch and transformers versions and the device name;
 - the source of the capture code, so that a change to how the reference runs invalidates old entries by itself.
 
-Entries are ``<directory>/<entry>/<role>-<key>.safetensors``; nothing is ever overwritten in place.
+Entries are ``<directory>/<entry>/<role>-<key>.safetensors``; nothing is ever overwritten in place. New directories
+and files are group-writable, so that a cache shared by a team stays usable by all of it.
 """
 
 import hashlib
@@ -58,11 +59,26 @@ def cached_run(directory: Optional[str], name: str, role: str, key: str, run: Ca
         trace = Trace.load(path)
         return Trace(dict(trace.items()), dict(trace.meta, cached=path))
     trace = run()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    _make_shared_dir(os.path.dirname(path))
     partial_path = f"{path}.{os.getpid()}.tmp"
     trace.save(partial_path)
+    _share(partial_path, 0o664)
     os.replace(partial_path, path)  # atomic: a concurrent reader sees a whole file or none
     return trace
+
+
+def _make_shared_dir(directory: str) -> None:
+    # a shared cache is written by several users, often as root inside a container: keep it group-writable
+    if not os.path.isdir(directory):
+        os.makedirs(directory, exist_ok=True)
+        _share(directory, 0o2775)
+
+
+def _share(path: str, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except PermissionError:  # created by someone else in the meantime
+        pass
 
 
 def _optimizer_signature(optimizer_fn: Callable) -> Dict[str, Any]:

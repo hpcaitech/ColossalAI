@@ -18,12 +18,18 @@ For every tensor (outputs, input gradients, parameter gradients):
 ```
 baseline error = RMSE(ref,  truth)
 test error     = RMSE(test, truth)
-pass if  test error <= multiplier * baseline error + tol / 10
+scale          = RMS(truth)
+pass if  test error <= multiplier * baseline error + tol / 10 * scale
 ```
 
 `multiplier` is 3 for fp16 / bf16 and 2 for fp32, and at least 3 for tensors with fewer than 1000 elements. A `test`
-that is already `allclose` to `ref` (`atol = rtol = tol`, default `1e-4`) passes directly. This is the rule PyTorch
-uses to check `torch.compile` across its model suites (`same()` in `torch/_dynamo/utils.py`).
+that is already `allclose` to `ref` (`atol = tol * scale`, `rtol = tol`, default `tol = 1e-4`) passes directly. This
+is the rule PyTorch uses to check `torch.compile` across its model suites (`same()` in `torch/_dynamo/utils.py`),
+with one change: PyTorch's `tol` is absolute, ours is relative to the size of each tensor. PyTorch compares every
+parameter gradient too, with `tol = 1e-2` in training, and accepts that an absolute tolerance exceeds the whole
+error of small tensors (gradients of a mean loss are often around 1e-6): its suites look for gross compiler errors
+across hundreds of models. Here it would let any bug in such a tensor pass, so the `tol` terms are scaled and only
+matter where the baseline error is about 0; multiplying a tensor by a constant does not change its verdict.
 
 Why not a fixed tolerance: the error a correct bf16 implementation makes differs by orders of magnitude between models
 and tensors. A tolerance tight enough for one model rejects another; a loose one hides real bugs. The baseline error
@@ -296,8 +302,9 @@ and every batch byte for byte, the code that selects outputs and routers, the op
 the recipe (for `ref` only: one float64 truth serves every configuration of an entry), the torch and transformers
 versions, the device, and the source of the capture code itself, so a change to how references run invalidates old
 entries without anyone bumping a version. Files are `<cache_dir>/<entry>/<truth|ref>-<key>.safetensors`, written
-atomically and never overwritten; the model under test always runs. Where the cache lives for shared use is not
-decided yet; until then use a directory of your own.
+atomically, never overwritten and group-writable; the model under test always runs. The team's shared cache is
+`/mnt/beegfs/ColossalAI/shared-results/numerics/cache/`, next to the acceptance reports and apart from `shared-cache`
+(model weights): pass it as `--cache-dir`, so that one float64 truth serves everyone.
 
 ### Mixture of experts: routing flips
 
@@ -467,9 +474,10 @@ rounding: a 1% scale or an epsilon of 1e-2 changes results by about one bf16 uni
 multiplier. The same bugs are 9 to 23 times beyond the baseline in fp16. Operator tests should therefore run in fp16
 as well as bf16 (or fp32), not bf16 alone.
 
-Two of the bugs above pass although their ratio exceeds 3 (the 1% scale in bf16 at 3.09, label smoothing in fp16 at
-17): the rule's absolute tolerance, `tol / 10` added to the allowed error and the `allclose(tol)` fast path with
-`tol = 1e-4` (PyTorch's values), exceeds the whole error of tensors as small as these gradients.
+With PyTorch's absolute tolerance two of these bugs passed although their ratio exceeded 3: label smoothing in fp16
+at 17 and the 1% scale in bf16 at 3.09 (one seed). `tol / 10 = 1e-5` alone was 60 times the allowance of 3 baseline
+errors for the logits gradient, around 1e-6 per element. With the tolerance scaled to each tensor both fail, and
+every correct case keeps its ratio and its pass.
 
 ## An optimizer's update rule
 
@@ -606,7 +614,7 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | Name | Purpose |
 | --- | --- |
 | `assert_aligned(test, ref, truth, tol=1e-4)` | judge and raise with the report if anything is not aligned |
-| `judge(test, ref, truth, tol=1e-4, small_tensor_multiplier=False)` | return an `AlignmentReport` |
+| `judge(test, ref, truth, tol=1e-4, small_tensor_multiplier=False)` | return an `AlignmentReport`; `tol` is relative to each tensor's RMS in the truth |
 | `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=(), expect_calls=(), routers=None)` | the three runs and the judge of an operator or module check; `expect_calls` must each be called by the test run |
 | `count_calls(targets)` | context manager counting the calls of each `(owner, name)` |
 | `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, unused_params=(), **meta)` | run a function or module forward and backward, return a `Trace` |

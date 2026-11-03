@@ -91,6 +91,18 @@ def test_module_params_get_gradients_and_same_weights():
     assert next(mlp.parameters()).dtype == torch.float32  # the caller's module is not modified
 
 
+def test_verdicts_do_not_depend_on_tensor_size():
+    # a bug 10x beyond the baseline error must fail however small the tensor is, e.g. a mean-loss gradient around 1e-6
+    g = torch.Generator().manual_seed(0)
+    truth = torch.randn(4096, generator=g, dtype=torch.float64)
+    ref = truth + 1e-3 * torch.randn(4096, generator=g, dtype=torch.float64)
+    buggy = truth + 1e-2 * torch.randn(4096, generator=g, dtype=torch.float64)
+    for scale in (1.0, 1e-6):
+        for test, passed in ((ref.clone(), True), (buggy, False)):
+            report = judge((test * scale).float(), (ref * scale).float(), truth * scale)
+            assert report.passed is passed, (scale, report.format())
+
+
 def test_error_multiplier_follows_pytorch():
     assert error_multiplier(torch.bfloat16, 10**6) == 3.0
     assert error_multiplier(torch.float16, 10**6) == 3.0
