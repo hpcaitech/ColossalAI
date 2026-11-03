@@ -166,8 +166,10 @@ def test_full_precision_clears_every_switch_this_build_has():
 
 def test_full_precision_restores_what_it_found():
     torch.set_float32_matmul_precision("medium")
-    before = [(holder, attribute, getattr(holder, attribute)) for holder, attribute in
-              (f for f in map(_resolve_flag, REDUCED_PRECISION_FLAGS) if f is not None)]
+    before = [
+        (holder, attribute, getattr(holder, attribute))
+        for holder, attribute in (f for f in map(_resolve_flag, REDUCED_PRECISION_FLAGS) if f is not None)
+    ]
     try:
         with full_precision_matmul():
             pass

@@ -24,7 +24,10 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     criterion = lambda x: x.mean()
     data = data_gen_fn()
 
-    data = {k: v.to(get_accelerator().get_current_device()) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+    data = {
+        k: v.to(get_accelerator().get_current_device()) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v
+        for k, v in data.items()
+    }
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
