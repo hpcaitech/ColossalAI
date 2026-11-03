@@ -241,6 +241,24 @@ def test_default_backend_is_the_naive_reference():
     assert all(torch.equal(left, right) for left, right in zip(default, explicit))
 
 
+def test_dispatcher_forwards_the_normalized_ar_keys(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [6, 4])
+    ar, dm = _random_packed_tensors(meta, seed=9)
+    k_ar_for_gen = ar[1] + 100.0
+
+    default = two_way_flat_attention(*ar, *dm, meta, k_ar_for_gen=k_ar_for_gen)
+    explicit = naive_two_way_flat_attention(*ar, *dm, meta, k_ar_for_gen=k_ar_for_gen)
+    assert all(torch.equal(left, right) for left, right in zip(default, explicit))
+
+    recorder = _record_attention(monkeypatch)
+    two_way_flat_attention(*ar, *dm, meta, backend="npu", k_ar_for_gen=k_ar_for_gen)
+
+    causal_call, full_call = recorder.calls
+    gather_index = build_two_way_kv_gather_index(meta)
+    assert torch.equal(causal_call["k"], ar[1])
+    assert torch.equal(full_call["k"], torch.cat((k_ar_for_gen, dm[1]), dim=0).index_select(0, gather_index))
+
+
 def test_unknown_backend_is_rejected():
     meta = TwoWayPackedMeta(*EIGHT_TOKEN_LENGTHS)
     ar, dm = _random_packed_tensors(meta, seed=8)
@@ -359,14 +377,14 @@ def test_npu_path_issues_one_causal_and_one_full_packed_call(monkeypatch):
     assert causal_call["kwargs"]["is_causal"] is True
     assert causal_call["kwargs"]["attention_mask"] is None
     assert causal_call["kwargs"]["qkv_layout"] == "TND"
-    assert causal_call["kwargs"]["cu_seqlens_q"].tolist() == [0, 3, 5]
-    assert causal_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 3, 5]
+    assert causal_call["kwargs"]["cu_seqlens_q"] == [0, 3, 5]
+    assert causal_call["kwargs"]["cu_seqlens_kv"] == [0, 3, 5]
     assert (causal_call["kwargs"]["max_seqlen_q"], causal_call["kwargs"]["max_seqlen_kv"]) == (3, 3)
 
     assert full_call["kwargs"]["is_causal"] is False
     assert full_call["kwargs"]["attention_mask"] is None
-    assert full_call["kwargs"]["cu_seqlens_q"].tolist() == [0, 6, 10]
-    assert full_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 9, 15]
+    assert full_call["kwargs"]["cu_seqlens_q"] == [0, 6, 10]
+    assert full_call["kwargs"]["cu_seqlens_kv"] == [0, 9, 15]
     assert (full_call["kwargs"]["max_seqlen_q"], full_call["kwargs"]["max_seqlen_kv"]) == (6, 9)
 
     gather_index = build_two_way_kv_gather_index(meta)
@@ -405,11 +423,65 @@ def test_npu_path_drops_zero_length_segments_before_the_kernel(monkeypatch):
 
     assert len(recorder.calls) == 2
     causal_call, full_call = recorder.calls
-    assert causal_call["kwargs"]["cu_seqlens_q"].tolist() == [0, 3]
+    assert causal_call["kwargs"]["cu_seqlens_q"] == [0, 3]
     # The only DM sample has no AR tokens, so its K/V segment is just its five DM tokens.
-    assert full_call["kwargs"]["cu_seqlens_q"].tolist() == [0, 5]
-    assert full_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 5]
+    assert full_call["kwargs"]["cu_seqlens_q"] == [0, 5]
+    assert full_call["kwargs"]["cu_seqlens_kv"] == [0, 5]
     assert torch.equal(full_call["k"], dm[1])
+
+
+def test_npu_path_keys_the_full_call_with_the_normalized_ar_block(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [6, 4])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=25)
+    q_ar, k_ar, v_ar = ar
+    q_dm, k_dm, v_dm = dm
+    k_ar_for_gen = k_ar + 100.0
+    recorder = _record_attention(monkeypatch)
+
+    npu_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen=k_ar_for_gen)
+
+    causal_call, full_call = recorder.calls
+    gather_index = build_two_way_kv_gather_index(meta)
+    assert torch.equal(causal_call["k"], k_ar)
+    assert torch.equal(full_call["k"], torch.cat((k_ar_for_gen, k_dm), dim=0).index_select(0, gather_index))
+    assert torch.equal(full_call["v"], torch.cat((v_ar, v_dm), dim=0).index_select(0, gather_index))
+
+
+def test_npu_path_explicit_gather_index_matches_the_slice_path(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [6, 4])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=26)
+    gather_index = build_two_way_kv_gather_index(meta)
+    recorder = _record_attention(monkeypatch)
+
+    npu_two_way_flat_attention(*ar, *dm, meta, kv_gather_index=gather_index)
+
+    _, full_call = recorder.calls
+    assert torch.equal(full_call["k"], torch.cat((ar[1], dm[1]), dim=0).index_select(0, gather_index))
+    assert torch.equal(full_call["v"], torch.cat((ar[2], dm[2]), dim=0).index_select(0, gather_index))
+
+
+def test_naive_path_with_normalized_ar_keys_separates_the_two_k_blocks():
+    meta = TwoWayPackedMeta([3], [5])
+    ar, dm = _random_packed_tensors(meta, seed=27)
+    q_ar, k_ar, v_ar = ar
+    q_dm, k_dm, v_dm = dm
+    k_ar_for_gen = k_ar + 100.0
+
+    out_ar, out_dm = naive_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen=k_ar_for_gen)
+    changed_ar, changed_dm = naive_two_way_flat_attention(
+        q_ar, k_ar * 3.0, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen=k_ar_for_gen
+    )
+
+    assert not torch.allclose(out_ar, changed_ar), "the AR pass must keep the raw keys"
+    assert torch.allclose(out_dm, changed_dm), "the DM pass must read k_ar_for_gen, not k_ar"
+
+
+def test_normalized_ar_keys_must_match_the_ar_block():
+    meta = TwoWayPackedMeta([3], [5])
+    ar, dm = _random_packed_tensors(meta, seed=28)
+
+    with pytest.raises(ValueError, match="shape of the AR key block"):
+        naive_two_way_flat_attention(*ar, *dm, meta, k_ar_for_gen=ar[1][:-1])
 
 
 def test_npu_path_keeps_gqa_heads_and_reads_only_each_samples_own_kv(monkeypatch):
@@ -433,11 +505,11 @@ def test_npu_path_keeps_gqa_heads_and_reads_only_each_samples_own_kv(monkeypatch
     assert causal_call["q"].shape == (3, num_q_heads, HEAD_DIM)
     assert causal_call["k"].shape == (3, num_kv_heads, HEAD_DIM)
     assert torch.equal(causal_call["k"], k_ar)
-    assert causal_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 3]
+    assert causal_call["kwargs"]["cu_seqlens_kv"] == [0, 3]
     assert full_call["q"].shape == (3, num_q_heads, HEAD_DIM)
     assert full_call["k"].shape == (3, num_kv_heads, HEAD_DIM)
     assert torch.equal(full_call["k"], k_dm)
-    assert full_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 3]
+    assert full_call["kwargs"]["cu_seqlens_kv"] == [0, 3]
     assert torch.equal(out_ar, q_ar) and torch.equal(out_dm, q_dm)
 
 

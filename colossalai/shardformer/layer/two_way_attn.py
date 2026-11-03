@@ -233,12 +233,14 @@ class TwoWayPackedMeta:
 def build_two_way_kv_gather_index(meta: TwoWayPackedMeta, device: Optional[torch.device] = None) -> torch.Tensor:
     """Index that interleaves the global AR and DM blocks into the per-sample ``[AR_i; DM_i]`` order.
 
-    The source of the gather is ``torch.cat([k_ar, k_dm], dim=0)``. Applying the returned index to both K and V gives
+    The source of the gather is ``torch.cat([k_ar, k_dm], dim=0)``, or ``torch.cat([k_ar_for_gen, k_dm], dim=0)``
+    when the generation pathway keys against normalized AR keys. Applying the returned index to both K and V gives
     the K/V tensor of the second call. Samples without DM tokens are not part of that call and are omitted, which
     keeps the number of segments equal to ``cu_seqlens_dm``.
 
-    The packing step can build this index once per batch and pass it to every layer, which is what makes the copy
-    per layer a gather rather than a rebuild of the index as well.
+    The packing step can build this index once per batch and pass it to every layer. It is optional: the NPU path
+    concatenates the per-sample slices directly when no index is given, which reads and writes each token once
+    instead of twice.
 
     Args:
         meta (TwoWayPackedMeta): The packed layout.
@@ -344,6 +346,7 @@ def _check_packed_inputs(
     k_dm: torch.Tensor,
     v_dm: torch.Tensor,
     meta: TwoWayPackedMeta,
+    k_ar_for_gen: Optional[torch.Tensor] = None,
 ) -> None:
     """Validate the packed tensors against the metadata and against each other."""
     expected = {
@@ -391,6 +394,19 @@ def _check_packed_inputs(
             f"number of key/value heads ({num_kv_heads})."
         )
 
+    if k_ar_for_gen is not None:
+        if k_ar_for_gen.shape != k_ar.shape:
+            raise ValueError(
+                f"k_ar_for_gen must have the shape of the AR key block, {tuple(k_ar.shape)}, got "
+                f"{tuple(k_ar_for_gen.shape)}. It is the same tokens as k_ar, projected through the normalization the "
+                f"generation pathway applies before its cross-attention."
+            )
+        if k_ar_for_gen.dtype != k_ar.dtype or k_ar_for_gen.device != k_ar.device:
+            raise ValueError(
+                f"k_ar_for_gen must match k_ar in dtype and device, got {k_ar_for_gen.dtype} on "
+                f"{k_ar_for_gen.device} and {k_ar.dtype} on {k_ar.device}."
+            )
+
 
 def _two_way_segment_spec(ar_len: int, dm_len: int) -> SegmentMaskSpec:
     """The reference mask of one sample: AR causal, DM full, AR never sees DM."""
@@ -404,6 +420,66 @@ def _two_way_segment_spec(ar_len: int, dm_len: int) -> SegmentMaskSpec:
     return SegmentMaskSpec([dm_len], [[SegmentRule.FULL]])
 
 
+def _naive_two_way_with_normalized_ar_keys(
+    q_ar: torch.Tensor,
+    k_ar: torch.Tensor,
+    v_ar: torch.Tensor,
+    q_dm: torch.Tensor,
+    k_dm: torch.Tensor,
+    v_dm: torch.Tensor,
+    k_ar_for_gen: torch.Tensor,
+    meta: TwoWayPackedMeta,
+    scale: Optional[float],
+    dropout_p: float,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Reference for the normalized-AR-key variant, one attention call per tower and sample.
+
+    The two passes no longer share an AR key block, so they cannot be expressed as one segmented call over
+    ``[AR_i; DM_i]``: the AR rows keep the raw keys, while the DM rows take the normalized ones. Running them
+    separately is the definition this path is a reference for.
+    """
+    ar_outputs: List[torch.Tensor] = []
+    dm_outputs: List[torch.Tensor] = []
+    ar_offset = 0
+    dm_offset = 0
+    for ar_len, dm_len in zip(meta.ar_lens, meta.dm_lens):
+        if ar_len > 0:
+            ar_mask = torch.ones(ar_len, ar_len, dtype=torch.bool, device=q_ar.device).tril()
+            ar_outputs.append(
+                naive_segment_attention(
+                    q_ar[ar_offset : ar_offset + ar_len].transpose(0, 1).unsqueeze(0),
+                    k_ar[ar_offset : ar_offset + ar_len].transpose(0, 1).unsqueeze(0),
+                    v_ar[ar_offset : ar_offset + ar_len].transpose(0, 1).unsqueeze(0),
+                    ar_mask,
+                    scale=scale,
+                    dropout_p=dropout_p,
+                )[0].transpose(0, 1)
+            )
+        if dm_len > 0:
+            keys = torch.cat(
+                (k_ar_for_gen[ar_offset : ar_offset + ar_len], k_dm[dm_offset : dm_offset + dm_len]), dim=0
+            )
+            values = torch.cat((v_ar[ar_offset : ar_offset + ar_len], v_dm[dm_offset : dm_offset + dm_len]), dim=0)
+            # The DM queries see their own sample's whole ``[AR_i; DM_i]`` stream, so every key is visible.
+            dm_mask = torch.ones(dm_len, ar_len + dm_len, dtype=torch.bool, device=q_dm.device)
+            dm_outputs.append(
+                naive_segment_attention(
+                    q_dm[dm_offset : dm_offset + dm_len].transpose(0, 1).unsqueeze(0),
+                    keys.transpose(0, 1).unsqueeze(0),
+                    values.transpose(0, 1).unsqueeze(0),
+                    dm_mask,
+                    scale=scale,
+                    dropout_p=dropout_p,
+                )[0].transpose(0, 1)
+            )
+        ar_offset += ar_len
+        dm_offset += dm_len
+
+    out_ar = torch.cat(ar_outputs, dim=0) if ar_outputs else q_ar.new_empty(q_ar.shape)
+    out_dm = torch.cat(dm_outputs, dim=0) if dm_outputs else q_dm.new_empty(q_dm.shape)
+    return out_ar, out_dm
+
+
 def naive_two_way_flat_attention(
     q_ar: torch.Tensor,
     k_ar: torch.Tensor,
@@ -413,6 +489,7 @@ def naive_two_way_flat_attention(
     v_dm: torch.Tensor,
     meta: TwoWayPackedMeta,
     *,
+    k_ar_for_gen: Optional[torch.Tensor] = None,
     scale: Optional[float] = None,
     dropout_p: float = 0.0,
     kv_gather_index: Optional[torch.Tensor] = None,
@@ -427,6 +504,11 @@ def naive_two_way_flat_attention(
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
         k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
             than the query ``heads``, as in grouped-query attention.
+        k_ar_for_gen (Optional[torch.Tensor], optional): AR keys as the generation (DM) full pass sees them, of the
+            same shape as ``k_ar``. Cosmos Edge normalizes the AR keys with ``k_norm_und_for_gen`` for the gen→und
+            cross-attention while the reasoner's own causal pass keeps the raw keys; pass that normalized block here.
+            With a value the two passes no longer share an AR key block, so the reference runs them separately.
+            Defaults to None, i.e. both passes use ``k_ar``.
         v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
         q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
         k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
@@ -460,7 +542,12 @@ def naive_two_way_flat_attention(
             out_ar, out_dm = naive_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
             assert out_ar.shape == (3, 2, 16) and out_dm.shape == (5, 2, 16)
     """
-    _check_packed_inputs(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+    _check_packed_inputs(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen)
+
+    if k_ar_for_gen is not None:
+        return _naive_two_way_with_normalized_ar_keys(
+            q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, k_ar_for_gen, meta, scale, dropout_p
+        )
 
     ar_outputs: List[torch.Tensor] = []
     dm_outputs: List[torch.Tensor] = []
@@ -490,6 +577,47 @@ def naive_two_way_flat_attention(
     return out_ar, out_dm
 
 
+def _interleave_two_way_kv(
+    ar_block: torch.Tensor,
+    dm_block: torch.Tensor,
+    meta: TwoWayPackedMeta,
+    kv_gather_index: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Reorder one K/V block pair into the per-sample ``[AR_i; DM_i]`` order of the DM call.
+
+    Without an index the result is built by concatenating the per-sample slices, which reads and writes every token
+    once. The index path is kept for callers that already materialised
+    :func:`build_two_way_kv_gather_index`; it costs a second pass over the tokens because the concatenated source is
+    laid out before the gather.
+    """
+    expected = sum(ar_len + dm_len for ar_len, dm_len in zip(meta.ar_lens, meta.dm_lens) if dm_len > 0)
+
+    if kv_gather_index is not None:
+        if kv_gather_index.numel() != expected:
+            raise ValueError(
+                f"kv_gather_index selects {kv_gather_index.numel()} tokens, but the DM call needs {expected}, the "
+                f"sum of ar_i + dm_i over samples with dm_i > 0. Rebuild it with build_two_way_kv_gather_index."
+            )
+        return torch.cat((ar_block, dm_block), dim=0).index_select(0, kv_gather_index)
+
+    parts: List[torch.Tensor] = []
+    ar_offset = 0
+    dm_offset = 0
+    for ar_len, dm_len in zip(meta.ar_lens, meta.dm_lens):
+        if dm_len == 0:
+            # The sample is not part of the DM call, so neither of its blocks belongs in the interleaved tensor.
+            ar_offset += ar_len
+            continue
+        if ar_len > 0:
+            parts.append(ar_block[ar_offset : ar_offset + ar_len])
+            ar_offset += ar_len
+        parts.append(dm_block[dm_offset : dm_offset + dm_len])
+        dm_offset += dm_len
+    if not parts:
+        return ar_block.new_empty((0,) + tuple(ar_block.shape[1:]))
+    return torch.cat(parts, dim=0)
+
+
 def npu_two_way_flat_attention(
     q_ar: torch.Tensor,
     k_ar: torch.Tensor,
@@ -499,6 +627,7 @@ def npu_two_way_flat_attention(
     v_dm: torch.Tensor,
     meta: TwoWayPackedMeta,
     *,
+    k_ar_for_gen: Optional[torch.Tensor] = None,
     scale: Optional[float] = None,
     dropout_p: float = 0.0,
     kv_gather_index: Optional[torch.Tensor] = None,
@@ -510,15 +639,19 @@ def npu_two_way_flat_attention(
     the DM mask is expressed by ``actual_seq_qlen``/``actual_seq_kvlen``, so no ``[S, S]`` block mask is built. The
     causal mask of the first call is owned and cached by the NPU backend, not rebuilt here.
 
-    The interleaving costs one concatenation plus one selection per K/V tensor. Pass the index from the packing
-    step so it is not rebuilt per layer, and measure its share of the step time; if it exceeds the design note's
-    budget, replace the concatenation with a destination-index write or fold the interleaving into the projection's
-    output.
+    The interleaving costs one pass over K and one over V: the per-sample slices are concatenated in destination
+    order, so every token is read and written once. Passing ``kv_gather_index`` keeps the two-pass gather path for
+    callers that already built it. Measure the copy's share of the step time; if it exceeds the design note's
+    budget, fold the interleaving into the projection's output.
 
     Args:
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
         k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
             than the query ``heads``, as in grouped-query attention.
+        k_ar_for_gen (Optional[torch.Tensor], optional): AR keys as the generation (DM) full pass sees them, of the
+            same shape as ``k_ar``. Cosmos Edge normalizes the AR keys with ``k_norm_und_for_gen`` for the gen→und
+            cross-attention while the reasoner's own causal pass keeps the raw keys; pass that normalized block here
+            and the DM call interleaves it instead of ``k_ar``. Defaults to None, i.e. both calls use ``k_ar``.
         v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
         q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
         k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
@@ -554,14 +687,15 @@ def npu_two_way_flat_attention(
                 q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, kv_gather_index=gather_index
             )
     """
-    _check_packed_inputs(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+    _check_packed_inputs(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen)
 
     ar_lengths = [ar_len for ar_len in meta.ar_lens if ar_len > 0]
     dm_lengths = [dm_len for dm_len in meta.dm_lens if dm_len > 0]
     kv_lengths = [ar_len + dm_len for ar_len, dm_len in zip(meta.ar_lens, meta.dm_lens) if dm_len > 0]
 
     if ar_lengths:
-        cu_seqlens_ar = torch.tensor(_prefix_sums(ar_lengths), dtype=torch.int32, device=q_ar.device)
+        # Host-side prefix sums: the NPU wrapper turns them into ``actual_seq_*len`` without a device readback.
+        cu_seqlens_ar = _prefix_sums(ar_lengths)
         out_ar = ColoAttention.attention(
             q_ar,
             k_ar,
@@ -580,19 +714,11 @@ def npu_two_way_flat_attention(
         out_ar = q_ar.new_empty(q_ar.shape)
 
     if dm_lengths:
-        cu_seqlens_dm = torch.tensor(_prefix_sums(dm_lengths), dtype=torch.int32, device=q_dm.device)
-        cu_seqlens_kv = torch.tensor(_prefix_sums(kv_lengths), dtype=torch.int32, device=q_dm.device)
-        if kv_gather_index is None:
-            kv_gather_index = build_two_way_kv_gather_index(meta, device=q_dm.device)
-        expected_kv_tokens = sum(kv_lengths)
-        if kv_gather_index.numel() != expected_kv_tokens:
-            raise ValueError(
-                f"kv_gather_index selects {kv_gather_index.numel()} tokens, but the DM call needs "
-                f"{expected_kv_tokens} (sum of ar_i + dm_i over samples with dm_i > 0). Rebuild it with "
-                f"build_two_way_kv_gather_index."
-            )
-        interleaved_keys = torch.cat((k_ar, k_dm), dim=0).index_select(0, kv_gather_index)
-        interleaved_values = torch.cat((v_ar, v_dm), dim=0).index_select(0, kv_gather_index)
+        cu_seqlens_dm = _prefix_sums(dm_lengths)
+        cu_seqlens_kv = _prefix_sums(kv_lengths)
+        gen_keys = k_ar if k_ar_for_gen is None else k_ar_for_gen
+        interleaved_keys = _interleave_two_way_kv(gen_keys, k_dm, meta, kv_gather_index)
+        interleaved_values = _interleave_two_way_kv(v_ar, v_dm, meta, kv_gather_index)
         out_dm = ColoAttention.attention(
             q_dm,
             interleaved_keys,
@@ -623,6 +749,7 @@ def two_way_flat_attention(
     meta: TwoWayPackedMeta,
     *,
     backend: str = "naive",
+    k_ar_for_gen: Optional[torch.Tensor] = None,
     scale: Optional[float] = None,
     dropout_p: float = 0.0,
     kv_gather_index: Optional[torch.Tensor] = None,
@@ -644,6 +771,9 @@ def two_way_flat_attention(
         meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
         backend (str, optional): ``"naive"`` for the PyTorch reference or ``"npu"`` for the two-call Ascend path.
             Defaults to "naive".
+        k_ar_for_gen (Optional[torch.Tensor], optional): AR keys as the generation (DM) full pass sees them, of the
+            same shape as ``k_ar``; see :func:`npu_two_way_flat_attention`. Defaults to None, i.e. both passes use
+            ``k_ar``.
         scale (Optional[float], optional): Multiplier applied to the scores before the softmax. Defaults to
             ``head_dim**-0.5``.
         dropout_p (float, optional): Dropout probability. Defaults to 0.0.
@@ -682,6 +812,7 @@ def two_way_flat_attention(
         k_dm,
         v_dm,
         meta,
+        k_ar_for_gen=k_ar_for_gen,
         scale=scale,
         dropout_p=dropout_p,
         kv_gather_index=kv_gather_index,
