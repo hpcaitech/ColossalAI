@@ -13,10 +13,11 @@ from colossalai.kernel.extensions.pybind.flash_attention.flash_attention_npu imp
     resolve_fusion_attention_args,
 )
 from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader
-from colossalai.shardformer.layer import AttnMaskType, ColoAttention
+from colossalai.shardformer.layer import AttnMaskType, ColoAttention, TwoWayPackedMeta, npu_two_way_flat_attention
 
 BATCH = 2
 HEADS = 4
+KV_HEADS = 2
 SEQUENCE = 8
 HEAD_DIM = 16
 HIDDEN = HEADS * HEAD_DIM
@@ -31,6 +32,20 @@ def _tensors(qkv_layout):
         "TND": (TOKENS, HEADS, HEAD_DIM),
     }[qkv_layout]
     return tuple(torch.randn(shape) for _ in range(3))
+
+
+def _gqa_tensors(qkv_layout):
+    """A grouped-query batch: four query heads and two key/value heads."""
+    q_shape, kv_shape = {
+        "BNSD": ((BATCH, HEADS, SEQUENCE, HEAD_DIM), (BATCH, KV_HEADS, SEQUENCE, HEAD_DIM)),
+        "BSND": ((BATCH, SEQUENCE, HEADS, HEAD_DIM), (BATCH, SEQUENCE, KV_HEADS, HEAD_DIM)),
+        "BSH": ((BATCH, SEQUENCE, HIDDEN), (BATCH, SEQUENCE, KV_HEADS * HEAD_DIM)),
+        "TND": ((TOKENS, HEADS, HEAD_DIM), (TOKENS, KV_HEADS, HEAD_DIM)),
+    }[qkv_layout]
+    q = torch.randn(q_shape)
+    k = torch.randn(kv_shape)
+    v = torch.randn(kv_shape)
+    return q, k, v
 
 
 def _layout_kwargs(qkv_layout):
@@ -84,6 +99,28 @@ def test_head_count_and_scale_follow_the_tensor_layout(qkv_layout):
     assert arguments["input_layout"] == qkv_layout
     assert arguments["scale"] == pytest.approx(1 / math.sqrt(HEAD_DIM))
     assert arguments["keep_prob"] == 1.0
+
+
+@pytest.mark.parametrize("qkv_layout", QKV_LAYOUTS)
+def test_gqa_head_counts_are_read_from_the_tensor_shapes(qkv_layout):
+    q, k, v = _gqa_tensors(qkv_layout)
+
+    arguments = resolve_fusion_attention_args(q, k, v, **_layout_kwargs(qkv_layout))
+
+    # head_num stays the query count; the kernel infers the key/value count from k/v.
+    assert arguments["head_num"] == HEADS
+    assert arguments["input_layout"] == qkv_layout
+    assert arguments["scale"] == pytest.approx(1 / math.sqrt(HEAD_DIM))
+
+
+def test_gqa_accepts_a_single_key_value_head():
+    q, _, _ = _tensors("TND")
+    k = torch.randn(TOKENS, 1, HEAD_DIM)
+    v = torch.randn_like(k)
+
+    arguments = resolve_fusion_attention_args(q, k, v, **_layout_kwargs("TND"))
+
+    assert arguments["head_num"] == HEADS
 
 
 @pytest.mark.parametrize("qkv_layout", DENSE_QKV_LAYOUTS)
@@ -377,25 +414,35 @@ def test_bsh_head_count_must_divide_the_hidden_size():
         resolve_fusion_attention_args(q, k, v, qkv_layout="BSH", head_num=3)
 
 
-def test_bsh_fused_head_dimension_must_match():
+def test_bsh_rejects_a_non_divisible_key_value_head_count():
     q, _, _ = _tensors("BSH")
-    k = torch.randn(BATCH, SEQUENCE, 2 * HIDDEN)
+    k = torch.randn(BATCH, SEQUENCE, 3 * HEAD_DIM)
     v = torch.randn_like(k)
 
-    with pytest.raises(ValueError, match="same fused head dimension"):
+    with pytest.raises(ValueError, match="multiple of the number of key/value heads"):
+        resolve_fusion_attention_args(q, k, v, qkv_layout="BSH", head_num=HEADS)
+
+
+def test_bsh_rejects_a_key_value_hidden_size_that_is_not_a_multiple_of_the_head_dim():
+    q, _, _ = _tensors("BSH")
+    k = torch.randn(BATCH, SEQUENCE, HIDDEN + HEAD_DIM // 2)
+    v = torch.randn_like(k)
+
+    with pytest.raises(ValueError, match="positive multiple of head_dim"):
         resolve_fusion_attention_args(q, k, v, qkv_layout="BSH", head_num=HEADS)
 
 
 @pytest.mark.parametrize("qkv_layout", ["BNSD", "TND"])
-def test_mismatched_head_counts_are_rejected(qkv_layout):
+@pytest.mark.parametrize("kv_heads", [3, 5])
+def test_non_divisible_head_counts_are_rejected(qkv_layout, kv_heads):
     q, _, _ = _tensors(qkv_layout)
     if qkv_layout == "TND":
-        k = torch.randn(TOKENS, HEADS + 1, HEAD_DIM)
+        k = torch.randn(TOKENS, kv_heads, HEAD_DIM)
     else:
-        k = torch.randn(BATCH, HEADS + 1, SEQUENCE, HEAD_DIM)
+        k = torch.randn(BATCH, kv_heads, SEQUENCE, HEAD_DIM)
     v = torch.randn_like(k)
 
-    with pytest.raises(ValueError, match="same number of heads"):
+    with pytest.raises(ValueError, match="multiple of the number of key/value heads"):
         resolve_fusion_attention_args(q, k, v, **_layout_kwargs(qkv_layout))
 
 
@@ -469,6 +516,40 @@ def test_padded_batch_is_unpadded_before_the_kernel(monkeypatch, qkv_layout):
     assert torch.count_nonzero(restored) == packed_q.numel()
 
 
+@pytest.mark.parametrize("qkv_layout", ["BNSD", "BSND", "BSH"])
+def test_padded_gqa_batch_unpads_kv_with_its_own_head_count(monkeypatch, qkv_layout):
+    recorder = _RecordingFusionAttention()
+    monkeypatch.setitem(sys.modules, "torch_npu", recorder)
+    flash_attention = FlashAttentionNpuExtension().load()
+    q, k, v = _gqa_tensors(qkv_layout)
+    q_indices = torch.tensor([0, 1, 2, 8, 9, 10, 11, 12])
+    cu_seqlens = torch.tensor([0, 3, 8], dtype=torch.int32)
+    kwargs = {"head_num": HEADS} if qkv_layout == "BSH" else {}
+
+    output = flash_attention(
+        q,
+        k,
+        v,
+        cu_seqlens_q=cu_seqlens,
+        cu_seqlens_kv=cu_seqlens,
+        q_indices=q_indices,
+        kv_indices=q_indices,
+        qkv_layout=qkv_layout,
+        **kwargs,
+    )
+
+    arguments, keywords = recorder.calls[0]
+    packed_q, packed_k, packed_v, head_num, input_layout = arguments
+    assert packed_q.shape == (q_indices.numel(), HEADS, HEAD_DIM)
+    assert packed_k.shape == (q_indices.numel(), KV_HEADS, HEAD_DIM)
+    assert packed_v.shape == packed_k.shape
+    assert head_num == HEADS
+    assert input_layout == "TND"
+    assert keywords["actual_seq_qlen"] == [3, 8]
+    assert keywords["actual_seq_kvlen"] == [3, 8]
+    assert output.shape == q.shape
+
+
 def test_padded_causal_batch_receives_the_compressed_mask(monkeypatch):
     recorder = _RecordingFusionAttention()
     monkeypatch.setitem(sys.modules, "torch_npu", recorder)
@@ -493,6 +574,36 @@ def test_padded_causal_batch_receives_the_compressed_mask(monkeypatch):
     _, keywords = recorder.calls[0]
     assert keywords["sparse_mode"] == 3
     _assert_compressed_causal_mask(keywords["atten_mask"])
+
+
+def test_two_way_packed_gqa_reaches_the_kernel(monkeypatch):
+    recorder = _RecordingFusionAttention()
+    monkeypatch.setitem(sys.modules, "torch_npu", recorder)
+    kernel = FlashAttentionNpuExtension().load()
+    monkeypatch.setattr(ColoAttention, "_dispatch_kernel", lambda *args: kernel)
+
+    meta = TwoWayPackedMeta([3, 2], [4, 5])
+    generator = torch.Generator().manual_seed(7)
+    q_ar = torch.randn(meta.total_ar_tokens, HEADS, HEAD_DIM, generator=generator)
+    q_dm = torch.randn(meta.total_dm_tokens, HEADS, HEAD_DIM, generator=generator)
+    k_ar = torch.randn(meta.total_ar_tokens, KV_HEADS, HEAD_DIM, generator=generator)
+    k_dm = torch.randn(meta.total_dm_tokens, KV_HEADS, HEAD_DIM, generator=generator)
+    v_ar = torch.randn(meta.total_ar_tokens, KV_HEADS, HEAD_DIM, generator=generator)
+    v_dm = torch.randn(meta.total_dm_tokens, KV_HEADS, HEAD_DIM, generator=generator)
+
+    npu_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+
+    assert len(recorder.calls) == 2
+    for arguments, keywords in recorder.calls:
+        packed_q, packed_k, packed_v, head_num, input_layout = arguments
+        assert packed_q.size(1) == HEADS
+        assert packed_k.size(1) == KV_HEADS
+        assert packed_v.size(1) == KV_HEADS
+        assert head_num == HEADS
+        assert input_layout == "TND"
+    # The first call is the causal AR block, the second the full DM block.
+    assert recorder.calls[0][1]["sparse_mode"] == 3
+    assert "atten_mask" not in recorder.calls[1][1]
 
 
 def test_entry_forwards_a_non_default_layout():

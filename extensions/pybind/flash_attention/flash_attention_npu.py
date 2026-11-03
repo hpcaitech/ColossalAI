@@ -174,8 +174,25 @@ def _causal_mask(device: torch.device) -> torch.Tensor:
     return torch.ones(CAUSAL_MASK_SIZE, CAUSAL_MASK_SIZE, dtype=torch.bool, device=device).triu_(diagonal=1)
 
 
-def _validate_qkv(request: _FusionAttentionRequest, layout: AttentionLayout) -> Tuple[int, int]:
-    """Check that q, k and v agree, and return the head count and head dimension."""
+def _check_gqa_heads(head_num: int, kv_head_num: int) -> None:
+    """Check that a grouped-query head ratio is well defined."""
+    if head_num <= 0 or kv_head_num <= 0:
+        raise ValueError(
+            f"q and k must have at least one head, got {head_num} query heads and {kv_head_num} key/value heads."
+        )
+    if head_num % kv_head_num:
+        raise ValueError(
+            f"Grouped-query attention requires the number of query heads ({head_num}) to be a multiple of the number "
+            f"of key/value heads ({kv_head_num})."
+        )
+
+
+def _validate_qkv(request: _FusionAttentionRequest, layout: AttentionLayout) -> Tuple[int, int, int]:
+    """Check that q, k and v agree, and return the query heads, key/value heads and head dimension.
+
+    Query and key/value may have different head counts: the kernel infers the group size from their shapes, so
+    ``head_num`` always stays the query head count.
+    """
     q, k, v = request.q, request.k, request.v
     if q.dim() != layout.rank or k.dim() != layout.rank or v.dim() != layout.rank:
         raise ValueError(
@@ -194,35 +211,38 @@ def _validate_qkv(request: _FusionAttentionRequest, layout: AttentionLayout) -> 
 
     if layout.has_fused_heads:
         head_num = _require_head_num(request.head_num)
-        if q.size(-1) != k.size(-1):
-            raise ValueError(
-                f"q, k and v must have the same fused head dimension in {layout.name} layout, got shapes "
-                f"{tuple(q.shape)}, {tuple(k.shape)} and {tuple(v.shape)}."
-            )
         if q.size(-1) % head_num:
             raise ValueError(
                 f"The last dimension of a {layout.name} tensor is heads * head_dim, so it must be divisible by "
                 f"head_num, got {q.size(-1)} and {head_num}."
             )
-        return head_num, q.size(-1) // head_num
+        head_dim = q.size(-1) // head_num
+        if head_dim <= 0 or k.size(-1) % head_dim:
+            raise ValueError(
+                f"The last dimension of a {layout.name} key/value tensor is kv_heads * head_dim, so it must be a "
+                f"positive multiple of head_dim={head_dim}, got {k.size(-1)}."
+            )
+        kv_head_num = k.size(-1) // head_dim
+        _check_gqa_heads(head_num, kv_head_num)
+        return head_num, kv_head_num, head_dim
 
     head_dim_index = layout.head_dim_index
-    if q.size(head_dim_index) != k.size(head_dim_index):
-        raise ValueError(
-            f"q, k and v must have the same number of heads in {layout.name} layout (dimension {head_dim_index}), "
-            f"got shapes {tuple(q.shape)}, {tuple(k.shape)} and {tuple(v.shape)}."
-        )
-    if q.size(-1) != k.size(-1):
+    head_dim = q.size(-1)
+    if head_dim <= 0:
+        raise ValueError(f"q and k must have a positive head_dim in {layout.name} layout, got {head_dim}.")
+    if head_dim != k.size(-1):
         raise ValueError(
             f"q, k and v must have the same head_dim in {layout.name} layout, got shapes {tuple(q.shape)}, "
             f"{tuple(k.shape)} and {tuple(v.shape)}."
         )
     head_num = q.size(head_dim_index)
+    kv_head_num = k.size(head_dim_index)
     if request.head_num is not None and request.head_num != head_num:
         raise ValueError(
-            f"head_num={request.head_num} disagrees with the {layout.name} tensors, which have {head_num} heads."
+            f"head_num={request.head_num} disagrees with the {layout.name} tensors, which have {head_num} query heads."
         )
-    return head_num, q.size(-1)
+    _check_gqa_heads(head_num, kv_head_num)
+    return head_num, kv_head_num, head_dim
 
 
 def _normalise_dense_mask(
@@ -358,7 +378,7 @@ def _resolve_packed(
 
 def _resolve(request: _FusionAttentionRequest) -> _FusionAttentionArgs:
     layout = attention_layout(request.qkv_layout)
-    head_num, head_dim = _validate_qkv(request, layout)
+    head_num, _, head_dim = _validate_qkv(request, layout)
     scale = request.scale if request.scale is not None else 1.0 / math.sqrt(head_dim)
     if layout.is_packed:
         return _resolve_packed(request, layout, head_num, scale)
@@ -383,12 +403,13 @@ def resolve_fusion_attention_args(
     """Translate the arguments of ``ColoAttention`` into ``torch_npu.npu_fusion_attention`` arguments.
 
     The translation is device-free apart from building the cached causal mask, so it can be unit tested on CPU. It
-    resolves the head count (explicit for ``BSH``, inferred otherwise), normalises a dense mask to the boolean
+    resolves the head counts (explicit for ``BSH``, inferred otherwise), normalises a dense mask to the boolean
     "``True`` means masked" form, converts ``cu_seqlens_*`` prefix sums to the cumulative ends the kernel expects,
     and supplies the compressed causal mask when the caller asks for causality without a dense one.
 
     Args:
-        q, k, v: Tensors in ``qkv_layout``.
+        q, k, v: Tensors in ``qkv_layout``. The key/value tensors may have fewer heads than the query tensor;
+            ``npu_fusion_attention`` infers the grouped-query group size from their shapes.
         dropout_p (float, optional): Dropout probability. Defaults to 0.0.
         scale (Optional[float], optional): Score scale. Defaults to ``head_dim**-0.5``.
         attention_mask (optional): Mask in the ColossalAI convention, where a non-zero value means masked. Boolean
@@ -407,18 +428,19 @@ def resolve_fusion_attention_args(
             longer depends on it; when given, it is checked against ``cu_seqlens_q``. Defaults to None.
         max_seqlen_kv (Optional[int], optional): Largest key/value length, checked like ``max_seqlen_q``. Defaults
             to None.
-        head_num (Optional[int], optional): Number of heads. Required by ``BSH``, whose last dimension is
+        head_num (Optional[int], optional): Number of query heads. Required by ``BSH``, whose last dimension is
             ``heads * head_dim``; for the other layouts it is inferred and, when given, checked against the tensor.
-            Defaults to None.
+            Key/value heads are always read from the key/value shapes. Defaults to None.
 
     Returns:
         Dict[str, Any]: Keyword arguments for ``npu_fusion_attention``, plus ``head_num`` and ``input_layout`` which
         that function takes positionally.
 
     Raises:
-        ValueError: If the layout is unknown, the ranks/batch/heads/head_dim disagree, a dense layout is given
-            ``cu_seqlens_*``, the lengths are malformed or describe an impossible query/key pairing, or a packed
-            causal call has a query sequence longer than its key/value sequence.
+        ValueError: If the layout is unknown, the ranks/batch/heads/head_dim disagree, the query head count is not a
+            multiple of the key/value head count, a dense layout is given ``cu_seqlens_*``, the lengths are malformed
+            or describe an impossible query/key pairing, or a packed causal call has a query sequence longer than its
+            key/value sequence.
         TypeError: If the mask or the cumulative lengths have an unsupported dtype.
         NotImplementedError: If the packed layout is given a non-empty dense mask.
 
@@ -446,10 +468,14 @@ def resolve_fusion_attention_args(
     ).as_dict()
 
 
-def _flatten_tokens(tensor: torch.Tensor, layout: AttentionLayout, head_num: int) -> torch.Tensor:
-    """View a padded dense tensor as ``[total_tokens, heads, head_dim]``, in the order ``get_pad_info`` indexes."""
+def _flatten_tokens(tensor: torch.Tensor, layout: AttentionLayout, num_heads: int) -> torch.Tensor:
+    """View a padded dense tensor as ``[total_tokens, heads, head_dim]``, in the order ``get_pad_info`` indexes.
+
+    ``num_heads`` is the head count of this tensor: the query and key/value tensors of a grouped-query attention
+    call have different counts, and BSH hides the count in its last dimension.
+    """
     if layout.name == "BSH":
-        return tensor.reshape(-1, head_num, tensor.size(-1) // head_num)
+        return tensor.reshape(-1, num_heads, tensor.size(-1) // num_heads)
     if layout.name == "BSND":
         return tensor.reshape(-1, tensor.size(2), tensor.size(3))
     return tensor.transpose(1, 2).reshape(-1, tensor.size(1), tensor.size(3))
@@ -487,7 +513,7 @@ def _attention_over_padded_batch(
     kv_indices: Optional[torch.Tensor],
 ) -> torch.Tensor:
     """Drop the padding of a padded batch, run the packed path and scatter the output back into the padded shape."""
-    head_num, _ = _validate_qkv(request, layout)
+    head_num, kv_head_num, _ = _validate_qkv(request, layout)
     if kv_indices is None:
         kv_indices = q_indices
     batch_size = request.q.size(0)
@@ -496,8 +522,8 @@ def _attention_over_padded_batch(
     packed_request = replace(
         request,
         q=_flatten_tokens(request.q, layout, head_num).index_select(0, q_indices),
-        k=_flatten_tokens(request.k, layout, head_num).index_select(0, kv_indices),
-        v=_flatten_tokens(request.v, layout, head_num).index_select(0, kv_indices),
+        k=_flatten_tokens(request.k, layout, kv_head_num).index_select(0, kv_indices),
+        v=_flatten_tokens(request.v, layout, kv_head_num).index_select(0, kv_indices),
         attention_mask=None,
         qkv_layout="TND",
         head_num=None,
@@ -557,8 +583,9 @@ class FlashAttentionNpuExtension(_Extension):
 
             A dense padded batch, recognised by ``cu_seqlens_*`` plus ``q_indices``, is un-padded and served by the
             packed ``TND`` path. ``BSH`` fuses the heads into the last dimension, so ``head_num`` is required to
-            split it. The kernel derives packed maxima from ``actual_seq_*len``; ``max_seqlen_*`` is only checked
-            for consistency.
+            split it. Key/value may have fewer heads than query: ``head_num`` stays the query head count and the
+            kernel infers the group size. The kernel derives packed maxima from ``actual_seq_*len``;
+            ``max_seqlen_*`` is only checked for consistency.
             """
             layout = attention_layout(qkv_layout)
             request = _FusionAttentionRequest(
