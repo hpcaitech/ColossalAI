@@ -89,7 +89,8 @@ class TwoWayPackedMeta:
     A length may be zero. A pure-text sample has no DM tokens, a pure-generation sample has no AR tokens, and a
     sample with two zero lengths contributes nothing. Zero-length samples are dropped from the kernel calls, because
     ``cu_seqlens`` cannot describe an empty sequence, but their position in the batch is preserved so the packed
-    tensors stay aligned.
+    tensors stay aligned. This metadata tolerates a sample whose two lengths are both zero; the collate-time
+    :func:`validate_two_way_varlen_limits` rejects it because a kernel segment cannot express it.
 
     Args:
         ar_lens (Sequence[int]): Number of AR tokens of every sample, in batch order.
@@ -207,7 +208,7 @@ class TwoWayPackedMeta:
 
     @property
     def max_kv(self) -> int:
-        """Longest per-sample ``[AR_i; DM_i]`` sequence of the DM call."""
+        """Longest per-sample ``[AR_i; DM_i]`` sequence of the batch."""
         return max((ar_len + dm_len for ar_len, dm_len in zip(self.ar_lens, self.dm_lens)), default=0)
 
     @property
