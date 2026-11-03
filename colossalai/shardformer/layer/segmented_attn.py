@@ -180,8 +180,10 @@ def naive_segment_attention(
 
     Args:
         q (torch.Tensor): Query of shape ``[batch, heads, Sq, head_dim]``.
-        k (torch.Tensor): Key of shape ``[batch, heads, Skv, head_dim]``.
-        v (torch.Tensor): Value of shape ``[batch, heads, Skv, head_dim]``.
+        k (torch.Tensor): Key of shape ``[batch, kv_heads, Skv, head_dim]``. ``kv_heads`` may be smaller than the query
+            heads; each key head is then shared by ``heads // kv_heads`` consecutive query heads, as in grouped-query
+            attention.
+        v (torch.Tensor): Value of shape ``[batch, kv_heads, Skv, head_dim]``, matching ``k``.
         attention_mask (Optional[Union[torch.Tensor, SegmentMaskSpec]], optional): Boolean mask where ``True`` means
             "may attend", of shape ``[Sq, Skv]``, ``[batch, Sq, Skv]``, ``[1, 1, Sq, Skv]`` or
             ``[batch, 1, Sq, Skv]``; a :class:`SegmentMaskSpec` is built on the device of ``q``. ``None`` means every
@@ -221,15 +223,27 @@ def naive_segment_attention(
             f"q, k and v must be 4D tensors of shape [batch, heads, sequence, head_dim], got shapes "
             f"{tuple(q.shape)}, {tuple(k.shape)} and {tuple(v.shape)}."
         )
-    if q.shape[:2] != k.shape[:2] or k.shape[:2] != v.shape[:2] or q.shape[-1] != k.shape[-1]:
+    if q.shape[0] != k.shape[0] or q.shape[0] != v.shape[0]:
         raise ValueError(
-            f"q, k and v must agree on batch, heads and head_dim, got shapes {tuple(q.shape)}, {tuple(k.shape)} "
+            f"q, k and v must agree on the batch size, got shapes {tuple(q.shape)}, {tuple(k.shape)} "
             f"and {tuple(v.shape)}."
         )
-    if k.shape[-1] != v.shape[-1] or k.shape[-2] != v.shape[-2]:
+    if q.shape[-1] != k.shape[-1]:
+        raise ValueError(f"q and k must agree on head_dim, got shapes {tuple(q.shape)} and {tuple(k.shape)}.")
+    if k.shape[-1] != v.shape[-1] or k.shape[-2] != v.shape[-2] or k.shape[1] != v.shape[1]:
         raise ValueError(
-            f"k and v must have the same sequence length and head_dim, got {tuple(k.shape)} and {tuple(v.shape)}."
+            f"k and v must have the same heads, sequence length and head_dim, got {tuple(k.shape)} and "
+            f"{tuple(v.shape)}."
         )
+    if q.shape[1] == 0 or k.shape[1] == 0 or q.shape[1] % k.shape[1] != 0:
+        raise ValueError(
+            f"The query heads ({q.shape[1]}) must be a positive multiple of the key/value heads ({k.shape[1]})."
+        )
+    if k.shape[1] != q.shape[1]:
+        # Grouped-query attention: each key/value head serves ``q.shape[1] // k.shape[1]`` consecutive query heads.
+        n_rep = q.shape[1] // k.shape[1]
+        k = k.repeat_interleave(n_rep, dim=1)
+        v = v.repeat_interleave(n_rep, dim=1)
 
     batch_size, _, s_q, head_dim = q.shape
     s_kv = k.shape[-2]

@@ -255,10 +255,11 @@ class ColoAttention:
         Args:
             q (torch.Tensor): Query tensor. Shape should be [B, nHeads, Sq, D] in the default ``BNSD`` layout, and
                 [T, nHeads, D] in the packed ``TND`` layout, where ``T`` is the number of packed tokens.
-            k (torch.Tensor): Key tensor. Shape should be [B, nHeads, Skv, D] in the default ``BNSD`` layout, and
-                [T, nHeads, D] in the packed ``TND`` layout.
-            v (torch.Tensor): Value tensor. Shape should be [B, nHeads, Skv, D] in the default ``BNSD`` layout, and
-                [T, nHeads, D] in the packed ``TND`` layout.
+            k (torch.Tensor): Key tensor. Shape should be [B, nKvHeads, Skv, D] in the default ``BNSD`` layout, and
+                [T, nKvHeads, D] in the packed ``TND`` layout. ``nKvHeads`` may be smaller than ``nHeads`` for
+                grouped-query attention; the backend infers the group size from the shapes.
+            v (torch.Tensor): Value tensor. Shape should be [B, nKvHeads, Skv, D] in the default ``BNSD`` layout, and
+                [T, nKvHeads, D] in the packed ``TND`` layout, matching ``k``.
             attention_mask (Optional[torch.Tensor], optional): Attention mask tensor. Shape should be [B, 1, Sq, Skv]. It is only accepted by the dense layouts, because the packed one delimits its sequences with ``cu_seqlens``. Defaults to None.
             attention_mask_type (AttnMaskType, optional): Attention mask type. ``AttnMaskType.CAUSAL`` is also accepted without a mask, in which case the backend builds the causal window itself; pass ``CUSTOM`` for a full call that has no mask. Defaults to AttnMaskType.CUSTOM.
             cu_seqlens_q (Optional[torch.Tensor], optional): The cumulative sequence lengths

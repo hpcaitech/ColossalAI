@@ -126,6 +126,74 @@ def test_multiple_samples_match_the_segmented_reference_and_ignore_other_samples
     torch.testing.assert_close(torch.cat((out_ar, out_dm), dim=0), expected, rtol=1e-12, atol=1e-12)
 
 
+def test_segmented_reference_shares_one_key_head_per_query_group():
+    spec = SegmentMaskSpec([3, 2], [[SegmentRule.CAUSAL, SegmentRule.NONE], [SegmentRule.FULL, SegmentRule.FULL]])
+    generator = torch.Generator().manual_seed(20)
+    q = torch.randn(1, 4, 5, HEAD_DIM, generator=generator, dtype=torch.float64)
+    k = torch.randn(1, 2, 5, HEAD_DIM, generator=generator, dtype=torch.float64)
+    v = torch.randn(1, 2, 5, HEAD_DIM, generator=generator, dtype=torch.float64)
+
+    out = naive_segment_attention(q, k, v, spec)
+    grouped = torch.cat(
+        [
+            naive_segment_attention(
+                q[:, head : head + 1], k[:, head // 2 : head // 2 + 1], v[:, head // 2 : head // 2 + 1], spec
+            )
+            for head in range(4)
+        ],
+        dim=1,
+    )
+
+    torch.testing.assert_close(out, grouped, rtol=1e-12, atol=1e-12)
+
+
+def test_segmented_reference_rejects_a_partial_query_group():
+    q = torch.randn(1, 3, 4, HEAD_DIM, dtype=torch.float64)
+    k = torch.randn(1, 2, 4, HEAD_DIM, dtype=torch.float64)
+    v = torch.randn(1, 2, 4, HEAD_DIM, dtype=torch.float64)
+
+    with pytest.raises(ValueError, match="positive multiple"):
+        naive_segment_attention(q, k, v)
+
+
+def test_packed_grouped_query_attention_matches_the_expanded_reference():
+    meta = TwoWayPackedMeta([3, 2, 0, 5], [6, 0, 4, 1])
+    num_q_heads, num_kv_heads = 4, 2
+    generator = torch.Generator().manual_seed(21)
+    q_ar = torch.randn(meta.total_ar_tokens, num_q_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+    q_dm = torch.randn(meta.total_dm_tokens, num_q_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+    k_ar = torch.randn(meta.total_ar_tokens, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+    k_dm = torch.randn(meta.total_dm_tokens, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+    v_ar = torch.randn(meta.total_ar_tokens, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+    v_dm = torch.randn(meta.total_dm_tokens, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float64)
+
+    out_ar, out_dm = naive_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+    expected = _reference_output(
+        meta,
+        q_ar,
+        k_ar.repeat_interleave(num_q_heads // num_kv_heads, dim=1),
+        v_ar.repeat_interleave(num_q_heads // num_kv_heads, dim=1),
+        q_dm,
+        k_dm.repeat_interleave(num_q_heads // num_kv_heads, dim=1),
+        v_dm.repeat_interleave(num_q_heads // num_kv_heads, dim=1),
+    )
+
+    torch.testing.assert_close(torch.cat((out_ar, out_dm), dim=0), expected, rtol=1e-12, atol=1e-12)
+
+
+def test_packed_inputs_reject_a_partial_query_group():
+    meta = TwoWayPackedMeta([3], [5])
+    ar, dm = _random_packed_tensors(meta, seed=22)
+    _, k_ar, v_ar = ar
+    _, k_dm, v_dm = dm
+    generator = torch.Generator().manual_seed(22)
+    q_ar = torch.randn(meta.total_ar_tokens, 3, HEAD_DIM, generator=generator, dtype=torch.float64)
+    q_dm = torch.randn(meta.total_dm_tokens, 3, HEAD_DIM, generator=generator, dtype=torch.float64)
+
+    with pytest.raises(ValueError, match="multiple of the number of key/value heads"):
+        naive_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+
+
 def test_zero_length_samples_are_dropped_from_the_kernel_calls():
     meta = TwoWayPackedMeta([0, 3, 0], [5, 0, 2])
     ar, dm = _random_packed_tensors(meta, seed=5)
@@ -342,6 +410,35 @@ def test_npu_path_drops_zero_length_segments_before_the_kernel(monkeypatch):
     assert full_call["kwargs"]["cu_seqlens_q"].tolist() == [0, 5]
     assert full_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 5]
     assert torch.equal(full_call["k"], dm[1])
+
+
+def test_npu_path_keeps_gqa_heads_and_reads_only_each_samples_own_kv(monkeypatch):
+    # Sample 0 has only AR tokens and sample 1 only DM tokens. Every call needs three K/V tokens, so a shared index of
+    # the wrong contents could pass the length check while letting one sample read the other's K/V.
+    meta = TwoWayPackedMeta([3, 0], [0, 3])
+    num_q_heads, num_kv_heads = 4, 2
+    generator = torch.Generator().manual_seed(23)
+    q_ar = torch.randn(3, num_q_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    q_dm = torch.randn(3, num_q_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    k_ar = torch.randn(3, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    k_dm = torch.randn(3, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    v_ar = torch.randn(3, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    v_dm = torch.randn(3, num_kv_heads, HEAD_DIM, generator=generator, dtype=torch.float32)
+    recorder = _record_attention(monkeypatch)
+
+    out_ar, out_dm = npu_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+
+    assert build_two_way_kv_gather_index(meta).tolist() == [3, 4, 5]
+    causal_call, full_call = recorder.calls
+    assert causal_call["q"].shape == (3, num_q_heads, HEAD_DIM)
+    assert causal_call["k"].shape == (3, num_kv_heads, HEAD_DIM)
+    assert torch.equal(causal_call["k"], k_ar)
+    assert causal_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 3]
+    assert full_call["q"].shape == (3, num_q_heads, HEAD_DIM)
+    assert full_call["k"].shape == (3, num_kv_heads, HEAD_DIM)
+    assert torch.equal(full_call["k"], k_dm)
+    assert full_call["kwargs"]["cu_seqlens_kv"].tolist() == [0, 3]
+    assert torch.equal(out_ar, q_ar) and torch.equal(out_dm, q_dm)
 
 
 def test_npu_path_skips_a_call_when_one_tower_is_empty(monkeypatch):

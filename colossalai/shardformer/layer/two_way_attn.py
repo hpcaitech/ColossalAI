@@ -373,11 +373,22 @@ def _check_packed_inputs(
             f"The AR and DM towers must agree on heads and head_dim, got {tuple(q_ar.shape[1:])} and "
             f"{tuple(q_dm.shape[1:])}."
         )
-    for name, tensor in (("k_ar", k_ar), ("v_ar", v_ar), ("k_dm", k_dm), ("v_dm", v_dm)):
-        if tensor.shape[1:] != q_ar.shape[1:]:
-            raise ValueError(
-                f"{name} must have shape [tokens, {q_ar.size(1)}, {q_ar.size(2)}], got {tuple(tensor.shape)}."
-            )
+    if k_ar.shape[1:] != k_dm.shape[1:]:
+        raise ValueError(
+            f"The AR and DM towers must agree on key/value heads and head_dim, got {tuple(k_ar.shape[1:])} and "
+            f"{tuple(k_dm.shape[1:])}."
+        )
+    num_q_heads, head_dim = q_ar.size(1), q_ar.size(2)
+    num_kv_heads = k_ar.size(1)
+    if num_q_heads == 0 or num_kv_heads == 0:
+        raise ValueError(f"q and k must have at least one head, got {num_q_heads} query and {num_kv_heads} key/value.")
+    if head_dim != k_ar.size(2):
+        raise ValueError(f"q and k must agree on head_dim, got {head_dim} and {k_ar.size(2)}.")
+    if num_q_heads % num_kv_heads != 0:
+        raise ValueError(
+            f"Grouped-query attention requires the number of query heads ({num_q_heads}) to be a multiple of the "
+            f"number of key/value heads ({num_kv_heads})."
+        )
 
 
 def _two_way_segment_spec(ar_len: int, dm_len: int) -> SegmentMaskSpec:
@@ -413,11 +424,12 @@ def naive_two_way_flat_attention(
 
     Args:
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
-        k_ar (torch.Tensor): AR keys, same shape as ``q_ar``.
-        v_ar (torch.Tensor): AR values, same shape as ``q_ar``.
+        k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
+            than the query ``heads``, as in grouped-query attention.
+        v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
         q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
-        k_dm (torch.Tensor): DM keys, same shape as ``q_dm``.
-        v_dm (torch.Tensor): DM values, same shape as ``q_dm``.
+        k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
+        v_dm (torch.Tensor): DM values, same shape as ``k_dm``.
         meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
         scale (Optional[float], optional): Multiplier applied to the scores before the softmax. Defaults to
             ``head_dim**-0.5``.
@@ -504,11 +516,12 @@ def npu_two_way_flat_attention(
 
     Args:
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
-        k_ar (torch.Tensor): AR keys, same shape as ``q_ar``.
-        v_ar (torch.Tensor): AR values, same shape as ``q_ar``.
+        k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
+            than the query ``heads``, as in grouped-query attention.
+        v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
         q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
-        k_dm (torch.Tensor): DM keys, same shape as ``q_dm``.
-        v_dm (torch.Tensor): DM values, same shape as ``q_dm``.
+        k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
+        v_dm (torch.Tensor): DM values, same shape as ``k_dm``.
         meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
         scale (Optional[float], optional): Multiplier applied to the scores before the softmax. Defaults to
             ``head_dim**-0.5``.
@@ -621,11 +634,12 @@ def two_way_flat_attention(
 
     Args:
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
-        k_ar (torch.Tensor): AR keys, same shape as ``q_ar``.
-        v_ar (torch.Tensor): AR values, same shape as ``q_ar``.
+        k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
+            than the query ``heads``, as in grouped-query attention.
+        v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
         q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
-        k_dm (torch.Tensor): DM keys, same shape as ``q_dm``.
-        v_dm (torch.Tensor): DM values, same shape as ``q_dm``.
+        k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
+        v_dm (torch.Tensor): DM values, same shape as ``k_dm``.
         meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
         backend (str, optional): ``"naive"`` for the PyTorch reference or ``"npu"`` for the two-call Ascend path.
             Defaults to "naive".
