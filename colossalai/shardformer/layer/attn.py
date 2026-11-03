@@ -122,19 +122,24 @@ class ColoAttention:
                 "FlashAttention kernel is not available for dtype {} and mask_type {}".format(dtype, mask_type)
             )
 
-        if size >= MEMORY_BOUND:
+        # lazy load
+        kernel = ColoAttention._kernel_dispatch_map[dtype][mask_type]
+        if isinstance(kernel, KernelLoader):
+            kernel = kernel.load()
+            ColoAttention._kernel_dispatch_map[dtype][mask_type] = kernel
+
+        # Above MEMORY_BOUND a dense causal window may not fit, so the DAO kernel, which builds the window itself,
+        # takes over. Only load it when it will actually be returned: loading it eagerly used to run for every mask
+        # type, and failed on a machine without a CUDA DAO build even for a packed full call that has no mask at all.
+        if (
+            size >= MEMORY_BOUND
+            and mask_type in (AttnMaskType.PADDED_CAUSAL, AttnMaskType.CAUSAL)
+            and not getattr(kernel, "supports_internal_causal_window", False)
+        ):
             if isinstance(ColoAttention._flash_kernel_dispatch, KernelLoader):
                 ColoAttention._flash_kernel_dispatch = ColoAttention._flash_kernel_dispatch.load()
-        # lazy load
-        if isinstance(ColoAttention._kernel_dispatch_map[dtype][mask_type], KernelLoader):
-            ColoAttention._kernel_dispatch_map[dtype][mask_type] = ColoAttention._kernel_dispatch_map[dtype][
-                mask_type
-            ].load()
-
-        if size >= MEMORY_BOUND and mask_type in (AttnMaskType.PADDED_CAUSAL, AttnMaskType.CAUSAL):
             return ColoAttention._flash_kernel_dispatch
-        else:
-            return ColoAttention._kernel_dispatch_map[dtype][mask_type]
+        return kernel
 
     @staticmethod
     def prepare_attn_kwargs(

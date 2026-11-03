@@ -12,7 +12,7 @@ from colossalai.kernel.extensions.pybind.flash_attention.flash_attention_npu imp
     CAUSAL_MASK_SIZE,
     resolve_fusion_attention_args,
 )
-from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader
+from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader, KernelLoader
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention, TwoWayPackedMeta, npu_two_way_flat_attention
 
 BATCH = 2
@@ -674,3 +674,62 @@ def test_oversized_mask_needs_a_backend_that_builds_the_window_itself():
                 ColoAttention.attention(q, k, v, attention_mask=attention_mask, attention_mask_type=AttnMaskType.CAUSAL)
                 is q
             )
+
+
+def _stub_kernel(supports_window=False):
+    def attention(*args, **kwargs):
+        return args[0]
+
+    if supports_window:
+        attention.supports_internal_causal_window = True
+    return attention
+
+
+class _ExplodingLoader(KernelLoader):
+    """A loader that fails the test if the dispatch loads it."""
+
+    REGISTRY = []
+
+    def load(self, ext_name=None):
+        raise AssertionError("the dispatch loaded a kernel it cannot use")
+
+
+def _pin_kernel_dispatch(monkeypatch, dispatch_map):
+    monkeypatch.setattr(ColoAttention, "_kernel_dispatch_map", {torch.bfloat16: dispatch_map})
+    monkeypatch.setattr(ColoAttention, "_flash_kernel_dispatch", _ExplodingLoader())
+    monkeypatch.setattr("colossalai.shardformer.layer.attn.MEMORY_BOUND", 1)
+
+
+def test_oversized_causal_call_keeps_a_kernel_that_builds_the_window(monkeypatch):
+    window_kernel = _stub_kernel(supports_window=True)
+    _pin_kernel_dispatch(monkeypatch, {AttnMaskType.CAUSAL: window_kernel})
+
+    assert ColoAttention._dispatch_kernel(torch.bfloat16, AttnMaskType.CAUSAL, 1) is window_kernel
+
+
+@pytest.mark.parametrize("mask_type", [None, AttnMaskType.CUSTOM])
+def test_oversized_full_call_never_loads_the_causal_kernel(monkeypatch, mask_type):
+    full_kernel = _stub_kernel()
+    _pin_kernel_dispatch(monkeypatch, {mask_type: full_kernel})
+
+    assert ColoAttention._dispatch_kernel(torch.bfloat16, mask_type, 1) is full_kernel
+
+
+def test_oversized_causal_call_falls_back_to_the_causal_kernel(monkeypatch):
+    plain_kernel = _stub_kernel()
+    causal_kernel = _stub_kernel(supports_window=True)
+    loaded = []
+
+    class _RecordingLoader(KernelLoader):
+        REGISTRY = []
+
+        def load(self, ext_name=None):
+            loaded.append(True)
+            return causal_kernel
+
+    monkeypatch.setattr(ColoAttention, "_kernel_dispatch_map", {torch.bfloat16: {AttnMaskType.CAUSAL: plain_kernel}})
+    monkeypatch.setattr(ColoAttention, "_flash_kernel_dispatch", _RecordingLoader())
+    monkeypatch.setattr("colossalai.shardformer.layer.attn.MEMORY_BOUND", 1)
+
+    assert ColoAttention._dispatch_kernel(torch.bfloat16, AttnMaskType.CAUSAL, 1) is causal_kernel
+    assert loaded == [True]
