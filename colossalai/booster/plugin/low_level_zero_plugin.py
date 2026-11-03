@@ -261,6 +261,7 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
             prefix (str): Not used.
         """
         assert isinstance(optimizer, LowLevelZeroOptimizer), "Please boost the optimizer before Loading!"
+        zero_optimizer = optimizer
         optimizer = optimizer.unwrap()
 
         # Read checkpoint index file.
@@ -296,6 +297,8 @@ class LowLevelZeroCheckpointIO(TorchDDPCheckpointIO):
 
             if not low_cpu_mem_mode:
                 state_dict = create_pinned_state_dict(state_dict, empty=False, num_threads=num_threads)
+            for param_idx, state in state_dict.items():
+                zero_optimizer.load_master_param_from_state(id_map[int(param_idx)], state)
             load_states_into_optimizer(optimizer, state_dict, id_map)
         sharded_optimizer_loading_epilogue(optimizer)
 

@@ -3,7 +3,9 @@
 import pytest
 import torch
 import torch.distributed as dist
-from torch.distributed.fsdp import MixedPrecision
+from torch.distributed.fsdp import FullStateDictConfig
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import MixedPrecision, StateDictType
 
 import colossalai
 from colossalai.accelerator import get_accelerator
@@ -14,6 +16,20 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import spawn
 from tests.kit.model_zoo.transformers.gemma4 import gemma4_data, tiny_gemma4
+
+
+def _snapshot(model, plugin_name):
+    if plugin_name == "gemini":
+        state = model.state_dict(only_rank_0=False)
+    elif plugin_name == "fsdp":
+        with FSDP.state_dict_type(
+            model.unwrap(), StateDictType.FULL_STATE_DICT, FullStateDictConfig(offload_to_cpu=True, rank0_only=False)
+        ):
+            state = model.unwrap().state_dict()
+    else:
+        state = model.unwrap().state_dict()
+    assert state, "No model state collected"
+    return {n: p.detach().cpu().clone() for n, p in state.items()}
 
 
 def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
@@ -27,7 +43,7 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
             model = tiny_gemma4(variant)
         if checkpoint:
             model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
-        if plugin_name == "ddp":
+        if plugin_name.startswith("ddp"):
             plugin = TorchDDPPlugin()
         elif plugin_name.startswith("zero"):
             plugin = LowLevelZeroPlugin(
@@ -55,18 +71,22 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
             if plugin_name == "gemini"
             else torch.optim.AdamW(model.parameters(), lr=1e-3)
         )
-        booster = Booster(plugin=plugin)
+        booster = Booster(plugin=plugin, mixed_precision="bf16" if plugin_name == "ddp_bf16" else None)
         model, optimizer, _, _, _ = booster.boost(model=model, optimizer=optimizer)
         batch = {k: v.to(accelerator.get_current_device()) for k, v in gemma4_data().items()}
-        before = {n: p.detach().cpu().clone() for n, p in model.unwrap().state_dict().items()}
+        before = _snapshot(model, plugin_name)
         for _ in range(3):
             optimizer.zero_grad()
             loss = model(**batch).loss
             assert torch.isfinite(loss)
             booster.backward(loss, optimizer)
             optimizer.step()
-        after = model.unwrap().state_dict()
-        assert any(not torch.equal(before[n], p.detach().cpu()) for n, p in after.items()), "No parameter changed"
+        after = _snapshot(model, plugin_name)
+        assert before.keys() == after.keys()
+        assert all(torch.isfinite(p).all() for p in after.values())
+        changed = [n for n, p in after.items() if not torch.equal(before[n], p)]
+        assert changed, "No parameter changed"
+        assert any("embed_tokens_per_layer" in n for n in changed), "No PLE update"
     finally:
         accelerator.empty_cache()
         dist.destroy_process_group()
@@ -74,7 +94,7 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
 
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
-@pytest.mark.parametrize("plugin", ["ddp", "zero1", "zero2", "gemini", "fsdp"])
+@pytest.mark.parametrize("plugin", ["ddp", "ddp_bf16", "zero1", "zero2", "gemini", "fsdp"])
 @pytest.mark.parametrize("checkpoint,lazy", [(False, False), (True, True)])
 def test_gemma4_training(world_size, variant, plugin, checkpoint, lazy):
     # A missing allocation is not a successful or skipped model test.

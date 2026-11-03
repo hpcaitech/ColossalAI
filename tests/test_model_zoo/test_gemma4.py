@@ -70,6 +70,41 @@ def test_gemma4_registered():
 
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
+def test_gemma4_dense_structure(variant):
+    model = tiny_gemma4(variant)
+    cycle = model.config.num_hidden_layers // 2
+    masks = {}
+
+    def capture(index):
+        def hook(module, args, kwargs):
+            masks[index] = kwargs["attention_mask"].detach().clone()
+
+        return hook
+
+    handles = [
+        model.model.layers[index].self_attn.register_forward_pre_hook(capture(index), with_kwargs=True)
+        for index in (0, cycle - 1)
+    ]
+    try:
+        model(**gemma4_data()).loss.backward()
+    finally:
+        for handle in handles:
+            handle.remove()
+    # The last token cannot attend to the first through the sliding window,
+    # while full attention retains both the first and the preceding token.
+    local, full = masks[0][0, 0], masks[cycle - 1][0, 0]
+    assert local[-1, 0] != local[-1, -2]
+    assert full[-1, 0] == full[-1, -2]
+    for index, layer in enumerate(model.model.layers):
+        shared = index >= cycle
+        assert layer.self_attn.is_kv_shared_layer == shared
+        assert hasattr(layer.self_attn, "k_proj") != shared
+        width = model.config.intermediate_size * (2 if shared and variant == "e2b" else 1)
+        assert layer.mlp.gate_proj.weight.shape[0] == width
+        assert layer.self_attn.q_proj.weight.grad is not None
+
+
+@pytest.mark.parametrize("variant", ["e2b", "e4b"])
 def test_gemma4_conditional_text_path(variant):
     config = Gemma4Config(text_config=tiny_gemma4(variant).config.to_dict())
     model = Gemma4ForConditionalGeneration(config)

@@ -557,7 +557,12 @@ class TorchFSDPPlugin(DPPluginBase):
                 self.logger.warning(
                     "TorchFSDPPlugin does not support optimizer that use multi param groups. The results may not be as expected if used."
                 )
-            optimizer.__init__(fsdp_model.parameters(), **optimizer.defaults)
+            optimizer_kwargs = optimizer.defaults.copy()
+            if isinstance(optimizer, torch.optim.AdamW):
+                # AdamW records this Adam option internally in recent PyTorch,
+                # but its own constructor fixes it to True and does not accept it.
+                optimizer_kwargs.pop("decoupled_weight_decay", None)
+            optimizer.__init__(fsdp_model.parameters(), **optimizer_kwargs)
 
             if not isinstance(optimizer, FSDPOptimizerWrapper):
                 optimizer = FSDPOptimizerWrapper(optimizer, fsdp_model)
