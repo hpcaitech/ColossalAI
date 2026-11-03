@@ -17,18 +17,51 @@ def cast_floating(obj: Any, dtype: torch.dtype) -> Any:
     return tree_map(lambda x: x.to(dtype) if isinstance(x, Tensor) and x.is_floating_point() else x, obj)
 
 
+# Switches, named as dotted paths under ``torch``, that let a backend compute a float32 operation in fewer bits.
+# They differ per backend and are not all off by default: Ascend enables HF32 for convolution, which on its own makes
+# a float32 Conv3d about 800x less accurate than the same convolution on CPU.
+REDUCED_PRECISION_FLAGS = (
+    "backends.cudnn.allow_tf32",
+    "npu.matmul.allow_hf32",
+    "npu.conv.allow_hf32",
+)
+
+
+def _resolve_flag(path):
+    """Return the ``(holder, attribute)`` that ``path`` names under ``torch``, or ``None`` if this build lacks it."""
+    holder = torch
+    *parents, attribute = path.split(".")
+    for part in parents:
+        holder = getattr(holder, part, None)
+        if holder is None:
+            return None
+    return (holder, attribute) if hasattr(holder, attribute) else None
+
+
 @contextmanager
 def full_precision_matmul():
-    """Disable TF32 so that float32 runs are really float32 and the float64 truth is not silently degraded."""
+    """Keep float32 runs in float32, so the float64 truth and the baseline error are not silently degraded.
+
+    Every switch in ``REDUCED_PRECISION_FLAGS`` that this build has is cleared and restored afterwards, because a
+    backend left to its defaults may compute a nominally float32 matmul or convolution in fewer bits. Disabling only
+    the switches of one backend would make this helper silently useless on the others.
+    """
     matmul_precision = torch.get_float32_matmul_precision()
-    cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    saved = []
+    for path in REDUCED_PRECISION_FLAGS:
+        found = _resolve_flag(path)
+        if found is not None:
+            holder, attribute = found
+            saved.append((holder, attribute, getattr(holder, attribute)))
     torch.set_float32_matmul_precision("highest")
-    torch.backends.cudnn.allow_tf32 = False
+    for holder, attribute, _ in saved:
+        setattr(holder, attribute, False)
     try:
         yield
     finally:
         torch.set_float32_matmul_precision(matmul_precision)
-        torch.backends.cudnn.allow_tf32 = cudnn_tf32
+        for holder, attribute, value in saved:
+            setattr(holder, attribute, value)
 
 
 def run_fwd_bwd(fn: Callable, inputs: Dict[str, Any], dtype: torch.dtype, grad_seed: int = 0, **meta) -> Trace:

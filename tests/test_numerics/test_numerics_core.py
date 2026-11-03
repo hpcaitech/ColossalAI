@@ -5,6 +5,7 @@ import torch
 from safetensors.torch import save_file
 
 from tests.kit.numerics import Trace, assert_aligned, error_multiplier, flatten_tensors, judge, run_fwd_bwd
+from tests.kit.numerics.capture import REDUCED_PRECISION_FLAGS, _resolve_flag, full_precision_matmul
 
 HIDDEN = 256
 
@@ -150,3 +151,33 @@ def test_load_rejects_plain_safetensors(tmp_path):
     save_file({"a": torch.ones(1)}, tmp_path / "plain.safetensors")
     with pytest.raises(ValueError, match="not a numerics trace"):
         Trace.load(tmp_path / "plain.safetensors")
+
+
+def test_full_precision_clears_every_switch_this_build_has():
+    present = [found for found in map(_resolve_flag, REDUCED_PRECISION_FLAGS) if found is not None]
+    assert present, "no reduced-precision switch resolved; the flag paths are stale"
+    for holder, attribute in present:
+        setattr(holder, attribute, True)
+    with full_precision_matmul():
+        assert torch.get_float32_matmul_precision() == "highest"
+        assert not any(getattr(holder, attribute) for holder, attribute in present)
+    assert all(getattr(holder, attribute) for holder, attribute in present)
+
+
+def test_full_precision_restores_what_it_found():
+    torch.set_float32_matmul_precision("medium")
+    before = [(holder, attribute, getattr(holder, attribute)) for holder, attribute in
+              (f for f in map(_resolve_flag, REDUCED_PRECISION_FLAGS) if f is not None)]
+    try:
+        with full_precision_matmul():
+            pass
+        assert torch.get_float32_matmul_precision() == "medium"
+        assert all(getattr(holder, attribute) == value for holder, attribute, value in before)
+    finally:
+        torch.set_float32_matmul_precision("highest")
+
+
+def test_resolve_flag_skips_switches_this_build_lacks():
+    assert _resolve_flag("backends.no_such_backend.allow_tf32") is None
+    assert _resolve_flag("no_such_namespace") is None
+    assert _resolve_flag("backends.cudnn.no_such_switch") is None

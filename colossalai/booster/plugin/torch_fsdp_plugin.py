@@ -25,6 +25,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils.data import DataLoader
 
+from colossalai.accelerator import get_accelerator
 from colossalai.checkpoint_io import CheckpointIndexFile, CheckpointIO, GeneralCheckpointIO, utils
 from colossalai.checkpoint_io.utils import (
     async_save_state_dict_shards,
@@ -537,7 +538,7 @@ class TorchFSDPPlugin(DPPluginBase):
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         # wrap the model with PyTorch FSDP
-        fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
+        fsdp_model = TorchFSDPModel(model, device_id=get_accelerator().get_current_device(), **self.fsdp_kwargs)
 
         if self.fp8_communication:
             from colossalai.quantization.utils import patch_fsdp_params_comm_hook

@@ -7,6 +7,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import SGD
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.booster.plugin import TorchDDPPlugin
 from colossalai.interface import OptimizerWrapper
@@ -23,7 +24,7 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     criterion = lambda x: x.mean()
     data = data_gen_fn()
 
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+    data = {k: v.to(get_accelerator().get_current_device()) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
@@ -55,7 +56,7 @@ def check_torch_ddp_plugin():
         ):
             continue
         run_fn(model_fn, data_gen_fn, output_transform_fn)
-        torch.cuda.empty_cache()
+        get_accelerator().empty_cache()
 
 
 class DummyModel(nn.Module):
@@ -82,7 +83,7 @@ def check_torch_ddp_no_sync():
     )
 
     def fwd_bwd():
-        output = model(batch.cuda())
+        output = model(batch.to(get_accelerator().get_current_device()))
         loss = criterion(output)
         booster.backward(loss, optimizer)
 

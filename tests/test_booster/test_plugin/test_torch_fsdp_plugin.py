@@ -4,6 +4,7 @@ from packaging import version
 from torch.optim import SGD
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
@@ -25,7 +26,7 @@ def run_fn(model_fn, data_gen_fn, output_transform_fn):
     criterion = lambda x: x.mean()
     data = data_gen_fn()
 
-    data = {k: v.to("cuda") if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
+    data = {k: v.to(get_accelerator().get_current_device()) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()}
 
     model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)
 
@@ -68,7 +69,7 @@ def check_torch_fsdp_plugin():
             continue
         print(name)
         run_fn(model_fn, data_gen_fn, output_transform_fn)
-        torch.cuda.empty_cache()
+        get_accelerator().empty_cache()
 
 
 def run_dist(rank, world_size, port):
