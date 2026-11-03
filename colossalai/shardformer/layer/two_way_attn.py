@@ -601,7 +601,7 @@ def npu_two_way_flat_attention(
             cu_seqlens_q=cu_seqlens_dm,
             cu_seqlens_kv=cu_seqlens_kv,
             max_seqlen_q=meta.max_dm,
-            max_seqlen_kv=meta.max_kv,
+            max_seqlen_kv=max(kv_lengths),
             dropout_p=dropout_p,
             scale=scale,
             qkv_layout="TND",

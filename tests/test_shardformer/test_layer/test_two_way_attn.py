@@ -441,6 +441,19 @@ def test_npu_path_keeps_gqa_heads_and_reads_only_each_samples_own_kv(monkeypatch
     assert torch.equal(out_ar, q_ar) and torch.equal(out_dm, q_dm)
 
 
+def test_npu_path_reports_the_longest_actual_kv_segment(monkeypatch):
+    # The longest sample overall is the AR-only one; the DM call's K/V segments are shorter.
+    meta = TwoWayPackedMeta([100, 1], [0, 5])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=24)
+    recorder = _record_attention(monkeypatch)
+
+    npu_two_way_flat_attention(*ar, *dm, meta)
+
+    causal_call, full_call = recorder.calls
+    assert causal_call["kwargs"]["max_seqlen_kv"] == 100
+    assert (full_call["kwargs"]["max_seqlen_q"], full_call["kwargs"]["max_seqlen_kv"]) == (5, 6)
+
+
 def test_npu_path_skips_a_call_when_one_tower_is_empty(monkeypatch):
     meta = TwoWayPackedMeta([3, 2], [0, 0])
     ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=13)
