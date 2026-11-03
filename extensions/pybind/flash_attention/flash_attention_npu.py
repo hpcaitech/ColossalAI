@@ -16,9 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
-from colossalai.kernel.attention_layout import QKV_LAYOUTS, AttentionLayout, attention_layout
-
 from ...base_extension import _Extension
+from .qkv_layout import QKV_LAYOUTS, AttentionLayout, attention_layout
 
 # CANN compresses causal masks for ``sparse_mode`` 2/3/4 and rejects any other last-two-dimension size with
 # "please set the atten_mask_shape to [2048,2048]", so this is the only mask size ``sparse_mode=3`` accepts.

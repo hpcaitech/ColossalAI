@@ -6,11 +6,15 @@ import pytest
 import torch
 
 from colossalai.accelerator import get_accelerator
-from colossalai.kernel.attention_layout import DENSE_QKV_LAYOUTS, QKV_LAYOUTS, attention_layout
 from colossalai.kernel.extensions import ALL_EXTENSIONS, FlashAttentionNpuExtension
 from colossalai.kernel.extensions.pybind.flash_attention.flash_attention_npu import (
     CAUSAL_MASK_SIZE,
     resolve_fusion_attention_args,
+)
+from colossalai.kernel.extensions.pybind.flash_attention.qkv_layout import (
+    DENSE_QKV_LAYOUTS,
+    QKV_LAYOUTS,
+    attention_layout,
 )
 from colossalai.kernel.kernel_loader import FlashAttentionLoader, FlashAttentionWithCustomMaskLoader, KernelLoader
 from colossalai.shardformer.layer import AttnMaskType, ColoAttention, TwoWayPackedMeta, npu_two_way_flat_attention
