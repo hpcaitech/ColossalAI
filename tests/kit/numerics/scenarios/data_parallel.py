@@ -40,6 +40,7 @@ def traces(
     grad_seed: int = 0,
     optimizer_fn: Callable = default_optimizer,
     directory: Optional[str] = None,
+    token_weighted: bool = False,
 ) -> Tuple[Trace, Trace]:
     """Run ``entry`` on ``world_size`` devices and on one, return ``(test, ref)``.
 
@@ -48,6 +49,11 @@ def traces(
     picklable, so pass a model_zoo name or an entry made of module-level functions. ``micro_batches`` defaults to
     ``world_size``. The traces are written to ``directory`` (a temporary one by default) as ``ref.safetensors`` and
     ``test.safetensors``.
+
+    By default the loss is the tool's own (a random projection of the outputs, equal micro-batches), so only the
+    plugin's gradient reduction is tested. ``token_weighted=True`` uses the entry's ``NumericsSpec.token_loss``
+    instead, normalized by the valid tokens of all micro-batches (``TokenLoss``): with padded batches whose valid token
+    counts differ, the N-device gradient must still equal the single-device mean over every valid token.
     """
     micro_batches = micro_batches or world_size
     kwargs = dict(
@@ -58,6 +64,7 @@ def traces(
         seed=seed,
         grad_seed=grad_seed,
         optimizer_fn=optimizer_fn,
+        token_weighted=token_weighted,
     )
     with tempfile.TemporaryDirectory() if directory is None else _keep(directory) as out:
         ref_path, test_path = os.path.join(out, "ref.safetensors"), os.path.join(out, "test.safetensors")
@@ -91,12 +98,15 @@ def _run(
     seed,
     grad_seed,
     optimizer_fn,
+    token_weighted,
     path,
     role,
 ):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
     s = prepare(entry, micro_batches, seed)
-    trace = run_data_parallel(s, plugin_fn(), micro_batches, mixed_precision, optimizer_fn, grad_seed, role=role)
+    trace = run_data_parallel(
+        s, plugin_fn(), micro_batches, mixed_precision, optimizer_fn, grad_seed, token_weighted, role=role
+    )
     if rank == 0:
         trace.save(path)
 

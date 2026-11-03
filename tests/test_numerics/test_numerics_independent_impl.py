@@ -17,8 +17,10 @@ from tests.kit.numerics.scenarios.independent_impl import (
     _worse_of,
     blank_control,
     check_fwd_bwd,
+    check_optimizer,
     check_training,
     dtype_mismatches,
+    training_traces,
 )
 
 STEPS = 3
@@ -168,7 +170,7 @@ REJECTED = [
     (TorchDDPPlugin, "bf16", "BF16MixedPrecision"),
     (partial(LowLevelZeroPlugin, precision="fp16"), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="bf16", max_norm=1.0), None, "not verified"),
-    (partial(LowLevelZeroPlugin, precision="bf16", cpu_offload=True), None, "not verified"),
+    (partial(LowLevelZeroPlugin, precision="fp32", cpu_offload=True), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="bf16"), "fp16", "controls precision itself"),
     (object, None, "not supported yet"),
 ]
@@ -317,3 +319,151 @@ def _check_routing_in_training(rank, world_size, port):
 @rerun_if_address_is_in_use()
 def test_routing_counted_in_training():
     spawn(_check_routing_in_training, 1)
+
+
+def _plugin(name):
+    # plugins are built inside the spawned process: Gemini and FSDP need the process group at construction
+    from torch.distributed.fsdp import MixedPrecision
+
+    from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
+
+    bf16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat16, buffer_dtype=torch.bfloat16)
+    return {
+        "gemini_bf16": lambda: GeminiPlugin(precision="bf16"),
+        "gemini_fp16": lambda: GeminiPlugin(precision="fp16"),
+        "fsdp_fp32": lambda: TorchFSDPPlugin(),
+        "fsdp_bf16": lambda: TorchFSDPPlugin(mixed_precision=bf16),
+        "zero2_bf16_offload": lambda: LowLevelZeroPlugin(stage=2, precision="bf16", cpu_offload=True),
+    }[name]()
+
+
+def _check_plugin(rank, world_size, port, name):
+    _launch(rank, world_size, port)
+    entry = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+    report = check_training(entry, _plugin(name), steps=STEPS)
+    report.assert_pass()
+    # gradients come back for every parameter, also where the plugin keeps them in its own buffers
+    params = {n for n, _ in _tiny_llama().named_parameters()}
+    assert {e.name for e in report.entries if e.name.startswith("grad/param/")} == {f"grad/param/{n}" for n in params}
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="Gemini, FSDP and LowLevelZero require a CUDA or NPU device")
+@pytest.mark.parametrize("name", ["gemini_bf16", "gemini_fp16", "fsdp_fp32", "fsdp_bf16", "zero2_bf16_offload"])
+@rerun_if_address_is_in_use()
+def test_plugin_aligned(name):
+    spawn(_check_plugin, 1, name=name)
+
+
+def _unverified_plugins(rank, world_size, port):
+    _launch(rank, world_size, port)
+    from torch.distributed.fsdp import CPUOffload, MixedPrecision
+
+    from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
+
+    for plugin, match in [
+        (GeminiPlugin(precision="bf16", placement_policy="auto"), "offloading"),
+        (GeminiPlugin(precision="bf16", max_norm=1.0), "max_norm"),
+        (TorchFSDPPlugin(cpu_offload=CPUOffload(offload_params=True)), "cpu_offload"),
+        (TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=torch.bfloat16)), "buffer_dtype"),
+        (LowLevelZeroPlugin(stage=2, precision="bf16", cpu_offload=True, master_weights=False), "master_weights"),
+    ]:
+        with pytest.raises(UnsupportedRecipe, match=match):
+            recipe_for(plugin)
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="Gemini and FSDP require a CUDA device")
+@rerun_if_address_is_in_use()
+def test_unverified_plugins_refused():
+    spawn(_unverified_plugins, 1)
+
+
+class _Tower(nn.Module):
+    """A frozen branch next to a trained head, as a vision tower in a text-only training path."""
+
+    def __init__(self):
+        super().__init__()
+        self.tower = nn.Linear(64, 64)
+        self.head = nn.Linear(64, 32)
+
+    def forward(self, x):
+        return {"y": self.head(torch.relu(self.tower(x)))}
+
+
+def _freeze_tower(model):
+    model.tower.requires_grad_(False)
+
+
+def _check_prepare_fn(rank, world_size, port):
+    _launch(rank, world_size, port)
+    entry = (_Tower, _data, lambda out: out, None, ModelAttribute(numerics=NumericsSpec(prepare_fn=_freeze_tower)))
+    s = prepare(entry)
+    assert not s.model.tower.weight.requires_grad and s.model.head.weight.requires_grad
+    report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
+    report.assert_pass()
+    # frozen parameters are neither required to have a gradient nor updated
+    names = {e.name for e in report.entries}
+    assert "grad/param/head.weight" in names and "grad/param/tower.weight" not in names
+    tower = s.model.tower.weight.detach().cpu()
+    assert torch.equal(run_reference(s, recipe_for(TorchDDPPlugin()))["param/tower.weight"], tower)
+
+
+@rerun_if_address_is_in_use()
+def test_prepare_fn_applies_to_every_run():
+    spawn(_check_prepare_fn, 1)
+
+
+class _PlainAdam(torch.optim.Optimizer):
+    """Adam written out from the paper: an independent reference for torch.optim.Adam."""
+
+    def __init__(self, params, lr=1e-2, betas=(0.9, 0.999), eps=1e-8, bias_correction=True):
+        super().__init__(params, dict(lr=lr, betas=betas, eps=eps))
+        self.bias_correction = bias_correction
+
+    @torch.no_grad()
+    def step(self):
+        for group in self.param_groups:
+            beta1, beta2 = group["betas"]
+            for p in group["params"]:
+                state = self.state[p]
+                if not state:
+                    state.update(t=0, m=torch.zeros_like(p), v=torch.zeros_like(p))
+                state["t"] += 1
+                state["m"] = beta1 * state["m"] + (1 - beta1) * p.grad
+                state["v"] = beta2 * state["v"] + (1 - beta2) * p.grad**2
+                m, v = state["m"], state["v"]
+                if self.bias_correction:
+                    m, v = m / (1 - beta1 ** state["t"]), v / (1 - beta2 ** state["t"])
+                p -= group["lr"] * m / (v.sqrt() + group["eps"])
+
+
+def test_optimizer_update_rule():
+    # float32 and lr 1e-2: in bfloat16 an update of 1e-3 is below the resolution of weights near 1 and rounds away
+    params = TinyMLP()
+    report = check_optimizer(lambda p: torch.optim.Adam(p, lr=1e-2), _PlainAdam, params, torch.float32, steps=3)
+    report.assert_pass()
+    assert {e.name for e in report.entries} == {f"param/{t}/{p}" for t in range(3) for p in PARAMS}
+    # an update without bias correction is off by far more than rounding
+    buggy = check_optimizer(partial(_PlainAdam, bias_correction=False), _PlainAdam, params, torch.float32, steps=3)
+    assert {e.name for e in buggy.failures} >= {f"param/0/{p}" for p in PARAMS}
+
+
+def _check_cache(rank, world_size, port, directory):
+    import os
+
+    _launch(rank, world_size, port)
+    plugin = TorchDDPPlugin()
+    first = training_traces(_entry(), plugin, steps=STEPS, cache_dir=directory)
+    files = sorted(os.listdir(os.path.join(directory, "custom")))
+    assert [f.split("-")[0] for f in files] == ["ref", "truth"]
+    second = training_traces(_entry(), plugin, steps=STEPS, cache_dir=directory)
+    for a, b in zip(first[1:], second[1:]):
+        assert "cached" in b.meta and set(a) == set(b) and all(torch.equal(a[k], b[k]) for k in a)
+    assert "cached" not in second[0].meta  # the model under test always runs
+    # other weights (another seed) are another key, not a stale hit
+    training_traces(_entry(), plugin, steps=STEPS, seed=1, cache_dir=directory)
+    assert len(os.listdir(os.path.join(directory, "custom"))) == 4
+
+
+@rerun_if_address_is_in_use()
+def test_reference_runs_are_cached(tmp_path):
+    spawn(_check_cache, 1, directory=str(tmp_path))

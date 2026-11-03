@@ -8,6 +8,7 @@ repository commit (and whether the tree was dirty), the command and the environm
     python -m tests.kit.numerics.acceptance --entry transformers_mixtral --out mixtral.json
     python -m tests.kit.numerics.acceptance --entry transformers_mixtral --configs ddp_fp32,zero2_bf16 \\
         --checks independent_impl,resume
+    python -m tests.kit.numerics.acceptance --entry <real-weight entry> --cache-dir <dir>  # reuse the float64 truth
 
 Depends on ColossalAI, so the package ``__init__`` does not import it.
 """
@@ -26,15 +27,18 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import torch
+from torch.distributed.fsdp import MixedPrecision
 
 import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 from .capture.recipes import UnsupportedRecipe
 from .judge import AlignmentReport
 from .scenarios import data_parallel, independent_impl, resume
+from .spec import NumericsSpec
 from .trace import environment_meta
 
 SCHEMA_VERSION = 1
@@ -53,6 +57,7 @@ class Config:
     shard_optimizer: bool = True
 
 
+FSDP_BF16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat16, buffer_dtype=torch.bfloat16)
 CONFIGS: Dict[str, Config] = {
     "ddp_fp32": Config(TorchDDPPlugin, needs_device=False),
     "ddp_fp16": Config(TorchDDPPlugin, "fp16"),
@@ -66,13 +71,19 @@ CONFIGS: Dict[str, Config] = {
     # shardformer policy with tp_size=1: needs a model the policies support
     "shardformer_fp32": Config(partial(HybridParallelPlugin, tp_size=1, pp_size=1, precision="fp32")),
     "shardformer_bf16": Config(partial(HybridParallelPlugin, tp_size=1, pp_size=1, precision="bf16")),
+    # gradient accumulation on: the single-device side of data_parallel accumulates micro-batches
+    "gemini_bf16": Config(partial(GeminiPlugin, precision="bf16", enable_gradient_accumulation=True)),
+    "gemini_fp16": Config(partial(GeminiPlugin, precision="fp16", enable_gradient_accumulation=True)),
+    "fsdp_fp32": Config(TorchFSDPPlugin),
+    "fsdp_bf16": Config(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16)),
 }
-CHECKS = ("blank_control", "independent_impl", "data_parallel", "resume")
+CHECKS = ("blank_control", "independent_impl", "data_parallel", "data_parallel_tokens", "resume")
 # which L2 item of the roadmap each check answers
 L2_ITEMS = {
     "blank_control": "precondition of ① ⑤",
     "independent_impl": "① ⑤",
     "data_parallel": "②",
+    "data_parallel_tokens": "② with the model's loss normalized by valid tokens",
     "resume": "④",
 }
 
@@ -82,28 +93,44 @@ def run_acceptance(
     configs: Sequence[str] = tuple(CONFIGS),
     checks: Sequence[str] = CHECKS,
     steps: int = 3,
+    cache_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run ``checks`` under ``configs`` for ``entry`` (a model_zoo name, or a picklable entry tuple) and return the
-    report as a JSON-serializable dict. Call from the main process: every check spawns its own process group."""
+    report as a JSON-serializable dict. Call from the main process: every check spawns its own process group.
+
+    ``data_parallel_tokens`` runs only for entries that declare ``NumericsSpec.token_loss`` (``not_run`` otherwise).
+    ``cache_dir`` keeps the reference runs of ``independent_impl`` and ``blank_control`` (see ``capture.cache``)."""
     unknown = sorted(set(configs) - set(CONFIGS)) + sorted(set(checks) - set(CHECKS))
     if unknown:
         raise ValueError(f"unknown configs or checks: {unknown}; known: {sorted(CONFIGS)}, {list(CHECKS)}")
     results = []
+    token_loss = _spec(entry).token_loss is not None
     if "blank_control" in checks:
-        results.append(_result("blank_control", None, lambda: _in_process_group(_blank_control, entry, steps)))
+        run = partial(_in_process_group, _blank_control, entry, steps, cache_dir)
+        results.append(_result("blank_control", None, run))
     for name in configs:
         config = CONFIGS[name]
         for check in checks:
             if check == "blank_control":
                 continue
-            missing = _missing_devices(config, 2 if check == "data_parallel" else 1)
+            missing = _missing_devices(config, 2 if check.startswith("data_parallel") else 1)
+            if check == "data_parallel_tokens" and not token_loss:
+                missing = "the entry declares no NumericsSpec.token_loss"
             if missing:
                 results.append(_entry_result(check, name, NOT_RUN, reason=missing))
             elif check == "independent_impl":
-                run = partial(_in_process_group, _independent_impl, entry, steps, config)
+                run = partial(_in_process_group, _independent_impl, entry, steps, config, cache_dir)
                 results.append(_result(check, name, run))
-            elif check == "data_parallel":
-                run = partial(data_parallel.check, entry, config.plugin_fn, config.mixed_precision, world_size=2)
+            elif check.startswith("data_parallel"):
+                run = partial(
+                    data_parallel.check,
+                    entry,
+                    config.plugin_fn,
+                    config.mixed_precision,
+                    world_size=2,
+                    micro_batches=4,
+                    token_weighted=check == "data_parallel_tokens",
+                )
                 results.append(_result(check, name, run))
             else:
                 shard = config.shard_optimizer and get_accelerator().name != "cpu"
@@ -215,12 +242,22 @@ def _worker(rank, world_size, port, fn, args, path):
     torch.save(fn(*args), path)
 
 
-def _blank_control(entry, steps) -> AlignmentReport:
-    return independent_impl.blank_control(entry, steps=steps)
+def _blank_control(entry, steps, cache_dir) -> AlignmentReport:
+    return independent_impl.blank_control(entry, steps=steps, cache_dir=cache_dir)
 
 
-def _independent_impl(entry, steps, config: Config) -> AlignmentReport:
-    return independent_impl.check_training(entry, config.plugin_fn(), config.mixed_precision, steps=steps)
+def _independent_impl(entry, steps, config: Config, cache_dir) -> AlignmentReport:
+    plugin = config.plugin_fn()
+    return independent_impl.check_training(entry, plugin, config.mixed_precision, steps=steps, cache_dir=cache_dir)
+
+
+def _spec(entry) -> NumericsSpec:
+    if isinstance(entry, str):
+        from tests.kit.model_zoo import model_zoo
+
+        entry = model_zoo[entry]
+    attribute = entry[4]
+    return (attribute.numerics if attribute is not None else None) or NumericsSpec()
 
 
 def _repository() -> Dict[str, Any]:
@@ -261,8 +298,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--checks", default=",".join(CHECKS), help=f"comma-separated, from {', '.join(CHECKS)}")
     parser.add_argument("--steps", type=int, default=3, help="training steps of independent_impl (losses of each)")
     parser.add_argument("--out", help="JSON report path (default: numerics-<entry>.json)")
+    parser.add_argument("--cache-dir", help="keep and reuse reference runs there (for real weights; see capture.cache)")
     args = parser.parse_args(argv)
-    report = run_acceptance(args.entry, args.configs.split(","), args.checks.split(","), args.steps)
+    report = run_acceptance(
+        args.entry, args.configs.split(","), args.checks.split(","), args.steps, cache_dir=args.cache_dir
+    )
     out = args.out or f"numerics-{args.entry}.json"
     with open(out, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)

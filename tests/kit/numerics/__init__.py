@@ -5,6 +5,7 @@ from .capture import (
     full_precision_matmul,
     missing_grads,
     run_fwd_bwd,
+    run_optimizer,
     upstream_loss,
 )
 from .compare import TensorMetrics, flatten_tensors, tensor_metrics
@@ -21,7 +22,7 @@ from .judge import (
     relative_bound,
     require_gradients,
 )
-from .spec import NumericsSpec, Routers
+from .spec import NumericsSpec, Routers, TokenLoss
 from .trace import Trace
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "Routers",
     "RoutingRecorder",
     "TensorMetrics",
+    "TokenLoss",
     "Trace",
     "assert_aligned",
     "cast_floating",
@@ -47,6 +49,7 @@ __all__ = [
     "relative_bound",
     "require_gradients",
     "run_fwd_bwd",
+    "run_optimizer",
     "tensor_metrics",
     "upstream_loss",
 ]

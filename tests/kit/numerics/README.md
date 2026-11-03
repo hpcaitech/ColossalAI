@@ -223,7 +223,12 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
    | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="fp32")` (the shardformer path) | float32 | CUDA or NPU |
    | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
-   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cpu_offload` or `cast_inputs=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; other plugins | refused: not verified yet | |
+   | `LowLevelZeroPlugin(precision="bf16", cpu_offload=True)` | as bf16, with the master weights and the optimizer step on the CPU | CUDA or NPU |
+   | `GeminiPlugin(precision="bf16")` | whole model and inputs cast to bf16, float32 master weights | CUDA |
+   | `GeminiPlugin(precision="fp16")` | whole model and inputs cast to fp16, float32 master weights, loss scale `initial_scale` (2**16) | CUDA |
+   | `TorchFSDPPlugin()` | float32 | CUDA |
+   | `TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=bf16 or fp16, buffer_dtype=the same))` | whole model and inputs cast, float32 master weights (FSDP's sharded parameters), no loss scaling | CUDA |
+   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cast_inputs=False`, or `cpu_offload` with fp32 or `master_weights=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; `GeminiPlugin` with offloading (`placement_policy="auto"`, `offload_*_frac`), `max_norm`, `use_fp8`, `master_weights=False`, `tp_size` or `extra_dp_size` above 1; `TorchFSDPPlugin` with `cpu_offload`, `auto_wrap_policy`, `ignored_modules`, `fp8_communication`, a `buffer_dtype` other than `param_dtype` or `keep_low_precision_grads`; other plugins | refused: not verified yet | |
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
    the gradient dtypes and the optimizer state dtypes. Any difference raises `RecipeMismatch` before numbers are
@@ -235,6 +240,23 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
 
 The reference is also run twice. Tensors that differ between the two runs come from nondeterministic kernels; they
 are listed in `ref.meta["nondeterministic"]`, and the worse of the two runs is used as their baseline.
+
+### Plugins that keep their own gradients: Gemini and FSDP
+
+TorchDDP, LowLevelZero and HybridParallel expose each parameter's full gradient after backward. Gemini and FSDP keep
+gradients in their own sharded, flattened buffers, so the tool reads them from the optimizer instead, with
+Megatron-LM's trick: with Adam's `beta1 = 0` the first moment after a step is exactly that step's gradient, and both
+plugins can gather the full optimizer state (`capture.plugins`). Both sides then run AdamW with `beta1 = 0`, so they
+still run the same optimizer; the gradient, computed in the plugin's dtype and stored in float32, is cast back
+exactly. Weights after the step come from the plugins' full state dicts. Two translations are needed:
+
+- Gemini only accepts ColossalAI's `HybridAdam`; the tool rebuilds the AdamW as `HybridAdam(adamw_mode=True)` with
+  the same hyperparameters, while the reference keeps torch's AdamW, an independent implementation of the same
+  update.
+- `TorchFSDPPlugin` rebuilds the optimizer with `optimizer.__init__(params, **optimizer.defaults)`. In torch 2.13
+  AdamW's defaults include `decoupled_weight_decay`, which `AdamW.__init__` rejects, so FSDP with
+  `torch.optim.AdamW` fails in ColossalAI itself; the tool passes `torch.optim.Adam(decoupled_weight_decay=True)`,
+  the same update.
 
 On a single device every supported configuration reproduces the reference exactly (all ratios 1.00 for Mixtral,
 Llama, GPT and BERT). Ratios above 1 appear once a plugin changes the arithmetic: more devices, replaced kernels,
@@ -252,6 +274,10 @@ other parallel layouts.
   `param_map` maps its parameter names to the model's. `output_fn` selects which outputs are compared.
 - **Unused parameters.** Trainable parameters that the entry's inputs never reach must be listed in
   `NumericsSpec(unused_params=...)`; any other parameter left without a gradient fails.
+- **Preparing the model.** `NumericsSpec(prepare_fn=...)` is called on every freshly built model, the one under test
+  and the reference, before any run, e.g. to freeze a vision tower for a text-only training path
+  (`model.visual.requires_grad_(False)`) or to replace a branch the training path skips. It may change the module in
+  place or return a replacement. Frozen parameters need no gradient and keep their weights.
 
 What a check can detect depends on the tensor. In the self-tests a dropped column of a bf16 MLP moves the outputs,
 the affected gradients and every step's loss 17 to 26 times beyond the baseline error, but not the weights after one
@@ -259,6 +285,19 @@ AdamW step: the first update is about `lr * sign(grad)`, which hardly depends on
 
 These checks are run by hand while developing a model and attached to its review; CI runs only the tool's own tests
 in `tests/test_numerics`.
+
+### Real weights: caching the reference
+
+Small random configs are cheap in float64. With real weights (`model_fn` loading them with `from_pretrained`, offline
+from the shared cache) the float64 truth is the slow part, so `training_traces(..., cache_dir=...)` and
+`acceptance --cache-dir` keep the reference runs and reuse them (`capture.cache`). A cached run is reused only if
+nothing that determines it changed: the key hashes the entry name, seeds and number of steps, the reference weights
+and every batch byte for byte, the code that selects outputs and routers, the optimizer's class and hyperparameters,
+the recipe (for `ref` only: one float64 truth serves every configuration of an entry), the torch and transformers
+versions, the device, and the source of the capture code itself, so a change to how references run invalidates old
+entries without anyone bumping a version. Files are `<cache_dir>/<entry>/<truth|ref>-<key>.safetensors`, written
+atomically and never overwritten; the model under test always runs. Where the cache lives for shared use is not
+decided yet; until then use a directory of your own.
 
 ### Mixture of experts: routing flips
 
@@ -309,6 +348,36 @@ report = data_parallel.check(
 report.assert_pass()
 ```
 
+Gemini and FSDP gradients are read from the optimizer here too (see above). Gemini accumulates micro-batches only
+with `GeminiPlugin(enable_gradient_accumulation=True)`; without it a second backward overwrites the gradients, so the
+check refuses that combination. With it, accumulation is wrong on more than one device: with 2 devices and 2
+micro-batches each, Gemini's gradient is off by 69% in a minimal script (75 to 79% in the self-test MLP, and every
+Mixtral gradient beyond the bound), while one device accumulating 4 micro-batches, and 2 devices with one micro-batch
+each, equal plain PyTorch bit for bit.
+`tests/test_zero/test_gemini/test_grad_accum.py` would cover this but is skipped without NVIDIA Apex. The acceptance
+command reports it as a failure of `data_parallel`; the tool's own test uses one micro-batch per device.
+
+By default the loss is the tool's own random projection of the outputs over equal micro-batches, which tests the
+plugin's gradient reduction and nothing else. Models with padded batches have a second question: a training loop must
+divide the summed loss by the valid tokens of the whole step (all micro-batches on all ranks), not average per
+micro-batch, or micro-batches with fewer valid tokens weigh more. Declare the model's own loss and the check runs both
+sides that way:
+
+```python
+spec = NumericsSpec(
+    token_loss=TokenLoss(
+        loss=lambda out, batch: F.cross_entropy(out.logits[:, :-1].flatten(0, 1), batch["labels"][:, 1:].flatten(),
+                                                ignore_index=-100, reduction="sum"),
+        count=lambda batch: (batch["labels"][:, 1:] != -100).sum(),
+    )
+)
+report = data_parallel.check(entry, plugin_fn, world_size=2, micro_batches=4, token_weighted=True)
+```
+
+`count` reads the batch alone, as a training loop counts valid labels before the forward; every rank holds every
+batch, so the step's total needs no communication. Each micro-batch's summed loss is scaled by
+`world_size / total`, so N devices and one device both compute the gradient of the mean over all valid tokens.
+
 The report has the same columns as `judge`, with the bound in place of the baseline error, so `ratio` must be at most
 1. Measured on Mixtral, Llama, GPT and BERT with 2 devices and 4 micro-batches: at most 5% of the bound in bf16 and
 about 1e-7 relative error in fp32; a parameter left out of gradient synchronization is off by 99.8%, 12 times the
@@ -350,7 +419,10 @@ Mixtral, Llama, GPT and BERT with 1 and 2 devices:
 | `TorchDDPPlugin()` with `mixed_precision="fp16"` | identical with `shard_optimizer=False`; a sharded optimizer fails to load (see below) |
 | `LowLevelZeroPlugin(precision="bf16")` stage 1 and 2 | **not identical**: weights differ in the last bf16 bit (e.g. 2**-8 around 1) |
 | `HybridParallelPlugin(tp_size=1, pp_size=1)` fp32 (Mixtral, 1 device) | identical |
-| `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` (Mixtral, 1 device) | **not identical**, the same symptom as LowLevelZero bf16; the cause is not yet traced |
+| `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` (Mixtral, 1 device) | **not identical**, the same cause as LowLevelZero bf16: `HybridParallelCheckpointIO` rebuilds the master weights from the bf16 weights after loading |
+| `LowLevelZeroPlugin(precision="bf16", cpu_offload=True)` (Mixtral, 1 device) | **not identical**, as LowLevelZero bf16 |
+| `TorchFSDPPlugin()` fp32 and with bf16 `MixedPrecision` (Mixtral, 1 device) | identical (FSDP saves its float32 parameters); the HuggingFace export does not load, see below |
+| `GeminiPlugin(precision="bf16")` (Mixtral, 1 device) | the sharded model checkpoint does not load, see below |
 
 The bf16 difference is real: LowLevelZero does not save the float32 master weights. On load,
 `update_master_params` rebuilds them from the bf16 weights, so their low bits are lost and later updates round
@@ -362,6 +434,69 @@ Two loading failures, not specific to this tool, are worked around with `shard_o
   which the CPU accelerator does not support. The CPU self-tests save the optimizer unsharded.
 - With `TorchDDPPlugin` and `mixed_precision="fp16"`, loading a sharded optimizer raises
   `'OptimizerWrapper' object has no attribute 'state'`: the optimizer is wrapped twice and only one wrapper is removed.
+
+Two more, which `resume` reports as failures:
+
+- `GeminiPlugin`: loading a sharded model raises `GeminiDDP.named_parameters() got an unexpected keyword argument
+  'remove_duplicate'`. `GeneralCheckpointIO.load_sharded_model` passes it when resolving tied parameters, and
+  `GeminiDDP.named_parameters` does not accept it.
+- `TorchFSDPPlugin`: a sharded model checkpoint has no `config.json`, so `from_pretrained` falls back to a default
+  config and fails on the shapes. `save_config_file` is given `model.unwrap()`, which is the FSDP wrapper, not the
+  HuggingFace model, and returns without writing.
+
+## Calibrating the multiplier
+
+`python -m tests.kit.numerics.calibrate` measures how the rule separates correct from buggy code: operators checked
+with `check_fwd_bwd` against plain references written from the formula, three seeds each, on an H20. Largest ratio
+over each case's outputs and gradients:
+
+| Case | bf16 | fp16 |
+| --- | --- | --- |
+| correct: SDPA flash / efficient / math backends vs naive attention | 0.83-0.86 / 0.85-0.86 / 0.75-0.77 | 0.83-0.86 / 0.85-0.86 / 0.75-0.76 |
+| correct: `F.rms_norm`, `F.layer_norm`, `F.cross_entropy` vs naive | 0.73-0.77, 1.00, 1.00 | 0.74-0.77, 1.00, 1.00 |
+| correct: transformers' `grouped_mm` experts vs its eager loop | 1.00 | 1.00 |
+| bug: causal mask off by one | 89-110 | 718-849 |
+| bug: attention scale off by 1% | 2.9-3.1 | 22-23 |
+| bug: RMSNorm / LayerNorm epsilon 1e-2 instead of 1e-6 / 1e-5 | 1.4-1.5 / 1.2-1.3 | 10 / 8.8 |
+| bug: cross-entropy with label smoothing 0.01 | 2.7-2.8 | 17-18 |
+
+Whole models through plugins add two points: Gemini fp16 and FSDP bf16 reach 1.68 and 1.42 on Mixtral.
+
+No correct implementation came near 3, so the multiplier stays. What bf16 cannot show is a bug smaller than its own
+rounding: a 1% scale or an epsilon of 1e-2 changes results by about one bf16 unit, and lands at 1.2 to 3 whatever the
+multiplier. The same bugs are 9 to 23 times beyond the baseline in fp16. Operator tests should therefore run in fp16
+as well as bf16 (or fp32), not bf16 alone.
+
+Two of the bugs above pass although their ratio exceeds 3 (the 1% scale in bf16 at 3.09, label smoothing in fp16 at
+17): the rule's absolute tolerance, `tol / 10` added to the allowed error and the `allclose(tol)` fast path with
+`tol = 1e-4` (PyTorch's values), exceeds the whole error of tensors as small as these gradients.
+
+## An optimizer's update rule
+
+For a new optimizer (2E: Muon, OrScale) there is no reference model; what is compared is the update rule.
+`scenarios.independent_impl.check_optimizer` runs the optimizer under test and a reference optimizer from the same
+weights with the same gradients at every step, and judges the weights after each step with the baseline-error rule:
+the reference in float64 is the truth, the reference at the tested precision the baseline.
+
+```python
+from tests.kit.numerics.scenarios.independent_impl import check_optimizer
+
+report = check_optimizer(
+    lambda params: Muon(params, lr=0.02),            # ColossalAI's implementation
+    lambda params: ReferenceMuon(params, lr=0.02),   # e.g. the paper's official code, runs in float64
+    model,                                           # a module (e.g. a model_zoo model) or a name -> tensor dict
+    torch.bfloat16,
+    steps=3,
+)
+report.assert_pass()
+```
+
+`params` gives the starting weights, copied for each run; the gradient of each parameter at step t is a standard normal
+tensor seeded by `grad_seed + t` (produced in float64, then cast), or `grads_fn(step, name, weight)` for gradients of
+a particular shape. Several steps exercise the optimizer state. The reference must match the tested one's internal
+precision choices (an orthogonalization done in bfloat16, say), as the precision recipes do for whole models. Choose
+a precision in which the updates are visible: in bfloat16 an update of `1e-3` is below the resolution of weights
+around 1 and rounds away, so both a correct and a wrong rule leave the weights unchanged.
 
 ## L2 acceptance of a model line
 
@@ -397,7 +532,9 @@ The five numeric checks of L2, and what covers them:
    `expect_calls` takes `(owner, name)` pairs and counts the calls of `getattr(owner, name)` during the test run
    (`count_calls`); as with `unittest.mock.patch`, `owner` is where the calling code looks the name up.
 
-Checks ② and ④ need nothing more: they compare two runs of ColossalAI's own code.
+Checks ② and ④ need nothing more: they compare two runs of ColossalAI's own code. For a model trained on padded
+batches, also declare `NumericsSpec(token_loss=TokenLoss(...))` so that ② is checked with the model's own loss
+normalized by valid tokens (`data_parallel_tokens`).
 
 ### Running it
 
@@ -407,8 +544,11 @@ python -m tests.kit.numerics.acceptance --entry transformers_xxx --out transform
 
 By default every check runs under every configuration: `ddp_fp32`, `ddp_fp16`, `ddp_bf16`, `zero1_fp32`,
 `zero1_bf16`, `zero2_fp32`, `zero2_bf16`, `zero2_bf16_offload`, `shardformer_fp32`, `shardformer_bf16`
-(`HybridParallelPlugin` with `tp_size=1`). `--configs` and `--checks` (comma-separated) select a subset while
-developing; the report handed in covers them all. `data_parallel` needs two devices, the rest one. Run from a pushed
+(`HybridParallelPlugin` with `tp_size=1`), `gemini_bf16`, `gemini_fp16` (with gradient accumulation enabled),
+`fsdp_fp32`, `fsdp_bf16`. `--configs` and `--checks` (comma-separated) select a subset while developing; the report
+handed in covers them all. `data_parallel` (2 devices, 4 micro-batches) and `data_parallel_tokens` (the same with the
+entry's `token_loss`; `not_run` for entries without one) need two devices, the rest one. With real weights, pass
+`--cache-dir` to reuse the reference runs (see [Real weights](#real-weights-caching-the-reference)). Run from a pushed
 commit with a clean tree: the report records the commit and whether the tree was dirty, and a dirty report cannot be
 reproduced. The command exits with 1 if anything failed.
 
@@ -440,14 +580,14 @@ values will move into the repository, as PyTorch and Megatron-LM keep theirs.
 | Line | Special case | What to do now |
 | --- | --- | --- |
 | 2A MoE | a router flip makes single tensors jump | declare `NumericsSpec(routers=...)` (and `routers=` of `check_fwd_bwd`); the report counts flips in test and ref |
-| 2B hybrid architectures | multimodal model trained on its text path | frozen vision parameters need no gradient; list skipped trainable branches in `unused_params` |
+| 2B hybrid architectures | multimodal model trained on its text path | freeze or replace the vision tower with `NumericsSpec(prepare_fn=...)`, applied to every run; list skipped trainable branches in `unused_params` |
 | 2C, 2D diffusion | random masks, noise, timesteps | generate them in `data_gen_fn` |
-| 2E optimizers | no reference model; the update rule is compared | the reference-optimizer entry point is not there yet |
+| 2E optimizers | no reference model; the update rule is compared | `check_optimizer(test_fn, ref_fn, params, dtype, steps)` against the reference implementation, see [An optimizer's update rule](#an-optimizers-update-rule) |
 | 2F video generation, 2G Cosmos 3 | outputs are not logits; the reference is not HuggingFace | `output_fn` selects the tensors, `reference_fn` builds the official implementation |
 
-Supported plugins are `TorchDDPPlugin`, `LowLevelZeroPlugin` and `HybridParallelPlugin` with `tp_size=1`. Gemini,
-FSDP, tensor, pipeline and expert parallelism are not supported yet and are reported as `unsupported`, which is not a
-failure.
+Supported plugins are `TorchDDPPlugin`, `LowLevelZeroPlugin`, `HybridParallelPlugin` with `tp_size=1`,
+`GeminiPlugin` and `TorchFSDPPlugin`, in the configurations of the recipe table. Tensor, pipeline and expert
+parallelism are not supported yet and are reported as `unsupported`, which is not a failure.
 
 ## Layout
 
@@ -456,7 +596,7 @@ Three layers, passing `Trace`s:
 | Layer | Modules | Role |
 | --- | --- | --- |
 | Scenarios | `scenarios.independent_impl`, `data_parallel`, `resume` | which runs to make and which rule judges them, one module per question |
-| Capture | `capture.fwd_bwd` (one forward and backward, torch only), `capture.training` and `capture.recipes` (training through a plugin, ColossalAI) | run once, return a `Trace` |
+| Capture | `capture.fwd_bwd` (one forward and backward) and `capture.optimizer_step` (optimizer steps on given gradients), torch only; `capture.training`, `capture.recipes`, `capture.plugins` (training through a plugin) and `capture.cache` (reusing reference runs), ColossalAI | run once, return a `Trace` |
 | Judge | `judge`, `judge_relative_bound`, `judge_equal` | compare traces, return an `AlignmentReport` |
 
 Only `independent_impl` compares against another codebase; the other scenarios compare two runs of the same code that differ in one condition. Every layer can be used on its own. For an operator or module, `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype)` does the three `run_fwd_bwd` runs and the `judge` of the examples above in one call.
@@ -470,12 +610,15 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=(), expect_calls=(), routers=None)` | the three runs and the judge of an operator or module check; `expect_calls` must each be called by the test run |
 | `count_calls(targets)` | context manager counting the calls of each `(owner, name)` |
 | `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, unused_params=(), **meta)` | run a function or module forward and backward, return a `Trace` |
-| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=(), routers=None)` | opts a model_zoo entry into whole-model alignment |
+| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=(), routers=None, prepare_fn=None, token_loss=None)` | opts a model_zoo entry into whole-model alignment |
+| `TokenLoss(loss, count)` | a model's own loss summed over valid tokens, and the count of valid tokens, for `token_weighted` |
 | `Routers(select, top_k, scores_fn=...)` | the router modules of a mixture-of-experts model, for routing-flip counts |
 | `diagnose_routing(report, test, ref, truth)`, `RoutingRecorder(module, routers)` | count the flips recorded in `meta["routing"]`; the hook that records them |
-| `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
+| `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1, cache_dir=None)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
+| `scenarios.independent_impl.check_optimizer(test_fn, ref_fn, params, dtype, steps=1, grad_seed=0, grads_fn=None)` | an optimizer's update rule against a reference optimizer |
+| `run_optimizer(optimizer_fn, params, dtype, steps=1, grad_seed=0, grads_fn=None)` | optimizer steps on copies of `params` with fixed gradients, return a `Trace` |
 | `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
-| `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None)` | run on `world_size` devices and on one, return `(test, ref)` |
+| `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None, token_weighted=False)` | run on `world_size` devices and on one, return `(test, ref)` |
 | `scenarios.data_parallel.check(...)` | `judge_relative_bound` on the gradients of the above |
 | `scenarios.resume.traces(entry, plugin_fn, mixed_precision=None, world_size=1, steps_before=2, steps_after=2, parts=..., shard_optimizer=True)` | uninterrupted, saved and resumed runs |
 | `scenarios.resume.check(...)` | `judge_equal` on the resumed steps, plus the HuggingFace round trip |
@@ -483,9 +626,12 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `judge_relative_bound(test, ref, dtype, k=4.0, C=1.03, depth=33)`, `relative_bound(dtype)` | Megatron-LM's rule for runs of the same code |
 | `require_gradients(report, **traces)` | fail the parameters the runs recorded in `meta["missing_grads"]` |
 | `capture.recipes.recipe_for(plugin, mixed_precision)` | the reference recipe for a configuration, or `UnsupportedRecipe` |
+| `capture.plugins`: `exposes_gradients`, `make_optimizer`, `full_gradients`, `full_parameters`, `FirstMomentIsGradient` | what differs between plugins: their optimizer, where the module is, reading gradients and weights back |
+| `capture.cache`: `reference_key`, `cached_run` | the cache of reference runs |
 | `capture.training`: `prepare`, `run_reference`, `run_boosted`, `run_data_parallel`, `run_steps` | the individual runs, for new scenarios |
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |
-| `acceptance.run_acceptance(entry, configs, checks, steps=3)`, `acceptance.format_report(report)` | the L2 acceptance report as a dict, and its summary table; `python -m tests.kit.numerics.acceptance` writes it to JSON |
+| `acceptance.run_acceptance(entry, configs, checks, steps=3, cache_dir=None)`, `acceptance.format_report(report)` | the L2 acceptance report as a dict, and its summary table; `python -m tests.kit.numerics.acceptance` writes it to JSON |
+| `calibrate.calibrate(dtypes, seeds)`, `python -m tests.kit.numerics.calibrate` | ratios of correct and buggy operator implementations |
 | `cast_floating`, `full_precision_matmul`, `flatten_tensors`, `missing_grads`, `upstream_loss` | helpers used by the above |

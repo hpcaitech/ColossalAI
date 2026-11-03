@@ -1,7 +1,7 @@
 """Per-model settings for whole-model alignment, attached to a model_zoo entry through ``ModelAttribute.numerics``."""
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from torch import Tensor, nn
 
@@ -35,6 +35,27 @@ class Routers:
 
 
 @dataclass(frozen=True)
+class TokenLoss:
+    """A model's own loss, normalized by the number of valid tokens over all micro-batches of a step.
+
+    Used by ``data_parallel.check(token_weighted=True)``. A training loop that pads sequences and masks the padding
+    must divide the summed loss by the valid tokens of the whole step (every micro-batch on every rank), not average
+    per micro-batch: micro-batches with fewer valid tokens would otherwise weigh more. The check runs both sides that
+    way and compares the gradients.
+
+    Args:
+        loss: ``loss(output, batch)``: the loss summed over the batch's valid tokens, from what the model returns, e.g.
+            ``F.cross_entropy(output.logits.flatten(0, 1), batch["labels"].flatten(), ignore_index=-100,
+            reduction="sum")`` (shift the labels as the model does).
+        count: ``count(batch)``: the number of valid tokens, from the batch alone (a training loop knows it before the
+            forward), e.g. ``(batch["labels"] != -100).sum()``.
+    """
+
+    loss: Callable[[Any, Dict[str, Any]], Tensor]
+    count: Callable[[Dict[str, Any]], Union[int, Tensor]]
+
+
+@dataclass(frozen=True)
 class NumericsSpec:
     """How to check a model_zoo entry against its reference implementation.
 
@@ -61,6 +82,11 @@ class NumericsSpec:
             ``requires_grad=True`` and no gradient fails the check; frozen parameters are not expected to have one.
         routers: For mixture-of-experts models: which modules route tokens, so the report counts routing flips (see
             ``Routers``).
+        prepare_fn: Called on every freshly built model, the model under test and the reference (from ``model_fn`` or
+            ``reference_fn``), before weights are copied between them, e.g. to freeze a vision tower
+            (``requires_grad_(False)``) or replace a branch the training path skips. It may modify the module in place
+            and return ``None``, or return a replacement. Every run, plugin or reference, sees the prepared model.
+        token_loss: The model's own loss for ``data_parallel.check(token_weighted=True)`` (see ``TokenLoss``).
     """
 
     reference_fn: Optional[Callable[[], nn.Module]] = None
@@ -68,3 +94,5 @@ class NumericsSpec:
     output_fn: Optional[Callable[[Any], Any]] = None
     unused_params: Tuple[str, ...] = ()
     routers: Optional[Routers] = None
+    prepare_fn: Optional[Callable[[nn.Module], Optional[nn.Module]]] = None
+    token_loss: Optional[TokenLoss] = None

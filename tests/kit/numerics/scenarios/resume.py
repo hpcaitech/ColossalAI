@@ -78,7 +78,12 @@ def traces(
             **kwargs,
         )
         traces = {role: Trace.load(path) for role, path in paths.items()}
-        hf = _from_pretrained(entry, checkpoint)
+        try:
+            hf = _from_pretrained(entry, checkpoint)
+        except Exception as exc:  # judged as one failed entry, so that the resumed run is still compared
+            meta = dict(traces["saved"].meta, hf_error=f"{type(exc).__name__}: {exc}"[:500])
+            traces["saved"] = Trace(dict(traces["saved"]), meta)
+            hf = None
         if hf is not None:
             traces["saved"] = Trace(dict(traces["saved"], **hf), traces["saved"].meta)
         return traces["resumed"], traces["uninterrupted"], traces["saved"], checkpoint
@@ -89,7 +94,9 @@ def check(*args, **kwargs) -> AlignmentReport:
     resumed, uninterrupted, saved, _ = traces(*args, **kwargs)
     report = judge_equal(resumed, Trace({k: v for k, v in uninterrupted.items() if k in resumed}, {}))
     hf = {k[len("hf/") :]: v for k, v in saved.items() if k.startswith("hf/")}
-    if hf:
+    if "hf_error" in saved.meta:
+        report.entries.append(Entry("hf/<from_pretrained>", False, f"from_pretrained failed: {saved.meta['hf_error']}"))
+    elif hf:
         weights = {k: v for k, v in saved.items() if k.startswith("param/")}
         # every saved weight must come back; parameters HuggingFace adds on its own (e.g. a pooler the entry was built
         # without, initialized fresh by from_pretrained) are not part of the checkpoint and are ignored.

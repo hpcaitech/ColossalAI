@@ -8,6 +8,8 @@ reference in float64 (``truth``), the reference at the tested precision (``ref``
 - ``check_fwd_bwd``: one forward and backward of a function or module (``capture.fwd_bwd``).
 - ``check_training``: a model_zoo entry trained through a booster plugin (``capture.training``). ``steps=1``
   compares outputs, gradients and the weights after one optimizer step; ``steps=N`` adds the loss of every step.
+- ``check_optimizer``: an optimizer's update rule against a reference optimizer, from the same weights and gradients
+  (``capture.optimizer_step``).
 
 For training, the precision recipes must match, guarded three ways:
 
@@ -27,7 +29,10 @@ from colossalai.accelerator import get_accelerator
 from colossalai.booster.mixed_precision import MixedPrecision
 from colossalai.booster.plugin import LowLevelZeroPlugin, Plugin, TorchDDPPlugin
 
+from ..capture.cache import cached_run, reference_key
 from ..capture.fwd_bwd import run_fwd_bwd
+from ..capture.optimizer_step import run_optimizer
+from ..capture.plugins import FirstMomentIsGradient, exposes_gradients
 from ..capture.recipes import FLOAT64, recipe_for
 from ..capture.training import default_optimizer, prepare, run_boosted, run_reference
 from ..capture.utils import count_calls
@@ -49,18 +54,37 @@ def training_traces(
     seed: int = 0,
     grad_seed: int = 0,
     optimizer_fn: Callable = default_optimizer,
+    cache_dir: Optional[str] = None,
 ) -> Tuple[Trace, Trace, Trace]:
     """Run ``entry`` (a model_zoo name or entry tuple) and return ``(test, ref, truth)`` for ``judge``.
 
     Must be called with ``torch.distributed`` initialized (e.g. inside ``colossalai.testing.spawn``).
     Raises ``UnsupportedRecipe`` for unverified configurations and ``RecipeMismatch`` if the dtypes differ.
+    For Gemini and FSDP, whose gradients are read from Adam's first moment, both sides run ``optimizer_fn`` with
+    ``beta1 = 0`` (``capture.plugins``).
+
+    With ``cache_dir``, the reference runs (``truth`` and ``ref``) are saved there and reused while nothing that
+    determines them changes (``capture.cache``); the float64 truth is shared by every configuration of the entry. Use
+    it for real weights, where the float64 run is the slow part. The model under test always runs.
     """
     recipe = recipe_for(plugin, mixed_precision)
+    if not exposes_gradients(plugin):
+        optimizer_fn = FirstMomentIsGradient(optimizer_fn)
     s = prepare(entry, steps, seed)
-    truth = run_reference(s, FLOAT64, optimizer_fn, grad_seed, role="truth")
-    ref = run_reference(s, recipe, optimizer_fn, grad_seed, role="ref")
-    ref_again = run_reference(s, recipe, optimizer_fn, grad_seed, role="ref")
-    ref = _worse_of(ref, ref_again, truth)
+    truth = cached_run(
+        cache_dir,
+        s.name,
+        "truth",
+        reference_key(s, optimizer_fn, grad_seed),
+        lambda: run_reference(s, FLOAT64, optimizer_fn, grad_seed, role="truth"),
+    )
+
+    def run_ref() -> Trace:
+        ref = run_reference(s, recipe, optimizer_fn, grad_seed, role="ref")
+        ref_again = run_reference(s, recipe, optimizer_fn, grad_seed, role="ref")
+        return _worse_of(ref, ref_again, truth)
+
+    ref = cached_run(cache_dir, s.name, "ref", reference_key(s, optimizer_fn, grad_seed, recipe), run_ref)
     test = run_boosted(s, plugin, mixed_precision, optimizer_fn, grad_seed, role="test")
     mismatches = dtype_mismatches(test, ref)
     if mismatches:
@@ -111,6 +135,31 @@ def check_fwd_bwd(
     return report
 
 
+def check_optimizer(
+    test_fn: Callable,
+    ref_fn: Callable,
+    params: Union[torch.nn.Module, Dict[str, torch.Tensor]],
+    dtype: torch.dtype,
+    steps: int = 1,
+    grad_seed: int = 0,
+    grads_fn: Optional[Callable] = None,
+    **judge_kwargs,
+) -> AlignmentReport:
+    """Judge the weights after each of ``steps`` steps of the optimizer ``test_fn(params)`` builds against those of the
+    reference optimizer ``ref_fn(params)`` at ``dtype``, with ``ref_fn`` in float64 as the truth.
+
+    All three runs start from the same weights (``params``: a module, e.g. a model_zoo model, or a name to tensor
+    dict) and get the same gradients at every step (``run_optimizer``), so only the update rule is compared. The
+    reference must be an independent implementation that runs in float64, e.g. the official one of a paper; its
+    internal precision choices (say, an orthogonalization done in bfloat16) must match the tested one's, as for the
+    precision recipes of ``check_training``. Several steps exercise the optimizer state (momentum)."""
+    kwargs = dict(steps=steps, grad_seed=grad_seed, grads_fn=grads_fn)
+    truth = run_optimizer(ref_fn, params, torch.float64, role="truth", **kwargs)
+    ref = run_optimizer(ref_fn, params, dtype, role="ref", **kwargs)
+    test = run_optimizer(test_fn, params, dtype, role="test", **kwargs)
+    return judge(test, ref, truth, **judge_kwargs)
+
+
 def dtype_mismatches(test: Trace, ref: Trace) -> List[str]:
     """Dtype records present in both runs that differ, as ``"<key>: test <dtypes> / ref <dtypes>"``."""
     test_dtypes, ref_dtypes = test.meta["dtypes"], ref.meta["dtypes"]
@@ -121,7 +170,9 @@ def dtype_mismatches(test: Trace, ref: Trace) -> List[str]:
     ]
 
 
-def blank_control(entry: Union[str, tuple], steps: int = 1, seed: int = 0, slack: float = 1.05) -> AlignmentReport:
+def blank_control(
+    entry: Union[str, tuple], steps: int = 1, seed: int = 0, slack: float = 1.05, cache_dir: Optional[str] = None
+) -> AlignmentReport:
     """Defense 3: check the reference implementation itself before trusting any comparison.
 
     Uses a configuration in which the plugin changes no arithmetic: one device, ``LowLevelZeroPlugin(stage=1,
@@ -132,7 +183,7 @@ def blank_control(entry: Union[str, tuple], steps: int = 1, seed: int = 0, slack
         plugin = TorchDDPPlugin()
     else:
         plugin = LowLevelZeroPlugin(stage=1, precision="bf16")
-    report = check_training(entry, plugin, steps=steps, seed=seed)
+    report = check_training(entry, plugin, steps=steps, seed=seed, cache_dir=cache_dir)
     # a failed entry (missing tensor, shape) counts too; NaN errors compare False, so check passed explicitly
     off = [e for e in report.entries if not e.passed or e.test_error > slack * e.baseline_error]
     if off:
