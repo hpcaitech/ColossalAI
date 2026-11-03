@@ -302,9 +302,8 @@ and every batch byte for byte, the code that selects outputs and routers, the op
 the recipe (for `ref` only: one float64 truth serves every configuration of an entry), the torch and transformers
 versions, the device, and the source of the capture code itself, so a change to how references run invalidates old
 entries without anyone bumping a version. Files are `<cache_dir>/<entry>/<truth|ref>-<key>.safetensors`, written
-atomically, never overwritten and group-writable; the model under test always runs. The team's shared cache is
-`/mnt/beegfs/ColossalAI/shared-results/numerics/cache/`, next to the acceptance reports and apart from `shared-cache`
-(model weights): pass it as `--cache-dir`, so that one float64 truth serves everyone.
+atomically, never overwritten and group-writable; the model under test always runs. Point a team at one shared
+directory and a single float64 truth serves everyone.
 
 ### Mixture of experts: routing flips
 
@@ -481,7 +480,7 @@ every correct case keeps its ratio and its pass.
 
 ## An optimizer's update rule
 
-For a new optimizer (2E: Muon, OrScale) there is no reference model; what is compared is the update rule.
+For a new optimizer (Muon, say) there is no reference model; what is compared is the update rule.
 `scenarios.independent_impl.check_optimizer` runs the optimizer under test and a reference optimizer from the same
 weights with the same gradients at every step, and judges the weights after each step with the baseline-error rule:
 the reference in float64 is the truth, the reference at the tested precision the baseline.
@@ -506,25 +505,25 @@ precision choices (an orthogonalization done in bfloat16, say), as the precision
 a precision in which the updates are visible: in bfloat16 an update of `1e-3` is below the resolution of weights
 around 1 and rounds away, so both a correct and a wrong rule leave the weights unchanged.
 
-## L2 acceptance of a model line
+## Acceptance of a model
 
-Each model line runs the acceptance of its own model and hands in the report; the tool's owners review it. The rules
-are the tool's defaults and cannot be changed from the command line. If a check fails, or a rule looks wrong for a
-model, open an issue with the report attached instead of loosening the rule on a branch.
+The acceptance command runs every check of a model under every supported configuration and writes one JSON report.
+The rules are the tool's defaults and cannot be changed from the command line: if a check fails, or a rule looks
+wrong for a model, report it with the JSON attached instead of loosening the rule on a branch.
 
-The five numeric checks of L2, and what covers them:
+The five numeric checks of a model's correctness review (level L2), numbered as in the report's `l2_item` field:
 
-| L2 check | Covered by |
+| Check | Covered by |
 | --- | --- |
 | ① aligned with the reference: logits, loss, per-layer gradients, weights after one step | `independent_impl` of the acceptance command |
 | ② N-device data parallel equals single-device gradient accumulation | `data_parallel` of the acceptance command |
-| ③ every replaced operator (fused kernel, Triton, chunked implementation) matches a plain one | an operator test written by the line, below |
+| ③ every replaced operator (fused kernel, Triton, chunked implementation) matches a plain one | an operator test written with the model, below |
 | ④ resuming from a checkpoint equals uninterrupted training; the HuggingFace export loads with `from_pretrained` | `resume` of the acceptance command |
 | ⑤ short loss curve with the same seed and data order matches the reference | `independent_impl` (every step's loss is judged) |
 
-### What a line writes
+### What a model needs
 
-1. **Its model_zoo entry**, the one L1 needs anyway, with `ModelAttribute(numerics=NumericsSpec(...))` and the
+1. **Its model_zoo entry**, the one the pass-through tests (L1) need anyway, with `ModelAttribute(numerics=NumericsSpec(...))` and the
    requirements of [What an entry has to satisfy](#what-an-entry-has-to-satisfy). `NumericsSpec()` is enough for a
    HuggingFace model.
 2. **One operator test per replaced operator**, in the repository under `tests/`: a plain implementation written from
@@ -553,8 +552,8 @@ python -m tests.kit.numerics.acceptance --entry transformers_xxx --out transform
 By default every check runs under every configuration: `ddp_fp32`, `ddp_fp16`, `ddp_bf16`, `zero1_fp32`,
 `zero1_bf16`, `zero2_fp32`, `zero2_bf16`, `zero2_bf16_offload`, `shardformer_fp32`, `shardformer_bf16`
 (`HybridParallelPlugin` with `tp_size=1`), `gemini_bf16`, `gemini_fp16` (with gradient accumulation enabled),
-`fsdp_fp32`, `fsdp_bf16`. `--configs` and `--checks` (comma-separated) select a subset while developing; the report
-handed in covers them all. `data_parallel` (2 devices, 4 micro-batches) and `data_parallel_tokens` (the same with the
+`fsdp_fp32`, `fsdp_bf16`. `--configs` and `--checks` (comma-separated) select a subset while developing; a report
+meant as evidence covers them all. `data_parallel` (2 devices, 4 micro-batches) and `data_parallel_tokens` (the same with the
 entry's `token_loss`; `not_run` for entries without one) need two devices, the rest one. With real weights, pass
 `--cache-dir` to reuse the reference runs (see [Real weights](#real-weights-caching-the-reference)). Run from a pushed
 commit with a clean tree: the report records the commit and whether the tree was dirty, and a dirty report cannot be
@@ -576,22 +575,20 @@ The top level holds `schema_version`, `entry`, `created`, `command`, `repository
 `environment` (torch, transformers and ColossalAI versions, accelerator, device name and count), `steps` and
 `summary` (count per status).
 
-Reports go to `/mnt/beegfs/ColossalAI/shared-results/numerics/<line>/<entry>/<YYYYMMDD>-<commit[:8]>.json`, where
-`<line>` is the roadmap's line number and `<entry>` the model_zoo name, e.g.
-`shared-results/numerics/2A/transformers_qwen3_moe/20261105-2e6bb3c0.json`: a new file for each acceptance run, never
-overwriting an older one. They are not kept in `shared-cache`, which holds model
-weights in the HuggingFace hub layout with per-file checksums. Once model-level checks run in CI, their expected
-values will move into the repository, as PyTorch and Megatron-LM keep theirs.
+Keep every report, one new file per run named by entry, date and commit (e.g.
+`transformers_mixtral/20261105-2e6bb3c0.json`), so that two runs of the same model can be compared. Once
+model-level checks run in CI, their expected values will move into the repository, as PyTorch and Megatron-LM keep
+theirs.
 
-### Per line
+### Special cases
 
-| Line | Special case | What to do now |
+| Model | Special case | What to do |
 | --- | --- | --- |
-| 2A MoE | a router flip makes single tensors jump | declare `NumericsSpec(routers=...)` (and `routers=` of `check_fwd_bwd`); the report counts flips in test and ref |
-| 2B hybrid architectures | multimodal model trained on its text path | freeze or replace the vision tower with `NumericsSpec(prepare_fn=...)`, applied to every run; list skipped trainable branches in `unused_params` |
-| 2C, 2D diffusion | random masks, noise, timesteps | generate them in `data_gen_fn` |
-| 2E optimizers | no reference model; the update rule is compared | `check_optimizer(test_fn, ref_fn, params, dtype, steps)` against the reference implementation, see [An optimizer's update rule](#an-optimizers-update-rule) |
-| 2F video generation, 2G Cosmos 3 | outputs are not logits; the reference is not HuggingFace | `output_fn` selects the tensors, `reference_fn` builds the official implementation |
+| Mixture of experts | a router flip makes single tensors jump | declare `NumericsSpec(routers=...)` (and `routers=` of `check_fwd_bwd`); the report counts flips in test and ref |
+| Multimodal model trained on its text path | the vision tower is frozen or skipped | freeze or replace it with `NumericsSpec(prepare_fn=...)`, applied to every run; list skipped trainable branches in `unused_params` |
+| Diffusion models | random masks, noise, timesteps | generate them in `data_gen_fn` |
+| Optimizers | no reference model; the update rule is compared | `check_optimizer(test_fn, ref_fn, params, dtype, steps)` against the reference implementation, see [An optimizer's update rule](#an-optimizers-update-rule) |
+| Video generation, other non-HuggingFace models | outputs are not logits; the reference is an official repository | `output_fn` selects the tensors, `reference_fn` builds the official implementation |
 
 Supported plugins are `TorchDDPPlugin`, `LowLevelZeroPlugin`, `HybridParallelPlugin` with `tp_size=1`,
 `GeminiPlugin` and `TorchFSDPPlugin`, in the configurations of the recipe table. Tensor, pipeline and expert

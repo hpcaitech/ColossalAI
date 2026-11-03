@@ -1,9 +1,9 @@
 """L2 acceptance report of a model_zoo entry: every check under every configuration, written to one JSON file.
 
-Model lines run this themselves and hand in the JSON; the judging rules are the tool's defaults and cannot be changed
-from here. Each result is ``passed``, ``failed`` (including a run that raised), ``unsupported`` (the tool refuses the
-configuration, e.g. an unverified precision recipe) or ``not_run`` (this machine cannot run it). The report records the
-repository commit (and whether the tree was dirty), the command and the environment, so it can be rerun and audited.
+The judging rules are the tool's defaults and cannot be changed from here. Each result is ``passed``, ``failed``
+(including a run that raised), ``unsupported`` (the tool refuses the configuration, e.g. an unverified precision
+recipe) or ``not_run`` (this machine cannot run it). The report records the repository commit (and whether the tree
+was dirty), the command and the environment, so it can be rerun and audited.
 
     python -m tests.kit.numerics.acceptance --entry transformers_mixtral --out mixtral.json
     python -m tests.kit.numerics.acceptance --entry transformers_mixtral --configs ddp_fp32,zero2_bf16 \\
