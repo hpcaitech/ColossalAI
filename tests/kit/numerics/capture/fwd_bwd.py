@@ -8,7 +8,7 @@ from torch import Tensor, nn
 
 from ..compare import flatten_tensors
 from ..trace import Trace
-from .utils import cast_floating, full_precision_matmul, missing_grads, upstream_loss
+from .utils import RoutingRecorder, cast_floating, full_precision_matmul, missing_grads, upstream_loss
 
 
 def run_fwd_bwd(
@@ -17,6 +17,7 @@ def run_fwd_bwd(
     dtype: torch.dtype,
     grad_seed: int = 0,
     unused_params: Iterable[str] = (),
+    routers: Any = None,
     **meta,
 ) -> Trace:
     """Run ``fn(**inputs)`` in ``dtype`` and backpropagate a fixed random upstream gradient.
@@ -27,6 +28,7 @@ def run_fwd_bwd(
     Returns a ``Trace`` with ``{"out/...": output, "grad/<input name>": input grad, "grad/param/<param name>": param
     grad}``; ``meta`` (e.g. ``role="truth"``) is recorded alongside dtype, function name and seed. Parameters that
     require a gradient but got none, other than the ``unused_params`` named, are listed in ``meta["missing_grads"]``.
+    For a module, ``routers`` (a ``spec.Routers``) records the experts each router call chose in ``meta["routing"]``.
     """
     fn_name = type(fn).__name__ if isinstance(fn, nn.Module) else getattr(fn, "__qualname__", repr(fn))
     if isinstance(fn, nn.Module):
@@ -37,8 +39,11 @@ def run_fwd_bwd(
             value = value.detach().clone().requires_grad_(True)
         leaves[name] = value
 
+    # a plain function has no modules to hook: its routing stays empty, which the diagnosis reports
+    recorder = RoutingRecorder(fn if isinstance(fn, nn.Module) else nn.Module(), routers)
     with full_precision_matmul():
         outputs = flatten_tensors(fn(**leaves), "out")
+        recorder.remove()
         loss = upstream_loss(outputs, grad_seed)
         if loss is not None:
             loss.backward()
@@ -54,4 +59,6 @@ def run_fwd_bwd(
                 results[f"grad/param/{name}"] = param.grad
         trainable = {name: p.grad for name, p in fn.named_parameters() if p.requires_grad}
         missing = missing_grads(trainable, unused_params)
+    if routers is not None:
+        meta["routing"] = recorder.calls
     return Trace.capture(results, fn=fn_name, dtype=str(dtype), grad_seed=grad_seed, missing_grads=missing, **meta)

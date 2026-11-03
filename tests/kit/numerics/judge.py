@@ -15,7 +15,7 @@ baseline error with: the relative Frobenius error may be at most ``k * C**depth 
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
@@ -62,6 +62,8 @@ class AlignmentReport:
     entries: List[Entry] = field(default_factory=list)
     # what Entry.baseline_error holds: the baseline error, or the allowed bound of judge_relative_bound
     baseline_label: str = "baseline"
+    # routing flips against the truth, from diagnose_routing: {"routings": n, "test": flips, "ref": flips, "calls": [...]}
+    routing: Optional[Dict[str, Any]] = None
 
     @property
     def failures(self) -> List[Entry]:
@@ -82,6 +84,8 @@ class AlignmentReport:
             lines.append(f"{e.name:<56} {e.baseline_error:9.2e} {e.test_error:9.2e} {e.ratio:8.2f}  {verdict}")
         if len(rows) > limit:
             lines.append(f"... {len(rows) - limit} more")
+        if self.routing is not None:
+            lines.append(_describe_routing(self.routing))
         return "\n".join(lines)
 
     def __str__(self) -> str:
@@ -181,6 +185,68 @@ def require_gradients(report: AlignmentReport, **traces: Any) -> AlignmentReport
     for name, missing_in in sorted(roles.items()):
         report.entries.append(Entry(f"grad/param/{name}", False, f"no gradient in {', '.join(missing_in)}"))
     return report
+
+
+def diagnose_routing(report: AlignmentReport, test: Any, ref: Any, truth: Any) -> AlignmentReport:
+    """Count the routing flips of ``test`` and ``ref`` against ``truth`` and note them on the failing tensors.
+
+    Each trace holds ``meta["routing"]`` when ``Routers`` were declared: per router call of the first forward, the
+    sorted top-k experts of every token. A routing is one token at one router call; it flipped if its expert set
+    differs from the truth's. Flips in ``ref`` are what the precision itself causes, so a ``test`` with many more is
+    suspect. A token that flips gets other experts' outputs, so tensors downstream of it can exceed the baseline error
+    by far without a bug; failing tensors get the counts appended to their reason, to read them in that light. The
+    verdicts do not change, except that the routings must be comparable: a router call missing from a run, or calls
+    of different sizes, fail as ``<routing>``.
+    """
+    traces = {"test": test, "ref": ref, "truth": truth}
+    calls = {role: getattr(trace, "meta", {}).get("routing") for role, trace in traces.items()}
+    if all(c is None for c in calls.values()):
+        return report
+    problem = _routing_problem(calls)
+    if problem:
+        report.entries.append(Entry("<routing>", False, problem))
+        return report
+    per_call, flips = [], {"test": 0, "ref": 0}
+    for i, truth_call in enumerate(calls["truth"]):
+        row = {"module": calls["test"][i]["module"], "routings": len(truth_call["experts"])}
+        for role in flips:
+            row[role] = sum(a != b for a, b in zip(calls[role][i]["experts"], truth_call["experts"]))
+            flips[role] += row[role]
+        per_call.append(row)
+    report.routing = {"routings": sum(row["routings"] for row in per_call), **flips, "calls": per_call}
+    if flips["test"]:
+        note = f"routing: {flips['test']} flips in test, {flips['ref']} in ref"
+        for entry in report.failures:
+            entry.reason = f"{entry.reason}; {note}"
+    return report
+
+
+def _routing_problem(calls: Dict[str, Optional[List[Dict[str, Any]]]]) -> Optional[str]:
+    missing = [role for role, c in calls.items() if not c]
+    if missing:
+        return f"no router call recorded in {', '.join(missing)}: check Routers.select"
+    counts = {role: len(c) for role, c in calls.items()}
+    if len(set(counts.values())) > 1:
+        return "router calls differ: " + ", ".join(f"{role} {n}" for role, n in counts.items())
+    for i, truth_call in enumerate(calls["truth"]):
+        shapes = {role: _call_shape(c[i]) for role, c in calls.items()}
+        if len(set(shapes.values())) > 1:
+            return f"router call {i} ({truth_call['module']}) routes different token counts: {shapes}"
+    return None
+
+
+def _call_shape(call: Dict[str, Any]) -> Tuple[int, int]:
+    experts = call["experts"]
+    return len(experts), len(experts[0]) if experts else 0
+
+
+def _describe_routing(routing: Dict[str, Any]) -> str:
+    n = routing["routings"]
+
+    def share(role: str) -> str:
+        return f"{routing[role]} ({routing[role] / n:.2%})" if n else str(routing[role])
+
+    return f"routing flips against truth over {n} token routings: test {share('test')}, ref {share('ref')}"
 
 
 def machine_epsilon(dtype: torch.dtype) -> float:

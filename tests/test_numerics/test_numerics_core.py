@@ -5,8 +5,10 @@ import torch
 from safetensors.torch import save_file
 
 from tests.kit.numerics import (
+    Routers,
     Trace,
     assert_aligned,
+    diagnose_routing,
     error_multiplier,
     flatten_tensors,
     judge,
@@ -204,3 +206,82 @@ def test_missing_gradients_fail_unless_declared():
     # declared unused, and frozen parameters are never expected to have a gradient
     declared = run_fwd_bwd(_PartlyUsed(), inputs, torch.float32, unused_params=("unused.weight", "unused.bias"))
     assert declared.meta["missing_grads"] == []
+
+
+class _TinyMoE(torch.nn.Module):
+    """Top-2 of 4 experts, weighted by the softmax of the router scores."""
+
+    def __init__(self, gate: type = torch.nn.Linear):
+        super().__init__()
+        self.gate = gate(8, 4, bias=False)
+        self.experts = torch.nn.ModuleList(torch.nn.Linear(8, 8) for _ in range(4))
+
+    def forward(self, x):
+        weights, chosen = self.gate(x).softmax(-1).topk(2, dim=-1)
+        out = torch.zeros_like(x)
+        for k in range(2):
+            for e, expert in enumerate(self.experts):
+                out = out + (chosen[..., k : k + 1] == e) * weights[..., k : k + 1] * expert(x)
+        return out
+
+
+class _InvertedGate(torch.nn.Linear):
+    """A routing bug: the first token of every sequence gets its scores negated, so it goes to the other two experts."""
+
+    def forward(self, x):
+        scores = super().forward(x)
+        return torch.cat([-scores[:, :1], scores[:, 1:]], dim=1)
+
+
+ROUTERS = Routers(select=lambda name, module: name == "gate", top_k=2)
+
+
+def _moe_runs(test_module, routers=ROUTERS):
+    torch.manual_seed(0)
+    ref_module = _TinyMoE()
+    test_module.load_state_dict(ref_module.state_dict())
+    inputs = {"x": torch.randn(4, 16, 8, dtype=torch.float64)}
+    truth = run_fwd_bwd(ref_module, inputs, torch.float64, routers=routers)
+    ref = run_fwd_bwd(ref_module, inputs, torch.bfloat16, routers=routers)
+    test = run_fwd_bwd(test_module, inputs, torch.bfloat16, routers=routers)
+    return test, ref, truth
+
+
+def test_routing_is_recorded_and_flips_counted():
+    test, ref, truth = _moe_runs(_TinyMoE())
+    assert [call["module"] for call in truth.meta["routing"]] == ["gate"]
+    assert len(truth.meta["routing"][0]["experts"]) == 4 * 16
+    report = diagnose_routing(judge(test, ref, truth), test, ref, truth)
+    report.assert_pass()
+    # the same code at the same precision: whatever the precision flips, it flips in both
+    assert report.routing["routings"] == 64
+    assert report.routing["test"] == report.routing["ref"]
+    assert "routing flips against truth" in report.format()
+
+
+def test_routing_flips_are_noted_on_failures_without_changing_verdicts():
+    test, ref, truth = _moe_runs(_TinyMoE(gate=_InvertedGate))
+    judged = judge(test, ref, truth)
+    verdicts = {e.name: e.passed for e in judged.entries}
+    report = diagnose_routing(judged, test, ref, truth)
+    assert {e.name: e.passed for e in report.entries} == verdicts
+    # the first token of each of the 4 sequences flips in test, on top of what ref flips elsewhere
+    assert report.routing["test"] >= 4 and report.routing["test"] > report.routing["ref"]
+    assert report.failures and all("routing:" in e.reason for e in report.failures)
+
+
+def test_routers_that_match_nothing_fail():
+    nothing = Routers(select=lambda name, module: False, top_k=2)
+    test, ref, truth = _moe_runs(_TinyMoE(), routers=nothing)
+    report = diagnose_routing(judge(test, ref, truth), test, ref, truth)
+    assert [e.name for e in report.failures] == ["<routing>"]
+    assert "Routers.select" in report.failures[0].reason
+
+
+def test_routing_survives_save_and_load(tmp_path):
+    test, ref, truth = _moe_runs(_TinyMoE())
+    for name, trace in (("test", test), ("ref", ref), ("truth", truth)):
+        trace.save(tmp_path / f"{name}.safetensors")
+    loaded = [Trace.load(tmp_path / f"{name}.safetensors") for name in ("test", "ref", "truth")]
+    report = diagnose_routing(judge(*loaded), *loaded)
+    assert report.routing == diagnose_routing(judge(test, ref, truth), test, ref, truth).routing

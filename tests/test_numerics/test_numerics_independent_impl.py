@@ -7,10 +7,10 @@ from torch import nn
 
 import colossalai
 from colossalai.accelerator import get_accelerator
-from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo.registry import ModelAttribute
-from tests.kit.numerics import NumericsSpec, Trace
+from tests.kit.numerics import NumericsSpec, Routers, Trace
 from tests.kit.numerics.capture.recipes import Recipe, UnsupportedRecipe, recipe_for
 from tests.kit.numerics.capture.training import prepare, run_reference
 from tests.kit.numerics.scenarios.independent_impl import (
@@ -227,7 +227,93 @@ def test_check_fwd_bwd():
     assert {e.name for e in report.entries} == {"out", "grad/input", "grad/param/weight", "grad/param/bias"}
     report.assert_pass()
 
+    # the fused path assertion: forward of the module under test must run, an unrelated function must not
+    called = check_fwd_bwd(copy.deepcopy(ref_fn), ref_fn, inputs, torch.bfloat16, expect_calls=[(nn.Linear, "forward")])
+    assert [(e.name, e.passed) for e in called.entries if e.name.startswith("<called>")] == [
+        ("<called>/Linear.forward", True)
+    ]
+    missed = check_fwd_bwd(copy.deepcopy(ref_fn), ref_fn, inputs, torch.bfloat16, expect_calls=[(torch, "layer_norm")])
+    assert [(e.name, e.reason) for e in missed.failures] == [("<called>/torch.layer_norm", "never called")]
+    assert nn.Linear.forward.__name__ == "forward" and torch.layer_norm.__name__ == "layer_norm"  # restored
+
     buggy = _DropColumn(64, 32)
     buggy.load_state_dict(ref_fn.state_dict())
     failed = {e.name for e in check_fwd_bwd(buggy, ref_fn, inputs, torch.bfloat16).failures}
     assert {"out", "grad/input", "grad/param/weight"} <= failed
+
+
+def _tiny_llama():
+    import transformers
+
+    config = transformers.LlamaConfig(
+        hidden_size=32,
+        intermediate_size=64,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        num_hidden_layers=2,
+        vocab_size=128,
+        attn_implementation="eager",
+    )
+    return transformers.LlamaModel(config)
+
+
+def _tokens():
+    return {"input_ids": torch.randint(0, 128, (2, 8))}
+
+
+def _hidden(output):
+    return {"hidden": output.last_hidden_state}
+
+
+def _check_shardformer(rank, world_size, port, precision):
+    _launch(rank, world_size, port)
+    entry = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+    plugin = HybridParallelPlugin(tp_size=1, pp_size=1, precision=precision)
+    check_training(entry, plugin, steps=STEPS).assert_pass()
+    for kwargs, match in [
+        (dict(zero_stage=1), "zero_stage"),
+        (dict(max_norm=1.0), "max_norm"),
+        (dict(precision="fp16"), "not verified"),
+    ]:
+        with pytest.raises(UnsupportedRecipe, match=match):
+            recipe_for(HybridParallelPlugin(**{"tp_size": 1, "pp_size": 1, "precision": "bf16", **kwargs}))
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="HybridParallelPlugin requires a CUDA or NPU device")
+@pytest.mark.parametrize("precision", ["fp32", "bf16"])
+@rerun_if_address_is_in_use()
+def test_shardformer_aligned(precision):
+    spawn(_check_shardformer, 1, precision=precision)
+
+
+class _TinyMoE(nn.Module):
+    """Top-2 of 4 experts, for routing diagnostics through a plugin."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = nn.Linear(64, 4, bias=False)
+        self.experts = nn.ModuleList(nn.Linear(64, 32) for _ in range(4))
+
+    def forward(self, x):
+        weights, chosen = self.gate(x).softmax(-1).topk(2, dim=-1)
+        out = 0
+        for k in range(2):
+            for e, expert in enumerate(self.experts):
+                out = out + (chosen[:, k : k + 1] == e) * weights[:, k : k + 1] * expert(x)
+        return {"y": out}
+
+
+def _check_routing_in_training(rank, world_size, port):
+    _launch(rank, world_size, port)
+    spec = NumericsSpec(routers=Routers(select=lambda name, module: name == "gate", top_k=2))
+    entry = (_TinyMoE, _data, lambda out: out, None, ModelAttribute(numerics=spec))
+    report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
+    report.assert_pass()
+    # the first forward only: 16 tokens through one router, and the plugin reproduces the reference's routing
+    assert report.routing["routings"] == 16
+    assert report.routing["test"] == report.routing["ref"]
+
+
+@rerun_if_address_is_in_use()
+def test_routing_counted_in_training():
+    spawn(_check_routing_in_training, 1)

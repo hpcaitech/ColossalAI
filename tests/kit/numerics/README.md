@@ -221,7 +221,9 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `TorchDDPPlugin()`, `mixed_precision="bf16"` | refused: `BF16MixedPrecision` is not implemented | |
    | `LowLevelZeroPlugin(precision="fp32")`, stage 1 or 2 | float32 | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
-   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cpu_offload` or `cast_inputs=False`; other plugins | refused: not verified yet | |
+   | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="fp32")` (the shardformer path) | float32 | CUDA or NPU |
+   | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
+   | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cpu_offload` or `cast_inputs=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; other plugins | refused: not verified yet | |
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
    the gradient dtypes and the optimizer state dtypes. Any difference raises `RecipeMismatch` before numbers are
@@ -257,6 +259,32 @@ AdamW step: the first update is about `lr * sign(grad)`, which hardly depends on
 
 These checks are run by hand while developing a model and attached to its review; CI runs only the tool's own tests
 in `tests/test_numerics`.
+
+### Mixture of experts: routing flips
+
+At low precision a router can send a token to a different set of experts than the float64 truth does. That token
+then gets other experts' outputs, so the tensors downstream of it can exceed the baseline error by far although
+nothing is wrong. Declare the routers and the report counts these flips:
+
+```python
+spec = NumericsSpec(routers=Routers(select=lambda name, module: name.endswith("mlp.gate"), top_k=8))
+```
+
+The `transformers_mixtral` entry declares its routers this way (`tests/kit/model_zoo/transformers/mixtral.py`); use a
+module-level function rather than a lambda where the entry is passed to spawned processes.
+
+`select(name, module)` picks the router modules by qualified name, in whichever model is being run; calls are matched
+between runs by their order, so a reference with other names works if `select` matches its routers too. Each run
+records, for its first forward, the sorted top-`top_k` experts of every token at every router call
+(`meta["routing"]`, saved with the trace). `scores_fn` picks the scores from the router's output (default: the output,
+or its first element for a tuple); a model that adds a bias or limits expert groups before its top-k must return
+those adjusted scores.
+
+The report then holds `routing`: the number of token routings, the flips against the truth in `test` and in `ref`,
+and the same per router call. Flips in `ref` are what the precision itself causes; a `test` with many more is
+suspect. Failing tensors get `routing: N flips in test, M in ref` appended to their reason. The counts never change a
+verdict; a router missing from a run, or calls that route different numbers of tokens, fail as `<routing>`.
+For a mixture-of-experts layer on its own, pass the same `routers=` to `check_fwd_bwd`.
 
 ## Data-parallel equivalence
 
@@ -321,6 +349,8 @@ Mixtral, Llama, GPT and BERT with 1 and 2 devices:
 | `TorchDDPPlugin()` fp32, `LowLevelZeroPlugin(precision="fp32")` stage 1 and 2 | identical; `from_pretrained` reads every weight back |
 | `TorchDDPPlugin()` with `mixed_precision="fp16"` | identical with `shard_optimizer=False`; a sharded optimizer fails to load (see below) |
 | `LowLevelZeroPlugin(precision="bf16")` stage 1 and 2 | **not identical**: weights differ in the last bf16 bit (e.g. 2**-8 around 1) |
+| `HybridParallelPlugin(tp_size=1, pp_size=1)` fp32 (Mixtral, 1 device) | identical |
+| `HybridParallelPlugin(tp_size=1, pp_size=1, precision="bf16")` (Mixtral, 1 device) | **not identical**, the same symptom as LowLevelZero bf16; the cause is not yet traced |
 
 The bf16 difference is real: LowLevelZero does not save the float32 master weights. On load,
 `update_master_params` rebuilds them from the bf16 weights, so their low bits are lost and later updates round
@@ -332,6 +362,92 @@ Two loading failures, not specific to this tool, are worked around with `shard_o
   which the CPU accelerator does not support. The CPU self-tests save the optimizer unsharded.
 - With `TorchDDPPlugin` and `mixed_precision="fp16"`, loading a sharded optimizer raises
   `'OptimizerWrapper' object has no attribute 'state'`: the optimizer is wrapped twice and only one wrapper is removed.
+
+## L2 acceptance of a model line
+
+Each model line runs the acceptance of its own model and hands in the report; the tool's owners review it. The rules
+are the tool's defaults and cannot be changed from the command line. If a check fails, or a rule looks wrong for a
+model, open an issue with the report attached instead of loosening the rule on a branch.
+
+The five numeric checks of L2, and what covers them:
+
+| L2 check | Covered by |
+| --- | --- |
+| ① aligned with the reference: logits, loss, per-layer gradients, weights after one step | `independent_impl` of the acceptance command |
+| ② N-device data parallel equals single-device gradient accumulation | `data_parallel` of the acceptance command |
+| ③ every replaced operator (fused kernel, Triton, chunked implementation) matches a plain one | an operator test written by the line, below |
+| ④ resuming from a checkpoint equals uninterrupted training; the HuggingFace export loads with `from_pretrained` | `resume` of the acceptance command |
+| ⑤ short loss curve with the same seed and data order matches the reference | `independent_impl` (every step's loss is judged) |
+
+### What a line writes
+
+1. **Its model_zoo entry**, the one L1 needs anyway, with `ModelAttribute(numerics=NumericsSpec(...))` and the
+   requirements of [What an entry has to satisfy](#what-an-entry-has-to-satisfy). `NumericsSpec()` is enough for a
+   HuggingFace model.
+2. **One operator test per replaced operator**, in the repository under `tests/`: a plain implementation written from
+   the formula, compared with `check_fwd_bwd`, and `expect_calls` naming the fused function, so that a run that
+   silently fell back to an unfused path fails:
+
+   ```python
+   report = check_fwd_bwd(FusedRMSNorm(...), rms_norm_from_formula, inputs, torch.bfloat16,
+                          expect_calls=[(fused_module, "fused_rms_norm")])
+   report.assert_pass()
+   ```
+
+   `expect_calls` takes `(owner, name)` pairs and counts the calls of `getattr(owner, name)` during the test run
+   (`count_calls`); as with `unittest.mock.patch`, `owner` is where the calling code looks the name up.
+
+Checks ② and ④ need nothing more: they compare two runs of ColossalAI's own code.
+
+### Running it
+
+```bash
+python -m tests.kit.numerics.acceptance --entry transformers_xxx --out transformers_xxx.json
+```
+
+By default every check runs under every configuration: `ddp_fp32`, `ddp_fp16`, `ddp_bf16`, `zero1_fp32`,
+`zero1_bf16`, `zero2_fp32`, `zero2_bf16`, `zero2_bf16_offload`, `shardformer_fp32`, `shardformer_bf16`
+(`HybridParallelPlugin` with `tp_size=1`). `--configs` and `--checks` (comma-separated) select a subset while
+developing; the report handed in covers them all. `data_parallel` needs two devices, the rest one. Run from a pushed
+commit with a clean tree: the report records the commit and whether the tree was dirty, and a dirty report cannot be
+reproduced. The command exits with 1 if anything failed.
+
+### The report
+
+One JSON file, plus a summary table printed to the terminal. Each result is one check under one configuration:
+
+| Field | Content |
+| --- | --- |
+| `check`, `config`, `l2_item` | what ran, and the L2 check it answers |
+| `status` | `passed`; `failed` (also a run that raised, with `reason` and `error`); `unsupported` (the tool refuses the configuration, e.g. an unverified precision recipe); `not_run` (this machine cannot run it, e.g. too few devices) |
+| `rule`, `tensors`, `max_ratio` | the judging rule, how many tensors were compared, the largest ratio among those that passed |
+| `failures` | per failing tensor: `name`, `reason`, `allowed`, `error`, `ratio` |
+| `routing` | only for entries that declare `Routers`: token routings, flips in test and ref, per router call |
+
+The top level holds `schema_version`, `entry`, `created`, `command`, `repository` (`commit`, `dirty`, `changed`),
+`environment` (torch, transformers and ColossalAI versions, accelerator, device name and count), `steps` and
+`summary` (count per status).
+
+Reports go to `/mnt/beegfs/ColossalAI/shared-results/numerics/<line>/<entry>/<YYYYMMDD>-<commit[:8]>.json`, where
+`<line>` is the roadmap's line number and `<entry>` the model_zoo name, e.g.
+`shared-results/numerics/2A/transformers_qwen3_moe/20261105-2e6bb3c0.json`: a new file for each acceptance run, never
+overwriting an older one. They are not kept in `shared-cache`, which holds model
+weights in the HuggingFace hub layout with per-file checksums. Once model-level checks run in CI, their expected
+values will move into the repository, as PyTorch and Megatron-LM keep theirs.
+
+### Per line
+
+| Line | Special case | What to do now |
+| --- | --- | --- |
+| 2A MoE | a router flip makes single tensors jump | declare `NumericsSpec(routers=...)` (and `routers=` of `check_fwd_bwd`); the report counts flips in test and ref |
+| 2B hybrid architectures | multimodal model trained on its text path | frozen vision parameters need no gradient; list skipped trainable branches in `unused_params` |
+| 2C, 2D diffusion | random masks, noise, timesteps | generate them in `data_gen_fn` |
+| 2E optimizers | no reference model; the update rule is compared | the reference-optimizer entry point is not there yet |
+| 2F video generation, 2G Cosmos 3 | outputs are not logits; the reference is not HuggingFace | `output_fn` selects the tensors, `reference_fn` builds the official implementation |
+
+Supported plugins are `TorchDDPPlugin`, `LowLevelZeroPlugin` and `HybridParallelPlugin` with `tp_size=1`. Gemini,
+FSDP, tensor, pipeline and expert parallelism are not supported yet and are reported as `unsupported`, which is not a
+failure.
 
 ## Layout
 
@@ -351,9 +467,12 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | --- | --- |
 | `assert_aligned(test, ref, truth, tol=1e-4)` | judge and raise with the report if anything is not aligned |
 | `judge(test, ref, truth, tol=1e-4, small_tensor_multiplier=False)` | return an `AlignmentReport` |
-| `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=())` | the three runs and the judge of an operator or module check |
+| `scenarios.independent_impl.check_fwd_bwd(test_fn, ref_fn, inputs, dtype, unused_params=(), expect_calls=(), routers=None)` | the three runs and the judge of an operator or module check; `expect_calls` must each be called by the test run |
+| `count_calls(targets)` | context manager counting the calls of each `(owner, name)` |
 | `run_fwd_bwd(fn, inputs, dtype, grad_seed=0, unused_params=(), **meta)` | run a function or module forward and backward, return a `Trace` |
-| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=())` | opts a model_zoo entry into whole-model alignment |
+| `NumericsSpec(reference_fn=None, param_map=None, output_fn=None, unused_params=(), routers=None)` | opts a model_zoo entry into whole-model alignment |
+| `Routers(select, top_k, scores_fn=...)` | the router modules of a mixture-of-experts model, for routing-flip counts |
+| `diagnose_routing(report, test, ref, truth)`, `RoutingRecorder(module, routers)` | count the flips recorded in `meta["routing"]`; the hook that records them |
 | `scenarios.independent_impl.training_traces(entry, plugin, mixed_precision=None, steps=1)` | train an entry through a plugin and as the reference, return `(test, ref, truth)` |
 | `scenarios.independent_impl.check_training(...)`, `scenarios.independent_impl.blank_control(entry)` | `judge` the above; check the reference where the plugin changes nothing |
 | `scenarios.data_parallel.traces(entry, plugin_fn, mixed_precision=None, world_size=2, micro_batches=None)` | run on `world_size` devices and on one, return `(test, ref)` |
@@ -368,4 +487,5 @@ Only `independent_impl` compares against another codebase; the other scenarios c
 | `Trace`, `Trace.capture`, `Trace.save`, `Trace.load` | one run as named tensors plus metadata |
 | `error_multiplier(dtype, numel)` | the multiplier used for a tensor |
 | `tensor_metrics(actual, expected)` | RMSE, max abs, relative L2 and cosine, in float64 |
+| `acceptance.run_acceptance(entry, configs, checks, steps=3)`, `acceptance.format_report(report)` | the L2 acceptance report as a dict, and its summary table; `python -m tests.kit.numerics.acceptance` writes it to JSON |
 | `cast_floating`, `full_precision_matmul`, `flatten_tensors`, `missing_grads`, `upstream_loss` | helpers used by the above |

@@ -7,7 +7,7 @@ from typing import Optional, Union
 import torch
 
 from colossalai.booster.mixed_precision import FP16TorchMixedPrecision, MixedPrecision
-from colossalai.booster.plugin import LowLevelZeroPlugin, Plugin, TorchDDPPlugin
+from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, Plugin, TorchDDPPlugin
 
 
 @dataclass(frozen=True)
@@ -63,6 +63,34 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
             )
         raise UnsupportedRecipe(f"LowLevelZeroPlugin precision={plugin.precision!r} is not verified")
 
+    if isinstance(plugin, HybridParallelPlugin):
+        # the shardformer path: the model is rewritten by its policy (kernel replacement included), with tp_size=1
+        if mixed_precision is not None:
+            raise UnsupportedRecipe("HybridParallelPlugin controls precision itself; pass precision= to the plugin")
+        parallel = (plugin.tp_size, plugin.pp_size, plugin.sp_size, getattr(plugin, "ep_size", 1))
+        if any(size > 1 for size in parallel) or plugin.enable_sequence_parallelism:
+            raise UnsupportedRecipe(
+                "HybridParallelPlugin with tensor, pipeline, sequence or expert parallelism is not verified; "
+                "use tp_size=1, pp_size=1"
+            )
+        if plugin.zero_stage > 0 or plugin.max_norm > 0 or plugin.use_fp8 or plugin.cpu_offload:
+            raise UnsupportedRecipe(
+                "HybridParallelPlugin with zero_stage > 0, max_norm, use_fp8 or cpu_offload is not verified"
+            )
+        if plugin.precision == "fp32":
+            return Recipe(
+                torch.float32, source="HybridParallelModule leaves a float32 module unchanged; plain optimizer"
+            )
+        if plugin.precision == "bf16":
+            return Recipe(
+                torch.bfloat16,
+                master_weights=True,
+                source="hybrid_parallel_plugin.py HybridParallelModule: module.to(bf16), floating inputs cast; "
+                "HybridParallelAMPOptimizer (mixed_precision_optimizer.py): float32 master weights, no loss "
+                "scaling for bf16",
+            )
+        raise UnsupportedRecipe(f"HybridParallelPlugin precision={plugin.precision!r} is not verified")
+
     if isinstance(plugin, TorchDDPPlugin):
         if mixed_precision is None or mixed_precision == "fp32":
             return Recipe(torch.float32, source="TorchDDPPlugin does not change dtypes")
@@ -81,5 +109,6 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
         raise UnsupportedRecipe(f"TorchDDPPlugin with mixed_precision={mixed_precision!r} is not verified")
 
     raise UnsupportedRecipe(
-        f"{type(plugin).__name__} is not supported yet; supported: TorchDDPPlugin, LowLevelZeroPlugin"
+        f"{type(plugin).__name__} is not supported yet; "
+        "supported: TorchDDPPlugin, LowLevelZeroPlugin, HybridParallelPlugin (tp_size=1)"
     )

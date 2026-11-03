@@ -3,7 +3,7 @@ import torch
 import transformers
 from transformers import MixtralConfig
 
-from tests.kit.numerics.spec import NumericsSpec
+from tests.kit.numerics.spec import NumericsSpec, Routers
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -69,13 +69,21 @@ config = MixtralConfig(
 if hasattr(config, "pad_token_id"):
     config.pad_token_id = config.eos_token_id
 
+
+def is_router(name, module):
+    # the gate of each sparse MoE block; its first output is the router logits
+    return name.endswith("mlp.gate")
+
+
+numerics = NumericsSpec(routers=Routers(select=is_router, top_k=config.num_experts_per_tok))
+
 model_zoo.register(
     name="transformers_mixtral",
     model_fn=lambda: transformers.MixtralModel(config),
     data_gen_fn=data_gen,
     output_transform_fn=output_transform_fn,
     loss_fn=loss_fn_for_mixtral_model,
-    model_attribute=ModelAttribute(has_control_flow=True, numerics=NumericsSpec()),
+    model_attribute=ModelAttribute(has_control_flow=True, numerics=numerics),
 )
 # model_zoo.register(
 #     name="transformers_mixtral_for_casual_lm",

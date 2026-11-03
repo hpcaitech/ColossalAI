@@ -22,10 +22,10 @@ from colossalai.booster.mixed_precision.fp16_torch import TorchAMPOptimizer
 from colossalai.booster.plugin import Plugin
 
 from ..compare import flatten_tensors
-from ..spec import NumericsSpec
+from ..spec import NumericsSpec, Routers
 from ..trace import Trace
 from .recipes import Recipe, recipe_for
-from .utils import cast_floating, full_precision_matmul, missing_grads, upstream_loss
+from .utils import RoutingRecorder, cast_floating, full_precision_matmul, missing_grads, upstream_loss
 
 
 def default_optimizer(params: Iterable[nn.Parameter]) -> torch.optim.Optimizer:
@@ -44,6 +44,7 @@ class Prepared:
     param_map: Optional[Callable[[str], Optional[str]]]
     seed: int
     unused_params: Tuple[str, ...] = ()
+    routers: Optional[Routers] = None
 
 
 def prepare(entry: Union[str, tuple], steps: int = 1, seed: int = 0) -> Prepared:
@@ -78,7 +79,7 @@ def prepare(entry: Union[str, tuple], steps: int = 1, seed: int = 0) -> Prepared
         output = output_transform_fn(output)
         return spec.output_fn(output) if spec.output_fn is not None else output
 
-    return Prepared(name, model, reference, batches, select, spec.param_map, seed, spec.unused_params)
+    return Prepared(name, model, reference, batches, select, spec.param_map, seed, spec.unused_params, spec.routers)
 
 
 def run_reference(
@@ -89,7 +90,8 @@ def run_reference(
     Records ``out/...``, input gradients ``grad/<input>`` and parameter gradients ``grad/param/<name>`` of the first
     step, the weights after it as ``param/<name>``, and ``loss/<step>`` for every step. Parameter names are those of the
     model under test (``param_map`` is applied). The dtypes seen on the way are recorded in ``meta["dtypes"]``, the
-    trainable parameters left without a gradient in ``meta["missing_grads"]``.
+    trainable parameters left without a gradient in ``meta["missing_grads"]`` and, if the entry declares ``routers``,
+    the experts of the first forward in ``meta["routing"]``.
     """
     device = get_accelerator().get_current_device()
     module = copy.deepcopy(s.reference)
@@ -103,6 +105,7 @@ def run_reference(
         optimizer = optimizer_fn([p for _, p in named])
     autocast = partial(torch.autocast, device.type, dtype=recipe.dtype) if recipe.autocast else nullcontext
     audit = _DtypeAudit(module, s.param_map)
+    routing = RoutingRecorder(module, s.routers)
 
     torch.manual_seed(s.seed)
     results = {}
@@ -111,6 +114,7 @@ def run_reference(
             inputs = _leaves(batch, None if recipe.autocast else recipe.dtype)
             with autocast():
                 raw = module(**inputs)
+            routing.active = False
             outputs = flatten_tensors(s.select(raw), "out")
             loss = _loss(outputs, grad_seed + step)
             (loss * recipe.loss_scale if recipe.loss_scale else loss).backward()
@@ -136,8 +140,14 @@ def run_reference(
             module.zero_grad(set_to_none=True)
             results[f"loss/{step}"] = loss.detach()
     audit.remove()
+    routing.remove()
     return Trace.capture(
-        results, dtypes=audit.records, recipe=_describe(recipe), missing_grads=missing, **_meta(s, grad_seed, meta)
+        results,
+        dtypes=audit.records,
+        recipe=_describe(recipe),
+        missing_grads=missing,
+        **_routing_meta(s, routing),
+        **_meta(s, grad_seed, meta),
     )
 
 
@@ -162,6 +172,7 @@ def run_boosted(
     module.train()
     inner = module.unwrap()
     audit = _DtypeAudit(inner)
+    routing = RoutingRecorder(inner, s.routers)
     # ZeRO keeps reduced gradients in its own store and clears param.grad; get_param_grad gathers them back.
     get_grad = getattr(optimizer, "get_param_grad", lambda p: p.grad)
 
@@ -171,6 +182,7 @@ def run_boosted(
         for step, batch in enumerate(s.batches):
             inputs = _leaves(batch, None)
             outputs = flatten_tensors(s.select(module(**inputs)), "out")
+            routing.active = False
             loss = _loss(outputs, grad_seed + step)
             booster.backward(loss, optimizer)
             if isinstance(optimizer, TorchAMPOptimizer):
@@ -196,8 +208,11 @@ def run_boosted(
             optimizer.zero_grad()
             results[f"loss/{step}"] = loss.detach()
     audit.remove()
+    routing.remove()
     meta = dict(meta, plugin=type(plugin).__name__, mixed_precision=str(mixed_precision))
-    return Trace.capture(results, dtypes=audit.records, missing_grads=missing, **_meta(s, grad_seed, meta))
+    return Trace.capture(
+        results, dtypes=audit.records, missing_grads=missing, **_routing_meta(s, routing), **_meta(s, grad_seed, meta)
+    )
 
 
 def run_data_parallel(
@@ -364,6 +379,10 @@ def _loss(outputs: Dict[str, Tensor], grad_seed: int) -> Tensor:
     return upstream_loss(outputs, grad_seed) / sum(out.numel() for out in outputs.values() if out.requires_grad)
 
 
+def _routing_meta(s: Prepared, routing: RoutingRecorder) -> Dict[str, Any]:
+    return {"routing": routing.calls} if s.routers is not None else {}
+
+
 def _meta(s: Prepared, grad_seed: int, meta: Dict[str, Any]) -> Dict[str, Any]:
     return {**dict(model=s.name, seed=s.seed, grad_seed=grad_seed, steps=len(s.batches)), **meta}
 
@@ -444,9 +463,10 @@ def _copy_weights(reference: nn.Module, model: nn.Module, param_map) -> None:
             param.copy_(source[mapped])
 
 
-def _dtypes(obj: Any) -> str:
+def _dtypes(obj: Any, ordered: bool = True) -> str:
     leaves, _ = tree_flatten(obj)
-    return ",".join(str(x.dtype).replace("torch.", "") for x in leaves if isinstance(x, Tensor)) or "-"
+    names = [str(x.dtype).replace("torch.", "") for x in leaves if isinstance(x, Tensor)]
+    return ",".join(names if ordered else sorted(names)) or "-"
 
 
 class _DtypeAudit:
@@ -473,7 +493,9 @@ class _DtypeAudit:
     def _forward(self, key, module, args, kwargs, output):
         if key not in self.records:
             weights = list(module.parameters(recurse=False))
-            self.records[key] = f"in={_dtypes((args, kwargs))} out={_dtypes(output)} w={_dtypes(weights)}"
+            # inputs unordered: a rewritten forward (e.g. shardformer's) passes the same tensors in another order
+            inputs = _dtypes((args, kwargs), ordered=False)
+            self.records[key] = f"in={inputs} out={_dtypes(output)} w={_dtypes(weights)}"
 
     def _grad(self, key, grad):
         self.records.setdefault(key, _dtypes(grad))

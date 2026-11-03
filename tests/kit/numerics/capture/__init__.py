@@ -6,6 +6,14 @@ imported here; import them as ``tests.kit.numerics.capture.training``.
 """
 
 from .fwd_bwd import run_fwd_bwd
-from .utils import cast_floating, full_precision_matmul, missing_grads, upstream_loss
+from .utils import RoutingRecorder, cast_floating, count_calls, full_precision_matmul, missing_grads, upstream_loss
 
-__all__ = ["cast_floating", "full_precision_matmul", "missing_grads", "run_fwd_bwd", "upstream_loss"]
+__all__ = [
+    "RoutingRecorder",
+    "cast_floating",
+    "count_calls",
+    "full_precision_matmul",
+    "missing_grads",
+    "run_fwd_bwd",
+    "upstream_loss",
+]
