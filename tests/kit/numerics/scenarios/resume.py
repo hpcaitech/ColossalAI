@@ -109,6 +109,24 @@ def check(*args, **kwargs) -> AlignmentReport:
     return report
 
 
+def unsharded_optimizer_reloads() -> bool:
+    """Whether ColossalAI loads back an unsharded optimizer checkpoint it wrote, with the installed torch.
+
+    It writes one with ``torch.save`` and loads that format only on torch 2.10 and later (``checkpoint_io/utils.py``).
+    A sharded optimizer does not load on CPU (``load_states_into_optimizer`` synchronizes the CPU accelerator), so on
+    CPU with an older torch ``check`` cannot run at all."""
+    from colossalai.checkpoint_io.utils import load_optimizer_state, save_state_dict
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "optimizer.bin")
+        save_state_dict({"state": {}, "param_groups": []}, path, use_safetensors=False)
+        try:
+            load_optimizer_state(path)
+        except RuntimeError:
+            return False
+    return True
+
+
 def _run(
     rank,
     world_size,

@@ -441,6 +441,11 @@ Two loading failures, not specific to this tool, are worked around with `shard_o
 - With `TorchDDPPlugin` and `mixed_precision="fp16"`, loading a sharded optimizer raises
   `'OptimizerWrapper' object has no attribute 'state'`: the optimizer is wrapped twice and only one wrapper is removed.
 
+The unsharded workaround needs torch 2.10 or later: ColossalAI writes an unsharded optimizer with `torch.save` and
+loads that format back only on torch 2.10 and later. On CPU with an older torch, `resume` therefore cannot run at all;
+the acceptance command reports it as `not_run` and the self-tests skip it
+(`scenarios.resume.unsharded_optimizer_reloads()` checks the installed torch).
+
 Two more, which `resume` reports as failures:
 
 - `GeminiPlugin`: loading a sharded model raises `GeminiDDP.named_parameters() got an unexpected keyword argument

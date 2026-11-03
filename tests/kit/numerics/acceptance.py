@@ -134,6 +134,10 @@ def run_acceptance(
                 results.append(_result(check, name, run))
             else:
                 shard = config.shard_optimizer and get_accelerator().name != "cpu"
+                if not shard and not resume.unsharded_optimizer_reloads():
+                    reason = "ColossalAI cannot load back its unsharded optimizer checkpoints with this torch"
+                    results.append(_entry_result(check, name, NOT_RUN, reason=reason))
+                    continue
                 run = partial(resume.check, entry, config.plugin_fn, config.mixed_precision, shard_optimizer=shard)
                 results.append(_result(check, name, run))
     return {

@@ -1,4 +1,5 @@
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -8,11 +9,16 @@ from torch import nn
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use
-from tests.kit.model_zoo.registry import ModelAttribute
 from tests.kit.numerics import NumericsSpec, TokenLoss, judge_relative_bound, relative_bound
 from tests.kit.numerics.scenarios import data_parallel
 
 GRADS = {f"grad/param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
+
+
+def _attribute(spec):
+    # all the tool reads from an entry's ModelAttribute; importing tests.kit.model_zoo would need timm, torchvision and
+    # torchaudio, which the CPU CI job does not install
+    return SimpleNamespace(numerics=spec)
 
 
 class TinyMLP(nn.Module):
@@ -34,7 +40,7 @@ def _identity(output):
 
 
 # module-level parts only: the entry is sent to spawned processes
-ENTRY = (TinyMLP, _data, _identity, None, ModelAttribute(numerics=NumericsSpec()))
+ENTRY = (TinyMLP, _data, _identity, None, _attribute(NumericsSpec()))
 
 
 class UnsyncedDDPPlugin(TorchDDPPlugin):
@@ -121,7 +127,7 @@ LM_ENTRY = (
     _padded_tokens,
     _identity,
     None,
-    ModelAttribute(numerics=NumericsSpec(token_loss=TokenLoss(loss=_summed_lm_loss, count=_valid_tokens))),
+    _attribute(NumericsSpec(token_loss=TokenLoss(loss=_summed_lm_loss, count=_valid_tokens))),
 )
 
 

@@ -1,4 +1,5 @@
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -8,13 +9,22 @@ from torch import nn
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use
-from tests.kit.model_zoo.registry import ModelAttribute
 from tests.kit.numerics import NumericsSpec, judge_equal
 from tests.kit.numerics.scenarios import resume
 
 # loading a sharded optimizer fails on CPU (load_states_into_optimizer calls the CPU accelerator's synchronize,
-# which raises), so the CPU tests save it unsharded
+# which raises), so the CPU tests save it unsharded; ColossalAI loads that back only with a recent enough torch
 CPU = dict(world_size=1, shard_optimizer=False)
+unsharded = pytest.mark.skipif(
+    not resume.unsharded_optimizer_reloads(),
+    reason="ColossalAI cannot load back its unsharded optimizer checkpoints with this torch (needs torch >= 2.10)",
+)
+
+
+def _attribute(spec):
+    # all the tool reads from an entry's ModelAttribute; importing tests.kit.model_zoo would need timm, torchvision and
+    # torchaudio, which the CPU CI job does not install
+    return SimpleNamespace(numerics=spec)
 
 
 class TinyMLP(nn.Module):
@@ -57,11 +67,12 @@ def _hidden(output):
 
 
 # module-level parts only: the entries are sent to spawned processes
-MLP = (TinyMLP, _data, _identity, None, ModelAttribute(numerics=NumericsSpec()))
-LLAMA = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+MLP = (TinyMLP, _data, _identity, None, _attribute(NumericsSpec()))
+LLAMA = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
 RESUMED = {"loss/2", "loss/3"} | {f"param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
 
 
+@unsharded
 @rerun_if_address_is_in_use()
 def test_resume_is_exact():
     report = resume.check(MLP, TorchDDPPlugin, **CPU)
@@ -69,6 +80,7 @@ def test_resume_is_exact():
     report.assert_pass()
 
 
+@unsharded
 @pytest.mark.parametrize("missing", ["model", "optimizer", "lr_scheduler"])
 @rerun_if_address_is_in_use()
 def test_missing_checkpoint_part_detected(missing):
@@ -78,6 +90,7 @@ def test_missing_checkpoint_part_detected(missing):
     assert {f"param/fc{i}.weight" for i in (1, 2)} <= {e.name for e in report.failures}, report.format()
 
 
+@unsharded
 @rerun_if_address_is_in_use()
 def test_huggingface_round_trip():
     report = resume.check(LLAMA, TorchDDPPlugin, **CPU)

@@ -1,5 +1,6 @@
 import copy
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -9,7 +10,6 @@ import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
-from tests.kit.model_zoo.registry import ModelAttribute
 from tests.kit.numerics import NumericsSpec, Routers, Trace
 from tests.kit.numerics.capture.recipes import Recipe, UnsupportedRecipe, recipe_for
 from tests.kit.numerics.capture.training import prepare, run_reference
@@ -25,6 +25,12 @@ from tests.kit.numerics.scenarios.independent_impl import (
 
 STEPS = 3
 NO_ACCELERATOR = get_accelerator().name == "cpu"
+
+
+def _attribute(spec):
+    # all the tool reads from an entry's ModelAttribute; importing tests.kit.model_zoo would need timm, torchvision and
+    # torchaudio, which the CPU CI job does not install
+    return SimpleNamespace(numerics=spec)
 
 
 class TinyMLP(nn.Module):
@@ -74,7 +80,7 @@ def _data():
 
 
 def _entry(spec=NumericsSpec()):
-    return (TinyMLP, _data, lambda out: out, None, ModelAttribute(numerics=spec))
+    return (TinyMLP, _data, lambda out: out, None, _attribute(spec))
 
 
 BUGGY = NumericsSpec(reference_fn=lambda: RenamedMLP(drop_column=True), param_map=_rename)
@@ -203,12 +209,12 @@ def _check_missing_gradients(rank, world_size, port):
     _launch(rank, world_size, port)
     # DDP must be told about the unused branch, or it waits for its gradient
     plugin_fn = partial(TorchDDPPlugin, find_unused_parameters=True)
-    entry = (_WithUnusedBranch, _data, lambda out: out, None, ModelAttribute(numerics=NumericsSpec()))
+    entry = (_WithUnusedBranch, _data, lambda out: out, None, _attribute(NumericsSpec()))
     report = check_training(entry, plugin_fn())
     failed = {e.name: e.reason for e in report.failures}
     assert failed == {f"grad/param/head.{p}": "no gradient in test, ref, truth" for p in ("weight", "bias")}, failed
     spec = NumericsSpec(unused_params=("head.weight", "head.bias"))
-    check_training((_WithUnusedBranch, _data, lambda out: out, None, ModelAttribute(numerics=spec)), plugin_fn())
+    check_training((_WithUnusedBranch, _data, lambda out: out, None, _attribute(spec)), plugin_fn())
 
 
 @rerun_if_address_is_in_use()
@@ -269,7 +275,7 @@ def _hidden(output):
 
 def _check_shardformer(rank, world_size, port, precision):
     _launch(rank, world_size, port)
-    entry = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+    entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
     plugin = HybridParallelPlugin(tp_size=1, pp_size=1, precision=precision)
     check_training(entry, plugin, steps=STEPS).assert_pass()
     for kwargs, match in [
@@ -308,7 +314,7 @@ class _TinyMoE(nn.Module):
 def _check_routing_in_training(rank, world_size, port):
     _launch(rank, world_size, port)
     spec = NumericsSpec(routers=Routers(select=lambda name, module: name == "gate", top_k=2))
-    entry = (_TinyMoE, _data, lambda out: out, None, ModelAttribute(numerics=spec))
+    entry = (_TinyMoE, _data, lambda out: out, None, _attribute(spec))
     report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
     report.assert_pass()
     # the first forward only: 16 tokens through one router, and the plugin reproduces the reference's routing
@@ -339,7 +345,7 @@ def _plugin(name):
 
 def _check_plugin(rank, world_size, port, name):
     _launch(rank, world_size, port)
-    entry = (_tiny_llama, _tokens, _hidden, None, ModelAttribute(numerics=NumericsSpec()))
+    entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
     report = check_training(entry, _plugin(name), steps=STEPS)
     report.assert_pass()
     # gradients come back for every parameter, also where the plugin keeps them in its own buffers
@@ -395,7 +401,7 @@ def _freeze_tower(model):
 
 def _check_prepare_fn(rank, world_size, port):
     _launch(rank, world_size, port)
-    entry = (_Tower, _data, lambda out: out, None, ModelAttribute(numerics=NumericsSpec(prepare_fn=_freeze_tower)))
+    entry = (_Tower, _data, lambda out: out, None, _attribute(NumericsSpec(prepare_fn=_freeze_tower)))
     s = prepare(entry)
     assert not s.model.tower.weight.requires_grad and s.model.head.weight.requires_grad
     report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
