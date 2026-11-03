@@ -1,3 +1,4 @@
+import math
 from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
@@ -9,6 +10,7 @@ from einops import rearrange
 from packaging import version
 
 from colossalai.kernel.kernel_loader import (
+    FlashAttentionBackendLoader,
     FlashAttentionDaoLoader,
     FlashAttentionForFloatAndCustomMaskLoader,
     FlashAttentionLoader,
@@ -52,7 +54,9 @@ def invert_mask(mask: torch.Tensor) -> torch.Tensor:
 
 # adapted from https://github.com/Dao-AILab/flash-attention/blob/main/flash_attn/bert_padding.py
 def get_pad_info(
-    padding_mask: torch.Tensor, invert: Optional[bool] = False, return_indices: Optional[bool] = True
+    padding_mask: torch.Tensor,
+    invert: Optional[bool] = False,
+    return_indices: Optional[bool] = True,
 ) -> Tuple[int, torch.Tensor, torch.Tensor]:
     """Get padding information from padding mask.
 
@@ -82,6 +86,217 @@ def get_pad_info(
 class ColoAttention:
     _kernel_dispatch_map: Optional[Dict[torch.dtype, Dict[Optional[AttnMaskType], Callable]]] = None
     _flash_kernel_dispatch: Optional[Dict[torch.dtype, Dict[Optional[AttnMaskType], Callable]]] = None
+
+    @staticmethod
+    def _validate_inputs(q, k, v, packed, dropout_p, scale):
+        ndim = 3 if packed else 4
+        if any(x.ndim != ndim for x in (q, k, v)):
+            raise ValueError(f"Attention expects {'THD' if packed else 'BHSD'} tensors")
+        if not (q.device == k.device == v.device and q.dtype == k.dtype == v.dtype):
+            raise ValueError("Q, K and V must have the same dtype and device")
+        if q.dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
+            raise TypeError("Attention expects float16, bfloat16, float32 or float64 inputs")
+        if any(size <= 0 for x in (q, k, v) for size in x.shape):
+            raise ValueError("Attention does not support empty sequences, batches or heads")
+        head_axis = 1
+        seq_axis = 0 if packed else 2
+        if not packed and not (q.shape[0] == k.shape[0] == v.shape[0]):
+            raise ValueError("Q, K and V batch sizes must match")
+        if k.shape[seq_axis] != v.shape[seq_axis] or k.shape[head_axis] != v.shape[head_axis]:
+            raise ValueError("K and V must have the same sequence length and number of heads")
+        if q.shape[-1] != k.shape[-1]:
+            raise ValueError("Q and K head dimensions must match")
+        if q.shape[head_axis] % k.shape[head_axis] != 0:
+            raise ValueError("The number of query heads must be divisible by the number of key/value heads")
+        if not isinstance(dropout_p, (int, float)) or not 0 <= dropout_p < 1:
+            raise ValueError("dropout_p must be a number in [0, 1)")
+        if scale is not None and (not isinstance(scale, (int, float)) or not math.isfinite(scale)):
+            raise ValueError("scale must be a finite number or None")
+
+    @staticmethod
+    def _validate_causal(is_causal, causal_alignment, non_square):
+        if not isinstance(is_causal, bool):
+            raise TypeError("is_causal must be a bool")
+        if causal_alignment not in (None, "upper_left", "lower_right"):
+            raise ValueError("causal_alignment must be 'upper_left', 'lower_right' or None")
+        if not is_causal and causal_alignment is not None:
+            raise ValueError("causal_alignment requires is_causal=True")
+        if is_causal and non_square and causal_alignment is None:
+            raise ValueError("Non-square causal attention requires an explicit causal_alignment")
+
+    @staticmethod
+    def _select_backend(
+        q,
+        k,
+        v,
+        backend,
+        attention_mask,
+        dropout_p,
+        is_causal,
+        causal_alignment,
+        non_square,
+    ):
+        if backend not in ("auto", "fa2", "fa3", "sdpa"):
+            raise ValueError("backend must be 'auto', 'fa2', 'fa3' or 'sdpa'")
+        candidates = ("fa3", "fa2", "sdpa") if backend == "auto" else (backend,)
+        for candidate in candidates:
+            reason = None
+            if candidate != "sdpa":
+                if q.device.type != "cuda":
+                    reason = "requires CUDA tensors"
+                elif q.dtype not in (torch.float16, torch.bfloat16):
+                    reason = "requires float16 or bfloat16 inputs"
+                elif attention_mask is not None:
+                    reason = "does not support an arbitrary attention_mask"
+                elif q.shape[-1] != v.shape[-1] or q.shape[-1] > 256 or q.shape[-1] % 8 != 0:
+                    reason = "requires equal Q/K/V head dimensions divisible by 8 and at most 256"
+                elif candidate == "fa2" and q.shape[-1] > 192:
+                    # Larger-head backward support depends on the FA2 version,
+                    # GPU and dropout. Keep the explicit training contract portable.
+                    reason = "supports head dimensions at most 192 in the explicit training adapter"
+                elif is_causal and non_square and causal_alignment == "upper_left":
+                    reason = "does not support non-square upper-left causal attention"
+                elif candidate == "fa3" and dropout_p != 0:
+                    reason = "does not support nonzero dropout"
+                else:
+                    major, _ = torch.cuda.get_device_capability(q.device)
+                    if candidate == "fa3" and major != 9:
+                        reason = "requires a Hopper (SM90) GPU in this adapter"
+                    elif candidate == "fa2" and major < 8:
+                        reason = "requires an Ampere or newer GPU"
+            if reason is not None:
+                if backend != "auto":
+                    raise NotImplementedError(f"Attention backend {candidate!r} {reason}")
+                continue
+            if backend != "auto" or FlashAttentionBackendLoader.is_available(candidate):
+                return candidate
+        raise RuntimeError("No attention backend supports this request")
+
+    @staticmethod
+    def _attention_explicit(q, k, v, attention_mask, dropout_p, scale, backend, is_causal, causal_alignment):
+        ColoAttention._validate_inputs(q, k, v, False, dropout_p, scale)
+        sq, sk = q.shape[2], k.shape[2]
+        ColoAttention._validate_causal(is_causal, causal_alignment, sq != sk)
+        if attention_mask is not None:
+            if attention_mask.device != q.device:
+                raise ValueError("attention_mask must be on the same device as Q")
+            if attention_mask.dtype not in (torch.bool, torch.float32, q.dtype):
+                raise TypeError("attention_mask must be bool, float32 or the input dtype")
+            shape = (q.shape[0], q.shape[1], sq, sk)
+            if torch.broadcast_shapes(attention_mask.shape, shape) != shape:
+                raise ValueError("attention_mask must broadcast to [B, Hq, Sq, Skv]")
+        selected = ColoAttention._select_backend(
+            q,
+            k,
+            v,
+            backend,
+            attention_mask,
+            dropout_p,
+            is_causal,
+            causal_alignment,
+            sq != sk,
+        )
+        if (
+            selected == "sdpa"
+            and is_causal
+            and (attention_mask is not None or (sq != sk and causal_alignment == "lower_right"))
+        ):
+            offset = sk - sq if causal_alignment == "lower_right" else 0
+            keep = torch.arange(sk, device=q.device)[None, :] <= torch.arange(sq, device=q.device)[:, None] + offset
+            if attention_mask is None:
+                attention_mask = keep
+            elif attention_mask.dtype == torch.bool:
+                attention_mask = attention_mask & keep
+            else:
+                attention_mask = attention_mask.masked_fill(~keep, float("-inf"))
+            is_causal = False
+        # Never retry another backend after loading or executing the selected one.
+        attn_func = FlashAttentionBackendLoader.load(selected)
+        return attn_func(
+            q,
+            k,
+            v,
+            dropout_p=dropout_p,
+            scale=scale,
+            attention_mask=attention_mask,
+            is_causal=is_causal,
+        )
+
+    @staticmethod
+    def attention_varlen(
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        cu_seqlens_q: torch.Tensor,
+        cu_seqlens_kv: torch.Tensor,
+        max_seqlen_q: int,
+        max_seqlen_kv: int,
+        *,
+        backend: str = "auto",
+        is_causal: bool = False,
+        causal_alignment: Optional[str] = None,
+        dropout_p: float = 0.0,
+        scale: Optional[float] = None,
+    ) -> torch.Tensor:
+        """Attention over packed samples, without padding or cross-sample attention.
+
+        Q is [Tq, Hq, D], K/V are [Tkv, Hkv, D]. Hq must be divisible by Hkv.
+        The output is [Tq, Hq, Dv]. Contiguous int32 cumulative lengths on the
+        input device start at zero and end at Tq/Tkv, with one positive-length
+        interval per sample. Q and KV may have different lengths per sample.
+        Max lengths must cover their longest interval. Zero-length samples are
+        rejected. Validation reads lengths on the host; dynamic packed inputs
+        are not currently supported inside a fullgraph torch.compile region.
+
+        Explicit backends are strict: unsupported requests, missing packages and
+        execution errors do not fall back. Auto checks FA3, FA2, then SDPA before
+        execution. SDPA loops over samples and is a correctness fallback, not a
+        fused varlen kernel. FA3 supports dropout=0 only. Non-square causal samples
+        require 'upper_left' or 'lower_right'; FA2/FA3 support only lower-right.
+        Dropout is applied according to dropout_p even during evaluation: pass 0
+        explicitly for inference. This method always returns a Tensor.
+        """
+        ColoAttention._validate_inputs(q, k, v, True, dropout_p, scale)
+        lengths = []
+        for name, prefix, total, maximum in (
+            ("q", cu_seqlens_q, q.shape[0], max_seqlen_q),
+            ("kv", cu_seqlens_kv, k.shape[0], max_seqlen_kv),
+        ):
+            if prefix.ndim != 1 or prefix.numel() < 2 or prefix.dtype != torch.int32:
+                raise ValueError(f"cu_seqlens_{name} must be a 1D int32 tensor with at least two elements")
+            if prefix.device != q.device or not prefix.is_contiguous():
+                raise ValueError(f"cu_seqlens_{name} must be contiguous and on the input device")
+            if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
+                raise ValueError(f"max_seqlen_{name} must be a positive integer")
+            bounds = prefix.tolist()
+            sizes = [end - start for start, end in zip(bounds[:-1], bounds[1:])]
+            if bounds[0] != 0 or bounds[-1] != total or min(sizes) <= 0:
+                raise ValueError(f"cu_seqlens_{name} must partition all tokens into nonempty samples")
+            if max(sizes) > maximum:
+                raise ValueError(f"max_seqlen_{name} is smaller than the longest sample")
+            lengths.append(sizes)
+        if len(lengths[0]) != len(lengths[1]):
+            raise ValueError("Q and KV cumulative lengths must describe the same number of samples")
+        non_square = lengths[0] != lengths[1]
+        ColoAttention._validate_causal(is_causal, causal_alignment, non_square)
+        selected = ColoAttention._select_backend(
+            q, k, v, backend, None, dropout_p, is_causal, causal_alignment, non_square
+        )
+        attn_func = FlashAttentionBackendLoader.load(selected, packed=True)
+        kwargs = {"causal_alignment": causal_alignment} if selected == "sdpa" else {}
+        return attn_func(
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
+            dropout_p=dropout_p,
+            scale=scale,
+            is_causal=is_causal,
+            **kwargs,
+        )
 
     @staticmethod
     def _init_kernels_dispatch():
@@ -240,6 +455,10 @@ class ColoAttention:
         kv_indices: Optional[torch.Tensor] = None,
         dropout_p: float = 0.0,
         scale: Optional[float] = None,
+        *,
+        backend: Optional[str] = None,
+        is_causal: bool = False,
+        causal_alignment: Optional[str] = None,
         **kwargs,
     ) -> torch.Tensor:
         """Flash Attention function. It supports 4 mask type.
@@ -266,10 +485,51 @@ class ColoAttention:
                 Shape should be [NUM_TOKENS]. Defaults to None.
             dropout_p (float, optional): Dropout probability. Defaults to 0.0.
             scale (Optional[float], optional): Scaling factor applied prior to softmax. Defaults to None.
+            backend (Optional[str]): None preserves the legacy dispatch and mask contract.
+                Explicit 'fa2', 'fa3' and 'sdpa' never fall back; 'auto' selects a
+                supported backend before execution. New calls use is_causal and a
+                CUSTOM attention_mask (bool True means allowed; float is additive).
+                Legacy mask enums/padding metadata cannot be mixed with an explicit
+                backend; use attention_varlen for packed samples instead. FA3 requires
+                dropout_p=0. SDPA supports CPU and CUDA; FA2/FA3 require CUDA half types.
+                The explicit FA2 training path requires version >=2.1 and D<=192.
+            is_causal (bool): Causal attention on the explicit backend path only.
+            causal_alignment (Optional[str]): 'upper_left' or 'lower_right'. Required
+                for non-square causal requests; FA2/FA3 only support lower-right.
 
         Returns:
             torch.Tensor: Output tensor. Shape should be [B, nHeads, Sq, D]
         """
+        if backend is not None:
+            if kwargs:
+                raise TypeError(f"Unexpected attention arguments: {', '.join(sorted(kwargs))}")
+            if attention_mask_type != AttnMaskType.CUSTOM or any(
+                x is not None
+                for x in (
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    max_seqlen_q,
+                    max_seqlen_kv,
+                    q_indices,
+                    kv_indices,
+                )
+            ):
+                raise ValueError("Explicit backends use is_causal/CUSTOM masks; use attention_varlen for packed inputs")
+            return ColoAttention._attention_explicit(
+                q,
+                k,
+                v,
+                attention_mask,
+                dropout_p,
+                scale,
+                backend,
+                is_causal,
+                causal_alignment,
+            )
+        if is_causal or causal_alignment is not None:
+            raise ValueError(
+                "is_causal/causal_alignment require an explicit backend; legacy calls use attention_mask_type"
+            )
         # known issue: sdpa does not support attention mask which contains whole row of masked tokens, which leads to nan
         # this case is usaul when padding mask is used and self attention is performed
         # thus, we don't use sdpa when padding mask is used

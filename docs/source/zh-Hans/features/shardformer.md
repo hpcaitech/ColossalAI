@@ -304,6 +304,39 @@ if dist.get_world_size() > 1:
 2. 当使用Shardformer处理`GPT2ForSequenceClassification`、`ViTForImageClassification`等分类模型时，请确保labels的总数为张量并行度的整数倍，否则Shardformer无法正确地处理classifier层。一个简单的修复方法就是在transformers的config中添加虚拟的标签。这一bug将在 Shardformer的未来版本中修复。
 
 
+## 显式选择 Attention 后端
+
+`ColoAttention.attention(q, k, v, backend="sdpa")` 接收 `[B, H, S, D]`
+布局的 dense 张量，并返回相同布局的 Tensor。显式指定 `fa2`、`fa3` 或
+`sdpa` 时不会 fallback；`auto` 在执行前选择支持该请求的实现。不传
+`backend` 保留旧的 mask 与分发合同。新入口通过 `is_causal` 和可选的自定义
+`attention_mask` 表达关注规则，bool True 表示允许读取，浮点 mask 是加性偏置，
+不能混用旧 mask 枚举。不等长 causal 请求必须指定 `causal_alignment="upper_left"`
+或 `"lower_right"`；此时 FA2/FA3 只支持后者。
+
+`ColoAttention.attention_varlen` 接收 packed Q `[Tq, Hq, D]` 和 K/V
+`[Tkv, Hkv, D]`，分别提供 `cu_seqlens_q`、`cu_seqlens_kv`、`max_seqlen_q`
+与 `max_seqlen_kv`。累计长度必须是输入设备上的连续 int32 张量，从 0 开始，
+覆盖所有 token，且没有空样本。例如长度 `[3, 5]` 的前缀是 `[0, 3, 8]`，
+两条样本不会互相读取。长度校验会在主机读取前缀，暂不支持动态 packed
+fullgraph 编译。SDPA 逐条计算 packed 样本，作为正确性 fallback，不是融合 varlen 内核。
+
+FA3 是可选依赖，使用官方
+[`54b044c8`](https://github.com/Dao-AILab/flash-attention/tree/54b044c8cf897dfcc2577a665559d1bfda0bfc80/hopper)
+的 `flash_attn_3` 训练接口。在隔离且兼容的 CUDA/PyTorch 环境中安装该提交的
+`hopper` 包。适配器要求 SM90、FP16/BF16、零 dropout，且不支持任意 mask。
+已安装但损坏的扩展会直接暴露导入或 kernel 错误；实际平台兼容性需要上机验证。
+Diffusers 0.35.2 的 attention dispatcher 会覆盖该 FA3 算子的 schema；
+组合视频路径已在 Diffusers 0.36.0 验证。
+显式 FA2 路径要求 `flash-attn>=2.1`，head dimension 限制为不超过 192，
+避免更大维度的反向能力依赖具体版本和显卡。
+
+CPU 合同测试命令为 `pytest tests/test_shardformer/test_layer/test_attention_backends.py -k 'not gpu'`。
+单卡 FA3 严格验收复用现有 runner：
+`bash .github/scripts/ci/run_colossalai_batch.sh 4f <gpu_index>`。
+缺少 CUDA 或 FA3 会失败，数值结果和 profiler 记录保存在 `COLOSSAL_RESULTS` 下。
+现有 full-matrix workflow 在镜像具备 FA3 后可手动选择 batch `4f`；默认矩阵暂不包含它。
+
 ## Shardformer的工作原理
 
 ### 设计思想
