@@ -26,6 +26,7 @@ Batches:
   4c   Single-GPU Triton inference kernels
   4d   Single-GPU SmoothQuant tests
   4e   Single-GPU flash-decoding-attention parameter matrix
+  4f   Single-GPU strict FA3 training attention (requires the optional FA3 package)
   5    Two-GPU DDP/FSDP/LowLevelZeRO/LoRA
   6    Four-GPU DeviceMesh/DTensor/communication foundations
   7    Four-GPU FP8 collectives and DDP/FSDP communication hooks
@@ -85,6 +86,7 @@ case "${BATCH}" in
             tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
             tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
             tests/test_pipeline/test_schedule/test_pipeline_schedule_utils.py
+            tests/test_shardformer/test_layer/test_attention_backends.py
             tests/test_tensor/test_dtensor/test_dtensor_sharding_spec.py
             tests/test_tensor/test_shape_consistency.py
             tests/test_tensor/test_sharding_spec.py
@@ -167,6 +169,18 @@ case "${BATCH}" in
         DEFAULT_TIMEOUT_MIN=90
         NEEDS_CUDA_TOOLKIT=1
         TESTS=(tests/test_infer/test_kernels/cuda/test_flash_decoding_attention.py)
+        ;;
+    4f|04f)
+        LABEL="04f-fa3-training-attention"
+        DESCRIPTION="Strict FA3 dense/varlen forward, backward and numerical alignment"
+        EXPECTED_GPUS=1
+        DEFAULT_TIMEOUT_MIN=30
+        TESTS=(tests/test_shardformer/test_layer/test_attention_backends.py)
+        PYTEST_EXTRA=(-k gpu -o junit_family=xunit1)
+        # This is acceptance for a requested backend, not an optional discovery
+        # run. Missing FA3/CUDA must fail rather than produce a green skip.
+        export COLOSSALAI_TEST_ATTENTION_BACKEND=fa3
+        export COLOSSALAI_ATTENTION_TRACE_DIR="${RESULTS_ROOT}/fa3-traces"
         ;;
     5|05)
         LABEL="05-booster-lora-2gpu"

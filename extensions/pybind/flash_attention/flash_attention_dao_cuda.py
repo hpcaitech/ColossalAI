@@ -94,3 +94,32 @@ class FlashAttentionDaoCudaExtension(_Extension):
             return attn_output.transpose(1, 2)
 
         return flash_attention
+
+    def load_varlen(self):
+        from flash_attn import flash_attn_varlen_func
+
+        def flash_attention_varlen(
+            q,
+            k,
+            v,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            max_seqlen_q,
+            max_seqlen_kv,
+            dropout_p=0.0,
+            scale=None,
+            is_causal=False,
+        ):
+            inputs = [x if x.stride(-1) == 1 else x.contiguous() for x in (q, k, v)]
+            return flash_attn_varlen_func(
+                *inputs,
+                cu_seqlens_q,
+                cu_seqlens_kv,
+                max_seqlen_q,
+                max_seqlen_kv,
+                dropout_p=dropout_p,
+                softmax_scale=scale,
+                causal=is_causal,
+            )
+
+        return flash_attention_varlen
