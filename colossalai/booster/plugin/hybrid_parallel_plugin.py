@@ -62,6 +62,18 @@ def _is_tp_split(param: Tensor) -> bool:
     return is_distributed_tensor(param) or is_customized_distributed_tensor(param)
 
 
+def _seed_data_loader_worker(worker_id: int, seed: int) -> None:
+    """Seed one dataloader worker process.
+
+    The function lives at module scope and takes its seed through :func:`functools.partial` so that a loader built
+    with ``multiprocessing_context="spawn"`` can pickle it; a closure defined inside ``prepare_dataloader`` cannot be
+    pickled, and such a loader failed before yielding its first batch.
+    """
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
+
+
 class HybridParallelModule(ModelWrapper, AMPModelMixin):
     def __init__(
         self,
@@ -1431,17 +1443,11 @@ class HybridParallelPlugin(PipelinePluginBase):
         )
 
         # Deterministic dataloader
-        def seed_worker(worker_id):
-            worker_seed = seed
-            np.random.seed(worker_seed)
-            torch.manual_seed(worker_seed)
-            random.seed(worker_seed)
-
         return DataLoader(
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            worker_init_fn=seed_worker,
+            worker_init_fn=partial(_seed_data_loader_worker, seed=seed),
             drop_last=drop_last,
             pin_memory=pin_memory,
             num_workers=num_workers,
