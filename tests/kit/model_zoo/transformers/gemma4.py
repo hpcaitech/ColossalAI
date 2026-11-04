@@ -57,7 +57,9 @@ def gemma4_numerics_data():
     # Different micro-batches must have different valid-token counts to distinguish global token normalization
     # from an average of per-micro-batch means. All randomness belongs here, before any reference or plugin runs.
     batch = gemma4_data()
-    length = int(torch.randint(3, 7, ()).item())
+    # Keep one visible key in the last sliding window, even for padded queries. HF eager attention upcasts
+    # softmax to FP32: a completely masked FP64 row becomes all -inf and yields NaNs instead of a valid truth.
+    length = int(torch.randint(5, 7, ()).item())
     batch["input_ids"][1, length:] = 0
     batch["attention_mask"][1, length:] = 0
     batch["labels"][1, length:] = -100

@@ -59,6 +59,8 @@ input/output embedding tie. Both entries use the tiny profiles described above, 
 reports validate reduced configurations, not the downloaded E2B/E4B checkpoints. The generated micro-batches have
 unequal valid-token counts. `TokenLoss` uses summed causal cross-entropy and counts shifted, non-padding labels, so
 the data-parallel check can test global valid-token normalization.
+Padding retains a visible key in every sliding window so the FP64 eager reference stays finite. The unified
+independent/resume loss is a random output projection; the original causal CE tests remain separate evidence.
 
 Run from a clean, pushed commit, after allocating the devices and installing this exact source checkout. Create a
 new report path for each run. The team submission directory for E2B is:

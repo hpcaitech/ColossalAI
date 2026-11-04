@@ -113,6 +113,21 @@ def test_gemma4_numerics_batches_vary_valid_tokens():
 
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
+def test_gemma4_numerics_fp64_padding(variant):
+    model = tiny_gemma4(variant).double()
+    for length in (5, 6):
+        batch = gemma4_data()
+        batch["input_ids"][1, length:] = 0
+        batch["attention_mask"][1, length:] = 0
+        batch["labels"][1, length:] = -100
+        model.zero_grad()
+        output = model(**batch)
+        assert torch.isfinite(output.logits).all() and torch.isfinite(output.loss)
+        output.loss.backward()
+        assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
+
+
+@pytest.mark.parametrize("variant", ["e2b", "e4b"])
 def test_gemma4_dense_structure(variant):
     model = tiny_gemma4(variant)
     cycle = model.config.num_hidden_layers // 2
