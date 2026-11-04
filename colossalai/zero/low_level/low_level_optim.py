@@ -23,6 +23,7 @@ from colossalai.interface import OptimizerWrapper
 from colossalai.logging import get_dist_logger
 from colossalai.quantization.fp8 import all_gather_fp8, all_reduce_fp8, reduce_scatter_fp8
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.tensor.moe_tensor.grad_sync import GradSyncSpec
 
 from ._utils import (
     all_gather_into_flat_tensor_nd,
@@ -100,6 +101,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         fp8_communication: bool = False,
         backward_context=None,
         grad_norm_process_group: Optional[Union[ProcessGroup, Tuple[ProcessGroup, ...]]] = None,
+        grad_sync_plan: Optional[Dict[nn.Parameter, GradSyncSpec]] = None,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
 
@@ -202,6 +204,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         self.pg_to_bucket_store = {pg: BucketStore(pg, reduce_bucket_size) for pg in self.pg_to_param_list}
         # param id to bucket store, have to use id(param) as key since it is used in stores
         self.pid_to_bucket_store = {id(param): self.pg_to_bucket_store[param_to_pg[param]] for param in param_to_pg}
+        # Gradients are averaged over the store's group; a parameter whose sync plan divides by more (an expert that
+        # leaves 1 / ep_size to the reduction) is divided by the rest when its gradient enters the bucket.
+        self._grad_pre_divisor = {}
+        for param, spec in (grad_sync_plan or {}).items():
+            if param not in param_to_pg:
+                continue
+            if spec.replica_group is not param_to_pg[param]:
+                raise ValueError("The replica group of the gradient sync plan differs from the ZeRO group of a param.")
+            extra = spec.sum_divisor / self.pg_to_bucket_store[param_to_pg[param]].world_size
+            if extra != 1:
+                self._grad_pre_divisor[id(param)] = extra
 
         # iterate over the param group in the optimizer
         # partition these param groups for data parallel training
@@ -450,6 +463,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             or group_id != self.pid_to_bucket_store[id(param)].current_group_id
         ):
             self._run_reduction()
+
+        pre_divisor = self._grad_pre_divisor.get(id(param))
+        if pre_divisor is not None:
+            param.grad.div_(pre_divisor)
 
         padding_size = self.get_param_padding_size(param)
         self.pid_to_bucket_store[id(param)].add_param_grad(group_id, param, padding_size)
