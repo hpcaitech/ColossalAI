@@ -163,12 +163,24 @@ silently validate the old dependency environment.
 
 The host selector passes **GPU UUIDs** to Docker, not `--gpus all`. Inside the
 container, the allocated devices become logical `0,1,...`; host indices must
-not be reused there. No personal venv, host CUDA toolkit, home directory,
+not be reused there. The launcher resolves the allocated UUIDs to device minors
+and explicitly grants only those GPU nodes plus the CUDA control nodes. This
+preserves device access across container resource updates with the systemd
+cgroup driver. Before tests, every visible GPU must complete a small CUDA
+allocation, computation and synchronization; enumeration alone is insufficient.
+No personal venv, host CUDA toolkit, home directory,
 credentials or Docker socket is mounted. Only the report bind is writable;
 containers run as the runner UID/GID so artifact ownership stays correct.
 Containers are not a security boundary for hostile pull requests: the host
 scripts still have Docker access. Keep the trusted-ref policy and runner-group
 restrictions.
+
+Disposable source, HOME and compiler caches use a private `/tmp` tmpfs instead
+of the overlay2 writable layer. Its maximum size equals `COLOSSAL_CI_MEMORY`;
+tmpfs pages and test processes share that existing memory budget. This avoids
+the observed overlay2 removal failure under the temporary HOME directory; it
+does not repair containers already stuck in removal. Cleanup errors remain
+failures and are recorded separately from the container's exit code.
 
 | Repository variable | Default / purpose |
 | --- | --- |

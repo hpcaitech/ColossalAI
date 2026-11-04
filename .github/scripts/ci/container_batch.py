@@ -9,6 +9,7 @@ import json
 import os
 import re
 import signal
+import stat
 import subprocess
 import uuid
 from pathlib import Path
@@ -63,6 +64,37 @@ def validate_scope(scope):
     return scope
 
 
+def gpu_device_paths(gpu_uuids):
+    """Resolve allocated UUIDs to character devices, including shared CUDA controls."""
+    inventory = subprocess.run(
+        ["nvidia-smi", "--query-gpu=uuid,minor_number", "--format=csv,noheader,nounits"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    ).stdout
+    minors = {}
+    for line in inventory.splitlines():
+        gpu, minor = (value.strip() for value in line.split(","))
+        if gpu in minors or not minor.isdecimal():
+            raise RuntimeError("Invalid GPU device inventory from nvidia-smi")
+        minors[gpu] = int(minor)
+    if any(gpu not in minors for gpu in gpu_uuids):
+        raise RuntimeError("An allocated GPU UUID is missing from the device inventory")
+    selected_minors = [minors[gpu] for gpu in gpu_uuids]
+    if len(set(selected_minors)) != len(selected_minors):
+        raise RuntimeError("Allocated GPU UUIDs resolve to duplicate device minors")
+    devices = [Path(f"/dev/nvidia{minor}") for minor in selected_minors]
+    devices += [Path("/dev/nvidiactl"), Path("/dev/nvidia-uvm"), Path("/dev/nvidia-uvm-tools")]
+    for index, device in enumerate(devices):
+        metadata = device.stat()
+        if not stat.S_ISCHR(metadata.st_mode):
+            raise RuntimeError(f"GPU device is not a character device: {device}")
+        if index < len(selected_minors) and os.minor(metadata.st_rdev) != selected_minors[index]:
+            raise RuntimeError(f"GPU device minor does not match the allocation: {device}")
+    return devices
+
+
 def create_command(name, scope, image_id, source, output, gpu_uuids, batch, env):
     validate_scope(scope)
     if not IMAGE_ID.fullmatch(image_id):
@@ -114,6 +146,10 @@ def create_command(name, scope, image_id, source, output, gpu_uuids, batch, env)
         shm,
         "--pids-limit=4096",
         "--ulimit=memlock=-1:-1",
+        # Keep disposable source, HOME and compiler caches out of overlay2.
+        # tmpfs pages count towards the existing container memory limit.
+        "--tmpfs",
+        f"/tmp:rw,exec,nosuid,nodev,size={memory},mode=1777",
         "--gpus",
         '"device=' + ",".join(gpu_uuids) + '"',
         "--mount",
@@ -123,6 +159,11 @@ def create_command(name, scope, image_id, source, output, gpu_uuids, batch, env)
         "--workdir",
         "/tmp",
     ]
+    # The legacy NVIDIA hook's cgroup permissions can disappear after a
+    # container/systemd update. Explicit devices are retained by runc. Resolve
+    # UUIDs to actual minors rather than assuming host indices equal minors.
+    for device in gpu_device_paths(gpu_uuids):
+        command.extend(["--device", f"{device}:{device}:rw"])
     container_env = {
         "NVIDIA_VISIBLE_DEVICES": ",".join(gpu_uuids),
         "NVIDIA_DRIVER_CAPABILITIES": "compute,utility",
@@ -185,6 +226,7 @@ def run_container(batch, selected, source, output, image_id, env, stream, result
         raise RuntimeError(f"Container batch interrupted by signal {signum}")
 
     old_handlers = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGTERM, signal.SIGINT)}
+    execution_error = None
     try:
         try:
             subprocess.run(command, check=True, capture_output=True, text=True, timeout=60)
@@ -194,6 +236,7 @@ def run_container(batch, selected, source, output, image_id, env, stream, result
         client_code = stream(["docker", "start", "--attach", name], output / "pytest.log", env)
         state = json.loads(docker("inspect", "--format", "{{json .State}}", name))
         result["container_state"] = state
+        result["container_exit_code"] = state.get("ExitCode")
         if state.get("Running") or state.get("Status") != "exited":
             raise RuntimeError("Docker client exited before the container finished")
         if state.get("OOMKilled"):
@@ -201,6 +244,10 @@ def run_container(batch, selected, source, output, image_id, env, stream, result
         if state.get("Error"):
             raise RuntimeError(f"Container runtime error: {state['Error']}")
         return state["ExitCode"] or client_code
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        execution_error = error
+        result["container_execution_error"] = str(error)
+        raise
     finally:
         # Also runs when create times out: the daemon might have created the
         # container despite losing the client's response. The job's always()
@@ -212,7 +259,12 @@ def run_container(batch, selected, source, output, image_id, env, stream, result
             result["container_cleanup"] = "completed"
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
             result["container_cleanup"] = f"failed: {error}"
-            raise
+            # Retain the original execution exception when both paths fail;
+            # cleanup errors are still recorded and the job cannot pass.
+            if execution_error is None:
+                raise RuntimeError(
+                    f"Container exited with code {result.get('container_exit_code', 'unknown')}; cleanup failed: {error}"
+                ) from error
         finally:
             for sig, handler in old_handlers.items():
                 signal.signal(sig, handler)
