@@ -111,10 +111,17 @@ jobs:
           # Public-source fetches use no stored credentials or auth headers.
           git init --quiet "$source_root/repo"
           git -C "$source_root/repo" config core.autocrlf false
-          GIT_TERMINAL_PROMPT=0 timeout --signal=TERM --kill-after=10s 240s \
-            git -C "$source_root/repo" -c credential.helper= -c http.extraHeader= \
-            fetch --depth=1 --no-tags \
-            "https://github.com/$GITHUB_REPOSITORY.git" "$CI_SOURCE_SHA"
+          for attempt in 1 2; do
+            if GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0 \
+              timeout --signal=TERM --kill-after=10s 120s \
+              git -C "$source_root/repo" -c http.version=HTTP/1.1 \
+              -c credential.helper= -c http.extraHeader= fetch --depth=1 --no-tags \
+              "https://github.com/$GITHUB_REPOSITORY.git" "$CI_SOURCE_SHA"; then
+              break
+            fi
+            [[ "$attempt" == 1 ]] || exit 1
+            printf 'Git fetch failed; retrying the same pinned SHA once.\n' >&2
+          done
           git -C "$source_root/repo" -c core.hooksPath=/dev/null \
             checkout --quiet --detach FETCH_HEAD
           [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
