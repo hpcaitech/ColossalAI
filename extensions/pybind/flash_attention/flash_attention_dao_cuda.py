@@ -56,7 +56,14 @@ class FlashAttentionDaoCudaExtension(_Extension):
             max_seqlen_kv: Optional[int] = None,
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
+            qkv_layout: str = "BNSD",
         ):
+            if qkv_layout != "BNSD":
+                raise NotImplementedError(
+                    f"The CUDA flash-attn backend only accepts the BNSD layout, got qkv_layout={qkv_layout!r}. "
+                    f"Transpose q, k and v to [B, nHeads, S, D] before calling, or use the NPU backend, which accepts "
+                    f"BSND as well."
+                )
             # [B, H, S, D] -> [B, S, H, D]
             q = q.transpose(1, 2)
             k = k.transpose(1, 2)
@@ -93,4 +100,7 @@ class FlashAttentionDaoCudaExtension(_Extension):
             # [B, S, H, D] -> [B, H, S, D]
             return attn_output.transpose(1, 2)
 
+        # The kernel receives ``causal`` and builds the window itself, so it does not need the dense mask that
+        # ``prepare_attn_kwargs`` stops building above MEMORY_BOUND.
+        flash_attention.supports_internal_causal_window = True
         return flash_attention

@@ -43,7 +43,15 @@ class FlashAttentionSdpaCudaExtension(_Extension):
             max_seqlen_kv: Optional[int] = None,
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
+            qkv_layout: str = "BNSD",
         ):
+            if qkv_layout != "BNSD":
+                raise NotImplementedError(
+                    f"The SDPA backend only accepts the BNSD layout, got qkv_layout={qkv_layout!r}. Transpose q, k "
+                    f"and v to [B, nHeads, S, D] before calling, or use the NPU backend, which accepts BSND as well."
+                )
+            # PyTorch rejects an additive mask and ``is_causal`` at the same time. A causal call that carries a mask
+            # already has the window encoded in it, so only ask SDPA to build the window when no mask was given.
             return torch.nn.functional.scaled_dot_product_attention(
                 q,
                 k,
@@ -51,6 +59,7 @@ class FlashAttentionSdpaCudaExtension(_Extension):
                 attn_mask=attention_mask,
                 dropout_p=dropout_p,
                 scale=scale,
+                is_causal=is_causal and attention_mask is None,
             )
 
         return flash_attention

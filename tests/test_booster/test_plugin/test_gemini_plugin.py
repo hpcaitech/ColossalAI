@@ -40,7 +40,12 @@ def run_fn(init_method, model_fn, data_gen_fn, output_transform_fn, zero_size, t
         data = data_gen_fn()
 
         data = {
-            k: v.to(get_accelerator().get_current_device()) if torch.is_tensor(v) or "Tensor" in v.__class__.__name__ else v for k, v in data.items()
+            k: (
+                v.to(get_accelerator().get_current_device())
+                if torch.is_tensor(v) or "Tensor" in v.__class__.__name__
+                else v
+            )
+            for k, v in data.items()
         }
 
         model, optimizer, criterion, _, _ = booster.boost(model, optimizer, criterion)

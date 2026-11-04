@@ -19,6 +19,9 @@ TESTS=(
     tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
     tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
     tests/test_pipeline/test_schedule/test_pipeline_schedule_utils.py
+    tests/test_shardformer/test_layer/test_segmented_attn.py
+    tests/test_shardformer/test_layer/test_two_way_attn.py
+    tests/test_shardformer/test_npu_attention_args.py
     tests/test_tensor/test_dtensor/test_dtensor_sharding_spec.py
     tests/test_tensor/test_shape_consistency.py
     tests/test_tensor/test_sharding_spec.py
