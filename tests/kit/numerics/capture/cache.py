@@ -2,9 +2,10 @@
 
 A cached trace is reused only if everything that determines it is unchanged; the key hashes:
 
-- the entry name, seed, number of steps and upstream gradient seed;
+- the entry name, seed, number of steps and upstream gradient seed, and the parameters it declares unused or tied;
 - the reference weights and buffers and every batch, byte for byte, and the code that selects outputs and routers;
-- the optimizer (its class and hyperparameters, read from one built on a dummy parameter);
+- the optimizer (its class, and the hyperparameters and size of each parameter group, read from one built on the
+  reference's parameters, which allocates no state);
 - for ``ref``, the precision recipe (the float64 truth does not depend on it, so one truth serves every
   configuration of an entry);
 - the torch and transformers versions and the device name;
@@ -35,7 +36,8 @@ def reference_key(s: "training.Prepared", optimizer_fn: Callable, grad_seed: int
     """The cache key of a reference run of ``s``; ``recipe=None`` for the float64 truth."""
     digest = hashlib.sha256()
     _update(digest, dict(entry=s.name, seed=s.seed, steps=len(s.batches), grad_seed=grad_seed, code=s.code))
-    _update(digest, dict(recipe=repr(recipe), optimizer=_optimizer_signature(optimizer_fn)))
+    _update(digest, dict(unused=sorted(s.unused_params), tied=sorted(sorted(g) for g in s.tied_params)))
+    _update(digest, dict(recipe=repr(recipe), optimizer=_optimizer_signature(optimizer_fn, s.reference)))
     _update(digest, _environment())
     for name, tensor in sorted(s.reference.state_dict().items()):
         _update_tensor(digest, name, tensor)
@@ -81,9 +83,13 @@ def _share(path: str, mode: int) -> None:
         pass
 
 
-def _optimizer_signature(optimizer_fn: Callable) -> Dict[str, Any]:
-    optimizer = optimizer_fn([nn.Parameter(torch.zeros(1))])
-    groups = [{k: repr(v) for k, v in sorted(g.items()) if k != "params"} for g in optimizer.param_groups]
+def _optimizer_signature(optimizer_fn: Callable, module: nn.Module) -> Dict[str, Any]:
+    # the real parameters: an optimizer_fn may group or leave out parameters by shape
+    optimizer = optimizer_fn(list(module.parameters()))
+    groups = [
+        dict({k: repr(v) for k, v in sorted(g.items()) if k != "params"}, size=len(g["params"]))
+        for g in optimizer.param_groups
+    ]
     return dict(type=type(optimizer).__qualname__, groups=groups)
 
 

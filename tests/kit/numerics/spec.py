@@ -87,6 +87,11 @@ class NumericsSpec:
             (``requires_grad_(False)``) or replace a branch the training path skips. It may modify the module in place
             and return ``None``, or return a replacement. Every run, plugin or reference, sees the prepared model.
         token_loss: The model's own loss for ``data_parallel.check(token_weighted=True)`` (see ``TokenLoss``).
+        tied_params: Groups of parameter names (in the model under test) that must be one and the same ``Parameter``,
+            e.g. ``(("embed_tokens.weight", "lm_head.weight"),)`` for tied embeddings. Every run checks, in its own
+            model, that each group is one Parameter and that no other parameters share one; a broken or undeclared
+            tie fails. A tied parameter counts once, under its first name in ``named_parameters()``, for gradients,
+            weights and the optimizer.
     """
 
     reference_fn: Optional[Callable[[], nn.Module]] = None
@@ -96,3 +101,4 @@ class NumericsSpec:
     routers: Optional[Routers] = None
     prepare_fn: Optional[Callable[[nn.Module], Optional[nn.Module]]] = None
     token_loss: Optional[TokenLoss] = None
+    tied_params: Tuple[Tuple[str, ...], ...] = ()

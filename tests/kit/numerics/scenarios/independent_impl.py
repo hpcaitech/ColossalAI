@@ -14,7 +14,8 @@ reference in float64 (``truth``), the reference at the tested precision (``ref``
 For training, the precision recipes must match, guarded three ways:
 
 1. ``recipe_for`` derives the reference recipe from the plugin configuration and refuses anything unverified.
-2. The dtypes both runs actually used are compared (``RecipeMismatch`` before any numbers are judged).
+2. The dtypes and device types both runs actually used are compared (``RecipeMismatch`` before any numbers are
+   judged).
 3. ``blank_control`` runs a configuration in which the plugin changes no arithmetic; every ratio must be 1.
 
 The reference is also run twice (as PyTorch does before its accuracy checks): tensors that differ between the two
@@ -59,7 +60,8 @@ def training_traces(
     """Run ``entry`` (a model_zoo name or entry tuple) and return ``(test, ref, truth)`` for ``judge``.
 
     Must be called with ``torch.distributed`` initialized (e.g. inside ``colossalai.testing.spawn``).
-    Raises ``UnsupportedRecipe`` for unverified configurations and ``RecipeMismatch`` if the dtypes differ.
+    Raises ``UnsupportedRecipe`` for unverified configurations and ``RecipeMismatch`` if the dtypes or device types
+    differ.
     For Gemini and FSDP, whose gradients are read from Adam's first moment, both sides run ``optimizer_fn`` with
     ``beta1 = 0`` (``capture.plugins``).
 
@@ -89,16 +91,17 @@ def training_traces(
     mismatches = dtype_mismatches(test, ref)
     if mismatches:
         raise RecipeMismatch(
-            f"test and ref used different dtypes, so they do not follow the same precision recipe "
+            f"test and ref used different dtypes or devices, so they do not follow the same precision recipe "
             f"(ref: {ref.meta['recipe']}):\n" + "\n".join(mismatches)
         )
     return test, ref, truth
 
 
 def check_training(*args, **kwargs) -> AlignmentReport:
-    """``judge(*training_traces(...))``, failing trainable parameters left without a gradient in any run unless the
-    entry's ``NumericsSpec.unused_params`` names them; with ``NumericsSpec.routers``, routing flips are counted
-    (``diagnose_routing``)."""
+    """``judge(*training_traces(...))``, failing what breaks the entry's parameter contract in any run
+    (``require_gradients``): a trainable parameter left without a gradient unless ``NumericsSpec.unused_params`` names
+    it, one the optimizer does not hold, a tie that differs from ``NumericsSpec.tied_params``. With
+    ``NumericsSpec.routers``, routing flips are counted (``diagnose_routing``)."""
     test, ref, truth = training_traces(*args, **kwargs)
     report = require_gradients(judge(test, ref, truth), test=test, ref=ref, truth=truth)
     return diagnose_routing(report, test, ref, truth)
@@ -161,7 +164,7 @@ def check_optimizer(
 
 
 def dtype_mismatches(test: Trace, ref: Trace) -> List[str]:
-    """Dtype records present in both runs that differ, as ``"<key>: test <dtypes> / ref <dtypes>"``."""
+    """Dtype and device records present in both runs that differ, as ``"<key>: test <dtypes> / ref <dtypes>"``."""
     test_dtypes, ref_dtypes = test.meta["dtypes"], ref.meta["dtypes"]
     return [
         f"{key}: test {test_dtypes[key]} / ref {ref_dtypes[key]}"

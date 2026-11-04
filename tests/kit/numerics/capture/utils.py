@@ -39,6 +39,39 @@ def missing_grads(grads: Dict[str, Optional[Tensor]], unused_params: Iterable[st
     return sorted(name for name, grad in grads.items() if grad is None and name not in unused)
 
 
+def not_in_optimizer(trainable: Iterable[Tuple[str, Tensor]], optimizer: torch.optim.Optimizer) -> List[str]:
+    """Names of the ``(name, tensor)`` pairs that ``optimizer`` does not hold, by identity; ``trainable`` lists what
+    should train (for a reference with master weights, their float32 copies).
+
+    Recorded by every training run as ``meta["not_in_optimizer"]`` and failed by ``judge.require_gradients``: an
+    ``optimizer_fn`` that builds its own parameter groups (say, no weight decay for norms) and leaves a parameter out
+    does so on both sides, so the comparison alone would not notice that the parameter never trains.
+    """
+    held = {id(p) for group in optimizer.param_groups for p in group["params"]}
+    return sorted(name for name, p in trainable if id(p) not in held)
+
+
+def tie_problems(module: nn.Module, tied: Iterable[Iterable[str]], rename=None) -> Dict[str, str]:
+    """How the parameters ``module`` shares between names differ from the declared groups ``tied``.
+
+    Keyed ``tied/<names>``: a declared group that is not one ``Parameter``, or names sharing one without a declaration.
+    ``rename`` maps ``module``'s names to those of the model under test (``None`` drops a name). Identity is checked
+    within ``module`` only: different runs hold different copies. Recorded as ``meta["tie_problems"]`` and failed by
+    ``judge.require_gradients``.
+    """
+    shared: Dict[int, List[str]] = {}
+    for name, p in module.named_parameters(remove_duplicate=False):
+        name = rename(name) if rename is not None else name
+        if name is not None:
+            shared.setdefault(id(p), []).append(name)
+    actual = {tuple(sorted(set(names))) for names in shared.values() if len(set(names)) > 1}
+    declared = {tuple(sorted(set(group))) for group in tied}
+    problems = {f"tied/{','.join(g)}": "declared tied but not one Parameter" for g in declared - actual}
+    for group in actual - declared:
+        problems[f"tied/{','.join(group)}"] = "one Parameter but not declared in NumericsSpec.tied_params"
+    return problems
+
+
 def upstream_loss(outputs: Dict[str, Tensor], grad_seed: int = 0) -> Optional[Tensor]:
     """Scalar whose backward feeds a fixed random upstream gradient to every output that requires grad.
 
