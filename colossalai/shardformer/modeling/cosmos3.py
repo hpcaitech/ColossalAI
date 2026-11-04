@@ -1,34 +1,15 @@
-r"""Cosmos 3 MoT attention on ColossalAI's two-way flat-attention kernel.
+r"""Cosmos 3 attention on ColossalAI's two-way flat-attention kernel.
 
-The diffusers Cosmos 3 transformer keeps its attention core in a replaceable ``processor`` object:
-``Cosmos3PackedMoTAttention.forward`` is only
+Cosmos 3 keeps its attention core in a replaceable ``processor`` object, and its forward only calls
+``self.processor(self, und_seq, gen_seq, rotary_emb)``. :class:`ColossalTwoWayAttnProcessor` keeps the stock
+``Cosmos3AttnProcessor`` prologue -- per-pathway projections, q/k norms, 3D RoPE -- and hands the understanding (AR)
+prefix and the generation (DM) suffix to
+:func:`~colossalai.shardformer.layer.two_way_attn.two_way_flat_attention` in one call instead of two
+``dispatch_attention_fn`` calls.
 
-.. code-block:: python
-
-    return self.processor(self, und_seq, gen_seq, rotary_emb)
-
-and the stock ``Cosmos3AttnProcessor`` does the per-pathway projections, q/k norms, 3D RoPE and the two attention
-calls. :class:`ColossalTwoWayAttnProcessor` keeps that prologue and replaces the two attention calls with
-:func:`~colossalai.shardformer.layer.two_way_attn.two_way_flat_attention`, so the understanding (AR) prefix and the
-generation (DM) suffix are handed to one kernel instead of two ``dispatch_attention_fn`` calls.
-
-The class deliberately does not import diffusers. It only relies on the attributes the stock processor reads
-(``to_q``/``to_k``/``to_v``, ``add_q_proj``/``add_k_proj``/``add_v_proj``, ``to_out``/``to_add_out``, the q/k norms,
-``num_attention_heads``, ``num_key_value_heads`` and ``head_dim``), which also makes it testable with a small stand-in
-module and keeps ``colossalai.shardformer`` importable without the optional diffusers dependency.
-
-Multi-sample packs
-------------------
-A pack of ``N`` samples is laid out as a global AR block followed by a global DM block: sample ``i`` owns
-``ar_lens[i]`` contiguous AR tokens and ``dm_lens[i]`` contiguous DM tokens. The transformer's forward only has a
-scalar ``und_len``, which is exactly the global AR/DM split point, so the per-sample boundaries have to travel
-beside the forward arguments. They are carried by
-:class:`~colossalai.shardformer.layer.two_way_attn.TwoWayPackedMeta` and set on the processor (one instance is shared
-by every decoder layer, like diffusers' own ``enable_cosmos3_flash_attention`` helper) with
-:meth:`ColossalTwoWayAttnProcessor.set_packed_meta` before the forward.
-
-With no metadata the processor treats the whole pack as one sample, which is the original batch-size-one behaviour
-and keeps single-sample smoke tests working without any plumbing.
+The per-sample boundaries of a packed batch travel beside the forward arguments as a
+:class:`~colossalai.shardformer.layer.two_way_attn.TwoWayPackedMeta`; the layout is described on the processor class.
+Only the attribute contract of the stock processor is used, so this module imports without diffusers.
 """
 
 from typing import Optional, Tuple
@@ -54,6 +35,11 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 class ColossalTwoWayAttnProcessor:
     """Drop-in replacement for diffusers' ``Cosmos3AttnProcessor`` backed by the two-way kernel.
+
+    A pack of ``N`` samples is laid out as a global AR block followed by a global DM block, sample ``i`` owning
+    ``ar_lens[i]`` contiguous AR tokens and ``dm_lens[i]`` contiguous DM tokens. That is the split ``und_len`` already
+    describes, so the per-sample boundaries are set on the processor -- one instance is shared by every decoder layer
+    -- before the forward; without them the whole pack counts as one sample, the stock batch-size-one behaviour.
 
     Args:
         backend (str, optional): ``"naive"`` for the PyTorch reference or ``"npu"`` for the Ascend fusion path.

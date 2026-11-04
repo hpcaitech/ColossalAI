@@ -1,41 +1,14 @@
 r"""ShardFormer policy for the diffusers Cosmos 3 omni transformer.
 
-Cosmos 3 is a mixture-of-transformers diffusion policy: a Qwen-style text tower (the understanding / AR pathway) and
-a diffusion tower (the generation / DM pathway) share one stack of decoder layers, and each layer's attention runs
-both pathways through :class:`~colossalai.shardformer.modeling.cosmos3.ColossalTwoWayAttnProcessor`.
+Every :class:`~colossalai.booster.plugin.HybridParallelPlugin` run, including a pure ZeRO one, goes through
+ShardFormer, so the policy carries the two things that depend on that pass: it installs
+:class:`~colossalai.shardformer.modeling.cosmos3.ColossalTwoWayAttnProcessor` in
+:meth:`Cosmos3OmniPolicy.postprocess`, after the module replacements and the lazy materialization, and it adds the
+tensor-parallel rewrites for a TP run. A ZeRO-only run (``tp=1``) rewrites no module and gets the processor alone.
 
-What the policy has to do
--------------------------
-ShardFormer is the model-rewrite pass that every :class:`~colossalai.booster.plugin.HybridParallelPlugin` run goes
-through, including pure ZeRO runs where no tensor parallelism is requested. Two things therefore belong here:
-
-1. **The attention processor.** It is not a parameter, so neither ZeRO nor DDP touches it, and the model builds its
-   own stock ``Cosmos3AttnProcessor`` in every ``Cosmos3PackedMoTAttention.__init__``. Installing ours is done in
-   :meth:`Cosmos3OmniPolicy.postprocess`, i.e. after the module replacements and after lazy materialization, so the
-   processor sees the final (possibly TP-sharded) modules and nothing rewrites it afterwards.
-2. **Tensor-parallel rewrites**, mirroring the usual ShardFormer recipe (column-parallel q/k/v and gate/up, row-parallel
-   output and down projections, local head counts on the attention module). The official cosmos-framework only ships
-   FSDP2 (+ context parallelism, activation checkpointing, ``torch.compile``) and has no tensor-parallel plan, so this
-   part is the ShardFormer equivalent rather than a port.
-
-The official recipe shards per decoder block; ``HybridParallelPlugin`` reaches the same granularity because ZeRO
-partitions the whole module's gradients and the policy rewrites inside each block.
-
-Multi-sample packs
-------------------
-The per-sample AR/DM boundaries of a packed batch are runtime data, not a property of the module graph, so they are
-set on the shared processor before each forward:
-
-.. code-block:: python
-
-    policy = Cosmos3OmniPolicy(backend="npu")
-    model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
-    ...
-    policy.set_packed_meta(layout.meta)
-    outputs = model(**inputs)
-
-:func:`~colossalai.shardformer.modeling.cosmos3.set_cosmos3_packed_meta` does the same from the model side when the
-policy object is not at hand.
+The per-sample AR/DM boundaries of a packed batch are runtime data rather than a property of the module graph, so they
+are set on the shared processor before each forward, through :meth:`Cosmos3OmniPolicy.set_packed_meta` or
+:func:`~colossalai.shardformer.modeling.cosmos3.set_cosmos3_packed_meta`.
 """
 
 from typing import Dict, Optional, Union
