@@ -224,7 +224,7 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | --- | --- | --- |
    | `TorchDDPPlugin()` | float32 | CPU or GPU |
    | `TorchDDPPlugin()`, `mixed_precision="fp16"` | float32 weights, `torch.autocast(float16)`, loss scale 2**16 | CUDA |
-   | `TorchDDPPlugin()`, `mixed_precision="bf16"` | refused: `BF16MixedPrecision` is not implemented | |
+   | `TorchDDPPlugin()`, `mixed_precision="bf16"` or `BF16MixedPrecision()` | float32 weights, `torch.autocast(bfloat16)`, float32 optimizer states, no loss scaling | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="fp32")`, stage 1 or 2 | float32 | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
    | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="fp32")` (the shardformer path) | float32 | CUDA or NPU |
@@ -235,6 +235,9 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `TorchFSDPPlugin()` | float32 | CUDA |
    | `TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=bf16 or fp16, buffer_dtype=the same))` | whole model and inputs cast, float32 master weights (FSDP's sharded parameters, which start from the model's own float32 weights, not from their cast), no loss scaling | CUDA |
    | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cast_inputs=False`, or `cpu_offload` with fp32 or `master_weights=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; `GeminiPlugin` with offloading (`placement_policy="auto"`, `offload_*_frac`), `max_norm`, `use_fp8`, `master_weights=False`, `tp_size` or `extra_dp_size` above 1; `TorchFSDPPlugin` with `cpu_offload`, `auto_wrap_policy`, `ignored_modules`, `fp8_communication`, a `buffer_dtype` other than `param_dtype` or `keep_low_precision_grads`; other plugins | refused: not verified yet | |
+
+   CPU `BF16MixedPrecision` is refused: `CPUAccelerator.autocast` does not implement BF16 autocast. The acceptance
+   command records `ddp_bf16` as `not_run` on CPU rather than running a float32 model under a BF16 label.
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
    the gradient dtypes, the dtypes of what the optimizer updates (the master weights where there are any) and of its

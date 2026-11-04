@@ -3,6 +3,9 @@
 from functools import partial
 
 import torch
+import torch.nn.functional as F
+
+from tests.kit.numerics import NumericsSpec, TokenLoss
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -50,13 +53,54 @@ def gemma4_data():
     return {"input_ids": ids, "attention_mask": mask, "labels": ids.masked_fill(mask == 0, -100)}
 
 
+def gemma4_numerics_data():
+    # Different micro-batches must have different valid-token counts to distinguish global token normalization
+    # from an average of per-micro-batch means. All randomness belongs here, before any reference or plugin runs.
+    batch = gemma4_data()
+    length = int(torch.randint(3, 7, ()).item())
+    batch["input_ids"][1, length:] = 0
+    batch["attention_mask"][1, length:] = 0
+    batch["labels"][1, length:] = -100
+    return batch
+
+
+def gemma4_numerics_prepare(model):
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+
+
+def gemma4_summed_token_loss(output, batch):
+    # Native HF causal LM loss upcasts logits to float32 and predicts each token from the preceding position.
+    logits = output.logits[:, :-1].float()
+    labels = batch["labels"][:, 1:]
+    return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), labels.reshape(-1), ignore_index=-100, reduction="sum")
+
+
+def gemma4_valid_tokens(batch):
+    return batch["labels"][:, 1:].ne(-100).sum()
+
+
+def gemma4_output(output):
+    return {"logits": output.logits, "loss": output.loss}
+
+
+def gemma4_loss(output):
+    return output["loss"]
+
+
 if Gemma4ForCausalLM is not None:
     for variant in ("e2b", "e4b"):
         model_zoo.register(
             f"transformers_gemma4_{variant}_for_causal_lm",
             partial(tiny_gemma4, variant),
-            gemma4_data,
-            lambda output: {"logits": output.logits, "loss": output.loss},
-            lambda output: output["loss"],
-            ModelAttribute(has_control_flow=True),
+            gemma4_numerics_data,
+            gemma4_output,
+            gemma4_loss,
+            ModelAttribute(
+                has_control_flow=True,
+                numerics=NumericsSpec(
+                    prepare_fn=gemma4_numerics_prepare,
+                    token_loss=TokenLoss(loss=gemma4_summed_token_loss, count=gemma4_valid_tokens),
+                    tied_params=(("model.embed_tokens.weight", "lm_head.weight"),),
+                ),
+            ),
         )

@@ -12,7 +12,7 @@ from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.testing import spawn
 from examples.language.gemma4.train import freeze_non_text
 from tests.kit.model_zoo import model_zoo
-from tests.kit.model_zoo.transformers.gemma4 import gemma4_data, tiny_gemma4
+from tests.kit.model_zoo.transformers.gemma4 import gemma4_data, gemma4_numerics_data, tiny_gemma4
 from tests.kit.numerics import assert_aligned
 
 
@@ -67,6 +67,49 @@ def test_gemma4_hf_roundtrip(variant, tmp_path):
 
 def test_gemma4_registered():
     assert len(model_zoo.get_sub_registry("transformers_gemma4_")) == 2
+
+
+@pytest.mark.parametrize("variant", ["e2b", "e4b"])
+def test_gemma4_numerics_spec(variant):
+    entry = model_zoo[f"transformers_gemma4_{variant}_for_causal_lm"]
+    model = entry[0]()
+    spec = entry[4].numerics
+    spec.prepare_fn(model)
+    assert model.is_gradient_checkpointing
+    params = dict(model.named_parameters(remove_duplicate=False))
+    for names in spec.tied_params:
+        assert all(params[name] is params[names[0]] for name in names)
+    assert spec.unused_params == ()
+    batch = gemma4_data()
+    output = model(**batch)
+    summed = spec.token_loss.loss(output, batch)
+    count = spec.token_loss.count(batch)
+    assert count.item() == 12  # seven causal targets in the first row, five in the padded row
+    torch.testing.assert_close(summed / count, output.loss)
+    summed.backward()
+    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
+    assert any("per_layer" in name for name, _ in model.named_parameters())
+
+    empty = dict(batch, labels=torch.full_like(batch["labels"], -100))
+    assert spec.token_loss.count(empty).item() == 0
+    assert spec.token_loss.loss(output, empty).item() == 0
+
+
+def test_gemma4_numerics_batches_vary_valid_tokens():
+    # Repeating a seed must reproduce the complete generated batches, while successive batches exercise padding.
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(17)
+        batches = [gemma4_numerics_data() for _ in range(8)]
+        torch.manual_seed(17)
+        repeated = [gemma4_numerics_data() for _ in range(8)]
+    counts = set()
+    for batch, again in zip(batches, repeated):
+        for name in batch:
+            torch.testing.assert_close(batch[name], again[name], rtol=0, atol=0)
+        assert batch["attention_mask"][0].all()
+        assert torch.equal(batch["labels"].eq(-100), batch["attention_mask"].eq(0))
+        counts.add(batch["labels"][:, 1:].ne(-100).sum().item())
+    assert len(counts) > 1
 
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])

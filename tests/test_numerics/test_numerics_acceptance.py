@@ -48,11 +48,11 @@ def test_acceptance_report():
     # on CPU the optimizer is saved unsharded, which an older torch cannot load back: resume does not run there
     no_resume = get_accelerator().name == "cpu" and not unsharded_optimizer_reloads()
     assert status.pop(("resume", "ddp_fp32")) == ("not_run" if no_resume else "passed")
-    # an unverified recipe is refused, not guessed; resume needs no recipe and hits the plugin's own error
-    assert status.pop(("independent_impl", "ddp_bf16")) == "unsupported"
-    assert status.pop(("resume", "ddp_bf16")) == ("not_run" if no_resume else "failed")
-    # fp32, not bf16: LowLevelZero's bf16 resume is not yet bit-exact, which this report is right to flag
+    # BF16 autocast is implemented by the CUDA/NPU accelerator; CPUAccelerator has no BF16 autocast.
     on_device = "passed" if get_accelerator().name != "cpu" else "not_run"
+    assert status.pop(("independent_impl", "ddp_bf16")) == on_device
+    assert status.pop(("resume", "ddp_bf16")) == on_device
+    # fp32, not bf16: LowLevelZero's bf16 resume is not yet bit-exact, which this report is right to flag
     assert status == {("independent_impl", "zero2_fp32"): on_device, ("resume", "zero2_fp32"): on_device}
 
     statuses = [r["status"] for r in report["results"]]

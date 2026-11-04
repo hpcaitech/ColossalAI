@@ -8,6 +8,7 @@ from torch import nn
 
 import colossalai
 from colossalai.accelerator import get_accelerator
+from colossalai.booster.mixed_precision import BF16MixedPrecision
 from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.numerics import NumericsSpec, Routers, Trace
@@ -152,6 +153,19 @@ def test_ddp_fp16_aligned():
     spawn(_check_aligned, 1, plugin_fn=TorchDDPPlugin, mixed_precision="fp16")
 
 
+@pytest.mark.skipif(NO_ACCELERATOR, reason="BF16Module needs the accelerator's BF16 autocast")
+@pytest.mark.parametrize("mixed_precision", ["bf16", BF16MixedPrecision()])
+@rerun_if_address_is_in_use()
+def test_ddp_bf16_aligned(mixed_precision):
+    spawn(_check_aligned, 1, plugin_fn=TorchDDPPlugin, mixed_precision=mixed_precision)
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="BF16Module needs the accelerator's BF16 autocast")
+@rerun_if_address_is_in_use()
+def test_ddp_bf16_detects_bug():
+    spawn(_check_bug_detected, 1, plugin_fn=TorchDDPPlugin, mixed_precision="bf16")
+
+
 def test_dtype_audit_tells_recipes_apart():
     s = prepare(_entry())
     device = get_accelerator().get_current_device().type
@@ -188,7 +202,6 @@ def test_nondeterministic_reference_uses_worse_run():
 
 
 REJECTED = [
-    (TorchDDPPlugin, "bf16", "BF16MixedPrecision"),
     (partial(LowLevelZeroPlugin, precision="fp16"), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="bf16", max_norm=1.0), None, "not verified"),
     (partial(LowLevelZeroPlugin, precision="fp32", cpu_offload=True), None, "not verified"),
@@ -202,6 +215,10 @@ def _check_rejected(rank, world_size, port):
     for plugin_fn, mixed_precision, match in REJECTED:
         with pytest.raises(UnsupportedRecipe, match=match):
             recipe_for(plugin_fn(), mixed_precision)
+    if get_accelerator().name == "cpu":
+        for mixed_precision in ("bf16", BF16MixedPrecision()):
+            with pytest.raises(UnsupportedRecipe, match="CPUAccelerator.autocast"):
+                recipe_for(TorchDDPPlugin(), mixed_precision)
 
 
 @rerun_if_address_is_in_use()

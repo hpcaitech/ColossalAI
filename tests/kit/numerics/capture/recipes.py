@@ -6,7 +6,8 @@ from typing import Optional, Union
 
 import torch
 
-from colossalai.booster.mixed_precision import FP16TorchMixedPrecision, MixedPrecision
+from colossalai.accelerator import get_accelerator
+from colossalai.booster.mixed_precision import BF16MixedPrecision, FP16TorchMixedPrecision, MixedPrecision
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, Plugin, TorchDDPPlugin
 from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 
@@ -183,8 +184,18 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
                 source="fp16_torch.py: TorchAMPModule runs forward under autocast; TorchAMPOptimizer scales the loss "
                 "with a GradScaler starting at init_scale, which stays constant over a short run without overflow",
             )
-        if mixed_precision == "bf16":
-            raise UnsupportedRecipe("TorchDDPPlugin with bf16 cannot be built: BF16MixedPrecision is not implemented")
+        if mixed_precision == "bf16" or isinstance(mixed_precision, BF16MixedPrecision):
+            if get_accelerator().name == "cpu":
+                raise UnsupportedRecipe(
+                    "TorchDDPPlugin with bf16 needs a CUDA or NPU device: CPUAccelerator.autocast does not "
+                    "implement BF16 autocast"
+                )
+            return Recipe(
+                torch.bfloat16,
+                autocast=True,
+                source="bf16.py BF16Module runs forward under accelerator BF16 autocast; parameters, gradients "
+                "and optimizer states stay float32, with no loss scaling",
+            )
         raise UnsupportedRecipe(f"TorchDDPPlugin with mixed_precision={mixed_precision!r} is not verified")
 
     raise UnsupportedRecipe(

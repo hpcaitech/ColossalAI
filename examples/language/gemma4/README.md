@@ -51,6 +51,40 @@ DDP BF16 uses autocast and FP32 parameters. ZeRO/Gemini use BF16 working paramet
 FP32 master parameters and BF16 compute. Export readback replays the original buffer precision, including RoPE.
 Neither fused kernels nor their numerical/performance claims are part of the native policy.
 
+## Unified L2 numerical report
+
+The model_zoo entries `transformers_gemma4_e2b_for_causal_lm` and `transformers_gemma4_e4b_for_causal_lm` opt into
+`tests.kit.numerics` with native HF references, eager attention, non-reentrant gradient checkpointing and a declared
+input/output embedding tie. Both entries use the tiny profiles described above, including PLE and shared KV; these
+reports validate reduced configurations, not the downloaded E2B/E4B checkpoints. The generated micro-batches have
+unequal valid-token counts. `TokenLoss` uses summed causal cross-entropy and counts shifted, non-padding labels, so
+the data-parallel check can test global valid-token normalization.
+
+Run from a clean, pushed commit, after allocating the devices and installing this exact source checkout. Create a
+new report path for each run. The team submission directory for E2B is:
+
+```text
+/mnt/beegfs/ColossalAI/shared-results/numerics/2C/transformers_gemma4_e2b_for_causal_lm/<YYYYMMDD>-<commit>.json
+```
+
+```bash
+python -m tests.kit.numerics.acceptance \
+  --entry transformers_gemma4_e2b_for_causal_lm \
+  --out /your/personal/results/<YYYYMMDD>-<commit>.json
+```
+
+The default command runs all configurations and writes per-check `passed`, `failed`, `unsupported` and `not_run`
+statuses. With one allocated GPU, independent-reference and resume checks can run, while the two-device
+`data_parallel` and `data_parallel_tokens` checks must remain `not_run`; this is partial L2 coverage. Read the JSON
+even when the command exits 0, since unsupported and unrun checks do not make the exit code fail. Do not loosen
+the shared judging rules or overwrite earlier reports. Attach failures to the corresponding issue for review.
+See [`tests/kit/numerics/README.md`](../../../tests/kit/numerics/README.md) for supported recipes and report fields.
+
+This integration uses the parameter contract and recipe fixes from PR #6506 at
+`bdab6a9e5b4cbdfd649d266f43e3b30891a4a296`, a pending trial dependency when integrated on 2026-11-04. Record the
+actual tested commit and dependency status with the report. An E4B tiny report is supplementary to the separate
+real-checkpoint single-GPU training run; the team's current 2C report list names E2B, 26B-A4B and DiffusionGemma.
+
 ZeRO optimizer checkpoints preserve FP32 masters in private checkpoint metadata while accepting legacy states.
 With `master_weights=True`, Gemini model checkpoints now preserve FP32 parameters in both sharded and unsharded
 formats, increasing checkpoint size relative to BF16. Legacy BF16 files remain readable but cannot recover residual

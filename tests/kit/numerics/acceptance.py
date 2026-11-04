@@ -61,8 +61,8 @@ FSDP_BF16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat
 CONFIGS: Dict[str, Config] = {
     "ddp_fp32": Config(TorchDDPPlugin, needs_device=False),
     "ddp_fp16": Config(TorchDDPPlugin, "fp16"),
-    # refused before anything runs: BF16MixedPrecision is not implemented
-    "ddp_bf16": Config(TorchDDPPlugin, "bf16", needs_device=False),
+    # BF16Module uses the accelerator's autocast; CPUAccelerator does not implement BF16 autocast.
+    "ddp_bf16": Config(TorchDDPPlugin, "bf16"),
     "zero1_fp32": Config(partial(LowLevelZeroPlugin, stage=1, precision="fp32")),
     "zero1_bf16": Config(partial(LowLevelZeroPlugin, stage=1, precision="bf16")),
     "zero2_fp32": Config(partial(LowLevelZeroPlugin, stage=2, precision="fp32")),
