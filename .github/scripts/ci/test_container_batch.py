@@ -257,6 +257,14 @@ class ContainerCommandTests(unittest.TestCase):
 
 
 class GPUDeviceTests(unittest.TestCase):
+    @staticmethod
+    def inventory(*pairs):
+        return (
+            "<nvidia_smi_log>"
+            + "".join(f"<gpu><uuid>{gpu}</uuid><minor_number>{minor}</minor_number></gpu>" for gpu, minor in pairs)
+            + "</nvidia_smi_log>"
+        )
+
     def test_devices_are_resolved_by_uuid_and_minor_not_inventory_order(self):
         metadata = [
             SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=os.makedev(195, 7)),
@@ -264,7 +272,7 @@ class GPUDeviceTests(unittest.TestCase):
             *[SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=0) for _ in range(3)],
         ]
         with (
-            patch.object(container.subprocess, "run", return_value=Mock(stdout=f"{GPU_B}, 4\n{GPU_A}, 7\n")),
+            patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_B, 4), (GPU_A, 7)))),
             patch.object(Path, "stat", side_effect=metadata),
         ):
             devices = container.gpu_device_paths([GPU_A, GPU_B])
@@ -272,7 +280,13 @@ class GPUDeviceTests(unittest.TestCase):
         self.assertEqual(len(devices), 5)
 
     def test_missing_or_ambiguous_allocations_fail_before_device_access(self):
-        for inventory in (f"{GPU_A}, 4\n", f"{GPU_A}, 4\n{GPU_A}, 7\n", f"{GPU_A}, 4\n{GPU_B}, 4\n"):
+        for inventory in (
+            self.inventory((GPU_A, 4)),
+            self.inventory((GPU_A, 4), (GPU_A, 7)),
+            self.inventory((GPU_A, 4), (GPU_B, 4)),
+            self.inventory((GPU_A, "N/A")),
+            "malformed XML",
+        ):
             with (
                 self.subTest(inventory=inventory),
                 patch.object(container.subprocess, "run", return_value=Mock(stdout=inventory)),
@@ -289,7 +303,7 @@ class GPUDeviceTests(unittest.TestCase):
         ):
             with (
                 self.subTest(metadata=metadata),
-                patch.object(container.subprocess, "run", return_value=Mock(stdout=f"{GPU_A}, 4\n")),
+                patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_A, 4)))),
                 patch.object(Path, "stat", return_value=metadata),
             ):
                 with self.assertRaises(RuntimeError):
@@ -297,7 +311,7 @@ class GPUDeviceTests(unittest.TestCase):
 
     def test_missing_control_device_fails_closed(self):
         with (
-            patch.object(container.subprocess, "run", return_value=Mock(stdout=f"{GPU_A}, 4\n")),
+            patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_A, 4)))),
             patch.object(
                 Path,
                 "stat",

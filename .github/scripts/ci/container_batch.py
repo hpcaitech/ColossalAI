@@ -12,6 +12,7 @@ import signal
 import stat
 import subprocess
 import uuid
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 OWNER_LABEL = "org.colossalai.ci.owner"
@@ -67,16 +68,23 @@ def validate_scope(scope):
 def gpu_device_paths(gpu_uuids):
     """Resolve allocated UUIDs to character devices, including shared CUDA controls."""
     inventory = subprocess.run(
-        ["nvidia-smi", "--query-gpu=uuid,minor_number", "--format=csv,noheader,nounits"],
+        # minor_number is present in the XML inventory but is not a supported
+        # --query-gpu field on all drivers (including the H20 runner's driver).
+        ["nvidia-smi", "-q", "-x"],
         check=True,
         capture_output=True,
         text=True,
         timeout=15,
     ).stdout
     minors = {}
-    for line in inventory.splitlines():
-        gpu, minor = (value.strip() for value in line.split(","))
-        if gpu in minors or not minor.isdecimal():
+    try:
+        entries = ET.fromstring(inventory).findall("gpu")
+    except ET.ParseError as error:
+        raise RuntimeError("Invalid GPU XML inventory from nvidia-smi") from error
+    for entry in entries:
+        gpu = entry.findtext("uuid", "").strip()
+        minor = entry.findtext("minor_number", "").strip()
+        if not gpu or gpu in minors or not minor.isdecimal():
             raise RuntimeError("Invalid GPU device inventory from nvidia-smi")
         minors[gpu] = int(minor)
     if any(gpu not in minors for gpu in gpu_uuids):
