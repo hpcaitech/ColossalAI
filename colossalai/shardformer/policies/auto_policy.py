@@ -250,6 +250,10 @@ _POLICY_LIST = {
     "transformers.models.cohere.modeling_cohere.CohereForCausalLM": PolicyLocation(
         file_name="command", class_name="CommandForCausalLMPolicy"
     ),
+    # Cosmos 3 (diffusers)
+    "diffusers.models.transformers.transformer_cosmos3.Cosmos3OmniTransformer": PolicyLocation(
+        file_name="cosmos3", class_name="Cosmos3OmniPolicy"
+    ),
 }
 
 
