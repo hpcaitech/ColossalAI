@@ -2,7 +2,13 @@ import pytest
 import torch.distributed as dist
 
 from colossalai.moe import EPMoELayer, ReferenceExperts
-from colossalai.tensor.moe_tensor.api import ExpertGradScale, get_ep_group, get_ep_size, get_expert_grad_scale
+from colossalai.tensor.moe_tensor.api import (
+    ExpertGradScale,
+    get_ep_group,
+    get_ep_size,
+    get_expert_grad_scale,
+    is_moe_tensor_ep_fused,
+)
 
 
 @pytest.mark.parametrize("initialized", [False, True])
@@ -27,3 +33,16 @@ def test_ep_moe_layer_default_process_group(initialized: bool, tmp_path):
     finally:
         if initialized:
             dist.destroy_process_group()
+
+
+NUM_EXPERTS, HIDDEN, INTERMEDIATE = 4, 8, 4
+
+
+def _ep_layer(ep_group):
+    return EPMoELayer(NUM_EXPERTS, HIDDEN, INTERMEDIATE, ep_group=ep_group, experts=ReferenceExperts(), device="cpu")
+
+
+def test_ep_moe_layer_marks_experts_ep_fused():
+    """``MoECheckpointIO`` gathers the experts of all EP ranks only for parameters marked ``ep_fused``."""
+    layer = _ep_layer(None)
+    assert all(is_moe_tensor_ep_fused(param) for param in layer.parameters())

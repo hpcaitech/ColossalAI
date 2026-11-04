@@ -16,7 +16,12 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.distributed import ProcessGroup
 
-from colossalai.tensor.moe_tensor.api import ExpertGradScale, set_expert_grad_scale, set_moe_tensor_ep_group
+from colossalai.tensor.moe_tensor.api import (
+    ExpertGradScale,
+    set_expert_grad_scale,
+    set_moe_tensor_ep_fused,
+    set_moe_tensor_ep_group,
+)
 
 from ._operation import EPGradScalerIn, EPGradScalerOut
 from .dispatcher import Dispatcher, NCCLAllToAllDispatcher
@@ -41,6 +46,9 @@ class EPMoELayer(nn.Module):
     - ``IN_REDUCTION``: this layer does not; the gradient reduction must divide expert grads by
       ``replica_group_size * ep_size``. Only use it with a plugin that reads this tag, or expert grads are ``ep_size``
       times too large.
+
+    Checkpoints: both parameters are marked ``ep_fused``, so ``MoECheckpointIO`` gathers the experts of all EP ranks
+    into the full ``[num_experts, ...]`` tensors when saving, and loading such a tensor keeps this rank's experts only.
 
     Args:
         num_experts: total number of routed experts.
@@ -91,6 +99,7 @@ class EPMoELayer(nn.Module):
         self.reset_parameters()
         for param in (self.gate_up_proj, self.down_proj):
             set_moe_tensor_ep_group(param, ep_group)
+            set_moe_tensor_ep_fused(param)
             set_expert_grad_scale(param, self.expert_grad_scale)
 
     @property
