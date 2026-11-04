@@ -79,6 +79,7 @@ case "${BATCH}" in
             tests/test_moe/test_ep_moe_layer_cpu.py
             tests/test_numerics/test_numerics_acceptance.py
             tests/test_moe/test_ep_moe_layer_vs_hf.py
+            tests/test_moe/test_grad_sync_plan.py
             tests/test_numerics/test_numerics_core.py
             tests/test_numerics/test_numerics_data_parallel.py
             tests/test_numerics/test_numerics_independent_impl.py
