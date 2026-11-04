@@ -101,6 +101,7 @@ class EPMoELayer(nn.Module):
             set_moe_tensor_ep_group(param, ep_group)
             set_moe_tensor_ep_fused(param)
             set_expert_grad_scale(param, self.expert_grad_scale)
+        self.register_load_state_dict_pre_hook(self._slice_full_experts)
 
     @property
     def local_expert_range(self) -> range:
@@ -123,6 +124,26 @@ class EPMoELayer(nn.Module):
         local = slice(self.local_expert_range.start, self.local_expert_range.stop)
         self.gate_up_proj.data.copy_(gate_up_proj[local])
         self.down_proj.data.copy_(down_proj[local])
+
+    def _slice_full_experts(
+        self, module, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ) -> None:
+        """Slice a full ``[num_experts, ...]`` checkpoint tensor down to this rank's experts before loading.
+
+        A tensor that already has the local shape is loaded as is; any other shape is left for ``load_state_dict`` to
+        report.
+        """
+        experts = self.local_expert_range
+        for name in ("gate_up_proj", "down_proj"):
+            key = prefix + name
+            checkpoint_param = state_dict.get(key)
+            local_param = getattr(self, name)
+            if checkpoint_param is None or checkpoint_param.shape == local_param.shape:
+                continue
+            if checkpoint_param.ndim == 0:
+                continue
+            if checkpoint_param.shape[0] == self.num_experts and checkpoint_param.shape[1:] == local_param.shape[1:]:
+                state_dict[key] = checkpoint_param[experts.start : experts.stop].contiguous()
 
     def forward(self, hidden_states: Tensor, topk_idx: Tensor, topk_weights: Tensor) -> Tensor:
         """Run the routed experts.
