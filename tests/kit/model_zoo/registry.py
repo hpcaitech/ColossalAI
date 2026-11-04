@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from dataclasses import dataclass
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
+
+from tests.kit.numerics.spec import NumericsSpec
 
 __all__ = ["ModelZooRegistry", "ModelAttribute", "model_zoo"]
 
@@ -13,10 +15,13 @@ class ModelAttribute:
     Args:
         has_control_flow (bool): Whether the model contains branching in its forward method.
         has_stochastic_depth_prob (bool): Whether the model contains stochastic depth probability. Often seen in the torchvision models.
+        numerics (NumericsSpec): How to check the model against its reference implementation. Models without one are
+            not part of whole-model alignment. See ``tests/kit/numerics/spec.py``.
     """
 
     has_control_flow: bool = False
     has_stochastic_depth_prob: bool = False
+    numerics: Optional[NumericsSpec] = None
 
 
 class ModelZooRegistry(dict):
