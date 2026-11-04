@@ -43,7 +43,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    import torch_npu
     from torch.utils.data import DataLoader
 
     import colossalai
