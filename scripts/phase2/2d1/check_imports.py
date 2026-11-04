@@ -6,10 +6,10 @@ from pathlib import Path
 
 import huggingface_hub
 import transformers
+from check_remote_tiny import MODELS as REMOTE_MODELS
 from huggingface_hub import snapshot_download
 from transformers import AutoConfig
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from check_remote_tiny import MODELS as REMOTE_MODELS
 
 REVISIONS = dict(REMOTE_MODELS.values())
 REVISIONS["GSAI-ML/LLaDA-8B-Base"] = "0f2787f2d87eac5eed8a087d5ecd24277e6255b2"
@@ -37,9 +37,7 @@ def main():
             print("模型代码入口:", raw["auto_map"]["AutoModelForCausalLM"])
 
             stage = "加载配置"
-            config = AutoConfig.from_pretrained(
-                path, trust_remote_code=True, local_files_only=True
-            )
+            config = AutoConfig.from_pretrained(path, trust_remote_code=True, local_files_only=True)
             print("CONFIG_OK:", type(config).__name__)
             print("实际 vocab_size:", getattr(config, "vocab_size", None))
             print("实际 pad_token_id:", getattr(config, "pad_token_id", None))

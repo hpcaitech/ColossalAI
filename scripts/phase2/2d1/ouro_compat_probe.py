@@ -22,6 +22,7 @@ def ouro_compat(module, config, mode):
 
     # Reuse HF's standard full-head RoPE computation, without changing its registry.
     from transformers.models.qwen2.modeling_qwen2 import Qwen2RotaryEmbedding
+
     original_registry = module.ROPE_INIT_FUNCTIONS
     original_mask = module.create_causal_mask
     rotary_class = module.OuroRotaryEmbedding

@@ -17,11 +17,10 @@ from pathlib import Path
 import torch
 import torch.nn.functional as F
 import transformers
-from huggingface_hub import snapshot_download
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
-
 from check_remote_tiny import MODELS, tiny_overrides
+from huggingface_hub import snapshot_download
 from ouro_compat_probe import ouro_compat
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 
 def require(condition, message):
@@ -33,8 +32,13 @@ def require(condition, message):
 def probe(args):
     repo_id, revision = MODELS[args.model]
     result = {
-        "repo_id": repo_id, "revision": revision, "model": args.model,
-        "compat": args.compat, "seed": args.seed, "passed": False, "stage": "snapshot",
+        "repo_id": repo_id,
+        "revision": revision,
+        "model": args.model,
+        "compat": args.compat,
+        "seed": args.seed,
+        "passed": False,
+        "stage": "snapshot",
         "scope": "CPU / FP32 / eager / train / no cache / two recurrent steps / one AdamW update",
         "loss_path": "official labels branch: exit-probability-weighted logits, next-token cross entropy",
     }
@@ -76,8 +80,10 @@ def probe(args):
             model = model_class(config).float().cpu().train()
             parameters = {name: p for name, p in model.named_parameters() if p.requires_grad}
             require(bool(parameters), "No trainable parameters")
-            require(all(p.device.type == "cpu" and p.dtype == torch.float32 for p in model.parameters()),
-                    "Expected CPU / FP32 parameters")
+            require(
+                all(p.device.type == "cpu" and p.dtype == torch.float32 for p in model.parameters()),
+                "Expected CPU / FP32 parameters",
+            )
             count = sum(p.numel() for p in model.parameters())
             require(count < 1_000_000, f"Tiny configuration did not take effect: {count}")
             require(model.model.total_ut_steps == 2 and len(model.model.layers) == 2, "Expected two layers/two rounds")
@@ -92,8 +98,10 @@ def probe(args):
                 activations[name] = []
 
                 def capture(module, inputs, kwargs, output, name=name):
-                    require(isinstance(output, torch.Tensor) and output.requires_grad,
-                            f"{name}: decoder output is disconnected from autograd")
+                    require(
+                        isinstance(output, torch.Tensor) and output.requires_grad,
+                        f"{name}: decoder output is disconnected from autograd",
+                    )
                     output.retain_grad()
                     activations[name].append((kwargs.get("current_ut"), output))
 
@@ -128,16 +136,20 @@ def probe(args):
                     labels[:, 1:].reshape(-1),
                 )
             torch.testing.assert_close(loss.detach(), manual_loss, atol=1e-6, rtol=1e-5)
-            result.update(loss=loss.item(), manual_next_token_loss=manual_loss.item(),
-                          loss_abs_diff=(loss.detach() - manual_loss).abs().item())
+            result.update(
+                loss=loss.item(),
+                manual_next_token_loss=manual_loss.item(),
+                loss_abs_diff=(loss.detach() - manual_loss).abs().item(),
+            )
             print("LOSS_OK:", loss.item())
             print("LOSS_ALIGNMENT_OK; 手工移位交叉熵:", manual_loss.item())
 
             result["stage"] = "backward"
             loss.backward()
             absent = [name for name, p in parameters.items() if p.grad is None]
-            invalid = [name for name, p in parameters.items()
-                       if p.grad is not None and not torch.isfinite(p.grad).all().item()]
+            invalid = [
+                name for name, p in parameters.items() if p.grad is not None and not torch.isfinite(p.grad).all().item()
+            ]
             result.update(missing_gradients=absent, invalid_gradients=invalid)
             # This pinned labels branch uses every trainable parameter, including early_exit_gate.
             # Other exit/loss branches may legitimately leave the gate disconnected.
@@ -152,27 +164,33 @@ def probe(args):
                 round_norms[name] = []
                 for step, activation in calls:
                     require(activation.grad is not None, f"{name} round {step}: missing output gradient")
-                    require(torch.isfinite(activation.grad).all().item(), f"{name} round {step}: invalid output gradient")
-                    require(torch.count_nonzero(activation.grad).item() > 0, f"{name} round {step}: zero output gradient")
+                    require(
+                        torch.isfinite(activation.grad).all().item(), f"{name} round {step}: invalid output gradient"
+                    )
+                    require(
+                        torch.count_nonzero(activation.grad).item() > 0, f"{name} round {step}: zero output gradient"
+                    )
                     round_norms[name].append(activation.grad.norm().item())
             result["decoder_output_grad_norms"] = round_norms
 
             groups = {
-                "embedding": "model.embed_tokens.", "lm_head": "lm_head.",
-                "final_norm": "model.norm.", "exit_gate": "model.early_exit_gate.",
+                "embedding": "model.embed_tokens.",
+                "lm_head": "lm_head.",
+                "final_norm": "model.norm.",
+                "exit_gate": "model.early_exit_gate.",
                 **{name: name + "." for name in activations},
             }
             group_nonzero = {
-                group: [name for name in nonzero if name.startswith(prefix)]
-                for group, prefix in groups.items()
+                group: [name for name in nonzero if name.startswith(prefix)] for group, prefix in groups.items()
             }
             require(all(group_nonzero.values()), f"Missing nonzero gradients in required groups: {group_nonzero}")
             result["nonzero_gradient_parameters"] = nonzero
             print("BACKWARD_OK; 有限梯度参数张量:", len(parameters), "; 非零:", len(nonzero))
             print("各轮输出梯度范数:", round_norms)
-            print("EARLY_EXIT_GATE_GRAD_OK:", {
-                name: result["parameter_grad_norms"][name] for name in group_nonzero["exit_gate"]
-            })
+            print(
+                "EARLY_EXIT_GATE_GRAD_OK:",
+                {name: result["parameter_grad_norms"][name] for name in group_nonzero["exit_gate"]},
+            )
 
             result["stage"] = "step"
             before = {name: p.detach().clone() for name, p in parameters.items()}
@@ -180,12 +198,14 @@ def probe(args):
             require(all(torch.isfinite(p).all().item() for p in parameters.values()), "Non-finite updated parameters")
             changed = [name for name, p in parameters.items() if not torch.equal(before[name], p.detach())]
             group_updates = {
-                group: [name for name in changed if name in names]
-                for group, names in group_nonzero.items()
+                group: [name for name in changed if name in names] for group, names in group_nonzero.items()
             }
             require(all(group_updates.values()), f"Required groups did not update: {group_updates}")
-            result.update(updated_parameters=changed, updated_groups=group_updates,
-                          optimizer={"name": "AdamW", "lr": 1e-3, "weight_decay": 0.0})
+            result.update(
+                updated_parameters=changed,
+                updated_groups=group_updates,
+                optimizer={"name": "AdamW", "lr": 1e-3, "weight_decay": 0.0},
+            )
             print("STEP_OK; 已更新参数张量:", len(changed))
         result.update(passed=True, stage="complete")
     except Exception as error:
@@ -226,8 +246,13 @@ def main():
     )
     report.parent.mkdir(parents=True, exist_ok=True)
     with report.open("x") as stream:
-        json.dump({"torch": torch.__version__, "transformers": transformers.__version__, "result": result},
-                  stream, indent=2, ensure_ascii=False, allow_nan=False)
+        json.dump(
+            {"torch": torch.__version__, "transformers": transformers.__version__, "result": result},
+            stream,
+            indent=2,
+            ensure_ascii=False,
+            allow_nan=False,
+        )
     print("JSON report:", report)
     print(args.model, "PASS" if result["passed"] else "FAIL", result["stage"])
     print("范围: 未验证参考梯度数值对齐、真实权重、GPU、KV cache、分布式或收敛。")

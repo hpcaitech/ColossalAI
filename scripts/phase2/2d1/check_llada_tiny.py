@@ -16,30 +16,32 @@ def build_tiny_model():
     print("Torch:", torch.__version__)
     print("Transformers:", transformers.__version__)
 
-    path = snapshot_download("GSAI-ML/LLaDA-8B-Base", revision="0f2787f2d87eac5eed8a087d5ecd24277e6255b2", local_files_only=True)
+    path = snapshot_download(
+        "GSAI-ML/LLaDA-8B-Base", revision="0f2787f2d87eac5eed8a087d5ecd24277e6255b2", local_files_only=True
+    )
     raw = json.loads((Path(path) / "config.json").read_text())
     print("快照版本:", Path(path).name)
-    config = AutoConfig.from_pretrained(
-        path, trust_remote_code=True, local_files_only=True
-    )
+    config = AutoConfig.from_pretrained(path, trust_remote_code=True, local_files_only=True)
 
     # Change only the in-memory config, not the shared model files.
-    config.update({
-        "d_model": 64,
-        "n_heads": 4,
-        "n_kv_heads": 4,
-        "n_layers": 2,
-        "mlp_hidden_size": 128,
-        "vocab_size": 128,
-        "embedding_size": 128,
-        "max_sequence_length": 64,
-        "pad_token_id": 0,
-        "eos_token_id": 1,
-        "mask_token_id": 2,
-        "init_device": "cpu",
-        "flash_attention": False,
-        "use_cache": False,
-    })
+    config.update(
+        {
+            "d_model": 64,
+            "n_heads": 4,
+            "n_kv_heads": 4,
+            "n_layers": 2,
+            "mlp_hidden_size": 128,
+            "vocab_size": 128,
+            "embedding_size": 128,
+            "max_sequence_length": 64,
+            "pad_token_id": 0,
+            "eos_token_id": 1,
+            "mask_token_id": 2,
+            "init_device": "cpu",
+            "flash_attention": False,
+            "use_cache": False,
+        }
+    )
 
     model_class = get_class_from_dynamic_module(
         raw["auto_map"]["AutoModelForCausalLM"],
