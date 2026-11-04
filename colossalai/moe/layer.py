@@ -151,7 +151,8 @@ class EPMoELayer(nn.Module):
         Args:
             hidden_states: ``[..., hidden_size]`` input of the MoE block.
             topk_idx: ``[..., top_k]`` global expert ids chosen by the router for each token.
-            topk_weights: ``[..., top_k]`` routing weights, ideally fp32; gradients flow back through them.
+            topk_weights: ``[..., top_k]`` routing weights; they are combined in fp32, so weights that the router
+                already rounded to the model dtype keep that rounding. Gradients flow back through them.
 
         Returns:
             Tensor of the shape and dtype of ``hidden_states``: per token, the weighted sum of its experts' outputs.
