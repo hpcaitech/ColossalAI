@@ -98,7 +98,7 @@ jobs:
           docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE" \
             | tee "$CI_RESULTS_DIR/image-id.txt"
 
-      - name: Fetch the exact GitHub source archive
+      - name: Fetch the exact GitHub source commit
         timeout-minutes: 5
         shell: bash
         run: |
@@ -106,13 +106,19 @@ jobs:
           [[ "$CI_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-${{ inputs.layer }}-source.XXXXXX")"
           archive="$source_root/source.tar.gz"
-          mkdir "$source_root/repo"
-          curl --fail --location --proto '=https' --proto-redir '=https' \
-            --connect-timeout 10 --max-time 240 --retry 1 --retry-max-time 260 \
-            --output "$archive" \
-            "https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$CI_SOURCE_SHA"
-          tar --extract --gzip --file "$archive" --directory "$source_root/repo" \
-            --strip-components=1 --no-same-owner --no-same-permissions
+          # Numerical acceptance reports require the real Git commit. Keep a
+          # standalone shallow checkout, not a .git pointer into a host worktree.
+          # Public-source fetches use no stored credentials or auth headers.
+          git init --quiet "$source_root/repo"
+          git -C "$source_root/repo" config core.autocrlf false
+          GIT_TERMINAL_PROMPT=0 timeout --signal=TERM --kill-after=10s 240s \
+            git -C "$source_root/repo" -c credential.helper= -c http.extraHeader= \
+            fetch --depth=1 --no-tags \
+            "https://github.com/$GITHUB_REPOSITORY.git" "$CI_SOURCE_SHA"
+          git -C "$source_root/repo" -c core.hooksPath=/dev/null \
+            checkout --quiet --detach FETCH_HEAD
+          [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
+          git -C "$source_root/repo" archive --format=tar.gz --output="$archive" HEAD
           printf 'Source commit: %s\nArchive SHA256: %s\n' \
             "$CI_SOURCE_SHA" "$(sha256sum "$archive" | cut -d ' ' -f 1)"
           printf 'COLOSSAL_REPO=%s\n' "$source_root/repo" >> "$GITHUB_ENV"

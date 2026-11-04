@@ -149,8 +149,11 @@ immediately before every launch, so a stale hourly probe still fails closed.
 ### Container execution and image rollout
 
 The image holds Python dependencies and CUDA build tools, **not ColossalAI**.
-The workflow fetches the exact source SHA and mounts it read-only. Each batch
-copies it into its private container layer, creates a small writable venv that
+The workflow fetches the exact source SHA into a standalone shallow Git checkout
+without stored credentials and verifies HEAD before mounting it read-only. The
+Git metadata is retained for numerical acceptance report provenance; it never
+points into a personal host worktree. Each batch copies it into its private
+tmpfs workspace and creates a small writable venv that
 references the image dependencies, and installs the checkout with `--no-deps
 --no-build-isolation`. Batch 3 sets `BUILD_EXT=1` to check AOT compilation;
 other batches use source-specific JIT kernels as needed. Compiler caches are
