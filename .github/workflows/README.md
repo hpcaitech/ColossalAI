@@ -150,8 +150,11 @@ immediately before every launch, so a stale hourly probe still fails closed.
 
 The image holds Python dependencies and CUDA build tools, **not ColossalAI**.
 The workflow fetches the exact source SHA into a standalone shallow Git checkout
-without stored credentials and verifies HEAD before mounting it read-only. The
-Git metadata is retained for numerical acceptance report provenance; it never
+without stored credentials. Commit/tree metadata uses a blob-filtered Git fetch;
+the compressed source archive supplies the working files. HEAD and the clean
+working tree are verified against the commit's Git tree without lazy network
+fetches before the read-only mount. Git metadata is retained for numerical
+acceptance report provenance; it never
 points into a personal host worktree. Each batch copies it into its private
 tmpfs workspace and creates a small writable venv that
 references the image dependencies, and installs the checkout with `--no-deps
