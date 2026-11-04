@@ -51,8 +51,9 @@ class Dispatcher(Protocol):
 class NCCLAllToAllDispatcher:
     """Dispatcher built on NCCL all-to-all, with one host sync per layer (the split sizes NCCL needs on the host).
 
-    The weighted sum is done on the source rank in fp32 with the fp32 routing weights and cast once, which matches
-    the grouped_mm path of HF transformers v5 bitwise in the forward pass.
+    The weighted sum is done on the source rank in fp32 with the routing weights cast to fp32 and cast once, which
+    matches the grouped_mm path of HF transformers v5 bitwise in the forward pass when the router returns fp32 weights.
+    A bf16 model's HF router rounds the weights to bf16 first, and the results then agree up to bf16 rounding.
 
     Args:
         num_experts: total number of experts in the layer.
