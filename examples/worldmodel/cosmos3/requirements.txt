@@ -1,0 +1,7 @@
+# Cosmos3OmniTransformer and AutoencoderKLWan ship from 0.40.0 on.
+diffusers>=0.40.0
+transformers>=4.51.0
+safetensors>=0.4.0
+# DROID in LeRobot v3 layout: parquet tables and mp4 shards.
+pyarrow>=14.0.0
+av>=12.0.0
