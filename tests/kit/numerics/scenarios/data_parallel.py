@@ -20,6 +20,7 @@ import tempfile
 from typing import Callable, Optional, Tuple, Union
 
 import torch
+import torch.distributed as dist
 
 import colossalai
 from colossalai.booster.mixed_precision import MixedPrecision
@@ -102,13 +103,18 @@ def _run(
     path,
     role,
 ):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
-    s = prepare(entry, micro_batches, seed)
-    trace = run_data_parallel(
-        s, plugin_fn(), micro_batches, mixed_precision, optimizer_fn, grad_seed, token_weighted, role=role
-    )
-    if rank == 0:
-        trace.save(path)
+    try:
+        colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
+        s = prepare(entry, micro_batches, seed)
+        trace = run_data_parallel(
+            s, plugin_fn(), micro_batches, mixed_precision, optimizer_fn, grad_seed, token_weighted, role=role
+        )
+        if rank == 0:
+            trace.save(path)
+    finally:
+        # Each spawned worker owns its group; release it before interpreter shutdown, even on errors.
+        if dist.is_initialized():
+            dist.destroy_process_group()
 
 
 class _keep:

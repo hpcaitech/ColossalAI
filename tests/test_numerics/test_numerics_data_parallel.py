@@ -1,16 +1,19 @@
+from contextlib import nullcontext
 from functools import partial
 from types import SimpleNamespace
 
 import pytest
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from torch import nn
 
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import free_port, rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec, TokenLoss, judge_relative_bound, relative_bound
-from tests.kit.numerics.scenarios import data_parallel
+from tests.kit.numerics.capture.training import default_optimizer
+from tests.kit.numerics.scenarios import data_parallel, resume
 
 GRADS = {f"grad/param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
 
@@ -196,3 +199,51 @@ def test_sharded_plugins_equivalent(plugin_fn, micro_batches):
 def test_gemini_accumulation_needs_its_flag():
     with pytest.raises(Exception, match="enable_gradient_accumulation"):
         data_parallel.check(ENTRY, _gemini_bf16, world_size=2, micro_batches=4)
+
+
+@pytest.mark.parametrize("scenario", [data_parallel, resume], ids=["data_parallel", "resume"])
+@pytest.mark.parametrize("failure", [None, "prepare", "train", "save"], ids=["success", "prepare", "train", "save"])
+@rerun_if_address_is_in_use()
+def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch):
+    """Workers release real process groups after success or an error, preserving the original error."""
+    assert not dist.is_initialized()
+    path = tmp_path / "trace.safetensors"
+    kwargs = dict(
+        rank=0,
+        world_size=1,
+        port=free_port(),
+        entry=ENTRY,
+        plugin_fn=TorchDDPPlugin,
+        mixed_precision=None,
+        seed=0,
+        grad_seed=0,
+        optimizer_fn=default_optimizer,
+        path=str(path),
+        role="test",
+    )
+    if scenario is data_parallel:
+        kwargs.update(micro_batches=1, token_weighted=False)
+        train_fn = "run_data_parallel"
+    else:
+        kwargs.update(total=1, start=0, stop=1, parts=(), shard_optimizer=False)
+        train_fn = "run_steps"
+
+    def fail(*args, **kwargs):
+        assert dist.is_initialized(), "the failure must happen after creating the process group"
+        raise RuntimeError(f"injected {failure} failure")
+
+    if failure == "save":
+        monkeypatch.setattr(scenario.Trace, "save", fail)
+    elif failure is not None:
+        monkeypatch.setattr(scenario, "prepare" if failure == "prepare" else train_fn, fail)
+
+    try:
+        with pytest.raises(RuntimeError, match=f"injected {failure} failure") if failure else nullcontext():
+            scenario._run(**kwargs)
+        assert not dist.is_initialized(), "the worker leaked its process group"
+        if failure is None:
+            assert scenario.Trace.load(str(path)), "the worker must still save its training trace"
+    finally:
+        # Keep a failing regression from leaking its group into subsequent tests.
+        if dist.is_initialized():
+            dist.destroy_process_group()
