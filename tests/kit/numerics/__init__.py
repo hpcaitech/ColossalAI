@@ -1,19 +1,55 @@
-from .capture import cast_floating, full_precision_matmul, run_fwd_bwd
+from .capture import (
+    RoutingRecorder,
+    cast_floating,
+    count_calls,
+    full_precision_matmul,
+    missing_grads,
+    run_fwd_bwd,
+    run_optimizer,
+    upstream_loss,
+)
 from .compare import TensorMetrics, flatten_tensors, tensor_metrics
-from .judge import AlignmentReport, Entry, assert_aligned, error_multiplier, judge
+from .judge import (
+    AlignmentReport,
+    Entry,
+    assert_aligned,
+    diagnose_routing,
+    error_multiplier,
+    judge,
+    judge_equal,
+    judge_relative_bound,
+    machine_epsilon,
+    relative_bound,
+    require_gradients,
+)
+from .spec import NumericsSpec, Routers, TokenLoss
 from .trace import Trace
 
 __all__ = [
     "AlignmentReport",
     "Entry",
+    "NumericsSpec",
+    "Routers",
+    "RoutingRecorder",
     "TensorMetrics",
+    "TokenLoss",
     "Trace",
     "assert_aligned",
     "cast_floating",
+    "count_calls",
+    "diagnose_routing",
     "error_multiplier",
     "flatten_tensors",
     "full_precision_matmul",
     "judge",
+    "judge_equal",
+    "judge_relative_bound",
+    "machine_epsilon",
+    "missing_grads",
+    "relative_bound",
+    "require_gradients",
     "run_fwd_bwd",
+    "run_optimizer",
     "tensor_metrics",
+    "upstream_loss",
 ]
