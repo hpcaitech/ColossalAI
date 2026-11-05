@@ -50,17 +50,20 @@ from pathlib import Path
 
 import torch
 
+sys.path.insert(0, str(Path(os.environ["COLOSSAL_REPO"]) / ".github/scripts/ci"))
+from cuda_probe import probe_devices
+
 assert torch.__version__.startswith("2.13."), torch.__version__
 assert torch.version.cuda == "13.0", torch.version.cuda
-assert torch.cuda.is_available(), "CUDA is not available inside the container"
-assert torch.cuda.device_count() == len(os.environ["CUDA_VISIBLE_DEVICES"].split(","))
+gpu_names = probe_devices(torch, len(os.environ["CUDA_VISIBLE_DEVICES"].split(",")))
 profile = {
     "source_sha": os.environ["CI_SOURCE_SHA"],
     "image_id": os.environ["CI_IMAGE_ID"],
     "python": sys.version,
     "torch": torch.__version__,
     "cuda": torch.version.cuda,
-    "gpu_names": [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],
+    "gpu_names": gpu_names,
+    "cuda_compute_probe": "passed",
 }
 print(json.dumps(profile, indent=2), flush=True)
 Path("/ci-results/runtime.json").write_text(json.dumps(profile, indent=2) + "\n")
