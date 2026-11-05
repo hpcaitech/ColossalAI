@@ -134,13 +134,19 @@ jobs:
             "https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$CI_SOURCE_SHA"
           tar --extract --gzip --file "$archive" --directory "$source_root/repo" \
             --strip-components=1 --no-same-owner --no-same-permissions
+          # Hash the archive files before setting HEAD: read-tree can otherwise
+          # lazy-fetch all missing blobs while populating its index cache.
+          git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never add --force --all
           git -C "$source_root/repo" update-ref --no-deref HEAD "$CI_SOURCE_SHA"
-          git -C "$source_root/repo" read-tree HEAD
+          git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never read-tree HEAD
           # Recreate blob objects locally from the archive and verify the
           # resulting tree against the real commit, without lazy downloads.
           git -C "$source_root/repo" -c protocol.allow=never \
             -c protocol.https.allow=never -c protocol.file.allow=never add --force --all
-          snapshot_tree="$(git -C "$source_root/repo" write-tree)"
+          snapshot_tree="$(git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never write-tree)"
           commit_tree="$(git -C "$source_root/repo" rev-parse 'HEAD^{tree}')"
           if [[ "$snapshot_tree" != "$commit_tree" ]]; then
             printf 'Source archive tree %s does not match commit tree %s.\n' "$snapshot_tree" "$commit_tree" >&2

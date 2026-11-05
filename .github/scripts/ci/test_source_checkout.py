@@ -78,6 +78,8 @@ class SourceCheckoutTests(unittest.TestCase):
     def test_pinned_checkout_retains_git_metadata_in_private_copy(self):
         fetched = self.fetch(self.sha)
         self.assertEqual(fetched.returncode, 0, fetched.stderr)
+        self.assertNotIn("not allowed", fetched.stderr)
+        self.assertNotIn("invalid object", fetched.stderr)
         source = Path(self.environment.read_text().strip().split("=", 1)[1])
         private = self.root / "private-copy"
         shutil.copytree(source, private)
