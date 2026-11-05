@@ -583,7 +583,9 @@ def clean_folder(
                 os.remove(full_filename)
 
 
-def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = True, dtype: Optional[torch.dtype] = None):
+def save_config_file(
+    model: nn.Module, checkpoint_path: str, is_master: bool = True, dtype: Optional[torch.dtype] = None
+):
     """
     Save config.json/generation_config.json if model is a Huggingface pretrained model.
     This method can only be called when a model is saved in a sharded way.

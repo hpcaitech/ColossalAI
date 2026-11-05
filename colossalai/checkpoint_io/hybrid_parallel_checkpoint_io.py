@@ -828,7 +828,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 master = new_states[param].pop(_MASTER_PARAM_STATE_KEY, None)
                 if master is not None:
                     if master.shape != param.shape:
-                        raise ValueError(f"Master checkpoint shape {master.shape} does not match parameter {param.shape}")
+                        raise ValueError(
+                            f"Master checkpoint shape {master.shape} does not match parameter {param.shape}"
+                        )
                     with torch.no_grad():
                         param.copy_(master)
                 # Do not create an empty Adam state: Adam initializes moments only for missing state entries.
