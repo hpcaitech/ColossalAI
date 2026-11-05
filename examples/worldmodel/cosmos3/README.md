@@ -136,7 +136,7 @@ Measured on one 910B2, single rank:
 | | |
 | --- | --- |
 | Single-sample training step through `booster` + ZeRO-2 | works, ~2.3 s/step at the recipe window |
-| Overfitting one sample, 200 steps | 30.34 -> 0.0031 |
+| Overfitting one sample, 200 steps | 19.53 -> 0.0028, a factor of 7000 |
 | Fused kernel vs the PyTorch reference, in the training loop | relative difference 2e-5 |
 
 Not done yet: there is no comparison against cosmos-framework on a reference device, so the recipe is verified to
