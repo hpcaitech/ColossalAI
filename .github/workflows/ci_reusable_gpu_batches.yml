@@ -98,21 +98,66 @@ jobs:
           docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE" \
             | tee "$CI_RESULTS_DIR/image-id.txt"
 
-      - name: Fetch the exact GitHub source archive
+      - name: Fetch the exact GitHub source commit
         timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
           [[ "$CI_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
           source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-${{ inputs.layer }}-source.XXXXXX")"
           archive="$source_root/source.tar.gz"
-          mkdir "$source_root/repo"
+          # Numerical acceptance reports require the real Git commit. Keep a
+          # standalone shallow checkout, not a .git pointer into a host worktree.
+          # Public-source fetches use no stored credentials or auth headers.
+          git init --quiet "$source_root/repo"
+          git -C "$source_root/repo" config core.autocrlf false
+          git -C "$source_root/repo" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -C "$source_root/repo" config remote.origin.promisor true
+          git -C "$source_root/repo" config remote.origin.partialclonefilter blob:none
+          for attempt in 1 2; do
+            if timeout --signal=TERM --kill-after=10s 30s \
+              git -C "$source_root/repo" -c http.version=HTTP/1.1 \
+              -c credential.helper= -c http.extraHeader= fetch --depth=1 --no-tags \
+              --filter=blob:none origin "$CI_SOURCE_SHA"; then
+              break
+            fi
+            [[ "$attempt" == 1 ]] || exit 1
+            printf 'Git fetch failed; retrying the same pinned SHA once.\n' >&2
+          done
+          [[ "$(git -C "$source_root/repo" rev-parse FETCH_HEAD)" == "$CI_SOURCE_SHA" ]]
+          # Fetch only commit/tree metadata through Git. Populate the working
+          # tree through the compressed archive transport used by this runner.
           curl --fail --location --proto '=https' --proto-redir '=https' \
             --connect-timeout 10 --max-time 240 --retry 1 --retry-max-time 260 \
             --output "$archive" \
             "https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$CI_SOURCE_SHA"
           tar --extract --gzip --file "$archive" --directory "$source_root/repo" \
             --strip-components=1 --no-same-owner --no-same-permissions
+          # Hash the archive files before setting HEAD: read-tree can otherwise
+          # lazy-fetch all missing blobs while populating its index cache.
+          git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never add --force --all
+          git -C "$source_root/repo" update-ref --no-deref HEAD "$CI_SOURCE_SHA"
+          git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never read-tree HEAD
+          # Recreate blob objects locally from the archive and verify the
+          # resulting tree against the real commit, without lazy downloads.
+          git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never add --force --all
+          snapshot_tree="$(git -C "$source_root/repo" -c protocol.allow=never \
+            -c protocol.https.allow=never -c protocol.file.allow=never write-tree)"
+          commit_tree="$(git -C "$source_root/repo" rev-parse 'HEAD^{tree}')"
+          if [[ "$snapshot_tree" != "$commit_tree" ]]; then
+            printf 'Source archive tree %s does not match commit tree %s.\n' "$snapshot_tree" "$commit_tree" >&2
+            exit 1
+          fi
+          [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
+          source_status="$(git -C "$source_root/repo" -c protocol.allow=never status --porcelain)"
+          if [[ -n "$source_status" ]]; then
+            printf 'Source working tree differs from the pinned commit:\n%s\n' "$source_status" >&2
+            exit 1
+          fi
           printf 'Source commit: %s\nArchive SHA256: %s\n' \
             "$CI_SOURCE_SHA" "$(sha256sum "$archive" | cut -d ' ' -f 1)"
           printf 'COLOSSAL_REPO=%s\n' "$source_root/repo" >> "$GITHUB_ENV"
