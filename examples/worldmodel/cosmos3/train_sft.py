@@ -321,7 +321,7 @@ def latent_collate(batch):
 def main():
     args = parse_args()
 
-    import torch_npu  # noqa: F401 -- imported for the side effect of registering the npu backend
+    import torch_npu
 
     # launch_from_torch defaults to backend='nccl', which Ascend cannot use. Reading it off the accelerator rather
     # than hard-coding 'hccl' keeps the same script runnable on a GPU host.

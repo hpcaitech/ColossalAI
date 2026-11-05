@@ -50,7 +50,7 @@ class _Policy:
 def main():
     args = parse_args()
 
-    import torch_npu  # noqa: F401 -- imported for the side effect of registering the npu backend
+    import torch_npu
     from diffusers import AutoencoderKLWan, Cosmos3OmniTransformer
     from droid_dataset import DroidActionPolicyDataset, collate
     from packing import compute_loss, pack_batch
