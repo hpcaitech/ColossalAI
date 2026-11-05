@@ -19,6 +19,7 @@ Needs an Ascend device, the checkpoint and the DROID dataset::
 """
 
 import argparse
+import importlib
 import sys
 import time
 from pathlib import Path
@@ -43,7 +44,9 @@ def parse_args():
 def main():
     args = parse_args()
 
-    import torch_npu
+    # torch_npu registers the 'npu' device and its operators as an import side effect; no name from it is used
+    # here, so it goes through importlib rather than as an import statement nothing references.
+    importlib.import_module("torch_npu")
     from torch.utils.data import DataLoader
 
     import colossalai

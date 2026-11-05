@@ -12,6 +12,7 @@ Needs an Ascend device, the checkpoint and the DROID dataset::
 """
 
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
@@ -50,7 +51,9 @@ class _Policy:
 def main():
     args = parse_args()
 
-    import torch_npu
+    # torch_npu registers the 'npu' device and its operators as an import side effect; no name from it is used
+    # here, so it goes through importlib rather than as an import statement nothing references.
+    importlib.import_module("torch_npu")
     from diffusers import AutoencoderKLWan, Cosmos3OmniTransformer
     from droid_dataset import DroidActionPolicyDataset, collate
     from packing import compute_loss, pack_batch

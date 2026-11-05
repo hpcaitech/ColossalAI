@@ -22,6 +22,7 @@ module in every worker, so any top-level side effect would run again there.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 from pathlib import Path
@@ -321,7 +322,9 @@ def latent_collate(batch):
 def main():
     args = parse_args()
 
-    import torch_npu
+    # torch_npu registers the 'npu' device and its operators as an import side effect; no name from it is used
+    # here, so it goes through importlib rather than as an import statement nothing references.
+    importlib.import_module("torch_npu")
 
     # launch_from_torch defaults to backend='nccl', which Ascend cannot use. Reading it off the accelerator rather
     # than hard-coding 'hccl' keeps the same script runnable on a GPU host.
