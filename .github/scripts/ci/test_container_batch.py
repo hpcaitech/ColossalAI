@@ -2,11 +2,13 @@ import io
 import json
 import os
 import signal
+import stat
 import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import container_batch as container
@@ -29,6 +31,19 @@ class ContainerCommandTests(unittest.TestCase):
         script.touch()
         self.output = self.root / "reports"
         self.output.mkdir()
+        devices = patch.object(
+            container,
+            "gpu_device_paths",
+            return_value=[
+                Path("/dev/nvidia4"),
+                Path("/dev/nvidia7"),
+                Path("/dev/nvidiactl"),
+                Path("/dev/nvidia-uvm"),
+                Path("/dev/nvidia-uvm-tools"),
+            ],
+        )
+        devices.start()
+        self.addCleanup(devices.stop)
 
     def command(self, **env):
         return container.create_command(
@@ -48,6 +63,17 @@ class ContainerCommandTests(unittest.TestCase):
         self.assertIn("CUDA_VISIBLE_DEVICES=0,1", command)
         self.assertIn(f"NVIDIA_VISIBLE_DEVICES={GPU_A},{GPU_B}", command)
         self.assertEqual(command[-2:], ["5", "0,1"])
+        devices = [command[index + 1] for index, value in enumerate(command) if value == "--device"]
+        self.assertEqual(
+            devices,
+            [
+                "/dev/nvidia4:/dev/nvidia4:rw",
+                "/dev/nvidia7:/dev/nvidia7:rw",
+                "/dev/nvidiactl:/dev/nvidiactl:rw",
+                "/dev/nvidia-uvm:/dev/nvidia-uvm:rw",
+                "/dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools:rw",
+            ],
+        )
 
     def test_only_source_and_reports_are_mounted(self):
         command = self.command(COLOSSAL_VENV="/host/private/venv", SECRET_TOKEN="not-for-container")
@@ -75,6 +101,7 @@ class ContainerCommandTests(unittest.TestCase):
             ("--shm-size", "4g"),
         ):
             self.assertEqual(command[command.index(flag) + 1], expected)
+        self.assertEqual(command[command.index("--tmpfs") + 1], "/tmp:rw,exec,nosuid,nodev,size=32g,mode=1777")
         for env in (
             {"COLOSSAL_CI_CPUS": "0"},
             {"COLOSSAL_CI_MEMORY": "unlimited"},
@@ -207,6 +234,92 @@ class ContainerCommandTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "daemon unavailable"):
                 self.run_batch(Mock(return_value=0))
+
+    def test_cleanup_failure_preserves_execution_error(self):
+        result = {}
+        with (
+            patch.object(container.subprocess, "run"),
+            patch.object(container, "remove_owned_container", side_effect=RuntimeError("overlay2 removal failed")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "original execution failed"):
+                container.run_container(
+                    "5",
+                    [(4, GPU_A), (7, GPU_B)],
+                    self.root,
+                    self.output,
+                    IMAGE,
+                    {"CI_CONTAINER_SCOPE": SCOPE},
+                    Mock(side_effect=RuntimeError("original execution failed")),
+                    result,
+                )
+        self.assertEqual(result["container_execution_error"], "original execution failed")
+        self.assertIn("overlay2 removal failed", result["container_cleanup"])
+
+
+class GPUDeviceTests(unittest.TestCase):
+    @staticmethod
+    def inventory(*pairs):
+        return (
+            "<nvidia_smi_log>"
+            + "".join(f"<gpu><uuid>{gpu}</uuid><minor_number>{minor}</minor_number></gpu>" for gpu, minor in pairs)
+            + "</nvidia_smi_log>"
+        )
+
+    def test_devices_are_resolved_by_uuid_and_minor_not_inventory_order(self):
+        metadata = [
+            SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=os.makedev(195, 7)),
+            SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=os.makedev(195, 4)),
+            *[SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=0) for _ in range(3)],
+        ]
+        with (
+            patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_B, 4), (GPU_A, 7)))),
+            patch.object(Path, "stat", side_effect=metadata),
+        ):
+            devices = container.gpu_device_paths([GPU_A, GPU_B])
+        self.assertEqual([str(path) for path in devices[:2]], ["/dev/nvidia7", "/dev/nvidia4"])
+        self.assertEqual(len(devices), 5)
+
+    def test_missing_or_ambiguous_allocations_fail_before_device_access(self):
+        for inventory in (
+            self.inventory((GPU_A, 4)),
+            self.inventory((GPU_A, 4), (GPU_A, 7)),
+            self.inventory((GPU_A, 4), (GPU_B, 4)),
+            self.inventory((GPU_A, "N/A")),
+            "malformed XML",
+        ):
+            with (
+                self.subTest(inventory=inventory),
+                patch.object(container.subprocess, "run", return_value=Mock(stdout=inventory)),
+                patch.object(Path, "stat") as metadata,
+            ):
+                with self.assertRaises(RuntimeError):
+                    container.gpu_device_paths([GPU_A, GPU_B])
+                metadata.assert_not_called()
+
+    def test_non_device_and_mismatched_minor_are_rejected(self):
+        for metadata in (
+            SimpleNamespace(st_mode=stat.S_IFREG, st_rdev=0),
+            SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=os.makedev(195, 9)),
+        ):
+            with (
+                self.subTest(metadata=metadata),
+                patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_A, 4)))),
+                patch.object(Path, "stat", return_value=metadata),
+            ):
+                with self.assertRaises(RuntimeError):
+                    container.gpu_device_paths([GPU_A])
+
+    def test_missing_control_device_fails_closed(self):
+        with (
+            patch.object(container.subprocess, "run", return_value=Mock(stdout=self.inventory((GPU_A, 4)))),
+            patch.object(
+                Path,
+                "stat",
+                side_effect=[SimpleNamespace(st_mode=stat.S_IFCHR, st_rdev=os.makedev(195, 4)), FileNotFoundError()],
+            ),
+        ):
+            with self.assertRaises(FileNotFoundError):
+                container.gpu_device_paths([GPU_A])
 
 
 class ContainerOwnershipTests(unittest.TestCase):
