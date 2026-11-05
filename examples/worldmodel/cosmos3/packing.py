@@ -119,6 +119,12 @@ def rectified_flow_noise(x0: torch.Tensor, t: torch.Tensor, generator=None):
 CFG_DROPOUT_RATE = 0.1  # dataloader section of action_policy_droid_nano.py
 MAX_TEXT_TOKENS = 4096  # text_tokenizer.py::_MAX_NUM_TOKENS
 
+# The action projectors are DomainAwareLinear: one weight/bias pair per embodiment, selected by
+# `action_domain_ids`. DROID is 8, from data/generator/action/utils/domain_utils.py::EMBODIMENT_TO_DOMAIN_ID.
+# Getting this wrong trains, and writes into, another embodiment's projector while leaving DROID's untouched --
+# the loss still falls, so nothing in a training run says anything is wrong.
+DROID_DOMAIN_ID = 8
+
 # Verbatim from data/generator/action/utils/viewpoint_utils.py::DEFAULT_VIEWPOINT_TEMPLATES.
 VIEWPOINT_TEMPLATES = {
     "ego_view": "This video is captured from a first-person perspective looking at the scene.",
@@ -238,7 +244,7 @@ def pack_one(
     cfg,
     *,
     state: torch.Tensor = None,
-    domain_id: int = 7,
+    domain_id: int = DROID_DOMAIN_ID,
     resolution: str = "480",
     device="npu:0",
     generator=None,
@@ -278,7 +284,8 @@ def pack_one(
         cfg: The model config, read for ``latent_patch_size`` and ``action_dim``.
         state (torch.Tensor, optional): ``[raw_action_dim]`` initial robot state, prepended as the conditioning
             action step. Defaults to None, which is Case A.
-        domain_id (int, optional): Selects the action head weights. Defaults to 7.
+        domain_id (int, optional): Selects the per-embodiment action projector weights. Defaults to
+            :data:`DROID_DOMAIN_ID`.
         resolution (str, optional): Key into :data:`RF_SHIFT`. Defaults to "480".
         device: Device for the packed tensors.
         generator (torch.Generator, optional): CPU generator. Defaults to None.

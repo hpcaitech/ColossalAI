@@ -75,6 +75,13 @@ term by about 1.2x.
 conditioning step reads `observation.state.joint_positions` and `observation.state.gripper_position`, not
 `cartesian_position`.
 
+**The action domain id is 8.** `action_proj_in` and `action_proj_out` are `DomainAwareLinear`: an `nn.Embedding`
+of weight/bias pairs indexed by `action_domain_ids`, one per embodiment. DROID's slot is 8, from
+`domain_utils.py::EMBODIMENT_TO_DOMAIN_ID["droid_lerobot"]`. A wrong id trains another embodiment's projector and
+leaves DROID's at its pretrained value, and the loss curve is indistinguishable, because the projector it picked
+up is trainable too. Note that `EMBODIMENT_TO_RAW_ACTION_DIM["droid_lerobot"]` in the same file is 10, for the
+`ee_pose` space of `[Pos, Rot6d, Gripper]`; `joint_pos` is 8 wide. Two different 8s and a 10 in one table.
+
 **The noise schedule.** `train_time_video_distribution="waver"` (not the library default `uniform`), `shift=5`
 at 480p (`rectified_flow_inference_config` carries a second `shift=1`, which is for inference), and
 `independent_action_schedule=False`, so the action and the vision share one sigma.
@@ -109,7 +116,7 @@ COSMOS3_CHECKPOINT=/path/to/Cosmos3-Edge-Policy-DROID pytest tests/   # also run
 
 `tests/test_target_form.py` checks what training cannot: that `x0 = x_t - sigma * target` holds on the noisy
 frames (a flipped sign breaks it), that the conditioning frame is excluded by the mask rather than by zeroing,
-and that a perfect prediction gives exactly zero loss.
+that a perfect prediction gives exactly zero loss, and that the action domain id is DROID's.
 
 `scripts/` needs the real thing:
 

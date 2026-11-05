@@ -18,7 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from packing import compute_loss, pack_one
+from packing import DROID_DOMAIN_ID, compute_loss, pack_one
 
 SIGMA_SCALE = 1000.0  # the forward multiplies the timestep by timestep_scale = 0.001
 
@@ -146,3 +146,18 @@ def test_the_mask_removes_the_conditioning_frame_and_the_padded_channels(packed)
     supervised = dict(targets, vision=targets["vision"].clone())
     supervised["vision"][0, :, 1] += 1000.0
     assert _loss(supervised, zeros_v, zeros_a) > base * 2
+
+
+def test_the_action_domain_id_is_droids(packed):
+    """The action projectors are per-embodiment; DROID's slot is 8.
+
+    ``action_proj_in`` / ``action_proj_out`` are ``DomainAwareLinear``, which indexes an ``nn.Embedding`` of
+    weights by ``action_domain_ids``. A wrong id reads, and trains, another embodiment's projector; DROID's own
+    stays at its pretrained value. Training says nothing: the loss falls either way, because the projector it
+    picked up is trainable too. Only this comparison against
+    ``domain_utils.py::EMBODIMENT_TO_DOMAIN_ID["droid_lerobot"]`` catches it.
+    """
+    _, _, _, inputs, _ = packed
+    assert DROID_DOMAIN_ID == 8
+    (domain_ids,) = inputs["action_domain_ids"]
+    assert domain_ids.reshape(-1).tolist() == [DROID_DOMAIN_ID]
