@@ -466,7 +466,21 @@ report = resume.check("transformers_mixtral", partial(LowLevelZeroPlugin, stage=
 report.assert_pass()
 ```
 
-`parts=("model", "optimizer")` and the like leave a part out of the checkpoint; each omission is detected. Results on
+`parts=("model", "optimizer")` and the like leave a part out of the checkpoint; each omission is detected.
+
+The Gemma checkpoint integration adds FP32 master values to HybridParallel optimizer state, removes that private
+metadata on load, and accepts legacy checkpoints without it (legacy checkpoints cannot recover discarded bits).
+It also exports the inner HF config for FSDP and the actual exported weight dtype for Gemini. DDP Torch AMP avoids
+nesting the base optimizer wrapper and saves the scaler's complete state in private parameter-group metadata for
+both sharded and unsharded checkpoints. Regression coverage is in `test_gemma4_checkpoint_regressions.py`.
+
+For FP16 models needing a smaller initial loss scale, declare `NumericsSpec(fp16_loss_scale=1024)` in the entry.
+The acceptance command applies it to DDP AMP and Gemini FP16, to both reference and plugin, and records it under
+`recipe_overrides`. Other entries keep their defaults. Overflow, skipped steps and changed scales still fail;
+neither the judge nor its tolerance is changed. Direct `check_training` callers must supply the same configured
+mixed-precision instance or plugin themselves.
+
+The following table records the original tool baseline, before those checkpoint fixes. Results on
 Mixtral, Llama, GPT and BERT with 1 and 2 devices:
 
 | Configuration | Resumed run |

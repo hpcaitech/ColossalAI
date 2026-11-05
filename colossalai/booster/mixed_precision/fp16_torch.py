@@ -61,6 +61,24 @@ class TorchAMPOptimizer(OptimizerWrapper):
     def unscale_grad(self) -> None:
         self.scaler.unscale_(self.optim)
 
+    def state_dict(self):
+        state = self.optim.state_dict()
+        # Group metadata survives both the sharded and unsharded optimizer formats, including async safetensors.
+        state["param_groups"] = [dict(group) for group in state["param_groups"]]
+        state["param_groups"][0]["_colossalai_grad_scaler"] = self.scaler.state_dict()
+        return state
+
+    def restore_scaler_from_param_groups(self, groups):
+        state = groups[0].pop("_colossalai_grad_scaler", None)
+        if state is not None:
+            self.scaler.load_state_dict(state)
+
+    def load_state_dict(self, state_dict):
+        state = dict(state_dict)
+        state["param_groups"] = [dict(group) for group in state["param_groups"]]
+        self.restore_scaler_from_param_groups(state["param_groups"])
+        self.optim.load_state_dict(state)
+
     def clip_grad_by_value(self, clip_value: float, *args, **kwargs) -> None:
         self.unscale_grad()
         super().clip_grad_by_value(clip_value, *args, **kwargs)

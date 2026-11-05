@@ -30,9 +30,9 @@ import torch
 from torch.distributed.fsdp import MixedPrecision
 
 import colossalai
+from colossalai.accelerator import get_accelerator
 from colossalai.booster.mixed_precision import MixedPrecision as BoosterMixedPrecision
 from colossalai.booster.mixed_precision.fp16_torch import FP16TorchMixedPrecision
-from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
