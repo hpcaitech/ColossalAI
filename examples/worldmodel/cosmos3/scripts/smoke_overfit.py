@@ -43,6 +43,7 @@ def parse_args():
 def main():
     args = parse_args()
 
+    import torch_npu  # noqa: F401 -- imported for the side effect of registering the npu backend
     from torch.utils.data import DataLoader
 
     import colossalai
