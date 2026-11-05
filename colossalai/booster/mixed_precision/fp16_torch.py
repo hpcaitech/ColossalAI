@@ -132,6 +132,10 @@ class FP16TorchMixedPrecision(MixedPrecision):
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable]:
         model = TorchAMPModule(model)
         if optimizer is not None:
+            # DDP supplies the base wrapper. Nesting it here makes checkpoint loading stop before the real
+            # optimizer and prevents GradScaler from inspecting its state.
+            if type(optimizer) is OptimizerWrapper:
+                optimizer = optimizer.unwrap()
             optimizer = TorchAMPOptimizer(optimizer, **self.torch_amp_kwargs)
         if criterion is not None:
             criterion = TorchAMPModule(criterion)
