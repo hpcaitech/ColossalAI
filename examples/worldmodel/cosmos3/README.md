@@ -82,6 +82,21 @@ leaves DROID's at its pretrained value, and the loss curve is indistinguishable,
 up is trainable too. Note that `EMBODIMENT_TO_RAW_ACTION_DIM["droid_lerobot"]` in the same file is 10, for the
 `ee_pose` space of `[Pos, Rot6d, Gripper]`; `joint_pos` is 8 wide. Two different 8s and a 10 in one table.
 
+**`position_ids` is a 3D grid, not an arange.** It is `[3, sequence_length]`: the temporal, height and width
+axes of an interleaved mRoPE, which `Cosmos3VLTextRotaryEmbedding.apply_interleaved_mrope` weaves into one
+frequency layout. Repeating a flat `arange` on all three rows passes every shape check in the forward and
+collapses the embedding to a 1D rope over sequence position, so the vision tokens carry no trace of their 2D
+layout — which is not what they were pretrained with. The rules are in
+`data/generator/sequence_packing/mrope.py`: text shares one index across the three axes; the generation block
+then starts a `unified_3d_mrope_temporal_modality_margin` (15000) past the text; vision is a `(T, H, W)` grid
+flattened T-major with the spatial axes restarting at 0; and action is a `(T, 1, 1)` grid sharing the vision
+block's temporal origin, because the two streams run in parallel in time rather than one after the other.
+
+The temporal axis is scaled to real time, `(frame + start_frame_offset) / tps * base_tps`, which at 15 fps puts
+latent frames 1.6 apart and actions 0.4 apart, so every 4th action coincides with a latent frame. **Those
+positions are therefore fractional**, and anything that copies them has to stay in a float dtype — a
+`torch.long` buffer truncates 1.6 to 1 with the shapes still lining up and nothing raised.
+
 **The noise schedule.** `train_time_video_distribution="waver"` (not the library default `uniform`), `shift=5`
 at 480p (`rectified_flow_inference_config` carries a second `shift=1`, which is for inference), and
 `independent_action_schedule=False`, so the action and the vision share one sigma.
@@ -102,7 +117,7 @@ measured at 210x the CPU error, which quietly corrupts the latents.
 | `droid_dataset.py` | Map-style DROID dataset: `concat_view` composition, canvas fitting, reflection padding |
 | `packing.py` | Noise schedule, JSON prompt, packing into the forward arguments, the loss |
 | `train_sft.py` | Training entry point, the precomputed-latent bypass, the ZeRO-2 plugin wiring |
-| `tests/` | CPU-only checks on the target form, the loss masking and the prompt |
+| `tests/` | CPU-only checks on the target form, the position ids, the loss masking and the prompt |
 | `scripts/` | Smoke scripts that need a device, the checkpoint and the dataset |
 
 ## Tests
@@ -117,6 +132,8 @@ COSMOS3_CHECKPOINT=/path/to/Cosmos3-Edge-Policy-DROID pytest tests/   # also run
 `tests/test_target_form.py` checks what training cannot: that `x0 = x_t - sigma * target` holds on the noisy
 frames (a flipped sign breaks it), that the conditioning frame is excluded by the mask rather than by zeroing,
 that a perfect prediction gives exactly zero loss, and that the action domain id is DROID's.
+`tests/test_position_ids.py` compares the mRoPE grid against a transcription of upstream's own arithmetic, and
+guards the two cases the forward cannot reject: three identical axes, and a truncated temporal axis.
 
 `scripts/` needs the real thing:
 
@@ -136,8 +153,37 @@ Measured on one 910B2, single rank:
 | | |
 | --- | --- |
 | Single-sample training step through `booster` + ZeRO-2 | works, ~2.3 s/step at the recipe window |
-| Overfitting one sample, 200 steps | 19.53 -> 0.0028, a factor of 7000 |
+| Overfitting one sample, 200 steps | 6.43 -> 0.0032, a factor of 2004 |
 | Fused kernel vs the PyTorch reference, in the training loop | relative difference 2e-5 |
+
+### An open question on the mRoPE temporal axis
+
+Probing one forward pass with everything else fixed, varying only `position_ids`:
+
+| variant | step-1 loss |
+| --- | --- |
+| as shipped (upstream's rules) | 4.241849 |
+| integer frame indices instead of fps-scaled | 4.241849 |
+| fps-scaled then truncated to int | 4.241849 |
+| height and width rows swapped | 4.342381 |
+| spatial rows zeroed | 7.242400 |
+| **temporal margin removed** | **2.032563** |
+| flat arange on all three rows | 12.376839 |
+
+Two things to take from it. First, the fps modulation is **unmeasurable here**: scaling the temporal axis, leaving
+it as integer frame indices, and truncating it all give a bit-identical loss. The reason is the margin — at a
+temporal position near 15139, the frequency bands fast enough to resolve a difference of 5 have already been
+decorrelated by the offset, and the bands slow enough to carry usable time structure move by about 1e-4, which
+does not survive bf16. So `enable_fps_modulation` is followed here because the config says so, not because
+anything measured it; the spatial axes, by contrast, are clearly load-bearing.
+
+Second, **removing the temporal margin halves the loss**, and that is not understood. The margin is upstream's:
+`packers.py` advances the cursor by `unified_3d_mrope_temporal_modality_margin` at the end of the text modality,
+the value is 15000 in `edge_model_config.py` and in this checkpoint's own `config.json`, and
+`advance_mrope_temporal_offset` is a plain `+=`. The implementation here follows that. A lower loss on one sample
+at one sigma is not evidence that dropping it is right — it is the same reasoning that would have accepted the
+flipped target sign — so the margin stays and the anomaly is recorded instead. It is the first thing to check
+against cosmos-framework on a reference device.
 
 Not done yet: there is no comparison against cosmos-framework on a reference device, so the recipe is verified to
 be *self-consistent* and to match what the upstream source says, not to produce the same model.

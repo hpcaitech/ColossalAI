@@ -125,6 +125,74 @@ MAX_TEXT_TOKENS = 4096  # text_tokenizer.py::_MAX_NUM_TOKENS
 # the loss still falls, so nothing in a training run says anything is wrong.
 DROID_DOMAIN_ID = 8
 
+# --- 3D mRoPE position ids -------------------------------------------------------------------------------------
+# `position_ids` is [3, sequence_length] interleaved mRoPE, not a flat arange: the three rows are the temporal,
+# height and width axes, and Cosmos3VLTextRotaryEmbedding.apply_interleaved_mrope weaves their frequency bands
+# together. Giving all three rows the same value degrades it to a 1D rope over sequence position, so the vision
+# tokens lose every trace of their 2D layout -- and they were pretrained with one.
+#
+# Rules, from data/generator/sequence_packing/mrope.py and the call sites in packers.py / sequence.py:
+#   * text   -- all three rows share one increasing index, starting at 0 for each sample;
+#   * margin -- after the text, the temporal offset jumps by unified_3d_mrope_temporal_modality_margin, so the
+#               AR and DM blocks cannot land on overlapping temporal positions;
+#   * vision -- a (T, H, W) grid flattened T-major, with the spatial axes restarting at 0 for the segment
+#               (unified_3d_mrope_reset_spatial_ids) and the temporal axis scaled to real time;
+#   * action -- a (T, 1, 1) grid sharing the vision block's temporal origin, since the two streams run in
+#               parallel in time rather than one after the other. Its temporal compression is 1, because actions
+#               are at frame rate, but it is normalized against the *vision* base, so the two land on the same
+#               time axis. start_frame_offset=1 shifts action i to source frame i+1.
+#
+# The time scaling is scaled_t = (frame + start_frame_offset) / tps * base_tps, where tps = fps / compression and
+# base_tps = MROPE_BASE_FPS / VAE_TEMPORAL_COMPRESSION. At the recipe's 15 fps this puts consecutive latent
+# frames 1.6 apart and consecutive actions 0.4 apart, so every 4th action coincides with a latent frame.
+MROPE_BASE_FPS = 24.0  # edge_model_config.py::diffusion_expert_config.base_fps
+MROPE_TEMPORAL_MARGIN = 15000  # unified_3d_mrope_temporal_modality_margin
+VAE_TEMPORAL_COMPRESSION = 4
+ACTION_START_FRAME_OFFSET = 1
+
+
+def build_mrope_position_ids(n_text: int, vision_grid, n_act: int, fps: float) -> torch.Tensor:
+    """Build the ``[3, sequence_length]`` mRoPE position ids for one packed sample.
+
+    The layout this matches is ``[text | vision | action]``, the order :func:`pack_one` appends them in.
+
+    Args:
+        n_text (int): Number of text tokens.
+        vision_grid (tuple): ``(t_latent, hp, wp)``, the patchified latent grid.
+        n_act (int): Number of action steps, the conditioning step included.
+        fps (float): Frame rate of the source clip, 15 for this recipe.
+
+    Returns:
+        torch.Tensor: ``[3, n_text + t*hp*wp + n_act]`` float positions, rows ``(temporal, height, width)``.
+    """
+    t_latent, hp, wp = vision_grid
+    spatial = hp * wp
+
+    # Text: one shared index on all three axes, from 0.
+    text = torch.arange(n_text, dtype=torch.float32).unsqueeze(0).expand(3, -1)
+
+    # The generation block starts a margin past the end of the text, never overlapping it.
+    offset = float(n_text) + MROPE_TEMPORAL_MARGIN
+    base_tps = MROPE_BASE_FPS / VAE_TEMPORAL_COMPRESSION
+
+    # Vision: a T-major (T, H, W) grid. The spatial axes restart at 0 for the segment.
+    vision_t = torch.arange(t_latent, dtype=torch.float32) / (fps / VAE_TEMPORAL_COMPRESSION) * base_tps + offset
+    vision = torch.stack(
+        [
+            vision_t.view(-1, 1).expand(-1, spatial).flatten(),
+            torch.arange(hp, dtype=torch.float32).view(1, -1, 1).expand(t_latent, -1, wp).flatten(),
+            torch.arange(wp, dtype=torch.float32).view(1, 1, -1).expand(t_latent, hp, -1).flatten(),
+        ]
+    )
+
+    # Action: a (T, 1, 1) grid on the same temporal origin as the vision block, at frame rate (compression 1)
+    # but normalized against the vision base, so both streams measure time in the same units.
+    action_t = (torch.arange(n_act, dtype=torch.float32) + ACTION_START_FRAME_OFFSET) / fps * base_tps + offset
+    action = torch.stack([action_t, torch.zeros_like(action_t), torch.zeros_like(action_t)])
+
+    return torch.cat([text, vision, action], dim=1)
+
+
 # Verbatim from data/generator/action/utils/viewpoint_utils.py::DEFAULT_VIEWPOINT_TEMPLATES.
 VIEWPOINT_TEMPLATES = {
     "ego_view": "This video is captured from a first-person perspective looking at the scene.",
@@ -244,6 +312,7 @@ def pack_one(
     cfg,
     *,
     state: torch.Tensor = None,
+    fps: float = 15.0,
     domain_id: int = DROID_DOMAIN_ID,
     resolution: str = "480",
     device="npu:0",
@@ -284,6 +353,8 @@ def pack_one(
         cfg: The model config, read for ``latent_patch_size`` and ``action_dim``.
         state (torch.Tensor, optional): ``[raw_action_dim]`` initial robot state, prepended as the conditioning
             action step. Defaults to None, which is Case A.
+        fps (float, optional): Frame rate of the source clip, which sets the mRoPE time scale. Defaults to 15.0,
+            the recipe value.
         domain_id (int, optional): Selects the per-embodiment action projector weights. Defaults to
             :data:`DROID_DOMAIN_ID`.
         resolution (str, optional): Key into :data:`RF_SHIFT`. Defaults to "480".
@@ -343,7 +414,7 @@ def pack_one(
     inputs = dict(
         input_ids=to_device(input_ids),
         text_indexes=to_device(torch.arange(n_text)),
-        position_ids=to_device(torch.arange(seq).unsqueeze(0).repeat(3, 1)),
+        position_ids=to_device(build_mrope_position_ids(n_text, (t_latent, hp, wp), n_act, fps)),
         und_len=n_text,
         sequence_length=seq,
         vision_tokens=[to_device(latent_noisy)],
@@ -475,6 +546,7 @@ def pack_batch(
                 ids,
                 cfg,
                 state=batch["state"][index].to(torch.bfloat16) if "state" in batch else None,
+                fps=fps,
                 device=device,
                 resolution=str(resolution),
                 generator=generator,
@@ -486,7 +558,10 @@ def pack_batch(
     total_ar, total_dm = sum(ar_lens), sum(dm_lens)
     sequence_length = total_ar + total_dm
 
-    position_ids = torch.zeros(3, sequence_length, dtype=torch.long, device=device)
+    # Take the dtype from what pack_one produced rather than naming one here. The mRoPE temporal axis is
+    # fractional under fps modulation, and a torch.long buffer would truncate it on assignment -- silently,
+    # since the shapes still line up.
+    position_ids = torch.zeros(3, sequence_length, dtype=per_sample[0][0]["position_ids"].dtype, device=device)
     input_ids, text_indexes = [], []
     vision_indexes, vision_loss_indexes = [], []
     action_indexes, action_loss_indexes = [], []
