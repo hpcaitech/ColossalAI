@@ -103,6 +103,9 @@ if Gemma4ForCausalLM is not None:
                     prepare_fn=gemma4_numerics_prepare,
                     token_loss=TokenLoss(loss=gemma4_summed_token_loss, count=gemma4_valid_tokens),
                     tied_params=(("model.embed_tokens.weight", "lm_head.weight"),),
+                    # Native FP16 backward overflows near the first RMSNorm with scale 65536. Both runs use
+                    # this declared scale; skipped optimizer updates remain failures.
+                    fp16_loss_scale=1024.0,
                 ),
             ),
         )

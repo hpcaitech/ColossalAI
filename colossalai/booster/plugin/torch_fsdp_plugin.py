@@ -227,7 +227,7 @@ class TorchFSDPCheckpointIO(GeneralCheckpointIO):
         if self.coordinator.is_master():
             index_file.append_meta_data("total_size", total_size)
             index_file.write_index_file(save_index_file)
-            utils.save_config_file(model.unwrap(), checkpoint_path)
+            utils.save_config_file(model.unwrap().module, checkpoint_path)
             self.logger.info(
                 f"The model is split into checkpoint shards. "
                 f"You can find where each parameters has been saved in the "

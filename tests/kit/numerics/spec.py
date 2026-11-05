@@ -92,6 +92,9 @@ class NumericsSpec:
             model, that each group is one Parameter and that no other parameters share one; a broken or undeclared
             tie fails. A tied parameter counts once, under its first name in ``named_parameters()``, for gradients,
             weights and the optimizer.
+        fp16_loss_scale: Optional initial FP16 loss scale for acceptance recipes, applied equally to reference and
+            plugin and recorded in the report. Models can need a smaller scale than the default 65536. Overflow and
+            skipped optimizer updates still fail; this does not change the numerical judge or its tolerance.
     """
 
     reference_fn: Optional[Callable[[], nn.Module]] = None
@@ -102,3 +105,5 @@ class NumericsSpec:
     prepare_fn: Optional[Callable[[nn.Module], Optional[nn.Module]]] = None
     token_loss: Optional[TokenLoss] = None
     tied_params: Tuple[Tuple[str, ...], ...] = ()
+    # Initial scale for both FP16 acceptance runs (reference and plugin). Overflow remains a failure.
+    fp16_loss_scale: Optional[float] = None
