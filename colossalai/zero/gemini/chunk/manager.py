@@ -285,9 +285,10 @@ class ChunkManager:
         assert chunk.grad_chunk is not None
 
         # Make a backup for gradient accumulated before.
-        # Here backup gradients should be multiplied, since it will be divided after gradient reduction.
+        # A gathered gradient is already replicated across the reduction group: all-reduce followed by the
+        # group's averaging preserves it. A sharded gradient occurs on only one rank and needs compensation.
         if chunk.grad_chunk.is_gathered:
-            accumulated_grad = chunk.grad_chunk.cuda_global_chunk.clone().detach().mul_(chunk.pg_size)
+            accumulated_grad = chunk.grad_chunk.cuda_global_chunk.clone().detach()
             accumulated_grad_gathered = True
         else:
             if chunk.grad_chunk.cuda_shard is not None:

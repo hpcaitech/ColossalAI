@@ -470,6 +470,10 @@ report.assert_pass()
 
 The Gemma checkpoint integration adds FP32 master values to HybridParallel optimizer state, removes that private
 metadata on load, and accepts legacy checkpoints without it (legacy checkpoints cannot recover discarded bits).
+Gemini's gathered gradient accumulation also keeps the previous averaged gradient unscaled before the next
+all-reduce; multiplying it by the world size counted earlier micro-batches multiple times. The sharded path still
+compensates for its single-owner gradient shard. A linear model with hand-computed gradients tests both paths,
+one/two devices and synchronous/asynchronous reduction without an Apex dependency.
 It also exports the inner HF config for FSDP and the actual exported weight dtype for Gemini. DDP Torch AMP avoids
 nesting the base optimizer wrapper and saves the scaler's complete state in private parameter-group metadata for
 both sharded and unsharded checkpoints. Regression coverage is in `test_gemma4_checkpoint_regressions.py`.
