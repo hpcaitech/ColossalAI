@@ -6,6 +6,7 @@ import torch.fx
 from torch.fx.node import Argument, Node, Target
 from torch.utils._pytree import tree_map
 
+from colossalai.accelerator import get_accelerator
 from colossalai.fx._compatibility import compatibility, is_compatible_with_meta
 from colossalai.fx.profiler import (
     GraphInfo,
@@ -348,7 +349,7 @@ def metainfo_trace(gm: torch.fx.GraphModule, *args, verbose: bool = False, unit:
     Returns:
         torch.fx.GraphModule: The ``GraphModule`` annotated with MetaInfo.
     """
-    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    device = get_accelerator().get_current_device()
     interp = MetaInfoProp(gm.to(device))
     if is_compatible_with_meta():
         from colossalai.fx.profiler import MetaTensor
