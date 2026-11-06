@@ -178,17 +178,26 @@ def assert_aligned(test: Any, ref: Any, truth: Any, **kwargs) -> AlignmentReport
 
 
 def require_gradients(report: AlignmentReport, **traces: Any) -> AlignmentReport:
-    """Fail every parameter that a run (keyword: its role) recorded as left without a gradient.
+    """Fail what the runs (keyword: their role) recorded as breaking the parameter contract of the entry.
 
-    Runs list such parameters in ``meta["missing_grads"]`` (parameters declared unused excluded). The judges compare
-    only the tensors the runs recorded, so a gradient missing from every run would otherwise pass unnoticed.
+    The judges compare only the tensors the runs recorded, so a problem shared by every run would otherwise pass
+    unnoticed. From each run's meta:
+
+    - ``missing_grads``: trainable parameters left without a gradient, except those declared in ``unused_params``
+      (``grad/param/<name>``, "no gradient in ...").
+    - ``not_in_optimizer``: trainable parameters the optimizer does not hold (``optim/param/<name>``).
+    - ``tie_problems``: shared parameters that differ from ``NumericsSpec.tied_params`` (``tied/<names>``).
     """
-    roles: Dict[str, List[str]] = {}
+    found: Dict[Tuple[str, str], List[str]] = {}
     for role, trace in traces.items():
-        for name in getattr(trace, "meta", {}).get("missing_grads", ()):
-            roles.setdefault(name, []).append(role)
-    for name, missing_in in sorted(roles.items()):
-        report.entries.append(Entry(f"grad/param/{name}", False, f"no gradient in {', '.join(missing_in)}"))
+        meta = getattr(trace, "meta", {})
+        problems = [(f"grad/param/{name}", "no gradient") for name in meta.get("missing_grads", ())]
+        problems += [(f"optim/param/{name}", "not held by the optimizer") for name in meta.get("not_in_optimizer", ())]
+        problems += sorted(meta.get("tie_problems", {}).items())
+        for problem in problems:
+            found.setdefault(problem, []).append(role)
+    for (name, reason), roles in sorted(found.items()):
+        report.entries.append(Entry(name, False, f"{reason} in {', '.join(roles)}"))
     return report
 
 
