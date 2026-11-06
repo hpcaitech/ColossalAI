@@ -1,4 +1,4 @@
-name: 🐛 Bug Report
+name: Bug Report
 description: Create a report to help us reproduce and fix the bug
 title: "[BUG]: "
 labels: [bug]
@@ -23,26 +23,13 @@ body:
     - label: I have checked the latest main branch
       required: true
 
-- type: dropdown
-  id: share_script
-  attributes:
-    label: Do you feel comfortable sharing a concise (minimal) script that reproduces the error? :)
-    description: If not, please share your setting/training config, and/or point to the line in the repo that throws the error.
-              If the issue is not easily reproducible by us, it will reduce the likelihood of getting responses.
-    options:
-      - Yes, I will share a minimal reproducible script.
-      - No, I prefer not to share.
-  validations:
-    required: true
-
 - type: textarea
+  id: description
   attributes:
-    label: 🐛 Describe the bug
+    label: Describe the bug
     description: |
       **Describe the bug**
       A clear and concise description of what the bug is.
-      **To Reproduce**
-      Steps or code snippet to reproduce the behavior.
       **Expected behavior**
       A clear and concise description of what you expected to happen.
       **Screenshots**
@@ -53,13 +40,95 @@ body:
       A clear and concise description of what the bug is.
   validations:
     required: true
+
 - type: textarea
+  id: reproduction
   attributes:
-    label: Environment
+    label: Minimal reproduction
     description: |
-      Please provide the environment information, eg. CUDA/cuDNN/NCCL/Python/PyTorch version.
+      A minimal script and the exact command that reproduce the bug, e.g. `colossalai run --nproc_per_node 4 repro.py`.
+      If you cannot share code, describe your training config (plugin, parallel sizes, model, batch size) and point to the line in the repo that throws the error.
+      Issues we cannot reproduce are less likely to get a response.
+    render: python
+  validations:
+    required: true
+
+- type: textarea
+  id: logs
+  attributes:
+    label: Error message and logs
+    description: The full traceback or the relevant part of the log.
+    render: shell
+
+- type: input
+  id: colossalai_version
+  attributes:
+    label: ColossalAI version or commit
+    description: Output of `pip show colossalai`, or the commit hash if installed from source.
+    placeholder: e.g. 0.5.0, or main @ cb3b223
+  validations:
+    required: true
+
+- type: input
+  id: torch_version
+  attributes:
+    label: PyTorch version
+    description: Output of `python -c "import torch; print(torch.__version__)"`.
+    placeholder: e.g. 2.13.0+cu130
+  validations:
+    required: true
+
+- type: input
+  id: hardware
+  attributes:
+    label: Accelerator model, number of devices and nodes
+    description: GPU, NPU or other accelerator.
+    placeholder: e.g. 8 x H100 80GB, 2 nodes; or 16 x Ascend 910B2, 2 nodes
+  validations:
+    required: true
+
+- type: input
+  id: transformers_version
+  attributes:
+    label: Transformers version
+    description: Fill in if a Hugging Face model is involved.
+    placeholder: e.g. 4.51.3
+
+- type: input
+  id: backend_versions
+  attributes:
+    label: Accelerator software versions
+    description: CUDA / NCCL for NVIDIA GPUs, torch_npu / CANN / HCCL for Ascend NPUs, ROCm / RCCL for AMD GPUs.
+    placeholder: e.g. CUDA 13.0, NCCL 2.28.9; or torch_npu 2.13, CANN 9.1.0, HCCL
+
+- type: dropdown
+  id: plugin
+  attributes:
+    label: Booster plugin
+    options:
+      - TorchDDPPlugin
+      - LowLevelZeroPlugin
+      - GeminiPlugin
+      - HybridParallelPlugin
+      - MoeHybridParallelPlugin
+      - TorchFSDPPlugin
+      - Other / not applicable
+
+- type: input
+  id: parallel_config
+  attributes:
+    label: Parallel configuration
+    description: Fill in if relevant.
+    placeholder: e.g. tp_size=2, pp_size=2, sp_size=1, ep_size=1, zero_stage=1
+
+- type: textarea
+  id: check_installation
+  attributes:
+    label: Output of `colossalai check -i`
+    description: Optional. Collects the installation information in one step; it currently reports CUDA details only.
+    render: shell
 
 - type: markdown
   attributes:
     value: >
-      Thanks for contributing 🎉!
+      Thanks for contributing!

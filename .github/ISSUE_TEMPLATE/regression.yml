@@ -1,0 +1,119 @@
+name: Regression
+description: Something got slower, used more memory, lost accuracy or stopped working after updating ColossalAI or a dependency
+title: "[REGRESSION]: "
+labels: [regression]
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      Use this form when the same workload behaved better on an older version.
+      For a bug without a known-good version, please use the Bug Report form instead.
+- type: checkboxes
+  attributes:
+    label: Is there an existing issue for this regression?
+    description: Please search [here](https://github.com/hpcaitech/ColossalAI/issues) to see if an open or closed issue already exists.
+    options:
+    - label: I have searched the existing issues
+      required: true
+
+- type: dropdown
+  id: regression_type
+  attributes:
+    label: Type of regression
+    multiple: true
+    options:
+      - Speed / throughput
+      - Memory usage
+      - Accuracy / convergence (loss, grad norm, eval results)
+      - Functionality (it used to work and now fails)
+  validations:
+    required: true
+
+- type: textarea
+  id: description
+  attributes:
+    label: Describe the regression
+    description: What changed, and how did you notice it?
+  validations:
+    required: true
+
+- type: textarea
+  id: versions
+  attributes:
+    label: Versions before and after
+    description: |
+      The known-good and the regressed setup. Include whatever changed between the two.
+    value: |
+      |                                           | Before (good) | After (regressed) |
+      | ----------------------------------------- | ------------- | ----------------- |
+      | ColossalAI                                |               |                   |
+      | PyTorch                                   |               |                   |
+      | Transformers                              |               |                   |
+      | CUDA / NCCL (or CANN / HCCL, ROCm / RCCL) |               |                   |
+  validations:
+    required: true
+
+- type: textarea
+  id: metrics
+  attributes:
+    label: Metrics before and after
+    description: |
+      The numbers that changed, measured on the same hardware and config,
+      e.g. tokens/s, step time, peak memory, loss after N steps.
+    placeholder: |
+      Before: 1520 tokens/s per device, peak memory 61.2 GB
+      After:  1180 tokens/s per device, peak memory 63.0 GB
+  validations:
+    required: true
+
+- type: textarea
+  id: reproduction
+  attributes:
+    label: Reproduction
+    description: |
+      A script and the exact command that show the difference, e.g. `colossalai run --nproc_per_node 8 bench.py --plugin hybrid --tp 2`.
+      If you cannot share code, describe the model, plugin, parallel sizes and batch size.
+    render: python
+  validations:
+    required: true
+
+- type: textarea
+  id: logs
+  attributes:
+    label: Logs
+    description: Relevant logs from both versions, or the traceback for a functionality regression.
+    render: shell
+
+- type: input
+  id: hardware
+  attributes:
+    label: Accelerator model, number of devices and nodes
+    description: GPU, NPU or other accelerator.
+    placeholder: e.g. 8 x H100 80GB, 2 nodes; or 16 x Ascend 910B2, 2 nodes
+  validations:
+    required: true
+
+- type: dropdown
+  id: plugin
+  attributes:
+    label: Booster plugin
+    options:
+      - TorchDDPPlugin
+      - LowLevelZeroPlugin
+      - GeminiPlugin
+      - HybridParallelPlugin
+      - MoeHybridParallelPlugin
+      - TorchFSDPPlugin
+      - Other / not applicable
+
+- type: input
+  id: parallel_config
+  attributes:
+    label: Parallel configuration
+    placeholder: e.g. tp_size=2, pp_size=2, sp_size=1, ep_size=1, zero_stage=1
+
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing!
