@@ -254,6 +254,35 @@ def run_dist_lamb_fwd_bwd(
         raise e
 
 
+@clear_cache_before_run()
+def run_dist_lamb_cpu_offload() -> None:
+    """Regression test for LAMB norm reductions with CPU-offloaded master parameters."""
+    rank = dist.get_rank()
+    seed_all(_SEED)
+    model = Net(_IN_DIM, _HID_DIM).to(rank).half()
+    optim = DistributedLamb(model.parameters(), lr=1e-3)
+    optim = LowLevelZeroOptimizer(
+        optim,
+        cpu_offload=True,
+        initial_scale=2**20,
+        partition_grad=True,
+        verbose=True,
+    )
+    optim.optim.setup_distributed(
+        dp_group=dist.group.WORLD,
+        shard_to_working_param=optim.get_master_to_working_map(),
+        is_zero=True,
+    )
+
+    x = data_gen().cuda().half()
+    output = model(x)
+    optim.backward(output.float().square().mean())
+    optim.step()
+
+    for master_params in optim._master_param_groups_of_current_rank.values():
+        assert all(param.device.type == "cpu" for param in master_params)
+
+
 def check_dist_lamb(rank, world_size, port):
     disable_existing_loggers()
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port, backend="nccl")
@@ -265,6 +294,9 @@ def check_dist_lamb(rank, world_size, port):
 
     run_dist_lamb_fwd_bwd()
     coordinator.print_on_master("Forward-backward tests passed")
+
+    run_dist_lamb_cpu_offload()
+    coordinator.print_on_master("CPU-offload test passed")
 
     run_bert_test(optim_class=Lamb, sharded_optim_class=Lamb)
     print(f"rank {rank} tests passed :)")
