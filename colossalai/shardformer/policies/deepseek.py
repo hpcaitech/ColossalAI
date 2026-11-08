@@ -332,6 +332,7 @@ class DeepseekPolicy(Policy):
             assert stage_manager.num_model_chunks is not None
             layers_per_stage = stage_manager.distribute_layers(len(module.layers))
             stage_indices = stage_manager.get_stage_index(layers_per_stage)
+            stage_manager.stage_indices = stage_indices
             if stage_manager.is_first_stage(ignore_chunk=True):
                 held_layers.append(module.embed_tokens)
             for start_idx, end_idx in stage_indices:
