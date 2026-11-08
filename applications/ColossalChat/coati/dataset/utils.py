@@ -28,10 +28,10 @@ def jload(f, mode="r"):
 
 def read_string_by_schema(data: Dict[str, Any], schema: str) -> str:
     """
-    Read a feild of the dataset be schema
+    Read a field of the dataset by schema
     Args:
         data: Dict[str, Any]
-        schema: cascaded feild names seperated by '.'. e.g. person.name.first will access data['person']['name']['first']
+        schema: cascaded field names separated by '.'. e.g. person.name.first will access data['person']['name']['first']
     """
     keys = schema.split(".")
     result = data

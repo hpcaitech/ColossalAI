@@ -142,7 +142,7 @@ class ColossalInferenceHandler(BaseHandler, ABC):
 
             input_ids = inputs["input_ids"].to(self.device)
             attention_mask = inputs["attention_mask"].to(self.device)
-            # making a batch out of the recieved requests
+            # making a batch out of the received requests
             # attention masks are passed for cases where input tokens are padded.
             if input_ids.shape is not None:
                 if input_ids_batch is None:
