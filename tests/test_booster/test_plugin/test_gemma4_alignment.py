@@ -150,7 +150,7 @@ def _gradients(bundle, recipe, expected):
 
 
 def _masters(bundle, recipe, expected):
-    _, _, optimizer, native = bundle
+    _, model, optimizer, native = bundle
     if recipe.startswith("zero"):
         values = {}
         for name, param in native.named_parameters():
@@ -159,6 +159,12 @@ def _masters(bundle, recipe, expected):
             shards = [torch.empty_like(shard) for _ in range(dist.get_world_size(group))]
             dist.all_gather(shards, shard, group=group)
             values[name] = _clone(torch.cat(shards)[: param.numel()].reshape(expected[name]))
+    elif recipe.startswith("gemini"):
+        # Model exports need not carry FP32 residuals; Gemini checkpoints masters with optimizer state.
+        values = {}
+        for param_id, param in optimizer.id_to_real_params.items():
+            state = optimizer.collect_states(param_id, only_rank_0=False)
+            values[model.param2name[param]] = _clone(state["_colossalai_master_param"])
     else:
         state = _full_state(bundle, recipe)
         values = {name: state[name] for name in expected}
