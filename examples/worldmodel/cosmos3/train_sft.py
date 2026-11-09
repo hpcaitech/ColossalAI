@@ -111,6 +111,13 @@ def parse_args():
         "latents touches neither PyAV nor the VAE in the parent, where fork is fine.",
     )
     parser.add_argument(
+        "--vae-dtype",
+        default="bfloat16",
+        choices=["bfloat16", "float32"],
+        help="Precision of the frozen VAE. bfloat16 matches the upstream recipe; float32 is 2.5x slower and twice "
+        "the memory, and exists so a numerical question can be re-asked against a reference that does not round.",
+    )
+    parser.add_argument(
         "--backend",
         default="npu",
         choices=["npu", "naive"],
@@ -146,18 +153,32 @@ def build_tokenizer(checkpoint: Path):
     return AutoTokenizer.from_pretrained(checkpoint / "text_tokenizer")
 
 
-def build_vae(checkpoint: Path):
+def build_vae(checkpoint: Path, dtype: torch.dtype = torch.bfloat16):
     """Load the VAE frozen. It runs inside the training loop and never enters the booster.
 
-    HF32 has to be off. With it on, the error of an fp32 convolution on Ascend was measured at 210x the CPU
-    result, which leaves the latents subtly wrong; the symptom is a loss curve that does not match the reference
-    device, which is very hard to trace back to here.
+    bfloat16 is the default because it is what the recipe runs: upstream's ``WanVAE`` defaults to it and the DROID
+    posttrain config sets ``precision = "bfloat16"``. Measured on one 910B card against a CPU fp32 reference, on a
+    real [1,3,33,544,736] window:
+
+        fp32   1230 ms   6.12 GiB   relL2 8.4e-07 vs CPU
+        bf16    500 ms   3.12 GiB   relL2 7.8e-03 vs CPU
+
+    The bf16 latent sits 7.8e-03 away from the fp32 one, which is 1.3% of the distance between two augmented draws
+    of the same window (0.614) -- far below the variation the recipe injects on purpose. fp32 stays reachable
+    because the argument above was only settleable by having a reference that does not round.
+
+    HF32 has to be off whenever a convolution does run in fp32. With it on, the error of an fp32 convolution on
+    Ascend was measured at 210x the CPU result, which leaves the latents subtly wrong; the symptom is a loss curve
+    that does not match the reference device, which is very hard to trace back to here. The flag is set
+    unconditionally so that switching dtype can never silently re-enable it.
     """
     from diffusers import AutoencoderKLWan
 
     torch.npu.conv.allow_hf32 = False
     torch.set_float32_matmul_precision("highest")
-    vae = AutoencoderKLWan.from_pretrained(checkpoint / "vae", torch_dtype=torch.float32).eval()
+    # from_pretrained, not .to(): diffusers keeps dtype-sensitive submodules in fp32 when it loads the weights
+    # itself, and a cast after the fact bypasses that bookkeeping.
+    vae = AutoencoderKLWan.from_pretrained(checkpoint / "vae", torch_dtype=dtype).eval()
     for p in vae.parameters():
         p.requires_grad = False
     return vae
@@ -182,10 +203,18 @@ def build_optimizer(model):
 # ---------------------------------------------------------------------------------------------------------------
 # Precomputed-latent bypass
 #
-# The upstream pipeline does not precompute: augmentation happens before the VAE, so caching latents freezes the
-# augmentation, and the VAE is compiled and trained alongside the model. Reading latents from disk is only a way
-# to exercise the training loop and reproduce numbers without video, and it does not stand in for the real data
-# pipeline.
+# The upstream pipeline does not precompute, and the VAE is frozen either way -- it is never trained. Two reasons
+# it stays in the step. Augmentation happens before the VAE, so caching latents freezes it: six augmented draws of
+# one window sit 0.614 apart in relL2, further than two adjacent distinct windows (0.522), so a cache would remove
+# more variation than the dataset's own stride-1 sampling provides. And the recipe runs 10000 iterations at a
+# global batch of 8192, which is 4.86 passes over the 16,847,949 windows, so a lossless cache would have to store
+# every visit: 81.9M x 1.29 MiB = 100 TiB in bf16. Upstream's answer to the cost is to make the online encode
+# cheap instead -- AOT-compiled chunk kernels, channels_last_3d weights, and bf16. (They also balance encode cost
+# across ranks, but that one is for the mixed-resolution pretraining job; every DROID window is the same shape,
+# so there is nothing to balance here.)
+#
+# Reading latents from disk is only a way to exercise the training loop and reproduce numbers without video, and
+# it does not stand in for the real data pipeline.
 # ---------------------------------------------------------------------------------------------------------------
 _SAFETENSOR_HANDLES: dict = {}
 
@@ -354,7 +383,7 @@ def main():
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
     tokenizer = build_tokenizer(args.checkpoint)
     if not args.latents:
-        vae = build_vae(args.checkpoint).to(torch.npu.current_device())
+        vae = build_vae(args.checkpoint, getattr(torch, args.vae_dtype)).to(torch.npu.current_device())
     optimizer = build_optimizer(model)
 
     # Cosmos3OmniPolicy does two things: it installs the two-way attention processor in postprocess(), after the

@@ -517,9 +517,11 @@ def pack_batch(
         if vae is None:
             raise ValueError("The batch carries no latent and no VAE was provided; supply one or the other.")
         # The VAE can only run in the main process, since workers cannot touch the device. Encode the batch in one
-        # call and slice it per sample afterwards.
+        # call and slice it per sample afterwards. The input follows the VAE's own dtype rather than a fixed one,
+        # so that --vae-dtype actually changes what the convolutions compute instead of being upcast right here.
+        vae_dtype = next(vae.parameters()).dtype
         with torch.no_grad():
-            out = vae.encode(batch["video"].to(device, torch.float32))
+            out = vae.encode(batch["video"].to(device, vae_dtype))
             dist = getattr(out, "latent_dist", None)
             if dist is not None:
                 latent = dist.mode()
