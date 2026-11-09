@@ -77,11 +77,14 @@ case "${BATCH}" in
             tests/test_infer/test_async_engine/test_request_tracer.py
             tests/test_lazy/test_chatglm_cpu.py
             tests/test_moe/test_ep_moe_layer_cpu.py
+            tests/test_moe/test_ep_moe_layer_vs_hf.py
+            tests/test_moe/test_grad_sync_plan.py
             tests/test_numerics/test_numerics_core.py
             tests/test_optimizer/test_lr_scheduler.py
             tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
             tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
             tests/test_pipeline/test_schedule/test_pipeline_schedule_utils.py
+            tests/test_shardformer/test_qwen3_moe_policy_cpu.py
             tests/test_tensor/test_dtensor/test_dtensor_sharding_spec.py
             tests/test_tensor/test_shape_consistency.py
             tests/test_tensor/test_sharding_spec.py

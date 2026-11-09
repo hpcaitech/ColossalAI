@@ -16,7 +16,12 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.distributed import ProcessGroup
 
-from colossalai.tensor.moe_tensor.api import ExpertGradScale, set_expert_grad_scale, set_moe_tensor_ep_group
+from colossalai.tensor.moe_tensor.api import (
+    ExpertGradScale,
+    set_expert_grad_scale,
+    set_moe_tensor_ep_fused,
+    set_moe_tensor_ep_group,
+)
 
 from ._operation import EPGradScalerIn, EPGradScalerOut
 from .dispatcher import Dispatcher, NCCLAllToAllDispatcher
@@ -41,6 +46,9 @@ class EPMoELayer(nn.Module):
     - ``IN_REDUCTION``: this layer does not; the gradient reduction must divide expert grads by
       ``replica_group_size * ep_size``. Only use it with a plugin that reads this tag, or expert grads are ``ep_size``
       times too large.
+
+    Checkpoints: both parameters are marked ``ep_fused``, so ``MoECheckpointIO`` gathers the experts of all EP ranks
+    into the full ``[num_experts, ...]`` tensors when saving, and loading such a tensor keeps this rank's experts only.
 
     Args:
         num_experts: total number of routed experts.
@@ -91,7 +99,9 @@ class EPMoELayer(nn.Module):
         self.reset_parameters()
         for param in (self.gate_up_proj, self.down_proj):
             set_moe_tensor_ep_group(param, ep_group)
+            set_moe_tensor_ep_fused(param)
             set_expert_grad_scale(param, self.expert_grad_scale)
+        self.register_load_state_dict_pre_hook(self._slice_full_experts)
 
     @property
     def local_expert_range(self) -> range:
@@ -115,13 +125,34 @@ class EPMoELayer(nn.Module):
         self.gate_up_proj.data.copy_(gate_up_proj[local])
         self.down_proj.data.copy_(down_proj[local])
 
+    def _slice_full_experts(
+        self, module, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+    ) -> None:
+        """Slice a full ``[num_experts, ...]`` checkpoint tensor down to this rank's experts before loading.
+
+        A tensor that already has the local shape is loaded as is; any other shape is left for ``load_state_dict`` to
+        report.
+        """
+        experts = self.local_expert_range
+        for name in ("gate_up_proj", "down_proj"):
+            key = prefix + name
+            checkpoint_param = state_dict.get(key)
+            local_param = getattr(self, name)
+            if checkpoint_param is None or checkpoint_param.shape == local_param.shape:
+                continue
+            if checkpoint_param.ndim == 0:
+                continue
+            if checkpoint_param.shape[0] == self.num_experts and checkpoint_param.shape[1:] == local_param.shape[1:]:
+                state_dict[key] = checkpoint_param[experts.start : experts.stop].contiguous()
+
     def forward(self, hidden_states: Tensor, topk_idx: Tensor, topk_weights: Tensor) -> Tensor:
         """Run the routed experts.
 
         Args:
             hidden_states: ``[..., hidden_size]`` input of the MoE block.
             topk_idx: ``[..., top_k]`` global expert ids chosen by the router for each token.
-            topk_weights: ``[..., top_k]`` routing weights, ideally fp32; gradients flow back through them.
+            topk_weights: ``[..., top_k]`` routing weights; they are combined in fp32, so weights that the router
+                already rounded to the model dtype keep that rounding. Gradients flow back through them.
 
         Returns:
             Tensor of the shape and dtype of ``hidden_states``: per token, the weighted sum of its experts' outputs.

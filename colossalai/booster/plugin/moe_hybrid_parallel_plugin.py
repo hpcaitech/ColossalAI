@@ -1,6 +1,6 @@
 from collections import defaultdict
 from types import MethodType
-from typing import Callable, List, Optional, OrderedDict, Tuple
+from typing import Callable, Dict, List, Optional, OrderedDict, Tuple
 
 import torch
 import torch.distributed as dist
@@ -33,6 +33,7 @@ from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.shard.grad_ckpt_config import GradientCheckpointConfig
 from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE, ShardConfig
 from colossalai.tensor.moe_tensor.api import is_moe_tensor
+from colossalai.tensor.moe_tensor.grad_sync import GradSyncSpec, build_grad_sync_plan, has_reduction_scaled_experts
 
 
 class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
@@ -62,6 +63,7 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
         cpu_offload: bool = False,  # cpu offload
         forced_dtype: Optional[torch.dtype] = None,
         overlap_allgather: bool = False,
+        grad_sync_plan: Optional[Dict[torch.nn.Parameter, GradSyncSpec]] = None,
     ):
         if dp_process_group is moe_dp_group:
             pg_param_list = {
@@ -102,6 +104,7 @@ class MoeHybridParallelZeroOptimizer(HybridParallelZeroOptimizer):
             overlap_allgather=overlap_allgather,
             # the dp group spans the moe_dp and ep axes, so it covers every shard of dense and expert grads
             grad_norm_process_group=dp_process_group,
+            grad_sync_plan=grad_sync_plan,
         )
 
 
@@ -472,6 +475,11 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
+                if has_reduction_scaled_experts(model.parameters()):
+                    raise NotImplementedError(
+                        "Experts with ExpertGradScale.IN_REDUCTION need the gradient sync plan, which only the ZeRO "
+                        "optimizer reads so far; use zero_stage >= 1 or ExpertGradScale.IN_FORWARD."
+                    )
                 is_zero = False
                 if self.precision in ["fp16", "bf16"]:
                     optimizer = HybridParallelAMPOptimizer(
@@ -507,6 +515,9 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism or self.ep_size > 1,
                     param_info=param_info,
+                    grad_sync_plan=build_grad_sync_plan(
+                        model.parameters(), self.mixed_dp_group, self.mixed_moe_dp_group
+                    ),
                     dp_process_group=self.mixed_dp_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
