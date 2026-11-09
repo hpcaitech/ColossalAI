@@ -141,8 +141,9 @@ def main():
             state["gpu_checks"] = []
             for probe in range(2):
                 inventory, processes = query_gpus()
-                assert select_idle(inventory, processes, 1, {GPU_INDEX}) == [(GPU_INDEX, GPU_UUID)]
                 state["gpu_checks"].append({"inventory": inventory, "processes": processes})
+                save()
+                assert select_idle(inventory, processes, 1, {GPU_INDEX}) == [(GPU_INDEX, GPU_UUID)]
                 if probe == 0:
                     time.sleep(2)
             env = {
