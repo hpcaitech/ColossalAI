@@ -154,13 +154,28 @@ def test_ddp_fp16_aligned():
 
 def test_dtype_audit_tells_recipes_apart():
     s = prepare(_entry())
+    device = get_accelerator().get_current_device().type
     cast = run_reference(s, Recipe(torch.bfloat16))
     autocast = run_reference(s, Recipe(torch.bfloat16, autocast=True))
     assert dtype_mismatches(cast, cast) == []
     mismatches = dtype_mismatches(autocast, cast)
     # autocast keeps the weights in float32; casting the whole model does not
-    assert "param/fc1.weight: test float32 / ref bfloat16" in mismatches
+    assert f"param/fc1.weight: test float32@{device} / ref bfloat16@{device}" in mismatches
     assert any(m.startswith("module/fc1:") for m in mismatches)
+    master = run_reference(s, Recipe(torch.bfloat16, master_weights=True))
+    assert f"optim/params: test float32@{device} / ref bfloat16@{device}" in dtype_mismatches(master, cast)
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="needs an accelerator besides the CPU")
+def test_device_audit_tells_offloading_apart():
+    s = prepare(_entry())
+    device = get_accelerator().get_current_device().type
+    on_device = run_reference(s, Recipe(torch.bfloat16, master_weights=True))
+    offloaded = run_reference(s, Recipe(torch.bfloat16, master_weights=True, optimizer_device="cpu"))
+    # master weights and Adam's moments live on the CPU with offloading, in the same dtype
+    assert set(dtype_mismatches(offloaded, on_device)) == {
+        f"optim/{key}: test float32@cpu / ref float32@{device}" for key in ("params", "exp_avg", "exp_avg_sq")
+    }
 
 
 def test_nondeterministic_reference_uses_worse_run():
@@ -348,6 +363,11 @@ def _check_plugin(rank, world_size, port, name):
     entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
     report = check_training(entry, _plugin(name), steps=STEPS)
     report.assert_pass()
+    # on one device the plugin reproduces its recipe exactly; a ratio above 1 means the recipe misses a detail (as
+    # where the master weights start). Not Gemini in fp16: its fused HybridAdam and torch's AdamW, the reference,
+    # differ in the last float32 bit of a few elements, which fp16's finer rounding sometimes shows
+    if name != "gemini_fp16":
+        assert all(e.ratio == pytest.approx(1.0) for e in report.entries), report.format()
     # gradients come back for every parameter, also where the plugin keeps them in its own buffers
     params = {n for n, _ in _tiny_llama().named_parameters()}
     assert {e.name for e in report.entries if e.name.startswith("grad/param/")} == {f"grad/param/{n}" for n in params}
@@ -404,6 +424,8 @@ def _check_prepare_fn(rank, world_size, port):
     entry = (_Tower, _data, lambda out: out, None, _attribute(NumericsSpec(prepare_fn=_freeze_tower)))
     s = prepare(entry)
     assert not s.model.tower.weight.requires_grad and s.model.head.weight.requires_grad
+    # kept on the CPU between runs: each run copies it to the device, so only one model is there at a time
+    assert {p.device.type for p in s.model.parameters()} == {"cpu"}
     report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
     report.assert_pass()
     # frozen parameters are neither required to have a gradient nor updated
@@ -473,3 +495,126 @@ def _check_cache(rank, world_size, port, directory):
 @rerun_if_address_is_in_use()
 def test_reference_runs_are_cached(tmp_path):
     spawn(_check_cache, 1, directory=str(tmp_path))
+
+
+def _matrices_only(params):
+    # a typical parameter-group mistake: the biases are left out
+    return torch.optim.AdamW([p for p in params if p.dim() > 1], lr=1e-3)
+
+
+def _check_optimizer_coverage(rank, world_size, port):
+    _launch(rank, world_size, port)
+    report = check_training(_entry(), TorchDDPPlugin(), steps=STEPS, optimizer_fn=_matrices_only)
+    # both sides leave the biases untouched, so every comparison passes; only the contract catches it
+    failed = {e.name: e.reason for e in report.failures}
+    assert failed == {f"optim/param/fc{i}.bias": "not held by the optimizer in test, ref, truth" for i in (1, 2)}
+
+
+@rerun_if_address_is_in_use()
+def test_parameters_missing_from_optimizer_detected():
+    spawn(_check_optimizer_coverage, 1)
+
+
+class _TiedLM(nn.Module):
+    """The input embedding and the output projection share one weight, as in many language models."""
+
+    def __init__(self):
+        super().__init__()
+        self.embed = nn.Embedding(32, 16)
+        self.mix = nn.Linear(16, 16)
+        self.head = nn.Linear(16, 32, bias=False)
+        self.head.weight = self.embed.weight
+
+    def forward(self, input_ids):
+        return {"logits": self.head(torch.tanh(self.mix(self.embed(input_ids))))}
+
+
+def _ids():
+    return {"input_ids": torch.randint(0, 32, (4, 8))}
+
+
+def _untie(model):
+    model.head.weight = nn.Parameter(model.head.weight.detach().clone())
+
+
+TIED = (("embed.weight", "head.weight"),)
+TIE_KEY = "tied/embed.weight,head.weight"
+
+
+def _tied_entry(spec):
+    return (_TiedLM, _ids, lambda out: out, None, _attribute(spec))
+
+
+def _check_tied(rank, world_size, port, name):
+    _launch(rank, world_size, port)
+    plugin_fn = TorchDDPPlugin if name is None else partial(_plugin, name)
+    report = check_training(_tied_entry(NumericsSpec(tied_params=TIED)), plugin_fn(), steps=STEPS)
+    report.assert_pass()
+    assert all(e.ratio == pytest.approx(1.0) for e in report.entries), report.format()
+    # one Parameter, compared once under its first name
+    names = {e.name for e in report.entries}
+    assert "grad/param/embed.weight" in names and "grad/param/head.weight" not in names
+    if name is not None:
+        return
+    undeclared = check_training(_tied_entry(NumericsSpec()), plugin_fn(), steps=STEPS)
+    reason = "one Parameter but not declared in NumericsSpec.tied_params in test, ref, truth"
+    assert [(e.name, e.reason) for e in undeclared.failures] == [(TIE_KEY, reason)]
+    broken = check_training(_tied_entry(NumericsSpec(tied_params=TIED, prepare_fn=_untie)), plugin_fn(), steps=STEPS)
+    assert [(e.name, e.reason) for e in broken.failures] == [
+        (TIE_KEY, "declared tied but not one Parameter in test, ref, truth")
+    ]
+
+
+@rerun_if_address_is_in_use()
+def test_tied_parameters_checked():
+    spawn(_check_tied, 1, name=None)
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="Gemini, FSDP and LowLevelZero require a CUDA or NPU device")
+@pytest.mark.parametrize("name", ["gemini_bf16", "fsdp_bf16", "zero2_bf16_offload"])
+@rerun_if_address_is_in_use()
+def test_tied_parameters_through_plugins(name):
+    spawn(_check_tied, 1, name=name)
+
+
+# calls of the decoder layers in every run; with gradient checkpointing each layer runs again in backward. Counted
+# before the forward: a non-reentrant recomputation stops once it has what backward needs, before forward hooks run
+_LAYER_CALLS = []
+
+
+def _count_layer_calls(model):
+    for layer in model.layers:
+        layer.register_forward_pre_hook(lambda *args: _LAYER_CALLS.append(1))
+
+
+def _checkpointed(model):
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    _count_layer_calls(model)
+
+
+def _check_gradient_checkpointing(rank, world_size, port, name):
+    _launch(rank, world_size, port)
+    plugin_fn = {
+        "ddp_fp32": TorchDDPPlugin,
+        "shardformer_bf16": partial(HybridParallelPlugin, tp_size=1, pp_size=1, precision="bf16"),
+    }.get(name, partial(_plugin, name))
+    counts = []
+    for prepare_fn in (_count_layer_calls, _checkpointed):
+        _LAYER_CALLS.clear()
+        entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec(prepare_fn=prepare_fn)))
+        check_training(entry, plugin_fn(), steps=STEPS).assert_pass()
+        counts.append(len(_LAYER_CALLS))
+    # every run, the plugin's included, recomputed each layer once in backward
+    assert counts[1] == 2 * counts[0], counts
+
+
+@rerun_if_address_is_in_use()
+def test_gradient_checkpointing():
+    spawn(_check_gradient_checkpointing, 1, name="ddp_fp32")
+
+
+@pytest.mark.skipif(NO_ACCELERATOR, reason="the plugins require a CUDA or NPU device")
+@pytest.mark.parametrize("name", ["zero2_bf16_offload", "gemini_bf16", "fsdp_bf16", "shardformer_bf16"])
+@rerun_if_address_is_in_use()
+def test_gradient_checkpointing_through_plugins(name):
+    spawn(_check_gradient_checkpointing, 1, name=name)

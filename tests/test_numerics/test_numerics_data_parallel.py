@@ -1,3 +1,4 @@
+import itertools
 from contextlib import nullcontext
 from functools import partial
 from types import SimpleNamespace
@@ -143,6 +144,45 @@ def test_token_weighted_equivalent():
         "grad/param/head.bias",
     }
     report.assert_pass()
+
+
+# batches drawn so far in this process; every process draws the same sequence, as prepare() draws them in order
+_DRAWN = itertools.count()
+
+
+def _one_empty_micro_batch():
+    # the second of every four micro-batches has no valid token, e.g. sequences of padding only
+    batch = _padded_tokens()
+    if next(_DRAWN) % 4 == 1:
+        batch["labels"][:] = -100
+    return batch
+
+
+def _no_tokens():
+    batch = _padded_tokens()
+    batch["labels"][:] = -100
+    return batch
+
+
+TOKEN_LOSS = _attribute(NumericsSpec(token_loss=TokenLoss(loss=_summed_lm_loss, count=_valid_tokens)))
+
+
+@rerun_if_address_is_in_use()
+def test_micro_batch_without_tokens():
+    entry = (TinyLM, _one_empty_micro_batch, _identity, None, TOKEN_LOSS)
+    kwargs = dict(world_size=2, micro_batches=4, token_weighted=True)
+    for trace in data_parallel.traces(entry, TorchDDPPlugin, **kwargs):
+        # its summed loss, not 0 / 0; and the rank holding it still took part in the gradient reduction
+        assert trace["loss/0/1"].item() == 0.0
+        assert all(torch.isfinite(v).all() for v in trace.values())
+    data_parallel.check(entry, TorchDDPPlugin, **kwargs).assert_pass()
+
+
+@rerun_if_address_is_in_use()
+def test_step_without_tokens_rejected():
+    entry = (TinyLM, _no_tokens, _identity, None, TOKEN_LOSS)
+    with pytest.raises(Exception, match="no valid token"):
+        data_parallel.check(entry, TorchDDPPlugin, world_size=2, micro_batches=4, token_weighted=True)
 
 
 def _without_token_loss(rank, world_size, port):
