@@ -9,7 +9,6 @@ keeps the parameter names ``gate_up_proj`` / ``down_proj``.
 import warnings
 
 import torch
-import torch.distributed as dist
 from torch.distributed import ProcessGroup
 from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeExperts
 
