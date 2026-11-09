@@ -26,6 +26,14 @@ class PolicyLocation:
 # as each policy file imports its own model zoo library
 # we will allow the user to only import the policy file needed
 _POLICY_LIST = {
+    # Phase-two remote-code models (native nonparallel scope).
+    "colossalai.shardformer.modeling.llada.LLaDAModelLM": PolicyLocation("llada", "LLaDAModelLMPolicy"),
+    "colossalai.shardformer.modeling.llada2_moe.LLaDA2MoeModelLM": PolicyLocation(
+        "llada2_moe", "LLaDA2MoeModelLMPolicy"
+    ),
+    "transformers_modules.modeling_llada.LLaDAModelLM": PolicyLocation("llada", "LLaDAModelLMPolicy"),
+    "transformers_modules.modeling_llada2_moe.LLaDA2MoeModelLM": PolicyLocation("llada2_moe", "LLaDA2MoeModelLMPolicy"),
+    "colossalai.shardformer.modeling.ouro.OuroForCausalLM": PolicyLocation("ouro", "OuroForCausalLMPolicy"),
     # BERT
     "transformers.models.bert.modeling_bert.BertModel": PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining": PolicyLocation(
