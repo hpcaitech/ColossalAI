@@ -54,7 +54,8 @@ def main():
     # torch_npu registers the 'npu' device and its operators as an import side effect; no name from it is used
     # here, so it goes through importlib rather than as an import statement nothing references.
     importlib.import_module("torch_npu")
-    from diffusers import AutoencoderKLWan, Cosmos3OmniTransformer
+    import train_sft
+    from diffusers import Cosmos3OmniTransformer
     from droid_dataset import DroidActionPolicyDataset, collate
     from packing import compute_loss, pack_batch
     from torch.utils.data import DataLoader
@@ -81,8 +82,8 @@ def main():
         str(tuple(batch["state"].shape)),
     )
 
-    vae = AutoencoderKLWan.from_pretrained(args.checkpoint / "vae", torch_dtype=torch.float32).to(args.device)
-    vae.eval()
+    # Through build_vae, so this smoke test cannot drift away from the dtype and the HF32 setting training runs on.
+    vae = train_sft.build_vae(args.checkpoint).to(args.device)
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint / "text_tokenizer")
     model = Cosmos3OmniTransformer.from_pretrained(args.checkpoint / "transformer", torch_dtype=torch.bfloat16).to(
         args.device
@@ -139,7 +140,9 @@ def main():
 
     print("\n== the conditioning frame really is clean ==", flush=True)
     with torch.no_grad():
-        encoded = vae.encode(batch["video"].to(args.device, torch.float32))
+        # Deliberately a second, independent encode rather than a reuse of pack_batch's: the check below is that
+        # the two agree. It has to follow the VAE's dtype for the same reason pack_batch does.
+        encoded = vae.encode(batch["video"].to(args.device, next(vae.parameters()).dtype))
         dist = getattr(encoded, "latent_dist", None)
         clean = (dist.mode() if dist is not None else encoded[0]).to(torch.bfloat16)
     fed = inputs["vision_tokens"][0]
