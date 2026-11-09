@@ -70,8 +70,10 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, steps_before
         assert all("_colossalai_master_param" in state for state in optimizer_snapshot["state"].values())
         assert all("_colossalai_master_param" not in state for state in optimizer.optim.state.values())
         snapshot = model.state_dict(only_rank_0=False)
-        # The model export keeps the working precision; exact masters belong to the optimizer checkpoint.
-        assert all(value.dtype == torch.bfloat16 for value in snapshot.values())
+        # Preserve Gemini's existing export behavior: gathered reused master chunks stay FP32,
+        # while sharded chunks or non-reused working chunks export in the working precision.
+        expected_dtype = torch.float32 if not accumulation and world_size == 1 else torch.bfloat16
+        assert all(value.dtype == expected_dtype for value in snapshot.values())
         saved_snapshot = {name: value.clone() for name, value in snapshot.items()}
         model_path = f"{checkpoint_dir}/model" + ("" if shard else ".pt")
         optimizer_path = f"{checkpoint_dir}/optimizer" + ("" if shard else ".pt")

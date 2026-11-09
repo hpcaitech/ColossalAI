@@ -89,8 +89,9 @@ real-checkpoint single-GPU training run; the team's current 2C report list names
 
 ZeRO optimizer checkpoints preserve FP32 masters in private checkpoint metadata while accepting legacy states.
 With `master_weights=True`, Gemini optimizer checkpoints preserve FP32 masters through private
-`_colossalai_master_param` metadata in both sharded and unsharded formats. Model exports retain the working
-precision. Save and load both model and optimizer for exact training resume. Legacy optimizer files remain
+`_colossalai_master_param` metadata in both sharded and unsharded formats. Model exports retain Gemini's existing
+precision behavior: working precision on the accumulation path, with gathered reused master chunks retaining FP32.
+Save and load both model and optimizer for exact training resume. Legacy optimizer files remain
 readable but cannot recover residual precision already lost when they were saved.
 
 ## Current validation status
