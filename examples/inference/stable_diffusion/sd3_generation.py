@@ -1,9 +1,8 @@
 import argparse
 
 from diffusers import DiffusionPipeline
-from torch import bfloat16
+from torch import bfloat16, float16, float32
 from torch import distributed as dist
-from torch import float16, float32
 
 import colossalai
 from colossalai.cluster import DistCoordinator
