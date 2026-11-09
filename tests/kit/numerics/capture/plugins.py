@@ -101,9 +101,8 @@ def full_parameters(plugin: Plugin, boosted: nn.Module, names: List[str]) -> Dic
     FSDP returns its float32 sharded parameters and Gemini its chunks; ``training`` casts them to the dtype the plugin
     computes in, which is what the reference records."""
     if isinstance(plugin, TorchFSDPPlugin):
-        from torch.distributed.fsdp import FullStateDictConfig
+        from torch.distributed.fsdp import FullStateDictConfig, StateDictType
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from torch.distributed.fsdp import StateDictType
 
         fsdp = boosted.unwrap()
         with FSDP.state_dict_type(fsdp, StateDictType.FULL_STATE_DICT, FullStateDictConfig(rank0_only=False)):
@@ -120,9 +119,8 @@ def full_gradients(plugin: Plugin, boosted: nn.Module, optimizer, names: List[st
     (the optimizer must come from ``FirstMomentIsGradient``). ``names`` are the parameters given to the optimizer, in
     order; a parameter without optimizer state got no gradient (``None``). Collective."""
     if isinstance(plugin, TorchFSDPPlugin):
-        from torch.distributed.fsdp import FullOptimStateDictConfig, FullStateDictConfig
+        from torch.distributed.fsdp import FullOptimStateDictConfig, FullStateDictConfig, StateDictType
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-        from torch.distributed.fsdp import StateDictType
 
         fsdp = boosted.unwrap()
         with FSDP.state_dict_type(

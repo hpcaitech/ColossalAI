@@ -15,7 +15,7 @@ try:
     from lightning.pytorch.utilities import rank_zero_info, rank_zero_only
 except:
     import pytorch_lightning as pl
-    from pytorch_lightning.utilities import rank_zero_only, rank_zero_info
+    from pytorch_lightning.utilities import rank_zero_info, rank_zero_only
 
 import itertools
 from contextlib import contextmanager, nullcontext
