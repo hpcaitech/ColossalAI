@@ -39,7 +39,8 @@ def _entry():
     from tests.kit.model_zoo.registry import ModelAttribute
     from tests.kit.numerics import NumericsSpec
 
-    return TiedModel, _data, _outputs, None, ModelAttribute(numerics=NumericsSpec())
+    spec = NumericsSpec(tied_params=(("left.weight", "right.weight"),))
+    return TiedModel, _data, _outputs, None, ModelAttribute(numerics=spec)
 
 
 @pytest.mark.skipif(torch.cuda.device_count() < 2, reason="requires two CUDA devices")
