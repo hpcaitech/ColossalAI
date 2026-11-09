@@ -88,9 +88,10 @@ actual tested commit and dependency status with the report. An E4B tiny report i
 real-checkpoint single-GPU training run; the team's current 2C report list names E2B, 26B-A4B and DiffusionGemma.
 
 ZeRO optimizer checkpoints preserve FP32 masters in private checkpoint metadata while accepting legacy states.
-With `master_weights=True`, Gemini model checkpoints now preserve FP32 parameters in both sharded and unsharded
-formats, increasing checkpoint size relative to BF16. Legacy BF16 files remain readable but cannot recover residual
-precision already lost when they were saved. Model and optimizer must both be restored for full training resume.
+With `master_weights=True`, Gemini optimizer checkpoints preserve FP32 masters through private
+`_colossalai_master_param` metadata in both sharded and unsharded formats. Model exports retain the working
+precision. Save and load both model and optimizer for exact training resume. Legacy optimizer files remain
+readable but cannot recover residual precision already lost when they were saved.
 
 ## Current validation status
 

@@ -225,10 +225,10 @@ class GeminiDDP(ModelWrapper):
         return self.module.parameters(recurse)
 
     def named_parameters(self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True):
-        return self.module.named_parameters(prefix, recurse, remove_duplicate)
+        return self.module.named_parameters(prefix, recurse, remove_duplicate=remove_duplicate)
 
     def named_buffers(self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True):
-        return self.module.named_buffers(prefix, recurse, remove_duplicate)
+        return self.module.named_buffers(prefix, recurse, remove_duplicate=remove_duplicate)
 
     def named_children(self):
         return self.module.named_children()
@@ -482,8 +482,7 @@ class GeminiDDP(ModelWrapper):
         """
         # save parameters
         chunk_to_save_data = dict()
-        # Checkpoint the chunk's actual precision, including FP32 master residuals.
-        temp_chunk = get_temp_total_chunk_on_cuda(chunk, chunk.dtype)
+        temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
         for tensor, tensor_info in chunk.tensors_info.items():
             record_tensor = torch.empty([0])
@@ -547,12 +546,13 @@ class GeminiDDP(ModelWrapper):
         """
         assert keep_vars is False, "`state_dict` with parameter, `keep_vars=True`, is not supported now."
 
-        # Master weights carry optimizer updates that round away in the working weights.
-        params = self.fp32_params if self.master_weights else self.fp16_params
+        # get copies of fp32 parameters in CPU
+        # as memory of fp16_params may be reused by grad, it's not reliable, we should use fp32_params and convert to fp16
+        params = self.fp32_params if self.chunk_manager.reuse_fp16_chunk else self.fp16_params
         param_to_save_data = self._get_param_to_save_data(params, only_rank_0)
         # get the mapping between copies and fp16 parameters
         p_mapping = dict()
-        if self.master_weights:
+        if self.chunk_manager.reuse_fp16_chunk:
             for p, fp32_p in zip(self.fp16_params, self.fp32_params):
                 name = self.param2name[p]
                 assert fp32_p in param_to_save_data, "Parameter '{}' is neglected in the chunk list".format(name)
@@ -680,8 +680,7 @@ class GeminiDDP(ModelWrapper):
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
         persistent_buffers = {k: v for k, v in self.named_buffers() if k not in self._non_persistent_buffers_set}
-        # Saving includes tied parameter aliases, while named_parameters() deduplicates them.
-        local_name_params = itertools.chain(self.name2param.items(), persistent_buffers.items())
+        local_name_params = itertools.chain(self.named_parameters(remove_duplicate=False), persistent_buffers.items())
         local_state = {k: v for k, v in local_name_params if v is not None}
 
         def load(
@@ -749,10 +748,10 @@ class GeminiDDP(ModelWrapper):
                 name = self.param2name[p]
                 fp32_to_name[fp32_p] = name
 
-        params_to_load = self.fp32_params if self.master_weights else self.fp16_params
+        params_to_load = self.fp32_params if self.chunk_manager.reuse_fp16_chunk else self.fp16_params
         chunk_list = self.chunk_manager.get_chunks(params_to_load)
         for chunk in chunk_list:
-            temp_chunk = get_temp_total_chunk_on_cuda(chunk, chunk.dtype)
+            temp_chunk = get_temp_total_chunk_on_cuda(chunk, self.mixed_precision)
 
             for tensor, tensor_info in chunk.tensors_info.items():
                 source_device_mesh, source_sharding_spec, shard_fn, gather_fn = None, None, None, None
@@ -764,7 +763,9 @@ class GeminiDDP(ModelWrapper):
                     shard_fn = tensor.shard_fn
                     gather_fn = tensor.gather_fn
 
-                parameter_name = fp32_to_name[tensor] if self.master_weights else self.param2name[tensor]
+                parameter_name = (
+                    fp32_to_name[tensor] if self.chunk_manager.reuse_fp16_chunk else self.param2name[tensor]
+                )
                 parameter_slice = temp_chunk[tensor_info.offset : tensor_info.end]
                 load(
                     parameter_name,
@@ -936,8 +937,8 @@ class GeminiDDP(ModelWrapper):
                     # deal with ddp ignored parameters
                     gathered_param = param if keep_vars else param.detach()
                 else:
-                    # Preserve full masters in both sharded and unsharded checkpoints.
-                    param_to_save = fp16_to_fp32[param] if self.master_weights else param
+                    # as memory of fp16 param may be reused, we should use fp32 param and then convert to fp16
+                    param_to_save = fp16_to_fp32[param] if self.chunk_manager.reuse_fp16_chunk else param
                     if param_to_save not in gathered_param_buffer:
                         chunk = self.chunk_manager.get_chunk(param_to_save)
                         gathered_param_buffer.update(self._get_chunk_to_save_data(chunk, only_rank_0))

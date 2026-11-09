@@ -22,7 +22,7 @@ class TiedModel(torch.nn.Module):
         return self.second(torch.nn.functional.gelu(self.first(inputs)))
 
 
-def _run_gemini_resume(rank, world_size, port, accumulation, shard, checkpoint_dir):
+def _run_gemini_resume(rank, world_size, port, accumulation, shard, steps_before, checkpoint_dir):
     torch.set_num_threads(1)
     colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost", seed=42)
     try:
@@ -60,11 +60,18 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, checkpoint_d
                     result.append(optimizer.param_to_chunk16[param].paired_chunk.payload[begin:end].clone())
             return result
 
-        step(booster, model, optimizer)
+        for _ in range(steps_before):
+            step(booster, model, optimizer)
         master_before = masters(optimizer)
-        assert any(not torch.equal(p, p.bfloat16().float()) for p in master_before)
+        if steps_before:
+            assert any(not torch.equal(p, p.bfloat16().float()) for p in master_before)
+        optimizer_snapshot = optimizer.state_dict(only_rank_0=False)
+        assert optimizer_snapshot["state"]
+        assert all("_colossalai_master_param" in state for state in optimizer_snapshot["state"].values())
+        assert all("_colossalai_master_param" not in state for state in optimizer.optim.state.values())
         snapshot = model.state_dict(only_rank_0=False)
-        assert all(value.dtype == torch.float32 for value in snapshot.values())
+        # The model export keeps the working precision; exact masters belong to the optimizer checkpoint.
+        assert all(value.dtype == torch.bfloat16 for value in snapshot.values())
         saved_snapshot = {name: value.clone() for name, value in snapshot.items()}
         model_path = f"{checkpoint_dir}/model" + ("" if shard else ".pt")
         optimizer_path = f"{checkpoint_dir}/optimizer" + ("" if shard else ".pt")
@@ -79,6 +86,7 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, checkpoint_d
         restored_booster.load_model(restored_model, model_path)
         restored_booster.load_optimizer(restored_optimizer, optimizer_path)
         assert restored_model.unwrap().first.weight is restored_model.unwrap().alias.weight
+        assert all("_colossalai_master_param" not in state for state in restored_optimizer.optim.state.values())
         for actual, expected in zip(masters(restored_optimizer), master_before):
             torch.testing.assert_close(actual, expected, atol=0, rtol=0)
         for expected in expected_losses:
@@ -87,6 +95,14 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, checkpoint_d
             )
         for actual, expected in zip(masters(restored_optimizer), expected_masters):
             torch.testing.assert_close(actual, expected, atol=0, rtol=0)
+        # Old optimizer files have no master metadata and must remain loadable.
+        legacy = restored_optimizer.state_dict(only_rank_0=False)
+        for state in legacy["state"].values():
+            state.pop("_colossalai_master_param", None)
+        legacy_masters = masters(restored_optimizer)
+        restored_optimizer.load_state_dict(legacy)
+        for actual, expected in zip(masters(restored_optimizer), legacy_masters):
+            torch.testing.assert_close(actual, expected, atol=0, rtol=0)
     finally:
         dist.destroy_process_group()
 
@@ -94,11 +110,13 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, checkpoint_d
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("accumulation", [False, True])
 @pytest.mark.parametrize("shard", [False, True])
-def test_gemini_master_resume(world_size, accumulation, shard, tmp_path):
+@pytest.mark.parametrize("steps_before", [0, 1])
+def test_gemini_master_resume(world_size, accumulation, shard, steps_before, tmp_path):
     spawn(
         _run_gemini_resume,
         world_size,
         accumulation=accumulation,
         shard=shard,
+        steps_before=steps_before,
         checkpoint_dir=str(tmp_path),
     )

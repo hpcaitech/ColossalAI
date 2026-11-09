@@ -185,6 +185,8 @@ case "${BATCH}" in
             tests/test_booster/test_mixed_precision/test_bf16.py
             tests/test_checkpoint_io/test_low_level_zero_master_resume.py
             tests/test_checkpoint_io/test_gemini_master_resume.py
+            tests/test_zero/test_gemini/test_grad_accum_reduction.py
+            tests/test_zero/test_gemini/test_tied_accumulation_resume.py
             tests/test_lora/test_lora.py
             tests/test_numerics
         )
@@ -254,6 +256,8 @@ case "${BATCH}" in
             --ignore=tests/test_booster/test_mixed_precision/test_bf16.py
             --ignore=tests/test_checkpoint_io/test_low_level_zero_master_resume.py
             --ignore=tests/test_checkpoint_io/test_gemini_master_resume.py
+            --ignore=tests/test_zero/test_gemini/test_grad_accum_reduction.py
+            --ignore=tests/test_zero/test_gemini/test_tied_accumulation_resume.py
             --ignore=tests/test_optimizer/test_lr_scheduler.py
             --ignore=tests/test_optimizer/test_adam_kernel.py
             --ignore=tests/test_optimizer/test_adam_optim.py

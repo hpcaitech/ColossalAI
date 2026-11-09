@@ -583,9 +583,7 @@ def clean_folder(
                 os.remove(full_filename)
 
 
-def save_config_file(
-    model: nn.Module, checkpoint_path: str, is_master: bool = True, dtype: Optional[torch.dtype] = None
-):
+def save_config_file(model: nn.Module, checkpoint_path: str, is_master: bool = True):
     """
     Save config.json/generation_config.json if model is a Huggingface pretrained model.
     This method can only be called when a model is saved in a sharded way.
@@ -594,7 +592,6 @@ def save_config_file(
         model (nn.Module): The model whose config should be saved if it's a huggingface model.
         checkpoint_path (str): Path to the checkpoint directory.
         is_master (bool): Whether current rank is main process.
-        dtype (torch.dtype, optional): Exported weight dtype when it differs from the working model's dtype.
     """
     # `get_parameter_dtype` was removed in Transformers v5; importing it here made this function return
     # silently, so sharded checkpoints lost config.json. `PreTrainedModel.dtype` exists in v4 and v5.
@@ -611,7 +608,7 @@ def save_config_file(
     model = unwrap_huggingface_model(model)
 
     # save the string version of dtype to the config, e.g. convert torch.float32 => "float32"
-    dtype_name = str(model.dtype if dtype is None else dtype).split(".")[1]
+    dtype_name = str(model.dtype).split(".")[1]
     # v5 renamed `config.torch_dtype` to `config.dtype` and keeps the old name as a deprecated property.
     if isinstance(getattr(type(model.config), "torch_dtype", None), property):
         model.config.dtype = dtype_name
