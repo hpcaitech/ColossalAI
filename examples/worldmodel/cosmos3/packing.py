@@ -618,8 +618,8 @@ def pack_batch(
     one call that cannot be half-performed.
 
     Args:
-        batch: A collated batch, either with ``video`` or with a precomputed ``latent``.
-        vae: The VAE, or None when the batch carries latents.
+        batch: A collated batch carrying ``video``.
+        vae: The VAE. Required: the latent is encoded here.
         tokenizer: Tokenizer for the prompt.
         cfg: The model config.
         policy: The Cosmos3 policy, or anything exposing ``set_packed_meta``.
@@ -633,31 +633,42 @@ def pack_batch(
         tuple: ``(inputs, targets)``.
 
     Raises:
-        ValueError: If the batch has neither latents nor a usable VAE.
+        ValueError: If no VAE was given.
     """
     device = _as_device(device)
-    n = batch["latent"].shape[0] if "latent" in batch else batch["video"].shape[0]
+    n = batch["video"].shape[0]
 
-    if "latent" in batch:
-        latent = batch["latent"].to(device=device, dtype=torch.bfloat16)
-    else:
-        if vae is None:
-            raise ValueError("The batch carries no latent and no VAE was provided; supply one or the other.")
-        # The VAE can only run in the main process, since workers cannot touch the device. Encode the batch in one
-        # call and slice it per sample afterwards. The input follows the VAE's own dtype rather than a fixed one,
-        # so that --vae-dtype actually changes what the convolutions compute instead of being upcast right here.
-        vae_dtype = next(vae.parameters()).dtype
-        with torch.no_grad():
-            out = vae.encode(batch["video"].to(device, vae_dtype))
-            dist = getattr(out, "latent_dist", None)
-            if dist is not None:
-                latent = dist.mode()
-            elif isinstance(out, (tuple, list)):
-                latent = out[0]
-            else:
-                latent = out
-            latent = normalize_latent(latent, vae)
-            latent = latent.to(torch.bfloat16)
+    if vae is None:
+        raise ValueError("pack_batch encodes the video here and needs a VAE; there is no precomputed-latent path.")
+
+    # The latent is always encoded here, never read from disk, and there is no way to hand one in. That removes
+    # the only route by which a latent could reach the model without passing through normalize_latent, which is
+    # worth more than the convenience: a cache written before that function existed holds latents off by a
+    # per-channel affine map, relL2 0.52 against upstream, and training on them raises nothing and diverges from
+    # nothing. A path that cannot be made safe is better absent than documented.
+    #
+    # Caching would be the wrong trade here anyway. Augmentation runs before the VAE, so a cache freezes it: six
+    # augmented draws of one window sit 0.614 apart in relL2, further than two adjacent distinct windows (0.522),
+    # so the cache would remove more variation than the dataset's own stride-1 sampling provides. And the recipe
+    # runs 10000 iterations at a global batch of 8192 -- 4.86 passes over 16.3M windows -- so a lossless cache
+    # would have to store every visit: 81.9M x 1.29 MiB = 100 TiB in bf16. Upstream's answer to the cost is to
+    # make the online encode cheap instead: AOT-compiled chunk kernels, channels_last_3d weights, bf16.
+    #
+    # The VAE can only run in the main process, since workers cannot touch the device. Encode the batch in one
+    # call and slice it per sample afterwards. The input follows the VAE's own dtype rather than a fixed one,
+    # so that --vae-dtype actually changes what the convolutions compute instead of being upcast right here.
+    vae_dtype = next(vae.parameters()).dtype
+    with torch.no_grad():
+        out = vae.encode(batch["video"].to(device, vae_dtype))
+        dist = getattr(out, "latent_dist", None)
+        if dist is not None:
+            latent = dist.mode()
+        elif isinstance(out, (tuple, list)):
+            latent = out[0]
+        else:
+            latent = out
+        latent = normalize_latent(latent, vae)
+        latent = latent.to(torch.bfloat16)
 
     per_sample = []
     for index in range(n):
