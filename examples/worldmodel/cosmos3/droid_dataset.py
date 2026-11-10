@@ -492,10 +492,18 @@ def collate(batch: list[dict]) -> dict:
 
     Videos of different aspect ratios land on different canvases, so a batch is only stackable when its samples
     share one canvas. Strings are never stacked.
+
+    The key list is derived from the sample rather than written out. Writing it out is what dropped
+    ``idle_frames`` and ``additional_view_description``: ``__getitem__`` produced them, this function did not
+    carry them, and ``build_action_json_prompt`` treats both as optional, so the prompt silently lost the view
+    description and the idle-frame count -- 104 tokens where upstream, on the same window, emits 149.
     """
+    keys = batch[0].keys()
+    missing = [k for b in batch for k in keys if k not in b]
+    if missing:
+        raise ValueError(f"The samples of a batch do not carry the same keys; missing: {sorted(set(missing))}")
     out: dict = {}
-    for key in ("video", "action", "state", "canvas_hw", "content_hw"):
-        out[key] = torch.stack([b[key] for b in batch])
-    for key in ("task", "episode_index", "start", "aspect_key"):
-        out[key] = [b[key] for b in batch]
+    for key in keys:
+        values = [b[key] for b in batch]
+        out[key] = torch.stack(values) if torch.is_tensor(values[0]) else values
     return out
