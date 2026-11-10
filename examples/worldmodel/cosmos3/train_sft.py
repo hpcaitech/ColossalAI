@@ -70,7 +70,6 @@ def parse_args():
     parser.add_argument("--data", type=Path, help="DROID dataset root, in LeRobot v3 layout.")
     parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge-Policy-DROID directory.")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"), help="Checkpoint output directory.")
-    parser.add_argument()
 
     # Recipe values by default; overridable for smoke runs at a shorter window or a smaller batch.
     parser.add_argument("--chunk-length", type=int, default=32, help="Actions per window; frames are this plus 1.")
