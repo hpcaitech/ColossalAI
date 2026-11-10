@@ -109,6 +109,14 @@ def parse_args():
         help="Two-way attention backend. 'naive' is the PyTorch reference: it materializes the full score matrix "
         "and runs out of memory at the recipe's sequence length, so it is for numerical comparison only.",
     )
+    parser.add_argument(
+        "--activation-checkpointing",
+        default="full",
+        choices=["full", "none"],
+        help="Recompute transformer blocks in the backward instead of keeping their activations. 'full' is the "
+        "default because without it the backward does not fit: one sample per rank on four cards fails in the "
+        "attention backward kernel. 'none' exists to measure the cost.",
+    )
     args = parser.parse_args()
     if args.data is None:
         parser.error("--data is required")
@@ -213,6 +221,29 @@ def main():
 
     model = build_model(args.checkpoint)
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
+    if args.activation_checkpointing == "full":
+        # The backward does not fit without this. At one sample per rank on four cards it failed inside
+        # aclnnFlashAttentionUnpaddingScoreGrad, which is not a batch-size problem: the packed sequence is 3.6k
+        # tokens over 36 blocks, and every block's inputs stay resident until its backward runs.
+        #
+        # This is the transformer's own switch, not the plugin's. HybridParallelPlugin exposes gradient
+        # checkpointing for the models ShardFormer rewrites, and at tp=1 it rewrites nothing here, so there is
+        # no module for it to wrap; the diffusers block already guards its own recompute on
+        # ``self.gradient_checkpointing`` and reaches it through ``_gradient_checkpointing_func``. Calling the
+        # diffusers API therefore reaches the blocks that matter and leaves ZeRO-2 untouched: what it changes is
+        # when activations are produced, not how gradients are reduced or how optimizer state is sharded.
+        #
+        # Upstream recomputes blocks too, with torch's ``checkpoint_wrapper`` under
+        # ``[model.activation_checkpointing] mode="full"``, plus ``save_ops_regex=["fmha"]``, which keeps the
+        # fused-attention outputs so they are not recomputed (selective checkpointing). We recompute those as
+        # well; that costs time, not correctness, and the selective variant is a later optimization.
+        model.enable_gradient_checkpointing()
+        if not getattr(model, "gradient_checkpointing", False):
+            raise RuntimeError(
+                "enable_gradient_checkpointing() left the flag off, so the blocks would not be recomputed and "
+                "the backward would run out of memory instead of failing here."
+            )
+        coord.print_on_master(f"[model] activation checkpointing: {args.activation_checkpointing}")
     tokenizer = build_tokenizer(args.checkpoint)
     vae = build_vae(args.checkpoint, getattr(torch, args.vae_dtype)).to(torch.npu.current_device())
     optimizer = build_optimizer(model)

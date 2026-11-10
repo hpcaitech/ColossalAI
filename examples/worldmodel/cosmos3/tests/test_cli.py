@@ -34,6 +34,7 @@ def test_the_recipe_defaults_are_the_defaults(monkeypatch):
     args = train_sft.parse_args()
     assert (args.samples_per_rank, args.grad_accum, args.max_iter) == (32, 32, 10000)
     assert (args.chunk_length, args.fps, args.resolution) == (32, 15.0, "480")
+    assert args.activation_checkpointing == "full"
     assert args.backend == "npu"
     assert args.vae_dtype == "bfloat16"
 
