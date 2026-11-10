@@ -28,8 +28,8 @@ from pathlib import Path
 import av
 import pyarrow.parquet as pq
 import torch
-import torchvision.transforms.v2 as T
 import torch.nn.functional as F
+import torchvision.transforms.v2 as T
 from torch.utils.data import Dataset
 
 # cosmos-framework VIDEO_RES_SIZE_INFO: values are (width, height) and every side is a multiple of 16.
