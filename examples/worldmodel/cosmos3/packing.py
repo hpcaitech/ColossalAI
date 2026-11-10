@@ -148,10 +148,42 @@ DROID_DOMAIN_ID = 8
 MROPE_BASE_FPS = 24.0  # edge_model_config.py::diffusion_expert_config.base_fps
 MROPE_TEMPORAL_MARGIN = 15000  # unified_3d_mrope_temporal_modality_margin
 VAE_TEMPORAL_COMPRESSION = 4
-ACTION_START_FRAME_OFFSET = 1
 
 
-def build_mrope_position_ids(n_text: int, vision_grid, n_act: int, fps: float) -> torch.Tensor:
+def action_start_frame_offset(*, has_initial_state: bool) -> int:
+    """Which vision frame ``action[0]`` is aligned to, in the mRoPE temporal axis.
+
+    Upstream derives this rather than fixing it (``transforms.py::build_sequence_plan``), and the derivation is a
+    case split on whether the action stream is as long as the video. With ``num_history_actions = 0``, which is
+    this recipe:
+
+    ===========================================  ======  =============================
+    condition                                    offset  meaning
+    ===========================================  ======  =============================
+    ``base_action_length == video_length - 1``        1  no initial-state row
+    ``base_action_length == video_length``            0  initial-state row present
+    ===========================================  ======  =============================
+
+    The ``+1`` exists only to skip past the action slot that an initial state would otherwise occupy
+    (``sequence.py`` documents the field as "align action[0] with vision frame action_start_frame_offset"). With
+    ``use_state=True`` the state *is* action row 0 and belongs at frame 0, next to the conditioning vision frame.
+
+    This module used to hardcode 1 while prepending the state row, which placed every action token one frame
+    (1/15 s) late. The upstream sample for episode 26827 carries ``sequence_plan.action_start_frame_offset = 0``,
+    which is where the value here comes from -- read off a real sample rather than off the default in a signature.
+
+    Args:
+        has_initial_state (bool): Whether the initial state has been prepended as action row 0.
+
+    Returns:
+        int: 0 with the state row, 1 without it.
+    """
+    return 0 if has_initial_state else 1
+
+
+def build_mrope_position_ids(
+    n_text: int, vision_grid, n_act: int, fps: float, *, action_frame_offset: int
+) -> torch.Tensor:
     """Build the ``[3, sequence_length]`` mRoPE position ids for one packed sample.
 
     The layout this matches is ``[text | vision | action]``, the order :func:`pack_one` appends them in.
@@ -161,6 +193,9 @@ def build_mrope_position_ids(n_text: int, vision_grid, n_act: int, fps: float) -
         vision_grid (tuple): ``(t_latent, hp, wp)``, the patchified latent grid.
         n_act (int): Number of action steps, the conditioning step included.
         fps (float): Frame rate of the source clip, 15 for this recipe.
+        action_frame_offset (int): The vision frame ``action[0]`` aligns to, from
+            :func:`action_start_frame_offset`. Deliberately has no default: the whole point of the helper is that
+            the value depends on the sample's layout, and a default here is what hid a one-frame shift before.
 
     Returns:
         torch.Tensor: ``[3, n_text + t*hp*wp + n_act]`` float positions, rows ``(temporal, height, width)``.
@@ -187,7 +222,7 @@ def build_mrope_position_ids(n_text: int, vision_grid, n_act: int, fps: float) -
 
     # Action: a (T, 1, 1) grid on the same temporal origin as the vision block, at frame rate (compression 1)
     # but normalized against the vision base, so both streams measure time in the same units.
-    action_t = (torch.arange(n_act, dtype=torch.float32) + ACTION_START_FRAME_OFFSET) / fps * base_tps + offset
+    action_t = (torch.arange(n_act, dtype=torch.float32) + action_frame_offset) / fps * base_tps + offset
     action = torch.stack([action_t, torch.zeros_like(action_t), torch.zeros_like(action_t)])
 
     return torch.cat([text, vision, action], dim=1)
@@ -234,6 +269,9 @@ def build_action_json_prompt(
     canvas_hw,
     aspect: str,
     viewpoint: str = "concat_view",
+    additional_view_description: str | None = None,
+    idle_frames: int | None = None,
+    total_action_frames: int | None = None,
 ) -> dict:
     """Build the prompt dictionary with the fields and the order ``ActionPromptJsonFormatter`` emits.
 
@@ -243,9 +281,17 @@ def build_action_json_prompt(
     Two formatting details that differ from each other on purpose: ``duration`` truncates to whole seconds while
     the end of the ``time`` range rounds, so 33 frames at 15 fps give ``"2s"`` and ``"0:00-0:02"``.
 
-    ``idle_frame`` is omitted. It needs idle-frame counts that come from the ``keep_ranges`` filter table, which the
-    recipe leaves off (``use_filter_dict=False``); upstream also drops the field when the count is missing, so the
-    result is the same prompt either way.
+    ``framing`` is two layers. :data:`VIEWPOINT_TEMPLATES` is the generic table every dataset shares, and each
+    dataset appends its own sentences through ``extras["additional_view_description"]``, which
+    ``ActionPromptJsonFormatter._get_viewpoint_caption`` joins on. The separator rule is upstream's: a single space
+    when the template already ends in a period, ``". "`` otherwise.
+
+    ``idle_frame`` is emitted whenever a count is supplied. An earlier revision of this docstring claimed the count
+    came from the ``keep_ranges`` filter table and was therefore unavailable with ``use_filter_dict=False``; both
+    halves were wrong. The count is computed from the raw action chunk by
+    ``pose_utils.compute_idle_frames`` (:func:`droid_dataset.count_idle_frames` here), the field is gated only on
+    ``mode != "inverse_dynamics"``, and upstream emits it for this recipe. ``keep_ranges`` drops whole windows from
+    the index; ``idle_frames`` counts still frames inside one window. The two share the word "idle" and nothing else.
 
     Args:
         task (str): The task annotation of this window.
@@ -254,20 +300,39 @@ def build_action_json_prompt(
         canvas_hw: ``(H, W)`` of the canvas **after** padding, not of the content region.
         aspect (str): Aspect key such as ``"4,3"``.
         viewpoint (str, optional): Key into :data:`VIEWPOINT_TEMPLATES`. Defaults to "concat_view".
+        additional_view_description (str, optional): The dataset's own view sentences, appended to the generic
+            template. Defaults to None.
+        idle_frames (int, optional): Idle frames in this window's action chunk. Omits the field when None.
+            Defaults to None.
+        total_action_frames (int, optional): Action rows the count is out of, for the ``"N out of M."`` form.
+            Upstream falls back to ``"N."`` without it. Defaults to None.
 
     Returns:
         dict: The prompt, with empty fields pruned.
     """
     duration = num_frames / float(fps)
     minutes, seconds = divmod(int(round(duration)), 60)
+    framing = VIEWPOINT_TEMPLATES.get(viewpoint)
+    if additional_view_description:
+        if framing is None:
+            framing = str(additional_view_description).rstrip()
+        else:
+            framing = framing + (" " if framing.endswith(".") else ". ") + str(additional_view_description).rstrip()
+    action_entry = {
+        "time": f"0:00-{minutes}:{seconds:02d}",
+        "description": _ensure_sentence(task),
+    }
+    if idle_frames is not None:
+        # Key order matters: upstream appends idle_frame after description, and json.dumps preserves insertion
+        # order all the way to the tokenizer.
+        action_entry["idle_frame"] = (
+            f"{int(idle_frames)} out of {int(total_action_frames)}."
+            if total_action_frames is not None
+            else f"{int(idle_frames)}."
+        )
     prompt = {
-        "cinematography": {"framing": VIEWPOINT_TEMPLATES.get(viewpoint)},
-        "actions": [
-            {
-                "time": f"0:00-{minutes}:{seconds:02d}",
-                "description": _ensure_sentence(task),
-            }
-        ],
+        "cinematography": {"framing": framing},
+        "actions": [action_entry],
         "duration": f"{int(duration)}s",
         "fps": float(fps),
         "resolution": {"H": int(canvas_hw[0]), "W": int(canvas_hw[1])},
@@ -414,7 +479,17 @@ def pack_one(
     inputs = dict(
         input_ids=to_device(input_ids),
         text_indexes=to_device(torch.arange(n_text)),
-        position_ids=to_device(build_mrope_position_ids(n_text, (t_latent, hp, wp), n_act, fps)),
+        position_ids=to_device(
+            build_mrope_position_ids(
+                n_text,
+                (t_latent, hp, wp),
+                n_act,
+                fps,
+                # n_cond_act is 1 exactly when the state row was prepended, which is upstream's
+                # has_initial_state.
+                action_frame_offset=action_start_frame_offset(has_initial_state=bool(n_cond_act)),
+            )
+        ),
         und_len=n_text,
         sequence_length=seq,
         vision_tokens=[to_device(latent_noisy)],
@@ -456,6 +531,49 @@ def _as_device(device):
     if isinstance(device, int):
         return torch.device("npu", device)
     return device
+
+
+def normalize_latent(latent: torch.Tensor, vae) -> torch.Tensor:
+    """Scale a raw VAE latent by the Wan 2.2 channel statistics, the way the upstream encode does.
+
+    Upstream never hands out a raw latent: ``WanVAE.__init__`` builds ``self.scale = (mean, 1.0 / std)`` from 48
+    hardcoded Wan 2.2 channel statistics, and ``Wan2pt2VAEInterface.encode`` calls
+    ``self.model.encode(videos, self.scale)``, so the tensor the transformer sees is already whitened per
+    channel. diffusers keeps the same statistics on the config as ``latents_mean`` / ``latents_std`` but does not
+    apply them inside ``encode`` -- that is left to the caller, and we were not doing it.
+
+    Measured on one real DROID window against the upstream encode, same pixels, same GPU:
+
+        raw latent              relL2 5.1652e-01   std 0.683105
+        (x - mean) / std        relL2 5.8847e-03   std 1.017034
+        upstream                            --     std 1.017380
+
+    So the model was being fed latents off by a per-channel affine map, a relative error of 0.52 -- 84% of the
+    augmentation spread, and two orders of magnitude worse than anything else measured in this example. The
+    residual 5.9e-03 after scaling is the bf16 encode itself (4.8e-03 on 910B, 6.4e-03 on H20), so this closes
+    the gap down to the precision floor.
+
+    The statistics are read off the VAE config rather than hardcoded, so they stay tied to the checkpoint.
+
+    Args:
+        latent (torch.Tensor): ``[B, C, T, H, W]`` raw latent straight out of ``vae.encode``.
+        vae: The VAE, read for ``config.latents_mean`` and ``config.latents_std``.
+
+    Returns:
+        torch.Tensor: The normalized latent, in the dtype of ``latent``.
+    """
+    cfg = getattr(vae, "config", None)
+    mean = getattr(cfg, "latents_mean", None)
+    std = getattr(cfg, "latents_std", None)
+    if mean is None or std is None:
+        raise ValueError(
+            "The VAE config carries no latents_mean/latents_std, so the latent cannot be scaled the way "
+            "upstream scales it. Encoding without them leaves the latent off by a per-channel affine map."
+        )
+    shape = (1, -1) + (1,) * (latent.ndim - 2)
+    m = torch.as_tensor(mean, device=latent.device, dtype=torch.float32).view(shape)
+    s = torch.as_tensor(std, device=latent.device, dtype=torch.float32).view(shape)
+    return ((latent.float() - m) / s).to(latent.dtype)
 
 
 def pack_batch(
@@ -529,16 +647,24 @@ def pack_batch(
                 latent = out[0]
             else:
                 latent = out
+            latent = normalize_latent(latent, vae)
             latent = latent.to(torch.bfloat16)
 
     per_sample = []
     for index in range(n):
+        # Action rows the prompt describes: the chunk plus the state row pack_one prepends.
+        n_action_frames = int(batch["action"][index].shape[0]) + (1 if "state" in batch else 0)
+        view_desc = batch.get("additional_view_description")
+        idle = batch.get("idle_frames")
         prompt = build_action_json_prompt(
             batch["task"][index],
             num_frames=num_frames,
             fps=fps,
             canvas_hw=batch["canvas_hw"][index].tolist(),
             aspect=batch["aspect_key"][index],
+            additional_view_description=view_desc[index] if view_desc is not None else None,
+            idle_frames=int(idle[index]) if idle is not None else None,
+            total_action_frames=n_action_frames,
         )
         ids = tokenize_prompt(prompt, tokenizer, generator=generator)
         per_sample.append(

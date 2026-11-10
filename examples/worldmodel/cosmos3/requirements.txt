@@ -1,7 +1,46 @@
-# Cosmos3OmniTransformer and AutoencoderKLWan ship from 0.40.0 on.
-diffusers>=0.40.0
-transformers>=4.51.0
+# The rule in this file: anything that **transforms** values is pinned exactly, anything that moves bytes
+# verbatim may stay ranged. A decoder, a resampler, a reduction library and the model implementation itself all
+# decide what numbers the training step sees; a serialization format reader does not.
+#
+# The alignment this example claims against nvidia/cosmos-framework is only reproducible against exact versions,
+# and av is the cautionary tale: the previous `av>=12.0.0` resolved to 19.0.2, which decodes DROID's mp4 shards
+# 0.687 uint8 levels brighter than 17.1.0 and 18.1.0 (which are bit-identical to each other). That showed up as
+# a uniform relL2 1.16e-02 on the pixels and cost four wrong pipeline hypotheses before the decoder was
+# suspected at all. A version skew on this path does not announce itself; it looks like a small, plausible
+# numerical residual.
+#
+# These three follow cosmos-framework's own uv.lock for python >= 3.11.
+av==18.1.0
+numpy==2.2.6
+pillow==11.3.0
+
+# diffusers is deliberately ahead of upstream's 0.39.0: Cosmos3OmniTransformer and AutoencoderKLWan ship from
+# 0.40.0 on, and upstream pins 0.39.0 because it does not use diffusers' model implementation at all -- it has
+# its own. This example consumes the diffusers definition and replaces, through the shardformer policy, the
+# pieces that have to be ours.
+#
+# Exact, not `>=0.40.0`. diffusers supplies the model and the VAE, so it decides more of the numbers here than
+# any other dependency, and 0.41.0, 0.42.0 and 0.42.1 already exist -- a floor constraint installs 0.42.1 today
+# and measures nothing this example has measured. Every figure quoted in this example's docstrings was taken at
+# 0.40.0. Moving the pin means retaking them.
+#
+# This conflicts with requirements/requirements.txt, which pins diffusers==0.35.2 repo-wide: installing this
+# example leaves pip reporting "colossalai 0.5.0 requires diffusers==0.35.2, but you have diffusers 0.40.0".
+# The conflict predates this change and the example has never been installable under the repo pin, since the
+# classes it imports do not exist in 0.35.2. It is recorded here rather than worked around, because raising the
+# repo pin affects everything else that imports diffusers and is not this example's call to make.
+diffusers==0.40.0
+
+# Ranged, by the rule at the top: safetensors reads a stored tensor back as it was written, so its version does
+# not enter the arithmetic.
 safetensors>=0.4.0
-# DROID in LeRobot v3 layout: parquet tables and mp4 shards.
+
+# transformers is deliberately not listed. It is pinned repo-wide at 5.17.0 in requirements/requirements.txt,
+# which is what the GPU side runs, so that pin is the single source and a second looser constraint here would
+# only invite drift. Upstream's 4.57.6 is therefore not an option for this example, and that difference is a
+# known, accepted one.
+
+# DROID in LeRobot v3 layout: parquet tables and mp4 shards. Ranged by the same rule: parquet reads return the
+# stored values rather than resampling them, so our 26.0.0 against upstream's 26.0.1 is a patch release with no
+# path into the arithmetic.
 pyarrow>=14.0.0
-av>=12.0.0

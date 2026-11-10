@@ -21,10 +21,10 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packing import (
-    ACTION_START_FRAME_OFFSET,
     MROPE_BASE_FPS,
     MROPE_TEMPORAL_MARGIN,
     VAE_TEMPORAL_COMPRESSION,
+    action_start_frame_offset,
     build_mrope_position_ids,
 )
 
@@ -32,6 +32,8 @@ N_TEXT = 11
 GRID = (5, 3, 4)  # (t_latent, hp, wp)
 N_ACT = 9
 FPS = 15.0
+# This fixture stands in for a sample with the initial state prepended, as the recipe produces.
+ACTION_FRAME_OFFSET = action_start_frame_offset(has_initial_state=True)
 
 
 def reference_grid_ids(grid_t, grid_h, grid_w, temporal_offset, fps, tcf, base_tcf, start_frame_offset):
@@ -48,7 +50,7 @@ def reference_grid_ids(grid_t, grid_h, grid_w, temporal_offset, fps, tcf, base_t
 
 @pytest.fixture(scope="module")
 def ids():
-    return build_mrope_position_ids(N_TEXT, GRID, N_ACT, FPS)
+    return build_mrope_position_ids(N_TEXT, GRID, N_ACT, FPS, action_frame_offset=ACTION_FRAME_OFFSET)
 
 
 @pytest.fixture(scope="module")
@@ -97,9 +99,36 @@ def test_action_matches_the_upstream_grid(blocks):
         fps=FPS,
         tcf=1,  # actions are at frame rate
         base_tcf=VAE_TEMPORAL_COMPRESSION,
-        start_frame_offset=ACTION_START_FRAME_OFFSET,
+        start_frame_offset=ACTION_FRAME_OFFSET,
     )
     assert torch.allclose(action, expected)
+
+
+def test_action_start_frame_offset_matches_upstreams_case_split():
+    """Pin the offset itself, which the test above structurally cannot.
+
+    ``test_action_matches_the_upstream_grid`` compares our arithmetic against a transcription of upstream's, and
+    it earns its keep -- it is what would catch a flat ``arange`` or a wrong time base. But it feeds the *same*
+    offset to the implementation and to the reference, so the offset is a free parameter there and no value of it
+    can make that test fail. It passed for as long as the module hardcoded 1 against upstream's 0.
+
+    The two values below come from ``transforms.py::build_sequence_plan`` with ``num_history_actions = 0``, and
+    the ``has_initial_state=True`` case is confirmed against a real upstream sample: episode 26827 offset 0
+    carries ``sequence_plan.action_start_frame_offset = 0``.
+    """
+    assert action_start_frame_offset(has_initial_state=True) == 0
+    assert action_start_frame_offset(has_initial_state=False) == 1
+
+
+def test_action_block_starts_at_the_conditioning_vision_frame(blocks):
+    """With the state row prepended, action[0] and vision frame 0 are the same instant.
+
+    This is the observable consequence of the offset being 0 rather than 1, stated without reference to either
+    implementation: the conditioning action step and the conditioning vision frame share a temporal position.
+    """
+    _, vision, action = blocks
+    t_latent, hp, wp = GRID
+    assert torch.allclose(action[0, 0], vision[0].view(t_latent, hp * wp)[0, 0])
 
 
 def test_the_three_axes_are_not_all_equal(blocks):
@@ -124,6 +153,14 @@ def test_spatial_axes_are_a_grid_restarting_at_zero(blocks):
 def test_vision_and_action_share_one_time_axis(blocks):
     """Both streams run in parallel in time, so every 4th action lands on a latent frame.
 
+    With the initial state prepended, action index ``k`` *is* video frame ``k``, and latent frame ``j`` sits at
+    video frame ``4j``, so the coincidence is ``action[4j] == frame_t[j]``.
+
+    This assertion used to read ``action[VAE_TEMPORAL_COMPRESSION - 1]``, which holds only if action[0] sits at
+    video frame 1 -- the premise behind the offset of 1 this module used to hardcode. The test was sensitive to
+    the offset and would have caught it, except that its expectation was derived from our own implementation
+    rather than from upstream's. Being internally consistent is what let it cement the bug instead.
+
     The tolerance is loose because these are float32 values near MROPE_TEMPORAL_MARGIN, where one ulp is about
     1e-3; a difference of two of them keeps that error, not the magnitude of the difference. Upstream computes
     them the same way, in float32 with the same margin, so this is its arithmetic and not a loss introduced here.
@@ -135,7 +172,7 @@ def test_vision_and_action_share_one_time_axis(blocks):
     # 15 fps, compression 4: latent frames 1.6 apart, actions 0.4 apart.
     assert torch.allclose(frame_t[1] - frame_t[0], torch.tensor(1.6), atol=atol)
     assert torch.allclose(action[0][1] - action[0][0], torch.tensor(0.4), atol=atol)
-    assert torch.allclose(action[0][VAE_TEMPORAL_COMPRESSION - 1], frame_t[1], atol=atol)
+    assert torch.allclose(action[0][VAE_TEMPORAL_COMPRESSION], frame_t[1], atol=atol)
 
 
 def test_the_generation_block_clears_the_text_by_the_margin(blocks):

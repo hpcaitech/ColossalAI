@@ -58,6 +58,86 @@ STATE_JOINT = "observation.state.joint_positions"
 STATE_GRIPPER = "observation.state.gripper_position"
 
 
+# Verbatim from droid_lerobot_dataset.py, where the dataset appends it to the generic ``concat_view`` template
+# through ``extras["additional_view_description"]`` for ``viewpoint == "concat_view"``. The generic template only
+# states that the views are concatenated; these two sentences are what tell the model which camera is in which
+# row, and they are 33 of the 45 prompt tokens we were missing.
+CONCAT_VIEW_DESCRIPTION = (
+    "The top row is from the wrist-mounted camera. "
+    "The bottom row contains two horizontally concatenated third-person perspective views of the scene from "
+    "opposite sides, with the robot visible."
+)
+
+# Idle-frame thresholds, resolved the way ``Cosmos3ActionLeRobotDataset._resolve_idle_thresholds`` resolves them:
+# the per-second values are divided by fps. These are deliberately not ``compute_idle_frames``' own signature
+# defaults -- that function declares ``joint_threshold=5e-4``, but the LeRobot caller always passes a resolved
+# value, so at 15 fps the real threshold is 5e-3 / 15 = 3.33e-04 rad/step. DROID overrides none of them.
+IDLE_JOINT_THRESHOLD_PER_SEC = 5e-3
+IDLE_EPS_GRIPPER = 1e-2  # a gripper command delta rather than a rate, so upstream does not scale it by fps
+IDLE_MIN_STREAK = 3
+
+
+def _keep_streaks(idle: list[bool], min_streak: int) -> list[bool]:
+    """Clear idle flags that are not part of a run of at least ``min_streak`` consecutive ones.
+
+    Upstream's ``pose_utils._consecutive_streaks``. The filter is there because an isolated low-motion frame is an
+    instantaneous slowdown rather than the robot waiting, and those carry little physical meaning.
+
+    Args:
+        idle (list[bool]): Per-frame idle flags.
+        min_streak (int): Minimum run length to keep. ``<= 1`` is a no-op.
+
+    Returns:
+        list[bool]: The filtered flags.
+    """
+    if min_streak <= 1:
+        return idle
+    out = [False] * len(idle)
+    i = 0
+    while i < len(idle):
+        if not idle[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(idle) and idle[j]:
+            j += 1
+        if j - i >= min_streak:
+            out[i:j] = [True] * (j - i)
+        i = j
+    return out
+
+
+def count_idle_frames(action: torch.Tensor, fps: float) -> int:
+    """Count idle frames in an unnormalized ``[T, 8]`` DROID ``joint_pos`` action chunk.
+
+    This is ``pose_utils.compute_idle_frames`` specialised to the action spec DROID declares for ``joint_pos``,
+    ``build_action_spec(Joint(n=7), Gripper())`` -- seven JOINT dims and one GRIPPER dim, no POS and no ROT, so the
+    general function's translation and rotation branches have nothing to act on here. A frame is idle when **both**
+    groups are idle on it, and it only counts if it belongs to a run of at least :data:`IDLE_MIN_STREAK` such
+    frames.
+
+    Both groups use upstream's frame-difference scheme: a diff with the first row prepended, so step 0 compares
+    against itself and is always "no change". The action must be unnormalized, because the thresholds are in
+    radians per step and in gripper command units.
+
+    Args:
+        action (torch.Tensor): ``[T, 8]`` unnormalized action -- the same chunk the prompt describes, which means
+            with the initial state row already prepended, since upstream computes this after that prepend.
+        fps (float): Frame rate, which turns the per-second thresholds into per-step ones.
+
+    Returns:
+        int: The idle frame count, for the prompt's ``idle_frame`` field.
+    """
+    if action.ndim != 2 or action.shape[-1] != 8:
+        raise ValueError(f"expected an unnormalized [T, 8] joint_pos action chunk, got {tuple(action.shape)}")
+    x = action.detach().float()
+    joint_thr = IDLE_JOINT_THRESHOLD_PER_SEC / float(fps)
+    joints, grip = x[:, :7], x[:, 7:]
+    j_idle = torch.diff(joints, dim=0, prepend=joints[:1]).abs().amax(dim=1) < joint_thr
+    g_idle = torch.diff(grip, dim=0, prepend=grip[:1]).abs().amax(dim=1) < IDLE_EPS_GRIPPER
+    return int(sum(_keep_streaks((j_idle & g_idle).tolist(), IDLE_MIN_STREAK)))
+
+
 @dataclass(frozen=True)
 class Window:
     """One training window: 33 observation frames and 32 actions starting at ``start`` inside an episode."""
@@ -86,10 +166,16 @@ def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int):
         tuple: The padded tensor and the ``(h, w)`` of the content region inside it.
     """
     h, w = x.shape[-2:]
-    scale = min(target_h / h, target_w / w)
+    # The 1.0 cap is upstreams, and it is not cosmetic: reflection_pad_to_target computes
+    # min(target_w / orig_w, target_h / orig_h, 1.0), so content smaller than the canvas is padded, never
+    # stretched. DROIDs concat_view composite is 540x640 against a 544x736 canvas, where the uncapped ratio is
+    # 1.0074 -- enough to resample every pixel for the sake of four rows.
+    scale = min(target_h / h, target_w / w, 1.0)
     rh, rw = int(scale * h + 0.5), int(scale * w + 0.5)
     if (rh, rw) != (h, w):
-        x = F.interpolate(x, size=(rh, rw), mode="bilinear", align_corners=False)
+        # Upstream resizes with torchvisions BICUBIC + antialias=True. With the cap above this path no longer
+        # runs for DROID, but the mode still has to match for any input that does need downscaling.
+        x = F.interpolate(x, size=(rh, rw), mode="bicubic", align_corners=False, antialias=True)
     pad_b, pad_r = target_h - rh, target_w - rw
     if pad_b or pad_r:
         # Reflection padding requires the pad to be smaller than the side it mirrors; fall back to edge replication.
@@ -144,6 +230,8 @@ class DroidActionPolicyDataset(Dataset):
         episode_shuffle_seed: int = 42,
         max_episodes: int | None = None,
         augment: bool = False,
+        split: str = "train",
+        split_val_ratio: float = 0.03,
     ):
         self.root = Path(root)
         self.chunk_length = chunk_length
@@ -151,6 +239,10 @@ class DroidActionPolicyDataset(Dataset):
         self.fps = fps
         self.resolution = resolution
         self.augment = augment
+        # Upstream DROIDLeRobotDataset defaults: split_seed=42 (passed as episode_shuffle_seed here, since the
+        # same permutation does both jobs) and split_val_ratio=0.03.
+        self.split = split
+        self.split_val_ratio = split_val_ratio
         self._info = json.loads((self.root / "meta/info.json").read_text())
         self.windows = self._build_index(sample_stride, episode_shuffle_seed, max_episodes)
 
@@ -176,8 +268,30 @@ class DroidActionPolicyDataset(Dataset):
             if k not in base or v < base[k]:
                 base[k] = v
 
-        rng = random.Random(seed)
-        rng.shuffle(rows)  # shuffle episode order, keep windows sequential inside an episode
+        # Episode order AND the train/val split come from one torch.randperm, because that is what upstream
+        # does: split_episode_ids draws randperm(total_episodes, seed) and returns episode_ids[num_val:] for
+        # train, and build_episode_spans then walks the index in exactly that order. So the permutation is both
+        # the holdout and the shuffle.
+        #
+        # Two things were wrong here before. We used random.Random(seed).shuffle, a different algorithm from
+        # torch.randperm, so our episode order differed from upstream even at the same seed. And we kept every
+        # episode: upstream reserves split_val_ratio=0.03 of them, which on success/ is
+        # round(57639 * 0.03) = 1729 episodes, leaving the 55910 its log reports against our 57639. Training on
+        # all of them means training on upstream published validation set, so no evaluation of ours was
+        # comparable to theirs.
+        total_episodes = int(self._info.get("total_episodes", len(rows)))
+        order = torch.randperm(total_episodes, generator=torch.Generator().manual_seed(seed)).tolist()
+        num_val = int(round(total_episodes * self.split_val_ratio))
+        if self.split == "train":
+            keep_ids = order[num_val:]
+        elif self.split == "val":
+            keep_ids = order[:num_val]
+        elif self.split == "full":
+            keep_ids = order
+        else:
+            raise ValueError(f"split must be train, val or full; got {self.split!r}")
+        by_id = {int(r["episode_index"]): r for r in rows}
+        rows = [by_id[i] for i in keep_ids if i in by_id]
         if max_episodes is not None:
             rows = rows[:max_episodes]
 
@@ -194,7 +308,13 @@ class DroidActionPolicyDataset(Dataset):
                 for c in CAMS
             }
             usable = r["length"] - self.n_obs
-            for start in range(0, max(usable, 0) + 1, stride):
+            if usable < 0:
+                # Too short to fill one window. max(usable, 0) + 1 used to emit a window anyway, which then
+                # read past the end of its episode; upstream requires stop - start - chunk_length > 0 and drops
+                # the episode. 55 episodes in success/ are this short, which is exactly the gap between our
+                # 16,847,949 windows and the 16,847,894 the metadata implies.
+                continue
+            for start in range(0, usable + 1, stride):
                 local_from = r["dataset_from_index"] - base[(r["data/chunk_index"], r["data/file_index"])]
                 windows.append(
                     Window(
@@ -253,28 +373,63 @@ class DroidActionPolicyDataset(Dataset):
         grip = torch.tensor(tbl[GRIPPER_ACTION].to_pylist()[lo : lo + self.chunk_length], dtype=torch.float32)
         if grip.ndim == 1:
             grip = grip.unsqueeze(-1)
+        # The gripper channel is stored inverted in this release of the dataset. Upstream carries the fact as
+        # IS_GRIPPER_ACTION_FLIPPED, True for every droid_plus_lerobot_* version, and applies 1 - g to both the
+        # action gripper and the initial-state gripper. Measured on episode 26827 window 0: upstream reports 1.0
+        # for all 33 steps where the raw column gives 0.0. Without this the action head learns an inverted
+        # open/close command.
+        grip = 1.0 - grip
         # Robot state at the first frame of the window, in the same joint(7) + gripper(1) space as the actions.
         s_joint = torch.tensor(tbl[STATE_JOINT].to_pylist()[lo], dtype=torch.float32)
-        s_grip = torch.tensor(tbl[STATE_GRIPPER].to_pylist()[lo], dtype=torch.float32)
+        s_grip = 1.0 - torch.tensor(tbl[STATE_GRIPPER].to_pylist()[lo], dtype=torch.float32)
         state = torch.cat([s_joint.reshape(-1), s_grip.reshape(-1)], dim=-1)
         return torch.cat([joint, grip], dim=-1), state  # [chunk, 8], [8]
 
     def __getitem__(self, idx: int) -> dict:
         win = self.windows[idx]
-        views = {c: self._read_frames(c, win).float() for c in CAMS}
+        # [0, 1], not [0, 255], because that is the range upstream composes in: LeRobotDataset hands out float
+        # frames already divided by 255, and the composition and augmentation run on those values. The range
+        # matters at the end of this method, where the round trip back to uint8 is what upstream quantises.
+        views = {c: self._read_frames(c, win).float() / 255.0 for c in CAMS}
         if self.augment:
             views = self._augment(views)
         comp = compose_concat_view(views["wrist"], views["left"], views["right"])
         th, tw, aspect = closest_canvas(*comp.shape[-2:], resolution=self.resolution)
-        comp, content_hw = resize_and_reflect_pad(comp, th, tw)
+        # Quantise before normalising, because upstream does: its dataset ends at
+        # (v * 255).clamp(0, 255).to(torch.uint8) and the model later applies x.float() / 127.5 - 1.0. Note that
+        # .to(uint8) truncates rather than rounds, so the error it introduces is biased by -0.5 LSB, about
+        # 3.9e-03 in [-1, 1] units. Staying in float here would be more accurate and less aligned.
+        # Reproduce upstream byte for byte: _convert_video ends at (v * 255).clamp(0, 255).to(torch.uint8) on
+        # values that were divided by 255 on the way in. The round trip is not a no-op -- 255.0 * (x / 255.0)
+        # in float32 frequently lands just below the integer x, and .to(uint8) truncates rather than rounds, so
+        # the result is x - 1. Measured against upstream on one window: without the round trip our pixels are
+        # higher by exactly one level on 73.9% of elements and two levels on 3.5%, never lower, relL2 1.16e-02.
+        comp = (comp * 255.0).clamp(0.0, 255.0).to(torch.uint8)
+        comp, content_hw = resize_and_reflect_pad(comp.float(), th, tw)
         comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
 
         action, state = self._read_actions(win)
+        # DROID stores several human annotations of one episode joined by " | " inside a single string, so the
+        # multiplicity is invisible from the length of the ``tasks`` list -- every episode in this release has
+        # exactly one element. Upstream splits that string and draws one annotation per *draw*
+        # (droid_lerobot_dataset.__getitem__), which is a text-side augmentation: the same window is described a
+        # different way each time it is visited. Passing the raw string through instead hands the model three
+        # instructions glued with pipe characters, a sentence no annotator wrote. The split is unconditional here
+        # while upstream gates it on HAS_MULTI_LANGUAGE_ANNOTATIONS[version]; that is the same behaviour for every
+        # listed version, because the ones with the flag off contain no " | " and the split is then a no-op.
+        # Pinning the draw for a comparison run is the caller's business, not this method's.
+        task = random.choice(win.task.split(" | "))
+        # The prompt's idle_frame field counts idle frames in the action chunk the prompt describes, and that chunk
+        # is the one with the initial state row prepended. packing.pack_one does the prepend, so do it here too
+        # rather than counting on 32 rows and disagreeing with upstream by one frame.
+        full_action = torch.cat([state.reshape(1, -1).to(action.dtype), action], dim=0)
         return {
             "video": comp.permute(1, 0, 2, 3),  # [C, T, H, W]; the VAE encodes it in the training loop
             "action": action,  # [chunk_length, 8], unnormalized
             "state": state,  # [8]
-            "task": win.task,
+            "task": task,
+            "idle_frames": count_idle_frames(full_action, self.fps),
+            "additional_view_description": CONCAT_VIEW_DESCRIPTION,
             "episode_index": win.episode_index,
             "start": win.start,
             "canvas_hw": torch.tensor([th, tw]),
