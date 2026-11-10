@@ -544,9 +544,13 @@ def normalize_latent(latent: torch.Tensor, vae) -> torch.Tensor:
 
     Measured on one real DROID window against the upstream encode, same pixels, same GPU:
 
-        raw latent              relL2 5.1652e-01   std 0.683105
-        (x - mean) / std        relL2 5.8847e-03   std 1.017034
-        upstream                            --     std 1.017380
+        raw latent                    relL2 5.1652e-01   std 0.683105
+        (x - mean) * (1 / std)        relL2 5.8847e-03   std 1.017034
+        upstream                                  --     std 1.017380
+
+    The 48 channel constants are identical on both sides: diffusers' ``latents_mean`` / ``latents_std`` match
+    upstream's hardcoded lists element for element, all 48 of each. So the only thing this function has to get
+    right is the formula, and the residual 5.9e-03 is the bf16 encode rather than the scaling.
 
     So the model was being fed latents off by a per-channel affine map, a relative error of 0.52 -- 84% of the
     augmentation spread, and two orders of magnitude worse than anything else measured in this example. The
@@ -572,8 +576,13 @@ def normalize_latent(latent: torch.Tensor, vae) -> torch.Tensor:
         )
     shape = (1, -1) + (1,) * (latent.ndim - 2)
     m = torch.as_tensor(mean, device=latent.device, dtype=torch.float32).view(shape)
-    s = torch.as_tensor(std, device=latent.device, dtype=torch.float32).view(shape)
-    return ((latent.float() - m) / s).to(latent.dtype)
+    # Reciprocal first, then multiply, because that is literally what upstream does: ``WanVAE.__init__`` builds
+    # ``self.scale = (mean, 1.0 / std)`` and multiplies by it ever after. The choice is not numerically load
+    # bearing -- measured on a latent of the real shape, ``(x - m) / s`` and ``(x - m) * (1 / s)`` differ by
+    # relL2 4.17e-08, max 4.8e-07, on 24% of elements, which is one float32 ulp. It is written this way so the
+    # correspondence to upstream's formula needs no argument, not because it moves any number.
+    inv_std = 1.0 / torch.as_tensor(std, device=latent.device, dtype=torch.float32).view(shape)
+    return ((latent.float() - m) * inv_std).to(latent.dtype)
 
 
 def pack_batch(
