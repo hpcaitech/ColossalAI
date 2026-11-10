@@ -28,6 +28,7 @@ from pathlib import Path
 import av
 import pyarrow.parquet as pq
 import torch
+import torchvision.transforms.v2 as T
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
@@ -243,6 +244,8 @@ class DroidActionPolicyDataset(Dataset):
         # same permutation does both jobs) and split_val_ratio=0.03.
         self.split = split
         self.split_val_ratio = split_val_ratio
+        # Built lazily, as upstream builds it: the crop size is a fraction of the first batch's frame size.
+        self._augmentor: T.Compose | None = None
         self._info = json.loads((self.root / "meta/info.json").read_text())
         self.windows = self._build_index(sample_stride, episode_shuffle_seed, max_episodes)
 
@@ -438,21 +441,50 @@ class DroidActionPolicyDataset(Dataset):
         }
 
     def _augment(self, views: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        """Random resized crop applied to all three views at once.
+        """Upstream's augmentation: the same torchvision v2 transforms, in the same order, on the same tensor.
 
-        Upstream also applies a ColorJitter whose parameters are shared across the three views. That part is not
-        implemented yet, so a run with ``augment=True`` is close to but not identical to the recipe.
+        ``droid_lerobot_dataset.py`` builds
+
+            T.Compose([
+                T.RandomCrop((int(h * 0.95), int(w * 0.95))),
+                T.Resize((h, w), antialias=True),
+                T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
+            ])
+
+        and calls it once on ``torch.cat([wrist, left, right], dim=0)``. Both details matter and an earlier
+        hand-rolled version got each of them wrong:
+
+        - **One call on the concatenation, not three calls in a loop.** A v2 transform samples its parameters
+          once per call and applies them to everything it is handed, so upstream's three views share one crop
+          offset and one set of colour factors. Drawing per view, as the loop did, decorrelates them.
+        - **A fixed 0.95 crop, not a random scale.** The loop drew ``random.uniform(0.9, 1.0)``, so the crop
+          size itself varied; upstream's varies only in position.
+        - ``T.Resize(antialias=True)`` rather than a bare bilinear ``F.interpolate``.
+        - ``ColorJitter`` at all, which the loop omitted entirely.
+
+        ``jitter_after_compose`` defaults to False and this recipe does not override it, so the jitter belongs
+        inside the Compose, on the views, rather than on the composite.
+
+        Args:
+            views (dict[str, torch.Tensor]): ``{camera: [T, C, H, W]}``, in :data:`CAMS` order.
+
+        Returns:
+            dict[str, torch.Tensor]: The same keys, augmented together.
         """
-        out = {}
-        scale = random.uniform(0.9, 1.0)
-        for name, v in views.items():
-            h, w = v.shape[-2:]
-            ch, cw = int(h * scale), int(w * scale)
-            top = random.randint(0, h - ch)
-            left = random.randint(0, w - cw)
-            crop = v[..., top : top + ch, left : left + cw]
-            out[name] = F.interpolate(crop, size=(h, w), mode="bilinear", align_corners=False)
-        return out
+        names = list(views)
+        per_view = views[names[0]].shape[0]
+        stacked = torch.cat([views[name] for name in names], dim=0)  # [3T, C, H, W]
+        if self._augmentor is None:
+            h, w = stacked.shape[-2:]
+            self._augmentor = T.Compose(
+                [
+                    T.RandomCrop((int(h * 0.95), int(w * 0.95))),
+                    T.Resize((h, w), antialias=True),
+                    T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
+                ]
+            )
+        out = self._augmentor(stacked)
+        return {name: out[i * per_view : (i + 1) * per_view] for i, name in enumerate(names)}
 
 
 def collate(batch: list[dict]) -> dict:
