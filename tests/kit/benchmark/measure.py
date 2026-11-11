@@ -8,13 +8,18 @@ Protocol (the same for every entry, so reports compare):
   right before and right after it, so the time covers the device work, not only the host launching it.
 - Warmup steps are discarded. The time of a timed step is the maximum over ranks: the slowest rank sets the pace.
 - Peak memory is tracked from the first step on, after the model and optimizer are built and boosted.
+- Optionally (``Setup.profile_steps``) a few more steps run under the profiler, after the timed ones and outside both
+  timing and memory, to measure how much of a step the device spends in communication (``communication_shares``).
 
 Everything device-specific goes through ``colossalai.accelerator``, so the same code runs on CUDA and Ascend NPU.
 """
 
+import json
 import math
+import os
 import resource
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from functools import partial
@@ -78,12 +83,14 @@ class Setup:
     timed_steps: int = TIMED_STEPS
     lr: float = 1e-5
     seed: int = 1024
+    # steps run under the profiler after the timed ones, for the communication share; 0 skips profiling
+    profile_steps: int = 0
 
     def __post_init__(self):
         if self.config not in CONFIGS:
             raise ValueError(f"unknown config {self.config!r}; known: {sorted(CONFIGS)}")
-        if self.timed_steps < 1 or self.warmup_steps < 0:
-            raise ValueError("need at least one timed step and no negative warmup")
+        if self.timed_steps < 1 or self.warmup_steps < 0 or self.profile_steps < 0:
+            raise ValueError("need at least one timed step and no negative warmup or profiled steps")
 
 
 def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
@@ -128,7 +135,8 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         setup_allocated = accelerator.memory_allocated()
         accelerator.reset_peak_memory_stats()
     times, losses = [], []
-    for step in range(setup.warmup_steps + setup.timed_steps):
+
+    def train_step(step: int):
         synchronize()
         start = time.perf_counter()
         # names each step in a profiler trace, on the host and the device timeline, to check the timing against
@@ -142,9 +150,22 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         times.append(time.perf_counter() - start)
         losses.append(loss.detach().float().item())
 
+    for step in range(setup.warmup_steps + setup.timed_steps):
+        train_step(step)
     memory = _memory(accelerator, setup_allocated) if has_memory_stats else {}
     memory["host_rss_peak"] = _host_rss_peak()
-    ranks = _gather({"times": times[setup.warmup_steps :], "memory": memory, "tokens": tokens})
+    communication = None
+    if setup.profile_steps:
+        first = setup.warmup_steps + setup.timed_steps
+        communication = _profile(accelerator, lambda: [train_step(first + i) for i in range(setup.profile_steps)])
+    ranks = _gather(
+        {
+            "times": times[setup.warmup_steps : setup.warmup_steps + setup.timed_steps],
+            "memory": memory,
+            "tokens": tokens,
+            "communication": communication,
+        }
+    )
     # the slowest rank sets the pace of a step; memory is reported for the rank that uses the most
     step_times = [max(steps) for steps in zip(*(r["times"] for r in ranks))]
     memory = {key: max(r["memory"][key] for r in ranks) for key in memory}
@@ -159,7 +180,91 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         "step_time_s": step_times,
         "memory_bytes": memory,
         "loss": {"first": losses[0], "last": losses[-1], "finite": all(math.isfinite(x) for x in losses)},
+        # per rank; None without profiling or on a device whose profiler this does not read
+        "communication": [r["communication"] for r in ranks] if setup.profile_steps else None,
     }
+
+
+# what NCCL and HCCL name their kernels
+_COMMUNICATION_KERNEL = ("nccl", "hccl")
+
+
+def _profile(accelerator, run_steps) -> Optional[Dict[str, float]]:
+    """Run ``run_steps()`` under the profiler and return this rank's ``communication_shares``. CUDA only: the Ascend
+    profiler is a different API (``torch_npu.profiler``) and is not read yet."""
+    if accelerator.name != "cuda":
+        run_steps()
+        return None
+    activities = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "trace.json")
+        with torch.profiler.profile(activities=activities) as profiler:
+            run_steps()
+        profiler.export_chrome_trace(path)
+        with open(path) as f:
+            events = json.load(f)["traceEvents"]
+    return communication_shares(events)
+
+
+def communication_shares(events: List[Dict[str, Any]]) -> Dict[str, float]:
+    """From a Chrome trace of whole steps: the share of the steps' device time that communication kernels run
+    (``communication``), and the share in which they run while no other kernel does (``exposed``): the time the
+    device waits for communication, which data-parallel scaling loses. A step's device time is its
+    ``STEP_ANNOTATION`` range on the device timeline."""
+    steps = [
+        (e["ts"], e["ts"] + e["dur"])
+        for e in events
+        if e.get("cat") == "gpu_user_annotation" and e.get("name", "").startswith(STEP_ANNOTATION)
+    ]
+    if not steps:
+        raise ValueError("the trace has no profiled steps")
+    communication, compute = [], []
+    for e in events:
+        if e.get("cat") != "kernel":
+            continue
+        span = (e["ts"], e["ts"] + e["dur"])
+        is_communication = any(word in e.get("name", "").lower() for word in _COMMUNICATION_KERNEL)
+        (communication if is_communication else compute).append(span)
+    total = sum(end - start for start, end in steps)
+    communication = _clip(_union(communication), steps)
+    busy = _union(compute)
+    exposed = _subtract(communication, busy)
+    return {"communication": _length(communication) / total, "exposed": _length(exposed) / total}
+
+
+def _union(spans):
+    merged = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [tuple(span) for span in merged]
+
+
+def _clip(spans, windows):
+    return _union([(max(s, ws), min(e, we)) for s, e in spans for ws, we in windows if min(e, we) > max(s, ws)])
+
+
+def _subtract(spans, holes):
+    """``spans`` minus ``holes``, both sorted and disjoint."""
+    result = []
+    for start, end in spans:
+        for hole_start, hole_end in holes:
+            if hole_end <= start or hole_start >= end:
+                continue
+            if hole_start > start:
+                result.append((start, hole_start))
+            start = max(start, hole_end)
+            if start >= end:
+                break
+        if start < end:
+            result.append((start, end))
+    return result
+
+
+def _length(spans):
+    return sum(end - start for start, end in spans)
 
 
 def _memory(accelerator, setup_allocated: int) -> Dict[str, int]:

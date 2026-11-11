@@ -94,7 +94,8 @@ def _worker(rank, world_size, port, setup, spec, path):
     if rank == 0:
         env = _environment()
         if used_at_start is not None:
-            # includes this process's own context; well above that, another process shares the device
+            # the busiest device; includes this process's own context, well above it another process shares the
+            # device (report.BUSY_DEVICE_LIMIT)
             env["device_used_at_start_gib"] = round(max(used) / report.GiB, 2)
         result["environment"] = env
         with open(path, "w") as f:
@@ -150,10 +151,10 @@ def _nvidia_smi() -> Dict[str, str]:
     return dict(zip(query.values(), (value.strip() for value in out.split(","))))
 
 
-def default_output(setup: measure.Setup, repository: Dict[str, Any], search: Optional[str] = None) -> str:
+def default_output(setup: measure.Setup, repository: Dict[str, Any], kind: Optional[str] = None) -> str:
     date = datetime.now(timezone.utc).strftime("%Y%m%d")
     commit = repository.get("commit", "unknown")[:8]
-    kind = f"max-{search}-" if search else ""
+    kind = f"{kind}-" if kind else ""
     return f"{setup.entry}-{setup.size}-{setup.config}-{kind}{date}-{commit}.json"
 
 
@@ -178,13 +179,20 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="find the largest sequence length (at micro-batch 1 unless given) or micro-batch that trains on one "
         "device, then measure there",
     )
+    parser.add_argument(
+        "--scaling",
+        help="data-parallel scaling: comma-separated device counts, e.g. 1,2,4,8; each keeps the per-device "
+        "micro-batch and sequence length",
+    )
     parser.add_argument("--granularity", type=int, help="search on multiples of this (256 tokens, 1 sample)")
     parser.add_argument("--upper", type=int, help="largest value to try; seq_len defaults to max_position_embeddings")
     args = parser.parse_args(argv)
 
     spec = benchmark_spec(args.entry)
-    if args.search and args.nproc != 1:
-        parser.error("--search runs on one device; drop --nproc")
+    if args.search and (args.nproc != 1 or args.scaling):
+        parser.error("--search runs on one device; drop --nproc and --scaling")
+    if args.scaling and args.nproc != 1:
+        parser.error("--scaling sets the device counts; drop --nproc")
     # the maximum sequence length is searched at micro-batch 1
     micro_batch = args.micro_batch or (1 if args.search == "seq_len" else spec.micro_batch)
     setup = measure.Setup(
@@ -203,9 +211,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         upper = args.upper or default_upper(spec, setup.size, args.search)
         result = run_search(setup, args.search, args.granularity, upper, repeats=args.repeats, command=command)
+    elif args.scaling:
+        from .scaling import run_scaling
+
+        counts = [int(n) for n in args.scaling.split(",")]
+        result = run_scaling(setup, counts, repeats=args.repeats, command=command)
     else:
         result = run_benchmark(setup, nproc=args.nproc, repeats=args.repeats, command=command)
-    out = args.out or default_output(setup, result["repository"], args.search)
+    kind = f"max-{args.search}" if args.search else "scaling" if args.scaling else None
+    out = args.out or default_output(setup, result["repository"], kind)
     with open(out, "w") as f:
         json.dump(result, f, indent=2)
     markdown = os.path.splitext(out)[0] + ".md"

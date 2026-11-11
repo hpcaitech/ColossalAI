@@ -19,6 +19,9 @@ SCHEMA_VERSION = 2
 # two repeats of the same setup whose median step times differ by more than this are flagged: the machine was not
 # stable enough for the numbers to be compared with anything
 REPEAT_SPREAD_LIMIT = 0.05
+# device memory already in use when a run starts, as a share of the device, above which another process shares it.
+# The run's own context is a few hundred MiB on CUDA; the Ascend driver's baseline is about 5% of a 910B2
+BUSY_DEVICE_LIMIT = 0.10
 GiB = 1024**3
 
 
@@ -85,6 +88,12 @@ def build_report(
         )
     if not all(r["loss"]["finite"] for r in runs):
         flags.append("a loss was not finite: the steps did not train, the timing may not be representative")
+    used, total = environment.get("device_used_at_start_gib"), runs[0]["memory_bytes"].get("device_total")
+    if used is not None and total and used * GiB > BUSY_DEVICE_LIMIT * total:
+        flags.append(
+            f"{used:.1f} GiB of a device were in use when the run started: another process shared it, the numbers "
+            "are not reliable"
+        )
     mfu = summaries[headline]["mfu_nominal"]
     if mfu is not None and mfu > 1:
         flags.append(
@@ -206,10 +215,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         f"| Peak, measured | {_tflops(peak['measured_tflops'])}: {peak['measured_source'] or 'not measured'} |",
         "",
         *_search_section(report.get("search")),
-        "## Data-parallel scaling",
-        "",
-        "Not measured by this report.",
-        "",
+        *_scaling_section(report.get("scaling"), setup.get("profile_steps", 0)),
         "## Baseline",
         "",
         "Not compared by this report.",
@@ -224,6 +230,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
     missing = list(NOT_COVERED)
     if "search" in report:
         missing.remove(SEARCH_ITEMS[report["search"]["field"]])
+    if "scaling" in report:
+        missing.remove(SCALING_ITEM)
     if peak["nominal_tflops"] is None:
         missing.insert(0, f"MFU: no peak is known for {peak['device']} in {peak['dtype']}")
     lines += [f"- {item}" for item in missing]
@@ -235,6 +243,37 @@ def _tokens(value: float) -> str:
 
 
 SEARCH_ITEMS = {"seq_len": NOT_COVERED[0], "micro_batch": NOT_COVERED[1]}
+SCALING_ITEM = NOT_COVERED[2]
+
+
+def _scaling_section(points: Optional[List[Dict[str, Any]]], profiled: int) -> List[str]:
+    """The curve of ``scaling.run_scaling``; without one, a line saying it was not measured."""
+    lines = ["## Data-parallel scaling", ""]
+    if points is None:
+        return lines + ["Not measured by this report.", ""]
+    lines += [
+        f"Weak scaling: every device keeps the micro-batch and sequence length. Efficiency is the throughput per device "
+        f"against {points[0]['devices']} device(s). Communication is the share of the step in which communication "
+        f"kernels run; exposed, the share in which nothing else runs (the device waits), from {profiled} profiled "
+        "steps after the timed ones, the largest over ranks. The other sections describe the largest device count.",
+        "",
+        "| Devices | Tokens/s | Per device | Efficiency | Step time | MFU | Communication | Exposed | Peak reserved |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for p in points:
+        lines.append(
+            f"| {p['devices']} | {_tokens(p['tokens_per_s'])} | {_tokens(p['tokens_per_s_per_device'])} | "
+            f"{p['efficiency']:.1%} | {p['step_time_s'] * 1e3:.1f} ms | {_percent(p['mfu_nominal'])} | "
+            f"{_percent(p['communication'])} | {_percent(p['exposed_communication'])} | {_gib(p['reserved_peak'])} |"
+        )
+    flagged = [f"{p['devices']} devices: {flag}" for p in points for flag in p["flags"]]
+    return lines + [""] + [f"> **Warning:** {flag}" for flag in flagged] + ([""] if flagged else [])
+
+
+def _percent(value: Optional[float]) -> str:
+    return "n/a" if value is None else f"{value:.1%}"
+
+
 SEARCH_NAMES = {"seq_len": "sequence length", "micro_batch": "micro-batch"}
 
 

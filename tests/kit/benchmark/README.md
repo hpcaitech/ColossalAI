@@ -3,8 +3,8 @@
 A shared framework for measuring how fast and how memory-hungry training a model is under a ColossalAI plugin, the
 same way for every model, so that reports from different models, plugins and machines can be compared.
 
-Covered so far: throughput, MFU, peak memory, and the maximum sequence length and micro-batch on one device. Not
-covered yet, and listed as such in every report: data-parallel scaling efficiency and comparison with a baseline.
+Covered so far: throughput, MFU, peak memory, the maximum sequence length and micro-batch on one device, and
+data-parallel scaling efficiency. Not covered yet, and listed as such in every report: comparison with a baseline.
 
 ## Quick start
 
@@ -49,6 +49,14 @@ python -m tests.kit.benchmark.run --entry transformers_qwen3_for_causal_lm --siz
 The search runs on multiples of `--granularity` (256 tokens, 1 sample) up to `--upper` (for a sequence length, the
 model's `max_position_embeddings`). See "Maximum on one device" below.
 
+Data-parallel scaling over 1, 2, 4 and 8 devices (weak scaling: each device keeps its micro-batch and sequence
+length):
+
+```bash
+python -m tests.kit.benchmark.run --entry transformers_llama_for_causal_lm --size 1b --config zero2_bf16 \
+    --micro-batch 2 --scaling 1,2,4,8
+```
+
 Render a JSON report again, e.g. after collecting it from another machine:
 
 ```bash
@@ -57,7 +65,8 @@ python -m tests.kit.benchmark.report llama-1b.json > llama-1b.md
 
 Run on idle devices. Other processes slow the steps down and count towards the device-side memory; the report records
 how much device memory was in use when the run started (this process's own context included, a few hundred MiB on
-CUDA).
+CUDA), and flags the run when that exceeds 10% of a device. A process that starts on the devices mid-run is not caught
+by this; for data-parallel scaling on a shared machine, check `nvidia-smi` before and after.
 
 ## Adding a model
 
@@ -121,6 +130,15 @@ the full protocol; if that runs out of memory after all (near the limit a run is
 the next smaller fitting value is measured and the report says so. The report lists every probe. The allocator settings
 (`PYTORCH_CUDA_ALLOC_CONF`, e.g. `expandable_segments:True`) change the result and are recorded in the environment.
 
+### Data-parallel scaling
+
+`scaling.py` measures the same setup on each device count with the full protocol. The efficiency at N devices is the
+throughput per device against the smallest count measured (one device, unless the model only fits sharded). Each point
+then runs 3 more steps under the profiler, outside the timing, and reads from the device timeline the share of a step
+in which communication kernels (NCCL) run, and the share in which they run while no other kernel does: the time the
+device waits for communication, which is what an efficiency below 1 usually comes from. The shares are the largest over
+ranks. On Ascend the profiler is a different API and the shares are not read yet.
+
 ### MFU
 
 MFU = model FLOPs per token × tokens/s per device ÷ the device's peak: the matmuls of one forward and backward (PaLM,
@@ -162,5 +180,5 @@ TFLOPS, dense; sources are in `peak.py`. All device calls go through
 peaks, the FLOPs per token and the peak used, the summary statistics, the environment (device, driver, clock and power
 limits, library versions), the repository commit and whether the tree was dirty, and the command that reproduces it.
 The Markdown is rendered from the JSON alone, with the same sections for every model: summary, configuration, metrics,
-FLOPs and peak, the maximum on one device (when searched), data-parallel scaling, baseline, environment and
-reproduction, and what the report does not cover.
+FLOPs and peak, the maximum on one device (when searched), data-parallel scaling (when measured), baseline,
+environment and reproduction, and what the report does not cover.

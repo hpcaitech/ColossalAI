@@ -11,6 +11,7 @@ from tests.kit.benchmark.flops import counted_flops_per_token
 from tests.kit.benchmark.measure import Setup
 from tests.kit.benchmark.peak import lookup
 from tests.kit.benchmark.run import run_benchmark
+from tests.kit.benchmark.scaling import run_scaling
 from tests.kit.benchmark.search import Probe
 from tests.test_benchmark.test_benchmark_core import TINY, tiny_llama
 
@@ -123,3 +124,14 @@ def test_a_real_out_of_memory_is_recognized():
     # eager attention over a million tokens: the score matrix alone is terabytes
     assert Probe(spec=EAGER)(_setup("zero2_bf16", seq_len=2**20)) == {"fits": False, "reason": "out of device memory"}
     assert Probe(spec=EAGER)(_setup("zero2_bf16"))["fits"]
+
+
+@pytest.mark.skipif(_devices() < 2, reason="needs two devices")
+@rerun_if_address_is_in_use()
+def test_scaling_reads_communication_from_the_profiler():
+    result = run_scaling(_setup("zero2_bf16"), counts=(1, 2), repeats=1, spec=TINY)
+    one, two = result["scaling"]
+    assert one["devices"] == 1 and two["devices"] == 2
+    if get_accelerator().name == "cuda":
+        # ZeRO-2 on two devices reduce-scatters gradients and all-gathers parameters every step
+        assert 0 < two["exposed_communication"] <= two["communication"] < 1

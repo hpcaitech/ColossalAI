@@ -214,3 +214,11 @@ def test_peak_lookup():
     for peak in PEAKS:
         assert peak.nominal_source and peak.measured_tflops <= peak.nominal_tflops
     assert {config.dtype for config in CONFIGS.values()} <= {peak.dtype for peak in PEAKS}
+
+
+def test_report_flags_a_device_that_another_process_uses():
+    run = _run([1.0])
+    run["memory_bytes"] = {"device_total": 100 * report_module.GiB}
+    busy = build_report([run], {"device_used_at_start_gib": 35.8}, {}, [], FLOPS, PEAK)
+    assert any("another process shared it" in flag for flag in busy["flags"])
+    assert build_report([run], {"device_used_at_start_gib": 0.4}, {}, [], FLOPS, PEAK)["flags"] == []
