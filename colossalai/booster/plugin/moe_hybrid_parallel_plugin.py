@@ -174,6 +174,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         cast_inputs (bool, optional): Whether to cast every floating-point argument of the model's forward to the
             mixed-precision dtype. Defaults to True. See :class:`HybridParallelPlugin`.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as
+            well as its parameters. Defaults to True; see HybridParallelPlugin.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
@@ -226,6 +228,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         fp8_communication: bool = False,
         cast_inputs: bool = True,
         use_fp8: bool = False,
+        cast_buffers: bool = True,
     ) -> None:
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
@@ -367,6 +370,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
         self.cast_inputs = cast_inputs
         self.use_fp8 = use_fp8
+        self.cast_buffers = cast_buffers
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -474,6 +478,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 custom_policy=self.custom_policy,
                 cast_inputs=self.cast_inputs,
                 use_fp8=self.use_fp8,
+                cast_buffers=self.cast_buffers,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
