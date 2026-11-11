@@ -188,6 +188,26 @@ plain matmul. A device not in the table gets no MFU, and the report says so.
 TFLOPS, dense; sources are in `peak.py`. All device calls go through
 `colossalai.accelerator`, so the same code runs on CUDA and Ascend NPU; on CPU only the host memory is reported.
 
+## Code layout
+
+```
+tests/kit/benchmark/
+├── spec.py       BenchmarkSpec: the real sizes of a model_zoo entry and how to feed it (ModelAttribute.benchmark)
+├── run.py        command line; run_benchmark spawns one process per device for each repeat
+├── measure.py    one run on every rank: build, boost (or wrap with the baseline), time, memory, profile
+├── flops.py      FLOPs per token: closed formulas and FlopCounterMode on the meta device
+├── peak.py       nominal and measured peak TFLOPS per device and dtype
+├── search.py     largest sequence length / micro-batch on one device
+├── scaling.py    data-parallel scaling over device counts
+├── baseline.py   plain-PyTorch FSDP2, the built-in baseline
+└── report.py     JSON report, its statistics and flags, the Markdown template
+tests/test_benchmark/   self-tests: CPU (test_benchmark_{core,search,scaling,baseline}.py) and devices
+                        (test_benchmark_device.py)
+```
+
+`spec.py` and `flops.py` import neither ColossalAI nor model_zoo, as model_zoo entries import them. The self-tests run
+in CI (the CPU tests in the CPU batch, the device tests with two GPUs); benchmarking real models is a tool, not a test.
+
 ## Report
 
 `run.py` writes one JSON file per setup (`schema_version` 2): the setup, every timed step of every repeat, the memory
