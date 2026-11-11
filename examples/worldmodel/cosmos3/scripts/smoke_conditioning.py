@@ -57,7 +57,7 @@ def main():
     import train_sft
     from diffusers import Cosmos3OmniTransformer
     from droid_dataset import DroidActionPolicyDataset, collate
-    from packing import compute_loss, pack_batch
+    from packing import compute_loss, normalize_latent, pack_batch
     from torch.utils.data import DataLoader
     from transformers import AutoTokenizer
 
@@ -144,7 +144,12 @@ def main():
         # the two agree. It has to follow the VAE's dtype for the same reason pack_batch does.
         encoded = vae.encode(batch["video"].to(args.device, next(vae.parameters()).dtype))
         dist = getattr(encoded, "latent_dist", None)
-        clean = (dist.mode() if dist is not None else encoded[0]).to(torch.bfloat16)
+        clean = dist.mode() if dist is not None else encoded[0]
+        # Same scaling pack_batch applies, or this independent encode is not the same quantity and the
+        # equality check below fails for a reason that has nothing to do with conditioning. diffusers returns
+        # the raw latent and leaves latents_mean / latents_std to the caller; pack_batch applies them because
+        # upstream does, inside its own encode.
+        clean = normalize_latent(clean, vae).to(torch.bfloat16)
     fed = inputs["vision_tokens"][0]
     check("frame 0 handed to the model equals the clean latent", torch.equal(fed[0, :, 0], clean[0, :, 0]))
     check("frame 1 was noised (control)", not torch.equal(fed[0, :, 1], clean[0, :, 1]))

@@ -50,9 +50,6 @@ python -m torch.distributed.run --nproc_per_node=1 train_sft.py \
     --samples-per-rank 1 --grad-accum 1 --max-iter 60 --max-episodes 4
 ```
 
-To exercise the loop with no video and no VAE, pass `--latents` a safetensors file whose entries are
-`<name>/latent` and `<name>/action` and whose header records `canvas_hw` and `aspect_key` per clip.
-
 ## The parts that are easy to get wrong
 
 Each of these fails silently — a plausible loss curve rather than an error — so each one is named here with the

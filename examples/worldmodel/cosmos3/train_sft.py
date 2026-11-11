@@ -12,8 +12,6 @@ Launch with::
 ``torchrun`` from a virtualenv that inherits torch from the system interpreter may resolve to that interpreter
 instead, which will not have ColossalAI importable; ``python -m torch.distributed.run`` avoids that.
 
-To exercise the training loop without video or the VAE, point ``--latents`` at a safetensors file of
-precomputed latents (see ``LatentPolicyDataset``).
 
 The ``__main__`` guard is required: the DataLoader starts its workers with ``spawn``, which re-imports this
 module in every worker, so any top-level side effect would run again there.
@@ -23,14 +21,12 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import os
 from pathlib import Path
 
 import torch
 from droid_dataset import DroidActionPolicyDataset, collate
 from packing import compute_loss, pack_batch
-from torch.utils.data import Dataset
 
 import colossalai
 from colossalai.booster import Booster
@@ -74,16 +70,6 @@ def parse_args():
     parser.add_argument("--data", type=Path, help="DROID dataset root, in LeRobot v3 layout.")
     parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge-Policy-DROID directory.")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"), help="Checkpoint output directory.")
-    parser.add_argument(
-        "--latents",
-        type=Path,
-        help="Skip the VAE and read precomputed latents from this safetensors file or directory.",
-    )
-    parser.add_argument(
-        "--latent-task",
-        default="pick up the object and put it in the container",
-        help="Task text for latent files whose metadata does not carry one.",
-    )
 
     # Recipe values by default; overridable for smoke runs at a shorter window or a smaller batch.
     parser.add_argument("--chunk-length", type=int, default=32, help="Actions per window; frames are this plus 1.")
@@ -107,8 +93,7 @@ def parse_args():
     parser.add_argument(
         "--mp-context",
         default="spawn",
-        help="Decoding video in the parent before a fork deadlocks, so spawn is the default. Reading precomputed "
-        "latents touches neither PyAV nor the VAE in the parent, where fork is fine.",
+        help="Decoding video in the parent before a fork deadlocks, so spawn is the default.",
     )
     parser.add_argument(
         "--vae-dtype",
@@ -125,8 +110,8 @@ def parse_args():
         "and runs out of memory at the recipe's sequence length, so it is for numerical comparison only.",
     )
     args = parser.parse_args()
-    if args.data is None and args.latents is None:
-        parser.error("one of --data or --latents is required")
+    if args.data is None:
+        parser.error("--data is required")
     return args
 
 
@@ -201,153 +186,6 @@ def build_optimizer(model):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# Precomputed-latent bypass
-#
-# The upstream pipeline does not precompute, and the VAE is frozen either way -- it is never trained. Two reasons
-# it stays in the step. Augmentation happens before the VAE, so caching latents freezes it: six augmented draws of
-# one window sit 0.614 apart in relL2, further than two adjacent distinct windows (0.522), so a cache would remove
-# more variation than the dataset's own stride-1 sampling provides. And the recipe runs 10000 iterations at a
-# global batch of 8192, which is 4.86 passes over the 16,847,949 windows, so a lossless cache would have to store
-# every visit: 81.9M x 1.29 MiB = 100 TiB in bf16. Upstream's answer to the cost is to make the online encode
-# cheap instead -- AOT-compiled chunk kernels, channels_last_3d weights, and bf16. (They also balance encode cost
-# across ranks, but that one is for the mixed-resolution pretraining job; every DROID window is the same shape,
-# so there is nothing to balance here.)
-#
-# Reading latents from disk is only a way to exercise the training loop and reproduce numbers without video, and
-# it does not stand in for the real data pipeline.
-# ---------------------------------------------------------------------------------------------------------------
-_SAFETENSOR_HANDLES: dict = {}
-
-
-def _open_safetensors(path):
-    """Cache the mmap handle per path.
-
-    The handle cannot live on the Dataset: a spawn worker pickles the Dataset and a file handle is not picklable.
-    Keeping it at module scope gives each process its own read-only mapping of the same file.
-    """
-    handle = _SAFETENSOR_HANDLES.get(path)
-    if handle is None:
-        from safetensors import safe_open
-
-        handle = safe_open(path, framework="pt", device="cpu")
-        _SAFETENSOR_HANDLES[path] = handle
-    return handle
-
-
-class LatentPolicyDataset(Dataset):
-    """Reads precomputed latents and actions, skipping the VAE.
-
-    A sample is stored as ``"<name>/latent"`` of shape ``[1, C, T, H, W]`` alongside ``"<name>/action"`` of shape
-    ``[chunk, action_dim]``. Entries without an action are skipped: a latent-only fixture carries no supervision.
-
-    The file header must also hold ``clips.<name>`` with ``canvas_hw`` and ``aspect_key``, because the JSON prompt
-    needs the on-screen geometry and that is the one piece of pixel information encoding throws away. A file
-    missing them raises rather than guessing.
-
-    Args:
-        sources: A safetensors file, a directory of them, or a list of either.
-        default_task (str): Task text for clips whose metadata does not carry one.
-    """
-
-    def __init__(self, sources, default_task: str):
-        if isinstance(sources, (str, os.PathLike)):
-            sources = [sources]
-        files = []
-        for source in sources:
-            path = Path(source)
-            if path.is_dir():
-                files.extend(sorted(path.glob("*.safetensors")))
-            elif path.is_file():
-                files.append(path)
-            else:
-                raise FileNotFoundError(f"No such latent file or directory: {path}")
-
-        self.items = []
-        skipped_clips = []
-        skipped_files = []
-        for path in files:
-            from safetensors import safe_open
-
-            with safe_open(str(path), framework="pt", device="cpu") as handle:
-                keys = list(handle.keys())
-                metadata = handle.metadata() or {}
-            try:
-                clips = json.loads(metadata.get("header", "{}")).get("clips", {})
-            except json.JSONDecodeError:  # metadata that is not JSON is treated as absent
-                clips = {}
-            prefixes = sorted({key.rsplit("/", 1)[0] for key in keys if key.endswith("/latent")})
-            if not prefixes:
-                skipped_files.append(path.name)
-                continue
-            for prefix in prefixes:
-                if f"{prefix}/action" not in keys:
-                    skipped_clips.append(f"{path.name}:{prefix}")
-                    continue
-                clip = clips.get(prefix) or {}
-                missing = [key for key in ("canvas_hw", "aspect_key") if key not in clip]
-                if missing:
-                    raise KeyError(
-                        f"{path.name}:{prefix} is missing {missing} in its header. A precomputed file has to "
-                        "record canvas_hw, content_hw and aspect_key, because the pixel geometry is gone after "
-                        "encoding and the prompt is built from it."
-                    )
-                content_hw = clip.get("content_hw") or clip["canvas_hw"]
-                self.items.append(
-                    {
-                        "path": str(path),
-                        "key": prefix,
-                        "task": clip.get("task") or default_task,
-                        "canvas_hw": tuple(int(v) for v in clip["canvas_hw"]),
-                        "content_hw": tuple(int(v) for v in content_hw),
-                        "aspect_key": str(clip["aspect_key"]),
-                    }
-                )
-
-        if skipped_files:
-            head = ", ".join(skipped_files[:5]) + (" ..." if len(skipped_files) > 5 else "")
-            print(f"[data] skipped {len(skipped_files)} file(s) with no <name>/latent key: {head}", flush=True)
-        if skipped_clips:
-            head = ", ".join(skipped_clips[:5]) + (" ..." if len(skipped_clips) > 5 else "")
-            print(f"[data] skipped {len(skipped_clips)} clip(s) with no action: {head}", flush=True)
-        if not self.items:
-            raise ValueError(
-                f"No sample carrying both a latent and an action was found in {sources}. A latent-only fixture "
-                "has no action supervision and cannot be trained on."
-            )
-
-    def __len__(self):
-        return len(self.items)
-
-    def __getitem__(self, index):
-        item = self.items[index]
-        handle = _open_safetensors(item["path"])
-        return {
-            "latent": handle.get_tensor(f"{item['key']}/latent")[0],  # [C, T, H, W]
-            "action": handle.get_tensor(f"{item['key']}/action"),  # [chunk, action_dim]
-            "task": item["task"],
-            "canvas_hw": torch.tensor(item["canvas_hw"]),
-            "content_hw": torch.tensor(item["content_hw"]),
-            "aspect_key": item["aspect_key"],
-        }
-
-
-def latent_collate(batch):
-    """Stack the tensors and keep the strings as lists.
-
-    The keys match ``droid_dataset.collate`` so that ``pack_batch`` does not care whether a sample came from video
-    or from a precomputed file; ``canvas_hw`` and ``content_hw`` have to stay tensors, since the prompt builder
-    calls ``.tolist()`` on them.
-    """
-    return {
-        "latent": torch.stack([item["latent"] for item in batch]),
-        "action": torch.stack([item["action"] for item in batch]),
-        "task": [item["task"] for item in batch],
-        "canvas_hw": torch.stack([item["canvas_hw"] for item in batch]),
-        "content_hw": torch.stack([item["content_hw"] for item in batch]),
-        "aspect_key": [item["aspect_key"] for item in batch],
-    }
-
-
 def main():
     args = parse_args()
 
@@ -362,28 +200,21 @@ def main():
     colossalai.launch_from_torch(backend=get_accelerator().communication_backend)
     coord = DistCoordinator()
 
-    vae = None
-    if args.latents:
-        dataset = LatentPolicyDataset(args.latents, default_task=args.latent_task)
-        collate_fn = latent_collate
-        coord.print_on_master(f"[data] {len(dataset)} precomputed sample(s), VAE skipped")
-    else:
-        dataset = DroidActionPolicyDataset(
-            args.data,
-            chunk_length=args.chunk_length,
-            fps=args.fps,
-            resolution=args.resolution,
-            augment=True,
-            max_episodes=args.max_episodes,
-        )
-        collate_fn = collate
-        coord.print_on_master(f"[data] {len(dataset)} window(s)")
+    dataset = DroidActionPolicyDataset(
+        args.data,
+        chunk_length=args.chunk_length,
+        fps=args.fps,
+        resolution=args.resolution,
+        augment=True,
+        max_episodes=args.max_episodes,
+    )
+    collate_fn = collate
+    coord.print_on_master(f"[data] {len(dataset)} window(s)")
 
     model = build_model(args.checkpoint)
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
     tokenizer = build_tokenizer(args.checkpoint)
-    if not args.latents:
-        vae = build_vae(args.checkpoint, getattr(torch, args.vae_dtype)).to(torch.npu.current_device())
+    vae = build_vae(args.checkpoint, getattr(torch, args.vae_dtype)).to(torch.npu.current_device())
     optimizer = build_optimizer(model)
 
     # Cosmos3OmniPolicy does two things: it installs the two-way attention processor in postprocess(), after the
