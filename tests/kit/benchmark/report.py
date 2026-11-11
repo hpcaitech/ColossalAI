@@ -216,10 +216,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "",
         *_search_section(report.get("search")),
         *_scaling_section(report.get("scaling"), setup.get("profile_steps", 0)),
-        "## Baseline",
-        "",
-        "Not compared by this report.",
-        "",
+        *_baseline_section(report, setup["config"]),
         "## Environment and reproduction",
         "",
         "| Item | Value |",
@@ -232,6 +229,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
         missing.remove(SEARCH_ITEMS[report["search"]["field"]])
     if "scaling" in report:
         missing.remove(SCALING_ITEM)
+    if "baseline" in report:
+        missing.remove(BASELINE_ITEM)
     if peak["nominal_tflops"] is None:
         missing.insert(0, f"MFU: no peak is known for {peak['device']} in {peak['dtype']}")
     lines += [f"- {item}" for item in missing]
@@ -244,6 +243,45 @@ def _tokens(value: float) -> str:
 
 SEARCH_ITEMS = {"seq_len": NOT_COVERED[0], "micro_batch": NOT_COVERED[1]}
 SCALING_ITEM = NOT_COVERED[2]
+BASELINE_ITEM = NOT_COVERED[3]
+
+
+def _baseline_section(report: Dict[str, Any], config: str) -> List[str]:
+    """The comparison of ``run.with_baseline``; without one, a line saying it was not compared."""
+    lines = ["## Baseline", ""]
+    baseline = report.get("baseline")
+    if baseline is None:
+        return lines + ["Not compared by this report.", ""]
+    rows = [
+        (config, report["throughput"], report["memory_bytes"], report["optimizer"], report["repeat_spread"]),
+        (
+            f"{baseline['config']} (baseline)",
+            baseline["throughput"],
+            baseline["memory_bytes"],
+            baseline["optimizer"],
+            baseline["repeat_spread"],
+        ),
+    ]
+    lines += [
+        f"The same setup on the same {report['world_size']} device(s), measured by the same protocol. "
+        f"{config} trains at {baseline['throughput_ratio']:.2f}× the baseline's throughput"
+        + (
+            f" with {baseline['reserved_ratio']:.2f}× its peak reserved memory."
+            if baseline["reserved_ratio"] is not None
+            else "."
+        ),
+        "",
+        "| Config | Tokens/s per device | MFU | Step time | Peak reserved | Optimizer | Repeat spread |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for name, throughput, memory, optimizer, spread in rows:
+        lines.append(
+            f"| {name} | {_tokens(throughput['tokens_per_s_per_device'])} | {_percent(throughput['mfu_nominal'])} | "
+            f"{throughput['step_time_s']['median'] * 1e3:.1f} ms | {_gib(memory.get('reserved_peak'))} | {optimizer} | "
+            f"{spread:.1%} |"
+        )
+    flagged = [f"baseline: {flag}" for flag in baseline["flags"]]
+    return lines + [""] + [f"> **Warning:** {flag}" for flag in flagged] + ([""] if flagged else [])
 
 
 def _scaling_section(points: Optional[List[Dict[str, Any]]], profiled: int) -> List[str]:

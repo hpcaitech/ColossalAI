@@ -3,8 +3,9 @@
 A shared framework for measuring how fast and how memory-hungry training a model is under a ColossalAI plugin, the
 same way for every model, so that reports from different models, plugins and machines can be compared.
 
-Covered so far: throughput, MFU, peak memory, the maximum sequence length and micro-batch on one device, and
-data-parallel scaling efficiency. Not covered yet, and listed as such in every report: comparison with a baseline.
+Covered: throughput, MFU, peak memory, the maximum sequence length and micro-batch on one device, data-parallel
+scaling efficiency, and comparison with a plain-PyTorch FSDP2 baseline. A report lists whatever it does not cover, so
+that a missing number is never read as zero.
 
 ## Quick start
 
@@ -31,6 +32,7 @@ Options: `--nproc N` (one process per device), `--seq-len`, `--micro-batch` (per
 | `zero2_bf16_offload` | the same with `cpu_offload=True` |
 | `gemini_bf16` | `GeminiPlugin(precision="bf16")` |
 | `fsdp_fp32`, `fsdp_bf16` | `TorchFSDPPlugin`, without or with bf16 `MixedPrecision` |
+| `pytorch_fsdp2_bf16` | no ColossalAI: the built-in baseline (see "Baseline" below) |
 
 The names are those of the numerical alignment tool (`tests/kit/numerics/acceptance.py`), so a model's alignment and
 benchmark reports refer to the same setups. The optimizer is `torch.optim.AdamW`, translated to `HybridAdam` for Gemini
@@ -56,6 +58,9 @@ length):
 python -m tests.kit.benchmark.run --entry transformers_llama_for_causal_lm --size 1b --config zero2_bf16 \
     --micro-batch 2 --scaling 1,2,4,8
 ```
+
+Add `--baseline pytorch_fsdp2_bf16` to any of these to measure the same setup with the baseline as well (for
+`--scaling`, at the largest device count; for `--search`, at the maximum found) and compare the two in the report.
 
 Render a JSON report again, e.g. after collecting it from another machine:
 
@@ -138,6 +143,15 @@ then runs 3 more steps under the profiler, outside the timing, and reads from th
 in which communication kernels (NCCL) run, and the share in which they run while no other kernel does: the time the
 device waits for communication, which is what an efficiency below 1 usually comes from. The shares are the largest over
 ranks. On Ascend the profiler is a different API and the shares are not read yet.
+
+### Baseline
+
+`baseline.py` trains the same model without ColossalAI, with PyTorch FSDP2 the way torchtitan sets it up:
+`fully_shard` on every transformer block (the classes a HuggingFace model lists in `_no_split_modules`), then on the
+root, computing in bf16 and reducing gradients in float32, with `torch.optim.AdamW`. It is timed by the same protocol,
+so the report's baseline table compares like with like: same model, sequence length, micro-batch, precision, gradient
+checkpointing and device count. Results of other frameworks (Megatron-LM, DeepSpeed, a model's own training code) are
+measured by other code and are not part of these reports.
 
 ### MFU
 

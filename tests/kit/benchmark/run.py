@@ -84,6 +84,34 @@ def run_benchmark(
     return report.build_report(runs, environment, repository_state(), command or [], flops, peak)
 
 
+def with_baseline(result: Dict[str, Any], baseline: Dict[str, Any]) -> Dict[str, Any]:
+    """``result`` with the comparison against ``baseline``, a report of the same setup under a baseline config on the
+    same number of devices, under ``"baseline"``."""
+    ours, theirs = result["setup"], baseline["setup"]
+    if {**ours, "config": None, "profile_steps": 0} != {**theirs, "config": None, "profile_steps": 0}:
+        raise ValueError("a baseline must measure the same setup but for the config")
+    if result["world_size"] != baseline["world_size"]:
+        raise ValueError("a baseline must run on as many devices")
+    result["baseline"] = {
+        "config": theirs["config"],
+        "throughput": baseline["throughput"],
+        "memory_bytes": baseline["memory_bytes"],
+        "optimizer": baseline["optimizer"],
+        "flags": baseline["flags"],
+        "repeat_spread": baseline["repeat_spread"],
+        # above 1: the plugin trains faster / needs more memory than the baseline
+        "throughput_ratio": result["throughput"]["tokens_per_s"] / baseline["throughput"]["tokens_per_s"],
+        "reserved_ratio": _ratio(
+            result["memory_bytes"].get("reserved_peak"), baseline["memory_bytes"].get("reserved_peak")
+        ),
+    }
+    return result
+
+
+def _ratio(a: Optional[float], b: Optional[float]) -> Optional[float]:
+    return a / b if a is not None and b else None
+
+
 def _worker(rank, world_size, port, setup, spec, path):
     colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
     spec = spec or benchmark_spec(setup.entry)
@@ -184,6 +212,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="data-parallel scaling: comma-separated device counts, e.g. 1,2,4,8; each keeps the per-device "
         "micro-batch and sequence length",
     )
+    parser.add_argument(
+        "--baseline",
+        choices=sorted(name for name, config in measure.CONFIGS.items() if config.plugin_fn is None),
+        help="also measure the same setup (the largest device count with --scaling, the maximum with --search) with "
+        "this plain-PyTorch baseline and compare",
+    )
     parser.add_argument("--granularity", type=int, help="search on multiples of this (256 tokens, 1 sample)")
     parser.add_argument("--upper", type=int, help="largest value to try; seq_len defaults to max_position_embeddings")
     args = parser.parse_args(argv)
@@ -218,6 +252,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         result = run_scaling(setup, counts, repeats=args.repeats, command=command)
     else:
         result = run_benchmark(setup, nproc=args.nproc, repeats=args.repeats, command=command)
+    if args.baseline:
+        measured = measure.Setup(**{**result["setup"], "config": args.baseline, "profile_steps": 0})
+        result = with_baseline(result, run_benchmark(measured, nproc=result["world_size"], repeats=args.repeats))
     kind = f"max-{args.search}" if args.search else "scaling" if args.scaling else None
     out = args.out or default_output(setup, result["repository"], kind)
     with open(out, "w") as f:

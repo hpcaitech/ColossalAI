@@ -10,7 +10,7 @@ from tests.kit.benchmark import BenchmarkSpec
 from tests.kit.benchmark.flops import counted_flops_per_token
 from tests.kit.benchmark.measure import Setup
 from tests.kit.benchmark.peak import lookup
-from tests.kit.benchmark.run import run_benchmark
+from tests.kit.benchmark.run import run_benchmark, with_baseline
 from tests.kit.benchmark.scaling import run_scaling
 from tests.kit.benchmark.search import Probe
 from tests.test_benchmark.test_benchmark_core import TINY, tiny_llama
@@ -135,3 +135,14 @@ def test_scaling_reads_communication_from_the_profiler():
     if get_accelerator().name == "cuda":
         # ZeRO-2 on two devices reduce-scatters gradients and all-gathers parameters every step
         assert 0 < two["exposed_communication"] <= two["communication"] < 1
+
+
+@pytest.mark.skipif(_devices() < 2, reason="needs two devices")
+@rerun_if_address_is_in_use()
+def test_fsdp2_baseline_trains_and_compares():
+    baseline = run_benchmark(_setup("pytorch_fsdp2_bf16"), nproc=2, repeats=1, spec=TINY)
+    assert baseline["repeats"][0]["loss"]["finite"] and baseline["optimizer"] == "AdamW"
+    memory = baseline["memory_bytes"]
+    assert 0 < memory["allocated_peak"] <= memory["reserved_peak"]
+    ours = run_benchmark(_setup("zero2_bf16"), nproc=2, repeats=1, spec=TINY)
+    assert with_baseline(ours, baseline)["baseline"]["throughput_ratio"] > 0

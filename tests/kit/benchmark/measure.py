@@ -1,10 +1,10 @@
-"""One benchmark run: train a model_zoo entry for warmup and timed steps under one plugin, on every rank of a process
-group, and return the step times, throughput and peak memory.
+"""One benchmark run: train a model_zoo entry for warmup and timed steps under one plugin (or the plain-PyTorch
+baseline), on every rank of a process group, and return the step times, throughput and peak memory.
 
 Protocol (the same for every entry, so reports compare):
 
 - Each rank builds one synthetic batch of fixed shape (seeded by rank) and feeds it to every step.
-- A step is forward, ``booster.backward``, ``optimizer.step`` and ``optimizer.zero_grad``. The device is synchronized
+- A step is forward, backward (``booster.backward`` under a plugin), ``optimizer.step`` and ``optimizer.zero_grad``. The device is synchronized
   right before and right after it, so the time covers the device work, not only the host launching it.
 - Warmup steps are discarded. The time of a timed step is the maximum over ranks: the slowest rank sets the pace.
 - Peak memory is tracked from the first step on, after the model and optimizer are built and boosted.
@@ -35,6 +35,7 @@ from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDP
 from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 from tests.kit.numerics.capture.plugins import make_optimizer
 
+from .baseline import fsdp2_bf16
 from .spec import BenchmarkSpec
 
 WARMUP_STEPS = 5
@@ -46,11 +47,13 @@ STEP_ANNOTATION = "benchmark/step"
 @dataclass(frozen=True)
 class Config:
     """A plugin and precision to benchmark under. ``plugin_fn`` builds the plugin inside each process; ``dtype`` is
-    what the matmuls run in, which selects the device's peak for MFU."""
+    what the matmuls run in, which selects the device's peak for MFU. A plain-PyTorch baseline has no plugin but a
+    ``wrap_fn(model, device)`` that parallelizes the model itself (see ``baseline.py``)."""
 
-    plugin_fn: Callable
+    plugin_fn: Optional[Callable]
     dtype: str
     mixed_precision: Optional[str] = None
+    wrap_fn: Optional[Callable] = None
 
 
 FSDP_BF16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat16, buffer_dtype=torch.bfloat16)
@@ -66,6 +69,8 @@ CONFIGS: Dict[str, Config] = {
     "gemini_bf16": Config(partial(GeminiPlugin, precision="bf16"), "bf16"),
     "fsdp_fp32": Config(TorchFSDPPlugin, "fp32"),
     "fsdp_bf16": Config(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16), "bf16"),
+    # the built-in baseline, without ColossalAI
+    "pytorch_fsdp2_bf16": Config(None, "bf16", wrap_fn=fsdp2_bf16),
 }
 
 
@@ -103,8 +108,7 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
     rank, world_size = dist.get_rank(), dist.get_world_size()
     torch.manual_seed(setup.seed)
     config = CONFIGS[setup.config]
-    plugin = config.plugin_fn()
-    booster = Booster(plugin=plugin, mixed_precision=config.mixed_precision)
+    device = accelerator.get_current_device()
 
     model = spec.models[setup.size]()
     if spec.prepare_fn is not None:
@@ -114,15 +118,28 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     model.train()
     parameters = sum(p.numel() for p in model.parameters())
-    optimizer = make_optimizer(
-        plugin, partial(torch.optim.AdamW, lr=setup.lr), [p for p in model.parameters() if p.requires_grad]
-    )
-    optimizer_name = type(optimizer).__name__
     generator = torch.Generator().manual_seed(setup.seed + rank)
     batch = spec.batch_fn(model, setup.micro_batch, setup.seq_len, generator)
     tokens = spec.tokens_fn(batch)
-    model, optimizer, *_ = booster.boost(model, optimizer)
-    device = accelerator.get_current_device()
+    if config.plugin_fn is not None:
+        plugin = config.plugin_fn()
+        booster = Booster(plugin=plugin, mixed_precision=config.mixed_precision)
+        trainable = [p for p in model.parameters() if p.requires_grad]
+        optimizer = make_optimizer(plugin, partial(torch.optim.AdamW, lr=setup.lr), trainable)
+        optimizer_name = type(optimizer).__name__
+        model, optimizer, *_ = booster.boost(model, optimizer)
+
+        def backward(loss):
+            booster.backward(loss, optimizer)
+
+    else:
+        model = config.wrap_fn(model, device)
+        optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=setup.lr)
+        optimizer_name = type(optimizer).__name__
+
+        def backward(loss):
+            loss.backward()
+
     batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
     # on the CPU every operation has finished when it returns; its accelerator has no synchronize() and no allocator
@@ -143,7 +160,7 @@ def measure(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         with torch.profiler.record_function(f"{STEP_ANNOTATION}{step}"):
             output = model(**batch)
             loss = spec.loss_fn(output)
-            booster.backward(loss, optimizer)
+            backward(loss)
             optimizer.step()
             optimizer.zero_grad()
         synchronize()

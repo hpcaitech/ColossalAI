@@ -75,6 +75,7 @@ case "${BATCH}" in
             tests/test_checkpoint_io/test_optimizer_safetensors_v2.py
             tests/test_config/test_load_config.py
             tests/test_infer/test_async_engine/test_request_tracer.py
+            tests/test_benchmark/test_benchmark_baseline.py
             tests/test_benchmark/test_benchmark_core.py
             tests/test_benchmark/test_benchmark_search.py
             tests/test_benchmark/test_benchmark_scaling.py
