@@ -318,6 +318,18 @@ def main():
         precision="bf16",
         max_norm=GRAD_CLIP,
         custom_policy=policy,
+        # The plugin otherwise casts every floating-point forward argument to bf16, and one of ours must not be
+        # cast: `position_ids` is [3, sequence_length] of *fractional* mRoPE positions reaching 15163.8, and bf16
+        # cannot hold a value that size closer than 16. Measured on one step, 3093 of 3244 positions come back
+        # changed, off by as much as 17 whole positions, and the loss reads 5.492133 instead of 1.789169 -- the
+        # rotary embedding is computed at the wrong place in the sequence. Peak memory is the same either way
+        # (13.61 GiB): what stays fp32 is this index and the two timestep vectors.
+        #
+        # Nothing else needs casting by hand. The latents arrive bf16 from the VAE already, and the transformer
+        # casts the timesteps itself, reading its own parameter dtype --
+        # `self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))` -- which also means the
+        # sinusoidal projection runs in fp32, which is what the fp32 timesteps are for.
+        cast_inputs=False,
     )
     booster = Booster(plugin=plugin)
 
@@ -370,7 +382,10 @@ def main():
             optimizer.zero_grad()
             step += 1
             if step % args.log_every == 0 or step == 1:
-                coord.print_on_master(f"[step {step}] loss {loss.item() * args.grad_accum:.6f}")
+                coord.print_on_master(
+                    f"[step {step}] loss {loss.item() * args.grad_accum:.6f} "
+                    f"peak {torch.npu.max_memory_allocated() / 2**30:.2f} GiB"
+                )
             if step % args.save_every == 0:
                 save_dir = args.out / f"step-{step}"
                 booster.save_model(model, str(save_dir), shard=True, use_safetensors=True)

@@ -189,3 +189,22 @@ def test_the_positions_are_fractional_and_float(ids):
     """
     assert ids.dtype.is_floating_point
     assert not torch.equal(ids[0], ids[0].floor())
+
+
+def test_bfloat16_cannot_hold_these_positions(ids):
+    """And float means fp32, not bf16 -- which is why the plugin's input cast is turned off in train_sft.
+
+    ``HybridParallelPlugin`` at ``precision="bf16"`` casts every floating-point forward argument to bf16 unless
+    it is built with ``cast_inputs=False``. The temporal axis runs into the thousands, where bf16's step is 16
+    or more, so the cast moves most of the positions: measured on one real step, 3093 of 3244 of them, by as
+    much as 17 whole positions, and the loss read 5.492133 instead of 1.789169.
+
+    This test exists so that the flag cannot be read as cosmetic. If the positions ever become small enough for
+    bf16 to hold them exactly, it fails, and the comment in train_sft should be revisited rather than trusted.
+    """
+    assert ids[0].max() > 256, "below 256 bf16 is exact for integers, and the argument for the flag weakens"
+    roundtrip = ids.to(torch.bfloat16).to(ids.dtype)
+    assert (
+        int((roundtrip != ids).sum()) > 0
+    ), "bf16 held every position exactly, so train_sft's cast_inputs=False needs re-justifying"
+    assert (roundtrip - ids).abs().max() > 1.0, "the error should exceed a whole position, not just round it"
