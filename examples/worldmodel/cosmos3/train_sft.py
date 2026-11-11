@@ -425,6 +425,14 @@ def main():
         # projection to the embedder's parameter dtype before the call. Keeping the timesteps fp32 does not
         # prevent that; the policy does, by handing the embedder the value from before the cast.
         cast_inputs=args.cast_inputs,
+        # And the cast must not reach the buffers either. This model's only floating-point buffer is
+        # `rotary_emb.inv_freq`, the rotary frequency table: bf16 moves it by relL2 4.2e-04, which multiplied
+        # by a position of 15163.8 is a phase error of radians rather than of last bits. Measured against the
+        # reference implementation on one step with every input bit-identical, that one 64-element buffer put
+        # the vision loss 0.1508% away from it instead of 0.0072% -- further than the reference's own bf16
+        # against its own fp32 (0.101%) -- and leaving it alone makes this example's predictions
+        # bit-identical to the same forward with no plugin at all.
+        cast_buffers=False,
     )
     booster = Booster(plugin=plugin)
 
