@@ -174,11 +174,10 @@ def install_fp32_timestep_embedding(model: torch.nn.Module) -> int:
     the copies. The result is returned in the dtype the caller handed in, so nothing downstream changes shape or
     dtype.
 
-    What this does NOT recover: the model's forward computes the sinusoidal projection and then casts it to the
-    embedder's parameter dtype *before* calling it -- ``self.time_embedder(self.time_proj(t).to(dtype))`` -- so
-    the input arrives already rounded, and upcasting it here cannot undo that. Closing that last part means
-    leaving the parameters in fp32, which is what the model declares through ``_keep_in_fp32_modules`` and what
-    the plugin's blanket cast currently overrides.
+    What this does NOT recover on its own: the model's forward computes the sinusoidal projection and then
+    casts it to the embedder's parameter dtype *before* calling it -- ``self.time_embedder(self.time_proj(t)
+    .to(dtype))`` -- so the input arrives already rounded, and upcasting it here cannot undo that.
+    :func:`install_fp32_sinusoidal_timestep_input` closes that part, from the other side of the same call.
 
     Args:
         model (torch.nn.Module): The transformer. Every submodule named ``time_embedder`` is wrapped; a model
@@ -214,6 +213,84 @@ def install_fp32_timestep_embedding(model: torch.nn.Module) -> int:
 
         module.forward = forward.__get__(module, module.__class__)
         module._colossal_fp32_forward = True
+        wrapped += 1
+    return wrapped
+
+
+def install_fp32_sinusoidal_timestep_input(model: torch.nn.Module) -> int:
+    """Hand the timestep embedder the sinusoidal projection as computed, before it is rounded.
+
+    The model's forward is ``self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))``. The
+    projection itself runs in fp32, because the timesteps are fp32, and is then rounded to the embedder's
+    parameter dtype -- bf16 under a mixed-precision plugin. The reference implementation has no such
+    rounding: its ``TimestepEmbedder.forward`` builds the sinusoidal features and feeds them to its MLP
+    inside one module, under an fp32 autocast region, and only the *output* is cast to the model dtype.
+
+    The rounding happens in the model's own forward, between the two submodules, so replacing either of them
+    cannot remove it. What can be done from outside is to keep the value before the cast: ``time_proj``'s
+    forward stores its output, and ``time_embedder``'s forward uses that stored value in place of the rounded
+    copy it was handed. The two are the same tensor up to the cast, and that is asserted on every call rather
+    than assumed -- if the model ever stops calling them as a pair, this raises instead of quietly going back
+    to the rounded input, which is the failure mode worth avoiding: it would be invisible in every output.
+
+    Install this after :func:`install_fp32_timestep_embedding`, and only after it: an embedder whose
+    parameters are still bf16 cannot be handed fp32 features at all (the matmul refuses mixed dtypes), so a
+    pair without that wrapper raises here rather than at the first forward. The embedding leaves in the
+    dtype the caller's rounded copy had, which is what the model dtype is and what the reference
+    implementation also returns -- fp32 is for the arithmetic, not for what the rest of the model holds. Measured on one Edge step with the parameters in bf16: the
+    features themselves move by relL2 7.0e-04 and the embedding by 1.7e-03, which is 0.026% on the vision
+    loss but relL2 1.2e-02 on the vision prediction -- the same order as the gap to the reference.
+
+    Args:
+        model (torch.nn.Module): The transformer. Every module that owns both a ``time_proj`` and a
+            ``time_embedder`` child is wrapped; a model without such a pair is left alone and reported as
+            zero.
+
+    Returns:
+        int: How many module pairs were wrapped, so a caller can fail instead of silently wrapping nothing.
+    """
+    wrapped = 0
+    for parent in model.modules():
+        proj = getattr(parent, "time_proj", None)
+        embedder = getattr(parent, "time_embedder", None)
+        if proj is None or embedder is None or getattr(parent, "_colossal_fp32_sinusoid_installed", False):
+            continue
+        if not getattr(embedder, "_colossal_fp32_forward", False):
+            raise RuntimeError(
+                "install_fp32_sinusoidal_timestep_input needs install_fp32_timestep_embedding on the same "
+                "embedder first: handing fp32 features to a module whose parameters are still in the "
+                "training dtype fails in the first matmul."
+            )
+        stash = {}
+        proj_forward, embedder_forward = proj.forward, embedder.forward
+
+        def projected(*args, _inner=proj_forward, _stash=stash, **kwargs):
+            out = _inner(*args, **kwargs)
+            if torch.is_tensor(out):
+                _stash["features"] = out
+            return out
+
+        def embedded(sample, *args, _inner=embedder_forward, _stash=stash, **kwargs):
+            features = _stash.pop("features", None)
+            if features is None or not torch.is_tensor(sample):
+                return _inner(sample, *args, **kwargs)
+            if features.shape != sample.shape or not torch.equal(sample, features.to(sample.dtype)):
+                raise RuntimeError(
+                    "the timestep embedder was not handed the sinusoidal projection this pass computed, so "
+                    "the fp32 input cannot be restored. The model no longer calls time_proj and "
+                    "time_embedder as a pair; install_fp32_sinusoidal_timestep_input has to be updated "
+                    "rather than left to fall back on the rounded input."
+                )
+            out = _inner(features, *args, **kwargs)
+            # Back to what the caller would have received. The rounded copy carries the model dtype, and
+            # everything downstream of the embedding is in it.
+            if torch.is_tensor(out) and out.is_floating_point():
+                out = out.to(sample.dtype)
+            return out
+
+        proj.forward = projected
+        embedder.forward = embedded
+        parent._colossal_fp32_sinusoid_installed = True
         wrapped += 1
     return wrapped
 
