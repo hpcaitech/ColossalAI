@@ -1,6 +1,8 @@
 import torch
 import transformers
 
+from tests.kit.benchmark import BenchmarkSpec
+
 from ..registry import ModelAttribute, model_zoo
 
 try:
@@ -70,6 +72,30 @@ if HAS_LLAMA:
     if hasattr(config, "pad_token_id"):
         config.pad_token_id = config.eos_token_id
 
+    # Real sizes for benchmarking, from the config.json of meta-llama/Llama-3.2-1B and meta-llama/Llama-3.1-8B
+    # (rope scaling left out: it changes no shape and no FLOP)
+    LLAMA3 = dict(
+        vocab_size=128256,
+        num_key_value_heads=8,
+        num_attention_heads=32,
+        rms_norm_eps=1e-5,
+        rope_theta=500000.0,
+        max_position_embeddings=131072,
+        attn_implementation="sdpa",
+        use_cache=False,
+    )
+    LLAMA3_SIZES = {
+        "1b": dict(
+            hidden_size=2048, intermediate_size=8192, num_hidden_layers=16, head_dim=64, tie_word_embeddings=True
+        ),
+        "8b": dict(hidden_size=4096, intermediate_size=14336, num_hidden_layers=32, tie_word_embeddings=False),
+    }
+
+    def llama3(size):
+        return lambda: transformers.LlamaForCausalLM(LlamaConfig(**LLAMA3, **LLAMA3_SIZES[size]))
+
+    benchmark = BenchmarkSpec(models={size: llama3(size) for size in LLAMA3_SIZES}, seq_len=4096)
+
     # register the following models
     # transformers.LlamaForCausalLM,
     # transformers.LlamaModel,
@@ -80,7 +106,7 @@ if HAS_LLAMA:
         data_gen_fn=data_gen_for_causal_lm,
         output_transform_fn=output_transform_fn,
         loss_fn=loss_fn_for_causal_lm,
-        model_attribute=ModelAttribute(has_control_flow=True),
+        model_attribute=ModelAttribute(has_control_flow=True, benchmark=benchmark),
     )
     model_zoo.register(
         name="transformers_llama",

@@ -1,6 +1,8 @@
 import torch
 import transformers
 
+from tests.kit.benchmark import BenchmarkSpec
+
 from ..registry import ModelAttribute, model_zoo
 
 try:
@@ -91,6 +93,46 @@ if HAS_QWEN3:
 
     config.pad_token_id = 0
 
+    # Real sizes for benchmarking, from the config.json of Qwen/Qwen3-0.6B, Qwen/Qwen3-1.7B and Qwen/Qwen3-8B
+    QWEN3 = dict(
+        vocab_size=151936,
+        num_key_value_heads=8,
+        head_dim=128,
+        rms_norm_eps=1e-6,
+        rope_theta=1000000.0,
+        max_position_embeddings=40960,
+        attn_implementation="sdpa",
+        use_cache=False,
+    )
+    QWEN3_SIZES = {
+        "0.6b": dict(
+            hidden_size=1024,
+            intermediate_size=3072,
+            num_hidden_layers=28,
+            num_attention_heads=16,
+            tie_word_embeddings=True,
+        ),
+        "1.7b": dict(
+            hidden_size=2048,
+            intermediate_size=6144,
+            num_hidden_layers=28,
+            num_attention_heads=16,
+            tie_word_embeddings=True,
+        ),
+        "8b": dict(
+            hidden_size=4096,
+            intermediate_size=12288,
+            num_hidden_layers=36,
+            num_attention_heads=32,
+            tie_word_embeddings=False,
+        ),
+    }
+
+    def qwen3(size):
+        return lambda: transformers.Qwen3ForCausalLM(Qwen3Config(**QWEN3, **QWEN3_SIZES[size]))
+
+    benchmark = BenchmarkSpec(models={size: qwen3(size) for size in QWEN3_SIZES}, seq_len=4096)
+
     # register the following models
     # transformers.Qwen3Model,
     # transformers.Qwen3ForCausalLM,
@@ -109,7 +151,7 @@ if HAS_QWEN3:
         data_gen_fn=data_gen_for_causal_lm,
         output_transform_fn=output_transform_fn,
         loss_fn=loss_fn_for_causal_lm,
-        model_attribute=ModelAttribute(has_control_flow=True),
+        model_attribute=ModelAttribute(has_control_flow=True, benchmark=benchmark),
     )
     model_zoo.register(
         name="transformers_qwen3_for_sequence_classification",

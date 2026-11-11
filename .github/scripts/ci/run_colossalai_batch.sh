@@ -75,6 +75,7 @@ case "${BATCH}" in
             tests/test_checkpoint_io/test_optimizer_safetensors_v2.py
             tests/test_config/test_load_config.py
             tests/test_infer/test_async_engine/test_request_tracer.py
+            tests/test_benchmark/test_benchmark_core.py
             tests/test_lazy/test_chatglm_cpu.py
             tests/test_numerics/test_numerics_acceptance.py
             tests/test_numerics/test_numerics_core.py
@@ -171,11 +172,12 @@ case "${BATCH}" in
         ;;
     5|05)
         LABEL="05-booster-lora-2gpu"
-        DESCRIPTION="DDP, FSDP, LowLevelZeRO, LoRA and the numerical alignment tool on its plugins"
+        DESCRIPTION="DDP, FSDP, LowLevelZeRO, LoRA, and the numerical alignment and benchmark tools on these plugins"
         EXPECTED_GPUS=2
         DEFAULT_TIMEOUT_MIN=90
         NEEDS_CUDA_TOOLKIT=1
         TESTS=(
+            tests/test_benchmark
             tests/test_booster/test_plugin/test_dp_plugin_base.py
             tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             tests/test_booster/test_plugin/test_torch_fsdp_plugin.py

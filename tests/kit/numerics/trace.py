@@ -7,6 +7,7 @@ different machines (e.g. GPU and NPU) can be compared offline without unpickling
 import json
 import os
 import platform
+import subprocess
 from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, Optional, Union
@@ -35,6 +36,25 @@ def environment_meta() -> Dict[str, Any]:
     except ImportError:
         pass
     return meta
+
+
+def repository_state() -> Dict[str, Any]:
+    """The commit of the checkout this file belongs to and whether its tree has changes, for a report to be rerun."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+    def git(*args) -> str:
+        # safe.directory: the checkout may belong to another user than the one running (e.g. root in a container)
+        command = ["git", "-c", "safe.directory=*", *args]
+        return subprocess.run(command, cwd=root, capture_output=True, text=True, check=True).stdout.strip()
+
+    try:
+        changed = git("status", "--porcelain").splitlines()
+        return {"commit": git("rev-parse", "HEAD"), "dirty": bool(changed), "changed": changed[:50]}
+    except subprocess.CalledProcessError as exc:
+        # e.g. a worktree mounted into a container without the main checkout its .git file points to
+        return {"error": f"{exc}: {exc.stderr.strip()}"}
+    except OSError as exc:
+        return {"error": str(exc)}
 
 
 class Trace(Mapping):
