@@ -594,7 +594,7 @@ class LowLevelZeroPlugin(DPPluginBase):
         dp_size = dist.get_world_size()
 
         # Replace with the distributed implementation if exists
-        optimizer = cast_to_distributed(optimizer)
+        optimizer = cast_to_distributed(optimizer, lr_scheduler)
 
         if isinstance(optimizer, DistGaloreAdamW) and zero_stage > 0 and dp_size > 0:
             self.logger.warning(
