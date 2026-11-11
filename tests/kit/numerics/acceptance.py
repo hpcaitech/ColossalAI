@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
@@ -31,6 +31,8 @@ from torch.distributed.fsdp import MixedPrecision
 
 import colossalai
 from colossalai.accelerator import get_accelerator
+from colossalai.booster.mixed_precision import MixedPrecision as BoosterMixedPrecision
+from colossalai.booster.mixed_precision.fp16_torch import FP16TorchMixedPrecision
 from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 from colossalai.testing import rerun_if_address_is_in_use, spawn
@@ -50,7 +52,7 @@ class Config:
     """A plugin and precision to check under. ``plugin_fn`` builds the plugin inside each process."""
 
     plugin_fn: Callable
-    mixed_precision: Optional[str] = None
+    mixed_precision: Union[str, BoosterMixedPrecision, None] = None
     # needs a CUDA or NPU device; the data-parallel check needs two
     needs_device: bool = True
     # resume: loading a sharded optimizer fails on CPU (see scenarios.resume)
@@ -61,8 +63,8 @@ FSDP_BF16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat
 CONFIGS: Dict[str, Config] = {
     "ddp_fp32": Config(TorchDDPPlugin, needs_device=False),
     "ddp_fp16": Config(TorchDDPPlugin, "fp16"),
-    # refused before anything runs: BF16MixedPrecision is not implemented
-    "ddp_bf16": Config(TorchDDPPlugin, "bf16", needs_device=False),
+    # BF16Module uses the accelerator's autocast; CPUAccelerator does not implement BF16 autocast.
+    "ddp_bf16": Config(TorchDDPPlugin, "bf16"),
     "zero1_fp32": Config(partial(LowLevelZeroPlugin, stage=1, precision="fp32")),
     "zero1_bf16": Config(partial(LowLevelZeroPlugin, stage=1, precision="bf16")),
     "zero2_fp32": Config(partial(LowLevelZeroPlugin, stage=2, precision="fp32")),
@@ -88,6 +90,20 @@ L2_ITEMS = {
 }
 
 
+def _entry_config(name: str, spec: NumericsSpec) -> Config:
+    config = CONFIGS[name]
+    scale = spec.fp16_loss_scale
+    if scale is None:
+        return config
+    if not math.isfinite(scale) or scale <= 0:
+        raise ValueError("NumericsSpec.fp16_loss_scale must be positive and finite")
+    if name == "ddp_fp16":
+        return replace(config, mixed_precision=FP16TorchMixedPrecision(init_scale=scale))
+    if name == "gemini_fp16":
+        return replace(config, plugin_fn=partial(config.plugin_fn, initial_scale=scale))
+    return config
+
+
 def run_acceptance(
     entry: Union[str, tuple],
     configs: Sequence[str] = tuple(CONFIGS),
@@ -104,12 +120,13 @@ def run_acceptance(
     if unknown:
         raise ValueError(f"unknown configs or checks: {unknown}; known: {sorted(CONFIGS)}, {list(CHECKS)}")
     results = []
-    token_loss = _spec(entry).token_loss is not None
+    spec = _spec(entry)
+    token_loss = spec.token_loss is not None
     if "blank_control" in checks:
         run = partial(_in_process_group, _blank_control, entry, steps, cache_dir)
         results.append(_result("blank_control", None, run))
     for name in configs:
-        config = CONFIGS[name]
+        config = _entry_config(name, spec)
         for check in checks:
             if check == "blank_control":
                 continue
@@ -148,6 +165,7 @@ def run_acceptance(
         "repository": _repository(),
         "environment": _environment(),
         "steps": steps,
+        "recipe_overrides": {"fp16_initial_loss_scale": spec.fp16_loss_scale},
         "results": results,
         "summary": {s: sum(r["status"] == s for r in results) for s in (PASSED, FAILED, UNSUPPORTED, NOT_RUN)},
     }

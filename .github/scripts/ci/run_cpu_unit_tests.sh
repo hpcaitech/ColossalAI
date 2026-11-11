@@ -16,6 +16,7 @@ TESTS=(
     tests/test_lazy/test_chatglm_cpu.py
     tests/test_numerics/test_numerics_acceptance.py
     tests/test_numerics/test_numerics_core.py
+    tests/test_model_zoo/test_gemma4.py
     tests/test_numerics/test_numerics_data_parallel.py
     tests/test_numerics/test_numerics_independent_impl.py
     tests/test_numerics/test_numerics_resume.py

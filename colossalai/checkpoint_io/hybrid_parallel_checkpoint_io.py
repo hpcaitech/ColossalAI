@@ -60,6 +60,21 @@ except ImportError:
     _EXTRA_STATE_KEY_SUFFIX = "_extra_state"
 
 
+_MASTER_PARAM_STATE_KEY = "_colossalai_master_param"
+
+
+def _optimizer_checkpoint_states(optimizer):
+    # Include masters even before Adam creates its moments (e.g. a checkpoint before the first step).
+    master_to_working = optimizer.get_master_to_working_map()
+    for group in optimizer.optim.param_groups:
+        for param in group["params"]:
+            state = dict(optimizer.optim.state.get(param, {}))
+            if master_to_working is not None and master_to_working[id(param)] is not param:
+                state[_MASTER_PARAM_STATE_KEY] = param.detach()
+            if state:
+                yield param, state
+
+
 def _route_padded_parameter_aliases(model: nn.Module, state_dict: Dict[str, torch.Tensor]) -> None:
     """Route shared padded weights only through padding-aware module loaders."""
     from colossalai.shardformer.layer.parallel_module import PaddingParallelModule
@@ -221,7 +236,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         param_info = optimizer.param_info
         master_to_working_map = optimizer.get_master_to_working_map()
 
-        for param, state in optimizer.optim.state.items():
+        for param, state in _optimizer_checkpoint_states(optimizer):
             if param is None:
                 continue
 
@@ -810,6 +825,17 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     dtype=dtype,
                     inplace=True,
                 )
+                master = new_states[param].pop(_MASTER_PARAM_STATE_KEY, None)
+                if master is not None:
+                    if master.shape != param.shape:
+                        raise ValueError(
+                            f"Master checkpoint shape {master.shape} does not match parameter {param.shape}"
+                        )
+                    with torch.no_grad():
+                        param.copy_(master)
+                # Do not create an empty Adam state: Adam initializes moments only for missing state entries.
+                if not new_states[param]:
+                    del new_states[param]
         optimizer.optim.state.update(new_states)
 
     def save_unsharded_model(
@@ -932,7 +958,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # optimizer states of parameters kept by local device('s pipeline stage)
         local_states = dict()
 
-        for param, state in optimizer.optim.state.items():
+        for param, state in _optimizer_checkpoint_states(optimizer):
             if param is None:
                 continue
 

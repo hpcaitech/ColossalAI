@@ -9,6 +9,7 @@ from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 from torch.utils._pytree import tree_map
 from torch.utils.data import DataLoader
 
+from colossalai.booster.mixed_precision.fp16_torch import TorchAMPOptimizer
 from colossalai.checkpoint_io import CheckpointIO, GeneralCheckpointIO
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
@@ -148,7 +149,12 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         assert isinstance(optimizer, OptimizerWrapper), "Please boost the optimizer before saving!"
         if self.coordinator.is_master():
             super().save_sharded_optimizer(
-                optimizer.unwrap(), checkpoint, gather_dtensor, prefix, size_per_shard, use_async=use_async
+                optimizer if isinstance(optimizer, TorchAMPOptimizer) else optimizer.unwrap(),
+                checkpoint,
+                gather_dtensor,
+                prefix,
+                size_per_shard,
+                use_async=use_async,
             )
 
     def load_sharded_optimizer(
@@ -166,6 +172,8 @@ class TorchDDPCheckpointIO(GeneralCheckpointIO):
         super().load_sharded_optimizer(
             optimizer.unwrap(), index_file_path, prefix, low_cpu_mem_mode=low_cpu_mem_mode, num_threads=num_threads
         )
+        if isinstance(optimizer, TorchAMPOptimizer):
+            optimizer.restore_scaler_from_param_groups(optimizer.param_groups)
 
     def save_lora_as_pretrained(
         self,

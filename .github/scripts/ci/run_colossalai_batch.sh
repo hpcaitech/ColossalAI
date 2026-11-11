@@ -78,6 +78,7 @@ case "${BATCH}" in
             tests/test_lazy/test_chatglm_cpu.py
             tests/test_numerics/test_numerics_acceptance.py
             tests/test_numerics/test_numerics_core.py
+            tests/test_model_zoo/test_gemma4.py
             tests/test_numerics/test_numerics_data_parallel.py
             tests/test_numerics/test_numerics_independent_impl.py
             tests/test_numerics/test_numerics_resume.py
@@ -179,6 +180,13 @@ case "${BATCH}" in
             tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             tests/test_booster/test_plugin/test_low_level_zero_plugin.py
+            tests/test_booster/test_plugin/test_gemma4.py
+            tests/test_booster/test_plugin/test_gemma4_alignment.py
+            tests/test_booster/test_mixed_precision/test_bf16.py
+            tests/test_checkpoint_io/test_low_level_zero_master_resume.py
+            tests/test_checkpoint_io/test_gemini_master_resume.py
+            tests/test_zero/test_gemini/test_grad_accum_reduction.py
+            tests/test_zero/test_gemini/test_tied_accumulation_resume.py
             tests/test_lora/test_lora.py
             tests/test_numerics
         )
@@ -243,6 +251,13 @@ case "${BATCH}" in
             --ignore=tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_low_level_zero_plugin.py
+            --ignore=tests/test_booster/test_plugin/test_gemma4.py
+            --ignore=tests/test_booster/test_plugin/test_gemma4_alignment.py
+            --ignore=tests/test_booster/test_mixed_precision/test_bf16.py
+            --ignore=tests/test_checkpoint_io/test_low_level_zero_master_resume.py
+            --ignore=tests/test_checkpoint_io/test_gemini_master_resume.py
+            --ignore=tests/test_zero/test_gemini/test_grad_accum_reduction.py
+            --ignore=tests/test_zero/test_gemini/test_tied_accumulation_resume.py
             --ignore=tests/test_optimizer/test_lr_scheduler.py
             --ignore=tests/test_optimizer/test_adam_kernel.py
             --ignore=tests/test_optimizer/test_adam_optim.py

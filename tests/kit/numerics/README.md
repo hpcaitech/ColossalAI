@@ -224,7 +224,7 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | --- | --- | --- |
    | `TorchDDPPlugin()` | float32 | CPU or GPU |
    | `TorchDDPPlugin()`, `mixed_precision="fp16"` | float32 weights, `torch.autocast(float16)`, loss scale 2**16 | CUDA |
-   | `TorchDDPPlugin()`, `mixed_precision="bf16"` | refused: `BF16MixedPrecision` is not implemented | |
+   | `TorchDDPPlugin()`, `mixed_precision="bf16"` or `BF16MixedPrecision()` | float32 weights, `torch.autocast(bfloat16)`, float32 optimizer states, no loss scaling | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="fp32")`, stage 1 or 2 | float32 | CUDA or NPU |
    | `LowLevelZeroPlugin(precision="bf16")`, stage 1 or 2 | whole model and inputs cast to bf16, float32 master weights | CUDA or NPU |
    | `HybridParallelPlugin(tp_size=1, pp_size=1, precision="fp32")` (the shardformer path) | float32 | CUDA or NPU |
@@ -235,6 +235,9 @@ A comparison is only meaningful if `ref` reduces precision exactly where the plu
    | `TorchFSDPPlugin()` | float32 | CUDA |
    | `TorchFSDPPlugin(mixed_precision=MixedPrecision(param_dtype=bf16 or fp16, buffer_dtype=the same))` | whole model and inputs cast, float32 master weights (FSDP's sharded parameters, which start from the model's own float32 weights, not from their cast), no loss scaling | CUDA |
    | `LowLevelZeroPlugin` with fp16, `max_norm`, `use_fp8`, `cast_inputs=False`, or `cpu_offload` with fp32 or `master_weights=False`; `HybridParallelPlugin` with any parallel size above 1, sequence parallelism, `zero_stage > 0`, `max_norm`, `use_fp8`, `cpu_offload` or fp16; `GeminiPlugin` with offloading (`placement_policy="auto"`, `offload_*_frac`), `max_norm`, `use_fp8`, `master_weights=False`, `tp_size` or `extra_dp_size` above 1; `TorchFSDPPlugin` with `cpu_offload`, `auto_wrap_policy`, `ignored_modules`, `fp8_communication`, a `buffer_dtype` other than `param_dtype` or `keep_low_precision_grads`; other plugins | refused: not verified yet | |
+
+   CPU `BF16MixedPrecision` is refused: `CPUAccelerator.autocast` does not implement BF16 autocast. The acceptance
+   command records `ddp_bf16` as `not_run` on CPU rather than running a float32 model under a BF16 label.
 
 2. **The dtypes actually used must match.** Both runs record the input, output and weight dtypes of every module,
    the gradient dtypes, the dtypes of what the optimizer updates (the master weights where there are any) and of its
@@ -463,7 +466,25 @@ report = resume.check("transformers_mixtral", partial(LowLevelZeroPlugin, stage=
 report.assert_pass()
 ```
 
-`parts=("model", "optimizer")` and the like leave a part out of the checkpoint; each omission is detected. Results on
+`parts=("model", "optimizer")` and the like leave a part out of the checkpoint; each omission is detected.
+
+The Gemma checkpoint integration adds FP32 master values to HybridParallel optimizer state, removes that private
+metadata on load, and accepts legacy checkpoints without it (legacy checkpoints cannot recover discarded bits).
+Gemini's gathered gradient accumulation also keeps the previous averaged gradient unscaled before the next
+all-reduce; multiplying it by the world size counted earlier micro-batches multiple times. The sharded path still
+compensates for its single-owner gradient shard. A linear model with hand-computed gradients tests both paths,
+one/two devices and synchronous/asynchronous reduction without an Apex dependency.
+It also exports the inner HF config for FSDP and the actual exported weight dtype for Gemini. DDP Torch AMP avoids
+nesting the base optimizer wrapper and saves the scaler's complete state in private parameter-group metadata for
+both sharded and unsharded checkpoints. Regression coverage is in `test_gemma4_checkpoint_regressions.py`.
+
+For FP16 models needing a smaller initial loss scale, declare `NumericsSpec(fp16_loss_scale=1024)` in the entry.
+The acceptance command applies it to DDP AMP and Gemini FP16, to both reference and plugin, and records it under
+`recipe_overrides`. Other entries keep their defaults. Overflow, skipped steps and changed scales still fail;
+neither the judge nor its tolerance is changed. Direct `check_training` callers must supply the same configured
+mixed-precision instance or plugin themselves.
+
+The following table records the original tool baseline, before those checkpoint fixes. Results on
 Mixtral, Llama, GPT and BERT with 1 and 2 devices:
 
 | Configuration | Resumed run |
