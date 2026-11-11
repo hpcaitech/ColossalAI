@@ -84,18 +84,27 @@ def rectified_flow_noise(x0: torch.Tensor, t: torch.Tensor, generator=None):
     sense that ``x0 = x_t - sigma * target``, which is what tests/test_target_form.py checks: a flipped sign is
     still perfectly learnable on a single sample, so it has to be caught by the identity rather than by training.
 
+    Everything here is fp32, whatever dtype ``x0`` arrives in, because that is how upstream does it: it keeps
+    the clean payload in fp32 inside its ``PackedSequence`` and noises after packing, so its noise, its ``x_t``
+    and its target are all fp32. Drawing the noise in bf16 instead -- which is what ``dtype=x0.dtype`` used to
+    do, the payload coming out of a bf16 VAE -- quantizes the samples at about 0.4% relative, and the target
+    ``noise - x0`` inherits that. The target is what the gradient is taken against, so it is the one tensor
+    here worth keeping exact; the caller casts ``x_t`` to the model's dtype on its way into the forward and
+    leaves the target alone.
+
     Args:
-        x0 (torch.Tensor): Clean sample.
+        x0 (torch.Tensor): Clean sample, in any floating dtype.
         t (torch.Tensor): Noise level in [0, 1), broadcast against ``x0``.
         generator (torch.Generator, optional): CPU generator. Defaults to None.
 
     Returns:
-        tuple: ``(x_t, target)``, both shaped like ``x0``.
+        tuple: ``(x_t, target)``, both shaped like ``x0`` and both fp32.
     """
     # The generator lives on CPU, so the noise is drawn there and moved afterwards; this keeps a run reproducible
     # from a seed regardless of the device.
-    noise = torch.randn(x0.shape, generator=generator, dtype=x0.dtype).to(x0.device)
-    t = t.to(device=x0.device, dtype=x0.dtype)
+    noise = torch.randn(x0.shape, generator=generator, dtype=torch.float32).to(x0.device)
+    x0 = x0.float()
+    t = t.to(device=x0.device, dtype=torch.float32)
     while t.ndim < x0.ndim:
         t = t.unsqueeze(-1)
     return (1.0 - t) * x0 + t * noise, noise - x0
@@ -492,17 +501,21 @@ def pack_one(
     # test_independent_modality_schedule_invalidates_fast_path, where the action timestep differs from the vision
     # one only when the flag is on. The forward multiplies the timestep by timestep_scale=0.001, so what is passed
     # here is sigma * 1000.
+    latent_dtype, action_dtype = latent.dtype, action.dtype
     shift = RF_SHIFT[resolution]
     sigma = sample_sigma(shift, "waver", generator)
     t_vis_raw = t_act_raw = sigma * 1000.0
+    # fp32 for sigma too, not the payload dtype: bf16 cannot hold a sampled sigma. The pinned 0.5 used in the
+    # upstream comparison is exact in bf16, which is why a comparison at that sigma would not have shown it.
     latent_noisy, target_vis = rectified_flow_noise(
-        latent, torch.tensor(t_vis_raw / 1000.0, dtype=latent.dtype), generator
+        latent, torch.tensor(t_vis_raw / 1000.0, dtype=torch.float32), generator
     )
     action_noisy, target_act = rectified_flow_noise(
-        action, torch.tensor(t_act_raw / 1000.0, dtype=action.dtype), generator
+        action, torch.tensor(t_act_raw / 1000.0, dtype=torch.float32), generator
     )
     # Restore the conditioning frames. rectified_flow_noise returns fresh tensors, so writing in place here does
-    # not touch latent or action.
+    # not touch latent or action. Those tensors are fp32 now and the clean rows come from the payload's own
+    # dtype, so the assignment widens them, which is exact.
     latent_noisy[:, :, :n_cond_vis] = latent[:, :, :n_cond_vis]
     action_noisy[:n_cond_act] = action[:n_cond_act]
     # And clear the padding channels the noise just filled. Upstream noises the full padded width and then
@@ -544,7 +557,9 @@ def pack_one(
         ),
         und_len=n_text,
         sequence_length=seq,
-        vision_tokens=[to_device(latent_noisy)],
+        # x_t goes in at the model's dtype -- the payload's, which is the VAE's -- while the target above stays
+        # fp32. Upstream does the same: it noises in fp32 and the forward casts on the way in.
+        vision_tokens=[to_device(latent_noisy.to(latent_dtype))],
         vision_token_shapes=[(t_latent, hp, wp)],
         vision_sequence_indexes=vis_idx,
         vision_mse_loss_indexes=vis_idx[n_cond_vis * spatial :],
@@ -554,7 +569,7 @@ def pack_one(
         # exact in bf16, so a comparison at that sigma would not have shown it.
         vision_timesteps=to_device(torch.full((n_vis_noisy,), t_vis_raw, dtype=torch.float32)),
         vision_noisy_frame_indexes=[to_device(torch.arange(n_cond_vis, t_latent))],
-        action_tokens=[to_device(action_noisy)],
+        action_tokens=[to_device(action_noisy.to(action_dtype))],
         action_token_shapes=[(n_act, 1, 1)],
         action_sequence_indexes=act_idx,
         action_mse_loss_indexes=act_idx[n_cond_act:],

@@ -18,7 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from packing import DROID_DOMAIN_ID, compute_loss, pack_one
+from packing import DROID_DOMAIN_ID, compute_loss, pack_one, rectified_flow_noise
 
 SIGMA_SCALE = 1000.0  # the forward multiplies the timestep by timestep_scale = 0.001
 
@@ -161,3 +161,42 @@ def test_the_action_domain_id_is_droids(packed):
     assert DROID_DOMAIN_ID == 8
     (domain_ids,) = inputs["action_domain_ids"]
     assert domain_ids.reshape(-1).tolist() == [DROID_DOMAIN_ID]
+
+
+def test_the_noise_and_the_target_are_fp32():
+    """Whatever dtype the payload arrives in, the flow-matching arithmetic is fp32, as upstream's is.
+
+    Upstream keeps the clean payload in fp32 inside its ``PackedSequence`` and noises after packing, so its
+    noise, its ``x_t`` and its target are fp32. Ours used to draw the noise in ``x0.dtype`` -- bf16, the
+    payload coming out of a bf16 VAE -- which quantizes the samples at about 0.4% relative and hands that to
+    the target, which is what the gradient is taken against.
+
+    The check is on a bf16 input, because an fp32 input would pass even with the old code.
+    """
+    x0 = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    x_t, target = rectified_flow_noise(x0, torch.tensor(0.3, dtype=torch.float32))
+    assert x_t.dtype == torch.float32, f"x_t came back {x_t.dtype}, so the interpolation ran in the payload dtype"
+    assert target.dtype == torch.float32, f"the target came back {target.dtype}, and the gradient is taken on it"
+
+
+def test_the_whole_interpolation_is_fp32_for_a_bf16_payload():
+    """Not just the dtypes: the values are the fp32 formula, element for element.
+
+    Recomputing the same draw in fp32 and demanding exact equality is what distinguishes this from the old
+    code, which drew the noise in the payload's dtype and interpolated there. A dtype check alone would pass
+    on a version that computed in bf16 and cast the result up afterwards.
+
+    What this does not cover is the sigma the caller builds: ``torch.tensor(0.3, dtype=torch.bfloat16)`` has
+    already rounded 0.3 before this function sees it, and no arithmetic here can undo that -- which is why
+    ``pack_one`` builds it as fp32, and why a comparison pinned at sigma 0.5, exact in bf16, could not have
+    shown the problem.
+    """
+    x0 = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    t = torch.tensor(0.3, dtype=torch.float32)
+
+    x_t, target = rectified_flow_noise(x0, t, torch.Generator().manual_seed(0))
+
+    noise = torch.randn(x0.shape, generator=torch.Generator().manual_seed(0), dtype=torch.float32)
+    expected_x_t = (1.0 - t) * x0.float() + t * noise
+    assert torch.equal(x_t, expected_x_t), "x_t is not the fp32 interpolation of the same draw"
+    assert torch.equal(target, noise - x0.float()), "the target is not the fp32 difference of the same draw"
