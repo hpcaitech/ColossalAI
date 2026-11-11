@@ -22,6 +22,7 @@ __all__ = [
     "ColossalTwoWayAttnProcessor",
     "Cosmos3TwoWayAttnProcessor",
     "set_cosmos3_packed_meta",
+    "install_fp32_timestep_embedding",
 ]
 
 _ATTENTION_CLS = "Cosmos3PackedMoTAttention"
@@ -153,6 +154,68 @@ class ColossalTwoWayAttnProcessor:
 
 # The model-prefixed spelling reads better from framework code; the historical name is kept for the SFT scripts.
 Cosmos3TwoWayAttnProcessor = ColossalTwoWayAttnProcessor
+
+
+def install_fp32_timestep_embedding(model: torch.nn.Module) -> int:
+    """Run the timestep embedder's matmuls in fp32 while its parameters stay in the training dtype.
+
+    The reference implementation of this model embeds timesteps in fp32 on purpose -- "Timesteps are computed in
+    FP32 for numerical stability" -- by opening ``torch.autocast(dtype=torch.float32)`` around the call, while
+    FSDP2 has already cast the module's parameters to bf16. Measured on its own training step: the parameters
+    read ``bfloat16`` at the module's forward and the autocast region is open in ``float32``. So the arrangement
+    being reproduced here is bf16 storage with fp32 arithmetic, not fp32 storage.
+
+    autocast is not how it is reproduced. ``torch.autocast`` with ``dtype=torch.float32`` is a CUDA-shaped
+    construct whose support on other accelerators is not something this policy should depend on, and an ambient
+    autocast also reaches code it was not aimed at. Instead the module's forward is replaced by one that calls
+    the original through ``torch.func.functional_call`` with fp32 copies of its parameters and buffers. That is
+    arithmetically the same thing -- every matmul and activation inside runs in fp32 -- it reimplements none of
+    the module's own logic, and the gradient reaches the real parameters through the ``.float()`` that produced
+    the copies. The result is returned in the dtype the caller handed in, so nothing downstream changes shape or
+    dtype.
+
+    What this does NOT recover: the model's forward computes the sinusoidal projection and then casts it to the
+    embedder's parameter dtype *before* calling it -- ``self.time_embedder(self.time_proj(t).to(dtype))`` -- so
+    the input arrives already rounded, and upcasting it here cannot undo that. Closing that last part means
+    leaving the parameters in fp32, which is what the model declares through ``_keep_in_fp32_modules`` and what
+    the plugin's blanket cast currently overrides.
+
+    Args:
+        model (torch.nn.Module): The transformer. Every submodule named ``time_embedder`` is wrapped; a model
+            without one is left alone and reported as zero.
+
+    Returns:
+        int: How many modules were wrapped, so a caller can fail instead of silently wrapping nothing.
+    """
+    wrapped = 0
+    for name, module in model.named_modules():
+        if not name.endswith("time_embedder") or getattr(module, "_colossal_fp32_forward", False):
+            continue
+        original = module.__class__.forward
+
+        def forward(self, *args, _original=original, **kwargs):
+            # ``functional_call`` invokes ``self(...)``, which lands back here; the flag turns the inner call
+            # into the module's own forward, now reading the fp32 parameters that functional_call installed.
+            if getattr(self, "_colossal_fp32_reentrant", False):
+                return _original(self, *args, **kwargs)
+            dtype = next((a.dtype for a in args if torch.is_tensor(a) and a.is_floating_point()), torch.float32)
+            tensors = {
+                key: value.float()
+                for key, value in list(self.named_parameters()) + list(self.named_buffers())
+                if value is not None and value.is_floating_point()
+            }
+            cast_args = tuple(a.float() if torch.is_tensor(a) and a.is_floating_point() else a for a in args)
+            self._colossal_fp32_reentrant = True
+            try:
+                out = torch.func.functional_call(self, tensors, cast_args, kwargs)
+            finally:
+                self._colossal_fp32_reentrant = False
+            return out.to(dtype) if torch.is_tensor(out) else out
+
+        module.forward = forward.__get__(module, module.__class__)
+        module._colossal_fp32_forward = True
+        wrapped += 1
+    return wrapped
 
 
 def set_cosmos3_packed_meta(model: torch.nn.Module, packed_meta) -> int:
