@@ -63,7 +63,7 @@ def bench_rotor(
     sample_points: int = 20,
     free_memory: int = torch.cuda.mem_get_info()[0],
     start_factor: int = 4,
-) -> Tuple[np.array, list, list]:
+) -> Tuple[np.asarray, list, list]:
     """Auto Checkpoint Rotor Algorithm benchmarking
     Benchmarks the Auto Checkpoint Rotor Algorithm for a given graph module and data.
     Args:
@@ -76,7 +76,7 @@ def bench_rotor(
         start_factor (int, optional): Start memory budget factor for benchmark, the start memory budget
         will be free_memory / start_factor. Defaults to 4.
     Returns:
-        Tuple[np.array, list, list]: return budgets vector (MB), peak memory vector (MB), step time vector (MS).
+        Tuple[np.asarray, list, list]: return budgets vector (MB), peak memory vector (MB), step time vector (MS).
     """
     peak_hist, step_hist = [], []
     raw_graph = deepcopy(gm.graph)

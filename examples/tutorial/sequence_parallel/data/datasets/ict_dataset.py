@@ -174,4 +174,4 @@ class ICTDataset(Dataset):
         pad_mask = [1] * len(tokens) + [0] * num_pad
         tokens += [self.pad_id] * num_pad
 
-        return np.array(tokens), np.array(pad_mask)
+        return np.asarray(tokens), np.asarray(pad_mask)
