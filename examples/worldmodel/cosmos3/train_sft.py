@@ -21,14 +21,12 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import os
 from pathlib import Path
 
 import torch
 from droid_dataset import DroidActionPolicyDataset, collate
 from packing import compute_loss, pack_batch
-from torch.utils.data import Dataset
 
 import colossalai
 from colossalai.booster import Booster
