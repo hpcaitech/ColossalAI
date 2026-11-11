@@ -6,7 +6,7 @@ import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import GeminiPlugin
 from colossalai.nn.optimizer import HybridAdam
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 class TiedModel(torch.nn.Module):
@@ -113,6 +113,7 @@ def _run_gemini_resume(rank, world_size, port, accumulation, shard, steps_before
 @pytest.mark.parametrize("accumulation", [False, True])
 @pytest.mark.parametrize("shard", [False, True])
 @pytest.mark.parametrize("steps_before", [0, 1])
+@rerun_if_address_is_in_use()
 def test_gemini_master_resume(world_size, accumulation, shard, steps_before, tmp_path):
     spawn(
         _run_gemini_resume,

@@ -9,6 +9,7 @@ from colossalai.checkpoint_io.hybrid_parallel_checkpoint_io import (
     HybridParallelCheckpointIO,
     _optimizer_checkpoint_states,
 )
+from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec
 from tests.kit.numerics.acceptance import CONFIGS, _entry_config, run_acceptance
 from tests.kit.numerics.scenarios import resume
@@ -65,6 +66,7 @@ def test_fp16_entry_recipe_rejects_invalid_scale(scale):
 @pytest.mark.parametrize(
     "name", ["ddp_fp16", "gemini_fp16", "shardformer_bf16", "gemini_bf16", "fsdp_fp32", "fsdp_bf16"]
 )
+@rerun_if_address_is_in_use()
 def test_gemma4_checkpoint_resume_and_hf(name):
     from tests.kit.model_zoo import model_zoo
 
