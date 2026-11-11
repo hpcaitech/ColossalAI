@@ -199,3 +199,21 @@ def test_the_timesteps_are_fp32_whatever_the_payload_dtype_is(packed):
     assert inputs["vision_timesteps"].dtype is torch.float32
     assert inputs["action_timesteps"].dtype is torch.float32
     assert inputs["vision_tokens"][0].dtype is torch.bfloat16  # the payload stays bf16
+
+
+def test_the_action_padding_carries_no_noise(packed):
+    """Upstream noises the full padded width and then clears the padding.
+
+    ``omni_mot_model.py::_add_noise_to_input`` ends with
+    ``xt_action[i][:, raw_action_dim:] = 0``. Those 56 channels are not inert: ``action_proj_in`` is a
+    64 -> 4096 projection, so noise left there is projected into the hidden state. Measured on episode 26827
+    offset 0 at a pinned sigma of 0.5, leaving it in gave our action rows 52% more norm than upstream's at the
+    input of block 0, while the never-noised conditioning row matched bit for bit.
+    """
+    inputs, targets, _ = packed
+    tokens = inputs["action_tokens"][0]
+    dim = targets["raw_action_dim"]
+    assert dim == 8 and tokens.shape[-1] == ACTION_DIM
+    assert torch.count_nonzero(tokens[:, dim:]) == 0
+    # The real channels are still noised: row 0 is the clean conditioning action, the rest are not.
+    assert not torch.equal(tokens[1:, :dim], torch.zeros_like(tokens[1:, :dim]))

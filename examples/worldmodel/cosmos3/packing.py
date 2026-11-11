@@ -505,6 +505,23 @@ def pack_one(
     # not touch latent or action.
     latent_noisy[:, :, :n_cond_vis] = latent[:, :, :n_cond_vis]
     action_noisy[:n_cond_act] = action[:n_cond_act]
+    # And clear the padding channels the noise just filled. Upstream noises the full padded width and then
+    # throws that part away (omni_mot_model.py::_add_noise_to_input):
+    #
+    #     for i in range(len(xt_action)):
+    #         if gen_data_clean.raw_action_dim is not None and gen_data_clean.raw_action_dim[i] is not None:
+    #             xt_action[i][:, gen_data_clean.raw_action_dim[i] :] = 0
+    #
+    # Those channels are not a formality. ``action_proj_in`` is a 64 -> 4096 projection, so noise sitting in
+    # the 56 padded channels is projected into the hidden state like any other input: measured on episode
+    # 26827 offset 0 at a pinned sigma of 0.5, our action rows entering block 0 carried 52% more norm than
+    # upstream's (165.8 against 108.8, relL2 1.15), while the conditioning row -- which is never noised --
+    # matched bit for bit, and the vision rows, which have no padding, agreed to 3.3%. With the padding
+    # cleared, our x_t matches upstream's to relL2 1.6e-03, the bf16 floor.
+    #
+    # Only x_t is cleared, which is what upstream clears. The target keeps its padding, and it never reaches
+    # the loss: compute_loss crops both sides to raw_action_dim.
+    action_noisy[:, raw_action_dim:] = 0
 
     vis_idx = to_device(torch.arange(n_text, n_text + n_vis))
     act_idx = to_device(torch.arange(n_text + n_vis, seq))
