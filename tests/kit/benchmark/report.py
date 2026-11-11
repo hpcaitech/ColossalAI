@@ -13,7 +13,9 @@ import statistics
 import sys
 from typing import Any, Dict, List, Optional, Sequence
 
-SCHEMA_VERSION = 1
+from .flops import FLOPS_MISMATCH_LIMIT
+
+SCHEMA_VERSION = 2
 # two repeats of the same setup whose median step times differ by more than this are flagged: the machine was not
 # stable enough for the numbers to be compared with anything
 REPEAT_SPREAD_LIMIT = 0.05
@@ -30,29 +32,46 @@ def percentile(values: Sequence[float], q: float) -> float:
     return ordered[low] + (ordered[high] - ordered[low]) * (position - low)
 
 
-def summarize(run: Dict[str, Any]) -> Dict[str, Any]:
-    """Step time statistics and throughput of one repeat, from its raw step times."""
+def summarize(run: Dict[str, Any], flops: Dict[str, Any], peak: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Step time statistics, throughput and utilization of one repeat, from its raw step times.
+
+    ``flops`` is ``flops.flops_per_token(...)``; ``peak`` a ``peak.Peak`` as a dict, whose TFLOPS are None when the
+    device's peak is not known (no MFU then)."""
     times = run["step_time_s"]
     median = statistics.median(times)
-    return {
+    per_device = run["tokens_per_step"] / median / run["world_size"]
+    summary = {
         "step_time_s": {"median": median, "p10": percentile(times, 10), "p90": percentile(times, 90)},
         # from the median step: one slow step (a stall, a collective that waited) does not move the headline
         "tokens_per_s": run["tokens_per_step"] / median,
-        "tokens_per_s_per_device": run["tokens_per_step"] / median / run["world_size"],
+        "tokens_per_s_per_device": per_device,
         "samples_per_s": run["samples_per_step"] / median,
+        "model_tflops_per_device": flops["model_flops_per_token"] * per_device / 1e12,
+        "hardware_tflops_per_device": flops["hardware_flops_per_token"] * per_device / 1e12,
     }
+    for name, tflops in (("mfu", summary["model_tflops_per_device"]), ("hfu", summary["hardware_tflops_per_device"])):
+        for kind in ("nominal", "measured"):
+            denominator = peak[f"{kind}_tflops"]
+            summary[f"{name}_{kind}"] = tflops / denominator if denominator else None
+    return summary
 
 
 def build_report(
-    runs: List[Dict[str, Any]], environment: Dict[str, Any], repository: Dict[str, Any], command: List[str]
+    runs: List[Dict[str, Any]],
+    environment: Dict[str, Any],
+    repository: Dict[str, Any],
+    command: List[str],
+    flops: Dict[str, Any],
+    peak: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """The report of one setup measured ``len(runs)`` times, each in fresh processes (``measure.measure`` results)."""
+    """The report of one setup measured ``len(runs)`` times, each in fresh processes (``measure.measure`` results),
+    with the FLOPs per token (``flops.flops_per_token``) and the device's peak (see ``summarize``)."""
     if not runs:
         raise ValueError("a report needs at least one run")
     setups = {json.dumps(r["setup"], sort_keys=True) for r in runs}
     if len(setups) != 1:
         raise ValueError("every run of a report must measure the same setup")
-    summaries = [summarize(r) for r in runs]
+    summaries = [summarize(r, flops, peak) for r in runs]
     medians = [s["step_time_s"]["median"] for s in summaries]
     spread = (max(medians) - min(medians)) / min(medians)
     # the repeat with the median throughput; with an even count the slower of the two middle ones
@@ -66,6 +85,11 @@ def build_report(
         )
     if not all(r["loss"]["finite"] for r in runs):
         flags.append("a loss was not finite: the steps did not train, the timing may not be representative")
+    if flops["difference"] is not None and abs(flops["difference"]) > FLOPS_MISMATCH_LIMIT:
+        flags.append(
+            f"the FLOPs formula and the counted FLOPs differ by {flops['difference']:+.1%} (limit "
+            f"{FLOPS_MISMATCH_LIMIT:.0%}): one of them does not describe the model, MFU is not reliable"
+        )
     return {
         "schema_version": SCHEMA_VERSION,
         "setup": runs[0]["setup"],
@@ -77,6 +101,8 @@ def build_report(
         "flags": flags,
         "throughput": summaries[headline],
         "memory_bytes": {key: max(r["memory_bytes"].get(key, 0) for r in runs) for key in runs[0]["memory_bytes"]},
+        "flops": flops,
+        "peak": peak,
         "repeats": [dict(run, summary=summary) for run, summary in zip(runs, summaries)],
         "environment": environment,
         "repository": repository,
@@ -86,7 +112,6 @@ def build_report(
 
 # metrics a report does not cover yet, listed in every report so that a missing number is never read as zero
 NOT_COVERED = (
-    "MFU (model FLOPs per token are not counted yet)",
     "maximum sequence length and batch size on one device",
     "data-parallel scaling efficiency",
     "comparison with a baseline",
@@ -105,6 +130,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "",
         f"{_tokens(throughput['tokens_per_s'])} tokens/s on {devices} "
         f"({_tokens(throughput['tokens_per_s_per_device'])} per device), "
+        f"MFU {_utilization(throughput, 'mfu', report['peak'])}, "
         f"peak reserved memory {_gib(memory.get('reserved_peak'))}. Commit {commit}.",
         "",
     ]
@@ -130,6 +156,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
         f"| Throughput | {_tokens(throughput['tokens_per_s'])} tokens/s | all devices, from the median step time |",
         f"| Throughput per device | {_tokens(throughput['tokens_per_s_per_device'])} tokens/s | |",
         f"| Samples | {throughput['samples_per_s']:.2f} /s | |",
+        f"| MFU | {_utilization(throughput, 'mfu', report['peak'])} | model FLOPs per token × tokens/s per device ÷ "
+        "peak; no recomputation counted |",
+        f"| Model TFLOPS per device | {throughput['model_tflops_per_device']:.1f} | |",
         f"| Step time | {throughput['step_time_s']['median'] * 1e3:.1f} ms "
         f"(p10 {throughput['step_time_s']['p10'] * 1e3:.1f}, p90 {throughput['step_time_s']['p90'] * 1e3:.1f}) | "
         "slowest rank per step, device synchronized before and after |",
@@ -143,6 +172,28 @@ def render_markdown(report: Dict[str, Any]) -> str:
         f"| Host RSS peak | {_gib(memory.get('host_rss_peak'))} | per process, including model construction |",
         "",
         "Memory is the maximum over ranks.",
+        "",
+    ]
+    if setup["gradient_checkpointing"]:
+        after = next(i for i, line in enumerate(lines) if line.startswith("| Model TFLOPS per device")) + 1
+        lines[after:after] = [
+            f"| HFU | {_utilization(throughput, 'hfu', report['peak'])} | as MFU, with the forward that gradient "
+            "checkpointing recomputes |"
+        ]
+    flops, peak = report["flops"], report["peak"]
+    difference = "no formula" if flops["difference"] is None else f"{flops['difference']:+.2%}"
+    lines += [
+        "## FLOPs and peak",
+        "",
+        "| Item | Value |",
+        "| --- | --- |",
+        f"| Model FLOPs per token | {_gflop(flops['model_flops_per_token'])} (from the {flops['source']}) |",
+        f"| Formula | {_gflop(flops['analytic'])} |",
+        f"| Counted (`FlopCounterMode`, meta device) | {_gflop(flops['counted'])} ({difference} from the formula) |",
+        f"| Hardware FLOPs per token | {_gflop(flops['hardware_flops_per_token'])} |",
+        f"| Peak, nominal ({peak['device']}, {peak['dtype']}) | {_tflops(peak['nominal_tflops'])}: "
+        f"{peak['nominal_source'] or 'unknown'} |",
+        f"| Peak, measured | {_tflops(peak['measured_tflops'])}: {peak['measured_source'] or 'not measured'} |",
         "",
         "## Data-parallel scaling",
         "",
@@ -159,12 +210,33 @@ def render_markdown(report: Dict[str, Any]) -> str:
     ]
     lines += [f"| {key} | {value} |" for key, value in env.items()]
     lines += [f"| commit | {commit} |", "", "```bash", " ".join(report["command"]), "```", "", "## Not covered", ""]
-    lines += [f"- {item}" for item in NOT_COVERED]
+    missing = list(NOT_COVERED)
+    if peak["nominal_tflops"] is None:
+        missing.insert(0, f"MFU: no peak is known for {peak['device']} in {peak['dtype']}")
+    lines += [f"- {item}" for item in missing]
     return "\n".join(lines) + "\n"
 
 
 def _tokens(value: float) -> str:
     return f"{value:,.0f}"
+
+
+def _utilization(throughput: Dict[str, Any], name: str, peak: Dict[str, Any]) -> str:
+    nominal, measured = throughput[f"{name}_nominal"], throughput[f"{name}_measured"]
+    if nominal is None:
+        return "n/a (no peak known)"
+    text = f"{nominal:.1%} of the nominal {peak['nominal_tflops']:g} TFLOPS"
+    if measured is not None:
+        text += f" ({measured:.1%} of the measured {peak['measured_tflops']:g})"
+    return text
+
+
+def _gflop(value: Optional[float]) -> str:
+    return "n/a" if value is None else f"{value / 1e9:.3f} GFLOP"
+
+
+def _tflops(value: Optional[float]) -> str:
+    return "unknown" if value is None else f"{value:g} TFLOPS"
 
 
 def _gib(value: Optional[int]) -> str:

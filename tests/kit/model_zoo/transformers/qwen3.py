@@ -1,7 +1,7 @@
 import torch
 import transformers
 
-from tests.kit.benchmark import BenchmarkSpec
+from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -131,7 +131,9 @@ if HAS_QWEN3:
     def qwen3(size):
         return lambda: transformers.Qwen3ForCausalLM(Qwen3Config(**QWEN3, **QWEN3_SIZES[size]))
 
-    benchmark = BenchmarkSpec(models={size: qwen3(size) for size in QWEN3_SIZES}, seq_len=4096)
+    benchmark = BenchmarkSpec(
+        models={size: qwen3(size) for size in QWEN3_SIZES}, seq_len=4096, flops_fn=decoder_flops_per_token
+    )
 
     # register the following models
     # transformers.Qwen3Model,

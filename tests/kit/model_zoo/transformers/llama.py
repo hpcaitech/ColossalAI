@@ -1,7 +1,7 @@
 import torch
 import transformers
 
-from tests.kit.benchmark import BenchmarkSpec
+from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -94,7 +94,9 @@ if HAS_LLAMA:
     def llama3(size):
         return lambda: transformers.LlamaForCausalLM(LlamaConfig(**LLAMA3, **LLAMA3_SIZES[size]))
 
-    benchmark = BenchmarkSpec(models={size: llama3(size) for size in LLAMA3_SIZES}, seq_len=4096)
+    benchmark = BenchmarkSpec(
+        models={size: llama3(size) for size in LLAMA3_SIZES}, seq_len=4096, flops_fn=decoder_flops_per_token
+    )
 
     # register the following models
     # transformers.LlamaForCausalLM,

@@ -17,7 +17,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
-from dataclasses import fields
+from dataclasses import asdict, fields
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -29,6 +29,8 @@ from colossalai.testing import spawn
 from tests.kit.numerics.trace import environment_meta, repository_state
 
 from . import measure, report
+from .flops import flops_per_token
+from .peak import Peak, lookup
 from .spec import BenchmarkSpec
 
 DEFAULT_REPEATS = 2
@@ -60,6 +62,10 @@ def run_benchmark(
     functions), as it is sent to the spawned processes."""
     if repeats < 1:
         raise ValueError("need at least one repeat")
+    # on the meta device: no memory, and this process stays off the device
+    flops = flops_per_token(
+        spec or benchmark_spec(setup.entry), setup.size, setup.seq_len, setup.micro_batch, setup.gradient_checkpointing
+    )
     runs, environment = [], None
     for _ in range(repeats):
         with tempfile.TemporaryDirectory() as directory:
@@ -71,7 +77,11 @@ def run_benchmark(
         run_environment = result.pop("environment")
         environment = environment or run_environment
         runs.append(result)
-    return report.build_report(runs, environment, repository_state(), command or [])
+    dtype = measure.CONFIGS[setup.config].dtype
+    device = environment.get("device_name", environment["accelerator"])
+    # an unknown device keeps its name and no TFLOPS: the report then says that MFU is missing and why
+    peak = asdict(lookup(device, dtype) or Peak(device, dtype, nominal_tflops=None, nominal_source=""))
+    return report.build_report(runs, environment, repository_state(), command or [], flops, peak)
 
 
 def _worker(rank, world_size, port, setup, spec, path):

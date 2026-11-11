@@ -6,7 +6,9 @@ import torch
 
 from colossalai.accelerator import get_accelerator
 from colossalai.testing import rerun_if_address_is_in_use
+from tests.kit.benchmark.flops import counted_flops_per_token
 from tests.kit.benchmark.measure import Setup
+from tests.kit.benchmark.peak import lookup
 from tests.kit.benchmark.run import run_benchmark
 from tests.test_benchmark.test_benchmark_core import TINY
 
@@ -39,6 +41,8 @@ def test_memory_statistics_are_ordered(config):
     assert memory["setup_allocated"] <= memory["allocated_peak"]
     assert result["repeats"][0]["loss"]["finite"]
     assert result["environment"]["device_name"]
+    if lookup(result["environment"]["device_name"], result["peak"]["dtype"]) is not None:
+        assert 0 < result["throughput"]["mfu_nominal"] < result["throughput"]["mfu_measured"] < 1
 
 
 @pytest.mark.skipif(_devices() < 1, reason="needs a device")
@@ -72,18 +76,32 @@ EXPECTED_PARAMETERS = {
 }
 
 
-def test_real_sizes_match_the_published_models():
+def _declared():
     # needs the whole model_zoo (timm, torchvision, ...), which only the GPU image installs
     from tests.kit.model_zoo import model_zoo
 
-    declared = {
-        (name, size): fn
+    return {
+        (name, size): (entry[4].benchmark, fn)
         for name, entry in model_zoo.items()
         if entry[4] is not None and entry[4].benchmark is not None
         for size, fn in entry[4].benchmark.models.items()
     }
+
+
+def test_real_sizes_match_the_published_models():
+    declared = {key: fn for key, (_, fn) in _declared().items()}
     assert set(EXPECTED_PARAMETERS) <= set(declared)
     for key, billions in EXPECTED_PARAMETERS.items():
         with torch.device("meta"):
             model = declared[key]()
         assert sum(p.numel() for p in model.parameters()) / 1e9 == pytest.approx(billions, abs=0.01), key
+
+
+def test_flops_formulas_match_the_counted_flops():
+    for (name, size), (spec, fn) in _declared().items():
+        if spec.flops_fn is None:
+            continue
+        with torch.device("meta"):
+            formula = spec.flops_fn(fn(), spec.seq_len)
+        counted = counted_flops_per_token(spec, size, spec.seq_len, micro_batch=1)
+        assert counted == pytest.approx(formula, rel=0.02), (name, size)

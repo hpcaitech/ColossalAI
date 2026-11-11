@@ -40,9 +40,11 @@ STEP_ANNOTATION = "benchmark/step"
 
 @dataclass(frozen=True)
 class Config:
-    """A plugin and precision to benchmark under. ``plugin_fn`` builds the plugin inside each process."""
+    """A plugin and precision to benchmark under. ``plugin_fn`` builds the plugin inside each process; ``dtype`` is
+    what the matmuls run in, which selects the device's peak for MFU."""
 
     plugin_fn: Callable
+    dtype: str
     mixed_precision: Optional[str] = None
 
 
@@ -50,14 +52,15 @@ FSDP_BF16 = MixedPrecision(param_dtype=torch.bfloat16, reduce_dtype=torch.bfloat
 # The names match the configurations of tests/kit/numerics/acceptance.py, so a model's alignment and benchmark reports
 # refer to the same setups.
 CONFIGS: Dict[str, Config] = {
-    "ddp_fp32": Config(TorchDDPPlugin),
-    "ddp_fp16": Config(TorchDDPPlugin, "fp16"),
-    "zero1_bf16": Config(partial(LowLevelZeroPlugin, stage=1, precision="bf16")),
-    "zero2_bf16": Config(partial(LowLevelZeroPlugin, stage=2, precision="bf16")),
-    "zero2_bf16_offload": Config(partial(LowLevelZeroPlugin, stage=2, precision="bf16", cpu_offload=True)),
-    "gemini_bf16": Config(partial(GeminiPlugin, precision="bf16")),
-    "fsdp_fp32": Config(TorchFSDPPlugin),
-    "fsdp_bf16": Config(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16)),
+    "ddp_fp32": Config(TorchDDPPlugin, "fp32"),
+    # autocast: the matmuls run in fp16
+    "ddp_fp16": Config(TorchDDPPlugin, "fp16", "fp16"),
+    "zero1_bf16": Config(partial(LowLevelZeroPlugin, stage=1, precision="bf16"), "bf16"),
+    "zero2_bf16": Config(partial(LowLevelZeroPlugin, stage=2, precision="bf16"), "bf16"),
+    "zero2_bf16_offload": Config(partial(LowLevelZeroPlugin, stage=2, precision="bf16", cpu_offload=True), "bf16"),
+    "gemini_bf16": Config(partial(GeminiPlugin, precision="bf16"), "bf16"),
+    "fsdp_fp32": Config(TorchFSDPPlugin, "fp32"),
+    "fsdp_bf16": Config(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16), "bf16"),
 }
 
 

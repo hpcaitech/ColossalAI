@@ -3,7 +3,7 @@
 A shared framework for measuring how fast and how memory-hungry training a model is under a ColossalAI plugin, the
 same way for every model, so that reports from different models, plugins and machines can be compared.
 
-Covered so far: throughput and peak memory. Not covered yet, and listed as such in every report: MFU, the maximum
+Covered so far: throughput, MFU and peak memory. Not covered yet, and listed as such in every report: the maximum
 sequence length and batch size on one device, data-parallel scaling efficiency, and comparison with a baseline.
 
 ## Quick start
@@ -17,7 +17,8 @@ This trains Llama-3.2-1B (randomly initialized, real size) for 5 warmup and 20 t
 processes, and writes `llama-1b.json` and the rendered `llama-1b.md`. On H20 the summary line reads:
 
 ```
-12,526 tokens/s on 1 × NVIDIA H20 (12,526 per device), peak reserved memory 48.30 GiB.
+12,527 tokens/s on 1 × NVIDIA H20 (12,527 per device), MFU 76.4% of the nominal 148 TFLOPS (80.4% of the measured
+140.6), peak reserved memory 48.30 GiB.
 ```
 
 Options: `--nproc N` (one process per device), `--seq-len`, `--micro-batch` (per device), `--gradient-checkpointing`,
@@ -66,6 +67,9 @@ For a causal language model that is all. Other models also give `batch_fn` (one 
 `tokens_fn` (the tokens a batch counts for throughput, e.g. latent tokens of a diffusion model) and `loss_fn`; see
 `spec.py`. Weights are random: throughput and memory of a dense model do not depend on them.
 
+A model whose FLOPs have a closed formula gives it as `flops_fn` (`decoder_flops_per_token` covers Llama-, Qwen3- and
+Mistral-style decoders); any other model is counted (see MFU below).
+
 ## What is measured, and how
 
 Every model goes through the same protocol (`measure.py`):
@@ -87,13 +91,44 @@ Every model goes through the same protocol (`measure.py`):
 | After setup | allocated once the model and optimizer are boosted: weights, master weights and optimizer state before the first step |
 | Host RSS peak | peak resident memory of a process, model construction included; what CPU offloading costs |
 
-Peak memory is tracked from the first step on and is the maximum over ranks. All device calls go through
+Peak memory is tracked from the first step on and is the maximum over ranks.
+
+### MFU
+
+MFU = model FLOPs per token × tokens/s per device ÷ the device's peak, following PaLM (appendix B): the matmuls of one
+forward and backward, without the forward that gradient checkpointing recomputes, and causal attention not halved (as
+PaLM and torchtitan count it). With gradient checkpointing the report adds HFU, which counts the recomputed forward
+too.
+
+FLOPs per token come from two independent sources (`flops.py`), and an entry with a formula reports both:
+
+- the entry's `flops_fn`, a closed formula from the config;
+- `FlopCounterMode` over one forward and backward of the real-size model built on the meta device (as fake tensors:
+  no memory, a second or two even for 8B). On the meta device attention runs as two plain matmuls, so this counts model
+  FLOPs, not the extra products a fused attention backward recomputes.
+
+They differ by less than 1e-6 for every declared Llama and Qwen3 size (the counter also sees the rotary embedding's
+frequency product); a difference above 5% is flagged, as one of them then does not describe the model.
+
+The peak (`peak.py`) is given twice. The nominal one is the vendor's dense figure, the denominator everyone uses. The
+measured one is the best median of large square matmuls on our machines; it shows how much of the gap is the device
+itself: a 910B2 is power-capped and clocks down under load, so it reaches about 77% of its nominal bf16 peak even in a
+plain matmul. A device not in the table gets no MFU, and the report says so.
+
+| Device | dtype | Nominal | Measured |
+| --- | --- | --- | --- |
+| H20 | bf16 / fp16 | 148 | 140.6 / 140.5 |
+| H20 | fp32 | 44 | 32.5 |
+| Ascend 910B2 | bf16 / fp16 | 376 | 290.8 / 260.5 |
+| Ascend 910B2 | fp32 | 99 | 75.3 |
+
+TFLOPS, dense; sources are in `peak.py`. All device calls go through
 `colossalai.accelerator`, so the same code runs on CUDA and Ascend NPU; on CPU only the host memory is reported.
 
 ## Report
 
-`run.py` writes one JSON file per setup (`schema_version` 1): the setup, every timed step of every repeat, the memory
-peaks, the summary statistics, the environment (device, driver, clock and power limits, library versions), the
-repository commit and whether the tree was dirty, and the command that reproduces it. The Markdown is rendered from the
-JSON alone, with the same sections for every model: summary, configuration, metrics, data-parallel scaling, baseline,
-environment and reproduction, and what the report does not cover.
+`run.py` writes one JSON file per setup (`schema_version` 2): the setup, every timed step of every repeat, the memory
+peaks, the FLOPs per token and the peak used, the summary statistics, the environment (device, driver, clock and power
+limits, library versions), the repository commit and whether the tree was dirty, and the command that reproduces it.
+The Markdown is rendered from the JSON alone, with the same sections for every model: summary, configuration, metrics,
+FLOPs and peak, data-parallel scaling, baseline, environment and reproduction, and what the report does not cover.
