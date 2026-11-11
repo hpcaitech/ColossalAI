@@ -41,6 +41,8 @@ class BenchmarkSpec:
         loss_fn: ``loss_fn(output)`` is the scalar the step backpropagates. Defaults to ``output.loss``.
         prepare_fn: Called on every freshly built model before it is boosted, e.g. to freeze a tower. It may modify the
             module in place and return ``None``, or return a replacement.
+        causal_attention: The model's self-attention is causal, so half of its score matrix is masked and not
+            computed; counted FLOPs halve it (``flops.AttentionCounter``). True for decoder language models.
         flops_fn: ``flops_fn(model, seq_len)`` is the model FLOPs per token from a closed formula, given the model built
             on the meta device, e.g. ``flops.decoder_flops_per_token``. Without one, MFU uses the FLOPs that
             ``FlopCounterMode`` counts; with one, both are reported and checked against each other (see ``flops.py``).
@@ -53,6 +55,7 @@ class BenchmarkSpec:
     tokens_fn: Callable[[Dict[str, Any]], int] = count_input_ids
     loss_fn: Callable[[Any], Tensor] = model_loss
     prepare_fn: Optional[Callable[[nn.Module], Optional[nn.Module]]] = None
+    causal_attention: bool = False
     flops_fn: Optional[Callable[[nn.Module, int], float]] = None
 
     def __post_init__(self):

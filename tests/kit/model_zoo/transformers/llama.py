@@ -95,7 +95,10 @@ if HAS_LLAMA:
         return lambda: transformers.LlamaForCausalLM(LlamaConfig(**LLAMA3, **LLAMA3_SIZES[size]))
 
     benchmark = BenchmarkSpec(
-        models={size: llama3(size) for size in LLAMA3_SIZES}, seq_len=4096, flops_fn=decoder_flops_per_token
+        models={size: llama3(size) for size in LLAMA3_SIZES},
+        seq_len=4096,
+        causal_attention=True,
+        flops_fn=decoder_flops_per_token,
     )
 
     # register the following models

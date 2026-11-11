@@ -119,6 +119,10 @@ def _environment() -> Dict[str, Any]:
         return env
     env["device_name"] = accelerator.get_device_name(0)
     env["device_count"] = accelerator.device_count()
+    # the allocator's settings (e.g. expandable_segments) change how much fits
+    env["alloc_conf"] = os.environ.get(
+        "PYTORCH_CUDA_ALLOC_CONF" if accelerator.name == "cuda" else "PYTORCH_NPU_ALLOC_CONF", ""
+    )
     if accelerator.name == "cuda":
         env["cuda"] = torch.version.cuda
         env.update(_nvidia_smi())
@@ -133,9 +137,10 @@ def _nvidia_smi() -> Dict[str, str]:
     # the clock and power limits bound the achievable throughput; a lowered limit explains a slow run
     query = {"driver_version": "driver", "clocks.max.sm": "max_sm_clock", "power.limit": "power_limit"}
     try:
-        index = torch.cuda.current_device()
+        # by UUID: the process's device 0 is any physical GPU under CUDA_VISIBLE_DEVICES, nvidia-smi counts physical ones
+        uuid = f"GPU-{torch.cuda.get_device_properties(torch.cuda.current_device()).uuid}"
         out = subprocess.run(
-            ["nvidia-smi", f"--query-gpu={','.join(query)}", "--format=csv,noheader", f"--id={index}"],
+            ["nvidia-smi", f"--query-gpu={','.join(query)}", "--format=csv,noheader", f"--id={uuid}"],
             capture_output=True,
             text=True,
             check=True,
@@ -145,10 +150,11 @@ def _nvidia_smi() -> Dict[str, str]:
     return dict(zip(query.values(), (value.strip() for value in out.split(","))))
 
 
-def default_output(setup: measure.Setup, repository: Dict[str, Any]) -> str:
+def default_output(setup: measure.Setup, repository: Dict[str, Any], search: Optional[str] = None) -> str:
     date = datetime.now(timezone.utc).strftime("%Y%m%d")
     commit = repository.get("commit", "unknown")[:8]
-    return f"{setup.entry}-{setup.size}-{setup.config}-{date}-{commit}.json"
+    kind = f"max-{search}-" if search else ""
+    return f"{setup.entry}-{setup.size}-{setup.config}-{kind}{date}-{commit}.json"
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -166,22 +172,40 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--timed-steps", type=int, default=defaults["timed_steps"])
     parser.add_argument("--repeats", type=int, default=DEFAULT_REPEATS)
     parser.add_argument("--out", help="JSON report; defaults to <entry>-<size>-<config>-<date>-<commit>.json")
+    parser.add_argument(
+        "--search",
+        choices=["seq_len", "micro_batch"],
+        help="find the largest sequence length (at micro-batch 1 unless given) or micro-batch that trains on one "
+        "device, then measure there",
+    )
+    parser.add_argument("--granularity", type=int, help="search on multiples of this (256 tokens, 1 sample)")
+    parser.add_argument("--upper", type=int, help="largest value to try; seq_len defaults to max_position_embeddings")
     args = parser.parse_args(argv)
 
     spec = benchmark_spec(args.entry)
+    if args.search and args.nproc != 1:
+        parser.error("--search runs on one device; drop --nproc")
+    # the maximum sequence length is searched at micro-batch 1
+    micro_batch = args.micro_batch or (1 if args.search == "seq_len" else spec.micro_batch)
     setup = measure.Setup(
         entry=args.entry,
         size=args.size or spec.default_size,
         config=args.config,
         seq_len=args.seq_len or spec.seq_len,
-        micro_batch=args.micro_batch or spec.micro_batch,
+        micro_batch=micro_batch,
         gradient_checkpointing=args.gradient_checkpointing,
         warmup_steps=args.warmup_steps,
         timed_steps=args.timed_steps,
     )
     command = ["python", "-m", "tests.kit.benchmark.run", *map(shlex.quote, argv)]
-    result = run_benchmark(setup, nproc=args.nproc, repeats=args.repeats, command=command)
-    out = args.out or default_output(setup, result["repository"])
+    if args.search:
+        from .search import default_upper, run_search
+
+        upper = args.upper or default_upper(spec, setup.size, args.search)
+        result = run_search(setup, args.search, args.granularity, upper, repeats=args.repeats, command=command)
+    else:
+        result = run_benchmark(setup, nproc=args.nproc, repeats=args.repeats, command=command)
+    out = args.out or default_output(setup, result["repository"], args.search)
     with open(out, "w") as f:
         json.dump(result, f, indent=2)
     markdown = os.path.splitext(out)[0] + ".md"

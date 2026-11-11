@@ -85,6 +85,12 @@ def build_report(
         )
     if not all(r["loss"]["finite"] for r in runs):
         flags.append("a loss was not finite: the steps did not train, the timing may not be representative")
+    mfu = summaries[headline]["mfu_nominal"]
+    if mfu is not None and mfu > 1:
+        flags.append(
+            f"MFU is {mfu:.0%}, above the device's peak: the FLOPs per token overstate the work done (e.g. attention "
+            "that the kernel skips), MFU is not reliable"
+        )
     if flops["difference"] is not None and abs(flops["difference"]) > FLOPS_MISMATCH_LIMIT:
         flags.append(
             f"the FLOPs formula and the counted FLOPs differ by {flops['difference']:+.1%} (limit "
@@ -112,7 +118,8 @@ def build_report(
 
 # metrics a report does not cover yet, listed in every report so that a missing number is never read as zero
 NOT_COVERED = (
-    "maximum sequence length and batch size on one device",
+    "maximum sequence length on one device",
+    "maximum micro-batch on one device",
     "data-parallel scaling efficiency",
     "comparison with a baseline",
 )
@@ -134,6 +141,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
         f"peak reserved memory {_gib(memory.get('reserved_peak'))}. Commit {commit}.",
         "",
     ]
+    if "search" in report:
+        search = report["search"]
+        lines[-1:-1] = [f"Maximum {SEARCH_NAMES[search['field']]} on one device: **{search['max']}**."]
     lines += [f"> **Warning:** {flag}" for flag in report["flags"]] + ([""] if report["flags"] else [])
     lines += [
         "## Configuration",
@@ -195,6 +205,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         f"{peak['nominal_source'] or 'unknown'} |",
         f"| Peak, measured | {_tflops(peak['measured_tflops'])}: {peak['measured_source'] or 'not measured'} |",
         "",
+        *_search_section(report.get("search")),
         "## Data-parallel scaling",
         "",
         "Not measured by this report.",
@@ -211,6 +222,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines += [f"| {key} | {value} |" for key, value in env.items()]
     lines += [f"| commit | {commit} |", "", "```bash", " ".join(report["command"]), "```", "", "## Not covered", ""]
     missing = list(NOT_COVERED)
+    if "search" in report:
+        missing.remove(SEARCH_ITEMS[report["search"]["field"]])
     if peak["nominal_tflops"] is None:
         missing.insert(0, f"MFU: no peak is known for {peak['device']} in {peak['dtype']}")
     lines += [f"- {item}" for item in missing]
@@ -219,6 +232,33 @@ def render_markdown(report: Dict[str, Any]) -> str:
 
 def _tokens(value: float) -> str:
     return f"{value:,.0f}"
+
+
+SEARCH_ITEMS = {"seq_len": NOT_COVERED[0], "micro_batch": NOT_COVERED[1]}
+SEARCH_NAMES = {"seq_len": "sequence length", "micro_batch": "micro-batch"}
+
+
+def _search_section(search: Optional[Dict[str, Any]]) -> List[str]:
+    """The maximum found by ``search.run_search`` and every probe, in the order run."""
+    if search is None:
+        return []
+    name = SEARCH_NAMES[search["field"]]
+    fixed = ", ".join(f"{SEARCH_NAMES[k]} {v}" for k, v in search["fixed"].items())
+    bound = f", at most {search['upper']}" if search["upper"] else ""
+    lines = [
+        f"## Maximum {name} on one device",
+        "",
+        f"**{search['max']}** (multiples of {search['granularity']}{bound}; {fixed}). Each probe trained "
+        f"{search['probe_steps']} full steps, as many as the measurement, in a fresh process; the metrics above are "
+        f"measured at {search['measured_at']}.",
+        "",
+        f"| {name.capitalize()} | Result | Peak reserved |",
+        "| --- | --- | --- |",
+    ]
+    for probe in search["probes"]:
+        result = "fits" if probe["fits"] else f"does not fit: {probe['reason']}"
+        lines.append(f"| {probe['value']} | {result} | {_gib(probe.get('reserved_peak'))} |")
+    return lines + [""]
 
 
 def _utilization(throughput: Dict[str, Any], name: str, peak: Dict[str, Any]) -> str:

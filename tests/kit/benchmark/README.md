@@ -3,8 +3,8 @@
 A shared framework for measuring how fast and how memory-hungry training a model is under a ColossalAI plugin, the
 same way for every model, so that reports from different models, plugins and machines can be compared.
 
-Covered so far: throughput, MFU and peak memory. Not covered yet, and listed as such in every report: the maximum
-sequence length and batch size on one device, data-parallel scaling efficiency, and comparison with a baseline.
+Covered so far: throughput, MFU, peak memory, and the maximum sequence length and micro-batch on one device. Not
+covered yet, and listed as such in every report: data-parallel scaling efficiency and comparison with a baseline.
 
 ## Quick start
 
@@ -17,7 +17,7 @@ This trains Llama-3.2-1B (randomly initialized, real size) for 5 warmup and 20 t
 processes, and writes `llama-1b.json` and the rendered `llama-1b.md`. On H20 the summary line reads:
 
 ```
-12,527 tokens/s on 1 × NVIDIA H20 (12,527 per device), MFU 76.4% of the nominal 148 TFLOPS (80.4% of the measured
+12,601 tokens/s on 1 × NVIDIA H20 (12,601 per device), MFU 70.0% of the nominal 148 TFLOPS (73.7% of the measured
 140.6), peak reserved memory 48.30 GiB.
 ```
 
@@ -35,6 +35,19 @@ Options: `--nproc N` (one process per device), `--seq-len`, `--micro-batch` (per
 The names are those of the numerical alignment tool (`tests/kit/numerics/acceptance.py`), so a model's alignment and
 benchmark reports refer to the same setups. The optimizer is `torch.optim.AdamW`, translated to `HybridAdam` for Gemini
 (which accepts nothing else) as in the alignment tool; the report names the one used.
+
+Find the longest sequence (at micro-batch 1) or the largest micro-batch (at the entry's sequence length, or
+`--seq-len`) that trains on one device, then measure there:
+
+```bash
+python -m tests.kit.benchmark.run --entry transformers_llama_for_causal_lm --size 1b --config zero2_bf16 \
+    --search seq_len
+python -m tests.kit.benchmark.run --entry transformers_qwen3_for_causal_lm --size 1.7b --config zero2_bf16 \
+    --search micro_batch --gradient-checkpointing
+```
+
+The search runs on multiples of `--granularity` (256 tokens, 1 sample) up to `--upper` (for a sequence length, the
+model's `max_position_embeddings`). See "Maximum on one device" below.
 
 Render a JSON report again, e.g. after collecting it from another machine:
 
@@ -93,19 +106,37 @@ Every model goes through the same protocol (`measure.py`):
 
 Peak memory is tracked from the first step on and is the maximum over ranks.
 
+### Maximum on one device
+
+`search.py` probes one value at a time. A probe trains as many full steps (forward, backward, optimizer step) as the
+measurement, in a fresh process. Near the limit the allocator's high-water mark keeps rising as its cache fragments:
+sequence lengths of a Llama-3.2-1B that trained 3 steps on H20 ran out of memory later in the 25-step measurement, so a
+shorter probe reports a maximum that cannot be measured. A fresh process starts with an empty allocator, so a failed
+probe cannot make the next one fail. A probe fits unless it runs out of device memory (or, with
+CPU offloading, its process is killed); any other error stops the search.
+
+From the entry's default the search doubles until a probe does not fit (or halves until one does), then bisects
+between the largest value that fits and the smallest that does not. The largest fitting value is then measured with
+the full protocol; if that runs out of memory after all (near the limit a run is not deterministic to the last token),
+the next smaller fitting value is measured and the report says so. The report lists every probe. The allocator settings
+(`PYTORCH_CUDA_ALLOC_CONF`, e.g. `expandable_segments:True`) change the result and are recorded in the environment.
+
 ### MFU
 
-MFU = model FLOPs per token × tokens/s per device ÷ the device's peak, following PaLM (appendix B): the matmuls of one
-forward and backward, without the forward that gradient checkpointing recomputes, and causal attention not halved (as
-PaLM and torchtitan count it). With gradient checkpointing the report adds HFU, which counts the recomputed forward
-too.
+MFU = model FLOPs per token × tokens/s per device ÷ the device's peak: the matmuls of one forward and backward (PaLM,
+appendix B), without the forward that gradient checkpointing recomputes. Causal attention is halved, as Megatron-LM
+and FlashAttention count it: the mask leaves half of the score matrix and fused kernels skip the other half. PaLM and
+torchtitan count the whole matrix, which at short sequences gives a few points more MFU than here; at long ones it
+overstates the work so much that a Llama-3.2-1B at 20k tokens measured 105% MFU on H20. With gradient checkpointing the
+report adds HFU, which counts the recomputed forward too. An MFU above 100% is flagged.
 
 FLOPs per token come from two independent sources (`flops.py`), and an entry with a formula reports both:
 
 - the entry's `flops_fn`, a closed formula from the config;
 - `FlopCounterMode` over one forward and backward of the real-size model built on the meta device (as fake tensors:
-  no memory, a second or two even for 8B). On the meta device attention runs as two plain matmuls, so this counts model
-  FLOPs, not the extra products a fused attention backward recomputes.
+  no memory, a second or two even for 8B). Calls to `scaled_dot_product_attention` are counted from their shapes,
+  halved for a model declared `causal_attention=True` (the counter cannot see a mask's values on the meta device);
+  attention written as plain matmuls (`attn_implementation="eager"`) is counted whole, as it is computed whole.
 
 They differ by less than 1e-6 for every declared Llama and Qwen3 size (the counter also sees the rotary embedding's
 frequency product); a difference above 5% is flagged, as one of them then does not describe the model.
@@ -131,4 +162,5 @@ TFLOPS, dense; sources are in `peak.py`. All device calls go through
 peaks, the FLOPs per token and the peak used, the summary statistics, the environment (device, driver, clock and power
 limits, library versions), the repository commit and whether the tree was dirty, and the command that reproduces it.
 The Markdown is rendered from the JSON alone, with the same sections for every model: summary, configuration, metrics,
-FLOPs and peak, data-parallel scaling, baseline, environment and reproduction, and what the report does not cover.
+FLOPs and peak, the maximum on one device (when searched), data-parallel scaling, baseline, environment and
+reproduction, and what the report does not cover.

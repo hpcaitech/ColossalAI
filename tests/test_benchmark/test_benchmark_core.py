@@ -4,19 +4,20 @@ template, and one full run of a tiny model on the CPU."""
 import json
 
 import pytest
+import torch
 import transformers
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
 from tests.kit.benchmark import report as report_module
-from tests.kit.benchmark.flops import counted_flops_per_token, flops_per_token, recompute_countable
+from tests.kit.benchmark.flops import AttentionCounter, counted_flops_per_token, flops_per_token, recompute_countable
 from tests.kit.benchmark.measure import CONFIGS, Setup
 from tests.kit.benchmark.peak import PEAKS, lookup
 from tests.kit.benchmark.report import build_report, percentile, render_markdown, summarize
 from tests.kit.benchmark.run import run_benchmark
 
 
-def tiny_llama():
+def tiny_llama(attn_implementation="sdpa"):
     config = transformers.LlamaConfig(
         vocab_size=256,
         hidden_size=32,
@@ -24,14 +25,16 @@ def tiny_llama():
         num_hidden_layers=2,
         num_attention_heads=4,
         num_key_value_heads=2,
-        attn_implementation="eager",
+        attn_implementation=attn_implementation,
         use_cache=False,
     )
     return transformers.LlamaForCausalLM(config)
 
 
 # module-level functions only: the spec is sent to spawned processes
-TINY = BenchmarkSpec(models={"tiny": tiny_llama}, seq_len=16, micro_batch=2, flops_fn=decoder_flops_per_token)
+TINY = BenchmarkSpec(
+    models={"tiny": tiny_llama}, seq_len=16, micro_batch=2, causal_attention=True, flops_fn=decoder_flops_per_token
+)
 # 1 GFLOP per token against a 100 TFLOPS nominal and 80 TFLOPS measured peak
 FLOPS = {"model_flops_per_token": 1e9, "hardware_flops_per_token": 1.25e9, "difference": 0.0, "source": "formula"}
 PEAK = {"device": "X", "dtype": "bf16", "nominal_tflops": 100.0, "measured_tflops": 80.0}
@@ -152,6 +155,11 @@ def test_mfu_divides_model_flops_by_both_peaks():
     assert summarize(_run([1.0]), FLOPS, NO_PEAK)["mfu_nominal"] is None
 
 
+def test_report_flags_mfu_above_the_peak():
+    fast = _run([1e-5])  # 3.2e6 tokens/s per device × 1 GFLOP = 3.2 PFLOPS against 100 TFLOPS
+    assert any("above the device's peak" in flag for flag in build_report([fast], {}, {}, [], FLOPS, PEAK)["flags"])
+
+
 def test_report_flags_a_formula_that_disagrees_with_the_counted_flops():
     off = dict(FLOPS, difference=0.08)
     assert any("FLOPs formula" in flag for flag in build_report([_run([1.0])], {}, {}, [], off, PEAK)["flags"])
@@ -181,10 +189,19 @@ def test_recomputation_that_cannot_be_counted_says_so():
         counted_flops_per_token(TINY, "tiny", seq_len=16, micro_batch=2, recompute=True)
 
 
-def test_attention_flops_grow_with_the_sequence_and_are_not_halved():
+def test_causal_attention_flops_are_halved():
     model = tiny_llama()
-    # 12 · layers · heads · head_dim per extra token of context
-    assert decoder_flops_per_token(model, 17) - decoder_flops_per_token(model, 16) == 12 * 2 * 4 * 8
+    # 12 · layers · heads · head_dim per extra token of context, halved for the causal mask
+    assert decoder_flops_per_token(model, 18) - decoder_flops_per_token(model, 16) == 2 * 12 * 2 * 4 * 8 // 2
+    # one call over (batch 2, 4 heads, 16 queries, 16 keys, head_dim 8): 2 · 2·4·16·16 · (8 + 8) forward
+    full, causal = AttentionCounter(causal=False), AttentionCounter(causal=True)
+    for counter in (full, causal):
+        q = torch.empty(2, 4, 16, 8, requires_grad=True)
+        counter(q, torch.empty(2, 4, 16, 8), torch.empty(2, 4, 16, 8)).sum().backward()
+    assert full.flops == 3 * 2 * 2 * 4 * 16 * 16 * 16 and causal.flops == full.flops // 2
+    flagged = AttentionCounter(causal=False)
+    flagged(torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), is_causal=True)
+    assert flagged.flops == 2 * 4 * 4 * 4 // 2
 
 
 def test_peak_lookup():

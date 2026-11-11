@@ -6,11 +6,21 @@ import torch
 
 from colossalai.accelerator import get_accelerator
 from colossalai.testing import rerun_if_address_is_in_use
+from tests.kit.benchmark import BenchmarkSpec
 from tests.kit.benchmark.flops import counted_flops_per_token
 from tests.kit.benchmark.measure import Setup
 from tests.kit.benchmark.peak import lookup
 from tests.kit.benchmark.run import run_benchmark
-from tests.test_benchmark.test_benchmark_core import TINY
+from tests.kit.benchmark.search import Probe
+from tests.test_benchmark.test_benchmark_core import TINY, tiny_llama
+
+
+def tiny_eager():
+    return tiny_llama("eager")
+
+
+# eager attention materializes the score matrix, so that long sequences need memory: for checkpointing and OOM tests
+EAGER = BenchmarkSpec(models={"tiny": tiny_eager}, seq_len=16, micro_batch=2)
 
 
 def _devices() -> int:
@@ -49,9 +59,9 @@ def test_memory_statistics_are_ordered(config):
 @rerun_if_address_is_in_use()
 def test_gradient_checkpointing_lowers_the_activation_peak():
     # a long sequence through eager attention, so that the activations kept for backward dominate the peak
-    plain = run_benchmark(_setup("zero2_bf16", seq_len=2048), nproc=1, repeats=1, spec=TINY)
+    plain = run_benchmark(_setup("zero2_bf16", seq_len=2048), nproc=1, repeats=1, spec=EAGER)
     checkpointed = run_benchmark(
-        _setup("zero2_bf16", seq_len=2048, gradient_checkpointing=True), nproc=1, repeats=1, spec=TINY
+        _setup("zero2_bf16", seq_len=2048, gradient_checkpointing=True), nproc=1, repeats=1, spec=EAGER
     )
     assert checkpointed["setup"]["gradient_checkpointing"]
     assert checkpointed["memory_bytes"]["allocated_peak"] < 0.8 * plain["memory_bytes"]["allocated_peak"]
@@ -105,3 +115,11 @@ def test_flops_formulas_match_the_counted_flops():
             formula = spec.flops_fn(fn(), spec.seq_len)
         counted = counted_flops_per_token(spec, size, spec.seq_len, micro_batch=1)
         assert counted == pytest.approx(formula, rel=0.02), (name, size)
+
+
+@pytest.mark.skipif(_devices() < 1, reason="needs a device")
+@rerun_if_address_is_in_use()
+def test_a_real_out_of_memory_is_recognized():
+    # eager attention over a million tokens: the score matrix alone is terabytes
+    assert Probe(spec=EAGER)(_setup("zero2_bf16", seq_len=2**20)) == {"fits": False, "reason": "out of device memory"}
+    assert Probe(spec=EAGER)(_setup("zero2_bf16"))["fits"]

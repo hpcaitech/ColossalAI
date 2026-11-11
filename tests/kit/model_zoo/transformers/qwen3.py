@@ -132,7 +132,10 @@ if HAS_QWEN3:
         return lambda: transformers.Qwen3ForCausalLM(Qwen3Config(**QWEN3, **QWEN3_SIZES[size]))
 
     benchmark = BenchmarkSpec(
-        models={size: qwen3(size) for size in QWEN3_SIZES}, seq_len=4096, flops_fn=decoder_flops_per_token
+        models={size: qwen3(size) for size in QWEN3_SIZES},
+        seq_len=4096,
+        causal_attention=True,
+        flops_fn=decoder_flops_per_token,
     )
 
     # register the following models
