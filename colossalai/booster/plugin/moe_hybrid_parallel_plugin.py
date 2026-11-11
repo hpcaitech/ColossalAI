@@ -172,6 +172,8 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as
+            well as its parameters. Defaults to True; see HybridParallelPlugin.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
     """
 
@@ -223,6 +225,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
         use_fp8: bool = False,
+        cast_buffers: bool = True,
     ) -> None:
         self.logger = get_dist_logger()
         if overlap_communication or zero_stage == 2:
@@ -363,6 +366,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
             self.mixed_moe_dp_group = self.moe_dp_group
 
         self.use_fp8 = use_fp8
+        self.cast_buffers = cast_buffers
 
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
@@ -469,6 +473,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
                 use_fp8=self.use_fp8,
+                cast_buffers=self.cast_buffers,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if self.zero_stage == 0:
