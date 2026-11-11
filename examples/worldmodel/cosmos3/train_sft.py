@@ -125,6 +125,15 @@ def parse_args():
         "a policy checkpoint.",
     )
     parser.add_argument(
+        "--action-head-from",
+        type=Path,
+        help="Load the action projections and the modality embedding from a file instead of drawing them. "
+        "For a comparison against the reference implementation: both sides re-initialize these from their "
+        "own RNG, so one side has to export what it drew and the other load it, or the comparison starts "
+        "from two different models. The file holds the reference implementation's own names (action2llm, "
+        "llm2action, action_modality_embed), which are mapped here.",
+    )
+    parser.add_argument(
         "--activation-checkpointing",
         default="full",
         choices=["full", "none"],
@@ -184,13 +193,76 @@ def reinitialize_action_head(model) -> list[str]:
     return touched
 
 
-def build_model(checkpoint: Path, reinit_action_head: bool = False):
+def load_action_head(model, path: Path) -> list[str]:
+    """Overwrite the action head with one drawn elsewhere, so two runs start from the same weights.
+
+    The file is a mapping of the reference implementation's parameter names to tensors, as its own run
+    exported them: ``action2llm.fc.weight`` / ``action2llm.bias.weight`` (this model's ``action_proj_in``),
+    ``llm2action.*`` (``action_proj_out``) and ``action_modality_embed``. Anything else in the file is an
+    error rather than something to ignore: a silently skipped tensor is a silently different model.
+
+    Args:
+        model (torch.nn.Module): The transformer.
+        path (Path): The exported file, loaded with ``torch.load``.
+
+    Returns:
+        list[str]: The parameters that were overwritten.
+
+    Raises:
+        KeyError: If the file holds a name this model has no place for.
+    """
+    blob = torch.load(path, weights_only=False)
+    # Two shapes of file. The whole export is every domain's row; the slice is one domain's, which is all a
+    # single-embodiment comparison reads and 1/65th of the bytes to ship between two boxes. The slice is
+    # named in the file rather than inferred, and what it leaves untouched is printed, because "the other
+    # domains keep this run's own draw" is true but only safe while every sample is the named domain.
+    domain = None
+    if blob.get("format") == "action-head-domain-slice":
+        domain = int(blob["domain_id"])
+        blob = {k: v for k, v in blob.items() if k not in ("format", "domain_id")}
+    loaded = []
+    for key, value in blob.items():
+        if key == "action_modality_embed":
+            target = model.action_modality_embed
+            row = target
+        else:
+            head, rest = key.split(".", 1)
+            owner = {"action2llm": "action_proj_in", "llm2action": "action_proj_out"}.get(head)
+            if owner is None:
+                raise KeyError(f"{path}: {key!r} is not an action-head parameter this model has")
+            target = model.get_parameter(f"{owner}.{rest}")
+            row = target if domain is None else target[domain]
+        if tuple(row.shape) != tuple(value.shape):
+            raise ValueError(
+                f"{path}: {key!r} is {tuple(value.shape)} but this model wants {tuple(row.shape)}"
+                + ("" if domain is None else f" for domain {domain}")
+            )
+        with torch.no_grad():
+            row.copy_(value.to(device=target.device, dtype=target.dtype))
+        loaded.append(key)
+    if domain is not None:
+        print(
+            f"[model] action head: only domain {domain} was replaced; the other domains keep this run's "
+            "own draw and are read by no sample of that embodiment",
+            flush=True,
+        )
+    return loaded
+
+
+def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_from: Path = None):
     """Load the transformer and freeze the AR tower. The model comes from diffusers, not HF transformers."""
     from diffusers import Cosmos3OmniTransformer
 
     model = Cosmos3OmniTransformer.from_pretrained(checkpoint / "transformer", torch_dtype=torch.bfloat16)
     if reinit_action_head:
         print(f"[model] action head re-initialized: {', '.join(reinitialize_action_head(model))}", flush=True)
+    if action_head_from is not None:
+        # After the re-initialization on purpose: this replaces the draw rather than preceding it.
+        print(
+            f"[model] action head loaded from {action_head_from}: "
+            f"{', '.join(load_action_head(model, action_head_from))}",
+            flush=True,
+        )
     trainable = frozen = 0
     for name, p in model.named_parameters():
         p.requires_grad = any(k in name for k in TRAINABLE_KEYS)
@@ -282,7 +354,11 @@ def main():
     collate_fn = collate
     coord.print_on_master(f"[data] {len(dataset)} window(s)")
 
-    model = build_model(args.checkpoint, reinit_action_head=args.reinit_action_head)
+    model = build_model(
+        args.checkpoint,
+        reinit_action_head=args.reinit_action_head,
+        action_head_from=args.action_head_from,
+    )
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
     if args.activation_checkpointing == "full":
         # The backward does not fit without this. At one sample per rank on four cards it failed inside
