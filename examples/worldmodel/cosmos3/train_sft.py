@@ -134,6 +134,15 @@ def parse_args():
         "llm2action, action_modality_embed), which are mapped here.",
     )
     parser.add_argument(
+        "--cast-inputs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Let the plugin cast every floating-point forward argument to the training dtype. Off, because "
+        "one of this model's arguments must not be cast -- see the comment at the plugin construction. It is "
+        "a flag rather than a constant so that a reader can reproduce the difference instead of taking the "
+        "number in the pull request on trust.",
+    )
+    parser.add_argument(
         "--activation-checkpointing",
         default="full",
         choices=["full", "none"],
@@ -415,7 +424,7 @@ def main():
         # `self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))` -- it rounds that fp32
         # projection to the embedder's parameter dtype before the call. Keeping the timesteps fp32 does not
         # prevent that; the policy does, by handing the embedder the value from before the cast.
-        cast_inputs=False,
+        cast_inputs=args.cast_inputs,
     )
     booster = Booster(plugin=plugin)
 
