@@ -198,7 +198,9 @@ def test_the_timesteps_are_fp32_whatever_the_payload_dtype_is(packed):
     inputs, _, _ = packed
     assert inputs["vision_timesteps"].dtype is torch.float32
     assert inputs["action_timesteps"].dtype is torch.float32
-    assert inputs["vision_tokens"][0].dtype is torch.bfloat16  # the payload stays bf16
+    # x_t leaves in the dtype the model computes in, which pack_batch takes as payload_dtype and which
+    # defaults to bf16. x0 itself is fp32 all the way to the interpolation, as upstream keeps it.
+    assert inputs["vision_tokens"][0].dtype is torch.bfloat16
 
 
 def test_the_action_padding_carries_no_noise(packed):

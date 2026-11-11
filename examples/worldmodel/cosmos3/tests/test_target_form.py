@@ -18,7 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from packing import DROID_DOMAIN_ID, compute_loss, pack_one
+from packing import DROID_DOMAIN_ID, compute_loss, pack_one, rectified_flow_noise
 
 SIGMA_SCALE = 1000.0  # the forward multiplies the timestep by timestep_scale = 0.001
 
@@ -44,32 +44,44 @@ def packed():
 
 
 def test_noisy_frames_satisfy_the_rectified_flow_identity(packed):
-    """``x_t = (1-s) x0 + s noise`` and ``target = noise - x0`` imply ``x0 = x_t - s * target``."""
+    """``x_t = x0 + s (noise - x0)``, computed in fp32 and rounded to the model dtype exactly once.
+
+    Not a tolerance: x_t is required to equal the fp32 identity put through one cast. That is the property
+    the reference implementation has -- its x0 and target are fp32 and only x_t is bf16 -- and it was checked
+    against its own export on a shared x0, where our x_t came out bit-identical. A tolerance of one bf16 step
+    would also pass for an implementation that interpolated in bf16 to begin with, which is what this guards.
+    """
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    recon = inputs["vision_tokens"][0] - sigma * targets["vision"]
-    error = ((recon - latent).abs() * targets["vision_noisy_mask"]).max().item()
-    assert error < 1e-5, error
+    x_t = inputs["vision_tokens"][0]
+    exact = latent.float() + sigma * targets["vision"].float()
+    mask = targets["vision_noisy_mask"].bool().expand_as(x_t)
+    assert torch.equal(x_t[mask], exact.to(x_t.dtype)[mask])
+    # And the payload itself was not rounded before the interpolation: the target is a difference of two
+    # fp32 tensors, so it carries values a bf16 x0 could not have produced.
+    assert targets["vision"].dtype is torch.float32
 
 
 def test_a_flipped_target_sign_breaks_the_identity(packed):
     """Guards the check above: it has to fail on the wrong sign, or it is not testing anything."""
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    flipped = -targets["vision"]
-    recon = inputs["vision_tokens"][0] - sigma * flipped
-    error = ((recon - latent).abs() * targets["vision_noisy_mask"]).max().item()
-    assert error > 1e-2, error
+    x_t = inputs["vision_tokens"][0]
+    wrong = latent.float() + sigma * (-targets["vision"].float())
+    mask = targets["vision_noisy_mask"].bool().expand_as(x_t)
+    assert (x_t.float() - wrong)[mask].abs().max().item() > 1e-2
 
 
 def test_the_conditioning_frame_is_clean_and_outside_the_identity(packed):
     """Frame 0 is handed to the model unnoised, so it does not satisfy the identity. That is the definition."""
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    assert torch.equal(inputs["vision_tokens"][0][0, :, 0], latent[0, :, 0])
-    assert not torch.equal(inputs["vision_tokens"][0][0, :, 1], latent[0, :, 1])
-    recon = inputs["vision_tokens"][0] - sigma * targets["vision"]
-    assert (recon - latent)[0, :, 0].abs().max().item() > 1e-2
+    x_t = inputs["vision_tokens"][0]
+    # The clean frame is the payload in the model dtype: one cast, no interpolation.
+    assert torch.equal(x_t[0, :, 0], latent[0, :, 0].to(x_t.dtype))
+    assert not torch.equal(x_t[0, :, 1], latent[0, :, 1].to(x_t.dtype))
+    recon = x_t.float() - sigma * targets["vision"].float()
+    assert (recon - latent.float())[0, :, 0].abs().max().item() > 1e-2
 
 
 def test_the_conditioning_frame_target_is_not_zeroed(packed):
@@ -84,7 +96,9 @@ def test_the_initial_state_step_is_the_raw_state(packed):
     """``use_state=True`` prepends the state as a conditioning action step, unnoised and zero-padded."""
     _, _, state, inputs, targets = packed
     action_tokens = inputs["action_tokens"][0]
-    assert torch.allclose(action_tokens[0, :8], state, atol=1e-6)
+    # Exactly the state in the model dtype, not the state within a tolerance: the conditioning row is
+    # assigned, never interpolated.
+    assert torch.equal(action_tokens[0, :8], state.to(action_tokens.dtype))
     assert action_tokens[0, 8:].abs().max().item() == 0.0
     assert targets["action_noisy_mask"][0].sum().item() == 0
 
@@ -161,3 +175,42 @@ def test_the_action_domain_id_is_droids(packed):
     assert DROID_DOMAIN_ID == 8
     (domain_ids,) = inputs["action_domain_ids"]
     assert domain_ids.reshape(-1).tolist() == [DROID_DOMAIN_ID]
+
+
+def test_the_noise_and_the_target_are_fp32():
+    """Whatever dtype the payload arrives in, the flow-matching arithmetic is fp32, as upstream's is.
+
+    Upstream keeps the clean payload in fp32 inside its ``PackedSequence`` and noises after packing, so its
+    noise, its ``x_t`` and its target are fp32. Ours used to draw the noise in ``x0.dtype`` -- bf16, the
+    payload coming out of a bf16 VAE -- which quantizes the samples at about 0.4% relative and hands that to
+    the target, which is what the gradient is taken against.
+
+    The check is on a bf16 input, because an fp32 input would pass even with the old code.
+    """
+    x0 = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    x_t, target = rectified_flow_noise(x0, torch.tensor(0.3, dtype=torch.float32))
+    assert x_t.dtype == torch.float32, f"x_t came back {x_t.dtype}, so the interpolation ran in the payload dtype"
+    assert target.dtype == torch.float32, f"the target came back {target.dtype}, and the gradient is taken on it"
+
+
+def test_the_whole_interpolation_is_fp32_for_a_bf16_payload():
+    """Not just the dtypes: the values are the fp32 formula, element for element.
+
+    Recomputing the same draw in fp32 and demanding exact equality is what distinguishes this from the old
+    code, which drew the noise in the payload's dtype and interpolated there. A dtype check alone would pass
+    on a version that computed in bf16 and cast the result up afterwards.
+
+    What this does not cover is the sigma the caller builds: ``torch.tensor(0.3, dtype=torch.bfloat16)`` has
+    already rounded 0.3 before this function sees it, and no arithmetic here can undo that -- which is why
+    ``pack_one`` builds it as fp32, and why a comparison pinned at sigma 0.5, exact in bf16, could not have
+    shown the problem.
+    """
+    x0 = torch.randn(2, 3, 4, dtype=torch.bfloat16)
+    t = torch.tensor(0.3, dtype=torch.float32)
+
+    x_t, target = rectified_flow_noise(x0, t, torch.Generator().manual_seed(0))
+
+    noise = torch.randn(x0.shape, generator=torch.Generator().manual_seed(0), dtype=torch.float32)
+    expected_x_t = (1.0 - t) * x0.float() + t * noise
+    assert torch.equal(x_t, expected_x_t), "x_t is not the fp32 interpolation of the same draw"
+    assert torch.equal(target, noise - x0.float()), "the target is not the fp32 difference of the same draw"
