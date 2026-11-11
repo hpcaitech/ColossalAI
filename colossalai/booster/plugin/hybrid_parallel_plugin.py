@@ -1251,7 +1251,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         zero_config = deepcopy(self.zero_config)
 
         # Replace with distributed implementation if exists
-        optimizer = cast_to_distributed(optimizer)
+        optimizer = cast_to_distributed(optimizer, lr_scheduler)
         if isinstance(optimizer, DistGaloreAdamW) and zero_stage > 0 and self.dp_size > 0:
             self.logger.warning(
                 "Galore is only supported for Tensor Parallel and vanilla Data Parallel yet. Disabling ZeRO.",
