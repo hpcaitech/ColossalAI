@@ -21,12 +21,14 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import os
 from pathlib import Path
 
 import torch
 from droid_dataset import DroidActionPolicyDataset, collate
 from packing import compute_loss, pack_batch
+from torch.utils.data import Dataset
 
 import colossalai
 from colossalai.booster import Booster
@@ -70,7 +72,6 @@ def parse_args():
     parser.add_argument("--data", type=Path, help="DROID dataset root, in LeRobot v3 layout.")
     parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge-Policy-DROID directory.")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"), help="Checkpoint output directory.")
-
     # Recipe values by default; overridable for smoke runs at a shorter window or a smaller batch.
     parser.add_argument("--chunk-length", type=int, default=32, help="Actions per window; frames are this plus 1.")
     parser.add_argument("--fps", type=float, default=15.0)
@@ -110,6 +111,14 @@ def parse_args():
         "and runs out of memory at the recipe's sequence length, so it is for numerical comparison only.",
     )
     parser.add_argument(
+        "--reinit-action-head",
+        action="store_true",
+        help="Draw the action projections and the action modality embedding fresh instead of loading them. "
+        "This is what the upstream recipe does (checkpoint.keys_to_skip_loading), because it starts from a "
+        "base checkpoint whose action heads are not DROID-trained. Leave it off for a policy checkpoint such "
+        "as Cosmos3-Edge-Policy-DROID, whose action heads are the point of it.",
+    )
+    parser.add_argument(
         "--activation-checkpointing",
         default="full",
         choices=["full", "none"],
@@ -123,11 +132,57 @@ def parse_args():
     return args
 
 
-def build_model(checkpoint: Path):
+def reinitialize_action_head(model) -> list[str]:
+    """Draw the action projections and the action modality embedding fresh, as the recipe does.
+
+    ``action_policy_droid_nano`` lists them in ``checkpoint.keys_to_skip_loading``::
+
+        # Skip net_ema. (EMA warm-starts from net, see dcp.py) and the action
+        # heads, so they init fresh from the base (the base has no DROID-trained
+        # action heads).
+        keys_to_skip_loading=["net_ema.", "action2llm", "llm2action",
+                              "action_modality_embed", "action_pos_embed"]
+
+    so upstream's run starts the action head from its initializer even though the base checkpoint carries
+    action weights. The initializer is ``DomainAwareLinear.initialize_action_parameters``: the per-domain
+    table is ``trunc_normal_(std=1/sqrt(input_size))`` truncated at three sigma, the per-domain bias is zero,
+    and the modality embedding uses ``std=1/sqrt(hidden_size)``.
+
+    Measured on (episode 26827, offset 0) at a pinned sigma of 0.5 with the noise pinned on both sides, this
+    is worth 1.149 against upstream's 1.883 in the action term of the loss -- the whole of a 39% gap that the
+    inputs could not explain, since the clean action is bit-identical and the vision term agrees to 0.28%.
+
+    Whether to do it depends on what the checkpoint is, which is why it is a flag and not the only behaviour:
+    from a base checkpoint the released heads are not DROID-trained and upstream discards them, while
+    ``Cosmos3-Edge-Policy-DROID`` -- this script's default -- is a policy checkpoint whose action heads are
+    exactly the thing worth keeping.
+    """
+    import math
+
+    touched = []
+    for name in ("action_proj_in", "action_proj_out"):
+        module = getattr(model, name, None)
+        if module is None:
+            continue
+        std = 1.0 / math.sqrt(module.input_size)
+        torch.nn.init.trunc_normal_(module.fc.weight, std=std, a=-3 * std, b=3 * std)
+        torch.nn.init.zeros_(module.bias.weight)
+        touched.append(name)
+    embed = getattr(model, "action_modality_embed", None)
+    if embed is not None:
+        std = 1.0 / math.sqrt(embed.shape[-1])
+        torch.nn.init.trunc_normal_(embed, std=std, a=-3 * std, b=3 * std)
+        touched.append("action_modality_embed")
+    return touched
+
+
+def build_model(checkpoint: Path, reinit_action_head: bool = False):
     """Load the transformer and freeze the AR tower. The model comes from diffusers, not HF transformers."""
     from diffusers import Cosmos3OmniTransformer
 
     model = Cosmos3OmniTransformer.from_pretrained(checkpoint / "transformer", torch_dtype=torch.bfloat16)
+    if reinit_action_head:
+        print(f"[model] action head re-initialized: {', '.join(reinitialize_action_head(model))}", flush=True)
     trainable = frozen = 0
     for name, p in model.named_parameters():
         p.requires_grad = any(k in name for k in TRAINABLE_KEYS)
@@ -219,7 +274,7 @@ def main():
     collate_fn = collate
     coord.print_on_master(f"[data] {len(dataset)} window(s)")
 
-    model = build_model(args.checkpoint)
+    model = build_model(args.checkpoint, reinit_action_head=args.reinit_action_head)
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
     if args.activation_checkpointing == "full":
         # The backward does not fit without this. At one sample per rank on four cards it failed inside
