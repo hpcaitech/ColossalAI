@@ -1,12 +1,18 @@
-"""SFT for Cosmos3-Edge-Policy-DROID with ColossalAI on Ascend.
+"""SFT of Cosmos3-Edge on DROID with ColossalAI on Ascend.
 
 Follows the ``action_policy_droid_nano`` recipe of nvidia/cosmos-framework, with Edge's model config.
+
+The checkpoint to pass is the **base**, ``nvidia/Cosmos3-Edge``. ``nvidia/Cosmos3-Edge-Policy-DROID`` is
+that base with this very SFT already done to it -- measured tensor by tensor, 318 of its 549 transformer
+tensors differ from the base and they are exactly the generation tower plus the action heads, while the 227
+that match are the frozen understanding tower. It is a reference for where training should get to, not a
+place to start from.
 
 Launch with::
 
     python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
         --data /path/to/Cosmos3-DROID/success \
-        --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
+        --checkpoint /path/to/Cosmos3-Edge \
         --out /path/to/runs/cosmos3-sft
 
 ``torchrun`` from a virtualenv that inherits torch from the system interpreter may resolve to that interpreter
@@ -68,7 +74,7 @@ LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, help="DROID dataset root, in LeRobot v3 layout.")
-    parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge-Policy-DROID directory.")
+    parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge directory (the base).")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"), help="Checkpoint output directory.")
     # Recipe values by default; overridable for smoke runs at a shorter window or a smaller batch.
     parser.add_argument("--chunk-length", type=int, default=32, help="Actions per window; frames are this plus 1.")
@@ -110,11 +116,13 @@ def parse_args():
     )
     parser.add_argument(
         "--reinit-action-head",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Draw the action projections and the action modality embedding fresh instead of loading them. "
-        "This is what the upstream recipe does (checkpoint.keys_to_skip_loading), because it starts from a "
-        "base checkpoint whose action heads are not DROID-trained. Leave it off for a policy checkpoint such "
-        "as Cosmos3-Edge-Policy-DROID, whose action heads are the point of it.",
+        "On by default, because the upstream recipe does it (checkpoint.keys_to_skip_loading) and because "
+        "this script starts from a base checkpoint, whose action heads are not DROID-trained. Pass "
+        "--no-reinit-action-head to keep the checkpoint's own, which only makes sense when continuing from "
+        "a policy checkpoint.",
     )
     parser.add_argument(
         "--activation-checkpointing",
@@ -150,10 +158,12 @@ def reinitialize_action_head(model) -> list[str]:
     is worth 1.149 against upstream's 1.883 in the action term of the loss -- the whole of a 39% gap that the
     inputs could not explain, since the clean action is bit-identical and the vision term agrees to 0.28%.
 
-    Whether to do it depends on what the checkpoint is, which is why it is a flag and not the only behaviour:
-    from a base checkpoint the released heads are not DROID-trained and upstream discards them, while
-    ``Cosmos3-Edge-Policy-DROID`` -- this script's default -- is a policy checkpoint whose action heads are
-    exactly the thing worth keeping.
+    It is on by default, because this script starts from the base checkpoint, as the recipe does. It stays a
+    flag rather than the only behaviour because continuing from a policy checkpoint -- ``Cosmos3-Edge-Policy-
+    DROID``, say -- is the one case where the released heads are the thing worth keeping.
+
+    Returns:
+        list[str]: Which modules were drawn again, so a caller can report it or fail on an empty list.
     """
     import math
 
@@ -323,10 +333,12 @@ def main():
         # rotary embedding is computed at the wrong place in the sequence. Peak memory is the same either way
         # (13.61 GiB): what stays fp32 is this index and the two timestep vectors.
         #
-        # Nothing else needs casting by hand. The latents arrive bf16 from the VAE already, and the transformer
-        # casts the timesteps itself, reading its own parameter dtype --
-        # `self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))` -- which also means the
-        # sinusoidal projection runs in fp32, which is what the fp32 timesteps are for.
+        # Nothing else needs casting by hand. The latents arrive bf16 from the VAE already, and the timesteps
+        # are what the fp32 kept here is for: the transformer computes the sinusoidal projection from them,
+        # in fp32 because they are fp32. Note what that line does next, though --
+        # `self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))` -- it rounds that fp32
+        # projection to the embedder's parameter dtype before the call. Keeping the timesteps fp32 does not
+        # prevent that; the policy does, by handing the embedder the value from before the cast.
         cast_inputs=False,
     )
     booster = Booster(plugin=plugin)
