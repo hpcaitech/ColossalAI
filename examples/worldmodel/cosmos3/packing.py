@@ -415,6 +415,7 @@ def pack_one(
     cfg,
     *,
     state: torch.Tensor = None,
+    payload_dtype: torch.dtype = torch.bfloat16,
     fps: float = 15.0,
     domain_id: int = DROID_DOMAIN_ID,
     resolution: str = "480",
@@ -501,7 +502,13 @@ def pack_one(
     # test_independent_modality_schedule_invalidates_fast_path, where the action timestep differs from the vision
     # one only when the flag is on. The forward multiplies the timestep by timestep_scale=0.001, so what is passed
     # here is sigma * 1000.
-    latent_dtype, action_dtype = latent.dtype, action.dtype
+    # The dtype x_t leaves in is the model's, not the payload's. Keeping the payload in fp32 all the way to
+    # here is what the reference implementation does -- measured on its own run, ``x0_tokens_vision`` and
+    # ``x0_tokens_action`` are float32 even when the model is bf16, and only ``xt_tokens_*`` is bf16 -- and it
+    # matters: rounding x0 before the interpolation throws away precision the interpolation would have kept,
+    # and no fp32 arithmetic downstream can recover it. Measured from one shared x0, with the payload left in
+    # fp32 our x_t and both targets come out bit-identical to upstream's.
+    latent_dtype = action_dtype = payload_dtype
     shift = RF_SHIFT[resolution]
     sigma = sample_sigma(shift, "waver", generator)
     t_vis_raw = t_act_raw = sigma * 1000.0
@@ -668,6 +675,7 @@ def pack_batch(
     resolution: str = "480",
     device="npu:0",
     generator=None,
+    payload_dtype: torch.dtype = torch.bfloat16,
 ):
     """Pack a batch of samples into one sequence and install the per-sample boundaries on the policy.
 
@@ -739,7 +747,10 @@ def pack_batch(
         else:
             latent = out
         latent = normalize_latent(latent, vae)
-        latent = latent.to(torch.bfloat16)
+        # Not cast to the model dtype here. x0 stays fp32 and pack_one casts x_t at the end, which is what
+        # upstream does; rounding here instead would be rounding before the interpolation, and no fp32
+        # arithmetic afterwards can recover what that throws away.
+        latent = latent.float()
 
     # The canvas is padded; the latent must not be. ``resize_and_reflect_pad`` fits the composite inside the
     # bucket canvas and reflection-pads the bottom and right edges, so for DROID a 540x640 composite sits in a
@@ -783,10 +794,11 @@ def pack_batch(
         per_sample.append(
             pack_one(
                 latent[index : index + 1, :, :, :keep_h, :keep_w].contiguous(),
-                batch["action"][index].to(torch.bfloat16),
+                batch["action"][index].float(),
                 ids,
                 cfg,
-                state=batch["state"][index].to(torch.bfloat16) if "state" in batch else None,
+                state=batch["state"][index].float() if "state" in batch else None,
+                payload_dtype=payload_dtype,
                 fps=fps,
                 device=device,
                 resolution=str(resolution),

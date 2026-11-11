@@ -44,32 +44,44 @@ def packed():
 
 
 def test_noisy_frames_satisfy_the_rectified_flow_identity(packed):
-    """``x_t = (1-s) x0 + s noise`` and ``target = noise - x0`` imply ``x0 = x_t - s * target``."""
+    """``x_t = x0 + s (noise - x0)``, computed in fp32 and rounded to the model dtype exactly once.
+
+    Not a tolerance: x_t is required to equal the fp32 identity put through one cast. That is the property
+    the reference implementation has -- its x0 and target are fp32 and only x_t is bf16 -- and it was checked
+    against its own export on a shared x0, where our x_t came out bit-identical. A tolerance of one bf16 step
+    would also pass for an implementation that interpolated in bf16 to begin with, which is what this guards.
+    """
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    recon = inputs["vision_tokens"][0] - sigma * targets["vision"]
-    error = ((recon - latent).abs() * targets["vision_noisy_mask"]).max().item()
-    assert error < 1e-5, error
+    x_t = inputs["vision_tokens"][0]
+    exact = latent.float() + sigma * targets["vision"].float()
+    mask = targets["vision_noisy_mask"].bool().expand_as(x_t)
+    assert torch.equal(x_t[mask], exact.to(x_t.dtype)[mask])
+    # And the payload itself was not rounded before the interpolation: the target is a difference of two
+    # fp32 tensors, so it carries values a bf16 x0 could not have produced.
+    assert targets["vision"].dtype is torch.float32
 
 
 def test_a_flipped_target_sign_breaks_the_identity(packed):
     """Guards the check above: it has to fail on the wrong sign, or it is not testing anything."""
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    flipped = -targets["vision"]
-    recon = inputs["vision_tokens"][0] - sigma * flipped
-    error = ((recon - latent).abs() * targets["vision_noisy_mask"]).max().item()
-    assert error > 1e-2, error
+    x_t = inputs["vision_tokens"][0]
+    wrong = latent.float() + sigma * (-targets["vision"].float())
+    mask = targets["vision_noisy_mask"].bool().expand_as(x_t)
+    assert (x_t.float() - wrong)[mask].abs().max().item() > 1e-2
 
 
 def test_the_conditioning_frame_is_clean_and_outside_the_identity(packed):
     """Frame 0 is handed to the model unnoised, so it does not satisfy the identity. That is the definition."""
     latent, _, _, inputs, targets = packed
     sigma = inputs["vision_timesteps"][0].item() / SIGMA_SCALE
-    assert torch.equal(inputs["vision_tokens"][0][0, :, 0], latent[0, :, 0])
-    assert not torch.equal(inputs["vision_tokens"][0][0, :, 1], latent[0, :, 1])
-    recon = inputs["vision_tokens"][0] - sigma * targets["vision"]
-    assert (recon - latent)[0, :, 0].abs().max().item() > 1e-2
+    x_t = inputs["vision_tokens"][0]
+    # The clean frame is the payload in the model dtype: one cast, no interpolation.
+    assert torch.equal(x_t[0, :, 0], latent[0, :, 0].to(x_t.dtype))
+    assert not torch.equal(x_t[0, :, 1], latent[0, :, 1].to(x_t.dtype))
+    recon = x_t.float() - sigma * targets["vision"].float()
+    assert (recon - latent.float())[0, :, 0].abs().max().item() > 1e-2
 
 
 def test_the_conditioning_frame_target_is_not_zeroed(packed):
@@ -84,7 +96,9 @@ def test_the_initial_state_step_is_the_raw_state(packed):
     """``use_state=True`` prepends the state as a conditioning action step, unnoised and zero-padded."""
     _, _, state, inputs, targets = packed
     action_tokens = inputs["action_tokens"][0]
-    assert torch.allclose(action_tokens[0, :8], state, atol=1e-6)
+    # Exactly the state in the model dtype, not the state within a tolerance: the conditioning row is
+    # assigned, never interpolated.
+    assert torch.equal(action_tokens[0, :8], state.to(action_tokens.dtype))
     assert action_tokens[0, 8:].abs().max().item() == 0.0
     assert targets["action_noisy_mask"][0].sum().item() == 0
 
