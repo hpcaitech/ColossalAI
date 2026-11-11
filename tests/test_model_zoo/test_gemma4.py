@@ -243,6 +243,12 @@ def test_gemma4_cpu_ddp_equivalence(variant, world_size):
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
 def test_gemma4_cpu_optimizer_resume(variant, tmp_path):
+    from tests.kit.numerics.scenarios.resume import unsharded_optimizer_reloads
+
+    if not unsharded_optimizer_reloads():
+        pytest.skip(
+            "Legacy optimizer checkpoint loading requires torch >= 2.10; covered on the maintained Torch 2.13 image"
+        )
     dist.init_process_group("gloo", init_method=f"file://{tmp_path}/init", rank=0, world_size=1)
     try:
         booster = Booster(plugin=TorchDDPPlugin())
