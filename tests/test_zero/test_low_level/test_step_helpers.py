@@ -7,6 +7,8 @@ per-tensor copies when the backend has no foreach copy. The tests bind the metho
 optimizer, accelerator or process group.
 """
 
+import math
+
 import pytest
 import torch
 
@@ -140,6 +142,59 @@ def test_infinity_norm_is_the_max_absolute_value():
     assert value == pytest.approx(3.0)
 
 
+def test_a_large_gradient_does_not_overflow_to_infinity():
+    """1e20 squared overflows float32, so the per-shard float32 norm is inf while the true norm is finite. Returning
+    inf would make the clip factor inf and scale every gradient to zero."""
+    grads = [torch.full((16,), 1e20), torch.full((16,), 2e20)]
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(), grads, 2)
+
+    assert math.isfinite(value), "a finite gradient must not produce an infinite norm"
+    assert value == pytest.approx(_reference(grads), rel=1e-12)
+
+
+def test_a_tiny_gradient_does_not_underflow_to_zero():
+    """1e-25 squared underflows to zero in float32, so the per-shard float32 norm is zero while the true norm is
+    not; the float64 reference is the value to reproduce."""
+    grads = [torch.full((16,), 1e-25), torch.full((16,), 2e-25)]
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(), grads, 2)
+
+    assert value > 0.0, "a nonzero gradient must not produce a zero norm"
+    assert value == pytest.approx(_reference(grads), rel=1e-6)
+
+
+def test_an_overflowing_shard_keeps_the_weight_of_its_chunk():
+    grads = [torch.full((4,), 1e20), torch.full((4,), 3e20)]
+    stub = _NormStub(weights={id(grads[1]): 0.5})
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(stub, grads, 2)
+
+    expected = float(grads[0].double().norm(2) ** 2 + 0.5 * grads[1].double().norm(2) ** 2) ** 0.5
+    assert value == pytest.approx(expected, rel=1e-12)
+
+
+def test_normal_values_next_to_a_tiny_shard_stay_on_the_fast_path(monkeypatch):
+    """A zero part from underflow next to normal-sized shards cannot change the total at float64 resolution, so the
+    repair pass is skipped: the value is unchanged and no extra reduction runs."""
+    calls = []
+    real_count_nonzero = torch.count_nonzero
+
+    def counting_count_nonzero(tensor):
+        calls.append(1)
+        return real_count_nonzero(tensor)
+
+    monkeypatch.setattr(torch, "count_nonzero", counting_count_nonzero)
+    generator = torch.Generator().manual_seed(4)
+    grads = [torch.randn(100, generator=generator), torch.full((8,), 1e-25)]
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(), grads, 2)
+
+    # The fast path is float32-accurate; only the repair pass is float64-exact.
+    assert value == pytest.approx(_reference(grads), rel=1e-6)
+    assert calls == [], "a tiny shard next to normal ones must not trigger the float64 repair pass"
+
+
 def test_cast_buffers_are_reused_and_filled():
     stub = _CastStub()
     master = torch.randn(32, 4)
@@ -151,10 +206,24 @@ def test_cast_buffers_are_reused_and_filled():
     stub._multi_tensor_copy([first], [grad])
     assert torch.equal(first, grad.float())
 
-    cast_back = stub._working_cast_buffer(master)
+    cast_back = stub._working_cast_buffer(master, master)
     stub._multi_tensor_copy([cast_back], [master])
     assert cast_back.dtype is torch.bfloat16
     assert torch.equal(cast_back.float(), master.to(torch.bfloat16).float())
+
+
+def test_the_writeback_buffer_follows_the_working_param_device():
+    """With ``cpu_offload`` the master is on CPU and the working param on the accelerator; the all-gather input must
+    be on the accelerator too. A buffer allocated on the master's device would be a CPU tensor."""
+    stub = _CastStub()
+    master = torch.randn(8)
+    working = torch.empty(8, dtype=torch.bfloat16, device="meta")
+
+    cast_back = stub._working_cast_buffer(master, working)
+
+    assert cast_back.device.type == "meta", "the write-back buffer must live where the all-gather runs"
+    assert cast_back.shape == master.shape
+    assert stub._working_cast_buffer(master, working) is cast_back, "the buffer must still be reused across steps"
 
 
 def test_a_resized_param_gets_a_fresh_buffer():

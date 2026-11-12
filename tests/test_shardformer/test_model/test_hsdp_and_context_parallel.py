@@ -256,6 +256,26 @@ def _check_context_parallel_rejects_different_packs():
     return False
 
 
+def _check_hsdp_needs_zero():
+    """HSDP is carried by the ZeRO optimizer; with zero_stage=0 the plugin must refuse instead of staying plain DDP
+    over the whole data parallel group and ignoring the shard size."""
+    from colossalai.booster.plugin import HybridParallelPlugin
+
+    try:
+        HybridParallelPlugin(tp_size=1, pp_size=1, zero_stage=0, hsdp_shard_size=2)
+    except ValueError as error:
+        return "zero_stage=0" in str(error)
+    return False
+
+
+def _hsdp_zero_stage_worker(rank, world, port, queue):
+    _launch(rank, world, port)
+    ok = _check_hsdp_needs_zero()
+    if rank == 0:
+        queue.put(ok)
+    dist.destroy_process_group()
+
+
 def _hsdp_worker(rank, world, port, configs, queue):
     _launch(rank, world, port)
     results = [_check_hsdp(shard, partition) for shard, partition in configs]
@@ -299,6 +319,15 @@ def test_hsdp_gradient_sync():
     mp.spawn(_hsdp_worker, args=(HSDP_WORLD, 29561, configs, queue), nprocs=HSDP_WORLD, join=True)
     errors = queue.get(timeout=60)
     assert all(error < 1e-5 for error in errors), errors
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="the plugin validation is checked over gloo")
+def test_hsdp_requires_a_zero_stage():
+    """``hsdp_shard_size`` with ``zero_stage=0`` must raise, not warn and run plain DDP over the whole DP group."""
+    context = mp.get_context("spawn")
+    queue = context.Queue()
+    mp.spawn(_hsdp_zero_stage_worker, args=(HSDP_WORLD, 29565, queue), nprocs=HSDP_WORLD, join=True)
+    assert queue.get(timeout=60) is True
 
 
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="the Ulysses exchange is checked over gloo")

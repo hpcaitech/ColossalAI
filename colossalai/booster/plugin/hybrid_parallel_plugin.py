@@ -713,13 +713,13 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
-        replica_group: Optional[ProcessGroup] = None,  # the HSDP replica pg for the second-level grad all-reduce
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
         grad_norm_process_group: Optional[ProcessGroup] = None,
+        replica_group: Optional[ProcessGroup] = None,  # the HSDP replica pg for the second-level grad all-reduce
     ):
         self.model = model
         self.param_info = param_info
@@ -1025,11 +1025,11 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
+        cast_inputs: bool = True,
         use_fp8: bool = False,
         inner_ring_size: int = None,
-        hsdp_shard_size: Optional[int] = None,
-        cast_inputs: bool = True,
         cast_buffers: bool = True,
+        hsdp_shard_size: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.logger = get_dist_logger()
@@ -1199,11 +1199,14 @@ class HybridParallelPlugin(PipelinePluginBase):
             )
         self.dp_replicate_size = self.dp_size // self.dp_shard_size
         if self.dp_replicate_size > 1:
+            # HSDP is a ZeRO gradient reduction (reduce-scatter inside the shard group, all-reduce across replicas).
+            # With zero_stage=0 there is no ZeRO optimizer to carry it: the plugin would build DDP over the whole
+            # data parallel group, and the shard size would silently have no effect. Refuse rather than mislead.
             if self.zero_stage == 0:
-                self.logger.warning(
-                    "hsdp_shard_size only affects the ZeRO gradient reduction; with zero_stage=0 the run stays plain "
-                    "DDP over the whole data parallel group.",
-                    ranks=[0],
+                raise ValueError(
+                    f"hsdp_shard_size={hsdp_shard_size} requests hybrid sharded data parallelism, which is a ZeRO "
+                    "gradient reduction; it cannot be combined with zero_stage=0. Set zero_stage to 1 or 2, or "
+                    "leave hsdp_shard_size unset."
                 )
             self.shard_group, self.replica_group = self._create_hsdp_groups(self.dp_shard_size)
         else:
