@@ -6,6 +6,8 @@ from colossalai.shardformer.modeling.cosmos_mot import (
     CosmosTwoWayLayout,
     layout_from_split_info,
     layout_from_split_lengths,
+    pack_cosmos3_samples,
+    token_mean_loss_scale,
 )
 
 HEADS = 2
@@ -169,3 +171,99 @@ def test_layout_is_frozen():
     assert isinstance(layout, CosmosTwoWayLayout)
     with pytest.raises(AttributeError):
         layout.pad_tokens = 4
+
+
+def _sample(und_len, dm_len, seed, sample_id=None):
+    """A packer-shaped sample with one AR index field and the diffusion fields the transformer consumes."""
+    generator = torch.Generator().manual_seed(seed)
+    sequence_length = und_len + dm_len
+    sample = dict(
+        und_len=und_len,
+        sequence_length=sequence_length,
+        input_ids=torch.randint(0, 100, (und_len,), generator=generator),
+        text_indexes=torch.arange(und_len),
+        position_ids=torch.arange(3 * sequence_length, dtype=torch.long).reshape(3, sequence_length),
+        vision_sequence_indexes=torch.arange(und_len, sequence_length),
+        vision_mse_loss_indexes=torch.arange(und_len, sequence_length),
+        vision_timesteps=torch.full((dm_len,), float(seed)),
+        vision_tokens=[torch.randn(1, 2, 2, 2, 2, generator=generator)],
+        vision_token_shapes=[(1, 2, 2)],
+        vision_noisy_frame_indexes=[torch.arange(1)],
+        vision_domain_ids=[torch.tensor(0)],
+    )
+    if sample_id is not None:
+        sample["sample_id"] = sample_id
+    return sample
+
+
+def test_pack_cosmos3_samples_rewrites_every_global_index():
+    batch = pack_cosmos3_samples([_sample(2, 3, seed=1, sample_id="a"), _sample(1, 4, seed=2, sample_id="b")])
+
+    assert batch.meta.ar_lens == (2, 1)
+    assert batch.meta.dm_lens == (3, 4)
+    assert batch.sample_ids == ("a", "b")
+    assert batch.model_inputs["und_len"] == 3
+    assert batch.model_inputs["sequence_length"] == 10
+
+    # AR block first: sample b's text indexes start after sample a's two AR tokens.
+    assert batch.model_inputs["text_indexes"].tolist() == [0, 1, 2]
+    # DM block second: sample a's DM starts at 3, sample b's at 6. Local DM index 2 in a -> 3 + (2 - 2) = 3;
+    # b's local DM index 1 -> 6 + (1 - 1) = 6.
+    assert batch.model_inputs["vision_sequence_indexes"].tolist() == [3, 4, 5, 6, 7, 8, 9]
+    assert batch.model_inputs["vision_mse_loss_indexes"].tolist() == [3, 4, 5, 6, 7, 8, 9]
+    assert batch.model_inputs["position_ids"].shape == (3, 10)
+    assert batch.model_inputs["vision_timesteps"].tolist() == [1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
+    assert len(batch.model_inputs["vision_tokens"]) == 2
+    assert batch.model_inputs["vision_domain_ids"][0].item() == 0
+
+
+def test_pack_cosmos3_samples_counts_supervised_tokens_and_padding():
+    batch = pack_cosmos3_samples(
+        [_sample(2, 3, seed=3), _sample(1, 4, seed=4)],
+        pad_tokens=2,
+    )
+
+    assert batch.layout.pad_tokens == 2
+    assert batch.layout.sequence_length == 12
+    assert batch.model_inputs["sequence_length"] == 10
+    assert batch.supervised_tokens["vision_mse_loss_indexes"] == (3, 4)
+    assert batch.supervised_tokens["total"] == (3, 4)
+    assert batch.total_supervised_tokens == 7
+
+
+def test_pack_cosmos3_samples_keeps_each_sample_position_ids():
+    first = _sample(2, 3, seed=5)
+    second = _sample(1, 4, seed=6)
+    batch = pack_cosmos3_samples([first, second])
+
+    packed = batch.model_inputs["position_ids"]
+    assert torch.equal(packed[:, :2], first["position_ids"][:, :2])
+    assert torch.equal(packed[:, 3:6], first["position_ids"][:, 2:])
+    assert torch.equal(packed[:, 2:3], second["position_ids"][:, :1])
+    assert torch.equal(packed[:, 6:], second["position_ids"][:, 1:])
+
+
+def test_pack_cosmos3_samples_rejects_unknown_and_mismatched_fields():
+    with pytest.raises(ValueError, match="Unknown Cosmos 3 sample field"):
+        pack_cosmos3_samples([_sample(2, 3, seed=7) | {"mystery": torch.zeros(1)}])
+
+    missing_field = _sample(1, 4, seed=9)
+    del missing_field["text_indexes"]
+    with pytest.raises(ValueError, match="same packer fields"):
+        pack_cosmos3_samples([_sample(2, 3, seed=8), missing_field])
+
+
+def test_pack_cosmos3_samples_rejects_an_invalid_length():
+    with pytest.raises(ValueError, match="und_len must be in"):
+        pack_cosmos3_samples([_sample(2, 3, seed=10) | {"und_len": 6}])
+
+
+def test_token_mean_loss_scale_weights_ranks_by_supervised_tokens():
+    assert token_mean_loss_scale(10, 40, 2) == 0.5
+    assert token_mean_loss_scale(30, 40, 2) == 1.5
+    assert token_mean_loss_scale(0, 40, 2) == 0.0
+
+    with pytest.raises(ValueError, match="no supervised token"):
+        token_mean_loss_scale(0, 0, 2)
+    with pytest.raises(ValueError, match="positive"):
+        token_mean_loss_scale(1, 2, 0)

@@ -18,6 +18,7 @@ from .segmented_attn import SegmentMaskSpec, SegmentRule, build_segment_mask, na
 from .two_way_attn import (
     TwoWayPackedMeta,
     build_two_way_kv_gather_index,
+    cuda_two_way_flat_attention,
     naive_two_way_flat_attention,
     npu_two_way_flat_attention,
     two_way_flat_attention,
@@ -65,5 +66,6 @@ __all__ = [
     "validate_two_way_varlen_limits",
     "naive_two_way_flat_attention",
     "npu_two_way_flat_attention",
+    "cuda_two_way_flat_attention",
     "two_way_flat_attention",
 ]

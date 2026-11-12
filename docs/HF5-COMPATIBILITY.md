@@ -10,6 +10,10 @@ T5, GPT2, GPTJ, OPT, Bloom, SAM, BLIP2, ChatGLM2, Deepseek (legacy/non-V3), Falc
 
 Do not count model heads, remote-code aliases, or Command/Cohere twice.
 
+The registry also contains one **diffusers** family, Cosmos 3 (`Cosmos3OmniPolicy` for
+`diffusers.models.transformers.transformer_cosmos3.Cosmos3OmniTransformer`). It is outside the 20 Transformers policy
+families and is not covered by `check_hf5_policy`; its boundary is recorded separately below.
+
 ## Support and gate matrix
 
 | Family | HF5 evidence | Current boundary |
@@ -22,6 +26,7 @@ Do not count model heads, remote-code aliases, or Command/Cohere twice.
 | T5/GPT2/GPTJ/Bloom/Falcon/Mistral | Import and tiny descriptor/path audit passes; no full HF5 numerical/distributed acceptance | No new blanket family gate. Existing failures remain visible; old Cache and optional-path contracts require further work |
 | SAM | CPU RNG read fixed; TP descriptor next reaches unsupported CPU manual_seed | Remaining platform blocker; not declared an HF5 model incompatibility |
 | Eight core families | Four colleague families integrated with HF4/HF5 dispatch; non-EP CPU training checked; HF5 fused expert identity, optimizer ownership/update, optimizer checkpoint and EP gradient regressions executed remotely | The obsolete Mixtral/DeepseekV3 EP identity gate is removed after production four-GPU tests pass. Model-specific restrictions remain; full eight-GPU matrix and physical HF4 regression are not certified |
+| Cosmos 3 (diffusers) | CPU contract tests cover packed multi-sample forward, per-sample gradient isolation, activation-checkpoint recompute parity, `HybridParallelPlugin + Cosmos3OmniPolicy` backward/step, the all-to-all CP processor forward/backward, and a single-rank model save/load. The CUDA backend is wired to Torch's native `varlen_attn` (the branch's 2.13 Torch provides it); the native-CUDA case is gated on a real device | BF16 DP/ZeRO is the default scope. TP is implemented through the ShardFormer column/row projections but is not numerically certified. Ulysses CP is available only as `enable_sequence_parallelism=True` with `sequence_parallelism_mode="all_to_all"`; PP, non-all-to-all SP, TP+CP, fp8 communication with CP, and `ShardConfig.gradient_checkpoint_config` are rejected explicitly. CP requires a diffusers build with the `_cp_shard_fn`/`_cp_gather_fn` seams (0.40.0 or newer); the repository-wide diffusers pin does not provide them. Real 1/2/8-device numerical and throughput runs, the Ascend two-call numerical gate, and SFT convergence are **not** certified by CPU tests |
 
 The three newly validated families require HF5 **>=5.17.0** in this compatibility branch; earlier HF5 minors are not silently treated as tested. Later versions still need regression testing. HF4 branches remain present, but a real HF4 regression was not executed in this D4 pass.
 
