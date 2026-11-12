@@ -437,14 +437,6 @@ class DistributedCAME(DistributedOptim):
                     else:
                         state["exp_avg_sq"] = torch.zeros_like(p)
                     state["RMS"] = 0
-                else:
-                    if factored:
-                        state["exp_avg_sq_row"] = state["exp_avg_sq_row"]
-                        state["exp_avg_sq_col"] = state["exp_avg_sq_col"]
-                        state["exp_avg_res_row"] = state["exp_avg_sq_row"]
-                        state["exp_avg_res_col"] = state["exp_avg_sq_col"]
-                    else:
-                        state["exp_avg_sq"] = state["exp_avg_sq"]
 
                 state["step"] += 1
 
@@ -545,7 +537,7 @@ class DistributedCAME(DistributedOptim):
                             group["betas"][2],
                         )
                 else:
-                    update = exp_avg
+                    update = exp_avg.clone()
 
                 if group["weight_decay"] != 0:
                     p.add_(p, alpha=-group["weight_decay"] * group["lr"])
