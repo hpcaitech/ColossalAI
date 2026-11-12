@@ -9,18 +9,6 @@ else:
 from colossalai.logging import get_dist_logger
 
 
-class _enable_get_lr_call:
-    def __init__(self, o):
-        self.o = o
-
-    def __enter__(self):
-        self.o._get_lr_called_within_step = True
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.o._get_lr_called_within_step = False
-
-
 class TwoStageScheduler(_LRScheduler):
     def __init__(self, optimizer, after_scheduler: _LRScheduler, last_epoch=-1):
         self.after_scheduler = after_scheduler
@@ -76,8 +64,7 @@ class DelayerScheduler(TwoStageScheduler):
             if not self.finished:
                 self.after_scheduler.base_lrs = self.base_lrs
                 self.finished = True
-            with _enable_get_lr_call(self.after_scheduler):
-                return self.after_scheduler.get_lr()
+            return self.after_scheduler.get_last_lr()
 
         return self.base_lrs
 
@@ -114,7 +101,7 @@ class WarmupScheduler(TwoStageScheduler):
             if not self.finished:
                 self.after_scheduler.base_lrs = self.base_lrs
                 self.finished = True
-            return self.after_scheduler.get_lr()
+            return self.after_scheduler.get_last_lr()
 
         return [(self.last_epoch + 1) / self.warmup_epochs * lr for lr in self.base_lrs]
 
@@ -160,8 +147,7 @@ class WarmupDelayerScheduler(TwoStageScheduler):
                 for group, base_lr in zip(self.optimizer.param_groups, self.base_lrs):
                     group["lr"] = base_lr
                 self.finished = True
-            with _enable_get_lr_call(self.after_scheduler):
-                return self.after_scheduler.get_lr()
+            return self.after_scheduler.get_last_lr()
         elif self.last_epoch >= self.warmup_epochs:
             return self.base_lrs
 
