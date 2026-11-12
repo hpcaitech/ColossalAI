@@ -87,6 +87,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         ddp_config: dict,
         custom_policy: Policy,
         overlap_allgather: bool = False,
+        cast_inputs: bool = True,
         use_fp8: bool = False,
         cast_buffers: bool = True,
     ) -> None:
@@ -135,8 +136,16 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         module = module.to(get_accelerator().get_current_device())
 
         # setting input type cast when using mixed precision
+        #
+        # ``cast_inputs=False`` leaves the forward's arguments alone. The cast below is indiscriminate: it takes
+        # every floating-point tensor in args and kwargs, which is right for activations and wrong for an
+        # argument whose *value* matters rather than its precision. A positional index is the case that
+        # motivated the switch -- fractional mRoPE positions reaching 15163.8 come back off by up to 17 whole
+        # positions in bfloat16, so the rotary embedding is computed at the wrong place in the sequence. With
+        # the cast off, the caller is responsible for handing the model the dtype it wants, which is also what
+        # ``LowLevelZeroPlugin(cast_inputs=False)`` already means.
         self.convert_fn = None
-        if self.mixed_precision is not None:
+        if self.mixed_precision is not None and cast_inputs:
             self.convert_fn = partial(_convert_floating_point, dtype=self.mixed_precision)
 
         # setting ddp configs
@@ -961,7 +970,11 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
-        use_fp8 (bool, optional): Whether to use fp8 communication. Defaults to False.
+        cast_inputs (bool, optional): Whether to cast every floating-point argument of the model's forward to the
+            mixed-precision dtype. Defaults to True. Set it to False when an argument carries a value whose
+            magnitude matters, such as a positional index: the cast is indiscriminate, and bfloat16 cannot hold
+            a position of 15163.8 closer than 16. With it off, the caller casts the activations itself.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as well as
             its parameters. Defaults to True, which is what ``Module.to(dtype)`` does. Pass False for a model
             whose buffers hold constants whose value matters -- a rotary frequency table, a position index --
@@ -971,6 +984,11 @@ class HybridParallelPlugin(PipelinePluginBase):
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.
 
     """
+
+    #: Default for a subclass that defines its own ``__init__`` without forwarding this one's
+    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before this
+    #: switch existed.
+    cast_inputs: bool = True
 
     def __init__(
         self,
@@ -1018,6 +1036,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
+        cast_inputs: bool = True,
         use_fp8: bool = False,
         inner_ring_size: int = None,
         cast_buffers: bool = True,
@@ -1072,6 +1091,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_flash_attention = enable_flash_attention
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
+        self.cast_inputs = cast_inputs
         self.use_fp8 = use_fp8
         self.cast_buffers = cast_buffers
         if dp_outside:
@@ -1306,6 +1326,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 ddp_config=self.ddp_config,
                 custom_policy=self.custom_policy,
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
+                cast_inputs=self.cast_inputs,
                 use_fp8=self.use_fp8,
                 cast_buffers=self.cast_buffers,
             )
