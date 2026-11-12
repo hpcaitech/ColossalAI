@@ -109,7 +109,11 @@ def parse_args(argv=None):
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--mp-context", default="spawn")
     parser.add_argument("--max-episodes", type=int)
-    parser.add_argument("--keep-ranges", type=Path, help="Curated keep_ranges_1_0_1.json used by the released recipe.")
+    parser.add_argument(
+        "--keep-ranges",
+        type=Path,
+        help="Curated keep_ranges_1_0_1.json shipped with the released recipe; its pinned config disables the filter.",
+    )
     parser.add_argument("--success-only", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
