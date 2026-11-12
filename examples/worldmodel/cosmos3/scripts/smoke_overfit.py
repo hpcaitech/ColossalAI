@@ -14,7 +14,7 @@ removed by packing once and feeding the same tensors every step.
 Needs an Ascend device, the checkpoint and the DROID dataset::
 
     python -m torch.distributed.run --nproc_per_node=1 scripts/smoke_overfit.py \
-        --data /path/to/Cosmos3-DROID/success \
+        --data /path/to/Cosmos3-DROID \
         --checkpoint /path/to/Cosmos3-Edge-Policy-DROID
 """
 
@@ -68,7 +68,7 @@ def main():
     original_tokenize = packing.tokenize_prompt
     packing.tokenize_prompt = lambda prompt, tokenizer, **kw: original_tokenize(prompt, tokenizer, cfg_dropout_rate=0.0)
 
-    dataset = DroidActionPolicyDataset(args.data, augment=False, max_episodes=2)
+    dataset = DroidActionPolicyDataset(args.data, augment=False, max_episodes=2, success_only=True)
     loader = DataLoader(
         dataset, batch_size=1, shuffle=False, num_workers=2, collate_fn=collate, multiprocessing_context="spawn"
     )

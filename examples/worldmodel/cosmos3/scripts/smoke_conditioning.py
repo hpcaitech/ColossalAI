@@ -7,7 +7,7 @@ conditioning frames** -- which is why the loss must apply the noisy mask rather 
 Needs an Ascend device, the checkpoint and the DROID dataset::
 
     python scripts/smoke_conditioning.py \
-        --data /path/to/Cosmos3-DROID/success \
+        --data /path/to/Cosmos3-DROID \
         --checkpoint /path/to/Cosmos3-Edge-Policy-DROID
 """
 
@@ -64,7 +64,7 @@ def main():
     torch.npu.set_device(args.device)
     torch.npu.conv.allow_hf32 = False
 
-    dataset = DroidActionPolicyDataset(args.data, max_episodes=args.max_episodes, sample_stride=32)
+    dataset = DroidActionPolicyDataset(args.data, max_episodes=args.max_episodes, sample_stride=32, success_only=True)
     loader = DataLoader(
         dataset,
         batch_size=args.samples,

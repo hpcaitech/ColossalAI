@@ -11,7 +11,7 @@ place to start from.
 Launch with::
 
     python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
-        --data /path/to/Cosmos3-DROID/success \
+        --data /path/to/Cosmos3-DROID \
         --checkpoint /path/to/Cosmos3-Edge \
         --out /path/to/runs/cosmos3-sft
 
@@ -359,6 +359,8 @@ def main():
         resolution=args.resolution,
         augment=True,
         max_episodes=args.max_episodes,
+        # The parent directory holds both roots; the recipe's factory default trains the success root only.
+        success_only=True,
     )
     collate_fn = collate
     coord.print_on_master(f"[data] {len(dataset)} window(s)")
