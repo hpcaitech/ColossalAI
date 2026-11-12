@@ -92,4 +92,5 @@ class OneCycleLR(_OneCycleLR):
             div_factor=div_factor,
             final_div_factor=final_div_factor,
             last_epoch=last_epoch,
+            **kwargs,
         )
