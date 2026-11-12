@@ -31,7 +31,7 @@ pip install -r requirements.txt
 
 ```bash
 python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
-    --data /path/to/Cosmos3-DROID/success \
+    --data /path/to/Cosmos3-DROID \
     --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
     --out runs/cosmos3-sft
 ```

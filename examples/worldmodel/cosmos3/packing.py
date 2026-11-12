@@ -22,6 +22,7 @@ mismatch that produces a plausible loss curve instead of an error.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 
@@ -676,6 +677,8 @@ def pack_batch(
     device="npu:0",
     generator=None,
     payload_dtype: torch.dtype = torch.bfloat16,
+    stopwatch=None,
+    vae_encode_batch: int = 0,
 ):
     """Pack a batch of samples into one sequence and install the per-sample boundaries on the policy.
 
@@ -707,6 +710,8 @@ def pack_batch(
         resolution (str, optional): Key into :data:`RF_SHIFT`. Defaults to "480".
         device: Device for the packed tensors.
         generator (torch.Generator, optional): CPU generator. Defaults to None.
+        stopwatch: Optional section timer; records the online encode separately.
+        vae_encode_batch (int): Samples per encode call, or zero for the whole batch.
 
     Returns:
         tuple: ``(inputs, targets)``.
@@ -736,21 +741,27 @@ def pack_batch(
     # The VAE can only run in the main process, since workers cannot touch the device. Encode the batch in one
     # call and slice it per sample afterwards. The input follows the VAE's own dtype rather than a fixed one,
     # so that --vae-dtype actually changes what the convolutions compute instead of being upcast right here.
+    if vae_encode_batch < 0:
+        raise ValueError("vae_encode_batch must be nonnegative")
+    if n < 1:
+        raise ValueError("Cannot pack an empty video batch")
     vae_dtype = next(vae.parameters()).dtype
-    with torch.no_grad():
-        out = vae.encode(batch["video"].to(device, vae_dtype))
+    encode = stopwatch.section("vae") if stopwatch is not None else contextlib.nullcontext()
+
+    def encode_video(video):
+        out = vae.encode(video.to(device, vae_dtype))
         dist = getattr(out, "latent_dist", None)
         if dist is not None:
-            latent = dist.mode()
-        elif isinstance(out, (tuple, list)):
-            latent = out[0]
-        else:
-            latent = out
-        latent = normalize_latent(latent, vae)
-        # Not cast to the model dtype here. x0 stays fp32 and pack_one casts x_t at the end, which is what
-        # upstream does; rounding here instead would be rounding before the interpolation, and no fp32
-        # arithmetic afterwards can recover what that throws away.
-        latent = latent.float()
+            return dist.mode()
+        return out[0] if isinstance(out, (tuple, list)) else out
+
+    with torch.no_grad(), encode:
+        video = batch["video"]
+        size = vae_encode_batch or n
+        latent = torch.cat([encode_video(video[start : start + size]) for start in range(0, n, size)])
+        # Micro-batching changes only encode calls. Normalization and its cast point match the baseline;
+        # the clean payload remains FP32 until pack_one casts x_t at the model entrance.
+        latent = normalize_latent(latent, vae).float()
 
     # The canvas is padded; the latent must not be. ``resize_and_reflect_pad`` fits the composite inside the
     # bucket canvas and reflection-pads the bottom and right edges, so for DROID a 540x640 composite sits in a
@@ -885,7 +896,7 @@ def pack_batch(
     return packed, targets
 
 
-def compute_loss(out, targets):
+def compute_loss(out, targets, return_components: bool = False):
     """Flow-matching loss over the vision and action modalities.
 
     Written against model/generator/algorithm/loss/flow_matching.py::compute_flow_matching_loss::
@@ -908,9 +919,11 @@ def compute_loss(out, targets):
     Args:
         out: The transformer output, with ``sample`` and ``action`` lists.
         targets (dict): The targets from :func:`pack_batch`.
+        return_components (bool, optional): Also return the two weighted terms, detached, for logging. They
+            sum to the scalar. Defaults to False.
 
     Returns:
-        torch.Tensor: The scalar loss.
+        torch.Tensor or tuple: The scalar loss, or ``(loss, {"vision": term, "action": term})``.
 
     Raises:
         ValueError: If the model returned no vision or action predictions.
@@ -920,6 +933,10 @@ def compute_loss(out, targets):
             "The model returned no vision or action predictions; check that the forward received non-empty "
             "vision and action inputs."
         )
+
+    for modality, predictions in (("vision", out.sample), ("action", out.action)):
+        if not (len(predictions) == len(targets[modality]) == len(targets[f"{modality}_noisy_mask"])):
+            raise ValueError(f"{modality} predictions, targets and masks must have the same sample count")
 
     vision = torch.stack(
         [
@@ -934,4 +951,9 @@ def compute_loss(out, targets):
             for pred, target, mask in zip(out.action, targets["action"], targets["action_noisy_mask"])
         ]
     ).mean()
-    return vision * VISION_LOSS_SCALE + action * ACTION_LOSS_WEIGHT
+    vision_term = vision * VISION_LOSS_SCALE
+    action_term = action * ACTION_LOSS_WEIGHT
+    total = vision_term + action_term
+    if return_components:
+        return total, {"vision": vision_term.detach(), "action": action_term.detach()}
+    return total
