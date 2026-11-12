@@ -17,7 +17,11 @@ import torch.nn as nn
 
 import colossalai.shardformer.layer as col_nn
 
-from ..modeling.cosmos3 import ColossalTwoWayAttnProcessor
+from ..modeling.cosmos3 import (
+    ColossalTwoWayAttnProcessor,
+    install_fp32_sinusoidal_timestep_input,
+    install_fp32_timestep_embedding,
+)
 from .base_policy import ModulePolicyDescription, Policy, SubModuleReplacementDescription
 
 __all__ = ["Cosmos3OmniPolicy"]
@@ -42,14 +46,30 @@ class Cosmos3OmniPolicy(Policy):
             ``"npu"`` (Ascend fusion kernel). Defaults to ``"naive"``.
         processor (optional): A ready-made processor to install instead of building one from ``backend``. Use this to
             share a processor with code that already holds one, e.g. a script that pre-sets pack metadata.
+        fp32_sinusoidal_input (bool, optional): Hand the embedder the sinusoidal features before the model
+            rounds them to its parameter dtype. Defaults to True. Separate from the switch below only so that
+            its effect can be measured; there is no reason to turn it off in training.
+        fp32_timestep_embedding (bool, optional): Embed the timesteps the way the reference implementation
+            does: the sinusoidal features reach the embedder unrounded and its arithmetic runs in fp32,
+            while its parameters stay in the training dtype. Defaults to True. See
+            :func:`~colossalai.shardformer.modeling.cosmos3.install_fp32_timestep_embedding` and
+            :func:`~colossalai.shardformer.modeling.cosmos3.install_fp32_sinusoidal_timestep_input`.
 
     Raises:
         ValueError: If ``backend`` is not a known two-way kernel backend.
     """
 
-    def __init__(self, backend: str = "naive", processor: Optional[ColossalTwoWayAttnProcessor] = None) -> None:
+    def __init__(
+        self,
+        backend: str = "naive",
+        processor: Optional[ColossalTwoWayAttnProcessor] = None,
+        fp32_timestep_embedding: bool = True,
+        fp32_sinusoidal_input: bool = True,
+    ) -> None:
         super().__init__()
         self.processor = processor if processor is not None else ColossalTwoWayAttnProcessor(backend=backend)
+        self.fp32_timestep_embedding = fp32_timestep_embedding
+        self.fp32_sinusoidal_input = fp32_sinusoidal_input
 
     @property
     def packed_meta(self):
@@ -183,6 +203,28 @@ class Cosmos3OmniPolicy(Policy):
                 f"Cosmos3OmniPolicy found no {_ATTENTION_CLS} module in {type(self.model).__name__}. The policy only "
                 "applies to a Cosmos 3 omni transformer; check the model passed to the booster."
             )
+        if self.fp32_timestep_embedding:
+            # Here rather than in the plugin, and a forward rather than a dtype, because of the order: the
+            # plugin casts the module after this pass runs, so a dtype set here would not survive. A forward
+            # replacement does, and it reads the parameters at call time.
+            wrapped = install_fp32_timestep_embedding(self.model)
+            if wrapped == 0:
+                raise RuntimeError(
+                    "fp32_timestep_embedding is on but the model has no time_embedder module, so the timestep "
+                    "arithmetic would silently run in the training dtype. Pass fp32_timestep_embedding=False "
+                    "if that is intended."
+                )
+            # Second, and after the first so that it wraps it: the model rounds the sinusoidal projection to
+            # the embedder's parameter dtype before the call, and the reference implementation does not round
+            # there at all. Running the embedder in fp32 on an input that arrived rounded recovers only half
+            # of the difference.
+            paired = install_fp32_sinusoidal_timestep_input(self.model) if self.fp32_sinusoidal_input else 1
+            if paired == 0:
+                raise RuntimeError(
+                    "fp32_timestep_embedding is on but no module owns both a time_proj and a time_embedder, "
+                    "so the sinusoidal features would still be rounded to the training dtype before the "
+                    "embedder sees them. Pass fp32_timestep_embedding=False if that is intended."
+                )
         return self.model
 
     def _head_counts(self):

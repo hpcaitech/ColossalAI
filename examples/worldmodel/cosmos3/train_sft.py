@@ -1,12 +1,18 @@
-"""SFT for Cosmos3-Edge-Policy-DROID with ColossalAI on Ascend.
+"""SFT of Cosmos3-Edge on DROID with ColossalAI on Ascend.
 
 Follows the ``action_policy_droid_nano`` recipe of nvidia/cosmos-framework, with Edge's model config.
+
+The checkpoint to pass is the **base**, ``nvidia/Cosmos3-Edge``. ``nvidia/Cosmos3-Edge-Policy-DROID`` is
+that base with this very SFT already done to it -- measured tensor by tensor, 318 of its 549 transformer
+tensors differ from the base and they are exactly the generation tower plus the action heads, while the 227
+that match are the frozen understanding tower. It is a reference for where training should get to, not a
+place to start from.
 
 Launch with::
 
     python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
         --data /path/to/Cosmos3-DROID/success \
-        --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
+        --checkpoint /path/to/Cosmos3-Edge \
         --out /path/to/runs/cosmos3-sft
 
 ``torchrun`` from a virtualenv that inherits torch from the system interpreter may resolve to that interpreter
@@ -68,9 +74,8 @@ LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, help="DROID dataset root, in LeRobot v3 layout.")
-    parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge-Policy-DROID directory.")
+    parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge directory (the base).")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"), help="Checkpoint output directory.")
-
     # Recipe values by default; overridable for smoke runs at a shorter window or a smaller batch.
     parser.add_argument("--chunk-length", type=int, default=32, help="Actions per window; frames are this plus 1.")
     parser.add_argument("--fps", type=float, default=15.0)
@@ -109,17 +114,164 @@ def parse_args():
         help="Two-way attention backend. 'naive' is the PyTorch reference: it materializes the full score matrix "
         "and runs out of memory at the recipe's sequence length, so it is for numerical comparison only.",
     )
+    parser.add_argument(
+        "--reinit-action-head",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Draw the action projections and the action modality embedding fresh instead of loading them. "
+        "On by default, because the upstream recipe does it (checkpoint.keys_to_skip_loading) and because "
+        "this script starts from a base checkpoint, whose action heads are not DROID-trained. Pass "
+        "--no-reinit-action-head to keep the checkpoint's own, which only makes sense when continuing from "
+        "a policy checkpoint.",
+    )
+    parser.add_argument(
+        "--action-head-from",
+        type=Path,
+        help="Load the action projections and the modality embedding from a file instead of drawing them. "
+        "For a comparison against the reference implementation: both sides re-initialize these from their "
+        "own RNG, so one side has to export what it drew and the other load it, or the comparison starts "
+        "from two different models. The file holds the reference implementation's own names (action2llm, "
+        "llm2action, action_modality_embed), which are mapped here.",
+    )
+    parser.add_argument(
+        "--cast-inputs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Let the plugin cast every floating-point forward argument to the training dtype. Off, because "
+        "one of this model's arguments must not be cast -- see the comment at the plugin construction. It is "
+        "a flag rather than a constant so that a reader can reproduce the difference instead of taking the "
+        "number in the pull request on trust.",
+    )
+    parser.add_argument(
+        "--activation-checkpointing",
+        default="full",
+        choices=["full", "none"],
+        help="Recompute transformer blocks in the backward instead of keeping their activations. 'full' is the "
+        "default because without it the backward does not fit: one sample per rank on four cards fails in the "
+        "attention backward kernel. 'none' exists to measure the cost.",
+    )
     args = parser.parse_args()
     if args.data is None:
         parser.error("--data is required")
     return args
 
 
-def build_model(checkpoint: Path):
+def reinitialize_action_head(model) -> list[str]:
+    """Draw the action projections and the action modality embedding fresh, as the recipe does.
+
+    ``action_policy_droid_nano`` lists them in ``checkpoint.keys_to_skip_loading``::
+
+        # Skip net_ema. (EMA warm-starts from net, see dcp.py) and the action
+        # heads, so they init fresh from the base (the base has no DROID-trained
+        # action heads).
+        keys_to_skip_loading=["net_ema.", "action2llm", "llm2action",
+                              "action_modality_embed", "action_pos_embed"]
+
+    so upstream's run starts the action head from its initializer even though the base checkpoint carries
+    action weights. The initializer is ``DomainAwareLinear.initialize_action_parameters``: the per-domain
+    table is ``trunc_normal_(std=1/sqrt(input_size))`` truncated at three sigma, the per-domain bias is zero,
+    and the modality embedding uses ``std=1/sqrt(hidden_size)``.
+
+    Measured on (episode 26827, offset 0) at a pinned sigma of 0.5 with the noise pinned on both sides, this
+    is worth 1.149 against upstream's 1.883 in the action term of the loss -- the whole of a 39% gap that the
+    inputs could not explain, since the clean action is bit-identical and the vision term agrees to 0.28%.
+
+    It is on by default, because this script starts from the base checkpoint, as the recipe does. It stays a
+    flag rather than the only behaviour because continuing from a policy checkpoint -- ``Cosmos3-Edge-Policy-
+    DROID``, say -- is the one case where the released heads are the thing worth keeping.
+
+    Returns:
+        list[str]: Which modules were drawn again, so a caller can report it or fail on an empty list.
+    """
+    import math
+
+    touched = []
+    for name in ("action_proj_in", "action_proj_out"):
+        module = getattr(model, name, None)
+        if module is None:
+            continue
+        std = 1.0 / math.sqrt(module.input_size)
+        torch.nn.init.trunc_normal_(module.fc.weight, std=std, a=-3 * std, b=3 * std)
+        torch.nn.init.zeros_(module.bias.weight)
+        touched.append(name)
+    embed = getattr(model, "action_modality_embed", None)
+    if embed is not None:
+        std = 1.0 / math.sqrt(embed.shape[-1])
+        torch.nn.init.trunc_normal_(embed, std=std, a=-3 * std, b=3 * std)
+        touched.append("action_modality_embed")
+    return touched
+
+
+def load_action_head(model, path: Path) -> list[str]:
+    """Overwrite the action head with one drawn elsewhere, so two runs start from the same weights.
+
+    The file is a mapping of the reference implementation's parameter names to tensors, as its own run
+    exported them: ``action2llm.fc.weight`` / ``action2llm.bias.weight`` (this model's ``action_proj_in``),
+    ``llm2action.*`` (``action_proj_out``) and ``action_modality_embed``. Anything else in the file is an
+    error rather than something to ignore: a silently skipped tensor is a silently different model.
+
+    Args:
+        model (torch.nn.Module): The transformer.
+        path (Path): The exported file, loaded with ``torch.load``.
+
+    Returns:
+        list[str]: The parameters that were overwritten.
+
+    Raises:
+        KeyError: If the file holds a name this model has no place for.
+    """
+    blob = torch.load(path, weights_only=False)
+    # Two shapes of file. The whole export is every domain's row; the slice is one domain's, which is all a
+    # single-embodiment comparison reads and 1/65th of the bytes to ship between two boxes. The slice is
+    # named in the file rather than inferred, and what it leaves untouched is printed, because "the other
+    # domains keep this run's own draw" is true but only safe while every sample is the named domain.
+    domain = None
+    if blob.get("format") == "action-head-domain-slice":
+        domain = int(blob["domain_id"])
+        blob = {k: v for k, v in blob.items() if k not in ("format", "domain_id")}
+    loaded = []
+    for key, value in blob.items():
+        if key == "action_modality_embed":
+            target = model.action_modality_embed
+            row = target
+        else:
+            head, rest = key.split(".", 1)
+            owner = {"action2llm": "action_proj_in", "llm2action": "action_proj_out"}.get(head)
+            if owner is None:
+                raise KeyError(f"{path}: {key!r} is not an action-head parameter this model has")
+            target = model.get_parameter(f"{owner}.{rest}")
+            row = target if domain is None else target[domain]
+        if tuple(row.shape) != tuple(value.shape):
+            raise ValueError(
+                f"{path}: {key!r} is {tuple(value.shape)} but this model wants {tuple(row.shape)}"
+                + ("" if domain is None else f" for domain {domain}")
+            )
+        with torch.no_grad():
+            row.copy_(value.to(device=target.device, dtype=target.dtype))
+        loaded.append(key)
+    if domain is not None:
+        print(
+            f"[model] action head: only domain {domain} was replaced; the other domains keep this run's "
+            "own draw and are read by no sample of that embodiment",
+            flush=True,
+        )
+    return loaded
+
+
+def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_from: Path = None):
     """Load the transformer and freeze the AR tower. The model comes from diffusers, not HF transformers."""
     from diffusers import Cosmos3OmniTransformer
 
     model = Cosmos3OmniTransformer.from_pretrained(checkpoint / "transformer", torch_dtype=torch.bfloat16)
+    if reinit_action_head:
+        print(f"[model] action head re-initialized: {', '.join(reinitialize_action_head(model))}", flush=True)
+    if action_head_from is not None:
+        # After the re-initialization on purpose: this replaces the draw rather than preceding it.
+        print(
+            f"[model] action head loaded from {action_head_from}: "
+            f"{', '.join(load_action_head(model, action_head_from))}",
+            flush=True,
+        )
     trainable = frozen = 0
     for name, p in model.named_parameters():
         p.requires_grad = any(k in name for k in TRAINABLE_KEYS)
@@ -211,8 +363,35 @@ def main():
     collate_fn = collate
     coord.print_on_master(f"[data] {len(dataset)} window(s)")
 
-    model = build_model(args.checkpoint)
+    model = build_model(
+        args.checkpoint,
+        reinit_action_head=args.reinit_action_head,
+        action_head_from=args.action_head_from,
+    )
     model_config = model.config  # booster returns a wrapper, so keep the config before boosting
+    if args.activation_checkpointing == "full":
+        # The backward does not fit without this. At one sample per rank on four cards it failed inside
+        # aclnnFlashAttentionUnpaddingScoreGrad, which is not a batch-size problem: the packed sequence is 3.6k
+        # tokens over 36 blocks, and every block's inputs stay resident until its backward runs.
+        #
+        # This is the transformer's own switch, not the plugin's. HybridParallelPlugin exposes gradient
+        # checkpointing for the models ShardFormer rewrites, and at tp=1 it rewrites nothing here, so there is
+        # no module for it to wrap; the diffusers block already guards its own recompute on
+        # ``self.gradient_checkpointing`` and reaches it through ``_gradient_checkpointing_func``. Calling the
+        # diffusers API therefore reaches the blocks that matter and leaves ZeRO-2 untouched: what it changes is
+        # when activations are produced, not how gradients are reduced or how optimizer state is sharded.
+        #
+        # Upstream recomputes blocks too, with torch's ``checkpoint_wrapper`` under
+        # ``[model.activation_checkpointing] mode="full"``, plus ``save_ops_regex=["fmha"]``, which keeps the
+        # fused-attention outputs so they are not recomputed (selective checkpointing). We recompute those as
+        # well; that costs time, not correctness, and the selective variant is a later optimization.
+        model.enable_gradient_checkpointing()
+        if not getattr(model, "gradient_checkpointing", False):
+            raise RuntimeError(
+                "enable_gradient_checkpointing() left the flag off, so the blocks would not be recomputed and "
+                "the backward would run out of memory instead of failing here."
+            )
+        coord.print_on_master(f"[model] activation checkpointing: {args.activation_checkpointing}")
     tokenizer = build_tokenizer(args.checkpoint)
     vae = build_vae(args.checkpoint, getattr(torch, args.vae_dtype)).to(torch.npu.current_device())
     optimizer = build_optimizer(model)
@@ -232,6 +411,28 @@ def main():
         precision="bf16",
         max_norm=GRAD_CLIP,
         custom_policy=policy,
+        # The plugin otherwise casts every floating-point forward argument to bf16, and one of ours must not be
+        # cast: `position_ids` is [3, sequence_length] of *fractional* mRoPE positions reaching 15163.8, and bf16
+        # cannot hold a value that size closer than 16. Measured on one step, 3093 of 3244 positions come back
+        # changed, off by as much as 17 whole positions, and the loss reads 5.492133 instead of 1.789169 -- the
+        # rotary embedding is computed at the wrong place in the sequence. Peak memory is the same either way
+        # (13.61 GiB): what stays fp32 is this index and the two timestep vectors.
+        #
+        # Nothing else needs casting by hand. The latents arrive bf16 from the VAE already, and the timesteps
+        # are what the fp32 kept here is for: the transformer computes the sinusoidal projection from them,
+        # in fp32 because they are fp32. Note what that line does next, though --
+        # `self.time_embedder(self.time_proj(timesteps).to(time_embedder_dtype))` -- it rounds that fp32
+        # projection to the embedder's parameter dtype before the call. Keeping the timesteps fp32 does not
+        # prevent that; the policy does, by handing the embedder the value from before the cast.
+        cast_inputs=args.cast_inputs,
+        # And the cast must not reach the buffers either. This model's only floating-point buffer is
+        # `rotary_emb.inv_freq`, the rotary frequency table: bf16 moves it by relL2 4.2e-04, which multiplied
+        # by a position of 15163.8 is a phase error of radians rather than of last bits. Measured against the
+        # reference implementation on one step with every input bit-identical, that one 64-element buffer put
+        # the vision loss 0.1508% away from it instead of 0.0072% -- further than the reference's own bf16
+        # against its own fp32 (0.101%) -- and leaving it alone makes this example's predictions
+        # bit-identical to the same forward with no plugin at all.
+        cast_buffers=False,
     )
     booster = Booster(plugin=plugin)
 
@@ -284,7 +485,10 @@ def main():
             optimizer.zero_grad()
             step += 1
             if step % args.log_every == 0 or step == 1:
-                coord.print_on_master(f"[step {step}] loss {loss.item() * args.grad_accum:.6f}")
+                coord.print_on_master(
+                    f"[step {step}] loss {loss.item() * args.grad_accum:.6f} "
+                    f"peak {torch.npu.max_memory_allocated() / 2**30:.2f} GiB"
+                )
             if step % args.save_every == 0:
                 save_dir = args.out / f"step-{step}"
                 booster.save_model(model, str(save_dir), shard=True, use_safetensors=True)
