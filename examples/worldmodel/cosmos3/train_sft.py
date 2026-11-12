@@ -59,7 +59,12 @@ TRAINABLE_KEYS = (
     "to_add_out",
     "norm_added_q",
     "norm_added_k",
-    "k_norm_und_for_gen",
+    # Deliberately not "k_norm_und_for_gen". The reference selects by substring against
+    # keys_to_select (action_policy_droid_nano.py:75-83, rule at
+    # cosmos_framework/utils/generator/optimizer.py:220-223), and that name matches no entry of it, so
+    # the reference freezes the understanding tower's key norm even though the generation tower reads
+    # it. Measured on one step: the reference's gradient dump holds 294 tensors and this example's held
+    # 322, and the 28 extra ones are exactly these.
     "time_embedder",
     "proj_in",
     "proj_out",  # vae2llm / llm2vae
@@ -69,6 +74,100 @@ TRAINABLE_KEYS = (
 )
 # These get 5x the base learning rate (the recipe's lr_multipliers).
 LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
+
+# The recipe's learning-rate schedule: action_policy_droid_nano.py:93-101 overrides /scheduler with
+# "lambdalinear" and gives warm_up_steps [0], f_start [0.0], f_max [0.4], f_min [0.0]; the cycle length
+# comes from the run's TOML and is 100000 for DROID. The schedule itself is
+# cosmos_framework/utils/functional/lr_scheduler.py:145-168. With no warm-up its first branch is dead and
+# the multiplier starts at f_max, so the first optimizer step runs at LR * 0.4 = 8e-05. A constant LR,
+# which is what this example did before, is 2.5x that on step one and diverges from the reference's rate
+# monotonically from there.
+LR_WARM_UP_STEPS = 0
+LR_F_START = 0.0
+LR_F_MAX = 0.4
+LR_F_MIN = 0.0
+LR_CYCLE_LENGTH = 100_000
+
+# The recipe's EMA: action_policy_droid_nano.py:54 overrides /ema with "power", which is
+# configs/base/defaults/ema.py:19-23, rate 0.10.
+EMA_RATE = 0.1
+
+
+def lr_multiplier(step: int) -> float:
+    """What the reference's LambdaLinear returns for a zero-based optimizer step.
+
+    Transcribed from ``LambdaLinearScheduler.schedule``. One deliberate difference: past the end of the
+    cycle the reference's ``find_in_interval`` returns ``None`` and the next line raises on it, so this
+    clamps at ``LR_F_MIN`` rather than reproducing a crash -- and certainly rather than letting the
+    multiplier go negative, which the formula does on its own.
+    """
+    if step < LR_WARM_UP_STEPS:
+        return (LR_F_MAX - LR_F_START) / LR_WARM_UP_STEPS * step + LR_F_START
+    if step >= LR_CYCLE_LENGTH:
+        return LR_F_MIN
+    span = LR_CYCLE_LENGTH - LR_WARM_UP_STEPS
+    return LR_F_MIN + (LR_F_MAX - LR_F_MIN) * (LR_CYCLE_LENGTH - step) / span
+
+
+def set_learning_rate(optimizer, step: int) -> float:
+    """Put the schedule's rate for this step on every parameter group, before the step is taken.
+
+    The reference builds a ``LambdaLR``, which applies ``lambda(0)`` when it is constructed and
+    ``lambda(n)`` after its n-th ``step()``; its ``scheduler.step()`` runs right after ``optimizer.step()``
+    (cosmos_framework/trainer/__init__.py:855), so the update with zero-based index n is taken at
+    ``lambda(n)``. Writing the rate here is the same thing and avoids handing a ``torch`` scheduler the
+    booster's optimizer wrapper, which is not a ``torch.optim.Optimizer`` and would be rejected.
+    """
+    multiplier = lr_multiplier(step)
+    for group in optimizer.param_groups:
+        group["lr"] = group.setdefault("initial_lr", group["lr"]) * multiplier
+    return multiplier
+
+
+class PowerEMA:
+    """The reference's power-function EMA, over this rank's shard of the fp32 master weights.
+
+    ``rate`` is not a decay. It is the EDM2 ``s``, and the decay exponent is derived from it once
+    (omni_mot_model.py:831) as the largest real root of ``x^3 + 7x^2 + (16 - s^-2)x + (12 - s^-2)``; for
+    s = 0.1 that is 6.937203937601809. The per-update coefficient is then ``(1 - 1/(i+1))^(exp+1)`` with
+    ``i`` the zero-based index of the update just applied, and 0 for ``i < 1``
+    (omni_mot_model.py:6720-6734). The first update therefore gets ``i = 0`` and beta 0, so the shadow is an
+    exact copy of the weights after step one -- that is the reference's warm start, and
+    cosmos_framework/posttrain/roles/trainer/diffusion.py:486 states the indexing in those words.
+
+    What is averaged: the reference keeps ``net_ema`` as a whole second network in fp32
+    (omni_mot_model.py:825) and averages every parameter of it (utils/ema.py:37-47). A frozen parameter
+    never moves and its shadow starts equal to it, so averaging it is the identity; this keeps only the
+    trainable ones, which is 1.423B values against 3.369B, 5.7 GiB of fp32 instead of 13.5 GiB, with the
+    same result.
+
+    Where the values are read: ZeRO-2 steps a sharded fp32 master copy and writes a bf16 working copy back
+    afterwards, so the masters are the counterpart of the reference's fp32 ``net``. Averaging the working
+    parameters instead would feed a bf16-rounded source into an fp32 average.
+    """
+
+    def __init__(self, model, optimizer, rate: float = EMA_RATE):
+        import numpy as np
+
+        self.exponent = float(np.roots([1.0, 7.0, 16.0 - rate**-2, 12.0 - rate**-2]).real.max())
+        masters = optimizer.get_working_to_master_map()
+        self.sources = [masters[id(p)] for p in model.parameters() if p.requires_grad and id(p) in masters]
+        if not self.sources:
+            raise RuntimeError(
+                "the optimizer reported no fp32 master for any trainable parameter, so there is nothing to "
+                "average; this expects the ZeRO optimizer the plugin builds at zero_stage 2."
+            )
+        self.shadow = [t.detach().float().clone() for t in self.sources]
+
+    def beta(self, iteration: int) -> float:
+        return 0.0 if iteration < 1 else (1.0 - 1.0 / (iteration + 1)) ** (self.exponent + 1.0)
+
+    @torch.no_grad()
+    def update(self, iteration: int) -> float:
+        beta = self.beta(iteration)
+        torch._foreach_mul_(self.shadow, beta)
+        torch._foreach_add_(self.shadow, [t.detach().float() for t in self.sources], alpha=1.0 - beta)
+        return beta
 
 
 def parse_args():
@@ -90,6 +189,13 @@ def parse_args():
     parser.add_argument("--max-iter", type=int, default=10000)
     parser.add_argument("--save-every", type=int, default=1000)
     parser.add_argument("--log-every", type=int, default=50)
+    parser.add_argument(
+        "--ema",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Keep the recipe's power-function EMA of the trainable weights. On by default, as in the "
+        "recipe; it costs one fp32 copy of this rank's master shard.",
+    )
 
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
@@ -456,6 +562,11 @@ def main():
 
     model, optimizer, _, dataloader, _ = booster.boost(model, optimizer, dataloader=dataloader)
 
+    ema = PowerEMA(model, optimizer) if args.ema else None
+    if ema is not None:
+        held = sum(t.numel() for t in ema.shadow)
+        coord.print_on_master(f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank")
+
     model.train()
     step = 0
     for it, batch in enumerate(dataloader):
@@ -483,12 +594,19 @@ def main():
         booster.backward(loss, optimizer)
 
         if (it + 1) % args.grad_accum == 0:
+            # The reference's order for one applied update: the schedule's rate for this zero-based index,
+            # the step, then the EMA with that same index, then the gradients are cleared
+            # (cosmos_framework/trainer/__init__.py:826-840).
+            multiplier = set_learning_rate(optimizer, step)
             optimizer.step()
+            if ema is not None:
+                ema.update(step)
             optimizer.zero_grad()
             step += 1
             if step % args.log_every == 0 or step == 1:
                 coord.print_on_master(
                     f"[step {step}] loss {loss.item() * args.grad_accum:.6f} "
+                    f"lr {LR * multiplier:.3e} "
                     f"peak {torch.npu.max_memory_allocated() / 2**30:.2f} GiB"
                 )
             if step % args.save_every == 0:
