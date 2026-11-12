@@ -1,5 +1,6 @@
 # this code is inspired by the DeepSpeed library and implemented with our own design from scratch
 import copy
+import math
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Dict, Iterator, List, Optional, Tuple, Union
@@ -93,7 +94,6 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,
-        replica_group: Optional[ProcessGroup] = None,
         extra_dp_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
@@ -101,6 +101,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         fp8_communication: bool = False,
         backward_context=None,
         grad_norm_process_group: Optional[Union[ProcessGroup, Tuple[ProcessGroup, ...]]] = None,
+        replica_group: Optional[ProcessGroup] = None,
     ):
         super(LowLevelZeroOptimizer, self).__init__(optim=optimizer)
 
@@ -567,11 +568,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # Update Parameter #
     ####################
 
-    def _reused_buffer(self, buffers, tensor, dtype):
+    def _reused_buffer(self, buffers, tensor, dtype, device=None):
         """One persistent cast buffer per tensor; the shape/dtype/device check catches a reloaded or resized param."""
+        device = tensor.device if device is None else device
         buffer = buffers.get(id(tensor))
-        if buffer is None or buffer.shape != tensor.shape or buffer.dtype != dtype or buffer.device != tensor.device:
-            buffer = torch.empty(tensor.shape, dtype=dtype, device=tensor.device)
+        if buffer is None or buffer.shape != tensor.shape or buffer.dtype != dtype or buffer.device != device:
+            buffer = torch.empty(tensor.shape, dtype=dtype, device=device)
             buffers[id(tensor)] = buffer
         return buffer
 
@@ -579,9 +581,15 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         """The fp32 shard the partitioned grad is copied into."""
         return self._reused_buffer(self._master_grad_buffers, master_param, master_param.dtype)
 
-    def _working_cast_buffer(self, master_param):
-        """The working-dtype shard the updated master param is copied back into before the all-gather."""
-        return self._reused_buffer(self._working_cast_buffers, master_param, self._dtype)
+    def _working_cast_buffer(self, master_param, working_param):
+        """The working-dtype shard the updated master param is copied back into before the all-gather.
+
+        It lives on the working param's device, not the master's: with ``cpu_offload`` the master is on CPU while the
+        working param and the collective stay on the accelerator, and the gather input must be on the collective's
+        device. The copy into it is a cross-device copy in that case, which is what the per-parameter ``.to(device)``
+        did before the buffer was reused.
+        """
+        return self._reused_buffer(self._working_cast_buffers, master_param, self._dtype, device=working_param.device)
 
     def _multi_tensor_copy(self, destinations, sources):
         """One multi-tensor copy instead of one launch per parameter. Copying is idempotent, so a backend without the
@@ -677,15 +685,17 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # one multi-tensor copy, into buffers that are reused across steps
         writeback = []
         for group_id in range(self.num_param_groups):
-            for master_param in self.optim.param_groups[group_id]["params"]:
-                writeback.append((self._working_cast_buffer(master_param), master_param))
+            for master_param, working_param in zip(
+                self.optim.param_groups[group_id]["params"], real_working_params[group_id]
+            ):
+                writeback.append((self._working_cast_buffer(master_param, working_param), master_param))
         self._multi_tensor_copy([buffer for buffer, _ in writeback], [master_param for _, master_param in writeback])
 
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, master_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
-                param_to_gather = self._working_cast_buffer(master_param)
+                param_to_gather = self._working_cast_buffer(master_param, working_param)
                 pg = self.param_to_pg[working_param]
                 padded_working_param = self._working_param_to_padded_working_param[working_param]
                 if self._overlap_allgather:
@@ -737,7 +747,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         The shards are normed by one ``torch._foreach_norm`` call instead of a float64 cast and a norm kernel per
         shard; a shard above ``_GRAD_NORM_CHUNK`` elements is cut into pieces, whose results are raised and summed in
-        float64. A non-fp32 shard (no fp32 master weights) keeps the per-shard float64 path.
+        float64. A non-fp32 shard (no fp32 master weights) keeps the per-shard float64 path. The multi-tensor norm
+        runs in the shard's own dtype, so an fp32 shard can overflow to infinity or (when the whole gradient is
+        tiny) underflow to zero where the norm itself is representable; a later float64 cast cannot recover either.
+        Those chunks are recomputed in float64 before the p-th powers are summed, and the reduced scalar is float64.
 
         Args:
             gradients (List[Tensor]): The gradient shards owned by this rank
@@ -776,13 +789,32 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 weight = weights[index] if weights is not None else self._grad_norm_weight(grad)
                 part_weights.extend([weight] * len(pieces))
             parts = torch._foreach_norm(chunks, norm_type)
-            summed = torch.stack(parts).double().pow(norm_type)
+            values = torch.stack(parts).double()
+            weights_tensor = None
             if any(weight != 1.0 for weight in part_weights):
-                summed = summed * torch.tensor(part_weights, dtype=torch.float64, device=summed.device)
-            local = float(summed.sum())
+                weights_tensor = torch.tensor(part_weights, dtype=torch.float64, device=values.device)
+
+            def _local_power_sum() -> float:
+                powers = values.pow(norm_type)
+                if weights_tensor is not None:
+                    powers = powers * weights_tensor
+                return float(powers.sum())
+
+            local = _local_power_sum()
+            if not math.isfinite(local) or local == 0.0:
+                # The norm above ran in the shard dtype: a large shard can overflow to inf, and a wholly tiny
+                # gradient can underflow to 0 (squared values of order 1e-45 for the 2-norm), neither of which the
+                # float64 cast recovers. Recompute the affected chunks in float64 and redo the sum. A zero part next
+                # to normal-sized shards is left alone: its contribution is below float64 resolution of the total.
+                for index, value in enumerate(values.tolist()):
+                    if not math.isfinite(value) or (value == 0.0 and torch.count_nonzero(chunks[index]) > 0):
+                        values[index] = chunks[index].data.double().norm(norm_type)
+                local = _local_power_sum()
             op = dist.ReduceOp.SUM
 
-        total = torch.tensor([float(local)], device=get_accelerator().get_current_device(), dtype=torch.float)
+        # float64: the p-th power of a norm above ~1e19 overflows float32, which would turn a finite global norm
+        # into inf and then scale every gradient to zero. One scalar per step, so the wider reduce costs nothing.
+        total = torch.tensor([float(local)], device=get_accelerator().get_current_device(), dtype=torch.float64)
         for group in self._grad_norm_process_groups():
             dist.all_reduce(total, op=op, group=group)
         return total.item() if norm_type == inf else total.item() ** (1.0 / norm_type)
