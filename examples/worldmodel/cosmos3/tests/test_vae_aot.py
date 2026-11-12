@@ -1,4 +1,5 @@
-"""CPU unit tests with fake AOT functions; no CUDA compile/latent claims."""
+"""CPU tests for the AOT runner: gate/dispatch logic with fake compiled functions, plus one real ``torch.export``
+graph. Inductor compilation and real packages still need CUDA; no latent claim is made here."""
 
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -238,6 +239,73 @@ def test_runtime_failure_preserves_inputs_and_disables_variant(tmp_path):
         torch.testing.assert_close(again, saved_x)
     assert len(calls) == 1
     torch.testing.assert_close(saved_cache, torch.ones_like(saved_cache))
+
+
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_default_gate_budgets_are_one_eps_rms_and_two_eps_relative_l2(tmp_path, dtype):
+    """The defaults are acceptance budgets, not magic constants: atol is one dtype epsilon of each reference
+    tensor's RMS and the independent relative-L2 budget is two epsilon. With a reference of exactly 2.0 one ULP is
+    two epsilon, so both boundaries are exercised exactly rather than approximately."""
+    reference = torch.full((1, 2, 2, 2, 4), 2.0, dtype=dtype)
+    eps = torch.finfo(dtype).eps
+    infinity = torch.full_like(reference, float("inf"))
+    one_ulp = torch.nextafter(reference, infinity)
+    two_ulps = torch.nextafter(one_ulp, infinity)
+
+    runner = AOTChunkRunner(Encoder().eval(), tmp_path, gate_rtol=0.0)
+    # One ULP is exactly the atol budget and half the relative-L2 budget.
+    assert runner._matches_eager(lambda *args: (one_ulp,), reference, [], reference, [], ())
+    assert runner.gate_stats[0]["atol"] == pytest.approx(eps * 2.0)
+    assert runner.gate_stats[0]["relative_l2"] == pytest.approx(eps)
+    # Two ULP is twice the atol budget; relative L2 (two epsilon) is still at its own limit, so atol must reject.
+    assert not runner._matches_eager(lambda *args: (two_ulps,), reference, [], reference, [], ())
+
+    # A loose atol leaves only the relative-L2 budget to reject three epsilon of error.
+    l2_only = AOTChunkRunner(Encoder().eval(), tmp_path, gate_rtol=0.0, gate_atol=1.0)
+    three_ulps = torch.nextafter(two_ulps, infinity)
+    assert not l2_only._matches_eager(lambda *args: (three_ulps,), reference, [], reference, [], ())
+
+
+def test_real_export_program_passes_the_gate_on_cpu(tmp_path, monkeypatch):
+    """Run ``torch.export`` for real and execute the exported graph in the gate.
+
+    Only the Inductor package compile/load is replaced. This checks that the wrapper exports at all (the cache
+    list mutation and the ``None`` entries included) and that the traced graph reproduces the eager latent and
+    cache; Inductor compilation and the real package remain device work.
+    """
+    programs = []
+
+    def compile(exported, package_path, **kwargs):
+        programs.append(exported)
+        Path(package_path).write_bytes(b"exported")
+
+    class Function:
+        def __init__(self, program):
+            self.program = program
+
+        def get_constant_fqns(self):
+            return []
+
+        def load_constants(self, *args, **kwargs):
+            pass
+
+        def __call__(self, *args):
+            return self.program.module()(*args)
+
+    def load(path, **kwargs):
+        assert Path(path).read_bytes() == b"exported"
+        return Function(programs[-1])
+
+    monkeypatch.setattr(torch._inductor, "aoti_compile_and_package", compile)
+    monkeypatch.setattr(torch._inductor, "aoti_load_package", load)
+    runner = AOTChunkRunner(Encoder().eval(), tmp_path)
+    x, cache = example()
+    # _compile is called directly: the CUDA guard lives in __call__, and the export itself runs on CPU.
+    with torch.no_grad():
+        function = runner._compile(("real-export",), x, cache)
+    assert function is not None, "the exported graph must pass the latent/cache gate"
+    assert runner.output_none_masks[("real-export",)] == (False, True)
+    assert runner.gate_stats and all(stats["relative_l2"] == 0 and stats["max_abs"] == 0 for stats in runner.gate_stats)
 
 
 def test_package_paths_isolated_and_atomic_with_fake_compiler(tmp_path, monkeypatch):
