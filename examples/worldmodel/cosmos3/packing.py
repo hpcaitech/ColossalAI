@@ -84,18 +84,27 @@ def rectified_flow_noise(x0: torch.Tensor, t: torch.Tensor, generator=None):
     sense that ``x0 = x_t - sigma * target``, which is what tests/test_target_form.py checks: a flipped sign is
     still perfectly learnable on a single sample, so it has to be caught by the identity rather than by training.
 
+    Everything here is fp32, whatever dtype ``x0`` arrives in, because that is how upstream does it: it keeps
+    the clean payload in fp32 inside its ``PackedSequence`` and noises after packing, so its noise, its ``x_t``
+    and its target are all fp32. Drawing the noise in bf16 instead -- which is what ``dtype=x0.dtype`` used to
+    do, the payload coming out of a bf16 VAE -- quantizes the samples at about 0.4% relative, and the target
+    ``noise - x0`` inherits that. The target is what the gradient is taken against, so it is the one tensor
+    here worth keeping exact; the caller casts ``x_t`` to the model's dtype on its way into the forward and
+    leaves the target alone.
+
     Args:
-        x0 (torch.Tensor): Clean sample.
+        x0 (torch.Tensor): Clean sample, in any floating dtype.
         t (torch.Tensor): Noise level in [0, 1), broadcast against ``x0``.
         generator (torch.Generator, optional): CPU generator. Defaults to None.
 
     Returns:
-        tuple: ``(x_t, target)``, both shaped like ``x0``.
+        tuple: ``(x_t, target)``, both shaped like ``x0`` and both fp32.
     """
     # The generator lives on CPU, so the noise is drawn there and moved afterwards; this keeps a run reproducible
     # from a seed regardless of the device.
-    noise = torch.randn(x0.shape, generator=generator, dtype=x0.dtype).to(x0.device)
-    t = t.to(device=x0.device, dtype=x0.dtype)
+    noise = torch.randn(x0.shape, generator=generator, dtype=torch.float32).to(x0.device)
+    x0 = x0.float()
+    t = t.to(device=x0.device, dtype=torch.float32)
     while t.ndim < x0.ndim:
         t = t.unsqueeze(-1)
     return (1.0 - t) * x0 + t * noise, noise - x0
@@ -367,7 +376,36 @@ def tokenize_prompt(prompt, tokenizer, *, cfg_dropout_rate=CFG_DROPOUT_RATE, gen
         add_generation_prompt=True,
         return_dict=False,
     )
-    return torch.tensor(ids[:MAX_TEXT_TOKENS], dtype=torch.long)
+    return torch.tensor(close_text_span(ids[:MAX_TEXT_TOKENS], tokenizer), dtype=torch.long)
+
+
+# The token that tells the model generation follows. Upstream calls it start_of_generation and takes it from
+# the tokenizer by name (sequence_packing/modality.py::add_special_tokens).
+START_OF_GENERATION = "<|vision_start|>"
+
+
+def close_text_span(ids: list[int], tokenizer) -> list[int]:
+    """Append the two markers upstream's text split ends with: EOS, then start-of-generation.
+
+    ``PackedSequenceBuilder.pack_text_tokens`` builds the span as
+
+        [BOS if the special-token dict has one] + caption_ids + [EOS] + [start_of_generation if media follows]
+
+    and this recipe always has media following. Upstream's dict comes from ``add_special_tokens``, which
+    defines ``start_of_generation`` / ``end_of_generation`` and no ``bos_token_id``, so no BOS is prepended;
+    measured, our 149 caption tokens are upstream's first 149 and the two it adds are these.
+
+    Leaving them off is not cosmetic. The BOV token is the boundary the model reads between the prompt and the
+    generated block, and without the pair every index after the text -- vision, action, loss, mRoPE positions --
+    sits two places early relative to upstream's.
+    """
+    eos = getattr(tokenizer, "eos_token_id", None)
+    if eos is None:
+        raise ValueError("the tokenizer defines no eos_token_id; upstream's text span always ends with EOS")
+    bov = tokenizer.convert_tokens_to_ids(START_OF_GENERATION)
+    if bov is None or bov == getattr(tokenizer, "unk_token_id", object()):
+        raise ValueError(f"the tokenizer does not know {START_OF_GENERATION}, which marks the generated block")
+    return list(ids) + [int(eos), int(bov)]
 
 
 def pack_one(
@@ -377,6 +415,7 @@ def pack_one(
     cfg,
     *,
     state: torch.Tensor = None,
+    payload_dtype: torch.dtype = torch.bfloat16,
     fps: float = 15.0,
     domain_id: int = DROID_DOMAIN_ID,
     resolution: str = "480",
@@ -432,7 +471,13 @@ def pack_one(
     to_device = lambda x: x.to(device)  # noqa: E731
     p = cfg.latent_patch_size
     _, _, t_latent, h, w = latent.shape
-    hp, wp = h // p, w // p
+    # Ceiling, not floor: an odd latent side is zero-padded up to the patch grid, never truncated. The forward
+    # does exactly that -- ``_patchify_and_pack_latents`` computes ``h_padded = ceil(h / p) * p``, zero-fills the
+    # new row, and derives its own ``h_patches`` from it -- and upstream's packed sequence reserves the same
+    # ceil-sized grid (token_shapes (9, 17, 20) for a 33x40 latent). Flooring would reserve 16 rows of sequence
+    # for the 17 the forward produces, and it only became reachable once the latent stopped being padded to the
+    # canvas: 544/16 = 34 is even, the 540-row content gives 33.
+    hp, wp = -(-h // p), -(-w // p)
     spatial = hp * wp
     n_vis = t_latent * spatial
 
@@ -457,19 +502,46 @@ def pack_one(
     # test_independent_modality_schedule_invalidates_fast_path, where the action timestep differs from the vision
     # one only when the flag is on. The forward multiplies the timestep by timestep_scale=0.001, so what is passed
     # here is sigma * 1000.
+    # The dtype x_t leaves in is the model's, not the payload's. Keeping the payload in fp32 all the way to
+    # here is what the reference implementation does -- measured on its own run, ``x0_tokens_vision`` and
+    # ``x0_tokens_action`` are float32 even when the model is bf16, and only ``xt_tokens_*`` is bf16 -- and it
+    # matters: rounding x0 before the interpolation throws away precision the interpolation would have kept,
+    # and no fp32 arithmetic downstream can recover it. Measured from one shared x0, with the payload left in
+    # fp32 our x_t and both targets come out bit-identical to upstream's.
+    latent_dtype = action_dtype = payload_dtype
     shift = RF_SHIFT[resolution]
     sigma = sample_sigma(shift, "waver", generator)
     t_vis_raw = t_act_raw = sigma * 1000.0
+    # fp32 for sigma too, not the payload dtype: bf16 cannot hold a sampled sigma. The pinned 0.5 used in the
+    # upstream comparison is exact in bf16, which is why a comparison at that sigma would not have shown it.
     latent_noisy, target_vis = rectified_flow_noise(
-        latent, torch.tensor(t_vis_raw / 1000.0, dtype=latent.dtype), generator
+        latent, torch.tensor(t_vis_raw / 1000.0, dtype=torch.float32), generator
     )
     action_noisy, target_act = rectified_flow_noise(
-        action, torch.tensor(t_act_raw / 1000.0, dtype=action.dtype), generator
+        action, torch.tensor(t_act_raw / 1000.0, dtype=torch.float32), generator
     )
     # Restore the conditioning frames. rectified_flow_noise returns fresh tensors, so writing in place here does
-    # not touch latent or action.
+    # not touch latent or action. Those tensors are fp32 now and the clean rows come from the payload's own
+    # dtype, so the assignment widens them, which is exact.
     latent_noisy[:, :, :n_cond_vis] = latent[:, :, :n_cond_vis]
     action_noisy[:n_cond_act] = action[:n_cond_act]
+    # And clear the padding channels the noise just filled. Upstream noises the full padded width and then
+    # throws that part away (omni_mot_model.py::_add_noise_to_input):
+    #
+    #     for i in range(len(xt_action)):
+    #         if gen_data_clean.raw_action_dim is not None and gen_data_clean.raw_action_dim[i] is not None:
+    #             xt_action[i][:, gen_data_clean.raw_action_dim[i] :] = 0
+    #
+    # Those channels are not a formality. ``action_proj_in`` is a 64 -> 4096 projection, so noise sitting in
+    # the 56 padded channels is projected into the hidden state like any other input: measured on episode
+    # 26827 offset 0 at a pinned sigma of 0.5, our action rows entering block 0 carried 52% more norm than
+    # upstream's (165.8 against 108.8, relL2 1.15), while the conditioning row -- which is never noised --
+    # matched bit for bit, and the vision rows, which have no padding, agreed to 3.3%. With the padding
+    # cleared, our x_t matches upstream's to relL2 1.6e-03, the bf16 floor.
+    #
+    # Only x_t is cleared, which is what upstream clears. The target keeps its padding, and it never reaches
+    # the loss: compute_loss crops both sides to raw_action_dim.
+    action_noisy[:, raw_action_dim:] = 0
 
     vis_idx = to_device(torch.arange(n_text, n_text + n_vis))
     act_idx = to_device(torch.arange(n_text + n_vis, seq))
@@ -492,17 +564,23 @@ def pack_one(
         ),
         und_len=n_text,
         sequence_length=seq,
-        vision_tokens=[to_device(latent_noisy)],
+        # x_t goes in at the model's dtype -- the payload's, which is the VAE's -- while the target above stays
+        # fp32. Upstream does the same: it noises in fp32 and the forward casts on the way in.
+        vision_tokens=[to_device(latent_noisy.to(latent_dtype))],
         vision_token_shapes=[(t_latent, hp, wp)],
         vision_sequence_indexes=vis_idx,
         vision_mse_loss_indexes=vis_idx[n_cond_vis * spatial :],
-        vision_timesteps=to_device(torch.full((n_vis_noisy,), t_vis_raw, dtype=latent.dtype)),
+        # fp32, not the payload dtype. The forward computes ``time_proj(timesteps * timestep_scale)`` and only
+        # casts afterwards, and upstream carries these in fp32; in bf16 a sampled timestep of 734.21 is
+        # stored as 734.0, which shifts the embedding of every noisy token. The pinned sigma 0.5 -> 500.0 is
+        # exact in bf16, so a comparison at that sigma would not have shown it.
+        vision_timesteps=to_device(torch.full((n_vis_noisy,), t_vis_raw, dtype=torch.float32)),
         vision_noisy_frame_indexes=[to_device(torch.arange(n_cond_vis, t_latent))],
-        action_tokens=[to_device(action_noisy)],
+        action_tokens=[to_device(action_noisy.to(action_dtype))],
         action_token_shapes=[(n_act, 1, 1)],
         action_sequence_indexes=act_idx,
         action_mse_loss_indexes=act_idx[n_cond_act:],
-        action_timesteps=to_device(torch.full((n_act_noisy,), t_act_raw, dtype=action.dtype)),
+        action_timesteps=to_device(torch.full((n_act_noisy,), t_act_raw, dtype=torch.float32)),
         action_noisy_frame_indexes=[to_device(torch.arange(n_cond_act, n_act))],
         action_domain_ids=[to_device(torch.tensor(domain_id))],
     )
@@ -597,6 +675,7 @@ def pack_batch(
     resolution: str = "480",
     device="npu:0",
     generator=None,
+    payload_dtype: torch.dtype = torch.bfloat16,
 ):
     """Pack a batch of samples into one sequence and install the per-sample boundaries on the policy.
 
@@ -668,7 +747,29 @@ def pack_batch(
         else:
             latent = out
         latent = normalize_latent(latent, vae)
-        latent = latent.to(torch.bfloat16)
+        # Not cast to the model dtype here. x0 stays fp32 and pack_one casts x_t at the end, which is what
+        # upstream does; rounding here instead would be rounding before the interpolation, and no fp32
+        # arithmetic afterwards can recover what that throws away.
+        latent = latent.float()
+
+    # The canvas is padded; the latent must not be. ``resize_and_reflect_pad`` fits the composite inside the
+    # bucket canvas and reflection-pads the bottom and right edges, so for DROID a 540x640 composite sits in a
+    # 544x736 frame. Upstream encodes the padded frame and then throws the padding away in latent space
+    # (omni_mot_model.py::_remove_padding_from_latent, called on the encode's output): floor-divide the content
+    # size by the spatial compression factor and keep that top-left corner, at least one row and column.
+    #
+    # Skipping this is not a rounding difference. It leaves 34x46 latent cells where upstream has 33x40, so the
+    # vision stream carries 3519 tokens instead of 3060, the sequence length and every index after it move, and
+    # 13% of the loss is computed on reflected pixels. Measured on episode 26827 offset 0.
+    #
+    # The factor is read off the two shapes rather than named as a constant, so a VAE whose compression differs
+    # from the recipe's 16 cannot silently crop to the wrong place.
+    spatial_factor = batch["video"].shape[-2] // latent.shape[-2]
+    if latent.shape[-1] * spatial_factor != batch["video"].shape[-1]:
+        raise ValueError(
+            f"The VAE does not compress the two spatial axes equally: video {tuple(batch['video'].shape[-2:])} "
+            f"-> latent {tuple(latent.shape[-2:])}; the padding cannot be mapped into latent space."
+        )
 
     per_sample = []
     for index in range(n):
@@ -687,13 +788,17 @@ def pack_batch(
             total_action_frames=n_action_frames,
         )
         ids = tokenize_prompt(prompt, tokenizer, generator=generator)
+        content_h, content_w = (int(v) for v in batch["content_hw"][index].tolist())
+        keep_h = max(content_h // spatial_factor, 1)
+        keep_w = max(content_w // spatial_factor, 1)
         per_sample.append(
             pack_one(
-                latent[index : index + 1],
-                batch["action"][index].to(torch.bfloat16),
+                latent[index : index + 1, :, :, :keep_h, :keep_w].contiguous(),
+                batch["action"][index].float(),
                 ids,
                 cfg,
-                state=batch["state"][index].to(torch.bfloat16) if "state" in batch else None,
+                state=batch["state"][index].float() if "state" in batch else None,
+                payload_dtype=payload_dtype,
                 fps=fps,
                 device=device,
                 resolution=str(resolution),
