@@ -86,9 +86,30 @@ def check_cast_buffers(cast_buffers: bool):
         ), f"cast_buffers=False must leave the values alone, got {inner.inv_freq.float().cpu().tolist()}"
 
 
+class _OwnInitSubclass(HybridParallelPlugin):
+    """A subclass that writes its own ``__init__`` and does not chain to this plugin's.
+
+    ``MoeHybridParallelPlugin`` is that subclass in this repository. An argument added to
+    ``HybridParallelPlugin.__init__`` reaches such a subclass only if it forwards it, so without a class-level
+    default the first read of ``self.cast_buffers`` raises ``AttributeError`` in code that worked before the
+    argument existed.
+    """
+
+    def __init__(self) -> None:
+        pass
+
+
+def check_subclass_default():
+    """A subclass that never assigns the attribute still reads the pre-switch behaviour."""
+    plugin = _OwnInitSubclass()
+    assert plugin.cast_buffers is True, "a subclass that does not forward the argument must keep the cast"
+    assert plugin.cast_inputs is True, "the same contract the neighbouring argument already has"
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
     check_cast_buffers()
+    check_subclass_default()
 
 
 @rerun_if_address_is_in_use()

@@ -985,10 +985,11 @@ class HybridParallelPlugin(PipelinePluginBase):
 
     """
 
-    #: Default for a subclass that defines its own ``__init__`` without forwarding this one's
-    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before this
-    #: switch existed.
+    #: Defaults for a subclass that defines its own ``__init__`` without forwarding this one's
+    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before these
+    #: switches existed.
     cast_inputs: bool = True
+    cast_buffers: bool = True
 
     def __init__(
         self,
