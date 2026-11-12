@@ -122,13 +122,14 @@ def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.
 def resolve_shards(root: str | Path, success_only: bool = False) -> list[tuple[str, Path]]:
     """The LeRobot roots one training run reads from.
 
-    Point ``root`` at the parent directory and both roots are indexed, the base ``DROIDLeRobotDataset`` default;
-    point it at ``success`` or ``failure`` itself and only that one is. The SFT factory restricts to ``success``
-    by default (``use_success_only=True``). The order is upstream's ``LEROBOT_ROOTS`` order, for the same reason
-    it matters there: it decides which root an episode index refers to when the two are mixed.
+    ``root`` is the parent directory of ``success/`` and ``failure/``, and both roots are indexed — the base
+    ``DROIDLeRobotDataset`` default. The SFT factory restricts to ``success`` by default
+    (``use_success_only=True``). The order is upstream's ``LEROBOT_ROOTS`` order, for the same reason it matters
+    there: it decides which root an episode index refers to when the two are mixed. A single root is not accepted
+    on its own: the parent is the dataset, and a run that means one root says so through ``success_only``.
 
     Args:
-        root (str | Path): The parent of ``success/`` and ``failure/``, or one of the two itself.
+        root (str | Path): The parent of ``success/`` and ``failure/``.
         success_only (bool, optional): Drop the failure root, i.e. upstream's ``use_success_only``. Defaults to
             False, the base dataset's value; the recipe factory passes True.
 
@@ -136,21 +137,19 @@ def resolve_shards(root: str | Path, success_only: bool = False) -> list[tuple[s
         list[tuple[str, Path]]: ``(name, path)`` per root, names unique.
 
     Raises:
-        FileNotFoundError: If ``root`` is neither a LeRobot root nor a parent of one or more.
+        FileNotFoundError: If ``root`` is not a parent of a ``success/`` or ``failure/`` LeRobot root.
     """
     root = Path(root)
     shards = [(name, root / name) for name in ("success", "failure") if (root / name / "meta/info.json").is_file()]
-    if shards:
-        if success_only:
-            shards = [shard for shard in shards if shard[0] == "success"]
+    if not shards:
+        raise FileNotFoundError(
+            f"{root} is not a parent of a success/ or failure/ LeRobot root; pass the directory that holds them."
+        )
+    if success_only:
+        shards = [shard for shard in shards if shard[0] == "success"]
         if not shards:
             raise FileNotFoundError(f"{root} holds no success root, and success_only was requested.")
-        return shards
-    if (root / "meta/info.json").is_file():
-        if success_only and root.name != "success":
-            raise FileNotFoundError(f"{root} is not a success root, and success_only was requested.")
-        return [(root.name, root)]
-    raise FileNotFoundError(f"{root} is neither a LeRobot root nor a parent of success/ and failure/.")
+    return shards
 
 
 def keep_ranges_key(episode_id: str) -> str:
@@ -431,8 +430,8 @@ class DroidActionPolicyDataset(Dataset):
     """DROID windows in LeRobot v3 layout, preprocessed the way the action-policy recipe expects.
 
     Args:
-        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained — or one
-            of those two on its own. See :func:`resolve_shards`.
+        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained unless
+            ``success_only`` says otherwise. See :func:`resolve_shards`.
         chunk_length (int, optional): Number of actions per window; the window holds ``chunk_length + 1``
             observation frames. Defaults to 32.
         fps (float, optional): Frame rate the video timestamps are resolved against. Defaults to 15.0.

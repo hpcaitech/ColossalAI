@@ -79,7 +79,7 @@ LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--data", type=Path, required=True, help="DROID LeRobot root or parent of success/failure.")
+    parser.add_argument("--data", type=Path, required=True, help="Parent of the success/ and failure/ LeRobot roots.")
     parser.add_argument("--checkpoint", type=Path, required=True, help="Cosmos3-Edge base checkpoint directory.")
     parser.add_argument("--out", type=Path, default=Path("runs/cosmos3-sft"))
     parser.add_argument("--chunk-length", type=int, default=32)

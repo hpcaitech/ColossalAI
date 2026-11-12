@@ -7,7 +7,7 @@ conditioning frames** -- which is why the loss must apply the noisy mask rather 
 Needs a supported accelerator, the checkpoint and the DROID dataset::
 
     python scripts/smoke_conditioning.py \
-        --data /path/to/Cosmos3-DROID/success \
+        --data /path/to/Cosmos3-DROID \
         --checkpoint /path/to/Cosmos3-Edge-Policy-DROID
 """
 
@@ -81,7 +81,7 @@ def main():
         torch.backends.cudnn.allow_tf32 = False
     backend = resolve_attention_backend(args.backend, torch.device(args.device).type)
 
-    dataset = DroidActionPolicyDataset(args.data, max_episodes=args.max_episodes, sample_stride=32)
+    dataset = DroidActionPolicyDataset(args.data, max_episodes=args.max_episodes, sample_stride=32, success_only=True)
     loader = DataLoader(
         dataset,
         batch_size=args.samples,

@@ -66,9 +66,10 @@ def test_resolve_shards_reads_both_roots_in_upstream_order(tmp_path):
     assert [name for name, _ in resolve_shards(tmp_path)] == ["success", "failure"]
 
 
-def test_resolve_shards_accepts_a_single_root(tmp_path):
+def test_resolve_shards_requires_the_parent_of_the_roots(tmp_path):
     write_root(tmp_path / "success", [])
-    assert [name for name, _ in resolve_shards(tmp_path / "success")] == ["success"]
+    with pytest.raises(FileNotFoundError, match="parent"):
+        resolve_shards(tmp_path / "success")
 
 
 def test_success_only_drops_the_failure_root(tmp_path):

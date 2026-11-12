@@ -23,7 +23,7 @@ Install ColossalAI in the accelerator's supported PyTorch environment, then inst
 
 The repository-wide diffusers 0.35.2 pin conflicts with this example, whose model classes require 0.40.0. This example does not change the repository-wide dependency contract. Transformers follows the repository's 5.17.0 pin. CUDA attention additionally needs a PyTorch CUDA build supplying `torch.nn.attention.varlen`; requesting it without the adapter raises an error.
 
-A checkpoint directory must contain `transformer/`, `vae/` and `text_tokenizer/`. The dataset is DROID in LeRobot v3 layout. The reference recipe removes failure demonstrations, so the entry trains the `success/` root by default; `--no-success-only` includes both roots. The episode split excludes validation episodes. Supply the recipe's `keep_ranges_1_0_1.json` through `--keep-ranges` to reproduce the curated windows: the registered config leaves the filter off (`use_filter_dict=False`, `filter_dict_path=None`), but the official launch script enables it and the Cosmos 3 technical report describes community-provided idle-frame filtering. Omitting `--keep-ranges` trains all eligible windows and is recorded in the manifest.
+A checkpoint directory must contain `transformer/`, `vae/` and `text_tokenizer/`. The dataset is DROID in LeRobot v3 layout, passed as the parent of `success/` and `failure/`. The reference recipe removes failure demonstrations, so the entry trains the `success/` root by default; `--no-success-only` includes both roots. The episode split excludes validation episodes. Supply the recipe's `keep_ranges_1_0_1.json` through `--keep-ranges` to reproduce the curated windows: the registered config leaves the filter off (`use_filter_dict=False`, `filter_dict_path=None`), but the official launch script enables it and the Cosmos 3 technical report describes community-provided idle-frame filtering. Omitting `--keep-ranges` trains all eligible windows and is recorded in the manifest.
 
 ## Run
 
@@ -45,7 +45,7 @@ A single-device smoke run:
 
 ```bash
 python -m torch.distributed.run --nproc_per_node=1 train_sft.py \
-    --data /path/to/Cosmos3-DROID/success \
+    --data /path/to/Cosmos3-DROID \
     --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
     --no-reinit-action-head --zero-stage 0 \
     --samples-per-rank 1 --grad-accum 1 --max-iter 10 --max-episodes 8
