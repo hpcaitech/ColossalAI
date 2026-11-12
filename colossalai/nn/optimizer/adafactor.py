@@ -167,7 +167,9 @@ class Adafactor(Optimizer):
                         state["exp_avg_sq"] = state["exp_avg_sq"]
 
                 state["step"] += 1
-                # state["RMS"] = self._rms(p_data_fp32)
+                if group["scale_parameter"]:
+                    param_data = p.float() if p.dtype in (torch.float16, torch.bfloat16) else p
+                    state["RMS"] = self._rms(param_data)
                 lr = self._get_lr(group, state)
                 beta2t = 1.0 - math.pow(state["step"], group["decay_rate"])
                 update = (grad**2) + group["eps"][0]
