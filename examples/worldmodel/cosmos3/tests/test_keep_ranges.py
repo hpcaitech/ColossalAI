@@ -1,9 +1,11 @@
-"""Checks on the two DROID roots and on the curated window set.
+"""Checks on the two DROID roots, the curated window set and its key protocol.
 
 Neither is ours: the roots are upstream's ``LEROBOT_ROOTS`` for this layout and the ranges are
 ``keep_ranges_1_0_1.json`` (``KarlP/droid``). A run only reproduces the released numbers if it trains the same
 episodes and the same windows, so the helpers are pinned and the dataset is exercised on a tiny synthetic LeRobot
-layout.
+layout. The filter keys follow cosmos-framework's ``normalize_episode_filter_keys`` protocol: relative episode ids
+are used directly, legacy composite URI keys need an explicit source prefix, and a file that matches nothing is an
+error rather than an empty training set.
 
 Runs on CPU.
 """
@@ -25,6 +27,14 @@ CAM_FEATURES = (
     "observation.image.exterior_image_1_left",
     "observation.image.exterior_image_2_left",
 )
+
+# A legacy composite URI key written out by hand, not built with keep_ranges_key: what these tests check is the
+# protocol, and deriving the input with the production helper would only prove self-consistency.
+LEGACY_URI = (
+    "gs://xembodiment_data/r2d2/r2d2-data-full/A/success/kept/recordings/"
+    "MP4--gs://xembodiment_data/r2d2/r2d2-data-full/A/success/kept/trajectory.h5"
+)
+SOURCE_PREFIX = "gs://xembodiment_data/r2d2/r2d2-data-full"
 
 
 def write_root(root: Path, episodes: list[dict]) -> None:
@@ -82,6 +92,85 @@ def test_keep_ranges_key_matches_the_upstream_format():
         "MP4--gs://xembodiment_data/r2d2/r2d2-data-full/AUTOLab/success/2023-07-07/Fri_Jul__7_09:42:23_2023/"
         "trajectory.h5"
     )
+
+
+def test_relative_episode_ids_are_used_directly(tmp_path):
+    """The protocol's primary form: a complete relative episode id is the key."""
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({"A/success/kept": [[0, 50]]}))
+    dataset = DroidActionPolicyDataset(tmp_path, chunk_length=32, split="full", keep_ranges=keep)
+    assert [window.episode_id for window in dataset.windows] == ["A/success/kept"] * 18
+    assert dataset.filter_stats == {"matched_episodes": 1, "kept_windows": 18}
+
+
+def test_legacy_uri_keys_need_an_explicit_source_prefix(tmp_path):
+    """Guessing the prefix would silently match the wrong episodes, so a URI key without one is rejected."""
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({LEGACY_URI: [[0, 50]]}))
+    with pytest.raises(ValueError, match="source_prefix"):
+        DroidActionPolicyDataset(tmp_path, chunk_length=32, split="full", keep_ranges=keep)
+
+
+def test_legacy_uri_keys_are_normalized_with_the_source_prefix(tmp_path):
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({LEGACY_URI: [[0, 50]]}))
+    dataset = DroidActionPolicyDataset(
+        tmp_path,
+        chunk_length=32,
+        split="full",
+        keep_ranges=keep,
+        filter_dict_source_prefix=SOURCE_PREFIX,
+    )
+    assert [window.episode_id for window in dataset.windows] == ["A/success/kept"] * 18
+
+
+def test_the_source_prefix_environment_variable_is_the_default(tmp_path, monkeypatch):
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({LEGACY_URI: [[0, 50]]}))
+    monkeypatch.setenv("DROID_FILTER_SOURCE_PREFIX", SOURCE_PREFIX)
+    dataset = DroidActionPolicyDataset(tmp_path, chunk_length=32, split="full", keep_ranges=keep)
+    assert [window.episode_id for window in dataset.windows] == ["A/success/kept"] * 18
+
+
+def test_a_uri_prefix_that_does_not_match_is_rejected(tmp_path):
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({LEGACY_URI: [[0, 50]]}))
+    with pytest.raises(ValueError, match="does not match"):
+        DroidActionPolicyDataset(
+            tmp_path,
+            chunk_length=32,
+            split="full",
+            keep_ranges=keep,
+            filter_dict_source_prefix="gs://some/other/prefix",
+        )
+
+
+def test_duplicate_entries_with_conflicting_ranges_raise(tmp_path):
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({"A/success/kept": [[0, 50]], LEGACY_URI: [[10, 50]]}))
+    with pytest.raises(ValueError, match="Conflicting"):
+        DroidActionPolicyDataset(
+            tmp_path,
+            chunk_length=32,
+            split="full",
+            keep_ranges=keep,
+            filter_dict_source_prefix=SOURCE_PREFIX,
+        )
+
+
+def test_a_filter_that_matches_no_episode_raises(tmp_path):
+    """A non-empty file that selects nothing is a misconfiguration, not an empty training run."""
+    write_root(tmp_path / "success", [{"index": 0, "id": "A/success/kept", "length": 100, "from": 0}])
+    keep = tmp_path / "keep_ranges.json"
+    keep.write_text(json.dumps({"A/success/absent": [[0, 50]]}))
+    with pytest.raises(ValueError, match="matches none"):
+        DroidActionPolicyDataset(tmp_path, chunk_length=32, split="full", keep_ranges=keep)
 
 
 def test_episode_starts_counts_frames_minus_chunk():
@@ -159,7 +248,7 @@ def test_keep_ranges_drops_unlisted_episodes_and_windows(tmp_path):
         ],
     )
     keep = tmp_path / "keep_ranges.json"
-    keep.write_text(json.dumps({keep_ranges_key("A/success/kept"): [[0, 50]]}))
+    keep.write_text(json.dumps({"A/success/kept": [[0, 50]]}))
     dataset = DroidActionPolicyDataset(tmp_path, chunk_length=32, split="full", keep_ranges=keep)
     assert [window.episode_id for window in dataset.windows] == ["A/success/kept"] * 18
 
@@ -171,7 +260,7 @@ def test_max_episodes_counts_episodes_the_filter_keeps(tmp_path):
         [{"index": index, "id": f"A/success/{index}", "length": 100, "from": index * 100} for index in range(3)],
     )
     keep = tmp_path / "keep_ranges.json"
-    keep.write_text(json.dumps({keep_ranges_key("A/success/2"): [[0, 50]]}))
+    keep.write_text(json.dumps({"A/success/2": [[0, 50]]}))
     dataset = DroidActionPolicyDataset(
         tmp_path, chunk_length=32, split="full", max_episodes=1, episode_shuffle_seed=42, keep_ranges=keep
     )
