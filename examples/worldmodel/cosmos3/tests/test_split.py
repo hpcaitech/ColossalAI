@@ -68,13 +68,14 @@ def test_unknown_split_raises():
 EPISODES = 40
 
 
-@pytest.mark.parametrize("split", ["train", "full"])
-def test_a_single_root_keeps_the_pre_multi_root_window_sequence(tmp_path, split):
+@pytest.mark.parametrize(("split", "seed"), [("train", 42), ("full", 42), ("train", 7)])
+def test_a_single_root_keeps_the_pre_multi_root_window_sequence(tmp_path, split, seed):
     """Same episodes, same order, same starts as the index built before the two-root extension.
 
     The expected sequence is written out from the definition rather than by calling the new index: shuffle the
     episode table with ``episode_shuffle_seed``, keep the split's episodes and give each one its ``range`` of full
-    windows. A change in traversal order, split membership or window placement shows up here as a diff.
+    windows. A change in traversal order, split membership or window placement shows up here as a diff. The
+    non-default seed also pins upstream's coupling: one permutation is both the holdout and the episode shuffle.
     """
     lengths = {index: 40 + index for index in range(EPISODES)}
     episodes = [
@@ -82,10 +83,10 @@ def test_a_single_root_keeps_the_pre_multi_root_window_sequence(tmp_path, split)
         for index, length in lengths.items()
     ]
     write_root(tmp_path / "success", episodes)
-    allowed = set(split_episode_ids(EPISODES, 42, 0.03, split))
-    order = torch.randperm(EPISODES, generator=torch.Generator().manual_seed(42)).tolist()
+    allowed = set(split_episode_ids(EPISODES, seed, 0.03, split))
+    order = torch.randperm(EPISODES, generator=torch.Generator().manual_seed(seed)).tolist()
     expected = [
         (f"A/success/{index}", start) for index in order if index in allowed for start in range(0, lengths[index] - 32)
     ]
-    dataset = DroidActionPolicyDataset(tmp_path, chunk_length=32, split=split)
+    dataset = DroidActionPolicyDataset(tmp_path, chunk_length=32, split=split, episode_shuffle_seed=seed)
     assert [(window.episode_id, window.start) for window in dataset.windows] == expected
