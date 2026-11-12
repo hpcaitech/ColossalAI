@@ -93,7 +93,8 @@ class Adafactor(Optimizer):
         """
         loss = None
         if closure is not None:
-            loss = closure()
+            with torch.enable_grad():
+                loss = closure()
 
         """
         param_groups: Dict
