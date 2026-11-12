@@ -14,8 +14,9 @@ mask:
    variable-length boundaries is enough.
 
 This module exposes that split as a thin orchestration layer. It does not change :class:`ColoAttention`: the naive
-implementation is a plain PyTorch reference used to validate a fused implementation and to start SFT, and the NPU
-implementation issues the two calls through the regular attention entry.
+implementation is a plain PyTorch reference used to validate a fused implementation and to start SFT, the NPU
+implementation issues the two calls through the regular attention entry, and the CUDA implementation uses PyTorch's
+native packed ``varlen_attn`` kernel.
 
 The packed layout is layout A of the design note: a global AR block followed by a global DM block. The first call
 therefore needs no copy at all; the second call interleaves the K/V of the two blocks into the per-sample
@@ -37,6 +38,7 @@ __all__ = [
     "validate_two_way_varlen_limits",
     "naive_two_way_flat_attention",
     "npu_two_way_flat_attention",
+    "cuda_two_way_flat_attention",
     "two_way_flat_attention",
 ]
 
@@ -54,6 +56,29 @@ def _prefix_sums(lengths: Sequence[int]) -> List[int]:
     for length in lengths:
         cumulative.append(cumulative[-1] + int(length))
     return cumulative
+
+
+def _cumulative_lengths_tensor(lengths: Sequence[int], device: torch.device) -> torch.Tensor:
+    """Return ``int32`` cumulative lengths on ``device`` for the native packed kernel."""
+    return torch.tensor(_prefix_sums(lengths), dtype=torch.int32, device=device)
+
+
+_CUDA_VARLEN_ATTENTION = None
+
+
+def _load_cuda_varlen_attention():
+    """Load the packed CUDA kernel lazily so importing this module never requires CUDA or Torch's varlen API.
+
+    The callable is cached: the processor warms it once at construction, and every decoder layer's forward would
+    otherwise rebuild the loader. The warm-up also keeps ``importlib`` out of a ``torch.compile`` region, where
+    Dynamo refuses to trace it.
+    """
+    global _CUDA_VARLEN_ATTENTION
+    if _CUDA_VARLEN_ATTENTION is None:
+        from colossalai.kernel.kernel_loader import FlashAttentionVarlenCudaLoader
+
+        _CUDA_VARLEN_ATTENTION = FlashAttentionVarlenCudaLoader().load()
+    return _CUDA_VARLEN_ATTENTION
 
 
 def _decode_cu_seqlens(value, argument_name: str) -> List[int]:
@@ -739,6 +764,130 @@ def npu_two_way_flat_attention(
     return out_ar, out_dm
 
 
+def cuda_two_way_flat_attention(
+    q_ar: torch.Tensor,
+    k_ar: torch.Tensor,
+    v_ar: torch.Tensor,
+    q_dm: torch.Tensor,
+    k_dm: torch.Tensor,
+    v_dm: torch.Tensor,
+    meta: TwoWayPackedMeta,
+    *,
+    k_ar_for_gen: Optional[torch.Tensor] = None,
+    scale: Optional[float] = None,
+    dropout_p: float = 0.0,
+    kv_gather_index: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Two-way attention as two variable-length calls to PyTorch's native packed CUDA kernel.
+
+    The first call is causal over the global AR block. The second is a full call whose queries are the DM block and
+    whose keys/values are the per-sample ``[AR_i; DM_i]`` interleaving, so the block diagonal is expressed by the
+    cumulative lengths rather than by a dense mask. PyTorch's ``varlen_attn`` backs both calls with the flash
+    attention kernel available on the installed GPU.
+
+    ``varlen_attn`` has no dropout argument. A non-zero ``dropout_p`` would therefore be silently ignored, which is
+    worse than rejecting it: this backend raises instead. Use the naive reference when a training recipe needs
+    attention dropout.
+
+    Args:
+        q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
+        k_ar (torch.Tensor): AR keys of shape ``[total_ar_tokens, kv_heads, head_dim]``; ``kv_heads`` may be smaller
+            than the query ``heads``, as in grouped-query attention.
+        v_ar (torch.Tensor): AR values, same shape as ``k_ar``.
+        q_dm (torch.Tensor): DM queries of shape ``[total_dm_tokens, heads, head_dim]``.
+        k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
+        v_dm (torch.Tensor): DM values, same shape as ``k_dm``.
+        meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
+        k_ar_for_gen (Optional[torch.Tensor], optional): AR keys as the generation (DM) full pass sees them, of the
+            same shape as ``k_ar``. When given, the DM call interleaves this block instead of ``k_ar`` while the AR
+            call keeps the raw keys. Defaults to None.
+        scale (Optional[float], optional): Multiplier applied to the scores before the softmax. Defaults to
+            ``head_dim**-0.5``.
+        dropout_p (float, optional): Must be zero on this backend. Defaults to 0.0.
+        kv_gather_index (Optional[torch.Tensor], optional): Interleaving index built by
+            :func:`build_two_way_kv_gather_index`. When it is None the interleaving slices are concatenated directly,
+            which reads and writes each token once. Defaults to None.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: AR output of shape ``[total_ar_tokens, heads, head_dim]`` and DM output of
+        shape ``[total_dm_tokens, heads, head_dim]``.
+
+    Raises:
+        NotImplementedError: If ``dropout_p`` is non-zero.
+        ValueError: If the tensors do not match the metadata or the towers disagree on heads or ``head_dim``.
+        RuntimeError: If this build cannot provide a packed CUDA kernel.
+
+    Example:
+        .. code-block:: python
+
+            from colossalai.shardformer.layer import TwoWayPackedMeta, cuda_two_way_flat_attention
+
+            meta = TwoWayPackedMeta([3], [5])
+            out_ar, out_dm = cuda_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+    """
+    _check_packed_inputs(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta, k_ar_for_gen)
+    if dropout_p != 0.0:
+        raise NotImplementedError(
+            f"The native CUDA varlen kernel has no dropout argument, so dropout_p={dropout_p} would be silently "
+            f"ignored. Use backend='naive' for a recipe that needs attention dropout."
+        )
+    if any(tensor.dtype == torch.float64 for tensor in (q_ar, k_ar, v_ar, q_dm, k_dm, v_dm)):
+        raise NotImplementedError(
+            "The native CUDA varlen kernel only supports the floating-point dtypes it was compiled for; a float64 "
+            "call is a reference-only configuration. Use backend='naive' for the float64 numerical gate."
+        )
+
+    varlen_attention = _load_cuda_varlen_attention()
+    num_query_heads = q_ar.size(1)
+    num_kv_heads = k_ar.size(1)
+    enable_gqa = num_query_heads != num_kv_heads
+    device = q_ar.device
+
+    ar_lengths = [ar_len for ar_len in meta.ar_lens if ar_len > 0]
+    dm_lengths = [dm_len for dm_len in meta.dm_lens if dm_len > 0]
+    kv_lengths = [ar_len + dm_len for ar_len, dm_len in zip(meta.ar_lens, meta.dm_lens) if dm_len > 0]
+
+    if ar_lengths:
+        cu_seqlens_ar = _cumulative_lengths_tensor(ar_lengths, device)
+        out_ar = varlen_attention(
+            q_ar,
+            k_ar,
+            v_ar,
+            cu_seqlens_ar,
+            cu_seqlens_ar,
+            meta.max_ar,
+            meta.max_ar,
+            is_causal=True,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        out_ar = q_ar.new_empty(q_ar.shape)
+
+    if dm_lengths:
+        cu_seqlens_dm = _cumulative_lengths_tensor(dm_lengths, device)
+        cu_seqlens_kv = _cumulative_lengths_tensor(kv_lengths, device)
+        gen_keys = k_ar if k_ar_for_gen is None else k_ar_for_gen
+        interleaved_keys = _interleave_two_way_kv(gen_keys, k_dm, meta, kv_gather_index)
+        interleaved_values = _interleave_two_way_kv(v_ar, v_dm, meta, kv_gather_index)
+        out_dm = varlen_attention(
+            q_dm,
+            interleaved_keys,
+            interleaved_values,
+            cu_seqlens_dm,
+            cu_seqlens_kv,
+            meta.max_dm,
+            max(kv_lengths),
+            is_causal=False,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
+    else:
+        out_dm = q_dm.new_empty(q_dm.shape)
+
+    return out_ar, out_dm
+
+
 def two_way_flat_attention(
     q_ar: torch.Tensor,
     k_ar: torch.Tensor,
@@ -756,9 +905,9 @@ def two_way_flat_attention(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Run two-way flat attention with the selected implementation.
 
-    The naive and the NPU implementations share this signature, so a model can switch between them with one flag:
-    use ``naive`` to start SFT and to produce the reference, and ``npu`` once the fused path has passed the numerical
-    gate. The model keeps the two towers' Q/K/V projections separate and only hands the packed tensors here.
+    The implementations share this signature, so a model can switch between them with one flag: use ``naive`` to
+    produce the reference, ``npu`` for the Ascend two-call path, and ``cuda`` for PyTorch's native packed CUDA
+    kernel. The model keeps the two towers' Q/K/V projections separate and only hands the packed tensors here.
 
     Args:
         q_ar (torch.Tensor): AR queries of shape ``[total_ar_tokens, heads, head_dim]``.
@@ -769,16 +918,17 @@ def two_way_flat_attention(
         k_dm (torch.Tensor): DM keys, same shape as ``k_ar``.
         v_dm (torch.Tensor): DM values, same shape as ``k_dm``.
         meta (TwoWayPackedMeta): Packed layout that describes where each sample starts and ends.
-        backend (str, optional): ``"naive"`` for the PyTorch reference or ``"npu"`` for the two-call Ascend path.
-            Defaults to "naive".
+        backend (str, optional): ``"naive"`` for the PyTorch reference, ``"npu"`` for the two-call Ascend path or
+            ``"cuda"`` for PyTorch's native packed varlen kernel. Defaults to "naive".
         k_ar_for_gen (Optional[torch.Tensor], optional): AR keys as the generation (DM) full pass sees them, of the
             same shape as ``k_ar``; see :func:`npu_two_way_flat_attention`. Defaults to None, i.e. both passes use
             ``k_ar``.
         scale (Optional[float], optional): Multiplier applied to the scores before the softmax. Defaults to
             ``head_dim**-0.5``.
-        dropout_p (float, optional): Dropout probability. Defaults to 0.0.
-        kv_gather_index (Optional[torch.Tensor], optional): Interleaving index for the NPU path; ignored by the naive
-            path. Defaults to None.
+        dropout_p (float, optional): Dropout probability. The CUDA backend rejects a non-zero value because the
+            native kernel has no dropout. Defaults to 0.0.
+        kv_gather_index (Optional[torch.Tensor], optional): Interleaving index for the NPU/CUDA paths; ignored by the
+            naive path. Defaults to None.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: AR output of shape ``[total_ar_tokens, heads, head_dim]`` and DM output of
@@ -786,6 +936,7 @@ def two_way_flat_attention(
 
     Raises:
         ValueError: If ``backend`` is unknown, or if the inputs do not match the metadata.
+        NotImplementedError: If the selected backend cannot serve the requested configuration.
 
     Example:
         .. code-block:: python
@@ -798,6 +949,7 @@ def two_way_flat_attention(
     implementations = {
         "naive": naive_two_way_flat_attention,
         "npu": npu_two_way_flat_attention,
+        "cuda": cuda_two_way_flat_attention,
     }
     implementation = implementations.get(backend)
     if implementation is None:

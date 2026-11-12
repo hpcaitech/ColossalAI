@@ -19,7 +19,13 @@ import torch.nn.functional as F
 
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.shardformer.layer import Linear1D_Col, Linear1D_Row, TwoWayPackedMeta
-from colossalai.shardformer.modeling.cosmos3 import ColossalTwoWayAttnProcessor, set_cosmos3_packed_meta
+from colossalai.shardformer.modeling.cosmos3 import (
+    ColossalTwoWayAttnProcessor,
+    ColossalTwoWayCPAttnProcessor,
+    Cosmos3ContextParallel,
+    clear_cosmos3_packed_meta,
+    set_cosmos3_packed_meta,
+)
 from colossalai.shardformer.modeling.cosmos_mot import layout_from_split_lengths
 from colossalai.shardformer.policies.base_policy import ModulePolicyDescription
 from colossalai.shardformer.policies.cosmos3 import Cosmos3OmniPolicy
@@ -92,6 +98,8 @@ class Cosmos3OmniTransformer(torch.nn.Module):
 
     def __init__(self, num_layers: int = 2) -> None:
         super().__init__()
+        self.time_embedder = torch.nn.Identity()
+        self.time_proj = torch.nn.Identity()
         self.config = SimpleNamespace(
             num_attention_heads=NUM_HEADS,
             num_key_value_heads=NUM_KV_HEADS,
@@ -161,8 +169,18 @@ def _reference_pathways(attn, und_seq, gen_seq, rotary_emb, ar_lens, dm_lens):
                 )
             )
         if dm_len > 0:
-            keys = torch.cat((k_und_for_gen[ar_offset : ar_offset + ar_len], k_gen[dm_offset : dm_offset + dm_len]))
-            values = torch.cat((v_und[ar_offset : ar_offset + ar_len], v_gen[dm_offset : dm_offset + dm_len]))
+            keys = torch.cat(
+                (
+                    k_und_for_gen[ar_offset : ar_offset + ar_len],
+                    k_gen[dm_offset : dm_offset + dm_len],
+                )
+            )
+            values = torch.cat(
+                (
+                    v_und[ar_offset : ar_offset + ar_len],
+                    v_gen[dm_offset : dm_offset + dm_len],
+                )
+            )
             dm_outputs.append(_sdpa(q_gen[dm_offset : dm_offset + dm_len], keys, values, causal=False))
         ar_offset += ar_len
         dm_offset += dm_len
@@ -253,6 +271,46 @@ def test_processor_rejects_metadata_from_another_pack():
         processor(attn, und_seq, gen_seq, rotary_emb)
 
 
+def test_context_parallel_processor_rejects_metadata_from_another_pack_before_exchanging():
+    attn = Cosmos3PackedMoTAttention().double()
+    processor = ColossalTwoWayCPAttnProcessor(packed_meta=TwoWayPackedMeta([2, 1], [1, 2]))
+    und_seq, gen_seq, rotary_emb = _inputs([4], [3])
+    processor.set_sequence_lengths(und_seq.shape[0], gen_seq.shape[0])
+
+    with pytest.raises(ValueError, match="CP shard seam carries 4 AR and 3 DM tokens"):
+        processor(attn, und_seq, gen_seq, rotary_emb)
+
+
+def test_context_parallel_processor_exchange_is_a_noop_at_cp_size_one():
+    processor = ColossalTwoWayCPAttnProcessor(process_group=None)
+    x = torch.randn(3, NUM_HEADS, HEAD_DIM)
+
+    assert processor._exchange(x) is x
+    assert processor._exchange_back(x) is x
+
+
+def test_context_parallel_processor_handles_an_empty_pathway():
+    processor = ColossalTwoWayCPAttnProcessor(process_group=None)
+    empty = torch.empty(0, NUM_HEADS, HEAD_DIM)
+
+    assert processor._exchange(empty).shape == empty.shape
+    assert processor._exchange_back(empty).shape == empty.shape
+
+
+def test_context_parallel_helper_delegates_metadata_and_carries_options():
+    helper = Cosmos3ContextParallel(process_group=None, scale=0.25, dropout_p=0.0)
+    meta = TwoWayPackedMeta([4, 3], [2, 5])
+
+    assert helper.packed_meta is None
+    helper.set_packed_meta(meta)
+    assert helper.packed_meta is meta
+    assert helper.processor.scale == 0.25
+    assert helper.processor.dropout_p == 0.0
+
+    helper.clear_packed_meta()
+    assert helper.packed_meta is None
+
+
 def test_processor_rejects_an_unknown_backend():
     with pytest.raises(ValueError, match="backend"):
         ColossalTwoWayAttnProcessor(backend="flash")
@@ -295,6 +353,7 @@ def _stand_in_shard_config(**overrides):
         enable_sequence_parallelism=False,
         fp8_communication=False,
         pipeline_stage_manager=None,
+        gradient_checkpoint_config=None,
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -312,9 +371,73 @@ def test_policy_rejects_pipeline_parallelism():
         _policy_with(_stand_in_shard_config(pipeline_stage_manager=object()))
 
 
-def test_policy_rejects_sequence_parallelism():
-    with pytest.raises(NotImplementedError, match="sequence parallelism"):
-        _policy_with(_stand_in_shard_config(enable_sequence_parallelism=True))
+def test_policy_rejects_sequence_parallelism_that_is_not_ulysses():
+    # Only the all-to-all (Ulysses) flavour keeps whole per-sample blocks on the attention side; the split-gather
+    # and ring flavours cut inside a block, which the two-way kernel cannot represent.
+    with pytest.raises(NotImplementedError, match="all_to_all"):
+        _policy_with(
+            _stand_in_shard_config(
+                enable_sequence_parallelism=True,
+                sequence_parallelism_mode="split_gather",
+                sequence_parallel_size=2,
+            )
+        )
+
+
+def test_policy_rejects_context_parallelism_mixed_with_tensor_parallelism():
+    with pytest.raises(NotImplementedError, match="tensor parallelism"):
+        _policy_with(
+            _stand_in_shard_config(
+                enable_sequence_parallelism=True,
+                sequence_parallelism_mode="all_to_all",
+                sequence_parallel_size=2,
+                enable_tensor_parallelism=True,
+                tensor_parallel_size=2,
+            )
+        )
+
+
+def test_policy_rejects_a_context_parallel_group_that_cannot_split_the_heads():
+    with pytest.raises(ValueError, match="divisible by the context parallel size"):
+        _policy_with(
+            _stand_in_shard_config(
+                enable_sequence_parallelism=True,
+                sequence_parallelism_mode="all_to_all",
+                sequence_parallel_size=3,
+            )
+        )
+
+
+def test_context_parallel_policy_rewrites_no_module():
+    # Ulysses CP only swaps the processor and wires the model's seams, both in postprocess().
+    assert (
+        _policy_with(
+            _stand_in_shard_config(
+                enable_sequence_parallelism=True,
+                sequence_parallelism_mode="all_to_all",
+                sequence_parallel_size=2,
+            )
+        ).module_policy()
+        == {}
+    )
+
+
+def test_policy_rejects_fp8_context_parallelism():
+    with pytest.raises(NotImplementedError, match="fp8 communication"):
+        _policy_with(
+            _stand_in_shard_config(
+                enable_sequence_parallelism=True,
+                sequence_parallelism_mode="all_to_all",
+                sequence_parallel_size=2,
+                fp8_communication=True,
+            )
+        )
+
+
+def test_policy_rejects_shardformer_gradient_checkpoint_config():
+    marker = object()
+    with pytest.raises(NotImplementedError, match="gradient_checkpoint_config"):
+        _policy_with(_stand_in_shard_config(gradient_checkpoint_config=marker))
 
 
 def test_policy_rejects_shardformer_optimizations_it_does_not_implement():
@@ -437,8 +560,12 @@ def _test_device():
     """Run the real-model checks on the accelerator when one is present.
 
     diffusers' ``RMSNorm`` calls the Ascend fusion op whenever ``torch_npu`` is installed, and that op has no CPU
-    kernel, so on an NPU host these checks have to run on the device even though the model is tiny.
+    kernel, so on an NPU host these checks have to run on the device even though the model is tiny. A CUDA host must
+    be detected here too: otherwise a GPU job would silently exercise the CPU fallback and prove nothing about the
+    device path.
     """
+    if torch.cuda.is_available():
+        return torch.device("cuda", torch.cuda.current_device())
     try:
         # Imported for its side effect: `torch.npu` only exists once torch_npu has been imported.
         importlib.import_module("torch_npu")
@@ -463,7 +590,7 @@ def _to_device(pack, device):
 
 
 def _single_sample_pack(n_text: int, frames: int, seed: int, domain_id: int = 0, n_act: int = 2):
-    """One sample in the layout `pack_one` produces: ``[text | vision patches | action]``."""
+    """A synthetic ``[text | vision patches | action]`` sample with unit-spaced temporal coordinates."""
     generator = torch.Generator().manual_seed(seed)
     h_patches = LATENT_HW // LATENT_PATCH
     w_patches = LATENT_HW // LATENT_PATCH
@@ -471,10 +598,22 @@ def _single_sample_pack(n_text: int, frames: int, seed: int, domain_id: int = 0,
     sequence_length = n_text + n_vis + n_act
     vision_indexes = torch.arange(n_text, n_text + n_vis)
     action_indexes = torch.arange(n_text + n_vis, sequence_length)
+
+    text_positions = torch.arange(n_text).expand(3, -1)
+    frame_positions = torch.arange(frames).repeat_interleave(h_patches * w_patches) + n_text
+    row_positions = torch.arange(h_patches).repeat_interleave(w_patches).repeat(frames)
+    column_positions = torch.arange(w_patches).repeat(h_patches * frames)
+    vision_positions = torch.stack((frame_positions, row_positions, column_positions))
+
+    action_time_positions = torch.arange(n_act) + n_text + frames
+    action_spatial_positions = torch.zeros(n_act, dtype=torch.long)
+    action_positions = torch.stack((action_time_positions, action_spatial_positions, action_spatial_positions))
+    position_ids = torch.cat((text_positions, vision_positions, action_positions), dim=1)
+
     return dict(
         input_ids=torch.randint(0, 64, (n_text,), generator=generator),
         text_indexes=torch.arange(n_text),
-        position_ids=torch.arange(sequence_length).unsqueeze(0).repeat(3, 1),
+        position_ids=position_ids,
         und_len=n_text,
         sequence_length=sequence_length,
         vision_tokens=[torch.randn(1, LATENT_CHANNEL, frames, LATENT_HW, LATENT_HW, generator=generator)],
@@ -490,6 +629,45 @@ def _single_sample_pack(n_text: int, frames: int, seed: int, domain_id: int = 0,
         action_timesteps=torch.full((n_act,), 500.0),
         action_noisy_frame_indexes=[torch.arange(n_act)],
         action_domain_ids=[torch.tensor(domain_id)],
+    )
+
+
+def test_single_sample_pack_uses_three_axis_mrope_positions():
+    n_text, frames, n_act = 3, 2, 2
+    pack = _single_sample_pack(n_text=n_text, frames=frames, seed=1, n_act=n_act)
+    h_patches, w_patches = LATENT_HW // LATENT_PATCH, LATENT_HW // LATENT_PATCH
+
+    text_positions = torch.arange(n_text).expand(3, -1)
+    torch.testing.assert_close(pack["position_ids"][:, :n_text], text_positions)
+
+    vision_positions = pack["position_ids"][:, pack["vision_sequence_indexes"]]
+    patches_per_frame = h_patches * w_patches
+    expected_frame_positions = torch.arange(frames).repeat_interleave(patches_per_frame) + n_text
+    expected_row_positions = torch.arange(h_patches).repeat_interleave(w_patches).repeat(frames)
+    expected_column_positions = torch.arange(w_patches).repeat(h_patches * frames)
+    torch.testing.assert_close(
+        vision_positions,
+        torch.stack(
+            (
+                expected_frame_positions,
+                expected_row_positions,
+                expected_column_positions,
+            )
+        ),
+    )
+
+    action_positions = pack["position_ids"][:, pack["action_sequence_indexes"]]
+    expected_action_times = torch.arange(n_act) + n_text + frames
+    expected_action_spatial_positions = torch.zeros(n_act, dtype=torch.long)
+    torch.testing.assert_close(
+        action_positions,
+        torch.stack(
+            (
+                expected_action_times,
+                expected_action_spatial_positions,
+                expected_action_spatial_positions,
+            )
+        ),
     )
 
 
@@ -555,7 +733,9 @@ def _merge_single_sample_packs(packs):
 
 
 @pytest.mark.parametrize("use_und_k_norm_for_gen", [False, True])
-def test_real_model_gives_the_same_result_with_the_policy_processor(use_und_k_norm_for_gen):
+def test_real_model_gives_the_same_result_with_the_policy_processor(
+    use_und_k_norm_for_gen,
+):
     device = _test_device()
     model = _tiny_cosmos3(use_und_k_norm_for_gen).to(device)
     pack = _to_device(_single_sample_pack(n_text=3, frames=2, seed=1), device)
@@ -591,3 +771,132 @@ def test_real_model_multi_sample_pack_matches_two_single_sample_runs():
     torch.testing.assert_close(packed.sample[1], alone_b.sample[0], atol=1e-4, rtol=1e-4)
     torch.testing.assert_close(packed.action[0], alone_a.action[0], atol=1e-4, rtol=1e-4)
     torch.testing.assert_close(packed.action[1], alone_b.action[0], atol=1e-4, rtol=1e-4)
+
+
+def test_packed_metadata_helper_is_strict_and_can_clear():
+    model = Cosmos3OmniTransformer(num_layers=3)
+    meta = TwoWayPackedMeta([4, 3], [2, 5])
+
+    assert set_cosmos3_packed_meta(model, meta, strict=True) == 3
+    for layer in model.layers:
+        assert layer.processor.packed_meta is meta
+
+    assert clear_cosmos3_packed_meta(model, strict=True) == 3
+    for layer in model.layers:
+        assert layer.processor.packed_meta is None
+
+    with pytest.raises(RuntimeError, match="No Cosmos 3 attention processor"):
+        set_cosmos3_packed_meta(torch.nn.Linear(2, 2), meta, strict=True)
+
+
+def test_same_totals_with_different_boundaries_produce_different_attention():
+    attn = Cosmos3PackedMoTAttention().double()
+    und_seq, gen_seq, rotary_emb = _inputs([4, 3], [2, 5])
+    split_across_two_samples = ColossalTwoWayAttnProcessor(packed_meta=TwoWayPackedMeta([4, 3], [2, 5]))
+    one_sample = ColossalTwoWayAttnProcessor(packed_meta=TwoWayPackedMeta([7], [7]))
+
+    split_output = split_across_two_samples(attn, und_seq, gen_seq, rotary_emb)
+    one_output = one_sample(attn, und_seq, gen_seq, rotary_emb)
+
+    # The processor cannot infer the boundary from the token totals, so both are accepted. The training entry point
+    # must bind the metadata that belongs to the pack; this assertion documents why a total-only check is not enough.
+    assert not torch.allclose(split_output[0], one_output[0])
+    assert not torch.allclose(split_output[1], one_output[1])
+
+
+class _CheckpointedCosmos3OmniTransformer(Cosmos3OmniTransformer):
+    """Stand-in that wraps every decoder layer in non-reentrant activation checkpointing."""
+
+    def __init__(self, num_layers: int = 2) -> None:
+        super().__init__(num_layers=num_layers)
+        self.gradient_checkpointing = True
+
+    def forward(self, und_seq, gen_seq, rotary_emb):
+        for layer in self.layers:
+            if self.gradient_checkpointing and torch.is_grad_enabled():
+                und_seq, gen_seq = torch.utils.checkpoint.checkpoint(
+                    layer, und_seq, gen_seq, rotary_emb, use_reentrant=False
+                )
+            else:
+                und_seq, gen_seq = layer(und_seq, gen_seq, rotary_emb)
+        return und_seq, gen_seq
+
+
+def test_activation_checkpointing_recomputes_with_the_same_pack_metadata():
+    import copy
+
+    torch.manual_seed(0)
+    reference_model = _CheckpointedCosmos3OmniTransformer(num_layers=2).double()
+    reference_model.gradient_checkpointing = False
+    checkpointed_model = copy.deepcopy(reference_model)
+    checkpointed_model.gradient_checkpointing = True
+    meta = TwoWayPackedMeta([4, 3], [2, 5])
+    set_cosmos3_packed_meta(reference_model, meta, strict=True)
+    set_cosmos3_packed_meta(checkpointed_model, meta, strict=True)
+
+    und_seq, gen_seq, rotary_emb = _inputs([4, 3], [2, 5], seed=40)
+    reference_inputs = [
+        und_seq.clone().requires_grad_(True),
+        gen_seq.clone().requires_grad_(True),
+        rotary_emb,
+    ]
+    checkpointed_inputs = [
+        und_seq.clone().requires_grad_(True),
+        gen_seq.clone().requires_grad_(True),
+        rotary_emb,
+    ]
+
+    reference_und, reference_gen = reference_model(*reference_inputs)
+    (reference_und.square().sum() + reference_gen.square().sum()).backward()
+    checkpointed_und, checkpointed_gen = checkpointed_model(*checkpointed_inputs)
+    (checkpointed_und.square().sum() + checkpointed_gen.square().sum()).backward()
+
+    torch.testing.assert_close(checkpointed_und, reference_und, rtol=1e-12, atol=1e-12)
+    torch.testing.assert_close(checkpointed_gen, reference_gen, rtol=1e-12, atol=1e-12)
+    for (name, reference), (checkpointed_name, actual) in zip(
+        reference_model.named_parameters(), checkpointed_model.named_parameters()
+    ):
+        assert name == checkpointed_name
+        assert reference.grad is not None and actual.grad is not None
+        torch.testing.assert_close(actual.grad, reference.grad, rtol=1e-10, atol=1e-12)
+
+
+def test_processor_accepts_the_cuda_backend_label(monkeypatch):
+    monkeypatch.setattr(
+        "colossalai.shardformer.modeling.cosmos3._load_cuda_varlen_attention",
+        lambda: None,
+    )
+    processor = ColossalTwoWayAttnProcessor(backend="cuda")
+    assert processor.backend == "cuda"
+
+    with pytest.raises(ValueError, match="backend"):
+        ColossalTwoWayAttnProcessor(backend="sdpa")
+
+
+def _packed_real_model_reference(model, packs, device):
+    """Run each sample through the stock processor and keep the per-sample outputs."""
+    references = []
+    with torch.no_grad():
+        for pack in packs:
+            references.append(model(**_to_device(pack, device)))
+    return references
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="the fused CUDA backend needs a CUDA device")
+def test_real_model_packed_forward_with_the_cuda_backend_matches_stock_runs():
+    device = torch.device("cuda", torch.cuda.current_device())
+    model = _tiny_cosmos3().to(device=device, dtype=torch.bfloat16)
+    pack_a = _to_device(_single_sample_pack(n_text=3, frames=2, seed=11), device)
+    pack_b = _to_device(_single_sample_pack(n_text=4, frames=3, seed=12, domain_id=1), device)
+    references = _packed_real_model_reference(model, [pack_a, pack_b], device)
+
+    policy = Cosmos3OmniPolicy(backend="cuda")
+    ShardFormer(ShardConfig(enable_tensor_parallelism=False)).optimize(model, policy=policy)
+    dm_lens = [int(pack["sequence_length"]) - int(pack["und_len"]) for pack in (pack_a, pack_b)]
+    policy.set_packed_meta(TwoWayPackedMeta([pack_a["und_len"], pack_b["und_len"]], dm_lens))
+    with torch.no_grad():
+        packed = model(**_to_device(_merge_single_sample_packs([pack_a, pack_b]), device))
+
+    for index, reference in enumerate(references):
+        torch.testing.assert_close(packed.sample[index], reference.sample[0], atol=5e-3, rtol=5e-3)
+        torch.testing.assert_close(packed.action[index], reference.action[0], atol=5e-3, rtol=5e-3)

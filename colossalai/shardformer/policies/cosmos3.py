@@ -19,6 +19,8 @@ import colossalai.shardformer.layer as col_nn
 
 from ..modeling.cosmos3 import (
     ColossalTwoWayAttnProcessor,
+    enable_cosmos3_context_parallel,
+    enable_cosmos3_selective_checkpointing,
     install_fp32_sinusoidal_timestep_input,
     install_fp32_timestep_embedding,
 )
@@ -42,18 +44,22 @@ class Cosmos3OmniPolicy(Policy):
 
     Args:
         backend (str, optional): Attention backend for
-            :class:`~colossalai.shardformer.modeling.cosmos3.ColossalTwoWayAttnProcessor`: ``"naive"`` (portable) or
-            ``"npu"`` (Ascend fusion kernel). Defaults to ``"naive"``.
+            :class:`~colossalai.shardformer.modeling.cosmos3.ColossalTwoWayAttnProcessor`: ``"naive"`` (portable),
+            ``"npu"`` (Ascend fusion kernel) or ``"cuda"`` (PyTorch's native packed CUDA kernel). Defaults to
+            ``"naive"``.
         processor (optional): A ready-made processor to install instead of building one from ``backend``. Use this to
             share a processor with code that already holds one, e.g. a script that pre-sets pack metadata.
-        fp32_sinusoidal_input (bool, optional): Hand the embedder the sinusoidal features before the model
-            rounds them to its parameter dtype. Defaults to True. Separate from the switch below only so that
-            its effect can be measured; there is no reason to turn it off in training.
-        fp32_timestep_embedding (bool, optional): Embed the timesteps the way the reference implementation
-            does: the sinusoidal features reach the embedder unrounded and its arithmetic runs in fp32,
-            while its parameters stay in the training dtype. Defaults to True. See
-            :func:`~colossalai.shardformer.modeling.cosmos3.install_fp32_timestep_embedding` and
-            :func:`~colossalai.shardformer.modeling.cosmos3.install_fp32_sinusoidal_timestep_input`.
+        selective_checkpointing (bool, optional): Recompute only the MLP half of each decoder layer and keep the
+            attention half live, instead of the whole-layer recompute of ``enable_gradient_checkpointing``. Defaults to
+            ``False``. Full ``gradient_checkpointing`` and selective checkpointing are mutually exclusive.
+        selective_budget_gib (float, optional): Memory budget for the selective checkpointing. Small packs keep the
+            MLP-only path; large packs switch to the official-style SAC path, which checkpoints the whole layer and
+            keeps attention op outputs for an estimated number of layers. This is a heuristic, not a hard
+            memory cap, and is re-estimated when pack shapes/dtypes change. Defaults to 8.0 GiB.
+        fp32_timestep_embedding (bool, optional): Compute the timestep MLP in fp32 with parameters kept in the
+            training dtype. Defaults to True.
+        fp32_sinusoidal_input (bool, optional): Restore unrounded sinusoidal inputs before the fp32 timestep MLP.
+            Applies when fp32_timestep_embedding is enabled. Defaults to True.
 
     Raises:
         ValueError: If ``backend`` is not a known two-way kernel backend.
@@ -63,13 +69,17 @@ class Cosmos3OmniPolicy(Policy):
         self,
         backend: str = "naive",
         processor: Optional[ColossalTwoWayAttnProcessor] = None,
+        selective_checkpointing: bool = False,
+        selective_budget_gib: float = 8.0,
         fp32_timestep_embedding: bool = True,
         fp32_sinusoidal_input: bool = True,
     ) -> None:
         super().__init__()
-        self.processor = processor if processor is not None else ColossalTwoWayAttnProcessor(backend=backend)
         self.fp32_timestep_embedding = fp32_timestep_embedding
         self.fp32_sinusoidal_input = fp32_sinusoidal_input
+        self.selective_checkpointing = selective_checkpointing
+        self.selective_budget_gib = selective_budget_gib
+        self.processor = processor if processor is not None else ColossalTwoWayAttnProcessor(backend=backend)
 
     @property
     def packed_meta(self):
@@ -94,13 +104,40 @@ class Cosmos3OmniPolicy(Policy):
                 "attention intact."
             )
         if self.shard_config.enable_sequence_parallelism:
-            raise NotImplementedError(
-                "Cosmos3OmniPolicy does not support sequence parallelism: the two-way flat-attention kernel consumes "
-                "whole per-sample AR and DM blocks, which a sequence split would cut across."
-            )
+            # Sequence parallelism here means Ulysses context parallelism: the sequence is split across the group,
+            # attention swaps sequence for heads, and the two-way kernel still sees whole per-sample blocks. Only the
+            # all-to-all flavour has that property; the split-gather and ring flavours cut inside a block.
+            if self.shard_config.sequence_parallelism_mode != "all_to_all":
+                raise NotImplementedError(
+                    "Cosmos3OmniPolicy supports sequence parallelism only in the 'all_to_all' (Ulysses context "
+                    f"parallel) mode, got {self.shard_config.sequence_parallelism_mode!r}."
+                )
+            if self.shard_config.enable_tensor_parallelism:
+                raise NotImplementedError(
+                    "Cosmos3OmniPolicy does not combine tensor parallelism with context parallelism yet. The "
+                    "diffusers reference composes them on a two-dimensional mesh, but this policy has not validated "
+                    "the composed local-head layout in the two-way kernel; run TP and CP separately for now."
+                )
+            if self.shard_config.fp8_communication:
+                raise NotImplementedError(
+                    "Cosmos3OmniPolicy does not implement fp8 communication for context parallelism; the Ulysses "
+                    "exchange uses the model dtype. Disable fp8_communication or run without CP."
+                )
+            cp_size = self.shard_config.sequence_parallel_size
+            num_heads, num_kv_heads = self._head_counts()
+            if num_heads % cp_size != 0 or num_kv_heads % cp_size != 0:
+                raise ValueError(
+                    f"Cosmos3 attention heads ({num_heads} query, {num_kv_heads} key/value) must be divisible by the "
+                    f"context parallel size ({cp_size}); the Ulysses exchange scatters heads across the group. This "
+                    "path does not repeat key/value heads, so a CP size larger than the KV head count is unsupported."
+                )
         unsupported = [
             flag
-            for flag in ("enable_fused_normalization", "enable_flash_attention", "enable_jit_fused")
+            for flag in (
+                "enable_fused_normalization",
+                "enable_flash_attention",
+                "enable_jit_fused",
+            )
             if getattr(self.shard_config, flag, False)
         ]
         if unsupported:
@@ -108,6 +145,11 @@ class Cosmos3OmniPolicy(Policy):
             # fused-norm / flash-attention / JIT-fused rewrites apply; better to say so than to silently skip them.
             raise NotImplementedError(
                 "Cosmos3OmniPolicy does not implement ShardFormer's " + ", ".join(unsupported) + "."
+            )
+        if self.shard_config.gradient_checkpoint_config is not None:
+            raise NotImplementedError(
+                "Cosmos3OmniPolicy uses the model's own gradient checkpointing configuration; "
+                "ShardConfig.gradient_checkpoint_config is not implemented for this policy."
             )
         if not self.shard_config.enable_tensor_parallelism:
             return
@@ -192,6 +234,18 @@ class Cosmos3OmniPolicy(Policy):
         # Runs after `_replace_module` and `_materialize`, so this is the last word on the processor: a replacement
         # pass later in the shard would drop it, which is exactly the `set_processor` timing this policy exists to
         # get right.
+        if self.shard_config.enable_sequence_parallelism:
+            # Context parallelism also owns the model's two CP seams, so it installs the processor itself.
+            context_parallel = enable_cosmos3_context_parallel(
+                self.model,
+                process_group=self.shard_config.sequence_parallel_process_group,
+                backend=self.processor.backend,
+                packed_meta=getattr(self.processor, "packed_meta", None),
+                scale=getattr(self.processor, "scale", None),
+                dropout_p=getattr(self.processor, "dropout_p", 0.0),
+            )
+            self.context_parallel = context_parallel
+            self.processor = context_parallel.processor
         installed = 0
         for module in self.model.modules():
             if module.__class__.__name__ != _ATTENTION_CLS:
@@ -208,7 +262,9 @@ class Cosmos3OmniPolicy(Policy):
             # plugin casts the module after this pass runs, so a dtype set here would not survive. A forward
             # replacement does, and it reads the parameters at call time.
             wrapped = install_fp32_timestep_embedding(self.model)
-            if wrapped == 0:
+            if wrapped == 0 and not any(
+                getattr(module, "_colossal_fp32_forward", False) for module in self.model.modules()
+            ):
                 raise RuntimeError(
                     "fp32_timestep_embedding is on but the model has no time_embedder module, so the timestep "
                     "arithmetic would silently run in the training dtype. Pass fp32_timestep_embedding=False "
@@ -219,12 +275,17 @@ class Cosmos3OmniPolicy(Policy):
             # there at all. Running the embedder in fp32 on an input that arrived rounded recovers only half
             # of the difference.
             paired = install_fp32_sinusoidal_timestep_input(self.model) if self.fp32_sinusoidal_input else 1
-            if paired == 0:
+            if paired == 0 and not any(
+                getattr(module, "_colossal_fp32_sinusoid_installed", False) for module in self.model.modules()
+            ):
                 raise RuntimeError(
                     "fp32_timestep_embedding is on but no module owns both a time_proj and a time_embedder, "
                     "so the sinusoidal features would still be rounded to the training dtype before the "
                     "embedder sees them. Pass fp32_timestep_embedding=False if that is intended."
                 )
+        if self.selective_checkpointing:
+            # Here rather than before the boost so the patch lands on the layers as they come out of the shard pass.
+            enable_cosmos3_selective_checkpointing(self.model, budget_gib=self.selective_budget_gib)
         return self.model
 
     def _head_counts(self):

@@ -3,6 +3,7 @@ from .pybind.flash_attention import (
     FlashAttentionDaoCudaExtension,
     FlashAttentionNpuExtension,
     FlashAttentionSdpaCudaExtension,
+    FlashAttentionVarlenCudaExtension,
 )
 from .pybind.inference import InferenceOpsCudaExtension
 from .pybind.layernorm import LayerNormCudaExtension
@@ -22,6 +23,7 @@ ALL_EXTENSIONS = [
     FlashAttentionDaoCudaExtension,
     FlashAttentionSdpaCudaExtension,
     FlashAttentionNpuExtension,
+    FlashAttentionVarlenCudaExtension,
 ]
 
 __all__ = [
@@ -36,4 +38,5 @@ __all__ = [
     "FlashAttentionDaoCudaExtension",
     "FlashAttentionSdpaCudaExtension",
     "FlashAttentionNpuExtension",
+    "FlashAttentionVarlenCudaExtension",
 ]

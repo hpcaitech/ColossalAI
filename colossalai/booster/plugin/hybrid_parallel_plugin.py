@@ -87,8 +87,8 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         ddp_config: dict,
         custom_policy: Policy,
         overlap_allgather: bool = False,
-        cast_inputs: bool = True,
         use_fp8: bool = False,
+        cast_inputs: bool = True,
         cast_buffers: bool = True,
     ) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
@@ -124,26 +124,14 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
             if cast_buffers:
                 module = module.to(self.mixed_precision)
             else:
-                # Parameters only. ``Module.to(dtype)`` casts buffers as well, which is right for a buffer
-                # that holds activations and wrong for one that holds a constant whose *value* matters.
-                # A rotary frequency table is the case that motivated this: ``rotary_emb.inv_freq`` moves by
-                # relL2 4.2e-04 in bfloat16, and multiplied by a position of 15163 that is a phase error of
-                # radians rather than of last bits. PyTorch's own FSDP keeps the two apart for this reason --
-                # ``MixedPrecisionPolicy`` takes ``param_dtype`` and ``buffer_dtype`` separately.
+                # Rotary frequencies and similar constants must retain the precision in which the model
+                # constructed them. Cast parameters independently, then move parameters and buffers together.
                 for param in module.parameters():
                     if param.is_floating_point():
                         param.data = param.data.to(self.mixed_precision)
         module = module.to(get_accelerator().get_current_device())
 
-        # setting input type cast when using mixed precision
-        #
-        # ``cast_inputs=False`` leaves the forward's arguments alone. The cast below is indiscriminate: it takes
-        # every floating-point tensor in args and kwargs, which is right for activations and wrong for an
-        # argument whose *value* matters rather than its precision. A positional index is the case that
-        # motivated the switch -- fractional mRoPE positions reaching 15163.8 come back off by up to 17 whole
-        # positions in bfloat16, so the rotary embedding is computed at the wrong place in the sequence. With
-        # the cast off, the caller is responsible for handing the model the dtype it wants, which is also what
-        # ``LowLevelZeroPlugin(cast_inputs=False)`` already means.
+        # The caller can keep positional indexes and timesteps in FP32 while supplying model-dtype payloads.
         self.convert_fn = None
         if self.mixed_precision is not None and cast_inputs:
             self.convert_fn = partial(_convert_floating_point, dtype=self.mixed_precision)
@@ -725,6 +713,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,  # the dp pg for comm
+        replica_group: Optional[ProcessGroup] = None,  # the HSDP replica pg for the second-level grad all-reduce
         tp_process_group: Optional[ProcessGroup] = None,  # if using tp
         pp_process_group: Optional[ProcessGroup] = None,  # if using pp
         forced_dtype: Optional[torch.dtype] = None,
@@ -758,6 +747,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             partition_grad=partition_grad,
             cpu_offload=cpu_offload,
             dp_process_group=dp_process_group,
+            replica_group=replica_group,
             forced_dtype=forced_dtype,
             overlap_allgather=overlap_allgather,
             fp8_communication=fp8_communication,
@@ -970,24 +960,22 @@ class HybridParallelPlugin(PipelinePluginBase):
         enable_metadata_cache (bool, optional): Whether to enable metadata cache for pipeline parallelism. Defaults to True.
         make_vocab_size_divisible_by (int, optional): it's used when padding the vocabulary size, to make it choose an faster kenel. Default to 64.
         fp8_communication (bool, optional): Whether to enable fp8 communication. Defaults to False.
-        cast_inputs (bool, optional): Whether to cast every floating-point argument of the model's forward to the
-            mixed-precision dtype. Defaults to True. Set it to False when an argument carries a value whose
-            magnitude matters, such as a positional index: the cast is indiscriminate, and bfloat16 cannot hold
-            a position of 15163.8 closer than 16. With it off, the caller casts the activations itself.
+        cast_inputs (bool, optional): Cast floating forward arguments to the mixed-precision dtype. Defaults to True.
+            Disable this for FP32 positional indexes and timesteps; the caller then supplies the payload dtype.
+        cast_buffers (bool, optional): Cast floating buffers along with parameters. Defaults to True.
+            Disable this to preserve constants such as rotary frequencies in their original dtype.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
-        cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as well as
-            its parameters. Defaults to True, which is what ``Module.to(dtype)`` does. Pass False for a model
-            whose buffers hold constants whose value matters -- a rotary frequency table, a position index --
-            and the parameters are cast while the buffers stay as the model built them.
+        hsdp_shard_size (int, optional): Size of the group ZeRO shards (and reduce-scatters) inside, i.e. hybrid
+            sharded data parallelism. The data parallel group is cut into `hsdp_shard_size` contiguous shards, and
+            gradients are summed across the resulting replica groups with a second, shard-sized all-reduce. Leave it
+            at None to shard across the whole data parallel group, as plain ZeRO does. Defaults to None.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
         inner_ring_size (int, optional): The inner ring size of 2D Ring Attention when sp mode is "ring_attn".
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.
 
     """
 
-    #: Defaults for a subclass that defines its own ``__init__`` without forwarding this one's
-    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before these
-    #: switches existed.
+    # Preserve defaults for subclasses with their own constructor that reuse configure().
     cast_inputs: bool = True
     cast_buffers: bool = True
 
@@ -1037,9 +1025,10 @@ class HybridParallelPlugin(PipelinePluginBase):
         overlap_p2p: bool = True,
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
-        cast_inputs: bool = True,
         use_fp8: bool = False,
         inner_ring_size: int = None,
+        hsdp_shard_size: Optional[int] = None,
+        cast_inputs: bool = True,
         cast_buffers: bool = True,
     ) -> None:
         super().__init__()
@@ -1081,6 +1070,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 sp_size == 1 or sp_size is None
             ), f"You should not set sp_size when sequence parallelism is not enabled."
             self.sp_size = 1
+            self.sequence_parallelism_mode = None
 
         self.tp_size = tp_size
         self.pp_size = pp_size
@@ -1093,8 +1083,8 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_jit_fused = enable_jit_fused
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.cast_inputs = cast_inputs
-        self.use_fp8 = use_fp8
         self.cast_buffers = cast_buffers
+        self.use_fp8 = use_fp8
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
@@ -1199,6 +1189,26 @@ class HybridParallelPlugin(PipelinePluginBase):
         else:
             self.mixed_dp_group = self.dp_group
 
+        # HSDP shards the mixed DP group in rank order, then all-reduces matching shards across replicas.
+        # These logical groups are node-local only if the launcher assigns ranks that way. Without
+        # hsdp_shard_size the mixed DP group remains one shard group, as in ordinary ZeRO.
+        self.dp_shard_size = self.dp_size if hsdp_shard_size is None else hsdp_shard_size
+        if self.dp_shard_size < 1 or self.dp_size % self.dp_shard_size != 0:
+            raise ValueError(
+                f"hsdp_shard_size ({self.dp_shard_size}) must divide the data parallel size ({self.dp_size})."
+            )
+        self.dp_replicate_size = self.dp_size // self.dp_shard_size
+        if self.dp_replicate_size > 1:
+            if self.zero_stage == 0:
+                self.logger.warning(
+                    "hsdp_shard_size only affects the ZeRO gradient reduction; with zero_stage=0 the run stays plain "
+                    "DDP over the whole data parallel group.",
+                    ranks=[0],
+                )
+            self.shard_group, self.replica_group = self._create_hsdp_groups(self.dp_shard_size)
+        else:
+            self.shard_group, self.replica_group = self.mixed_dp_group, None
+
         self.shard_config = ShardConfig(
             tensor_parallel_process_group=self.tp_group,
             sequence_parallel_process_group=self.sp_group,
@@ -1209,7 +1219,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             enable_flash_attention=self.enable_flash_attention,
             enable_jit_fused=self.enable_jit_fused,
             enable_sequence_parallelism=enable_sequence_parallelism,
-            sequence_parallelism_mode=sequence_parallelism_mode,
+            sequence_parallelism_mode=self.sequence_parallelism_mode,
             parallel_output=parallel_output,
             make_vocab_size_divisible_by=make_vocab_size_divisible_by,
             gradient_checkpoint_config=gradient_checkpoint_config,
@@ -1287,6 +1297,46 @@ class HybridParallelPlugin(PipelinePluginBase):
     def control_checkpoint_io(self) -> bool:
         return True
 
+    def _create_hsdp_groups(self, shard_size: int) -> Tuple[ProcessGroup, ProcessGroup]:
+        """Create the shard and replica groups of hybrid sharded data parallelism.
+
+        The data parallel group is the cartesian product of the dp and sp axes. Its members, read in mesh order, are
+        cut into contiguous `shard_size` shards: a shard group is the unit ZeRO partitions, reduce-scatters and
+        all-gathers inside, so keeping it inside a node keeps those collectives off the inter-node fabric. The rank at
+        the same offset of every shard forms a replica group, over which the second-level gradient all-reduce runs.
+
+        Every rank creates all of the groups in the same order, which is what ``dist.new_group`` requires; a rank only
+        keeps the two groups it belongs to.
+
+        Args:
+            shard_size (int): Number of data parallel ranks that share one sharded copy of the model.
+
+        Returns:
+            Tuple[ProcessGroup, ProcessGroup]: The shard group and the replica group of this rank.
+        """
+        mesh_shape = self.pg_mesh.shape
+        axes = [self.dp_axis, self.sp_axis]
+        reduced_shape = list(mesh_shape)
+        for axis in axes:
+            reduced_shape[axis] = 1
+        indices = [list(range(mesh_shape[axis])) for axis in axes]
+        my_rank = dist.get_rank()
+        shard_group = replica_group = None
+        for base_coord in np.ndindex(*reduced_shape):
+            coords = ProcessGroupMesh.get_coords_along_axis(base_coord, axes, indices)
+            ranks = [ProcessGroupMesh.ravel(coord, mesh_shape) for coord in coords]
+            shards = [ranks[start : start + shard_size] for start in range(0, len(ranks), shard_size)]
+            for shard in shards:
+                group = dist.new_group(shard)
+                if my_rank in shard:
+                    shard_group = group
+            for offset in range(shard_size):
+                replica_ranks = [shard[offset] for shard in shards]
+                group = dist.new_group(replica_ranks)
+                if my_rank in replica_ranks:
+                    replica_group = group
+        return shard_group, replica_group
+
     def configure(
         self,
         model: Module,
@@ -1328,8 +1378,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                 custom_policy=self.custom_policy,
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
                 cast_inputs=self.cast_inputs,
-                use_fp8=self.use_fp8,
                 cast_buffers=self.cast_buffers,
+                use_fp8=self.use_fp8,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if zero_stage == 0:
@@ -1371,7 +1421,8 @@ class HybridParallelPlugin(PipelinePluginBase):
                     model,
                     use_pipeline=self.enable_pipeline_parallelism,
                     param_info=param_info,
-                    dp_process_group=self.mixed_dp_group,
+                    dp_process_group=self.shard_group,
+                    replica_group=self.replica_group,
                     tp_process_group=self.tp_group,
                     pp_process_group=self.pp_group,
                     verbose=True,
@@ -1497,7 +1548,12 @@ class HybridParallelPlugin(PipelinePluginBase):
 
     def get_checkpoint_io(self) -> CheckpointIO:
         return HybridParallelCheckpointIO(
-            self.mixed_dp_group, self.pp_group, self.tp_group, self.sp_group, self.zero_stage
+            self.shard_group,
+            self.pp_group,
+            self.tp_group,
+            self.sp_group,
+            self.zero_stage,
+            replica_group=self.replica_group,
         )
 
     def no_sync(self, model: Module, optimizer: OptimizerWrapper) -> Iterator[None]:

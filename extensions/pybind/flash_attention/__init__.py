@@ -1,6 +1,7 @@
 from .flash_attention_dao_cuda import FlashAttentionDaoCudaExtension
 from .flash_attention_npu import FlashAttentionNpuExtension
 from .flash_attention_sdpa_cuda import FlashAttentionSdpaCudaExtension
+from .flash_attention_varlen_cuda import FlashAttentionVarlenCudaExtension
 
 try:
     # TODO: remove this after updating openmoe example
@@ -11,4 +12,9 @@ except:
     HAS_FLASH_ATTN = False
 
 
-__all__ = ["FlashAttentionDaoCudaExtension", "FlashAttentionSdpaCudaExtension", "FlashAttentionNpuExtension"]
+__all__ = [
+    "FlashAttentionDaoCudaExtension",
+    "FlashAttentionSdpaCudaExtension",
+    "FlashAttentionNpuExtension",
+    "FlashAttentionVarlenCudaExtension",
+]

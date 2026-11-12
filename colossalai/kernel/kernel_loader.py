@@ -7,6 +7,7 @@ from .extensions import (
     FlashAttentionDaoCudaExtension,
     FlashAttentionNpuExtension,
     FlashAttentionSdpaCudaExtension,
+    FlashAttentionVarlenCudaExtension,
     FusedOptimizerCudaExtension,
     InferenceOpsCudaExtension,
     LayerNormCudaExtension,
@@ -25,6 +26,7 @@ __all__ = [
     "InferenceOpsLoader",
     "ScaledMaskedSoftmaxLoader",
     "ScaledUpperTriangleMaskedSoftmaxLoader",
+    "FlashAttentionVarlenCudaLoader",
 ]
 
 
@@ -130,3 +132,13 @@ class FlashAttentionWithCustomMaskLoader(KernelLoader):
 
 class FlashAttentionForFloatAndCustomMaskLoader(KernelLoader):
     REGISTRY = [FlashAttentionSdpaCudaExtension]
+
+
+class FlashAttentionVarlenCudaLoader(KernelLoader):
+    """Loader for the packed, mask-free variable-length kernel used by Cosmos-style two-way attention.
+
+    Kept separate from :class:`FlashAttentionLoader`: the packed kernel accepts no dense mask and no dropout, so it
+    must be selected explicitly by a caller that provides ``cu_seqlens`` rather than by the general attention entry.
+    """
+
+    REGISTRY = [FlashAttentionVarlenCudaExtension]
