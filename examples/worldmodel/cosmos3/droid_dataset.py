@@ -17,14 +17,15 @@ Three design decisions worth stating, because each is easy to get wrong in the o
    the batch at the cost of random-access I/O. Shuffling at index-construction time and leaving the sampler
    sequential gives both the decorrelation and the sequential reads.
 
-3. **Both roots are trained.** The released conversion keeps success and failure episodes in two separate roots
-   and the recipe trains both: ``LEROBOT_ROOTS`` for this layout is ``["success", "failure"]`` and
-   ``use_success_only`` defaults to off. The pinned ``action_policy_droid_nano`` config (cosmos-framework at
-   ``5950e7b4``) also ships ``keep_ranges_1_0_1.json`` but disables it -- ``use_filter_dict=False`` and
-   ``filter_dict_path=None`` -- so the reference recipe trains every window. Loading the curated file through
-   ``keep_ranges`` is an optional extension here, not part of reproducing that recipe; when enabled it keeps only
-   windows inside the listed frame ranges (about 74% of them) and drops the episodes the file does not mention.
-   Defaults train both roots over every window, so a smoke run needs nothing but the dataset.
+3. **The released conversion has two roots and a curated window set.** ``LEROBOT_ROOTS`` for this layout is
+   ``["success", "failure"]``. The base ``DROIDLeRobotDataset`` defaults ``use_success_only=False`` while the
+   ``action_policy_droid_nano`` factory defaults it to True, and the Cosmos 3 technical report describes
+   failure-demonstration removal as part of the policy recipe. The registered config leaves the curated filter
+   off (``use_filter_dict=False``, ``filter_dict_path=None``), but the official launch script
+   (``launch_sft_action_policy_droid_nano.sh``) overrides both to load ``keep_ranges_1_0_1.json``, and the report
+   describes community-provided idle-frame filtering. Reproducing the reference run therefore means the success
+   root with the curated windows; this loader defaults to both roots and no filter so a smoke run needs nothing
+   else, and exposes ``success_only``/``keep_ranges`` for the recipe settings.
 """
 
 from __future__ import annotations
@@ -121,14 +122,15 @@ def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.
 def resolve_shards(root: str | Path, success_only: bool = False) -> list[tuple[str, Path]]:
     """The LeRobot roots one training run reads from.
 
-    Point ``root`` at the parent directory and both roots are trained, which is what the recipe does; point it at
-    ``success`` or ``failure`` itself and only that one is. The order is upstream's ``LEROBOT_ROOTS`` order, for
-    the same reason it matters there: it decides which root an episode index refers to when the two are mixed.
+    Point ``root`` at the parent directory and both roots are indexed, the base ``DROIDLeRobotDataset`` default;
+    point it at ``success`` or ``failure`` itself and only that one is. The SFT factory restricts to ``success``
+    by default (``use_success_only=True``). The order is upstream's ``LEROBOT_ROOTS`` order, for the same reason
+    it matters there: it decides which root an episode index refers to when the two are mixed.
 
     Args:
         root (str | Path): The parent of ``success/`` and ``failure/``, or one of the two itself.
         success_only (bool, optional): Drop the failure root, i.e. upstream's ``use_success_only``. Defaults to
-            False, the recipe's value.
+            False, the base dataset's value; the recipe factory passes True.
 
     Returns:
         list[tuple[str, Path]]: ``(name, path)`` per root, names unique.
@@ -441,23 +443,26 @@ class DroidActionPolicyDataset(Dataset):
         max_episodes (int | None, optional): Index only the first N episodes after the shuffle and after the
             curated filter, for smoke runs. Defaults to None.
         augment (bool, optional): Apply the image augmentation. Defaults to False.
-        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, seed 42, 3% held
-            out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates ``"val"``; it is
-            what training must exclude.
+        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, ``split_seed``,
+            3% held out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates
+            ``"val"``; it is what training must exclude.
         split_val_ratio (float, optional): Fraction held out. Defaults to 0.03.
 
     The first ten arguments keep the positional order they had before the multi-root extension; everything below
     is keyword-only.
 
     Keyword Args:
-        split_seed (int, optional): Permutation seed of the split. Defaults to 42, the same seed upstream uses
-            for the split and the episode order.
+        split_seed (int | None, optional): Permutation seed of the split. None (default) uses
+            ``episode_shuffle_seed``, matching upstream, where one ``randperm`` is both the holdout and the
+            episode shuffle; pass an explicit value to give the split its own seed.
         success_only (bool, optional): Train on the success root alone, i.e. upstream's ``use_success_only``.
-            Defaults to False, the recipe's value.
-        keep_ranges (str | Path | None, optional): A curated keep-ranges JSON. The pinned recipe disables its
-            filter (``use_filter_dict=False``, ``filter_dict_path=None``); loading the file is an optional
-            extension here. When given, only windows inside the listed frame ranges are indexed, and episodes the
-            file does not mention are dropped. Keys are normalized to relative episode ids first — see
+            Defaults to False, the base dataset's value; the ``action_policy_droid_nano`` factory sets it True,
+            which is why the reference recipe excludes failure demonstrations.
+        keep_ranges (str | Path | None, optional): A curated keep-ranges JSON such as
+            ``keep_ranges_1_0_1.json``. The registered config leaves the filter off, but the official launch
+            script enables it for the reference reproduction; the loader keeps it opt-in. When given, only
+            windows inside the listed frame ranges are indexed, and episodes the file does not mention are
+            dropped. Keys are normalized to relative episode ids first — see
             :func:`normalize_episode_filter_keys`. Defaults to None, which indexes every window.
         filter_dict_source_prefix (str | None, optional): URI prefix in front of the complete episode id, needed
             when a filter file uses legacy composite URI keys. When None, ``DROID_FILTER_SOURCE_PREFIX`` is read.
@@ -478,7 +483,7 @@ class DroidActionPolicyDataset(Dataset):
         split: str = "train",
         split_val_ratio: float = 0.03,
         *,
-        split_seed: int = 42,
+        split_seed: int | None = None,
         success_only: bool = False,
         keep_ranges: str | Path | None = None,
         filter_dict_source_prefix: str | None = None,
@@ -492,6 +497,9 @@ class DroidActionPolicyDataset(Dataset):
         self.augment = augment
         self._augmentor: T.Compose | None = None
         self.split = split
+        # Upstream derives the holdout from the same randperm as the episode shuffle. None keeps that coupling
+        # for callers that only pass episode_shuffle_seed; an explicit split_seed decouples the two.
+        self.split_seed = episode_shuffle_seed if split_seed is None else split_seed
         self.dataset_revision = dataset_revision
         self.filter_dict_source_prefix = (
             filter_dict_source_prefix
@@ -503,7 +511,7 @@ class DroidActionPolicyDataset(Dataset):
         self.split_ids = {
             name: split_episode_ids(
                 int(json.loads((path / "meta/info.json").read_text())["total_episodes"]),
-                split_seed,
+                self.split_seed,
                 split_val_ratio,
                 split,
             )
