@@ -109,3 +109,29 @@ PY
 ```
 
 `pip check` 当前可能返回非零，需阅读其输出；如果 shell 开启了 `set -e`，在保存后续快照前先处理这一退出。记录中包含 Linux 新增的 NVIDIA/Triton 等版本。Git diff 不包含未跟踪文件的内容，仍需保存实际新增源码及测试文件。只有完成相应 GPU 验证后，才能把服务器快照标记为已验证基线。
+
+## 6. Cosmos 3 基线（GPU 与 Ascend 共用）
+
+Cosmos 3 的版本基线固定为 `torch 2.13.0 / transformers 5.17.0 / diffusers 0.35.2`。仅比较 `__version__` 不足以证明两端运行同一份 Cosmos 实现：补丁源码可以保留原版本号。两端都必须记录以下内容：
+
+```bash
+python examples/worldmodel/cosmos3_harness/environment_report.py \
+    --model nvidia/Cosmos3-Edge --revision <fixed revision> \
+    --output logs/cosmos3-environment.json
+```
+
+报告包含三个包的版本、导入路径与文件 SHA-256、`Cosmos3OmniTransformer` 是否存在及其源码文件摘要、Torch 是否提供 `torch.nn.attention.varlen.varlen_attn`，以及 checkpoint 名称与 revision。GPU 端与 Ascend 端应各保存一份，并在报告中注明 `torch.cuda`/`torch_npu`、CANN、HCCL 和 NCCL 的版本；平台运行库不要求相同。
+
+`diffusers==0.35.2` 的官方发行包未在本次核对中确认包含 `Cosmos3OmniTransformer`（上游 `v0.35.2` 路径查询为 404，`main` 存在）。若两端使用补丁或源码安装，必须在报告中体现为具体的安装来源与文件摘要，不能用普通 `pip install` 覆盖后仍声称版本一致。环境报告为 `transformer_class: false` 时，训练入口会明确报错，不应继续跑 benchmark。
+
+复现检查：
+
+```bash
+CUDA_VISIBLE_DEVICES="" pytest -q \
+    tests/test_shardformer/test_model/test_cosmos3_policy.py \
+    tests/test_shardformer/test_model/test_cosmos_mot_packing.py \
+    tests/test_shardformer/test_model/test_cosmos3_example_helpers.py \
+    tests/test_shardformer/test_model/test_shard_cosmos3.py
+```
+
+这些用例只覆盖 CPU 契约、单 rank Booster wiring 和保存/加载；真实 1/2/8 卡数值、吞吐与 Ascend 融合路径仍需在对应硬件上执行并归档。

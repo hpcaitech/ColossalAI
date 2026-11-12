@@ -127,6 +127,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         sp_group: ProcessGroup,
         zero_stage: int,
         verbose: bool = True,
+        replica_group: Optional[ProcessGroup] = None,
     ) -> None:
         super().__init__()
         self.global_dp_group = dp_group
@@ -137,6 +138,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.tp_rank = dist.get_rank(self.tp_group)
         self.pp_rank = dist.get_rank(self.pp_group)
         self.sp_rank = dist.get_rank(self.sp_group)
+        # With hybrid sharded data parallelism every replica group holds a full copy of the model and the optimizer
+        # state, so only the first replica writes and the others wait to load it back.
+        self.replica_rank = 0 if replica_group is None else dist.get_rank(replica_group)
         self.global_dp_size = dist.get_world_size(dp_group)
         self.pp_size = dist.get_world_size(pp_group)
         self.tp_size = dist.get_world_size(tp_group)
@@ -298,7 +302,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
-        control_saving = self.tp_rank == 0 and self.sp_rank == 0
+        control_saving = self.tp_rank == 0 and self.sp_rank == 0 and self.replica_rank == 0
         if control_saving and use_async:
             if hash(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[hash(model)] = {}
@@ -556,7 +560,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
         # Then collect the sharded states along dp_group(if using zero)/tp_group.
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
-        control_saving = self.dp_rank == 0 and self.tp_rank == 0 and self.sp_rank == 0
+        control_saving = self.dp_rank == 0 and self.tp_rank == 0 and self.sp_rank == 0 and self.replica_rank == 0
 
         if use_async and control_saving:
             if id(optimizer) not in self.pinned_state_dicts:

@@ -93,6 +93,7 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         partition_grad: bool = False,  # stage 2 flag
         cpu_offload: bool = False,  # cpu offload
         dp_process_group: Optional[ProcessGroup] = None,
+        replica_group: Optional[ProcessGroup] = None,
         extra_dp_group: Optional[ProcessGroup] = None,
         forced_dtype: Optional[torch.dtype] = None,
         master_weights: bool = True,  # master weights
@@ -109,6 +110,8 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         if (dp_process_group is not None) and (pg_to_param_list is not None):
             raise ValueError("dp_process_group and pg_to_param_list should not be provided at the same time.")
+        if replica_group is not None and dp_process_group is None:
+            raise ValueError("dp_process_group should be provided when replica_group is provided.")
         if pg_to_param_list is None and extra_dp_group is not None and dp_process_group is None:
             raise ValueError("dp_process_group should be provided when extra_dp_group is provided.")
         if pg_to_param_list is None and extra_dp_group is not None and fp8_communication:
@@ -134,6 +137,13 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 )
             grad_norm_process_group = next(iter(pg_to_param_list))
         self._grad_norm_process_group = grad_norm_process_group
+        # Hybrid sharded data parallelism: the gradient is first reduce-scattered inside `dp_process_group` (the
+        # shard group, whose members hold different shards of the same parameter) and then all-reduced inside
+        # `replica_group`, whose members hold the same shards but different samples. The two averages compose into
+        # one average over the union of both groups, which is what plain ZeRO would have computed, while the
+        # parameter-sized collective stays inside a node.
+        self._replica_group = replica_group
+        self._replica_size = 1 if replica_group is None else dist.get_world_size(replica_group)
         param_to_pg = {}
         for grp, param_list in pg_to_param_list.items():
             for p in param_list:
@@ -166,6 +176,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
 
         # master weights copy
         self._master_weights = master_weights
+        # Reused cast buffers, keyed by the master param that fills them: one fp32 grad buffer per master shard and
+        # one working-dtype buffer for the write-back, so a step does not allocate two tensors per parameter.
+        self._master_grad_buffers = {}
+        self._working_cast_buffers = {}
 
         if forced_dtype:
             for group in self.optim.param_groups:
@@ -370,8 +384,11 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             all_reduce_fp8(flat_grads, group=grp)
                         else:
                             dist.all_reduce(flat_grads, group=grp)
+                    self._all_reduce_across_replicas(flat_grads)
                     if flat_grads.dtype != grad_dtype:
                         flat_grads = flat_grads.to(grad_dtype)
+                    if self._replica_size > 1:
+                        flat_grads.div_(self._replica_size)
 
                     flat_grads_per_rank = flat_grads.split(flat_grads.numel() // bucket_store.world_size)
                     grad_in_bucket = bucket_store.get_grad()
@@ -392,13 +409,29 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                             dist.reduce_scatter_tensor(received_grad, cur_flat_grads, group=grp)
                         cur_flat_grads = received_grad
 
+                    self._all_reduce_across_replicas(received_grad)
                     if received_grad.dtype != grad_dtype:
                         received_grad = received_grad.to(grad_dtype)
+                    if self._replica_size > 1:
+                        received_grad.div_(self._replica_size)
 
                     grad_in_bucket_current_rank = bucket_store.get_grad()[bucket_store.local_rank]
                     self._update_partitoned_grad(bucket_store, grad_in_bucket_current_rank, received_grad, group_id, 1)
 
                 bucket_store.reset()
+
+    def _all_reduce_across_replicas(self, flat_grad: Tensor) -> None:
+        """Accumulate one gradient shard over the replica group (the second level of HSDP gradient sync).
+
+        The caller divides by the replica group size afterwards, so this only sums. A no-op unless the optimizer was
+        built with a replica group, i.e. unless the run shards inside a node and replicates across nodes.
+        """
+        if self._replica_size <= 1:
+            return
+        if self._fp8_communication:
+            all_reduce_fp8(flat_grad, group=self._replica_group)
+        else:
+            dist.all_reduce(flat_grad, group=self._replica_group)
 
     def _update_unpartitoned_grad(
         self, bucket_store: BucketStore, origin_grad_list: List, flat_grad_list: List, group_id: int
@@ -534,6 +567,33 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     # Update Parameter #
     ####################
 
+    def _reused_buffer(self, buffers, tensor, dtype):
+        """One persistent cast buffer per tensor; the shape/dtype/device check catches a reloaded or resized param."""
+        buffer = buffers.get(id(tensor))
+        if buffer is None or buffer.shape != tensor.shape or buffer.dtype != dtype or buffer.device != tensor.device:
+            buffer = torch.empty(tensor.shape, dtype=dtype, device=tensor.device)
+            buffers[id(tensor)] = buffer
+        return buffer
+
+    def _master_grad_buffer(self, master_param):
+        """The fp32 shard the partitioned grad is copied into."""
+        return self._reused_buffer(self._master_grad_buffers, master_param, master_param.dtype)
+
+    def _working_cast_buffer(self, master_param):
+        """The working-dtype shard the updated master param is copied back into before the all-gather."""
+        return self._reused_buffer(self._working_cast_buffers, master_param, self._dtype)
+
+    def _multi_tensor_copy(self, destinations, sources):
+        """One multi-tensor copy instead of one launch per parameter. Copying is idempotent, so a backend without the
+        foreach kernel can fall back to the per-tensor loop without leaving a half-copied result."""
+        if not destinations:
+            return
+        try:
+            torch._foreach_copy_(destinations, sources)
+        except (RuntimeError, NotImplementedError, TypeError):
+            for destination, source in zip(destinations, sources):
+                destination.copy_(source)
+
     def step(self, closure=None):
         assert closure is None, "closure is not supported by step()"
         if not self.require_grad_sync:
@@ -554,6 +614,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         # and should not be updated
         real_working_params = dict()
         real_master_params = dict()
+        group_grads = [[] for _ in range(self.num_param_groups)]
+        group_grad_weights = [[] for _ in range(self.num_param_groups)]
+        grad_casts = []
 
         for group_id in range(self.num_param_groups):
             master_params = self._master_param_groups_of_current_rank[group_id]
@@ -572,16 +635,26 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                     grad = grads[grad_index]
                     # no need to copy fp32 grad if master_weights is False
                     if self._master_weights:
-                        grad = grad.to(master_param.dtype).to(master_param.device)
+                        master_grad = self._master_grad_buffer(master_param)
+                        grad_casts.append((master_grad, grad))
+                        grad = master_grad
                     master_param.grad = grad
                     grad_partition_groups.append(grad)
+                    group_grads[group_id].append(grad)
+                    # The weight is read from the working grad: that is the tensor the grad store can map back to
+                    # its parameter, while the master grad above is a fresh cast with no such entry.
+                    group_grad_weights[group_id].append(self._grad_norm_weight(grads[grad_index]))
                     real_master_params[group_id].append(master_param)
-
-            # one norm over the grads of all stores, so that experts and dense params are combined correctly
-            norm_groups.append(self._compute_grad_norm(self.get_working_grads_by_group_id(group_id)))
 
             # update the params in the optimizer
             self.optim.param_groups[group_id]["params"] = real_master_params[group_id]
+
+        # All grad shards go to fp32 in one multi-tensor copy; the norm below then reads the master grads, which are
+        # already in the dtype it wants.
+        self._multi_tensor_copy([buffer for buffer, _ in grad_casts], [grad for _, grad in grad_casts])
+        for group_id in range(self.num_param_groups):
+            # One norm over the group's grads, so that experts and dense params are combined correctly.
+            norm_groups.append(self._compute_grad_norm(group_grads[group_id], weights=group_grad_weights[group_id]))
 
         # unscale and clip grads
         global_norm = calculate_global_norm_from_list(norm_list=norm_groups)
@@ -600,13 +673,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             pg: TensorBucket(self.pg_to_bucket_store[pg].reduce_bucket_size) for pg in self.pg_to_param_list
         }
 
-        # update working partition updated by the current rank
-        device = get_accelerator().get_current_device()
+        # update working partition updated by the current rank: the master shards go back to the working dtype in
+        # one multi-tensor copy, into buffers that are reused across steps
+        writeback = []
+        for group_id in range(self.num_param_groups):
+            for master_param in self.optim.param_groups[group_id]["params"]:
+                writeback.append((self._working_cast_buffer(master_param), master_param))
+        self._multi_tensor_copy([buffer for buffer, _ in writeback], [master_param for _, master_param in writeback])
+
         for group_id in range(self.num_param_groups):
             master_working_param = self.optim.param_groups[group_id]["params"]
             for idx, master_param in enumerate(master_working_param):
                 working_param = real_working_params[group_id][idx]
-                param_to_gather = master_param.to(device).to(self._dtype)
+                param_to_gather = self._working_cast_buffer(master_param)
                 pg = self.param_to_pg[working_param]
                 padded_working_param = self._working_param_to_padded_working_param[working_param]
                 if self._overlap_allgather:
@@ -638,18 +717,32 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                 if not tensor_bucket.is_empty():
                     tensor_bucket.all_gather(pg, fp8_communication=self._fp8_communication)
 
-    def _compute_grad_norm(self, gradients: List[Tensor], norm_type: int = 2) -> float:
+    # Shards larger than this are normed in pieces whose results are summed in float64, which bounds the reduction
+    # length inside one kernel. The value is deliberately far above a ZeRO shard: every piece costs a launch (a
+    # 64k-element chunk on the 322-shard geometry turned one multi-tensor norm into ~2900 launches and 45 ms, against
+    # 2.5 ms for the whole shards), and on real data a whole shard already lands within 3e-8 of a float64 reference.
+    _GRAD_NORM_CHUNK = 1 << 24
+
+    def _compute_grad_norm(
+        self, gradients: List[Tensor], norm_type: int = 2, weights: Optional[List[float]] = None
+    ) -> float:
         r"""
         Compute the norm of the whole gradient, viewed as a single vector, for gradient clipping.
 
         Each rank passes the gradient shards it owns, from all gradient stores. Their p-th power sum (or max for the
         infinity norm) is reduced once over the groups of ``_grad_norm_process_groups`` and the root is taken once,
         so every element is counted once and all ranks get the same value. Copies of the same element held by several
-        ranks are handled by ``_grad_norm_weight``. Every rank must call this, even without gradients.
+        ranks are weighted by ``weights`` (``_grad_norm_weight`` per shard when omitted). Every rank must call this,
+        even without gradients.
+
+        The shards are normed by one ``torch._foreach_norm`` call instead of a float64 cast and a norm kernel per
+        shard; a shard above ``_GRAD_NORM_CHUNK`` elements is cut into pieces, whose results are raised and summed in
+        float64. A non-fp32 shard (no fp32 master weights) keeps the per-shard float64 path.
 
         Args:
             gradients (List[Tensor]): The gradient shards owned by this rank
             norm_type (int, optional): type of the used p-norm, Can be ``'inf'`` for infinity norm. Defaults to 2.
+            weights (List[float], optional): How much each shard counts; ``_grad_norm_weight`` per shard when None.
 
         Returns:
             float: The total norm of the gradients
@@ -658,10 +751,35 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         if norm_type == inf:
             local = max((float(grad.data.abs().max()) for grad in gradients), default=0.0)
             op = dist.ReduceOp.MAX
-        else:
+        elif not gradients:
             local = 0.0
-            for grad in gradients:
-                local += self._grad_norm_weight(grad) * grad.data.double().norm(norm_type) ** norm_type
+            op = dist.ReduceOp.SUM
+        elif gradients[0].data.dtype not in (torch.float32, torch.float64):
+            if weights is None:
+                weights = [self._grad_norm_weight(grad) for grad in gradients]
+            local = 0.0
+            for grad, weight in zip(gradients, weights):
+                local += weight * grad.data.double().norm(norm_type) ** norm_type
+            op = dist.ReduceOp.SUM
+        else:
+            chunks = []
+            part_weights = []
+            for index, grad in enumerate(gradients):
+                data = grad.data
+                # A shard that fits in one chunk is passed as it is: building view and split objects for hundreds of
+                # shards costs more than the norm itself at this size.
+                if data.is_contiguous() and data.numel() > self._GRAD_NORM_CHUNK:
+                    pieces = list(data.view(-1).split(self._GRAD_NORM_CHUNK))
+                else:
+                    pieces = [data]
+                chunks.extend(pieces)
+                weight = weights[index] if weights is not None else self._grad_norm_weight(grad)
+                part_weights.extend([weight] * len(pieces))
+            parts = torch._foreach_norm(chunks, norm_type)
+            summed = torch.stack(parts).double().pow(norm_type)
+            if any(weight != 1.0 for weight in part_weights):
+                summed = summed * torch.tensor(part_weights, dtype=torch.float64, device=summed.device)
+            local = float(summed.sum())
             op = dist.ReduceOp.SUM
 
         total = torch.tensor([float(local)], device=get_accelerator().get_current_device(), dtype=torch.float)
@@ -694,8 +812,28 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if clip > 1:
                 div_scale = clip * div_scale
 
+        if not grad_groups_flat:
+            return
+        scale = 1.0 / div_scale
+        # A per-tensor loop issues one launch per shard (hundreds per step under ZeRO-2);
+        # the foreach form folds them into a single multi-tensor kernel. The math is unchanged.
+        if len(grad_groups_flat) == 1:
+            grad_groups_flat[0].data.mul_(scale)
+            return
+        same_placement = all(
+            grad.dtype == grad_groups_flat[0].dtype and grad.device == grad_groups_flat[0].device
+            for grad in grad_groups_flat
+        )
+        if same_placement:
+            try:
+                torch._foreach_mul_([grad.data for grad in grad_groups_flat], scale)
+                return
+            except (RuntimeError, NotImplementedError, TypeError):
+                # Dispatch fails before any kernel runs, so no tensor is half-scaled; the loop below covers
+                # backends without a foreach kernel.
+                pass
         for grad in grad_groups_flat:
-            grad.data.mul_(1.0 / div_scale)
+            grad.data.mul_(scale)
 
     ############################
     # Gradient Synchronization #

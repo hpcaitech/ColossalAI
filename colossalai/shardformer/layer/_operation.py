@@ -1156,6 +1156,33 @@ class _AllToAll(torch.autograd.Function):
         return (return_grad, None, None, None, None)
 
 
+class _PackedAllToAllSingle(torch.autograd.Function):
+    """Differentiable ``all_to_all_single`` over a ``[group_size, N]`` buffer.
+
+    The buffer is the packed layout used by Ulysses context parallelism: rank ``r`` sends chunk ``j`` to rank ``j``
+    and receives chunk ``r`` from every rank. That exchange is its own inverse, so the backward pass is the same
+    collective applied to the upstream gradient.
+    """
+
+    @staticmethod
+    def forward(ctx, input_, process_group):
+        ctx.process_group = process_group
+        received = torch.empty_like(input_)
+        dist.all_to_all_single(received, input_.contiguous(), group=process_group)
+        return received
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad = torch.empty_like(grad_output)
+        dist.all_to_all_single(grad, grad_output.contiguous(), group=ctx.process_group)
+        return grad, None
+
+
+def packed_all_to_all_single(input_, process_group):
+    """Differentiable all-to-all-single over a packed ``[group_size, N]`` buffer."""
+    return _PackedAllToAllSingle.apply(input_, process_group)
+
+
 class HookParameter(torch.autograd.Function):
     """In order to be hooked into Gemini's '__torch_function__', adding a view operation to weight and bias. Used in FusedLayerNorm"""
 

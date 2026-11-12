@@ -9,6 +9,7 @@ from colossalai.shardformer.layer import (
     TwoWayPackedMeta,
     build_segment_mask,
     build_two_way_kv_gather_index,
+    cuda_two_way_flat_attention,
     naive_segment_attention,
     naive_two_way_flat_attention,
     npu_two_way_flat_attention,
@@ -264,7 +265,7 @@ def test_unknown_backend_is_rejected():
     ar, dm = _random_packed_tensors(meta, seed=8)
 
     with pytest.raises(ValueError, match="Unsupported two-way attention backend"):
-        two_way_flat_attention(*ar, *dm, meta, backend="cuda")
+        two_way_flat_attention(*ar, *dm, meta, backend="triton")
 
 
 def test_inputs_must_match_the_metadata():
@@ -564,3 +565,201 @@ def test_varlen_limits_accept_a_reasonable_batch():
 def test_varlen_limits_are_enforced_at_collate_time(meta, num_heads, head_dim, num_kv_heads, message):
     with pytest.raises(ValueError, match=message):
         validate_two_way_varlen_limits(meta, num_heads, head_dim, num_kv_heads)
+
+
+class _RecordingVarlenAttention:
+    """Stand-in for ``torch.nn.attention.varlen.varlen_attn`` that records calls and runs per-segment SDPA.
+
+    It mirrors the native contract (packed ``[T, N, D]`` inputs, cumulative lengths, a causal/full window and GQA),
+    so the CPU tests can check the orchestration -- which segment lengths each call receives, how K/V are interleaved,
+    and that zero-length samples are dropped -- without a CUDA device.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(
+        self,
+        q,
+        k,
+        v,
+        cu_seqlens_q,
+        cu_seqlens_kv,
+        max_seqlen_q,
+        max_seqlen_kv,
+        is_causal=False,
+        scale=None,
+        enable_gqa=False,
+    ):
+        self.calls.append(
+            {
+                "q": q,
+                "k": k,
+                "v": v,
+                "cu_seqlens_q": cu_seqlens_q.tolist(),
+                "cu_seqlens_kv": cu_seqlens_kv.tolist(),
+                "max_seqlen_q": max_seqlen_q,
+                "max_seqlen_kv": max_seqlen_kv,
+                "is_causal": is_causal,
+                "scale": scale,
+                "enable_gqa": enable_gqa,
+            }
+        )
+        query_lengths = torch.diff(cu_seqlens_q).tolist()
+        key_lengths = torch.diff(cu_seqlens_kv).tolist()
+        outputs = []
+        query_offset = 0
+        key_offset = 0
+        for query_length, key_length in zip(query_lengths, key_lengths):
+            if query_length == 0:
+                continue
+            query = q[query_offset : query_offset + query_length].transpose(0, 1).unsqueeze(0)
+            key = k[key_offset : key_offset + key_length].transpose(0, 1).unsqueeze(0)
+            value = v[key_offset : key_offset + key_length].transpose(0, 1).unsqueeze(0)
+            segment = torch.nn.functional.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+            )
+            outputs.append(segment.squeeze(0).transpose(0, 1))
+            query_offset += query_length
+            key_offset += key_length
+        return torch.cat(outputs) if outputs else q.new_empty(q.shape)
+
+
+def _use_fake_varlen(monkeypatch):
+    recorder = _RecordingVarlenAttention()
+    monkeypatch.setattr("colossalai.shardformer.layer.two_way_attn._load_cuda_varlen_attention", lambda: recorder)
+    return recorder
+
+
+def test_cuda_backend_matches_the_reference_and_honours_the_two_calls(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [5, 0])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=30)
+    recorder = _use_fake_varlen(monkeypatch)
+
+    out_ar, out_dm = cuda_two_way_flat_attention(*ar, *dm, meta)
+    expected_ar, expected_dm = naive_two_way_flat_attention(*ar, *dm, meta)
+
+    torch.testing.assert_close(out_ar, expected_ar, rtol=1e-5, atol=1e-6)
+    torch.testing.assert_close(out_dm, expected_dm, rtol=1e-5, atol=1e-6)
+    assert len(recorder.calls) == 2
+
+    causal_call, full_call = recorder.calls
+    assert causal_call["is_causal"] is True
+    assert causal_call["cu_seqlens_q"] == [0, 3, 5]
+    assert causal_call["cu_seqlens_kv"] == [0, 3, 5]
+    assert (causal_call["max_seqlen_q"], causal_call["max_seqlen_kv"]) == (3, 3)
+    assert causal_call["enable_gqa"] is False
+
+    assert full_call["is_causal"] is False
+    # Sample 1 has no DM tokens, so it is not a segment of the full call.
+    assert full_call["cu_seqlens_q"] == [0, 5]
+    assert full_call["cu_seqlens_kv"] == [0, 8]
+    assert (full_call["max_seqlen_q"], full_call["max_seqlen_kv"]) == (5, 8)
+
+
+def test_cuda_backend_uses_the_normalized_ar_keys_of_the_generation_path(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [6, 4])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=31)
+    k_ar_for_gen = ar[1] + 100.0
+    recorder = _use_fake_varlen(monkeypatch)
+
+    cuda_two_way_flat_attention(*ar, *dm, meta, k_ar_for_gen=k_ar_for_gen)
+
+    causal_call, full_call = recorder.calls
+    assert torch.equal(causal_call["k"], ar[1])
+    interleaved = torch.cat((k_ar_for_gen, dm[1]), dim=0).index_select(0, build_two_way_kv_gather_index(meta))
+    assert torch.equal(full_call["k"], interleaved)
+
+
+def test_cuda_backend_sets_the_gqa_flag_for_a_grouped_head_count(monkeypatch):
+    meta = TwoWayPackedMeta([3], [5])
+    generator = torch.Generator().manual_seed(32)
+    q_ar = torch.randn(3, 4, HEAD_DIM, generator=generator)
+    q_dm = torch.randn(5, 4, HEAD_DIM, generator=generator)
+    k_ar = torch.randn(3, 2, HEAD_DIM, generator=generator)
+    k_dm = torch.randn(5, 2, HEAD_DIM, generator=generator)
+    v_ar = torch.randn(3, 2, HEAD_DIM, generator=generator)
+    v_dm = torch.randn(5, 2, HEAD_DIM, generator=generator)
+    recorder = _use_fake_varlen(monkeypatch)
+
+    out_ar, out_dm = cuda_two_way_flat_attention(q_ar, k_ar, v_ar, q_dm, k_dm, v_dm, meta)
+
+    assert recorder.calls[0]["enable_gqa"] is True
+    assert recorder.calls[1]["enable_gqa"] is True
+    assert out_ar.shape == (3, 4, HEAD_DIM)
+    assert out_dm.shape == (5, 4, HEAD_DIM)
+
+
+def test_cuda_backend_skips_an_empty_tower(monkeypatch):
+    meta = TwoWayPackedMeta([0, 3], [5, 0])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=33)
+    recorder = _use_fake_varlen(monkeypatch)
+
+    out_ar, out_dm = cuda_two_way_flat_attention(*ar, *dm, meta)
+
+    # Only the AR call has segments; the DM block still exists because sample 0 has DM tokens, so both calls run.
+    assert len(recorder.calls) == 2
+    assert out_ar.shape == (3, HEADS, HEAD_DIM)
+    assert out_dm.shape == (5, HEADS, HEAD_DIM)
+
+    only_generation = TwoWayPackedMeta([0], [5])
+    ar, dm = _random_packed_tensors(only_generation, dtype=torch.float32, seed=34)
+    recorder = _RecordingVarlenAttention()
+    monkeypatch.setattr("colossalai.shardformer.layer.two_way_attn._load_cuda_varlen_attention", lambda: recorder)
+    out_ar, out_dm = cuda_two_way_flat_attention(*ar, *dm, only_generation)
+    assert len(recorder.calls) == 1 and recorder.calls[0]["is_causal"] is False
+    assert out_ar.shape == (0, HEADS, HEAD_DIM)
+
+
+def test_cuda_backend_rejects_dropout(monkeypatch):
+    meta = TwoWayPackedMeta([3], [5])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=35)
+    _use_fake_varlen(monkeypatch)
+
+    with pytest.raises(NotImplementedError, match="no dropout argument"):
+        cuda_two_way_flat_attention(*ar, *dm, meta, dropout_p=0.1)
+
+
+def test_cuda_backend_backpropagates_like_the_reference(monkeypatch):
+    meta = TwoWayPackedMeta([3, 2], [5, 4])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.float32, seed=36)
+    reference_inputs = [tensor.clone().requires_grad_(True) for tensor in (*ar, *dm)]
+    cuda_inputs = [tensor.clone().requires_grad_(True) for tensor in (*ar, *dm)]
+    _use_fake_varlen(monkeypatch)
+
+    reference_ar, reference_dm = naive_two_way_flat_attention(*reference_inputs, meta)
+    (reference_ar.sum() + reference_dm.sum()).backward()
+    cuda_ar, cuda_dm = cuda_two_way_flat_attention(*cuda_inputs, meta)
+    (cuda_ar.sum() + cuda_dm.sum()).backward()
+
+    for reference, actual in zip(reference_inputs, cuda_inputs):
+        torch.testing.assert_close(actual.grad, reference.grad, rtol=1e-4, atol=1e-5)
+
+
+def test_varlen_loader_is_registered():
+    from colossalai.kernel.kernel_loader import FlashAttentionVarlenCudaLoader
+
+    extension = FlashAttentionVarlenCudaLoader.REGISTRY[0]()
+    assert extension.name == "flash_attention_varlen_cuda"
+    if not torch.cuda.is_available():
+        assert extension.is_available() is False
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="native varlen attention requires a CUDA device")
+def test_cuda_backend_runs_the_native_kernel_when_a_device_is_available():
+    meta = TwoWayPackedMeta([3, 2], [5, 4])
+    ar, dm = _random_packed_tensors(meta, dtype=torch.bfloat16, seed=37)
+    device = torch.device("cuda", torch.cuda.current_device())
+    ar = tuple(tensor.to(device) for tensor in ar)
+    dm = tuple(tensor.to(device) for tensor in dm)
+
+    out_ar, out_dm = cuda_two_way_flat_attention(*ar, *dm, meta)
+    expected_ar, expected_dm = naive_two_way_flat_attention(*ar, *dm, meta)
+
+    torch.testing.assert_close(out_ar, expected_ar, rtol=5e-3, atol=5e-3)
+    torch.testing.assert_close(out_dm, expected_dm, rtol=5e-3, atol=5e-3)
