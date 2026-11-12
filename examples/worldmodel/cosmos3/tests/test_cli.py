@@ -1,13 +1,8 @@
-"""The command line parses.
+"""Preserve the upstream parser regression: importing the entry does not build its parser.
 
-This exists because it did not. Dropping the precomputed-latent path removed the two options inside one
-``parser.add_argument(`` call but left the call itself, as ``parser.add_argument()`` with no arguments. Python
-imports that file happily; argparse raises only when the parser is built, so every test passed, the smoke
-script passed -- neither builds this parser -- and the training script died on its first line of real work
-with ``_get_positional_kwargs() missing 1 required positional argument: 'dest'``.
-
-So the assertion worth making is the cheap one: build the parser and parse a line. Anything that leaves a
-malformed ``add_argument`` behind fails here, whatever the option was called.
+A malformed, empty ``add_argument()`` once survived imports and packing tests but made
+all training commands fail. Keep the minimal command, recipe and required-data checks.
+The backend default is now ``auto`` so the same command supports both NPU and CUDA.
 """
 
 from __future__ import annotations
@@ -17,9 +12,8 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-train_sft = pytest.importorskip("train_sft", reason="needs torch, colossalai and the example's own modules")
+from examples.worldmodel.cosmos3 import train_sft
+from examples.worldmodel.cosmos3.runtime import resolve_attention_backend
 
 
 def test_a_minimal_command_line_parses(monkeypatch):
@@ -35,7 +29,9 @@ def test_the_recipe_defaults_are_the_defaults(monkeypatch):
     assert (args.samples_per_rank, args.grad_accum, args.max_iter) == (32, 32, 10000)
     assert (args.chunk_length, args.fps, args.resolution) == (32, 15.0, "480")
     assert args.activation_checkpointing == "full"
-    assert args.backend == "npu"
+    assert args.attn_backend == "auto"
+    assert resolve_attention_backend(args.attn_backend, "npu") == "npu"
+    assert resolve_attention_backend(args.attn_backend, "cuda") == "cuda"
     assert args.vae_dtype == "bfloat16"
 
 

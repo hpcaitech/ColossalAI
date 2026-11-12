@@ -14,6 +14,11 @@ av==18.1.0
 numpy==2.2.6
 pillow==11.3.0
 
+# torchvision v2 supplies the augmentation. Install the build matched to the target torch/torch_npu
+# runtime; a universal wheel pin would replace the accelerator's torch build. Record both versions in
+# run.json when checking numerical alignment.
+torchvision
+
 # diffusers is deliberately ahead of upstream's 0.39.0: Cosmos3OmniTransformer and AutoencoderKLWan ship from
 # 0.40.0 on, and upstream pins 0.39.0 because it does not use diffusers' model implementation at all -- it has
 # its own. This example consumes the diffusers definition and replaces, through the shardformer policy, the

@@ -4,7 +4,7 @@ tests/test_target_form.py checks the same contracts against the packer alone. Th
 transformer, because the part that cannot be checked without it is that the prediction comes back **zero at the
 conditioning frames** -- which is why the loss must apply the noisy mask rather than ignore it.
 
-Needs an Ascend device, the checkpoint and the DROID dataset::
+Needs a supported accelerator, the checkpoint and the DROID dataset::
 
     python scripts/smoke_conditioning.py \
         --data /path/to/Cosmos3-DROID/success \
@@ -18,6 +18,7 @@ from pathlib import Path
 
 import torch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 RESULTS = []
@@ -32,7 +33,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--device", default="npu:0")
+    parser.add_argument("--device", help="Defaults to the current ColossalAI accelerator.")
+    parser.add_argument("--backend", choices=("auto", "npu", "cuda", "naive"), default="auto")
+    parser.add_argument("--vae-dtype", choices=("bfloat16", "float32"), default="bfloat16")
     parser.add_argument("--samples", type=int, default=2)
     parser.add_argument("--max-episodes", type=int, default=4)
     return parser.parse_args()
@@ -41,28 +44,42 @@ def parse_args():
 class _Policy:
     """Stand-in for Cosmos3OmniPolicy: this script packs and runs the forward, it does not shard."""
 
-    def __init__(self):
+    def __init__(self, processor):
         self.packed_meta = None
+        self.processor = processor
 
     def set_packed_meta(self, meta):
         self.packed_meta = meta
+        self.processor.set_packed_meta(meta)
 
 
 def main():
     args = parse_args()
 
-    # torch_npu registers the 'npu' device and its operators as an import side effect; no name from it is used
-    # here, so it goes through importlib rather than as an import statement nothing references.
-    importlib.import_module("torch_npu")
-    import train_sft
-    from diffusers import Cosmos3OmniTransformer
+    from diffusers import AutoencoderKLWan, Cosmos3OmniTransformer
     from droid_dataset import DroidActionPolicyDataset, collate
     from packing import compute_loss, normalize_latent, pack_batch
     from torch.utils.data import DataLoader
     from transformers import AutoTokenizer
 
-    torch.npu.set_device(args.device)
-    torch.npu.conv.allow_hf32 = False
+    from colossalai.accelerator import get_accelerator
+    from colossalai.shardformer.modeling.cosmos3 import (
+        ColossalTwoWayAttnProcessor,
+        install_fp32_sinusoidal_timestep_input,
+        install_fp32_timestep_embedding,
+    )
+    from examples.worldmodel.cosmos3.runtime import resolve_attention_backend, shutdown_dataloader
+
+    accelerator = get_accelerator()
+    args.device = args.device or str(accelerator.get_current_device())
+    if args.device.startswith("npu"):
+        importlib.import_module("torch_npu")
+        torch.npu.set_device(args.device)
+        torch.npu.conv.allow_hf32 = False
+    else:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+    backend = resolve_attention_backend(args.backend, torch.device(args.device).type)
 
     dataset = DroidActionPolicyDataset(args.data, max_episodes=args.max_episodes, sample_stride=32)
     loader = DataLoader(
@@ -73,7 +90,11 @@ def main():
         collate_fn=collate,
         multiprocessing_context="spawn",
     )
-    batch = next(iter(loader))
+    iterator = iter(loader)
+    try:
+        batch = next(iterator)
+    finally:
+        shutdown_dataloader(iterator)
 
     print("\n== dataset ==", flush=True)
     check(
@@ -82,15 +103,26 @@ def main():
         str(tuple(batch["state"].shape)),
     )
 
-    # Through build_vae, so this smoke test cannot drift away from the dtype and the HF32 setting training runs on.
-    vae = train_sft.build_vae(args.checkpoint).to(args.device)
+    vae_dtype = getattr(torch, args.vae_dtype)
+    vae = AutoencoderKLWan.from_pretrained(args.checkpoint / "vae", torch_dtype=vae_dtype).to(args.device)
+    vae.eval()
     tokenizer = AutoTokenizer.from_pretrained(args.checkpoint / "text_tokenizer")
     model = Cosmos3OmniTransformer.from_pretrained(args.checkpoint / "transformer", torch_dtype=torch.bfloat16).to(
         args.device
     )
     model.eval()
+    install_fp32_timestep_embedding(model)
+    install_fp32_sinusoidal_timestep_input(model)
+    processor = ColossalTwoWayAttnProcessor(backend=backend)
+    installed = 0
+    for module in model.modules():
+        if module.__class__.__name__ == "Cosmos3PackedMoTAttention":
+            module.set_processor(processor)
+            installed += 1
+    if not installed:
+        raise ValueError("Checkpoint has no Cosmos3 packed attention modules")
 
-    policy = _Policy()
+    policy = _Policy(processor)
     generator = torch.Generator().manual_seed(0)
     inputs, targets = pack_batch(
         batch,
@@ -140,17 +172,13 @@ def main():
 
     print("\n== the conditioning frame really is clean ==", flush=True)
     with torch.no_grad():
-        # Deliberately a second, independent encode rather than a reuse of pack_batch's: the check below is that
-        # the two agree. It has to follow the VAE's dtype for the same reason pack_batch does.
-        encoded = vae.encode(batch["video"].to(args.device, next(vae.parameters()).dtype))
-        dist = getattr(encoded, "latent_dist", None)
-        clean = dist.mode() if dist is not None else encoded[0]
-        # Same scaling pack_batch applies, or this independent encode is not the same quantity and the
-        # equality check below fails for a reason that has nothing to do with conditioning. diffusers returns
-        # the raw latent and leaves latents_mean / latents_std to the caller; pack_batch applies them because
-        # upstream does, inside its own encode.
-        clean = normalize_latent(clean, vae).to(torch.bfloat16)
+        encoded = vae.encode(batch["video"].to(args.device, vae_dtype))
+        distribution = getattr(encoded, "latent_dist", None)
+        latent = distribution.mode() if distribution is not None else encoded[0]
+        clean = normalize_latent(latent, vae).to(torch.bfloat16)
     fed = inputs["vision_tokens"][0]
+    # The model receives normalized content cells, after removing the reflected canvas padding.
+    clean = clean[:, :, :, : fed.shape[-2], : fed.shape[-1]]
     check("frame 0 handed to the model equals the clean latent", torch.equal(fed[0, :, 0], clean[0, :, 0]))
     check("frame 1 was noised (control)", not torch.equal(fed[0, :, 1], clean[0, :, 1]))
     check(

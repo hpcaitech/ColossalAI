@@ -1,0 +1,18 @@
+# Install in the existing ColossalAI environment with the matching torch/torchvision/torch_npu.
+# The official cosmos-framework checkout supplies preprocessing and FlowUniPC.
+numpy>=1.26
+msgpack>=1.0
+websockets>=14
+diffusers>=0.40.0
+transformers>=4.51.0
+torchvision
+scipy
+pyarrow>=14.0.0
+av>=12.0.0
+einops
+attrs
+loguru
+omegaconf
+iopath
+hydra-core
+termcolor
