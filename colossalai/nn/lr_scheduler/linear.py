@@ -2,7 +2,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 
 class LinearWarmupLR(_LRScheduler):
-    """Linearly warmup learning rate and then linearly decay.
+    """Linearly warmup learning rate and then linearly decay to zero.
 
     Args:
         optimizer (:class:`torch.optim.Optimizer`): Wrapped optimizer.
@@ -22,6 +22,6 @@ class LinearWarmupLR(_LRScheduler):
             return [(self.last_epoch + 1) / (self.warmup_steps + 1) * lr for lr in self.base_lrs]
         else:
             return [
-                (self.total_steps - self.last_epoch) / (self.total_steps - self.warmup_steps) * lr
+                max(0, self.total_steps - self.last_epoch) / (self.total_steps - self.warmup_steps) * lr
                 for lr in self.base_lrs
             ]
