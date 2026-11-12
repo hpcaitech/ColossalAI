@@ -112,9 +112,14 @@ def parse_args(argv=None):
     parser.add_argument(
         "--keep-ranges",
         type=Path,
-        help="Curated keep_ranges_1_0_1.json shipped with the released recipe; its pinned config disables the filter.",
+        help="Curated keep_ranges_1_0_1.json; the reference launch recipe enables it, the registered config does not.",
     )
-    parser.add_argument("--success-only", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--success-only",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Train the success root only; the reference recipe's factory default. Use --no-success-only for both roots.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--attn-backend", "--backend", dest="attn_backend", choices=("auto", "npu", "cuda", "naive"), default="auto"
