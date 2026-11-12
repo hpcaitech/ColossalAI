@@ -974,20 +974,20 @@ class HybridParallelPlugin(PipelinePluginBase):
             mixed-precision dtype. Defaults to True. Set it to False when an argument carries a value whose
             magnitude matters, such as a positional index: the cast is indiscriminate, and bfloat16 cannot hold
             a position of 15163.8 closer than 16. With it off, the caller casts the activations itself.
+        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as well as
             its parameters. Defaults to True, which is what ``Module.to(dtype)`` does. Pass False for a model
             whose buffers hold constants whose value matters -- a rotary frequency table, a position index --
             and the parameters are cast while the buffers stay as the model built them.
-        use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
         inner_ring_size (int, optional): The inner ring size of 2D Ring Attention when sp mode is "ring_attn".
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.
 
     """
 
-    #: Default for a subclass that defines its own ``__init__`` without forwarding this one's
-    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before this
-    #: switch existed.
+    #: Defaults for a subclass that defines its own ``__init__`` without forwarding this one's
+    #: arguments; at the class level, such a subclass keeps exactly the behaviour it had before these
+    #: switches existed.
     cast_inputs: bool = True
     cast_buffers: bool = True
 
