@@ -181,7 +181,12 @@ def parse_args(argv=None):
     parser.add_argument(
         "--vae-chunk-frames", type=int, default=0, help="Experimental window, a multiple of four. Zero keeps diffusers."
     )
-    parser.add_argument("--fuse-vae-norm", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--fuse-vae-norm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Conservative RMSNorm replacement (historical name, not a fused kernel); no speed claim.",
+    )
     parser.add_argument("--fast-vae-encoder", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--vae-compile", choices=("none", "jit", "aot"), default="none")
     parser.add_argument(
