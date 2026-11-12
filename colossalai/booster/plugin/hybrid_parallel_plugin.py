@@ -89,6 +89,7 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         overlap_allgather: bool = False,
         cast_inputs: bool = True,
         use_fp8: bool = False,
+        cast_buffers: bool = True,
     ) -> None:
         self.stage_manager = shard_config.pipeline_stage_manager
         self.shard_config = shard_config
@@ -120,7 +121,18 @@ class HybridParallelModule(ModelWrapper, AMPModelMixin):
         elif precision == "bf16":
             self.mixed_precision = torch.bfloat16
         if self.mixed_precision is not None:
-            module = module.to(self.mixed_precision)
+            if cast_buffers:
+                module = module.to(self.mixed_precision)
+            else:
+                # Parameters only. ``Module.to(dtype)`` casts buffers as well, which is right for a buffer
+                # that holds activations and wrong for one that holds a constant whose *value* matters.
+                # A rotary frequency table is the case that motivated this: ``rotary_emb.inv_freq`` moves by
+                # relL2 4.2e-04 in bfloat16, and multiplied by a position of 15163 that is a phase error of
+                # radians rather than of last bits. PyTorch's own FSDP keeps the two apart for this reason --
+                # ``MixedPrecisionPolicy`` takes ``param_dtype`` and ``buffer_dtype`` separately.
+                for param in module.parameters():
+                    if param.is_floating_point():
+                        param.data = param.data.to(self.mixed_precision)
         module = module.to(get_accelerator().get_current_device())
 
         # setting input type cast when using mixed precision
@@ -963,6 +975,10 @@ class HybridParallelPlugin(PipelinePluginBase):
             magnitude matters, such as a positional index: the cast is indiscriminate, and bfloat16 cannot hold
             a position of 15163.8 closer than 16. With it off, the caller casts the activations itself.
         use_fp8 (bool, optional): Whether to enable fp8 mixed precision training. Defaults to False.
+        cast_buffers (bool, optional): Whether the mixed-precision cast reaches the model's buffers as well as
+            its parameters. Defaults to True, which is what ``Module.to(dtype)`` does. Pass False for a model
+            whose buffers hold constants whose value matters -- a rotary frequency table, a position index --
+            and the parameters are cast while the buffers stay as the model built them.
         overlap_p2p (bool, optional): Whether to overlap the p2p communication in pipeline parallelism
         inner_ring_size (int, optional): The inner ring size of 2D Ring Attention when sp mode is "ring_attn".
             It's advisable to not tune this (especially in single-node settings) and let it be heuristically set based on topology by default.
@@ -1023,6 +1039,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         cast_inputs: bool = True,
         use_fp8: bool = False,
         inner_ring_size: int = None,
+        cast_buffers: bool = True,
     ) -> None:
         super().__init__()
         self.logger = get_dist_logger()
@@ -1076,6 +1093,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         self.enable_sequence_parallelism = enable_sequence_parallelism
         self.cast_inputs = cast_inputs
         self.use_fp8 = use_fp8
+        self.cast_buffers = cast_buffers
         if dp_outside:
             self.dp_axis, self.pp_axis, self.tp_axis, self.sp_axis = 0, 1, 2, 3
             self.pg_mesh = ProcessGroupMesh(self.dp_size, self.pp_size, self.tp_size, self.sp_size)
@@ -1310,6 +1328,7 @@ class HybridParallelPlugin(PipelinePluginBase):
                 overlap_allgather=(self.zero_stage > 0 and self.zero_config["overlap_allgather"]),
                 cast_inputs=self.cast_inputs,
                 use_fp8=self.use_fp8,
+                cast_buffers=self.cast_buffers,
             )
         if optimizer is not None and not isinstance(optimizer, OptimizerWrapper):
             if zero_stage == 0:
