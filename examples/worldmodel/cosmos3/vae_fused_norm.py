@@ -1,11 +1,13 @@
 """Conservative RMSNorm replacement for the frozen Wan VAE.
 
-Keep the reference's FP32 normalization and cast-before-affine order. Folding
-``scale / norm`` into a low precision multiplier is unsafe: FP16 overflows for
-near-zero inputs, and saturating that multiplier changes the normalization.
-Only the addition of a literal zero bias is omitted. This helper makes no
-end-to-end latent accuracy or speed guarantee; validate experimental recipes
-with their actual checkpoint, dtype and input distribution.
+This is a replacement forward, not a fused kernel: it keeps the reference's FP32
+normalization and cast-before-affine order, and the ``--fuse-vae-norm`` flag
+keeps its historical name only. Folding ``scale / norm`` into a low precision
+multiplier is unsafe: FP16 overflows for near-zero inputs, and saturating that
+multiplier changes the normalization. Only the addition of a literal zero bias
+is omitted. This helper makes no end-to-end latent accuracy or speed guarantee;
+validate experimental recipes with their actual checkpoint, dtype and input
+distribution.
 """
 
 from __future__ import annotations
@@ -36,7 +38,10 @@ def _fused_forward(self, x: torch.Tensor) -> torch.Tensor:
 
 
 def enable_fused_rmsnorm(vae, verbose: bool = False):
-    """Patch every ``WanRMS_norm`` with the conservative forward. Returns the VAE."""
+    """Patch every ``WanRMS_norm`` with the conservative forward. Returns the VAE.
+
+    The name is kept for the existing flag and call sites; no fused kernel is installed.
+    """
     from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
 
     patched = 0
