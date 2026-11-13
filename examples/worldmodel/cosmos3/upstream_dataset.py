@@ -35,12 +35,9 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from examples.worldmodel.cosmos3.droid_dataset import (
-    CONCAT_VIEW_DESCRIPTION,
-    closest_canvas,
-    resize_and_reflect_pad,
-)
 from torch.utils.data import Dataset
+
+from examples.worldmodel.cosmos3.droid_dataset import CONCAT_VIEW_DESCRIPTION, closest_canvas, resize_and_reflect_pad
 
 # The reader derives the dataset version from the directory's basename and rejects anything it does not
 # know, so the root it is given has to carry one of upstream's names. A checkout under another name needs a

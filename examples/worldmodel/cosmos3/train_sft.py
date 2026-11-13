@@ -58,7 +58,6 @@ from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer.modeling.cosmos3 import get_cosmos3_selective_checkpoint_stats
 from colossalai.shardformer.policies.cosmos3 import Cosmos3OmniPolicy
 from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset, collate
-from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3.packing import compute_loss, pack_batch
 from examples.worldmodel.cosmos3.runtime import (
     AccumulationWindow,
@@ -67,6 +66,7 @@ from examples.worldmodel.cosmos3.runtime import (
     resolve_compile_backend,
     shutdown_dataloader,
 )
+from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
 from examples.worldmodel.cosmos3_harness.training_metrics import (
     AnomalyDetector,
