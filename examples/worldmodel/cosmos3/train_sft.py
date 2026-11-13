@@ -28,7 +28,31 @@ from __future__ import annotations
 import argparse
 import importlib
 import os
+import sys
 from pathlib import Path
+
+# The DROID pipeline is upstream's own code, copied byte for byte under vendor/ (see vendor/README.md).
+# Its files import themselves as ``cosmos_framework.*``, so the copy is laid out under that package name
+# and the directory holding it goes on the path here.
+#
+# Here and nowhere else, and appended rather than inserted: on a host that also has the real
+# cosmos-framework installed -- the comparison machine does -- an installed package must keep winning, so
+# that the reference side never silently runs this copy. Which one actually loaded is printed below rather
+# than assumed, because the whole point of the copy is that it is the upstream code, and a run that
+# quietly used the other one would be comparing something else.
+_VENDOR = Path(__file__).resolve().parent / "vendor"
+if _VENDOR.is_dir() and str(_VENDOR) not in sys.path:
+    sys.path.append(str(_VENDOR))
+
+
+def report_pipeline_source() -> str:
+    """Where the DROID pipeline actually came from in this process."""
+    import cosmos_framework
+
+    origin = getattr(cosmos_framework, "__file__", None) or "<namespace package>"
+    vendored = str(_VENDOR) in str(origin)
+    return f"{origin} ({'vendored copy' if vendored else 'installed upstream'})"
+
 
 import torch
 from droid_dataset import DroidActionPolicyDataset, collate
@@ -91,6 +115,17 @@ def parse_args():
     parser.add_argument("--save-every", type=int, default=1000)
     parser.add_argument("--log-every", type=int, default=50)
 
+    parser.add_argument(
+        "--dataset",
+        default="upstream",
+        choices=["upstream", "example"],
+        help="Which DROID reader to use. 'upstream' reads through the copy of upstream's own pipeline under "
+        "vendor/ and is the default: a difference against upstream is then a difference in upstream rather "
+        "than one this example introduced. 'example' keeps droid_dataset.py, this example's own reader, "
+        "whose output was measured identical to upstream's on the pinned window (all 34,214,400 pixel "
+        "values, the action and state rows, the caption and the idle-frame count) -- it is kept so the two "
+        "can be compared again after either side changes.",
+    )
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument(
         "--max-episodes", type=int, help="Index only the first N episodes; the full index holds millions of windows."
@@ -352,7 +387,14 @@ def main():
     colossalai.launch_from_torch(backend=get_accelerator().communication_backend)
     coord = DistCoordinator()
 
-    dataset = DroidActionPolicyDataset(
+    # Both readers take the same arguments and return the same sample contract; see upstream_dataset.py for
+    # where the seam sits and what was measured across it.
+    reader = DroidActionPolicyDataset
+    if args.dataset == "upstream":
+        from upstream_dataset import UpstreamDroidDataset
+
+        reader = UpstreamDroidDataset
+    dataset = reader(
         args.data,
         chunk_length=args.chunk_length,
         fps=args.fps,
@@ -364,6 +406,7 @@ def main():
     )
     collate_fn = collate
     coord.print_on_master(f"[data] {len(dataset)} window(s)")
+    coord.print_on_master(f"[data] reader {args.dataset!r}, pipeline from {report_pipeline_source()}")
 
     model = build_model(
         args.checkpoint,
