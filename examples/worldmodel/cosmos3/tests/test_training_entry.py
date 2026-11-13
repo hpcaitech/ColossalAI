@@ -69,6 +69,55 @@ def test_accumulation_counts_all_microsteps_and_deduplicates_cp_copies():
     assert leader.wait_ms == 4.0
 
 
+def test_the_understanding_key_norm_stays_frozen_like_the_reference():
+    model = torch.nn.Module()
+    model.time_embedder = torch.nn.Linear(2, 2)
+    model.add_q_proj = torch.nn.Linear(2, 2)
+    model.k_norm_und_for_gen = torch.nn.Linear(2, 2)
+    model.frozen_tower = torch.nn.Linear(2, 2)
+
+    trainable, frozen = entry.select_trainable_parameters(model)
+
+    assert model.time_embedder.weight.requires_grad and model.add_q_proj.weight.requires_grad
+    assert not model.k_norm_und_for_gen.weight.requires_grad
+    assert not model.frozen_tower.weight.requires_grad
+    assert trainable == 12 and frozen == 12
+
+
+def test_build_optimizer_names_and_rates_both_recipe_groups():
+    model = torch.nn.Module()
+    model.time_embedder = torch.nn.Linear(2, 2)
+    model.action_proj_in = torch.nn.Linear(2, 2)
+
+    optimizer = entry.build_optimizer(model, choice="adamw", mode="plain", device_type="cpu")
+
+    assert [(group["name"], group["lr"]) for group in optimizer.param_groups] == [
+        ("base", entry.LR),
+        ("action_heads", entry.LR * 5.0),
+    ]
+
+
+def test_the_recorded_learning_rates_come_from_each_parameter_group():
+    optimizer = torch.optim.SGD(
+        [
+            {"params": [torch.nn.Parameter(torch.zeros(1))], "lr": 2e-4, "name": "base"},
+            {"params": [torch.nn.Parameter(torch.zeros(1))], "lr": 1e-3, "name": "action_heads"},
+        ]
+    )
+
+    assert entry.optimizer_learning_rates(optimizer) == {"lr/base": 2e-4, "lr/action_heads": 1e-3}
+
+
+def test_a_package_without_metadata_is_recorded_as_missing(monkeypatch):
+    assert isinstance(entry.package_version("pytest"), str)
+
+    def missing(name):
+        raise entry.PackageNotFoundError(name)
+
+    monkeypatch.setattr(entry, "version", missing)
+    assert entry.package_version("diffusers") is None
+
+
 class ActionHead(torch.nn.Module):
     def __init__(self, width=4):
         super().__init__()
@@ -261,6 +310,7 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     assert [record["loss"]["total"] for record in records] == pytest.approx(expected_losses)
     assert [record["data"]["samples"] for record in records] == [3, 3]
     assert [record["data"]["ar_tokens"] for record in records] == [6, 6]
+    assert all(record["optim"]["lr/0"] == 0.01 for record in records)
     assert manifests[0]["effective_global_batch"] == 3
     assert manifests[0]["save_kind"] == "model_export"
     assert summaries[0]["steps"] == 2 and summaries[0]["completed"]

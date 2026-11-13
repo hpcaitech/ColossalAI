@@ -16,7 +16,7 @@ import random
 import sys
 import time
 from functools import partial
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import torch
@@ -58,6 +58,10 @@ BETAS = (0.9, 0.99)
 EPS = 1.0e-8
 WEIGHT_DECAY = 0.05
 GRAD_CLIP = 1.0
+# The reference selects trainable parameters by substring against its ``keys_to_select`` prefixes; this tuple is that
+# rule spelled with this checkpoint's module names. The generation tower reads ``k_norm_und_for_gen``, but its name
+# matches no prefix, so the reference leaves it frozen; adding it back would put one tensor per layer in the gradient
+# dump that the reference does not have.
 TRAINABLE_KEYS = (
     "_moe_gen",
     "add_q_proj",
@@ -66,7 +70,6 @@ TRAINABLE_KEYS = (
     "to_add_out",
     "norm_added_q",
     "norm_added_k",
-    "k_norm_und_for_gen",
     "time_embedder",
     "proj_in",
     "proj_out",
@@ -75,6 +78,18 @@ TRAINABLE_KEYS = (
     "action_modality_embed",
 )
 LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
+
+
+def package_version(name):
+    """The installed distribution's version, or ``None`` when it has no metadata.
+
+    A source or vendored install can be importable without a distribution record; a reporting field must not be able
+    to stop the run before the first step.
+    """
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return None
 
 
 def parse_args(argv=None):
@@ -313,6 +328,13 @@ def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_
         print(f"[model] action head initialized: {', '.join(touched)}", flush=True)
     if action_head_from is not None:
         print(f"[model] loaded action head: {', '.join(load_action_head(model, action_head_from))}", flush=True)
+    trainable, frozen = select_trainable_parameters(model)
+    print(f"[model] trainable {trainable / 1e9:.3f}B / frozen {frozen / 1e9:.3f}B", flush=True)
+    return model
+
+
+def select_trainable_parameters(model):
+    """Apply the recipe's substring rule and return the trainable and frozen element counts."""
     trainable = frozen = 0
     for name, parameter in model.named_parameters():
         parameter.requires_grad = any(key in name for key in TRAINABLE_KEYS)
@@ -320,8 +342,7 @@ def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_
             trainable += parameter.numel()
         else:
             frozen += parameter.numel()
-    print(f"[model] trainable {trainable / 1e9:.3f}B / frozen {frozen / 1e9:.3f}B", flush=True)
-    return model
+    return trainable, frozen
 
 
 def build_tokenizer(checkpoint: Path):
@@ -383,13 +404,25 @@ def build_optimizer(model, choice="hybrid-adam", mode="auto", device_type=None):
     for name, parameter in model.named_parameters():
         if parameter.requires_grad:
             (boosted if any(key in name for key in LR_MULTIPLIED) else base).append(parameter)
-    groups = [{"params": base, "lr": LR}, {"params": boosted, "lr": LR * 5.0}]
+    groups = [
+        {"params": base, "lr": LR, "name": "base"},
+        {"params": boosted, "lr": LR * 5.0, "name": "action_heads"},
+    ]
     kwargs = dict(betas=BETAS, eps=EPS, weight_decay=WEIGHT_DECAY)
     if choice == "hybrid-adam":
         return HybridAdam(groups, adamw_mode=True, **kwargs)
     if choice == "adamw":
         return build_adamw(groups, LR, mode=mode, device_type=device_type, **kwargs)
     raise ValueError(f"Unknown optimizer {choice!r}")
+
+
+def optimizer_learning_rates(optimizer):
+    """Each parameter group's current rate, keyed by the name :func:`build_optimizer` gave it.
+
+    Reading the groups rather than the module constant keeps the metric honest when a schedule is added and when the
+    action heads keep their 5x rate.
+    """
+    return {f"lr/{group.get('name', index)}": group["lr"] for index, group in enumerate(optimizer.param_groups)}
 
 
 def fix_checkpoint_modes(save_dir: Path, coord: DistCoordinator):
@@ -527,7 +560,7 @@ def main():
                 "torch": torch.__version__,
                 "device": accelerator.name,
                 **{
-                    name: version(name)
+                    name: package_version(name)
                     for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
                 },
             },
@@ -652,7 +685,10 @@ def main():
                         "backward_ms": timings.get("backward"),
                         "optim_ms": timings.get("optim"),
                     },
-                    optim={"grad_norm": get_grad_norm() if get_grad_norm else None, "lr": LR},
+                    optim={
+                        "grad_norm": get_grad_norm() if get_grad_norm else None,
+                        **optimizer_learning_rates(optimizer),
+                    },
                     mem=device_memory_gib(),
                 )
             if step % args.save_every == 0:
