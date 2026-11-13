@@ -35,7 +35,11 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from droid_dataset import CONCAT_VIEW_DESCRIPTION, closest_canvas, resize_and_reflect_pad
+from examples.worldmodel.cosmos3.droid_dataset import (
+    CONCAT_VIEW_DESCRIPTION,
+    closest_canvas,
+    resize_and_reflect_pad,
+)
 from torch.utils.data import Dataset
 
 # The reader derives the dataset version from the directory's basename and rejects anything it does not
@@ -62,6 +66,7 @@ class UpstreamDroidDataset(Dataset):
         augment: bool = True,
         success_only: bool = True,
         max_episodes: int | None = None,
+        keep_ranges: str | Path | None = None,
         dataset_revision: str = "",
     ) -> None:
         root = Path(root)
@@ -82,6 +87,15 @@ class UpstreamDroidDataset(Dataset):
             use_state=True,
             action_space="joint_pos",
             use_image_augmentation=augment,
+            # The curated window filter. droid_dataset reads the same keep_ranges_1_0_1.json and its own
+            # filter is transcribed from the reader's ``_append_index_records``, so handing the file to the
+            # reader makes the same selection as the code it was transcribed from. Dropping it here would
+            # train on every window instead of the curated ones, and nothing in the output would say so.
+            use_filter_dict=keep_ranges is not None,
+            filter_dict_path=str(keep_ranges) if keep_ranges is not None else None,
+            # Passed explicitly because the reference's own factory neither declares nor forwards it (a
+            # TypeError at 5950e7b4, recorded in upstream/README.md); calling the reader directly avoids it.
+            filter_dict_source_prefix="",
         )
         self.resolution = resolution
         self.fps = fps

@@ -1,192 +1,102 @@
-# Cosmos 3 Edge action-policy SFT on Ascend
+# Cosmos 3 DROID Vision+Action SFT
 
-Supervised fine-tuning of **Cosmos3-Edge-Policy-DROID** with ColossalAI, following the
-`action_policy_droid_nano` recipe of [nvidia/cosmos-framework](https://github.com/NVIDIA/cosmos-framework) with
-Edge's model config.
+This example follows `action_policy_droid_nano` with the diffusers Cosmos 3 model and ColossalAI two-way attention. It trains the generation tower and action heads while freezing the AR tower. It supports Ascend and CUDA; the accelerator chooses the device and communication backend, independently of the attention and optimizer choices.
 
-Cosmos 3 is a mixture-of-transformers world model: a Qwen-style text tower (the autoregressive, *understanding*
-pathway) and a diffusion tower (the *generation* pathway) share one stack of decoder layers and one packed
-sequence. The AR tower stays frozen here; the generation tower and the action heads train, which is 1.42B of the
-model's 3.37B parameters.
+## Alignment reference
 
-The attention over that shared sequence is asymmetric — AR is causal, DM is bidirectional over itself and sees
-the AR prefix, AR never sees DM — and is provided by `colossalai.shardformer.policies.cosmos3.Cosmos3OmniPolicy`,
-which installs a processor backed by the two-way flat-attention kernel.
+The integration builds on the numerical/data contracts merged into official `npu/dev` at `bc9b776fd2a268e2406757f494afea5c13c2a709` (2026-11-12): [6516](https://github.com/hpcaitech/ColossalAI/pull/6516), [6518](https://github.com/hpcaitech/ColossalAI/pull/6518), [6519](https://github.com/hpcaitech/ColossalAI/pull/6519), [6522](https://github.com/hpcaitech/ColossalAI/pull/6522), [6525](https://github.com/hpcaitech/ColossalAI/pull/6525), the follow-up [6526](https://github.com/hpcaitech/ColossalAI/pull/6526) and the Cosmos 3 series [6527](https://github.com/hpcaitech/ColossalAI/pull/6527), [6528](https://github.com/hpcaitech/ColossalAI/pull/6528), [6529](https://github.com/hpcaitech/ColossalAI/pull/6529). Where this example and upstream implement the same contract, the official data/precision semantics are unchanged; the example adds the SFT entry, the replay/evaluation harness and the comparison ledger under [upstream](upstream/README.md).
 
-## What you need
+The default contract is:
 
-- An Ascend 910B host with `torch_npu`, or a CUDA host (the code reads the communication backend off the
-  accelerator rather than hard-coding one, but it has only been run on Ascend).
-- The `Cosmos3-Edge-Policy-DROID` checkpoint, with its `transformer/`, `vae/` and `text_tokenizer/`
-  subdirectories.
-- DROID in LeRobot v3 layout (`meta/`, `data/`, `videos/`), for the full data path.
+- Shared torchvision v2 crop, resize and color jitter across all three views, followed by camera composition, uint8 truncation, capped canvas resize and reflection padding.
+- Gripper inversion for both the action and initial state, random annotation selection, full JSON prompt metadata, EOS and generation markers.
+- Online VAE encode in BF16, checkpoint channel normalization, latent-space removal of canvas padding, then FP32 noise, sigma, interpolation and targets. Only the model payload is cast to BF16.
+- FP32 fractional mRoPE positions and rotary constants. The action temporal offset is zero with initial state and one without. Patch grids round up for odd latent sides; padded noisy action channels are zero.
+- FP32 timestep MLP arithmetic and unrounded sinusoidal features, while trainable parameter storage stays BF16. Plugin-wide input and buffer casts default off for this entry.
+- The DROID loss is a weighted sum of modality means averaged per sample. The noisy mask removes conditioning errors while conditioning elements remain in the denominator. Unequal-length samples distinguish this objective from a global supervised-element mean.
 
-```bash
-pip install -r requirements.txt
-```
+The upstream augmentation, collate, packed layout, position and target regression assertions are preserved. The former arbitrary `--latents` route has been removed: a latent file without complete normalization, geometry and augmentation provenance cannot stand in for online DROID training. Complete replay packs have their own entry in [cosmos3_harness](../cosmos3_harness/README.md).
 
-`diffusers` must be new enough to ship `Cosmos3OmniTransformer`; 0.40.0 does.
+## Environment
 
-## Running
+Install ColossalAI in the accelerator's supported PyTorch environment, then install this directory's [requirements.txt](requirements.txt). The value-transforming dependencies are pinned, including diffusers 0.40.0 and PyAV 18.1.0. Install torchvision matched to that environment's torch/torch_npu build. Run manifests record the resolved versions.
+
+The repository-wide diffusers 0.35.2 pin conflicts with this example, whose model classes require 0.40.0. This example does not change the repository-wide dependency contract. Transformers follows the repository's 5.17.0 pin. CUDA attention additionally needs a PyTorch CUDA build supplying `torch.nn.attention.varlen`; requesting it without the adapter raises an error.
+
+A checkpoint directory must contain `transformer/`, `vae/` and `text_tokenizer/`. The dataset is DROID in LeRobot v3 layout, passed as the parent of `success/` and `failure/`. The reference recipe removes failure demonstrations, so the entry trains the `success/` root by default; `--no-success-only` includes both roots. The episode split excludes validation episodes. Supply the recipe's `keep_ranges_1_0_1.json` through `--keep-ranges` to reproduce the curated windows: the registered config leaves the filter off (`use_filter_dict=False`, `filter_dict_path=None`), but the official launch script enables it and the Cosmos 3 technical report describes community-provided idle-frame filtering. Omitting `--keep-ranges` trains all eligible windows and is recorded in the manifest.
+
+## Run
+
+From this directory:
 
 ```bash
 python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
     --data /path/to/Cosmos3-DROID \
-    --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
+    --checkpoint /path/to/Cosmos3-Edge \
+    --keep-ranges /path/to/keep_ranges_1_0_1.json \
     --out runs/cosmos3-sft
 ```
 
-The defaults are the recipe values: 8 ranks x 32 samples x 32 accumulation steps is the global batch of 8192 the
-256-rank upstream run uses, at `lr=2e-4` with the action heads at 5x that.
+Defaults are 32 samples per independent DP pack and 32 microsteps per optimizer step, with LR `2e-4`, action-head LR multiplied by five, betas `(0.9, 0.99)`, epsilon `1e-8`, weight decay `0.05` and gradient clipping at `1.0`. VAE sample microbatching (`--vae-encode-batch`, for example 4) limits encode-call memory without changing packing or loss.
 
-Use `python -m torch.distributed.run` rather than `torchrun`. In a virtualenv that inherits torch from the system
-interpreter, `torchrun` resolves to that interpreter's script and ColossalAI will not be importable there.
+The base recipe reinitializes the two action projections and modality embedding. When starting from a trained policy checkpoint, pass `--no-reinit-action-head`. For a pinned comparison, `--action-head-from` imports a complete reference head export or an explicitly named domain slice after initialization.
 
-A short single-rank run:
+A single-device smoke run:
 
 ```bash
 python -m torch.distributed.run --nproc_per_node=1 train_sft.py \
-    --data ... --checkpoint ... \
-    --samples-per-rank 1 --grad-accum 1 --max-iter 60 --max-episodes 4
+    --data /path/to/Cosmos3-DROID \
+    --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
+    --no-reinit-action-head --zero-stage 0 \
+    --samples-per-rank 1 --grad-accum 1 --max-iter 10 --max-episodes 8
 ```
 
-## The parts that are easy to get wrong
+`--attn-backend auto` resolves to `npu`, `cuda` or the CPU reference. `--backend` is a compatible alias. `--optimizer hybrid-adam` preserves the FP32-master recipe optimizer; `--optimizer adamw --adamw-mode plain|foreach|fused|auto` selects an explicit comparison. Fused NPU AdamW rejects unsupported devices and missing implementations instead of falling back silently.
 
-Each of these fails silently — a plausible loss curve rather than an error — so each one is named here with the
-upstream file it comes from.
+## Parallel and checkpoint contracts
 
-**The first latent frame is a clean conditioning frame.** The recipe runs `mode="wam"`, and
-`build_sequence_plan_from_mode` gives `condition_frame_indexes_vision = [0]`. It is the observation the policy
-acts on; noising it leaves the model nothing to condition on. With `use_state=True` the action stream carries one
-extra leading step holding the initial robot state, and that step is conditioning too.
+`--sp-size` enables Ulysses CP. Only each CP group's leader starts decoding workers, builds the VAE, and draws augmentation, caption dropout and noise. It broadcasts the complete inputs, targets, sample IDs and per-sample AR/DM boundaries. `--cp-debug-identity` hashes these before forward. Independent DP groups use distinct sample partitions; the sampler drops incomplete tails instead of padding them with duplicate examples.
 
-The forward has three separate expectations about a conditioning frame, and all three have to agree:
-`*_noisy_frame_indexes` lists only noisy frames (the timestep embedding is scattered onto exactly those, and a
-frame without one is read as clean); `*_timesteps` is sized by noisy tokens rather than all tokens; and
-`*_mse_loss_indexes` points only at noisy frames, because the MSE head output is sliced by
-`len(noisy_frame_indexes)`. The prediction comes back at full size with **zeros at the conditioning frames**, so
-the loss multiplies by a noisy mask while keeping the full denominator — dropping the mask inflates the vision
-term by about 1.2x.
+Effective global batch is:
 
-**The state must be in the action space.** `action_space="joint_pos"` means joint(7) + gripper(1), so the
-conditioning step reads `observation.state.joint_positions` and `observation.state.gripper_position`, not
-`cartesian_position`.
+` samples_per_rank × grad_accum × independent_DP_replicas `
 
-**The action domain id is 8.** `action_proj_in` and `action_proj_out` are `DomainAwareLinear`: an `nn.Embedding`
-of weight/bias pairs indexed by `action_domain_ids`, one per embodiment. DROID's slot is 8, from
-`domain_utils.py::EMBODIMENT_TO_DOMAIN_ID["droid_lerobot"]`. A wrong id trains another embodiment's projector and
-leaves DROID's at its pretrained value, and the loss curve is indistinguishable, because the projector it picked
-up is trainable too. Note that `EMBODIMENT_TO_RAW_ACTION_DIM["droid_lerobot"]` in the same file is 10, for the
-`ee_pose` space of `[Pos, Rot6d, Gripper]`; `joint_pos` is 8 wide. Two different 8s and a 10 in one table.
+CP copies do not multiply it. Counts include every microstep and are reported only once per CP group. The loader cycles across epochs until `--max-iter` optimizer steps have completed. Metrics separate synchronized end-to-end step time from host dispatch time, label device-event/fallback section timings, and record process-group ranks and actual hostnames.
 
-**`position_ids` is a 3D grid, not an arange.** It is `[3, sequence_length]`: the temporal, height and width
-axes of an interleaved mRoPE, which `Cosmos3VLTextRotaryEmbedding.apply_interleaved_mrope` weaves into one
-frequency layout. Repeating a flat `arange` on all three rows passes every shape check in the forward and
-collapses the embedding to a 1D rope over sequence position, so the vision tokens carry no trace of their 2D
-layout — which is not what they were pretrained with. The rules are in
-`data/generator/sequence_packing/mrope.py`: text shares one index across the three axes; the generation block
-then starts a `unified_3d_mrope_temporal_modality_margin` (15000) past the text; vision is a `(T, H, W)` grid
-flattened T-major with the spatial axes restarting at 0; and action is a `(T, 1, 1)` grid sharing the vision
-block's temporal origin, because the two streams run in parallel in time rather than one after the other.
+`--hsdp-shard-size` partitions the mixed DP group into logical shard and replica groups. Contiguous ranks are on one host only if the launcher places them there; the manifest makes this observable. HSDP needs ZeRO stage 1 or 2: stage 0 with a shard size smaller than the DP group is refused by both the entry and the plugin instead of silently running plain DDP. CPU tests cover four-rank AdamW, accumulation, nonzero gradient clipping, state round trips and async all-gather; actual accelerator streams/offload transfers and multi-host NCCL/HCCL remain device validation work.
 
-The temporal axis is scaled to real time, `(frame + start_frame_offset) / tps * base_tps`, which at 15 fps puts
-latent frames 1.6 apart and actions 0.4 apart, so every 4th action coincides with a latent frame. **Those
-positions are therefore fractional**, and anything that copies them has to stay in a float dtype — a
-`torch.long` buffer truncates 1.6 to 1 with the shapes still lining up and nothing raised.
+`--activation-checkpointing full|selective|none` (`--checkpoint-mode` alias) selects one mode. Full and selective cannot be stacked. `--selective-budget-gib` is an estimate of saved activations, re-evaluated when pack geometry/dtype changes, not a hard HBM limit. Statistics expose the chosen mode, estimates, actual attention dispatch hits and saves. `--compile-blocks` compiles only after booster replacements, attention installation, precision wrappers and checkpoint configuration. Compiler `auto` resolves to Inductor on CUDA or npugraph_ex on NPU.
 
-**The noise schedule.** `train_time_video_distribution="waver"` (not the library default `uniform`), `shift=5`
-at 480p (`rectified_flow_inference_config` carries a second `shift=1`, which is for inference), and
-`independent_action_schedule=False`, so the action and the vision share one sigma.
+`--save-every` writes model exports. They do not include optimizer, RNG and sampler progress and cannot resume the same training trajectory. The harness checkpoint format instead publishes immutable, checksummed generations with a single shared-state writer and separate rank RNG files; see its README for the resume CLI.
 
-**The text prompt is JSON through a chat template.** `ActionPromptJsonFormatter` builds a dict with a fixed field
-order, `json.dumps` turns it into a string, 10% of samples have that string replaced with `""`
-(`cfg_dropout_rate`), and the result goes through `apply_chat_template` with the user role and a generation
-prompt. A plain `tokenizer(task)` gives 9 tokens where this chain gives 121, which changes `und_len` and every
-index derived from it.
+## Experimental VAE options
 
-**HF32 has to be off for the VAE.** With `torch.npu.conv.allow_hf32` left at its default, an fp32 convolution was
-measured at 210x the CPU error, which quietly corrupts the latents.
+BF16, the diffusers encoder and its default window are the baseline. FP16, the conservative RMSNorm replacement, fast convolution, wider chunk windows and compilation are independent opt-ins:
 
-## Layout
+- `--vae-dtype float16`, `--fuse-vae-norm`, `--fast-vae-encoder`.
+- `--vae-chunk-frames N` for a positive multiple of four; zero leaves the diffusers loop intact.
+- `--vae-compile jit|aot`; the legacy `--compile-vae` and `--compile-vae-aot` aliases remain. JIT and AOT are mutually exclusive. AOT requires CUDA and chooses a four-frame chunk when none was specified.
 
-| Path | What it is |
-| --- | --- |
-| `droid_dataset.py` | Map-style DROID dataset: `concat_view` composition, canvas fitting, reflection padding |
-| `packing.py` | Noise schedule, JSON prompt, packing into the forward arguments, the loss |
-| `train_sft.py` | Training entry point, the precomputed-latent bypass, the ZeRO-2 plugin wiring |
-| `tests/` | CPU-only checks on the target form, the position ids, the loss masking and the prompt |
-| `scripts/` | Smoke scripts that need a device, the checkpoint and the dataset |
+The RMSNorm path (`--fuse-vae-norm`, a historical name) is a conservative replacement forward, not a fused kernel: it preserves FP32 normalization before casting and affine operations and does not clamp an FP16 reciprocal. No speed claim is attached to it. Chunk tests cover first frames, tails and repeated calls. CPU equivalence does not imply identical output on every accelerator.
 
-## Tests
+AOT uses private runner/rank/process package paths, negative-caches compile/gate/runtime failures and keys variants by input/cache layouts, dtype, device, weight identity/version and compiler settings. A correctness gate checks latent and every returned cache, finite values and structure, per-element error and independent relative L2. Default absolute tolerance scales by each reference tensor's RMS and dtype epsilon; the default L2 budget is twice dtype epsilon. Tests pin both defaults at their exact ULP boundaries, and a real `torch.export` graph is executed through the gate on CPU; Inductor compilation and the tolerances on production weights still need device validation. `--vae-gate-rtol`, `--vae-gate-atol` and `--vae-gate-relative-l2` expose the budgets. `.data` or external-storage weight changes require `runner.invalidate()`.
 
-`tests/` runs anywhere:
+Historical speed figures measured before the alignment fixes or with the old loose AOT gate do not establish the speed or correctness of this version. No new GPU/NPU performance claim is made here.
+
+## Validation
+
+Run from the repository root:
 
 ```bash
-pytest tests/
-COSMOS3_CHECKPOINT=/path/to/Cosmos3-Edge-Policy-DROID pytest tests/   # also runs the tokenizer checks
+python -m pytest -q -o addopts='' examples/worldmodel/cosmos3/tests examples/worldmodel/cosmos3_harness/tests tests/test_booster/test_plugin/test_hybrid_casting.py tests/test_shardformer/test_model/test_cosmos3_policy.py tests/test_shardformer/test_model/test_cosmos3_fp32_timestep.py tests/test_shardformer/test_model/test_cosmos3_fp32_sinusoid.py tests/test_shardformer/test_model/test_cosmos3_runtime_contracts.py tests/test_shardformer/test_model/test_cosmos3_selective_checkpointing.py tests/test_shardformer/test_model/test_cosmos3_hsdp_optimizer.py tests/test_shardformer/test_model/test_hsdp_and_context_parallel.py tests/test_shardformer/test_model/test_cosmos3_example_helpers.py tests/test_shardformer/test_layer/test_two_way_attn.py tests/test_shardformer/test_model/test_cosmos_mot_packing.py tests/test_shardformer/test_model/test_shard_cosmos3.py tests/test_zero/test_low_level/test_step_helpers.py
 ```
 
-`tests/test_target_form.py` checks what training cannot: that `x0 = x_t - sigma * target` holds on the noisy
-frames (a flipped sign breaks it), that the conditioning frame is excluded by the mask rather than by zeroing,
-that a perfect prediction gives exactly zero loss, and that the action domain id is DROID's.
-`tests/test_position_ids.py` compares the mRoPE grid against a transcription of upstream's own arithmetic, and
-guards the two cases the forward cannot reject: three identical axes, and a truncated temporal axis.
+CPU coverage includes data/targets, whole-window SFT updates, unequal-length loss/gradient oracles, all input/buffer cast combinations, FP32 timestep wrappers under fullgraph AOT-eager, real Gloo CP contracts, HSDP AdamW, uninterrupted-versus-resumed replay, and the two scalar collectives: the gradient norm is reduced in float32 with a max-scaled sum (HCCL has no float64 all-reduce, and torch_npu casts float64 back to float32) and the supervised-token count as int64. VAE microbatch 0/1/2 compares inputs, FP32 targets, metadata, RNG, loss and gradients, and composes with chunked encode over two window widths; tiny random Wan encoders cover FP16/BF16/FP32 causal caches. CUDA-only and optional real-checkpoint tests skip without their prerequisites.
 
-`scripts/` needs the real thing:
+The local verification environment is Python 3.11, torch 2.15.0, diffusers 0.40.0 and transformers 5.22.1. The torch/transformers versions differ from the repository's declared training environment. CPU results establish regression contracts, not full numerical alignment on CUDA/NPU. Real production checkpoints, target compiler backends, real AOT packages, multi-host training and loss curves still require device validation.
+
+For a real checkpoint conditioning check:
 
 ```bash
-python scripts/smoke_conditioning.py --data ... --checkpoint ...
-python -m torch.distributed.run --nproc_per_node=1 scripts/smoke_overfit.py --data ... --checkpoint ...
+python examples/worldmodel/cosmos3/scripts/smoke_conditioning.py --data /path/to/data --checkpoint /path/to/checkpoint --device cuda:0
 ```
-
-`smoke_overfit.py` fixes sigma, packs one sample once and feeds it repeatedly, so the problem degenerates into a
-deterministic regression and the loss must fall by orders of magnitude. It shows the optimization path is
-connected; it does not show the target is correct, because a single sample is learnable under a wrong target too.
-
-## Status
-
-Measured on one 910B2, single rank:
-
-| | |
-| --- | --- |
-| Single-sample training step through `booster` + ZeRO-2 | works, ~2.3 s/step at the recipe window |
-| Overfitting one sample, 200 steps | 6.43 -> 0.0032, a factor of 2004 |
-| Fused kernel vs the PyTorch reference, in the training loop | relative difference 2e-5 |
-
-### An open question on the mRoPE temporal axis
-
-Probing one forward pass with everything else fixed, varying only `position_ids`:
-
-| variant | step-1 loss |
-| --- | --- |
-| as shipped (upstream's rules) | 4.241849 |
-| integer frame indices instead of fps-scaled | 4.241849 |
-| fps-scaled then truncated to int | 4.241849 |
-| height and width rows swapped | 4.342381 |
-| spatial rows zeroed | 7.242400 |
-| **temporal margin removed** | **2.032563** |
-| flat arange on all three rows | 12.376839 |
-
-Two things to take from it. First, the fps modulation is **unmeasurable here**: scaling the temporal axis, leaving
-it as integer frame indices, and truncating it all give a bit-identical loss. The reason is the margin — at a
-temporal position near 15139, the frequency bands fast enough to resolve a difference of 5 have already been
-decorrelated by the offset, and the bands slow enough to carry usable time structure move by about 1e-4, which
-does not survive bf16. So `enable_fps_modulation` is followed here because the config says so, not because
-anything measured it; the spatial axes, by contrast, are clearly load-bearing.
-
-Second, **removing the temporal margin halves the loss**, and that is not understood. The margin is upstream's:
-`packers.py` advances the cursor by `unified_3d_mrope_temporal_modality_margin` at the end of the text modality,
-the value is 15000 in `edge_model_config.py` and in this checkpoint's own `config.json`, and
-`advance_mrope_temporal_offset` is a plain `+=`. The implementation here follows that. A lower loss on one sample
-at one sigma is not evidence that dropping it is right — it is the same reasoning that would have accepted the
-flipped target sign — so the margin stays and the anomaly is recorded instead. It is the first thing to check
-against cosmos-framework on a reference device.
-
-Not done yet: there is no comparison against cosmos-framework on a reference device, so the recipe is verified to
-be *self-consistent* and to match what the upstream source says, not to produce the same model.
-
-`--backend naive` is the PyTorch reference. It materializes the full score matrix and runs out of memory at the
-recipe's sequence length, so it is for numerical comparison at a shortened window, not for training.
-
-The image augmentation is a random resized crop only; upstream also applies a ColorJitter shared across the three
-views.

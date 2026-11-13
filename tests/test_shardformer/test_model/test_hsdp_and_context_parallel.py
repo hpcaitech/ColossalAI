@@ -1,8 +1,9 @@
 """CPU checks for hybrid sharded data parallelism and Cosmos 3 Ulysses context parallelism.
 
 Both features are pure communication algebra, so they are checked on the CPU with gloo: a small MLP plus the real
-``LowLevelZeroOptimizer`` for HSDP, and a stand-in attention module plus the real two-way kernel for CP. No device and
-no diffusers install is needed, which keeps the checks runnable on any machine.
+``LowLevelZeroOptimizer`` for HSDP, a stand-in attention module plus the real two-way kernel for CP, and the two
+scalar collectives the training step issues -- the gradient norm and the supervised-token count -- whose dtypes are
+constrained by HCCL. No device and no diffusers install is needed, which keeps the checks runnable on any machine.
 
 The HSDP check compares the parameter update against the plain average of the per-rank gradients, i.e. what a
 single-level ZeRO over the whole data parallel group would produce. The CP check compares the context-parallel
@@ -308,6 +309,61 @@ def _cp_pack_mismatch_worker(rank, world, port, queue):
     dist.destroy_process_group()
 
 
+def _check_grad_norm_collective():
+    import math
+
+    from colossalai.zero.low_level import LowLevelZeroOptimizer
+
+    class Stub:
+        _GRAD_NORM_CHUNK = 64
+
+        def _grad_norm_weight(self, grad):
+            return 1.0
+
+        def _grad_norm_process_groups(self):
+            return [dist.group.WORLD]
+
+    grads = [torch.full((8,), 2e20 + 3e20 * dist.get_rank())]
+    seen = []
+    real_all_reduce = dist.all_reduce
+
+    def recording_all_reduce(tensor, op=None, group=None):
+        seen.append(tensor.dtype)
+        real_all_reduce(tensor, op=op, group=group)
+
+    dist.all_reduce = recording_all_reduce
+    try:
+        value = LowLevelZeroOptimizer._compute_grad_norm(Stub(), grads, 2)
+    finally:
+        dist.all_reduce = real_all_reduce
+
+    expected = math.sqrt(8 * (2e20**2 + 5e20**2))
+    return abs(value - expected) / expected < 1e-6 and seen == [torch.float32, torch.float32]
+
+
+def _check_supervised_token_collective():
+    from colossalai.shardformer.modeling.cosmos_mot import all_reduce_supervised_tokens
+
+    total = all_reduce_supervised_tokens(3 + dist.get_rank(), group=dist.group.WORLD, device=torch.device("cpu"))
+    return total == 7
+
+
+def _grad_norm_collective_worker(rank, world, port, queue):
+    _launch(rank, world, port)
+    result = _check_grad_norm_collective()
+    if rank == 0:
+        queue.put(result)
+    dist.destroy_process_group()
+
+
+def _supervised_token_collective_worker(rank, world, port, queue):
+    _launch(rank, world, port)
+    result = _check_supervised_token_collective()
+    if rank == 0:
+        queue.put(result)
+    dist.destroy_process_group()
+
+
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="HSDP grad sync is checked over gloo")
 def test_hsdp_gradient_sync():
     """ZeRO sharded inside a group of `shard_size` ranks and replicated across the rest must average over all of them."""
@@ -356,6 +412,24 @@ def test_cosmos3_context_parallel_rejects_different_packs():
     context = mp.get_context("spawn")
     queue = context.Queue()
     mp.spawn(_cp_pack_mismatch_worker, args=(CP_WORLD, 29564, queue), nprocs=CP_WORLD, join=True)
+    assert queue.get(timeout=60) is True
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="the grad norm collective is checked over gloo")
+def test_grad_norm_collective_stays_float32():
+    """HCCL has no float64 all-reduce: the cross-rank scalar must be float32 and still reproduce the float64 norm."""
+    context = mp.get_context("spawn")
+    queue = context.Queue()
+    mp.spawn(_grad_norm_collective_worker, args=(CP_WORLD, 29566, queue), nprocs=CP_WORLD, join=True)
+    assert queue.get(timeout=60) is True
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="the supervised token collective is checked over gloo")
+def test_supervised_token_collective_is_int64():
+    """A token count is reduced exactly, as int64 on the accelerator device rather than float64 on the host."""
+    context = mp.get_context("spawn")
+    queue = context.Queue()
+    mp.spawn(_supervised_token_collective_worker, args=(CP_WORLD, 29567, queue), nprocs=CP_WORLD, join=True)
     assert queue.get(timeout=60) is True
 
 
