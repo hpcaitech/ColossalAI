@@ -4,6 +4,7 @@ import torch
 from colossalai.shardformer.layer import two_way_flat_attention
 from colossalai.shardformer.modeling.cosmos_mot import (
     CosmosTwoWayLayout,
+    all_reduce_supervised_tokens,
     layout_from_split_info,
     layout_from_split_lengths,
     pack_cosmos3_samples,
@@ -267,3 +268,24 @@ def test_token_mean_loss_scale_weights_ranks_by_supervised_tokens():
         token_mean_loss_scale(0, 0, 2)
     with pytest.raises(ValueError, match="positive"):
         token_mean_loss_scale(1, 2, 0)
+
+
+def test_all_reduce_supervised_tokens_uses_an_int64_collective(monkeypatch):
+    """HCCL cannot all-reduce float64 and a CPU tensor has no HCCL backend: the temporary must be int64 and live
+    on the requested device."""
+    import torch.distributed as dist
+
+    seen = []
+
+    def fake_all_reduce(tensor, group=None):
+        seen.append((tensor.dtype, tensor.device.type, int(tensor.item())))
+        tensor.add_(41)
+
+    monkeypatch.setattr(dist, "is_available", lambda: True)
+    monkeypatch.setattr(dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(dist, "all_reduce", fake_all_reduce)
+
+    total = all_reduce_supervised_tokens(7, device=torch.device("cpu"))
+
+    assert total == 48
+    assert seen == [(torch.int64, "cpu", 7)]

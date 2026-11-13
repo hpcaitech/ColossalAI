@@ -633,13 +633,17 @@ def two_way_varlen_summary(meta: TwoWayPackedMeta) -> Dict[str, object]:
 
 
 def all_reduce_supervised_tokens(local_tokens: int, group=None, device: Optional[torch.device] = None) -> int:
-    """Sum supervised token counts over a process group without changing the caller's dtype or device.
+    """Sum supervised token counts over a process group, exactly, on the accelerator's device.
+
+    The reduction tensor is int64: a token count is exact there, and both NCCL and HCCL support int64 collectives.
+    A float64 temporary would not work on Ascend -- HCCL has no float64 all-reduce -- and the default device must
+    be the accelerator's rather than the host's, or the collective would have no backend to run on.
 
     Args:
         local_tokens (int): Supervised tokens on this rank.
         group (optional): Process group to reduce over. Defaults to the default group.
         device (Optional[torch.device], optional): Device of the temporary reduction tensor. Defaults to the current
-            accelerator device when distributed is initialised, otherwise CPU.
+            accelerator device.
 
     Returns:
         int: Sum over the group.
@@ -652,7 +656,9 @@ def all_reduce_supervised_tokens(local_tokens: int, group=None, device: Optional
     if not dist.is_available() or not dist.is_initialized():
         raise RuntimeError("all_reduce_supervised_tokens requires an initialised torch.distributed process group.")
     if device is None:
-        device = torch.device("cuda", torch.cuda.current_device()) if torch.cuda.is_available() else torch.device("cpu")
-    total = torch.tensor([float(local_tokens)], dtype=torch.float64, device=device)
+        from colossalai.accelerator import get_accelerator
+
+        device = get_accelerator().get_current_device()
+    total = torch.tensor([int(local_tokens)], dtype=torch.int64, device=device)
     dist.all_reduce(total, group=group)
     return int(total.item())

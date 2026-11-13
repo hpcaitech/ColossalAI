@@ -740,17 +740,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         Compute the norm of the whole gradient, viewed as a single vector, for gradient clipping.
 
         Each rank passes the gradient shards it owns, from all gradient stores. Their p-th power sum (or max for the
-        infinity norm) is reduced once over the groups of ``_grad_norm_process_groups`` and the root is taken once,
-        so every element is counted once and all ranks get the same value. Copies of the same element held by several
+        infinity norm) is reduced over the groups of ``_grad_norm_process_groups`` and the root is taken once, so
+        every element is counted once and all ranks get the same value. Copies of the same element held by several
         ranks are weighted by ``weights`` (``_grad_norm_weight`` per shard when omitted). Every rank must call this,
         even without gradients.
 
         The shards are normed by one ``torch._foreach_norm`` call instead of a float64 cast and a norm kernel per
         shard; a shard above ``_GRAD_NORM_CHUNK`` elements is cut into pieces, whose results are raised and summed in
-        float64. A non-fp32 shard (no fp32 master weights) keeps the per-shard float64 path. The multi-tensor norm
-        runs in the shard's own dtype, so an fp32 shard can overflow to infinity or (when the whole gradient is
-        tiny) underflow to zero where the norm itself is representable; a later float64 cast cannot recover either.
-        Those chunks are recomputed in float64 before the p-th powers are summed, and the reduced scalar is float64.
+        float64. A non-fp32 shard (no fp32 master weights) keeps the per-shard path. The multi-tensor norm runs in
+        the shard's own dtype, so an fp32 shard can overflow to infinity or (when the whole gradient is tiny)
+        underflow to zero where the norm itself is representable; a later float64 cast cannot recover either. Those
+        chunks are recomputed before the p-th powers are summed: in float64 where the device has it, otherwise
+        max-scaled in the shard dtype, because torch_npu casts float64 back to float32 (and its float32 ``norm``
+        still returns inf for the same magnitudes).
+
+        The cross-rank scalar is float32, not float64: HCCL has no float64 all-reduce. To keep the float32 reduce
+        from overflowing, the local p-th powers are scaled by the global maximum chunk norm first, so every term is
+        at most one and the root can be taken after unscaling.
 
         Args:
             gradients (List[Tensor]): The gradient shards owned by this rank
@@ -761,19 +767,23 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             float: The total norm of the gradients
         """
         norm_type = float(norm_type)
+        device = get_accelerator().get_current_device()
+        local_norms = None
+        local_weights = None
         if norm_type == inf:
             local = max((float(grad.data.abs().max()) for grad in gradients), default=0.0)
-            op = dist.ReduceOp.MAX
+            scale_tensor = torch.tensor([float(local)], dtype=torch.float32, device=device)
         elif not gradients:
             local = 0.0
-            op = dist.ReduceOp.SUM
+            scale_tensor = torch.zeros(1, dtype=torch.float32, device=device)
         elif gradients[0].data.dtype not in (torch.float32, torch.float64):
             if weights is None:
                 weights = [self._grad_norm_weight(grad) for grad in gradients]
-            local = 0.0
-            for grad, weight in zip(gradients, weights):
-                local += weight * grad.data.double().norm(norm_type) ** norm_type
-            op = dist.ReduceOp.SUM
+            norms = [LowLevelZeroOptimizer._shard_norm(grad.data, norm_type) for grad in gradients]
+            local_norms = torch.tensor(norms, dtype=torch.float64, device=device)
+            local_weights = torch.tensor(weights, dtype=torch.float64, device=device)
+            local = sum(weight * norm**norm_type for weight, norm in zip(weights, norms))
+            scale_tensor = torch.tensor([max(norms, default=0.0)], dtype=torch.float32, device=device)
         else:
             chunks = []
             part_weights = []
@@ -804,20 +814,85 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
             if not math.isfinite(local) or local == 0.0:
                 # The norm above ran in the shard dtype: a large shard can overflow to inf, and a wholly tiny
                 # gradient can underflow to 0 (squared values of order 1e-45 for the 2-norm), neither of which the
-                # float64 cast recovers. Recompute the affected chunks in float64 and redo the sum. A zero part next
-                # to normal-sized shards is left alone: its contribution is below float64 resolution of the total.
+                # float64 cast recovers. Recompute the affected chunks with the max-scaled norm and redo the sum. A
+                # zero part next to normal-sized shards is left alone: its contribution is below float64 resolution
+                # of the total.
                 for index, value in enumerate(values.tolist()):
                     if not math.isfinite(value) or (value == 0.0 and torch.count_nonzero(chunks[index]) > 0):
-                        values[index] = chunks[index].data.double().norm(norm_type)
+                        values[index] = LowLevelZeroOptimizer._shard_norm(chunks[index].data, norm_type)
                 local = _local_power_sum()
-            op = dist.ReduceOp.SUM
+            local_norms = values
+            local_weights = weights_tensor
+            scale_tensor = (
+                values.max().to(torch.float32).reshape(1)
+                if values.numel()
+                else torch.zeros(1, dtype=torch.float32, device=device)
+            )
 
-        # float64: the p-th power of a norm above ~1e19 overflows float32, which would turn a finite global norm
-        # into inf and then scale every gradient to zero. One scalar per step, so the wider reduce costs nothing.
-        total = torch.tensor([float(local)], device=get_accelerator().get_current_device(), dtype=torch.float64)
-        for group in self._grad_norm_process_groups():
-            dist.all_reduce(total, op=op, group=group)
-        return total.item() if norm_type == inf else total.item() ** (1.0 / norm_type)
+        groups = self._grad_norm_process_groups()
+        if not groups:
+            if norm_type == inf:
+                return float(local)
+            if math.isfinite(local) and local > 0.0:
+                return float(local) ** (1.0 / norm_type)
+            # The unscaled p-th powers can overflow (or underflow) the shard dtype even though every shard norm is
+            # finite; fall back to the same max-scaled sum the collective uses.
+            scale = float(local_norms.max()) if local_norms is not None and local_norms.numel() else 0.0
+            if scale == 0.0:
+                return 0.0
+            if not math.isfinite(scale):
+                return scale
+            powers = (local_norms / scale).pow(norm_type)
+            if local_weights is not None:
+                powers = powers * local_weights
+            return scale * float(powers.sum()) ** (1.0 / norm_type)
+
+        if norm_type == inf:
+            for group in groups:
+                dist.all_reduce(scale_tensor, op=dist.ReduceOp.MAX, group=group)
+            return float(scale_tensor.item())
+
+        # float32 collective: HCCL has no float64 all-reduce, so a float64 scalar would fail on Ascend. Reducing
+        # the p-th powers directly in float32 could overflow (a norm above ~1e19 squares past the float32 range),
+        # which would turn a finite global norm into inf and clip every gradient to zero. Scaling by the global
+        # maximum chunk norm first bounds every term by one, so the sum is safe; the root is taken after unscaling.
+        scale_tensor = scale_tensor.clamp(max=float(torch.finfo(torch.float32).max))
+        for group in groups:
+            dist.all_reduce(scale_tensor, op=dist.ReduceOp.MAX, group=group)
+        global_scale = float(scale_tensor.item())
+        if not math.isfinite(global_scale):
+            return global_scale
+        if global_scale == 0.0:
+            return 0.0
+        if local_norms is None:
+            scaled_local = 0.0
+        else:
+            powers = (local_norms / global_scale).pow(norm_type)
+            if local_weights is not None:
+                powers = powers * local_weights
+            scaled_local = float(powers.sum())
+        total = torch.tensor([scaled_local], dtype=torch.float32, device=device)
+        for group in groups:
+            dist.all_reduce(total, op=dist.ReduceOp.SUM, group=group)
+        return global_scale * float(total.item()) ** (1.0 / norm_type)
+
+    @staticmethod
+    def _shard_norm(data: Tensor, norm_type: float) -> float:
+        """The p-norm of one shard, computed so it cannot overflow in the shard's dtype.
+
+        ``data.double()`` is exact where float64 is real (CPU/CUDA). torch_npu has no float64: the cast returns a
+        float32 tensor, whose ``norm`` is still inf above ~1e19 and zero for a wholly tiny shard. Scaling by the
+        shard's largest magnitude first bounds every term by one, so the same value is recovered without float64.
+        """
+        norm = float(data.double().norm(norm_type))
+        if math.isfinite(norm) and norm != 0.0:
+            return norm
+        if torch.count_nonzero(data) == 0:
+            return 0.0
+        scale = float(data.abs().max())
+        if not math.isfinite(scale) or scale == 0.0:
+            return norm
+        return scale * float((data / scale).norm(norm_type))
 
     def _grad_norm_process_groups(self) -> List[ProcessGroup]:
         """The groups the local grad norm is reduced over, one after another."""
