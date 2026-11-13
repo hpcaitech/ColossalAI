@@ -1,7 +1,8 @@
 """CPU contract tests for the helpers the ZeRO-2 step uses to keep its launches low.
 
 ``_compute_grad_norm`` replaces the per-shard float64 cast and norm with one multi-tensor norm whose pieces are
-summed in float64; the cast-buffer helpers reuse one fp32 grad buffer and one working-dtype write-back buffer per
+summed in float64 and scaled by the global maximum before the float32 cross-rank reduce; the cast-buffer helpers
+reuse one fp32 grad buffer and one working-dtype write-back buffer per
 master param instead of allocating two tensors per parameter per step; ``_multi_tensor_copy`` falls back to
 per-tensor copies when the backend has no foreach copy. The tests bind the methods to stubs, so they need no
 optimizer, accelerator or process group.
@@ -20,14 +21,15 @@ class _NormStub:
 
     _GRAD_NORM_CHUNK = 64
 
-    def __init__(self, weights=None):
+    def __init__(self, weights=None, groups=None):
         self._weights = weights or {}
+        self._groups = groups or []
 
     def _grad_norm_weight(self, grad):
         return self._weights.get(id(grad), 1.0)
 
     def _grad_norm_process_groups(self):
-        return []
+        return self._groups
 
 
 class _CastStub:
@@ -172,6 +174,50 @@ def test_an_overflowing_shard_keeps_the_weight_of_its_chunk():
 
     expected = float(grads[0].double().norm(2) ** 2 + 0.5 * grads[1].double().norm(2) ** 2) ** 0.5
     assert value == pytest.approx(expected, rel=1e-12)
+
+
+def test_the_cross_rank_collective_is_float32_and_scaled(monkeypatch):
+    """HCCL has no float64 all-reduce, and a direct float32 sum of these p-th powers would be inf. The collective
+    must see float32, and the value it reduces must already be scaled so it is finite."""
+    seen = []
+
+    def fake_all_reduce(tensor, op=None, group=None):
+        seen.append((tensor.dtype, op, float(tensor.item())))
+
+    monkeypatch.setattr(torch.distributed, "all_reduce", fake_all_reduce)
+    grads = [torch.full((16,), 1e20), torch.full((16,), 2e20)]
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(groups=[object()]), grads, 2)
+
+    assert value == pytest.approx(_reference(grads), rel=1e-6)
+    assert [dtype for dtype, _, _ in seen] == [torch.float32, torch.float32]
+    assert [op for _, op, _ in seen] == [torch.distributed.ReduceOp.MAX, torch.distributed.ReduceOp.SUM]
+    assert all(math.isfinite(item) for _, _, item in seen)
+    assert seen[1][2] < 1e6, "the p-th powers must be scaled before the float32 sum"
+
+
+def test_the_scaled_collective_matches_a_two_rank_float64_norm(monkeypatch):
+    """Emulate a second rank: its norm joins both the max and the sum. Unscaling must reproduce the float64 norm
+    of the two ranks' gradients, which a plain float32 sum could not hold."""
+    local = torch.full((16,), 1e20)
+    other = torch.full((9,), 2e20)
+    local_norm = float(local.double().norm(2))
+    other_norm = float(other.double().norm(2))
+    global_scale = max(local_norm, other_norm)
+    other_scaled = (other_norm / global_scale) ** 2
+
+    def two_rank_all_reduce(tensor, op=None, group=None):
+        if op == torch.distributed.ReduceOp.MAX:
+            tensor.fill_(max(float(tensor.item()), other_norm))
+        else:
+            tensor.add_(other_scaled)
+
+    monkeypatch.setattr(torch.distributed, "all_reduce", two_rank_all_reduce)
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(groups=[object()]), [local], 2)
+
+    expected = (local_norm**2 + other_norm**2) ** 0.5
+    assert value == pytest.approx(expected, rel=1e-6)
 
 
 def test_normal_values_next_to_a_tiny_shard_stay_on_the_fast_path(monkeypatch):
