@@ -1,3 +1,10 @@
+# Third-party source copied in verbatim, and verbatim is the point: the DROID data pipeline under
+# examples/worldmodel/cosmos3/vendor/ is byte-identical to nvidia/cosmos-framework, so that checking this
+# example against a newer upstream is one `diff -r` with no formatting noise in the way. autoflake, isort
+# and black would each rewrite those files and end that property, so they are excluded here rather than
+# being allowed to reformat code this repository does not own.
+exclude: '^examples/worldmodel/cosmos3/vendor/'
+
 repos:
 
   - repo: https://github.com/PyCQA/autoflake
