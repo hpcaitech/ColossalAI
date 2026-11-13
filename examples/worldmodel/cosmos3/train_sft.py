@@ -154,12 +154,22 @@ class PowerEMA:
         import numpy as np
 
         self.exponent = float(np.roots([1.0, 7.0, 16.0 - rate**-2, 12.0 - rate**-2]).real.max())
-        masters = optimizer.get_working_to_master_map()
-        self.sources = [masters[id(p)] for p in model.parameters() if p.requires_grad and id(p) in masters]
+        trainable = [p for p in model.parameters() if p.requires_grad]
+        masters = getattr(optimizer, "get_working_to_master_map", lambda: None)()
+        if masters:
+            self.sources = [masters[id(p)] for p in trainable if id(p) in masters]
+            self.source_kind = "fp32 master shard"
+        else:
+            # No ZeRO, so no master copy to read: at zero_stage 0 the optimizer steps the parameters
+            # themselves and they are the only thing there is to average. Named rather than silently
+            # substituted, because with the plugin at zero_stage 2 the masters are fp32 while the working
+            # copy is bf16, and averaging the wrong one would quietly round the source of an fp32 average.
+            self.sources = trainable
+            self.source_kind = "parameters (no ZeRO master copy)"
         if not self.sources:
             raise RuntimeError(
-                "the optimizer reported no fp32 master for any trainable parameter, so there is nothing to "
-                "average; this expects the ZeRO optimizer the plugin builds at zero_stage 2."
+                "no trainable parameter to average: the EMA has no source. Check that the trainable key "
+                "set matched something, or pass --no-ema."
             )
         self.shadow = [t.detach().float().clone() for t in self.sources]
 
@@ -643,7 +653,9 @@ def main():
     ema = PowerEMA(model, optimizer) if args.ema else None
     if ema is not None:
         held = sum(t.numel() for t in ema.shadow)
-        coord.print_on_master(f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank")
+        coord.print_on_master(
+            f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank, from the {ema.source_kind}"
+        )
 
     model.train()
     optimizer.zero_grad()

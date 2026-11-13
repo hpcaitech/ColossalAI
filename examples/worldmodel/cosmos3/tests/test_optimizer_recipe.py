@@ -120,9 +120,25 @@ def test_it_averages_the_fp32_masters_and_not_the_bf16_working_copy():
     assert ema.shadow[0].item() == pytest.approx(1.0 + 2.0**-20)
 
 
+def test_it_falls_back_to_the_parameters_when_there_is_no_master_copy_and_says_so():
+    """At zero_stage 0 there is no fp32 master to read, and the parameters are the only source there is.
+
+    Averaging them is correct there and wrong at zero_stage 2, where the masters are fp32 and the working
+    copy is bf16, so the source is reported rather than assumed -- a silent substitution would round the
+    input of an average whose whole point is that it is not rounded.
+    """
+    parameter = torch.nn.Parameter(torch.tensor([1.0]))
+
+    ema = train_sft.PowerEMA(_Model([parameter]), _Optimizer({}))
+
+    assert ema.sources == [parameter]
+    assert "no ZeRO master copy" in ema.source_kind
+
+
 def test_it_refuses_to_average_nothing():
-    with pytest.raises(RuntimeError, match="no fp32 master"):
-        train_sft.PowerEMA(_Model([torch.nn.Parameter(torch.tensor([1.0]))]), _Optimizer({}))
+    """A model with nothing trainable leaves the EMA no source at all, which is a configuration error."""
+    with pytest.raises(RuntimeError, match="no trainable parameter"):
+        train_sft.PowerEMA(_Model([]), _Optimizer({}))
 
 
 # --- the key set -------------------------------------------------------------------------------------------

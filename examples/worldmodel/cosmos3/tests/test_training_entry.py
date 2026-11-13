@@ -298,19 +298,29 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     monkeypatch.setattr(entry, "device_memory_gib", lambda: {})
     entry.main()
     expected_losses = []
+    # The rate this optimizer is built with no longer decides anything: the entry applies the recipe's
+    # schedule to every parameter group before each step, so the reference has to be taken through the
+    # same schedule or it is comparing two different learning rates rather than two accumulation windows.
     reference_optim = torch.optim.SGD(reference.parameters(), lr=0.01)
-    for goals in ((1.0, 3.0, 1.0), (3.0, 1.0, 3.0)):
+    for step_index, goals in enumerate(((1.0, 3.0, 1.0), (3.0, 1.0, 3.0))):
         losses = [entry.compute_loss(reference(), targets(goal)) for goal in goals]
         loss = torch.stack(losses).mean()
         expected_losses.append(loss.item())
         loss.backward()
+        entry.set_learning_rate(reference_optim, step_index)
         reference_optim.step()
         reference_optim.zero_grad()
     torch.testing.assert_close(model.weight, reference.weight)
     assert [record["loss"]["total"] for record in records] == pytest.approx(expected_losses)
     assert [record["data"]["samples"] for record in records] == [3, 3]
     assert [record["data"]["ar_tokens"] for record in records] == [6, 6]
-    assert all(record["optim"]["lr/0"] == 0.01 for record in records)
+    # Not the rate the optimizer was built with: the recipe's schedule scales every group before each
+    # step. It scales rather than overwrites, so each group keeps its own base rate -- which is what lets
+    # the action heads hold their 5x -- and this group's base is the 0.01 it was built with. Written
+    # through the schedule rather than as a literal so that changing the schedule moves the expectation.
+    assert [record["optim"]["lr/0"] for record in records] == pytest.approx(
+        [0.01 * entry.lr_multiplier(0), 0.01 * entry.lr_multiplier(1)]
+    )
     assert manifests[0]["effective_global_batch"] == 3
     assert manifests[0]["save_kind"] == "model_export"
     assert summaries[0]["steps"] == 2 and summaries[0]["completed"]
