@@ -39,8 +39,10 @@ Optimizer (`FusedAdam`, betas `(0.9, 0.99)`, eps `1e-8`, weight decay `0.05`, lr
 dataset (`fps=15`, `chunk_length=32`, `action_space="joint_pos"`, `mode="wam"`, `use_state=True`,
 `iterable_shuffle=True` with `episode_shuffle_seed=42`, `use_image_augmentation=True`,
 `viewpoint="concat_view"`, `resolution="480"`, `cfg_dropout_rate=0.1`, `format_prompt_as_json=True`,
-`action_normalization=None`, `use_filter_dict=False`); the EMA and tokenizer overrides; `ckpt_type=dcp`; and
-the recipe's own two model tweaks, `encode_exact_durations=[33]` and `max_num_tokens_after_packing=-1`.
+`action_normalization=None`, `use_filter_dict=False` at the registered-config level, with the factory's
+`use_success_only=True`; the official launch script additionally enables `use_filter_dict=True` with
+`keep_ranges_1_0_1.json`); the EMA and tokenizer overrides; `ckpt_type=dcp`; and the recipe's own two model
+tweaks, `encode_exact_durations=[33]` and `max_num_tokens_after_packing=-1`.
 
 ## What this overlay does not make equal
 

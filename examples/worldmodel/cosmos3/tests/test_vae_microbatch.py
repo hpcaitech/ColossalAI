@@ -16,6 +16,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from packing import START_OF_GENERATION, compute_loss, normalize_latent, pack_batch
+from vae_chunked import enable_chunked_encode
 
 
 class StubVAE:
@@ -36,6 +37,57 @@ class StubVAE:
         base = video.mean(dim=1, keepdim=True)[:, :, ::4, ::2, ::2]
         channel = torch.arange(4, dtype=video.dtype).reshape(1, 4, 1, 1, 1)
         latent = base * (channel + 1) + channel * 0.2
+        if self.output_kind == "tuple":
+            return (latent,)
+        if self.output_kind == "distribution":
+            return SimpleNamespace(latent_dist=SimpleNamespace(mode=lambda: latent))
+        return latent
+
+
+class _WindowEncoder:
+    """The every-fourth-frame encoder, called once per window by the chunked path.
+
+    It selects the frames whose index in the *whole clip* is a multiple of four, so concatenating the windows
+    reproduces ``video[:, :, ::4]``, exactly the latent ``StubVAE.encode`` computes without chunking. The chunked
+    path calls the prime frame first (offset 0), then windows starting at 1 and advancing by their width.
+    """
+
+    def __init__(self, owner):
+        self.owner = owner
+        self.start = 0
+
+    def __call__(self, x, feat_cache=None, feat_idx=None):
+        length = x.shape[2]
+        self.owner.windows.append(length)
+        keep = [index for index in range(length) if (self.start + index) % 4 == 0]
+        self.start += length
+        return x.mean(dim=1, keepdim=True)[:, :, keep, ::2, ::2]
+
+
+class ChunkedStubVAE(StubVAE):
+    """``StubVAE`` whose ``encode`` goes through ``_encode``, as ``AutoencoderKLWan.encode`` does, so the chunked
+    schedule can be combined with the microbatch schedule. It returns the same latent values as ``StubVAE``."""
+
+    def __init__(self, dtype, output_kind):
+        super().__init__(dtype, output_kind)
+        self.config.patch_size = None
+        self.use_tiling = False
+        self.quant_conv = torch.nn.Identity()
+        self.windows = []
+        self.encoder = _WindowEncoder(self)
+        self.clear_cache()
+
+    def clear_cache(self):
+        self._enc_feat_map = [None]
+        if hasattr(self, "encoder"):
+            self.encoder.start = 0
+
+    def encode(self, video):
+        assert video.dtype == self.parameter.dtype
+        self.calls.append(video.shape[0])
+        latent = self._encode(video)
+        channel = torch.arange(4, dtype=video.dtype).reshape(1, 4, 1, 1, 1)
+        latent = latent * (channel + 1) + channel * 0.2
         if self.output_kind == "tuple":
             return (latent,)
         if self.output_kind == "distribution":
@@ -146,6 +198,62 @@ def test_microbatch_preserves_inputs_fp32_targets_meta_loss_and_gradients(dtype,
             reference = result
         else:
             exact(result, reference)
+
+
+@pytest.mark.parametrize("chunk_frames,per_call_windows", [(4, [1, 4, 4]), (8, [1, 8])])
+def test_microbatch_and_chunked_encode_compose(chunk_frames, per_call_windows):
+    """The two scheduling knobs are independent: microbatch splits the batch and chunking splits time. Their
+    combination must leave the packed payload, metadata and RNG exactly as either one alone produces."""
+    data = batch()
+    reference = None
+    for size, expected_calls in ((0, [3]), (1, [1, 1, 1]), (2, [2, 1])):
+        vae = ChunkedStubVAE(torch.float32, "tensor")
+        enable_chunked_encode(vae, chunk_frames)
+        policy = StubPolicy()
+        generator = torch.Generator().manual_seed(12)
+        inputs, targets = pack_batch(
+            data,
+            vae,
+            StubTokenizer(),
+            SimpleNamespace(latent_patch_size=2, action_dim=8),
+            policy=policy,
+            num_frames=9,
+            fps=15.0,
+            resolution="480",
+            device="cpu",
+            generator=generator,
+            vae_encode_batch=size,
+        )
+        assert vae.calls == expected_calls
+        # Every encode call runs the chunked schedule, whatever batch it carries.
+        assert vae.windows == per_call_windows * len(expected_calls)
+        result = (inputs, targets, asdict(policy.meta), generator.get_state())
+        if reference is None:
+            reference = result
+        else:
+            exact(result, reference)
+
+    # The combination has to equal the unchunked baseline, not merely itself across microbatch sizes.
+    baseline_vae = StubVAE(torch.float32, "tensor")
+    baseline_policy = StubPolicy()
+    baseline_generator = torch.Generator().manual_seed(12)
+    baseline_inputs, baseline_targets = pack_batch(
+        data,
+        baseline_vae,
+        StubTokenizer(),
+        SimpleNamespace(latent_patch_size=2, action_dim=8),
+        policy=baseline_policy,
+        num_frames=9,
+        fps=15.0,
+        resolution="480",
+        device="cpu",
+        generator=baseline_generator,
+        vae_encode_batch=0,
+    )
+    exact(
+        (inputs, targets, asdict(policy.meta), generator.get_state()),
+        (baseline_inputs, baseline_targets, asdict(baseline_policy.meta), baseline_generator.get_state()),
+    )
 
 
 def test_microbatch_invalid_size_is_rejected_before_encode():
