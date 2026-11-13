@@ -31,13 +31,19 @@ returned content region is (540, 640), unchanged.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch.utils.data import Dataset
 
-from examples.worldmodel.cosmos3.droid_dataset import CONCAT_VIEW_DESCRIPTION, closest_canvas, resize_and_reflect_pad
+from examples.worldmodel.cosmos3.droid_dataset import (
+    CONCAT_VIEW_DESCRIPTION,
+    DROID_FILTER_SOURCE_PREFIX,
+    closest_canvas,
+    resize_and_reflect_pad,
+)
 
 # The reader derives the dataset version from the directory's basename and rejects anything it does not
 # know, so the root it is given has to carry one of upstream's names. A checkout under another name needs a
@@ -64,6 +70,7 @@ class UpstreamDroidDataset(Dataset):
         success_only: bool = True,
         max_episodes: int | None = None,
         keep_ranges: str | Path | None = None,
+        filter_dict_source_prefix: str | None = None,
         dataset_revision: str = "",
     ) -> None:
         root = Path(root)
@@ -92,7 +99,15 @@ class UpstreamDroidDataset(Dataset):
             filter_dict_path=str(keep_ranges) if keep_ranges is not None else None,
             # Passed explicitly because the reference's own factory neither declares nor forwards it (a
             # TypeError at 5950e7b4, recorded in upstream/README.md); calling the reader directly avoids it.
-            filter_dict_source_prefix="",
+            # The released keep_ranges_1_0_1.json is keyed by composite gs:// URIs, which the reader refuses
+            # to interpret without this prefix, so a hard-coded "" made --keep-ranges unusable on that file.
+            # It is resolved the way droid_dataset.py resolves it, so one environment variable serves both
+            # readers and a run cannot select different windows depending on which reader it was given.
+            filter_dict_source_prefix=(
+                filter_dict_source_prefix
+                if filter_dict_source_prefix is not None
+                else os.environ.get(DROID_FILTER_SOURCE_PREFIX, "")
+            ),
         )
         self.resolution = resolution
         self.fps = fps
