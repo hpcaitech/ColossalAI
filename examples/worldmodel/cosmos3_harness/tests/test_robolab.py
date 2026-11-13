@@ -433,10 +433,15 @@ def test_websocket_interoperates_with_official_numpy_markers(monkeypatch):
             thread.join(timeout=5)
 
 
-def test_packed_inputs_run_through_real_diffusers_transformer():
+def test_packed_inputs_run_through_real_diffusers_transformer(monkeypatch):
     diffusers = pytest.importorskip("diffusers")
     if not hasattr(diffusers, "Cosmos3OmniTransformer"):
         pytest.skip("Installed diffusers predates Cosmos3OmniTransformer")
+    # diffusers 0.40 routes RMSNorm through torch_npu whenever torch_npu is importable, even for CPU tensors, so on
+    # an Ascend host this CPU-reference check would call npu_rms_norm on the CPU and fail. Pin the pure-torch path.
+    import diffusers.models.normalization as diffusers_normalization
+
+    monkeypatch.setattr(diffusers_normalization, "is_torch_npu_available", lambda: False)
     model = diffusers.Cosmos3OmniTransformer(
         hidden_size=32,
         intermediate_size=64,

@@ -176,6 +176,9 @@ def test_adamw_auto_arms_take_the_same_step_from_the_same_gradients():
 def test_adamw_fused_mode_rejects_unsupported_devices_and_missing_torch_npu(monkeypatch):
     # An explicit optimizer choice cannot silently change the implementation.
     monkeypatch.setitem(sys.modules, "torch_npu", None)
+    # On an Ascend host ``torch_npu.optim`` may already be imported; ``from torch_npu.optim import ...`` then returns
+    # the cached submodule without consulting the blocked parent, so hide the submodule as well.
+    monkeypatch.setitem(sys.modules, "torch_npu.optim", None)
     with pytest.raises(ValueError, match="requires an NPU"):
         _build_optimizer(torch.nn.Linear(2, 2), 1e-5, backend="npu", mode="fused")
     with pytest.raises(ValueError, match="requires torch_npu"):

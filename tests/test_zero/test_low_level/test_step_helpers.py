@@ -155,6 +155,19 @@ def test_a_large_gradient_does_not_overflow_to_infinity():
     assert value == pytest.approx(_reference(grads), rel=1e-12)
 
 
+def test_a_device_without_float64_still_recovers_a_large_norm(monkeypatch):
+    """torch_npu has no float64: its ``double()`` returns float32, so the float64 repair cannot see a finite norm.
+    The max-scaled fallback must recover the same value in the shard dtype."""
+    grads = [torch.full((16,), 1e20), torch.full((16,), 2e20)]
+    expected = _reference(grads)
+    monkeypatch.setattr(torch.Tensor, "double", lambda self: self.float())
+
+    value = LowLevelZeroOptimizer._compute_grad_norm(_NormStub(), grads, 2)
+
+    assert math.isfinite(value), "a finite gradient must not produce an infinite norm without float64"
+    assert value == pytest.approx(expected, rel=1e-6)
+
+
 def test_a_tiny_gradient_does_not_underflow_to_zero():
     """1e-25 squared underflows to zero in float32, so the per-shard float32 norm is zero while the true norm is
     not; the float64 reference is the value to reproduce."""
