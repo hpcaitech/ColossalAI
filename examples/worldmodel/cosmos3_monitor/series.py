@@ -136,6 +136,8 @@ class SeriesStore:
             self._world = int(world)
         step_ms = _number(_get(record, "perf", "step_ms"))
         samples = _number(_get(record, "data", "samples"))
+        if samples is None:
+            samples = _number(_get(record, "data", "partial_samples"))
         complete = record.get("complete", True) is not False
         values: Dict[str, Optional[float]] = {
             "loss/total": _number(_get(record, "loss", "total")),
@@ -213,6 +215,15 @@ class SeriesStore:
                 "total": len(points),
             }
         return result
+
+    def record_for_step(self, step: int) -> Optional[Dict[str, Any]]:
+        for record in reversed(self.records):
+            try:
+                if int(record.get("step")) == int(step):
+                    return record
+            except (TypeError, ValueError):
+                continue
+        return None
 
     def records_page(self, offset: int = 0, limit: int = 100, order: str = "asc") -> Dict[str, Any]:
         total = len(self.records)
@@ -292,3 +303,72 @@ def _time_axis(records: List[Dict[str, Any]], from_step, to_step, count: int) ->
     step = max(1, len(times) // count)
     sampled = [times[min(index * step, len(times) - 1)] for index in range(count)]
     return sampled
+
+
+#: Stage accounting for the step-detail view.  The total step is 4x the forward FLOPs when activation
+#: checkpointing is on (1 forward + 1 recompute + 2 backward), 3x when it is off.  Allocating the recompute to
+#: the backward stage lets a stage MFU be meaningful instead of pretending the forward did all the work.
+def stage_metrics(record: Dict[str, Any], world: int, activation_checkpointing: str = "full") -> Dict[str, Any]:
+    samples = _number(_get(record, "data", "samples"))
+    if samples is None:
+        samples = _number(_get(record, "data", "partial_samples"))
+    samples = samples or 0.0
+    step_ms = _number(_get(record, "perf", "step_ms"))
+    step_s = (step_ms / 1e3) if step_ms else None
+    checkpointing = str(activation_checkpointing or "full").lower()
+    backward_factor = 3.0 if checkpointing in ("full", "selective") else 2.0
+
+    def stage(name, ms, flops, source, note=""):
+        seconds = (ms / 1e3) if isinstance(ms, (int, float)) and ms is not None else None
+        share = (seconds / step_s) if seconds is not None and step_s else None
+        mfu = None
+        if seconds and seconds > 0 and flops and world > 0:
+            mfu = flops / seconds / (world * ASCEND_910B2_CUBE_PEAK_TFLOPS * 1e12)
+        return {
+            "name": name,
+            "seconds": seconds,
+            "share": share,
+            "flops": flops,
+            "mfu": mfu,
+            "source": source,
+            "note": note,
+        }
+
+    wait_ms = _number(_get(record, "data", "wait_ms"))
+    pack_ms = _number(_get(record, "data", "pack_ms"))
+    vae_ms = _number(_get(record, "data", "vae_ms"))
+    forward_ms = _number(_get(record, "perf", "forward_ms")) or _number(_get(record, "perf", "fwd_ms"))
+    backward_ms = _number(_get(record, "perf", "backward_ms")) or _number(_get(record, "perf", "bwd_ms"))
+    optim_ms = _number(_get(record, "perf", "optim_ms"))
+    prep_ms = None
+    if pack_ms is not None:
+        prep_ms = max(0.0, pack_ms - (vae_ms or 0.0))
+    forward_flops = samples * FWD_TFLOP_PER_SAMPLE * 1e12
+    vae_flops = samples * VAE_TFLOP_PER_SAMPLE * 1e12
+    stages = [
+        stage("data wait", wait_ms, None, "host", "loader / prefetch"),
+        stage("data prep", prep_ms, None, "device", "pack, h2d, tokenize"),
+        stage("VAE", vae_ms, vae_flops if vae_ms else None, "device", "frozen encoder"),
+        stage("forward", forward_ms, forward_flops, "device", "1x fwd FLOPs"),
+        stage("backward", backward_ms, forward_flops * backward_factor, "device", f"{backward_factor:g}x fwd FLOPs"),
+        stage("optimizer", optim_ms, None, "device", "elementwise update"),
+    ]
+    known = sum(item["seconds"] for item in stages if item["seconds"] is not None)
+    other_s = max(0.0, (step_s - known)) if step_s is not None else None
+    stages.append(stage("other", (other_s * 1e3) if other_s is not None else None, None, "host", "sync / logging"))
+    total_mfu = compute_mfu(step_ms or 0.0, samples, int(world or 0), include_vae=False)
+    return {
+        "iteration": _number(record.get("step")),
+        "epoch": _number(_get(record, "data", "epoch")),
+        "batch_samples": samples,
+        "micro_batches": _number(_get(record, "data", "microsteps")),
+        "step_seconds": step_s,
+        "total_mfu": total_mfu,
+        "activation_checkpointing": checkpointing,
+        "stages": stages,
+        "samples_per_second": (samples / step_s) if step_s else None,
+        "loss": _get(record, "loss"),
+        "optim": _get(record, "optim"),
+        "memory": _get(record, "mem"),
+        "complete": record.get("complete"),
+    }

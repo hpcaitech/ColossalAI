@@ -55,7 +55,14 @@ def make_run(tmp_path: Path, *, world: int = 2, steps: int = 3, completed: bool 
                 "world": world,
                 "expected_world": world,
                 "complete": True,
-                "data": {"samples": 8, "ar_tokens": 1000, "dm_tokens": 2000, "wait_ms": 100.0, "vae_ms": 200.0},
+                "data": {
+                    "samples": 8,
+                    "ar_tokens": 1000,
+                    "dm_tokens": 2000,
+                    "wait_ms": 100.0,
+                    "vae_ms": 200.0,
+                    "epoch": 0,
+                },
                 "loss": {"total": 2.0 - step * 0.1, "vision": 1.0, "action": 0.5},
                 "perf": {"step_ms": 1000.0 * step, "forward_ms": 300.0, "backward_ms": 500.0, "optim_ms": 50.0},
                 "mem": {"device_used_gib": 40.0, "device_total_gib": 64.0, "peak_reserved_gib": 44.0},
@@ -284,3 +291,23 @@ def test_remote_agent_and_mirror_round_trip(tmp_path):
     payload2 = collect(metrics, control, {"aggregated": payload["aggregated"]["offset"]}, 0, "no-such-entry", "")
     mirror._ingest("nodeA", payload2)
     assert (tmp_path / "cache" / "mirror-run" / "metrics" / "aggregated.jsonl").read_text().count("\n") == 2
+
+
+def test_step_detail_reports_each_stage_and_mfu(tmp_path):
+    run = make_run(tmp_path, world=2, steps=3, completed=True)
+    ref = discover([run])[0]
+    state = RunState(ref)
+    state.refresh()
+    detail = state.step_detail(2)
+    assert detail is not None
+    assert detail["iteration"] == 2
+    assert detail["epoch"] == 0
+    assert detail["batch_samples"] == 8
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert {"data wait", "VAE", "forward", "backward", "optimizer"} <= set(stages)
+    assert stages["forward"]["seconds"] is not None and stages["forward"]["seconds"] > 0
+    assert stages["forward"]["mfu"] is not None and stages["forward"]["mfu"] > 0
+    # Activation checkpointing is the default: backward carries 3x the forward FLOPs.
+    assert stages["backward"]["flops"] == pytest.approx(stages["forward"]["flops"] * 3)
+    assert detail["total_mfu"] is not None and detail["total_mfu"] > 0
+    assert state.step_detail(99) is None

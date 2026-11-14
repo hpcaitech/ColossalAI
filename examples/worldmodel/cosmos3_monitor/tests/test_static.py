@@ -24,3 +24,13 @@ def test_index_busts_static_asset_cache_and_uses_the_local_echarts_bundle():
     assert "https://" not in index
     assert (STATIC / "vendor" / "echarts.min.js").is_file()
     assert (STATIC / "vendor" / "LICENSE.echarts").is_file()
+
+
+def test_charts_use_integer_step_ticks_and_expose_step_detail():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "minInterval: state.xMode === 'step' ? 1 : null" in source
+    assert "function openStepDetail" in source
+    assert "chart-stage-mfu" in source
+    assert "chart-epoch" in source
+    assert "compare-selected" in source
+    assert "pause-toggle" in (STATIC / "index.html").read_text(encoding="utf-8")
