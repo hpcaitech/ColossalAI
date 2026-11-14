@@ -9,6 +9,7 @@ Model saves are exports; resumable replay training is provided by cosmos3_harnes
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import math
 import os
@@ -157,13 +158,16 @@ class PowerEMA:
         trainable = [p for p in model.parameters() if p.requires_grad]
         masters = getattr(optimizer, "get_working_to_master_map", lambda: None)()
         if masters:
-            self.sources = [masters[id(p)] for p in trainable if id(p) in masters]
+            paired = [(p, masters[id(p)]) for p in trainable if id(p) in masters]
+            self.working = [working for working, _ in paired]
+            self.sources = [master for _, master in paired]
             self.source_kind = "fp32 master shard"
         else:
             # No ZeRO, so no master copy to read: at zero_stage 0 the optimizer steps the parameters
             # themselves and they are the only thing there is to average. Named rather than silently
             # substituted, because with the plugin at zero_stage 2 the masters are fp32 while the working
             # copy is bf16, and averaging the wrong one would quietly round the source of an fp32 average.
+            self.working = trainable
             self.sources = trainable
             self.source_kind = "parameters (no ZeRO master copy)"
         if not self.sources:
@@ -172,6 +176,60 @@ class PowerEMA:
                 "set matched something, or pass --no-ema."
             )
         self.shadow = [t.detach().float().clone() for t in self.sources]
+        self.optimizer = optimizer
+
+    def _full(self, working: torch.Tensor, shard: torch.Tensor) -> torch.Tensor:
+        """One averaged parameter, whole, from this rank's shard of it.
+
+        ZeRO holds a flat slice of each parameter per rank, so the shadow is a slice too and no single rank
+        has a parameter to write. The gather is the one the optimizer performs on its own state in
+        ``LowLevelZeroOptimizer.state_dict``: all-gather the shard into a flat buffer of the padded width,
+        then trim to the parameter and reshape. Reusing that path rather than inventing one keeps the
+        padding and the nd-process-group handling in one place.
+
+        Args:
+            working (torch.Tensor): The parameter the shard belongs to, which gives the shape.
+            shard (torch.Tensor): This rank's averaged slice.
+
+        Returns:
+            torch.Tensor: The averaged parameter, fp32, in ``working``'s shape.
+        """
+        if self.source_kind != "fp32 master shard":
+            return shard.detach().float()
+        from colossalai.zero.low_level._utils import all_gather_into_flat_tensor_nd, get_nd_world_size
+
+        group = self.optimizer.param_to_pg[working]
+        flat = torch.empty(shard.numel() * get_nd_world_size(group), device=shard.device, dtype=torch.float32)
+        all_gather_into_flat_tensor_nd(flat, shard.detach().float().flatten(), group)
+        return flat[: working.numel()].reshape_as(working)
+
+    @contextlib.contextmanager
+    def applied(self):
+        """Put the averaged weights into the working parameters for the duration of the block.
+
+        This is how the average becomes an artefact. The recipe's released weights are the EMA's, not the
+        last step's, and the shadow lives beside the model where no checkpoint writer can see it -- so
+        without this the run finishes and the average is discarded. Writing it into the working parameters
+        means the ordinary sharded export produces it, frozen parameters and all, instead of this module
+        assembling a model file of its own.
+
+        Every rank has to enter the block: ``_full`` all-gathers. The working parameters are restored on
+        the way out, including when the body raises, so training continues from the weights it was on.
+
+        Yields:
+            None: inside the block the model carries the averaged weights.
+        """
+        with torch.no_grad():
+            backup = [working.detach().clone() for working in self.working]
+        try:
+            with torch.no_grad():
+                for working, shard in zip(self.working, self.shadow):
+                    working.data.copy_(self._full(working, shard).to(working.dtype))
+            yield
+        finally:
+            with torch.no_grad():
+                for working, saved in zip(self.working, backup):
+                    working.data.copy_(saved)
 
     def beta(self, iteration: int) -> float:
         return 0.0 if iteration < 1 else (1.0 - 1.0 / (iteration + 1)) ** (self.exponent + 1.0)
@@ -704,6 +762,30 @@ def main():
             "curated_ranges": args.keep_ranges,
         }
     )
+
+    def save(step: int) -> None:
+        """Export the weights, and the averaged weights beside them when the EMA is on.
+
+        The averaged weights are what the recipe releases, so an export without them is not the run's
+        result. They go in a subdirectory of the same export rather than replacing it, because both are
+        wanted: the plain weights are what a resume continues from and the average is what is evaluated.
+        The asynchronous writer is not used for the average -- it is written while the working parameters
+        hold values training is not using, so it has to finish before they are put back.
+        """
+        save_dir = args.out / f"step-{step}"
+        booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
+        if args.async_save:
+            pending_exports.append(save_dir)
+        else:
+            fix_checkpoint_modes(save_dir, coord)
+        if ema is not None:
+            if args.async_save:
+                booster.checkpoint_io._sync_io()
+            with ema.applied():
+                booster.save_model(model, str(save_dir / "ema"), shard=True, use_safetensors=True)
+            fix_checkpoint_modes(save_dir / "ema", coord)
+        coord.print_on_master(f"[save] step {step} -> {save_dir}" + (" (+ ema/)" if ema is not None else ""))
+
     watch = Stopwatch()
     iterator = None
     epoch = step = 0
@@ -818,13 +900,12 @@ def main():
                     mem=device_memory_gib(),
                 )
             if step % args.save_every == 0:
-                save_dir = args.out / f"step-{step}"
-                booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
-                if args.async_save:
-                    pending_exports.append(save_dir)
-                else:
-                    fix_checkpoint_modes(save_dir, coord)
+                save(step)
         completed = True
+        if step and step % args.save_every:
+            # The run reached its last step without landing on a save interval. Without this the weights
+            # and the average it spent the whole run building are both discarded at exit.
+            save(step)
     finally:
         shutdown_dataloader(iterator)
         if pending_exports:
