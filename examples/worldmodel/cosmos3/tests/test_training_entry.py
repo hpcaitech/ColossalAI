@@ -1,10 +1,10 @@
 """CPU contracts for the online SFT entry, including real accumulated optimizer updates."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import torch
-from pathlib import Path
 
 from colossalai.shardformer.layer.two_way_attn import TwoWayPackedMeta
 from examples.worldmodel.cosmos3 import train_sft as entry
