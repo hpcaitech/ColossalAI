@@ -10,7 +10,7 @@ import pytest
 
 from examples.worldmodel.cosmos3_monitor.alerts import AlertEngine
 from examples.worldmodel.cosmos3_monitor.discovery import discover, load_manifest, world_size
-from examples.worldmodel.cosmos3_monitor.readers import JsonlTail, read_jsonl
+from examples.worldmodel.cosmos3_monitor.readers import JsonlTail
 from examples.worldmodel.cosmos3_monitor.series import SeriesStore
 from examples.worldmodel.cosmos3_monitor.state import RunState
 from examples.worldmodel.cosmos3_monitor.system import HostSampler, parse_npu_smi
@@ -81,7 +81,9 @@ def make_run(tmp_path: Path, *, world: int = 2, steps: int = 3, completed: bool 
             },
         )
         if completed:
-            write_json(metrics / f"terminal-{rank:03d}.json", {"rank": rank, "step": steps, "completed": True, "time": now})
+            write_json(
+                metrics / f"terminal-{rank:03d}.json", {"rank": rank, "step": steps, "completed": True, "time": now}
+            )
     return run
 
 
@@ -91,7 +93,7 @@ def test_jsonl_tail_keeps_a_partial_line_and_resets_after_truncation(tmp_path):
     tail = JsonlTail(path)
     assert [row["step"] for row in tail.read_new()] == [1]
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(' 2}\n')
+        stream.write(" 2}\n")
     assert [row["step"] for row in tail.read_new()] == [2]
     path.write_text('{"step": 9}\n', encoding="utf-8")
     assert [row["step"] for row in tail.read_new()] == [9]
@@ -155,7 +157,15 @@ def test_state_machine_flags_stalled_progress(tmp_path):
 def test_alert_engine_deduplicates_and_expires_transient_events(tmp_path):
     engine = AlertEngine(tmp_path / "state")
     now = time.time()
-    event = {"type": "event", "severity": "error", "kind": "nonfinite_loss", "step": 5, "rank": 0, "time": now, "message": "NaN"}
+    event = {
+        "type": "event",
+        "severity": "error",
+        "kind": "nonfinite_loss",
+        "step": 5,
+        "rank": 0,
+        "time": now,
+        "message": "NaN",
+    }
     issues = [{"kind": "stalled_progress", "severity": "critical", "rank": 0, "message": "stalled"}]
     first = engine.evaluate("tok", "run", issues, [event], now=now)
     second = engine.evaluate("tok", "run", issues, [event], now=now + 1)

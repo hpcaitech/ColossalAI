@@ -238,7 +238,9 @@ def _window(series: Series, from_step: Optional[float], to_step: Optional[float]
     return [(x, y) for x, y in zip(series.x, series.y) if low <= x <= high]
 
 
-def _decimate(points: List[Tuple[float, Optional[float]]], max_points: int) -> Tuple[List[float], List[Optional[float]]]:
+def _decimate(
+    points: List[Tuple[float, Optional[float]]], max_points: int
+) -> Tuple[List[float], List[Optional[float]]]:
     """Bucket min/max decimation: preserve extremes, keep the first/last point.
 
     A plain stride hides a one-point loss spike, exactly the event the dashboard exists to show.  For each

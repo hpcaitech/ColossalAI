@@ -48,7 +48,11 @@ try:
     from examples.worldmodel.cosmos3_harness.heldout import load_split_manifest
     from examples.worldmodel.cosmos3_harness.loss import combine_modality_losses, normalise_packed_loss, velocity_mse
     from examples.worldmodel.cosmos3_harness.optim import build_adamw
-    from examples.worldmodel.cosmos3_harness.run_context import collect_rank_identity, collect_run_identity, enrich_manifest
+    from examples.worldmodel.cosmos3_harness.run_context import (
+        collect_rank_identity,
+        collect_run_identity,
+        enrich_manifest,
+    )
     from examples.worldmodel.cosmos3_harness.training_heartbeat import TrainingHeartbeat, write_terminal
     from examples.worldmodel.cosmos3_harness.training_metrics import (
         AnomalyDetector,
@@ -225,7 +229,9 @@ def _run_manifest(args: argparse.Namespace, device: torch.device, backend: str, 
         dist.broadcast_object_list(holder, src=0)
         identity = holder[0]
     else:
-        identity = collect_run_identity(args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None))
+        identity = collect_run_identity(
+            args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None)
+        )
     manifest = {
         "args": dict(vars(args)),
         "env": collect_env(device),
@@ -910,8 +916,16 @@ def train(args: argparse.Namespace) -> int:
             metrics.step(step + 1, **sections)
         if args.save_dir and (step + 1) % args.save_interval == 0:
             _save_with_ledger(
-                ledger, checkpoint_stats, Path(args.save_dir), model, optimizer,
-                step + 1, epoch, sampler_cursor, config, args.save_interval,
+                ledger,
+                checkpoint_stats,
+                Path(args.save_dir),
+                model,
+                optimizer,
+                step + 1,
+                epoch,
+                sampler_cursor,
+                config,
+                args.save_interval,
             )
             last_saved_step = step + 1
 
@@ -927,8 +941,16 @@ def train(args: argparse.Namespace) -> int:
 
     if args.save_dir and last_saved_step != args.steps:
         _save_with_ledger(
-            ledger, checkpoint_stats, Path(args.save_dir), model, optimizer,
-            args.steps, epoch, sampler_cursor, config, args.save_interval,
+            ledger,
+            checkpoint_stats,
+            Path(args.save_dir),
+            model,
+            optimizer,
+            args.steps,
+            epoch,
+            sampler_cursor,
+            config,
+            args.save_interval,
         )
     completed = True
 
@@ -956,7 +978,9 @@ def train(args: argparse.Namespace) -> int:
             "duration_s": time.time() - begin,
             "session_id": getattr(metrics, "session_id", None),
             "run_id": run_id,
-            "peak_device_used_gib": (heartbeat.peak if heartbeat is not None else device_memory_gib().get("device_used_gib")),
+            "peak_device_used_gib": (
+                heartbeat.peak if heartbeat is not None else device_memory_gib().get("device_used_gib")
+            ),
             "checkpoint_count": checkpoint_stats["count"],
             "checkpoint_bytes": checkpoint_stats["bytes"],
         }

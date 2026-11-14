@@ -17,8 +17,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .readers import file_age
-
 _DEVICE_HEADER = re.compile(
     r"^\|\s*(\d+)\s+([A-Za-z0-9_+-]+)\s*\|\s*([A-Za-z]+)\s*\|\s*([\d.]+)\s+(\d+)\s+(\d+)\s*/\s*(\d+)\s*\|"
 )
@@ -95,9 +93,7 @@ def _float(value: Any) -> Optional[float]:
 
 def npu_smi_text(timeout: float = 5.0) -> Tuple[Optional[str], Optional[str]]:
     try:
-        result = subprocess.run(
-            ["npu-smi", "info"], capture_output=True, text=True, timeout=timeout, check=False
-        )
+        result = subprocess.run(["npu-smi", "info"], capture_output=True, text=True, timeout=timeout, check=False)
     except FileNotFoundError:
         return None, "npu-smi not found"
     except subprocess.TimeoutExpired:

@@ -16,7 +16,6 @@ import base64
 import json
 import shlex
 import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -110,7 +109,9 @@ class Mirror:
         command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", node, remote_command]
         result = subprocess.run(command, capture_output=True, text=True, timeout=20)
         if result.returncode != 0:
-            raise RuntimeError(f"ssh {node} exited {result.returncode}: {(result.stderr or result.stdout).strip()[:300]}")
+            raise RuntimeError(
+                f"ssh {node} exited {result.returncode}: {(result.stderr or result.stdout).strip()[:300]}"
+            )
         return json.loads(result.stdout)
 
     def poll_once(self) -> None:
@@ -171,10 +172,17 @@ class Mirror:
         self._append_delta(self.metrics / "checkpoints.jsonl", payload.get("checkpoints"), state, "checkpoints")
         for name, chunk in (payload.get("system") or {}).items():
             system_state = state.setdefault("system", {})
-            offset = int(system_state.get(name, 0))
+            int(system_state.get(name, 0))
             self._append_delta(self.metrics / "system" / name, chunk, system_state, name, offset_key=None)
 
-    def _append_delta(self, path: Path, chunk: Optional[Dict[str, Any]], holder: Dict[str, Any], key: str, offset_key: Optional[str] = None) -> None:
+    def _append_delta(
+        self,
+        path: Path,
+        chunk: Optional[Dict[str, Any]],
+        holder: Dict[str, Any],
+        key: str,
+        offset_key: Optional[str] = None,
+    ) -> None:
         if not chunk:
             return
         path.parent.mkdir(parents=True, exist_ok=True)

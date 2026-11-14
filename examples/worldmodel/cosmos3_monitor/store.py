@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from . import MONITOR_VERSION
 from .alerts import AlertEngine
-from .discovery import RunRef, discover
+from .discovery import discover
 from .state import RunState
 
 

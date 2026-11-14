@@ -134,7 +134,6 @@ def command_mirror(args) -> int:
 def command_export(args) -> int:
     """Offline CSV export, useful when the server cannot reach the run directory."""
     from .discovery import discover
-    from .series import SeriesStore
     from .state import RunState
 
     refs = discover([args.run_dir], depth=1)
