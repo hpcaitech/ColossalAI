@@ -49,6 +49,8 @@ PY
 CUDA_VISIBLE_DEVICES="" FAST_TEST=1 "${PYTHON}" -m pytest -q \
     examples/worldmodel/cosmos3_harness/tests/test_robolab.py \
     examples/worldmodel/cosmos3_harness/tests/test_training_metrics.py \
+    examples/worldmodel/cosmos3_harness/tests/test_training_hooks.py \
+    examples/worldmodel/cosmos3_monitor/tests \
     examples/worldmodel/cosmos3_harness/tests/test_resume.py \
     tests/test_shardformer/test_layer/test_two_way_attn.py \
     tests/test_shardformer/test_model/test_cosmos_mot_packing.py \

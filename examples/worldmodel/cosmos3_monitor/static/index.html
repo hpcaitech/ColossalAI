@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cosmos3 Monitor</title>
+  <link rel="stylesheet" href="/static/styles.css?v=6">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-mark">C3</div>
+        <div>
+          <div class="brand-title">Cosmos3 Monitor</div>
+          <div class="brand-sub">SFT · replay · NPU</div>
+        </div>
+      </div>
+      <div class="sidebar-search">
+        <input id="run-search" placeholder="搜索 run / 路径…" autocomplete="off">
+      </div>
+      <div class="sidebar-section">Runs</div>
+      <div id="run-list"><div class="empty"><span class="spinner"></span></div></div>
+      <div class="sidebar-foot" id="health">connecting…</div>
+    </aside>
+    <main id="main">
+      <header id="topbar">
+        <div id="crumbs"><a href="#/runs">Runs</a></div>
+        <div class="top-actions">
+          <span id="live-badge" class="chip">live</span>
+          <button id="pause-toggle" class="ghost" title="暂停/继续实时刷新">暂停</button>
+          <button id="theme-toggle" class="ghost" title="切换明暗 (d)">◐</button>
+        </div>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+  <div id="toast"></div>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="step-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div><h2 id="drawer-title">Step</h2><div id="drawer-sub" class="muted small"></div></div>
+      <button id="drawer-close" class="ghost" title="关闭 (Esc)">✕</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+  <script src="/static/vendor/echarts.min.js"></script>
+  <script src="/static/app.js?v=6"></script>
+</body>
+</html>
