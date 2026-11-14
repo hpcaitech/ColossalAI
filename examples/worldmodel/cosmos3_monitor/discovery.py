@@ -92,7 +92,9 @@ def _detect(path: Path) -> Optional[RunRef]:
         return RunRef(path=path, metrics_dir=metrics, layout="metrics", manifest_path=run_json)
     legacy = path / "run.json"
     if legacy.is_file():
-        return RunRef(path=path, metrics_dir=metrics if metrics.is_dir() else path, layout="legacy", manifest_path=legacy)
+        return RunRef(
+            path=path, metrics_dir=metrics if metrics.is_dir() else path, layout="legacy", manifest_path=legacy
+        )
     config = path / "config.json"
     if config.is_file() and metrics.is_dir():
         return RunRef(path=path, metrics_dir=metrics, layout="validation", config_path=config)

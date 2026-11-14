@@ -12,7 +12,7 @@ import io
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -100,7 +100,7 @@ def create_app(store: RunStore) -> FastAPI:
 
     @app.get("/api/runs/{token}")
     def run_detail(token: str, include: str = ""):
-        state = _require(store, token)
+        _require(store, token)
         wants = {item.strip() for item in include.split(",") if item.strip()}
         snapshot = store.snapshot(token, include_manifest="manifest" in wants)
         if snapshot is None:
@@ -209,7 +209,7 @@ def create_app(store: RunStore) -> FastAPI:
 
     @app.get("/api/runs/{token}/stream")
     async def stream(token: str, request: Request):
-        state = _require(store, token)
+        _require(store, token)
 
         async def generate():
             last_marker = None

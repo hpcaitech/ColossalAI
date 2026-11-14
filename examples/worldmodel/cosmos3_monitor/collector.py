@@ -11,7 +11,6 @@ import json
 import os
 import signal
 import socket
-import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -44,7 +43,7 @@ def collect_once(
     run_out: str = "",
     sampler: Optional[HostSampler] = None,
 ) -> Dict[str, Any]:
-    metrics = Path(metrics_dir)
+    Path(metrics_dir)
     sampler = sampler or HostSampler(disk_paths=disk_paths, entry=entry, run_out=run_out)
     payload = sampler.sample(node_rank=node_rank)
     payload["collector"]["interval_s"] = None

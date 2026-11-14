@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import os
 import socket
 import time
 from pathlib import Path
@@ -83,7 +82,9 @@ def _processes(entry: str, out: str):
     return rows
 
 
-def collect(metrics_dir: Path, control_dir: Path, offsets: dict, node_rank: int, entry: str, out: str, log_path: str = "") -> dict:
+def collect(
+    metrics_dir: Path, control_dir: Path, offsets: dict, node_rank: int, entry: str, out: str, log_path: str = ""
+) -> dict:
     files = {}
     for pattern in ("heartbeat-*.json", "terminal-*.json"):
         for path in metrics_dir.glob(pattern):
@@ -146,7 +147,11 @@ def main() -> None:
         offsets = json.loads(args.offsets)
     except ValueError:
         offsets = {}
-    print(json.dumps(collect(args.metrics_dir, args.control_dir, offsets, args.node_rank, args.entry, args.out, args.log_path)))
+    print(
+        json.dumps(
+            collect(args.metrics_dir, args.control_dir, offsets, args.node_rank, args.entry, args.out, args.log_path)
+        )
+    )
 
 
 if __name__ == "__main__":

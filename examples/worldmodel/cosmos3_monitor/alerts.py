@@ -146,7 +146,9 @@ class AlertEngine:
         for issue in issues:
             kind = str(issue.get("kind") or "issue")
             severity = str(issue.get("severity") or "warn")
-            subject = str(issue.get("rank") if issue.get("rank") is not None else issue.get("host") or issue.get("step") or "")
+            subject = str(
+                issue.get("rank") if issue.get("rank") is not None else issue.get("host") or issue.get("step") or ""
+            )
             emit(
                 rule=kind,
                 severity=severity,
@@ -219,7 +221,10 @@ class AlertEngine:
         return {
             "active": sorted(
                 active.values(),
-                key=lambda item: (_SEVERITY_ORDER.get(str(item.get("severity")), 9), -float(item.get("last_seen") or 0)),
+                key=lambda item: (
+                    _SEVERITY_ORDER.get(str(item.get("severity")), 9),
+                    -float(item.get("last_seen") or 0),
+                ),
             ),
             "history": self.history(token, limit=200),
             "counts": {

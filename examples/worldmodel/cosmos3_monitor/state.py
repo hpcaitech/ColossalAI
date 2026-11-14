@@ -14,9 +14,11 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional
 
-from .discovery import RunRef, derive_topology, load_manifest, max_steps as manifest_max_steps, world_size
+from .discovery import RunRef, derive_topology, load_manifest
+from .discovery import max_steps as manifest_max_steps
+from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
 from .series import SeriesStore
 from .system import SystemHistory, read_system_files
@@ -54,7 +56,9 @@ def _flatten_record(record: Dict[str, Any]) -> Dict[str, Any]:
 class RunState:
     """Everything the dashboard knows about one run directory."""
 
-    def __init__(self, ref: RunRef, *, stale_seconds: float = STALE_SECONDS, stall_seconds: float = STALL_SECONDS) -> None:
+    def __init__(
+        self, ref: RunRef, *, stale_seconds: float = STALE_SECONDS, stall_seconds: float = STALL_SECONDS
+    ) -> None:
         self.ref = ref
         self.stale_seconds = float(stale_seconds)
         self.stall_seconds = float(stall_seconds)
@@ -248,8 +252,12 @@ class RunState:
             "loss": {"total": statistics.fmean(finite_loss)} if finite_loss else {},
             "perf": {
                 "step_ms": max((_num(item.get("perf/step_ms")) or 0.0) for item in flat),
-                "forward_ms": max((_num(item.get("perf/forward_ms")) or _num(item.get("perf/fwd_ms")) or 0.0) for item in flat),
-                "backward_ms": max((_num(item.get("perf/backward_ms")) or _num(item.get("perf/bwd_ms")) or 0.0) for item in flat),
+                "forward_ms": max(
+                    (_num(item.get("perf/forward_ms")) or _num(item.get("perf/fwd_ms")) or 0.0) for item in flat
+                ),
+                "backward_ms": max(
+                    (_num(item.get("perf/backward_ms")) or _num(item.get("perf/bwd_ms")) or 0.0) for item in flat
+                ),
                 "optim_ms": max((_num(item.get("perf/optim_ms")) or 0.0) for item in flat),
                 "skew": None,
             },
@@ -515,14 +523,25 @@ class RunState:
             pids = {process.get("pid") for process in system.get("processes") or []}
             pid = heartbeat.get("pid")
             if pid and pid not in pids and not completed:
-                add("rank_process_missing", f"rank {rank} pid {pid} is not in the process table", "error", rank=rank, host=host)
+                add(
+                    "rank_process_missing",
+                    f"rank {rank} pid {pid} is not in the process table",
+                    "error",
+                    rank=rank,
+                    host=host,
+                )
         for launcher in launchers:
             if launcher.get("state") != "running":
                 continue
             host = launcher.get("hostname") or launcher.get("node")
             system = latest_system.get(host)
             if system and not system.get("processes"):
-                add("launcher_process_missing", f"launcher on {host} is running but no training process is visible", "error", host=host)
+                add(
+                    "launcher_process_missing",
+                    f"launcher on {host} is running but no training process is visible",
+                    "error",
+                    host=host,
+                )
 
         if launchers and any(item.get("state") == "completed" for item in launchers):
             if world and len(terminals) < world and not failed_ranks:
@@ -533,14 +552,29 @@ class RunState:
         for entry in sorted(self.checkpoints.values(), key=lambda item: item.get("step") or 0):
             status = entry.get("status")
             if status == "failed":
-                add("checkpoint_failed", f"checkpoint at step {entry.get('step')} failed: {entry.get('error')}", "critical", step=entry.get("step"))
+                add(
+                    "checkpoint_failed",
+                    f"checkpoint at step {entry.get('step')} failed: {entry.get('error')}",
+                    "critical",
+                    step=entry.get("step"),
+                )
             if status == "pending":
                 started = _num(entry.get("started_at")) or 0.0
                 if started and now - started > CHECKPOINT_PENDING_SECONDS:
-                    add("checkpoint_missing", f"checkpoint at step {entry.get('step')} has no end record", "error", step=entry.get("step"))
+                    add(
+                        "checkpoint_missing",
+                        f"checkpoint at step {entry.get('step')} has no end record",
+                        "error",
+                        step=entry.get("step"),
+                    )
             size = _num(entry.get("bytes"))
             if size and latest_size and (size < 0.5 * latest_size or size > 2.0 * latest_size):
-                add("checkpoint_size_anomaly", f"checkpoint size {size} differs from previous {latest_size}", "warn", step=entry.get("step"))
+                add(
+                    "checkpoint_size_anomaly",
+                    f"checkpoint size {size} differs from previous {latest_size}",
+                    "warn",
+                    step=entry.get("step"),
+                )
             if size:
                 latest_size = size
         durations = [
@@ -571,7 +605,12 @@ class RunState:
             shm = host_info.get("shm") or {}
             shm_free, shm_total = _num(shm.get("free_gib")), _num(shm.get("total_gib"))
             if shm_free is not None and shm_total and shm_free < 0.1 * shm_total:
-                add("shm_pressure", f"{host}: /dev/shm is {100 * (1 - shm_free / shm_total):.0f}% full", "warn", host=host)
+                add(
+                    "shm_pressure",
+                    f"{host}: /dev/shm is {100 * (1 - shm_free / shm_total):.0f}% full",
+                    "warn",
+                    host=host,
+                )
             memory = host_info.get("memory") or {}
             available, total = _num(memory.get("available_gib")), _num(memory.get("total_gib"))
             if available is not None and total and available < 0.1 * total:
@@ -588,9 +627,21 @@ class RunState:
                 temperature = _num(device.get("temperature_c"))
                 if temperature is not None:
                     if temperature > 95:
-                        add("temperature_critical", f"{host} NPU {device.get('index')}: {temperature:.0f}C", "error", host=host, device=device.get("index"))
+                        add(
+                            "temperature_critical",
+                            f"{host} NPU {device.get('index')}: {temperature:.0f}C",
+                            "error",
+                            host=host,
+                            device=device.get("index"),
+                        )
                     elif temperature > 85:
-                        add("temperature_high", f"{host} NPU {device.get('index')}: {temperature:.0f}C", "warn", host=host, device=device.get("index"))
+                        add(
+                            "temperature_high",
+                            f"{host} NPU {device.get('index')}: {temperature:.0f}C",
+                            "warn",
+                            host=host,
+                            device=device.get("index"),
+                        )
 
         # Data not advancing while the workers are alive: the loss chart is flat but nothing crashed.
         if not completed and not failed_ranks and not failed_launchers and heartbeats and self.last_record is not None:
@@ -691,7 +742,9 @@ class RunState:
         config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
         payload: Dict[str, Any] = {
             "run_id": str(self._manifest.get("run_id") or config.get("run_id") or self.ref.display_name),
-            "display_name": str(self._manifest.get("run_name") or self._manifest.get("run_id") or self.ref.display_name),
+            "display_name": str(
+                self._manifest.get("run_name") or self._manifest.get("run_id") or self.ref.display_name
+            ),
             "token": self.ref.token,
             "dir": str(self.ref.path),
             "metrics_dir": str(self.ref.metrics_dir),
@@ -731,7 +784,8 @@ class RunState:
                 "complete": last.get("complete"),
             },
             "issues": issues,
-            "warnings": self._errors + [f"{reader.path}: {reader.error}" for reader in (self.manifest, self.config) if reader and reader.error],
+            "warnings": self._errors
+            + [f"{reader.path}: {reader.error}" for reader in (self.manifest, self.config) if reader and reader.error],
             "hosts": self._hosts(),
             "topology": derive_topology(self._manifest, self.world),
             "checkpoints": {
@@ -770,7 +824,9 @@ class RunState:
 
     # -- views --------------------------------------------------------------------------------------------
 
-    def events_page(self, severity: Optional[str] = None, kind: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+    def events_page(
+        self, severity: Optional[str] = None, kind: Optional[str] = None, limit: int = 200
+    ) -> List[Dict[str, Any]]:
         limit = max(1, min(int(limit), 2000))
         result = []
         for event in reversed(self.events):

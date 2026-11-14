@@ -125,12 +125,17 @@ def parse_args(argv=None):
     parser.add_argument("--run-name", help="Human-readable name shown by the monitor.")
     parser.add_argument("--log-path", help="Path of this run's stdout log, so the dashboard can tail it.")
     parser.add_argument("--heartbeat-seconds", type=float, default=2.0, help="Liveness heartbeat interval.")
-    parser.add_argument("--no-heartbeat", action="store_true", help="Disable the liveness heartbeat (benchmark purity).")
+    parser.add_argument(
+        "--no-heartbeat", action="store_true", help="Disable the liveness heartbeat (benchmark purity)."
+    )
     parser.add_argument("--no-checkpoint-ledger", action="store_true", help="Disable the checkpoint ledger.")
     parser.add_argument("--no-aggregate-metrics", action="store_true", help="Disable aggregated.jsonl.")
-    parser.add_argument("--collective-metrics", action="store_true",
-                        help="Gather each log-step record across ranks instead of reading rank files; exact global "
-                             "counts at the cost of one collective per log step.")
+    parser.add_argument(
+        "--collective-metrics",
+        action="store_true",
+        help="Gather each log-step record across ranks instead of reading rank files; exact global "
+        "counts at the cost of one collective per log step.",
+    )
     parser.add_argument("--wandb-project")
     parser.add_argument("--wandb-mode", choices=("offline", "online", "disabled"), default="offline")
     parser.add_argument("--wandb-run-name")
@@ -573,35 +578,35 @@ def main():
     target = model.unwrap()
     rank_identity = collect_rank_identity(device)
     manifest = {
-            "args": vars(args),
-            "world_size": coord.world_size,
-            "env": {
-                "torch": torch.__version__,
-                "device": accelerator.name,
-                **{
-                    name: package_version(name)
-                    for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
-                },
+        "args": vars(args),
+        "world_size": coord.world_size,
+        "env": {
+            "torch": torch.__version__,
+            "device": accelerator.name,
+            **{
+                name: package_version(name)
+                for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
             },
-            "compiler": {"decoder": compile_backend, "vae_mode": args.vae_compile, "vae_backend": vae_backend},
-            "attention": {
-                "requested": args.attn_backend,
-                "resolved": backend,
-                "processor": type(policy.processor).__name__,
-            },
-            "precision": {
-                "parameters": "bfloat16",
-                "vae": args.vae_dtype,
-                "cast_inputs": args.cast_inputs,
-                "cast_buffers": args.cast_buffers,
-                "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
-            },
-            "loss_objective": "droid_sample_modality_mean",
-            "topology": parallel_topology(plugin, extra=rank_identity),
-            "independent_dp_replicas": unique_dp,
-            "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
-            "save_kind": "model_export",
-            "curated_ranges": args.keep_ranges,
+        },
+        "compiler": {"decoder": compile_backend, "vae_mode": args.vae_compile, "vae_backend": vae_backend},
+        "attention": {
+            "requested": args.attn_backend,
+            "resolved": backend,
+            "processor": type(policy.processor).__name__,
+        },
+        "precision": {
+            "parameters": "bfloat16",
+            "vae": args.vae_dtype,
+            "cast_inputs": args.cast_inputs,
+            "cast_buffers": args.cast_buffers,
+            "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
+        },
+        "loss_objective": "droid_sample_modality_mean",
+        "topology": parallel_topology(plugin, extra=rank_identity),
+        "independent_dp_replicas": unique_dp,
+        "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
+        "save_kind": "model_export",
+        "curated_ranges": args.keep_ranges,
     }
     identity = collect_run_identity(args, run_name=args.run_name, run_id=args.run_id) if coord.rank == 0 else None
     if dist.is_initialized():
@@ -646,8 +651,10 @@ def main():
             local_rank=rank_identity.get("local_rank"),
             device_name=rank_identity.get("device_name"),
         ).start()
-    ledger = None if args.no_checkpoint_ledger or coord.rank != 0 else CheckpointLedger(
-        metrics_dir, rank=coord.rank, run_id=manifest.get("run_id"), world_size=coord.world_size
+    ledger = (
+        None
+        if args.no_checkpoint_ledger or coord.rank != 0
+        else CheckpointLedger(metrics_dir, rank=coord.rank, run_id=manifest.get("run_id"), world_size=coord.world_size)
     )
     watch = Stopwatch()
     iterator = None
@@ -785,7 +792,9 @@ def main():
                         schedule_every=args.save_every,
                     )
                 try:
-                    booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
+                    booster.save_model(
+                        model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save
+                    )
                 except Exception as exc:
                     if ledger is not None and checkpoint_id is not None:
                         ledger.fail(checkpoint_id, f"{type(exc).__name__}: {exc}")
@@ -840,7 +849,9 @@ def main():
                     "run_id": manifest.get("run_id"),
                     "last_loss": (last_values or {}).get("total"),
                     "best_loss": best_loss,
-                    "peak_device_used_gib": (heartbeat.peak if heartbeat is not None else memory.get("device_used_gib")),
+                    "peak_device_used_gib": (
+                        heartbeat.peak if heartbeat is not None else memory.get("device_used_gib")
+                    ),
                     "checkpoint_count": checkpoint_stats["count"],
                     "checkpoint_bytes": checkpoint_stats["bytes"],
                     "selective_checkpointing": get_cosmos3_selective_checkpoint_stats(target),
