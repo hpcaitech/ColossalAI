@@ -16,7 +16,7 @@ import random
 import sys
 import time
 from functools import partial
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import version
 from pathlib import Path
 
 import torch
@@ -80,16 +80,49 @@ TRAINABLE_KEYS = (
 LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
 
 
-def package_version(name):
-    """The installed distribution's version, or ``None`` when it has no metadata.
+def _tensor_digest(payload) -> str:
+    """Deterministic short fingerprint of a nested tensor structure.
 
-    A source or vendored install can be importable without a distribution record; a reporting field must not be able
-    to stop the run before the first step.
+    Used to compare two data paths that must produce the same packed step. Shapes and dtypes are folded in, so a
+    tensor that is numerically equal but laid out differently still shows up as a different digest.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+
+    def feed(value):
+        if isinstance(value, dict):
+            for key in sorted(value):
+                digest.update(str(key).encode())
+                feed(value[key])
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                feed(item)
+        elif torch.is_tensor(value):
+            tensor = value.detach().to("cpu").contiguous()
+            digest.update(f"{tuple(tensor.shape)}|{tensor.dtype}|".encode())
+            # `.numpy()` refuses bf16 (the targets are bf16), so widen first: bf16 -> float64 is exact and the
+            # digest therefore still distinguishes any two tensors that differ in a single mantissa bit.
+            digest.update(tensor.to(torch.float64).numpy().tobytes())
+        else:
+            digest.update(repr(value).encode())
+
+    feed(payload)
+    return digest.hexdigest()[:16]
+
+
+def resolve_version(distribution: str) -> str:
+    """Installed version of a distribution, or ``"absent"`` when it is not installed.
+
+    Manifests record the resolved environment, and a package that is absent is itself a fact worth recording:
+    on these Ascend nodes torchvision is present but a mismatched build imports without registering its
+    operators, so the version alone does not prove the augmentation works -- that is what the run's
+    augmentation mode records.
     """
     try:
-        return version(name)
-    except PackageNotFoundError:
-        return None
+        return version(distribution)
+    except Exception:
+        return "absent"
 
 
 def parse_args(argv=None):
@@ -122,8 +155,40 @@ def parse_args(argv=None):
     parser.add_argument("--wandb-mode", choices=("offline", "online", "disabled"), default="offline")
     parser.add_argument("--wandb-run-name")
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--worker-threads",
+        type=int,
+        default=0,
+        help="Intra-op threads per DataLoader worker. PyTorch forces workers to one thread, so OMP_NUM_THREADS "
+        "does not reach them; this restores parallelism for the CPU augmentation inside each worker. 0 keeps 1.",
+    )
     parser.add_argument("--mp-context", default="spawn")
     parser.add_argument("--max-episodes", type=int)
+    parser.add_argument(
+        "--latent-cache",
+        type=Path,
+        help="Directory written by precompute_latents.py. When set, samples carry a cached latent and the VAE is "
+        "not built; this is the offline path, and it is single-use per augmentation draw.",
+    )
+    parser.add_argument(
+        "--action-cache",
+        type=Path,
+        help="Directory written by scripts/build_action_cache.py. Replaces the per-file parquet read with a "
+        "memmapped float32 slice, removing the cold-read stall when the sampler crosses a data-file boundary.",
+    )
+    parser.add_argument(
+        "--vae-content-pad",
+        type=int,
+        help="Encode only content_w + pad columns instead of the full canvas, dropping the padded region whose "
+        "latent is cropped away. None keeps the recipe canvas. Gate it with scripts/bench_vae_canvas.py first.",
+    )
+    parser.add_argument(
+        "--video-uint8",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Keep each sample uint8 from the dataset to the NPU: the canvas pad and x/127.5-1 run on the device "
+        "(same pixels and affine as the host path, 4x less H2D).",
+    )
     parser.add_argument(
         "--keep-ranges",
         type=Path,
@@ -136,6 +201,14 @@ def parse_args(argv=None):
         help="Train the success root only; the reference recipe's factory default. Use --no-success-only for both roots.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--image-augmentation",
+        choices=("torchvision", "none"),
+        default="torchvision",
+        help="torchvision is the recipe's crop/resize/color-jitter; none skips it. Needs a torchvision built "
+        "against this torch/torch_npu build (verified with 0.28.0+cpu on the 910B2 nodes, where it costs no "
+        "measurable step time at 4 workers).",
+    )
     parser.add_argument(
         "--attn-backend", "--backend", dest="attn_backend", choices=("auto", "npu", "cuda", "naive"), default="auto"
     )
@@ -181,6 +254,14 @@ def parse_args(argv=None):
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Hash complete CP packs, sample identities and boundaries before forward.",
+    )
+    parser.add_argument(
+        "--pack-hash",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print a digest of the packed step (input_ids, position_ids, targets) at step 1 on rank 0. Used to "
+        "prove two data paths produce the same step; a loss comparison cannot separate that from batch or noise "
+        "differences.",
     )
     parser.add_argument("--optimizer", choices=("hybrid-adam", "adamw"), default="hybrid-adam")
     parser.add_argument("--adamw-mode", choices=("auto", "plain", "foreach", "fused"), default="auto")
@@ -481,11 +562,20 @@ def main():
         chunk_length=args.chunk_length,
         fps=args.fps,
         resolution=args.resolution,
-        augment=True,
+        # A cached latent freezes whatever augmentation produced it, so the online transforms must be off on this
+        # path; the cache itself already carries the augmented pixels.
+        augment=args.image_augmentation == "torchvision" and args.latent_cache is None,
         max_episodes=args.max_episodes,
         keep_ranges=args.keep_ranges,
         success_only=args.success_only,
+        action_cache=args.action_cache,
+        video_content_pad=args.vae_content_pad,
+        video_uint8=args.video_uint8,
     )
+    if args.latent_cache is not None:
+        from examples.worldmodel.cosmos3.latent_cache import LatentCacheDataset
+
+        dataset = LatentCacheDataset(dataset, args.latent_cache)
     # Both strategies use shared memory for tensor storage. file_system only changes how handles are named;
     # it does not increase /dev/shm capacity. Size workers/batches and container shared memory accordingly.
     torch.multiprocessing.set_sharing_strategy(os.environ.get("COSMOS3_SHM_STRATEGY", "file_system"))
@@ -496,6 +586,7 @@ def main():
         drop_last=True,
         collate_fn=collate,
         num_workers=args.num_workers,
+        worker_threads=args.worker_threads,
         seed=args.seed + dp_rank,
         distributed_sampler_cls=partial(torch.utils.data.DistributedSampler, drop_last=True),
         multiprocessing_context=args.mp_context if args.num_workers else None,
@@ -520,7 +611,10 @@ def main():
         )
     tokenizer = build_tokenizer(args.checkpoint) if cp_leader else None
     vae = None
-    if cp_leader:
+    # With a latent cache the VAE has nothing to do: its only job in the step was the encode, and that already
+    # happened when the cache was written. Skipping the build also keeps the peak-memory number honest, since the
+    # ~0.5 GiB of VAE weights would otherwise sit on the card during a run that never calls it.
+    if cp_leader and args.latent_cache is None:
         aot_dir = (args.compile_vae_aot_dir or args.out / "aot_vae") if args.vae_compile == "aot" else None
         vae = build_vae(
             args.checkpoint,
@@ -560,7 +654,7 @@ def main():
                 "torch": torch.__version__,
                 "device": accelerator.name,
                 **{
-                    name: package_version(name)
+                    name: resolve_version(name)
                     for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
                 },
             },
@@ -629,6 +723,7 @@ def main():
                             generator=noise,
                             stopwatch=watch,
                             vae_encode_batch=args.vae_encode_batch,
+                            latents=batch.get("latent"),
                         )
                         inputs["_sample_ids"] = batch["sample_id"]
                         meta = policy.packed_meta
@@ -641,6 +736,15 @@ def main():
                                 tokens=inputs["input_ids"], positions=inputs["position_ids"], payload=(inputs, targets)
                             )
                     inputs.pop("_sample_ids")
+                    if args.pack_hash and step_index == 0 and coord.rank == 0:
+                        # Deterministic fingerprint of the packed step, for comparing two data paths that are
+                        # supposed to produce the same inputs (online encode vs a pre-extracted latent cache).
+                        # A loss comparison cannot settle that: the batch composition and the noise draw can
+                        # differ between runs for reasons that have nothing to do with the latents.
+                        print(
+                            f"[pack-hash] inputs {_tensor_digest(inputs)} targets {_tensor_digest(targets)}",
+                            flush=True,
+                        )
                 with watch.section("forward"):
                     out = model(**inputs)
                     raw_loss, components = compute_loss(out, targets, return_components=True)

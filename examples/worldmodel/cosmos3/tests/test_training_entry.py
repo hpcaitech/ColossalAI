@@ -109,13 +109,13 @@ def test_the_recorded_learning_rates_come_from_each_parameter_group():
 
 
 def test_a_package_without_metadata_is_recorded_as_missing(monkeypatch):
-    assert isinstance(entry.package_version("pytest"), str)
+    assert isinstance(entry.resolve_version("pytest"), str)
 
     def missing(name):
-        raise entry.PackageNotFoundError(name)
+        raise RuntimeError(f"no metadata for {name}")
 
     monkeypatch.setattr(entry, "version", missing)
-    assert entry.package_version("diffusers") is None
+    assert entry.resolve_version("diffusers") == "absent"
 
 
 class ActionHead(torch.nn.Module):
