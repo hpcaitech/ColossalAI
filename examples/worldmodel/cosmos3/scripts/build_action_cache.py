@@ -52,9 +52,7 @@ def column_2d(table, name, width: int) -> np.ndarray:
 
 def convert(path: Path, destination: Path) -> tuple[int, float]:
     started = time.perf_counter()
-    table = pq.read_table(
-        path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"]
-    )
+    table = pq.read_table(path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"])
     rows = table.num_rows
     out = np.empty((rows, 17), dtype=np.float32)
     out[:, 0:7] = column_2d(table, JOINT_ACTION, 7)
@@ -88,8 +86,11 @@ def main():
             total_rows += rows
             total_seconds += seconds
             if index % 10 == 0 or index + 1 == len(files):
-                print(f"  [{index + 1}/{len(files)}] {path.name}: {rows} rows in {seconds:.2f} s "
-                      f"({rows / seconds:.0f} rows/s)", flush=True)
+                print(
+                    f"  [{index + 1}/{len(files)}] {path.name}: {rows} rows in {seconds:.2f} s "
+                    f"({rows / seconds:.0f} rows/s)",
+                    flush=True,
+                )
         print(f"[{split}] rows={total_rows} seconds={total_seconds:.1f}", flush=True)
 
 

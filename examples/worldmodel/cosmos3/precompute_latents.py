@@ -35,9 +35,7 @@ from examples.worldmodel.cosmos3.packing import normalize_latent
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument(
-        "--data", type=Path, required=True, help="Parent of the success/ and failure/ LeRobot roots."
-    )
+    parser.add_argument("--data", type=Path, required=True, help="Parent of the success/ and failure/ LeRobot roots.")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--max-episodes", type=int, help="Per root; omit for every episode.")
     parser.add_argument("--limit", type=int, help="Stop after this many windows across all ranks.")
@@ -179,7 +177,10 @@ def main():
         if len(buffer) >= args.shard_size:
             flush()
         if batch_index % 4 == 0 or batch_index == batches - 1:
-            print(f"[rank {rank}] batches={batch_index + 1}/{batches} samples={done} at={time.perf_counter() - started:.1f}s", flush=True)
+            print(
+                f"[rank {rank}] batches={batch_index + 1}/{batches} samples={done} at={time.perf_counter() - started:.1f}s",
+                flush=True,
+            )
     flush()
 
     # One index file per rank. A rank only knows the samples it encoded, so a single index.json written by rank 0

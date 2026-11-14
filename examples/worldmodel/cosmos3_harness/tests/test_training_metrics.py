@@ -17,7 +17,6 @@ from training_metrics import (
     ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
-    JsonlMetricsLogger,
     JsonlObserver,
     MetricsAggregator,
     MetricsObserver,
@@ -442,20 +441,21 @@ def test_anomaly_detector_reserved_and_device_memory():
     detector = AnomalyDetector(warmup=0, device_capacity_gib=64.0, memory_fraction=0.85)
 
     # Below 85% threshold (50 GiB < 54.4 GiB): no warning
-    events_safe = detector.check(aggregate_records([
-        make_record(1, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 45.0, "device_used_gib": 50.0})
-    ]))
+    events_safe = detector.check(
+        aggregate_records(
+            [make_record(1, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 45.0, "device_used_gib": 50.0})]
+        )
+    )
     assert not any(e["kind"] == "memory_pressure" for e in events_safe)
 
     # peak_reserved_gib exceeds 85% (58 GiB > 54.4 GiB)
-    events_reserved = detector.check(aggregate_records([
-        make_record(2, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 58.0})
-    ]))
+    events_reserved = detector.check(
+        aggregate_records([make_record(2, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 58.0})])
+    )
     assert any(e["kind"] == "memory_pressure" for e in events_reserved)
 
     # device_used_gib exceeds 85% (60 GiB > 54.4 GiB)
-    events_device = detector.check(aggregate_records([
-        make_record(3, 0, mem={"allocated_gib": 20.0, "device_used_gib": 60.0})
-    ]))
+    events_device = detector.check(
+        aggregate_records([make_record(3, 0, mem={"allocated_gib": 20.0, "device_used_gib": 60.0})])
+    )
     assert any(e["kind"] == "memory_pressure" for e in events_device)
-
