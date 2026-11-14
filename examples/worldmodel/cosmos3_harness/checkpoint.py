@@ -89,6 +89,11 @@ def _validate_rng(rng, source):
     required = {"torch", "python", "numpy", "accelerator"}
     if not isinstance(rng, dict) or not required.issubset(rng):
         raise ValueError(f"{source}: incomplete rank RNG state")
+    unexpected = set(rng) - required - {"device"}
+    if unexpected:
+        # The file is the complete rank state this format version wrote; an unknown field means the writer and
+        # this reader disagree, and silently ignoring it would resume from a state that is only partly restored.
+        raise ValueError(f"{source}: unexpected RNG fields {sorted(unexpected)}")
     if rng["accelerator"] not in ("cpu", "cuda", "npu"):
         raise ValueError(f"{source}: unsupported RNG accelerator")
     value = rng["torch"]
