@@ -746,9 +746,7 @@ class DroidActionPolicyDataset(Dataset):
         cached = self._action_tables.get(path)
         if cached is not None:
             return cached
-        table = pq.read_table(
-            path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"]
-        )
+        table = pq.read_table(path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"])
         if len(self._action_tables) >= 2:
             self._action_tables.pop(next(iter(self._action_tables)))
         self._action_tables[path] = table
@@ -759,11 +757,7 @@ class DroidActionPolicyDataset(Dataset):
         if self.action_cache is None:
             return None
         path = (
-            self.action_cache
-            / win.root.name
-            / "data"
-            / f"chunk-{win.data_chunk:03d}"
-            / f"file-{win.data_file:03d}.npy"
+            self.action_cache / win.root.name / "data" / f"chunk-{win.data_chunk:03d}" / f"file-{win.data_file:03d}.npy"
         )
         cached = self._action_maps.get(path)
         if cached is not None:
@@ -867,9 +861,7 @@ class DroidActionPolicyDataset(Dataset):
         else:
             # With video_content_pad only `content width + pad` columns are materialised; the scale still comes
             # from the full canvas so the content region is identical to the recipe's.
-            comp, content_hw = resize_and_reflect_pad(
-                comp.float(), th, tw, pad_columns=self.video_content_pad
-            )
+            comp, content_hw = resize_and_reflect_pad(comp.float(), th, tw, pad_columns=self.video_content_pad)
             comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
             video_pad_hw = None
             video = comp.permute(1, 0, 2, 3)

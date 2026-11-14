@@ -185,7 +185,6 @@ def compute_mfu(
     return float(achieved_tflops / cluster_peak_tflops)
 
 
-
 # ---------------------------------------------------------------------------------------------------------------
 # Records and events
 # ---------------------------------------------------------------------------------------------------------------
@@ -292,7 +291,6 @@ class JsonlMetricsLogger:
     def log(self, metrics: Mapping[str, Any]) -> None:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(dict(metrics), default=_json_default) + "\n")
-
 
 
 def make_event(
@@ -502,6 +500,7 @@ class Stopwatch:
         """Explicitly synchronize the accelerator device to ensure all recorded events have completed."""
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.synchronize(device)
             elif hasattr(torch, "npu") and hasattr(torch.npu, "synchronize"):
@@ -512,7 +511,6 @@ class Stopwatch:
     def time(self, name: str):
         """Context manager alias for section(name)."""
         return self.section(name)
-
 
     def _record_event(self):
         if not self._use_events:
@@ -1094,7 +1092,6 @@ class AnomalyDetector:
                         fraction=pressure_frac,
                     )
                 )
-
 
         self._seen += 1
         return events

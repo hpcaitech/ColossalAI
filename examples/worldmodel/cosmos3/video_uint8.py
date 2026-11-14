@@ -22,10 +22,10 @@ def reflect_pad_last2(x: torch.Tensor, pad_h: int, pad_w: int) -> torch.Tensor:
     the edge).
     """
     if pad_h:
-        bottom = torch.flip(x[..., -1 - pad_h:-1, :], dims=[-2])
+        bottom = torch.flip(x[..., -1 - pad_h : -1, :], dims=[-2])
         x = torch.cat([x, bottom], dim=-2)
     if pad_w:
-        right = torch.flip(x[..., :, -1 - pad_w:-1], dims=[-1])
+        right = torch.flip(x[..., :, -1 - pad_w : -1], dims=[-1])
         x = torch.cat([x, right], dim=-1)
     return x
 

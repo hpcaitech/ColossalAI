@@ -129,9 +129,7 @@ class LatentCacheDataset(Dataset):
         # Check every window, not a sample of them. The sampler shuffles over the whole selection, so a gap
         # anywhere turns into a KeyError hours into a run; `len(dataset)` lookups against a dict cost nothing and
         # make a partial cache fail at startup instead.
-        missing = [
-            base.sample_id(index) for index in range(len(base)) if base.sample_id(index) not in self.cache
-        ]
+        missing = [base.sample_id(index) for index in range(len(base)) if base.sample_id(index) not in self.cache]
         if missing:
             raise KeyError(
                 f"{len(missing)} of {len(base)} windows are missing from {cache_dir}, e.g. {missing[0]!r}. "
