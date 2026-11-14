@@ -19,6 +19,29 @@ from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+# The DROID pipeline is upstream's own code, copied byte for byte under vendor/ (see vendor/README.md).
+# Its files import themselves as ``cosmos_framework.*``, so the copy is laid out under that package name
+# and the directory holding it goes on the path here.
+#
+# Here and nowhere else, and appended rather than inserted: on a host that also has the real
+# cosmos-framework installed -- the comparison machine does -- an installed package must keep winning, so
+# that the reference side never silently runs this copy. Which one actually loaded is printed below rather
+# than assumed, because the whole point of the copy is that it is the upstream code, and a run that
+# quietly used the other one would be comparing something else.
+_VENDOR = Path(__file__).resolve().parent / "vendor"
+if _VENDOR.is_dir() and str(_VENDOR) not in sys.path:
+    sys.path.append(str(_VENDOR))
+
+
+def report_pipeline_source() -> str:
+    """Where the DROID pipeline actually came from in this process."""
+    import cosmos_framework
+
+    origin = getattr(cosmos_framework, "__file__", None) or "<namespace package>"
+    vendored = str(_VENDOR) in str(origin)
+    return f"{origin} ({'vendored copy' if vendored else 'installed upstream'})"
+
+
 import torch
 import torch.distributed as dist
 
@@ -43,6 +66,7 @@ from examples.worldmodel.cosmos3.runtime import (
     resolve_compile_backend,
     shutdown_dataloader,
 )
+from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
 from examples.worldmodel.cosmos3_harness.training_metrics import (
     AnomalyDetector,
@@ -116,6 +140,18 @@ def parse_args(argv=None):
         "--save-every", type=int, default=1000, help="Model export interval; exports are not training resume state."
     )
     parser.add_argument("--log-every", type=int, default=50)
+
+    parser.add_argument(
+        "--dataset",
+        default="upstream",
+        choices=["upstream", "example"],
+        help="Which DROID reader to use. 'upstream' reads through the copy of upstream's own pipeline under "
+        "vendor/ and is the default: a difference against upstream is then a difference in upstream rather "
+        "than one this example introduced. 'example' keeps droid_dataset.py, this example's own reader, "
+        "whose output was measured identical to upstream's on the pinned window (all 34,214,400 pixel "
+        "values, the action and state rows, the caption and the idle-frame count) -- it is kept so the two "
+        "can be compared again after either side changes.",
+    )
     parser.add_argument("--metrics-every", type=int, default=10)
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--wandb-project")
@@ -476,7 +512,13 @@ def main():
     unique_dp = dist.get_world_size(plugin.dp_group)
     dp_rank = dist.get_rank(plugin.dp_group)
     cp_leader = args.sp_size == 1 or dist.get_rank(plugin.sp_group) == 0
-    dataset = DroidActionPolicyDataset(
+    # Both readers take the same arguments and return the same sample contract; upstream_dataset.py
+    # documents where the seam between them sits and what was measured across it.
+    # Both names are resolved from the module rather than imported here, so a test can substitute either
+    # reader the same way. Importing upstream_dataset costs nothing by itself: it only reaches for
+    # cosmos_framework when a reader is actually constructed.
+    reader = UpstreamDroidDataset if args.dataset == "upstream" else DroidActionPolicyDataset
+    dataset = reader(
         args.data,
         chunk_length=args.chunk_length,
         fps=args.fps,
@@ -486,6 +528,11 @@ def main():
         keep_ranges=args.keep_ranges,
         success_only=args.success_only,
     )
+    # Which reader ran, and which cosmos_framework the copy resolved to, are read from the run rather than
+    # inferred from the flag: on a host that also has the framework installed the installed one wins, and a
+    # run that quietly used the other copy would be comparing something else.
+    coord.print_on_master(f"[data] {len(dataset)} window(s) from reader {args.dataset!r}")
+    coord.print_on_master(f"[data] pipeline from {report_pipeline_source()}")
     # Both strategies use shared memory for tensor storage. file_system only changes how handles are named;
     # it does not increase /dev/shm capacity. Size workers/batches and container shared memory accordingly.
     torch.multiprocessing.set_sharing_strategy(os.environ.get("COSMOS3_SHM_STRATEGY", "file_system"))

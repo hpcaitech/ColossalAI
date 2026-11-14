@@ -232,9 +232,16 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
             return torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=sampler)
 
     monkeypatch.setattr(entry, "HybridParallelPlugin", Plugin)
+    # The entry defaults to the vendored reader, so the stub stands in for both names; the default
+    # path would otherwise reach for the real upstream pipeline and its dependencies.
     monkeypatch.setattr(
         entry,
         "DroidActionPolicyDataset",
+        lambda *a, **kw: [{"goal": 1.0, "sample_id": "a"}, {"goal": 3.0, "sample_id": "b"}],
+    )
+    monkeypatch.setattr(
+        entry,
+        "UpstreamDroidDataset",
         lambda *a, **kw: [{"goal": 1.0, "sample_id": "a"}, {"goal": 3.0, "sample_id": "b"}],
     )
 
