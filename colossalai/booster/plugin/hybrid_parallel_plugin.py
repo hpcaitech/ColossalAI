@@ -62,13 +62,19 @@ def _is_tp_split(param: Tensor) -> bool:
     return is_distributed_tensor(param) or is_customized_distributed_tensor(param)
 
 
-def _seed_data_loader_worker(worker_id: int, seed: int) -> None:
-    """Seed one dataloader worker process.
+def _seed_data_loader_worker(worker_id: int, seed: int, threads: int = 0) -> None:
+    """Seed one dataloader worker process, and optionally restore its intra-op thread count.
 
     The function lives at module scope and takes its seed through :func:`functools.partial` so that a loader built
     with ``multiprocessing_context="spawn"`` can pickle it; a closure defined inside ``prepare_dataloader`` cannot be
     pickled, and such a loader failed before yielding its first batch.
+
+    PyTorch's worker loop calls ``torch.set_num_threads(1)`` before this hook, so a caller that wants parallel
+    elementwise transforms inside a worker has to set the count here; ``OMP_NUM_THREADS`` alone does nothing for
+    dataloader workers.
     """
+    if threads > 0:
+        torch.set_num_threads(threads)
     np.random.seed(seed)
     torch.manual_seed(seed)
     random.seed(seed)
@@ -1523,6 +1529,7 @@ class HybridParallelPlugin(PipelinePluginBase):
         pin_memory=False,
         num_workers=0,
         distributed_sampler_cls=None,
+        worker_threads: int = 0,
         **kwargs,
     ):
         r"""
@@ -1560,7 +1567,7 @@ class HybridParallelPlugin(PipelinePluginBase):
             dataset,
             batch_size=batch_size,
             sampler=sampler,
-            worker_init_fn=partial(_seed_data_loader_worker, seed=seed),
+            worker_init_fn=partial(_seed_data_loader_worker, seed=seed, threads=worker_threads),
             drop_last=drop_last,
             pin_memory=pin_memory,
             num_workers=num_workers,

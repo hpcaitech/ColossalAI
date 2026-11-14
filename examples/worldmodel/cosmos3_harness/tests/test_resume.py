@@ -228,6 +228,21 @@ def test_checksum_valid_but_invalid_rng_cannot_partially_restore(tmp_path, field
     np.testing.assert_array_equal(after_numpy[1], before[2][1])
 
 
+def test_an_unexpected_rng_field_is_rejected_before_model_load(tmp_path):
+    model, booster = Toy(), CPUBooster()
+    optimizer = torch.optim.AdamW(model.parameters())
+    save_checkpoint(
+        tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 1, "config": {}}, booster=booster
+    )
+    root, _ = validate_checkpoint(tmp_path)
+    _rewrite_rng(root, 0, lambda rng: rng.update({"extra": "unexpected"}))
+    with patch.object(booster, "load_model") as model_load, patch.object(booster, "load_optimizer") as optim_load:
+        with pytest.raises(ValueError, match="unexpected RNG fields"):
+            restore_checkpoint(tmp_path, model, optimizer, booster=booster)
+        model_load.assert_not_called()
+        optim_load.assert_not_called()
+
+
 @pytest.mark.parametrize("case", ["missing", "count", "shape", "type"])
 def test_device_rng_preflight_before_model_load(tmp_path, case):
     model, booster = Toy(), CPUBooster()
