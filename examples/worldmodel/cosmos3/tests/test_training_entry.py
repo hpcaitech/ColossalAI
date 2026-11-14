@@ -294,7 +294,7 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
             start=manifests.append, step=lambda step, **sections: records.append(sections), finish=summaries.append
         ),
     )
-    monkeypatch.setattr(entry, "parallel_topology", lambda plugin: [])
+    monkeypatch.setattr(entry, "parallel_topology", lambda plugin, **kwargs: [])
     monkeypatch.setattr(entry, "device_memory_gib", lambda: {})
     entry.main()
     expected_losses = []

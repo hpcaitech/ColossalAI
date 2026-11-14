@@ -43,7 +43,10 @@ from examples.worldmodel.cosmos3.runtime import (
     resolve_compile_backend,
     shutdown_dataloader,
 )
+from examples.worldmodel.cosmos3_harness.checkpoint_ledger import CheckpointLedger
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
+from examples.worldmodel.cosmos3_harness.run_context import collect_rank_identity, collect_run_identity, enrich_manifest
+from examples.worldmodel.cosmos3_harness.training_heartbeat import TrainingHeartbeat, write_terminal
 from examples.worldmodel.cosmos3_harness.training_metrics import (
     AnomalyDetector,
     ConsoleObserver,
@@ -118,6 +121,16 @@ def parse_args(argv=None):
     parser.add_argument("--log-every", type=int, default=50)
     parser.add_argument("--metrics-every", type=int, default=10)
     parser.add_argument("--metrics-dir", type=Path)
+    parser.add_argument("--run-id", help="Override the generated run identifier (used by external launchers).")
+    parser.add_argument("--run-name", help="Human-readable name shown by the monitor.")
+    parser.add_argument("--log-path", help="Path of this run's stdout log, so the dashboard can tail it.")
+    parser.add_argument("--heartbeat-seconds", type=float, default=2.0, help="Liveness heartbeat interval.")
+    parser.add_argument("--no-heartbeat", action="store_true", help="Disable the liveness heartbeat (benchmark purity).")
+    parser.add_argument("--no-checkpoint-ledger", action="store_true", help="Disable the checkpoint ledger.")
+    parser.add_argument("--no-aggregate-metrics", action="store_true", help="Disable aggregated.jsonl.")
+    parser.add_argument("--collective-metrics", action="store_true",
+                        help="Gather each log-step record across ranks instead of reading rank files; exact global "
+                             "counts at the cost of one collective per log step.")
     parser.add_argument("--wandb-project")
     parser.add_argument("--wandb-mode", choices=("offline", "online", "disabled"), default="offline")
     parser.add_argument("--wandb-run-name")
@@ -251,6 +264,8 @@ def parse_args(argv=None):
         value = getattr(args, name)
         if value is not None and (not math.isfinite(value) or value < 0):
             parser.error(f"--{name.replace('_', '-')} must be finite and nonnegative")
+    if args.heartbeat_seconds <= 0:
+        parser.error("--heartbeat-seconds must be positive")
     return args
 
 
@@ -454,6 +469,8 @@ def main():
     if args.zero_stage > 0 and coord.world_size == 1:
         raise ValueError("Use --zero-stage 0 for a single rank")
     args.out.mkdir(parents=True, exist_ok=True)
+    metrics_dir = args.metrics_dir or args.out / "metrics"
+    device_capacity_gib = device_memory_gib().get("device_total_gib")
     policy = Cosmos3OmniPolicy(
         backend=backend,
         selective_checkpointing=args.activation_checkpointing == "selective",
@@ -544,16 +561,18 @@ def main():
     if args.wandb_project and args.wandb_mode != "disabled":
         observers.append(WandbObserver(args.wandb_project, args.wandb_run_name, mode=args.wandb_mode))
     metrics = TrainingMetrics(
-        out_dir=args.metrics_dir or args.out / "metrics",
+        out_dir=metrics_dir,
         rank=coord.rank,
         world_size=coord.world_size,
         log_every=args.metrics_every,
         aggregate_observers=observers,
-        detector=AnomalyDetector(),
+        detector=AnomalyDetector(device_capacity_gib=device_capacity_gib),
+        write_aggregate=not args.no_aggregate_metrics,
+        collective=args.collective_metrics,
     )
     target = model.unwrap()
-    metrics.start(
-        {
+    rank_identity = collect_rank_identity(device)
+    manifest = {
             "args": vars(args),
             "world_size": coord.world_size,
             "env": {
@@ -578,20 +597,71 @@ def main():
                 "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
             },
             "loss_objective": "droid_sample_modality_mean",
-            "topology": parallel_topology(plugin),
+            "topology": parallel_topology(plugin, extra=rank_identity),
             "independent_dp_replicas": unique_dp,
             "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
             "save_kind": "model_export",
             "curated_ranges": args.keep_ranges,
-        }
+    }
+    identity = collect_run_identity(args, run_name=args.run_name, run_id=args.run_id) if coord.rank == 0 else None
+    if dist.is_initialized():
+        identity_holder = [identity]
+        dist.broadcast_object_list(identity_holder, src=0)
+        identity = identity_holder[0]
+    elif identity is None:
+        identity = collect_run_identity(args, run_name=args.run_name, run_id=args.run_id)
+    manifest = enrich_manifest(
+        manifest,
+        args=args,
+        device=device,
+        identity=identity,
+        run_name=args.run_name,
+        run_id=args.run_id,
+        checkpoint_schedule={
+            "model_export": {
+                "every": args.save_every,
+                "root": str(args.out),
+                "pattern": "step-{step}",
+                "async": bool(args.async_save),
+                "format": "safetensors_sharded",
+            },
+            "resumable": None,
+            "save_kind": "model_export",
+        },
+        log_path=args.log_path,
+        heartbeat_seconds=args.heartbeat_seconds,
+        metrics_every=args.metrics_every,
+        log_every=args.log_every,
+    )
+    metrics.start(manifest)
+    heartbeat = None
+    if not args.no_heartbeat:
+        heartbeat = TrainingHeartbeat(
+            metrics_dir,
+            coord.rank,
+            device,
+            args.heartbeat_seconds,
+            run_id=manifest.get("run_id"),
+            world_size=coord.world_size,
+            local_rank=rank_identity.get("local_rank"),
+            device_name=rank_identity.get("device_name"),
+        ).start()
+    ledger = None if args.no_checkpoint_ledger or coord.rank != 0 else CheckpointLedger(
+        metrics_dir, rank=coord.rank, run_id=manifest.get("run_id"), world_size=coord.world_size
     )
     watch = Stopwatch()
     iterator = None
     epoch = step = 0
     pending_exports = []
     completed = False
+    run_started = time.perf_counter()
+    last_values = None
+    best_loss = None
+    checkpoint_stats = {"count": 0, "bytes": 0}
     try:
         for step_index in range(args.max_iter):
+            if heartbeat:
+                heartbeat.update("data", step=step_index)
             record_now = step_index == 0 or (step_index + 1) % args.metrics_every == 0
             print_now = step_index == 0 or (step_index + 1) % args.log_every == 0
             if record_now:
@@ -599,7 +669,7 @@ def main():
             window_start = time.perf_counter()
             watch.reset(enabled=record_now)
             window = AccumulationWindow(count_samples=cp_leader)
-            for _ in range(args.grad_accum):
+            for microstep in range(args.grad_accum):
                 wait_start = time.perf_counter()
                 batch = None
                 if cp_leader:
@@ -641,21 +711,32 @@ def main():
                                 tokens=inputs["input_ids"], positions=inputs["position_ids"], payload=(inputs, targets)
                             )
                     inputs.pop("_sample_ids")
+                if heartbeat:
+                    heartbeat.update("forward", step=step_index, microstep=microstep + 1, microsteps=args.grad_accum)
                 with watch.section("forward"):
                     out = model(**inputs)
                     raw_loss, components = compute_loss(out, targets, return_components=True)
+                if heartbeat:
+                    heartbeat.update("backward", step=step_index, microstep=microstep + 1, microsteps=args.grad_accum)
                 with watch.section("backward"):
                     booster.backward(raw_loss / args.grad_accum, optimizer)
                 window.add(meta.num_samples, meta, raw_loss, components, wait_ms)
             if args.async_save:
                 booster.checkpoint_io.synchronize()
+            if heartbeat:
+                heartbeat.update("optimizer", step=step_index)
             with watch.section("optim"):
                 optimizer.step()
                 optimizer.zero_grad()
             step = step_index + 1
+            if heartbeat:
+                heartbeat.update("step_complete", step=step)
             dispatch_ms = (time.perf_counter() - window_start) * 1e3
             if record_now or print_now:
                 values = window.loss_values()
+                last_values = values
+                if values.get("total") is not None:
+                    best_loss = values["total"] if best_loss is None else min(best_loss, values["total"])
             if print_now:
                 coord.print_on_master(
                     f"[step {step}] loss {values['total']:.6f} (v {values['vision']:.4f} a {values['action']:.4f})"
@@ -693,25 +774,78 @@ def main():
                 )
             if step % args.save_every == 0:
                 save_dir = args.out / f"step-{step}"
-                booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
+                checkpoint_id = None
+                if ledger is not None:
+                    checkpoint_id = ledger.begin(
+                        step=step,
+                        kind="model_export",
+                        path=save_dir,
+                        async_=args.async_save,
+                        format_="safetensors_sharded",
+                        schedule_every=args.save_every,
+                    )
+                try:
+                    booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
+                except Exception as exc:
+                    if ledger is not None and checkpoint_id is not None:
+                        ledger.fail(checkpoint_id, f"{type(exc).__name__}: {exc}")
+                    raise
                 if args.async_save:
-                    pending_exports.append(save_dir)
+                    pending_exports.append((save_dir, checkpoint_id))
                 else:
                     fix_checkpoint_modes(save_dir, coord)
+                    if ledger is not None and checkpoint_id is not None:
+                        finished = ledger.end(checkpoint_id, status="complete")
+                        checkpoint_stats["count"] += 1
+                        checkpoint_stats["bytes"] += int(finished.get("bytes") or 0)
         completed = True
     finally:
-        shutdown_dataloader(iterator)
-        if pending_exports:
-            booster.checkpoint_io._sync_io()
-            for save_dir in pending_exports:
-                fix_checkpoint_modes(save_dir, coord)
-        metrics.finish(
-            {
-                "steps": step,
-                "completed": completed,
-                "selective_checkpointing": get_cosmos3_selective_checkpoint_stats(target),
-            }
-        )
+        try:
+            shutdown_dataloader(iterator)
+        finally:
+            if pending_exports:
+                booster.checkpoint_io._sync_io()
+                for save_dir, checkpoint_id in pending_exports:
+                    fix_checkpoint_modes(save_dir, coord)
+                    if ledger is not None and checkpoint_id is not None:
+                        finished = ledger.end(checkpoint_id, status="complete")
+                        checkpoint_stats["count"] += 1
+                        checkpoint_stats["bytes"] += int(finished.get("bytes") or 0)
+            if ledger is not None:
+                ledger.complete_pending(status="complete" if completed else "aborted")
+                ledger.close()
+            if heartbeat:
+                heartbeat.update("completed" if completed else "failed", step=step)
+                heartbeat.close()
+            memory = device_memory_gib()
+            write_terminal(
+                metrics_dir,
+                coord.rank,
+                {
+                    "step": step,
+                    "completed": completed,
+                    "time": time.time(),
+                    "duration_s": time.perf_counter() - run_started,
+                    "last_phase": "completed" if completed else "failed",
+                    "cleanup_warning": None,
+                    "error": None,
+                },
+            )
+            metrics.finish(
+                {
+                    "steps": step,
+                    "completed": completed,
+                    "duration_s": time.perf_counter() - run_started,
+                    "session_id": getattr(metrics, "session_id", None),
+                    "run_id": manifest.get("run_id"),
+                    "last_loss": (last_values or {}).get("total"),
+                    "best_loss": best_loss,
+                    "peak_device_used_gib": (heartbeat.peak if heartbeat is not None else memory.get("device_used_gib")),
+                    "checkpoint_count": checkpoint_stats["count"],
+                    "checkpoint_bytes": checkpoint_stats["bytes"],
+                    "selective_checkpointing": get_cosmos3_selective_checkpoint_stats(target),
+                }
+            )
     if os.environ.get("COSMOS3_REPORT_PEAK_HBM"):
         print(f"[mem rank {coord.rank}] peak allocated {device_memory_gib().get('peak_gib', 0.0):.2f} GiB", flush=True)
     coord.print_on_master("done")
