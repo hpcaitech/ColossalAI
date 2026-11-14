@@ -26,6 +26,14 @@ const state = {
   runsTimer: null,
   focusStep: null,
   chartLog: false,
+  xMode: 'step',
+  range: 0,
+  smooth: 0,
+  showAnnotations: true,
+  paused: false,
+  compareTokens: new Set(),
+  detailStep: null,
+  detail: null,
   theme: localStorage.getItem('c3-theme') || 'dark',
 };
 
@@ -90,6 +98,14 @@ function ago(seconds) {
 function clock(ts) {
   if (!ts) return '—';
   return new Date(ts * 1000).toLocaleString();
+}
+
+function elapsed(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  const total = Math.max(0, Number(value));
+  if (total < 60) return `${total.toFixed(total < 10 ? 1 : 0)}s`;
+  if (total < 3600) return `${Math.floor(total / 60)}:${String(Math.floor(total % 60)).padStart(2, '0')}`;
+  return `${Math.floor(total / 3600)}:${String(Math.floor((total % 3600) / 60)).padStart(2, '0')}:${String(Math.floor(total % 60)).padStart(2, '0')}`;
 }
 
 function pct(value, digits = 1) {
@@ -163,9 +179,14 @@ function baseOption() {
     },
     xAxis: {
       type: 'value',
-      minInterval: 1,
+      // Integer ticks are mandatory when the axis is an optimizer step.  In elapsed-time mode the axis is
+      // seconds from the first record and gets a clock formatter instead.
+      minInterval: state.xMode === 'step' ? 1 : null,
       axisLine: { lineStyle: { color: css('--grid') } },
-      axisLabel: { color: css('--muted'), fontSize: 10, formatter: (v) => (v >= 1000 ? `${v / 1000}k` : v) },
+      axisLabel: {
+        color: css('--muted'), fontSize: 10,
+        formatter: state.xMode === 'step' ? (v) => (v >= 1000 ? `${v / 1000}k` : v) : (v) => elapsed(v),
+      },
       splitLine: { show: false },
       scale: true,
     },
@@ -206,23 +227,71 @@ function line(name, points, color, extra = {}) {
 function pointsOf(series, key) {
   const item = series && series[key];
   if (!item) return [];
-  return item.x.map((x, i) => [x, item.y[i]]).filter((pair) => pair[1] != null);
+  let pairs = item.x.map((x, i) => [x, item.y[i]]).filter((pair) => pair[1] != null);
+  if (state.range && state.xMode === 'step' && pairs.length) {
+    const last = Math.max(...pairs.map((pair) => pair[0]));
+    const first = last - state.range + 1;
+    pairs = pairs.filter((pair) => pair[0] >= first);
+  } else if (state.range && state.xMode === 'time' && pairs.length) {
+    pairs = pairs.slice(-state.range);
+  }
+  return pairs;
 }
 
-function markLines(step) {
+function smoothPoints(points, window) {
+  if (!window) return points;
+  const alpha = 2 / (Number(window) + 1);
+  let ema = null;
+  return points.map(([x, y]) => {
+    if (y == null) return [x, null];
+    ema = ema == null ? y : alpha * y + (1 - alpha) * ema;
+    return [x, ema];
+  });
+}
+
+function annotationLines() {
+  if (!state.showAnnotations || state.xMode !== 'step') return [];
   const rows = [];
-  if (step != null) {
-    rows.push({ xAxis: step, lineStyle: { color: css('--warning'), type: 'dashed', width: 1 }, label: { formatter: `step ${step}`, color: css('--warning'), fontSize: 10 } });
+  if (state.focusStep != null) {
+    rows.push({ xAxis: state.focusStep, lineStyle: { color: css('--warning'), type: 'dashed', width: 1 }, label: { formatter: `step ${state.focusStep}`, color: css('--warning'), fontSize: 10 } });
+  }
+  const seen = new Set();
+  for (const checkpoint of (state.checkpoints && state.checkpoints.checkpoints) || []) {
+    const step = Number(checkpoint.step);
+    if (!Number.isFinite(step) || seen.has(`c${step}`)) continue;
+    seen.add(`c${step}`);
+    rows.push({ xAxis: step, lineStyle: { color: css('--good'), type: 'dotted', width: 1 }, label: { formatter: 'ckpt', color: css('--good'), fontSize: 9 } });
+  }
+  for (const event of (state.events || []).filter((item) => ['warn', 'error', 'critical'].includes(item.severity)).slice(-24)) {
+    const step = Number(event.step);
+    if (!Number.isFinite(step) || seen.has(`e${step}${event.kind}`)) continue;
+    seen.add(`e${step}${event.kind}`);
+    rows.push({ xAxis: step, lineStyle: { color: css('--warning'), type: 'dashed', width: 1 }, label: { formatter: String(event.kind || 'event'), color: css('--warning'), fontSize: 9 } });
   }
   return rows;
+}
+
+function markLines() {
+  return annotationLines();
 }
 
 function makeChart(id, option) {
   const el = document.getElementById(id);
   if (!el || typeof echarts === 'undefined') return null;
-  let chart = echarts.getInstanceByDom(el);
-  if (!chart) chart = echarts.init(el, null, { renderer: 'canvas' });
-  chart.setOption(option, true);
+  const existing = echarts.getInstanceByDom(el);
+  const chart = existing || echarts.init(el, null, { renderer: 'canvas' });
+  // Replacing every option resets the user's zoom on each 5 s refresh.  Keep the viewport and replace only the
+  // data series; a tab switch still disposes the instance and starts clean.
+  chart.setOption(option, existing ? { notMerge: false, replaceMerge: ['series'] } : true);
+  if (!chart.__c3Click) {
+    chart.on('click', (params) => {
+      if (state.xMode !== 'step') return;
+      const value = params && params.value;
+      const step = Array.isArray(value) ? value[0] : value;
+      if (Number.isFinite(Number(step))) openStepDetail(Math.round(Number(step)));
+    });
+    chart.__c3Click = true;
+  }
   state.charts.set(id, chart);
   return chart;
 }
@@ -244,11 +313,17 @@ function renderLossChart(id = 'chart-loss', tall = false) {
   const p = palette();
   const option = baseOption();
   option.yAxis.type = state.chartLog ? 'log' : 'value';
+  const total = pointsOf(state.series, 'loss/total');
   option.series = [
-    line('total', pointsOf(state.series, 'loss/total'), p[0], { lineStyle: { width: 2.25, color: p[0] }, markLine: { symbol: 'none', data: markLines(state.focusStep), silent: true } }),
+    line('total', total, p[0], { lineStyle: { width: 2.25, color: p[0] }, markLine: { symbol: 'none', data: markLines(), silent: true } }),
     line('vision', pointsOf(state.series, 'loss/vision'), p[1]),
     line('action', pointsOf(state.series, 'loss/action'), p[2]),
   ];
+  if (state.smooth) {
+    option.series.push(line(`total (EMA ${state.smooth})`, smoothPoints(total, state.smooth), css('--text-2'), {
+      lineStyle: { width: 2.5, color: css('--text-2'), type: 'dashed' }, itemStyle: { color: css('--text-2') },
+    }));
+  }
   makeChart(id, option);
 }
 
@@ -336,6 +411,53 @@ function renderDataChart(id = 'chart-data') {
     line('AR tokens', pointsOf(state.series, 'data/ar_tokens'), p[1]),
     line('DM tokens', pointsOf(state.series, 'data/dm_tokens'), p[2]),
   ];
+  makeChart(id, option);
+}
+
+function checkpointFactor() {
+  const args = (state.manifest && state.manifest.args) || {};
+  const mode = String(args.activation_checkpointing || args.checkpoint_mode || 'full').toLowerCase();
+  return mode === 'none' ? 2 : 3;
+}
+
+function renderStageMfuChart(id = 'chart-stage-mfu') {
+  if (!state.series) return;
+  const p = palette();
+  const samples = state.series['data/samples'];
+  const world = (state.run && state.run.world) || 0;
+  if (!samples || !world) return;
+  const index = new Map(samples.x.map((x, i) => [Math.round(x), i]));
+  const factor = checkpointFactor();
+  const peak = 353.9;
+  const points = (key, flopsPerSample) => {
+    const source = state.series[key];
+    if (!source) return [];
+    const result = [];
+    for (let i = 0; i < source.x.length; i += 1) {
+      const sample = samples.y[index.get(Math.round(source.x[i]))];
+      const seconds = source.y[i];
+      if (sample == null || !seconds) continue;
+      result.push([source.x[i], (sample * flopsPerSample * 1e12) / seconds / (world * peak * 1e12) * 100]);
+    }
+    return result;
+  };
+  const option = baseOption();
+  option.yAxis.name = '';
+  option.yAxis.axisLabel.formatter = (value) => `${value.toFixed(0)}%`;
+  option.series = [
+    line('forward', points(state.series['perf/forward_s'] ? 'perf/forward_s' : 'perf/fwd_s', 20.34), p[0]),
+    line('backward', points(state.series['perf/backward_s'] ? 'perf/backward_s' : 'perf/bwd_s', 20.34 * factor), p[1]),
+  ];
+  const vae = points('data/vae_s', 33.0);
+  if (vae.length) option.series.push(line('VAE', vae, p[2]));
+  makeChart(id, option);
+}
+
+function renderEpochChart(id = 'chart-epoch') {
+  if (!state.series) return;
+  const option = baseOption();
+  option.yAxis.name = '';
+  option.series = [line('epoch', pointsOf(state.series, 'data/epoch'), palette()[3], { step: 'end' })];
   makeChart(id, option);
 }
 
@@ -428,6 +550,7 @@ function renderRunsPage() {
     const progress = run.progress != null ? Math.max(0, Math.min(1, run.progress)) : 0;
     const alerts = run.alert_total ? `<span class="chip bad">${run.alert_total}</span>` : '<span class="muted">—</span>';
     return `<tr>
+      <td><input class="cmp-select" type="checkbox" data-token="${run.token}" ${state.compareTokens.has(run.token) ? 'checked' : ''} title="加入对比"></td>
       <td><a href="#/run/${run.token}/overview"><strong>${esc(run.display_name)}</strong></a><div class="muted small ellipsis">${esc(run.dir)}</div></td>
       <td>${statusPill(run.state)}${run.stale ? ' <span class="chip warn">stale</span>' : ''}</td>
       <td class="num">${int(run.step)}${run.max_steps ? `<span class="muted"> / ${int(run.max_steps)}</span>` : ''}<div class="progress" style="margin-top:4px"><span style="width:${(progress * 100).toFixed(1)}%"></span></div></td>
@@ -443,14 +566,32 @@ function renderRunsPage() {
   }).join('');
   const table = state.runs.length ? `<div class="card"><div class="card-head"><h2>Runs <span class="muted small">${state.total}</span></h2><div class="hint-inline">点击任一行查看配置、曲线、checkpoint 与告警</div></div>
     <div class="table-scroll"><table class="table"><thead><tr>
-      <th>run</th><th>状态</th><th class="num">step</th><th class="num">loss</th><th class="num">step time</th>
+      <th></th><th>run</th><th>状态</th><th class="num">step</th><th class="num">loss</th><th class="num">step time</th>
       <th class="num">samples/s</th><th class="num">MFU</th><th class="num">HBM</th><th class="num">loss 趋势</th><th class="num">alerts</th><th class="num">更新</th>
     </tr></thead><tbody>${rows}</tbody></table></div></div>` :
     `<div class="card empty"><h2>还没有发现 run</h2><p>用 <code>--roots</code> 指向包含 <code>metrics/run.json</code> 或 <code>metrics/aggregated.jsonl</code> 的目录。例如：</p><pre class="mono">python -m examples.worldmodel.cosmos3_monitor serve --roots /mnt/disk0/jiangzs/nzf/bench_online/runs</pre></div>`;
   $('#crumbs').innerHTML = '<strong>Runs</strong>';
-  $('#view').innerHTML = `<div class="page-head"><div><h1>训练运行</h1><div class="subtle">只读索引 · 数据来自每个 run 目录的 JSONL</div></div><div class="spacer"></div><div class="page-actions"><span class="chip">${state.total} runs</span><button id="refresh-runs" class="ghost">刷新</button></div></div>${table}`;
+  $('#view').innerHTML = `<div class="page-head"><div><h1>训练运行</h1><div class="subtle">只读索引 · 数据来自每个 run 目录的 JSONL</div></div><div class="spacer"></div><div class="page-actions"><span class="chip">${state.total} runs</span><button id="compare-selected" class="primary" ${state.compareTokens.size < 2 ? 'disabled' : ''}>对比选中 (${state.compareTokens.size})</button><button id="refresh-runs" class="ghost">刷新</button></div></div>${table}`;
   const button = $('#refresh-runs');
   if (button) button.onclick = () => { loadRuns(); loadHealth(); };
+  const updateCompare = () => {
+    const target = $('#compare-selected');
+    if (!target) return;
+    target.disabled = state.compareTokens.size < 2;
+    target.textContent = `对比选中 (${state.compareTokens.size})`;
+  };
+  document.querySelectorAll('.cmp-select').forEach((box) => {
+    box.onchange = () => {
+      if (box.checked) state.compareTokens.add(box.dataset.token);
+      else state.compareTokens.delete(box.dataset.token);
+      updateCompare();
+    };
+  });
+  const compareButton = $('#compare-selected');
+  if (compareButton) compareButton.onclick = () => {
+    if (state.compareTokens.size < 2) return;
+    location.hash = `#/compare?runs=${Array.from(state.compareTokens).join(',')}`;
+  };
 }
 
 /* --------------------------------------------------------------------------------------------------------- */
@@ -488,7 +629,7 @@ async function loadRunData() {
   state.run = detail;
   state.manifest = detail.manifest || null;
   const [series, events, checkpoints, alerts, system, ranks] = await Promise.all([
-    api(`/api/runs/${token}/series?keys=${encodeURIComponent(SERIES_KEYS)}&max_points=5000`).catch(() => null),
+    api(`/api/runs/${token}/series?keys=${encodeURIComponent(SERIES_KEYS)}&max_points=5000&x=${state.xMode}`).catch(() => null),
     api(`/api/runs/${token}/events?limit=400`).catch(() => ({ events: [] })),
     api(`/api/runs/${token}/checkpoints`).catch(() => null),
     api(`/api/runs/${token}/alerts`).catch(() => null),
@@ -505,7 +646,7 @@ async function loadRunData() {
 }
 
 async function refreshDetailQuiet() {
-  if (!state.token || document.hidden) return;
+  if (!state.token || document.hidden || state.paused) return;
   try {
     await loadRunData();
     if (state.tab === 'overview' || state.tab === 'charts') {
@@ -582,7 +723,14 @@ function renderKpis() {
   const el = $('#kpis');
   if (!el || !state.run) return;
   const last = state.run.last || {};
+  const args = (state.manifest && state.manifest.args) || {};
+  const micro = args.samples_per_rank != null ? args.samples_per_rank : '—';
+  const accum = args.grad_accum != null ? args.grad_accum : '—';
+  const step = state.run.step || 0;
   const kpis = [
+    ['Iteration', `${int(step)}${state.run.max_steps ? `<small> / ${int(state.run.max_steps)}</small>` : ''}`, `<a href="#" class="step-link" data-step="${step}">查看 step ${int(step)} 阶段详情</a>`],
+    ['Epoch', int(state.run.epoch), `iteration ${int(step)}`],
+    ['Batch', `${int(last.samples)}<small>samples / iter</small>`, `micro ${esc(micro)} × accum ${esc(accum)}`],
     ['Loss', num(last.loss, 4), last.vision != null ? `v ${num(last.vision, 3)} · a ${num(last.action, 3)}` : ''],
     ['Step time', `${num(last.step_s, 1)}<small>s</small>`, last.skew != null ? `skew ${num(last.skew, 2)}` : ''],
     ['Throughput', `${num(last.samples_per_s, 1)}<small>samples/s</small>`, last.lr != null ? `lr ${num(last.lr, 6)}` : ''],
@@ -592,7 +740,10 @@ function renderKpis() {
     ['Checkpoints', `${int(state.run.checkpoints && state.run.checkpoints.count)}`, state.run.checkpoints && state.run.checkpoints.last ? `step ${int(state.run.checkpoints.last.step)}` : 'none yet'],
     ['Elapsed / ETA', duration(state.run.eta_s != null ? state.run.eta_s : null), state.run.started_at ? `since ${clock(state.run.started_at)}` : ''],
   ];
-  el.innerHTML = kpis.map(([label, value, hint]) => `<div class="kpi"><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="hint">${esc(hint)}</div></div>`).join('');
+  el.innerHTML = kpis.map(([label, value, hint]) => `<div class="kpi"><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="hint">${hint.startsWith('<a ') ? hint : esc(hint)}</div></div>`).join('');
+  document.querySelectorAll('.step-link').forEach((link) => {
+    link.onclick = (event) => { event.preventDefault(); openStepDetail(Number(link.dataset.step)); };
+  });
 }
 
 function renderRunView() {
@@ -632,34 +783,83 @@ function renderOverview(body) {
         ${ckpt.length ? `<table class="table"><thead><tr><th>step</th><th>状态</th><th class="num">大小</th><th class="num">耗时</th></tr></thead><tbody>${ckpt.map((c) => `<tr><td>${int(c.step)}</td><td>${esc(c.status || '—')}</td><td class="num">${bytes(c.bytes)}</td><td class="num">${c.duration_ms != null ? duration(c.duration_ms / 1000) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="muted small">还没有 checkpoint 记录</div>'}
       </div>
     </div>
-    <div class="card" style="margin-top:12px"><div class="card-head"><h2>节点</h2><span class="muted small">rank → host 来自 manifest；derived 表示按节点/卡数推断</span></div><div class="list">${hosts || '<span class="muted small">manifest 中没有 topology</span>'}</div></div>`;
+    <div class="card" style="margin-top:12px"><div class="card-head"><h2>节点</h2><span class="muted small">rank → host 来自 manifest；derived 表示按节点/卡数推断</span></div><div class="list">${hosts || '<span class="muted small">manifest 中没有 topology</span>'}</div></div>
+    ${renderRunInfoCard()}`;
   renderLossChart('chart-loss-overview');
   renderStepChart('chart-step-overview');
 }
 
+function renderRunInfoCard() {
+  const manifest = state.manifest || {};
+  const args = manifest.args || {};
+  const run = manifest.run || {};
+  const git = run.git || {};
+  const rows = [
+    ['model', args.checkpoint],
+    ['data', args.data],
+    ['world size', manifest.world_size],
+    ['effective global batch', manifest.effective_global_batch],
+    ['micro batch / accum', `${args.samples_per_rank ?? '—'} × ${args.grad_accum ?? '—'}`],
+    ['save every', args.save_every],
+    ['git', git.commit ? `${String(git.commit).slice(0, 10)}${git.dirty ? ' (dirty)' : ''}` : '—'],
+    ['command', run.command],
+  ].filter(([, value]) => value != null && value !== '');
+  return `<div class="card" style="margin-top:12px"><div class="card-head"><h2>Run info</h2><span class="muted small">来自 run.json</span></div><div class="kv">${rows.map(([key, value]) => `<div class="k">${esc(key)}</div><div class="v mono">${esc(String(value))}</div>`).join('')}</div></div>`;
+}
+
 function renderCharts(body) {
   disposeCharts();
+  const rangeOptions = [0, 20, 100, 500, 2000].map((value) => `<option value="${value}" ${state.range === value ? 'selected' : ''}>${value ? `最近 ${value}` : '全部'}</option>`).join('');
   body.innerHTML = `
-    <div class="card" style="margin-bottom:12px"><div class="page-actions">
+    <div class="card chart-toolbar" style="margin-bottom:12px">
+      <label class="control-group">X 轴
+        <select id="chart-xmode">
+          <option value="step" ${state.xMode === 'step' ? 'selected' : ''}>iteration (step)</option>
+          <option value="time" ${state.xMode === 'time' ? 'selected' : ''}>elapsed time</option>
+        </select>
+      </label>
+      <label class="control-group">范围 <select id="chart-range">${rangeOptions}</select></label>
+      <label class="control-group">平滑 <input type="range" id="chart-smooth" min="0" max="20" value="${state.smooth}"><span class="value" id="chart-smooth-value">${state.smooth}</span></label>
+      <label class="checkbox"><input type="checkbox" id="chart-annot" ${state.showAnnotations ? 'checked' : ''}> 事件/checkpoint 标注</label>
       <button id="chart-log" class="ghost">${state.chartLog ? '对数 Y：开' : '对数 Y：关'}</button>
       <button id="chart-reset" class="ghost">重置缩放</button>
-      <span class="sep"></span><span class="hint-inline">所有图表共享缩放与 crosshair；滚轮缩放，拖拽平移</span>
-    </div></div>
+      <span class="hint-inline">滚轮缩放、拖拽平移；点击任意点打开逐 step 阶段详情</span>
+    </div>
     <div class="grid charts">
       <div class="card"><div class="chart-head"><h2>Loss</h2><span class="unit">loss</span></div><div id="chart-loss" class="chart tall"></div></div>
       <div class="card"><div class="chart-head"><h2>Step time</h2><span class="unit">seconds</span></div><div id="chart-step" class="chart tall"></div></div>
+      <div class="card"><div class="chart-head"><h2>Stage MFU</h2><span class="unit">% · forward / backward / VAE</span></div><div id="chart-stage-mfu" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Throughput</h2><span class="unit">samples/s</span></div><div id="chart-throughput" class="chart"></div></div>
-      <div class="card"><div class="chart-head"><h2>MFU</h2><span class="unit">%</span></div><div id="chart-mfu" class="chart"></div></div>
+      <div class="card"><div class="chart-head"><h2>MFU</h2><span class="unit">% of step</span></div><div id="chart-mfu" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Learning rate</h2><span class="unit">lr</span></div><div id="chart-lr" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Gradient norm</h2><span class="unit">norm</span></div><div id="chart-grad" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Memory</h2><span class="unit">GiB</span></div><div id="chart-mem" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Rank skew</h2><span class="unit">max / mean</span></div><div id="chart-skew" class="chart"></div></div>
-      <div class="card"><div class="chart-head"><h2>Data per step</h2><span class="unit">log count</span></div><div id="chart-data" class="chart"></div></div>
+      <div class="card"><div class="chart-head"><h2>Batch / tokens per step</h2><span class="unit">log count</span></div><div id="chart-data" class="chart"></div></div>
+      <div class="card"><div class="chart-head"><h2>Epoch</h2><span class="unit">data.epoch</span></div><div id="chart-epoch" class="chart"></div></div>
     </div>`;
-  renderLossChart(); renderStepChart(); renderThroughputChart(); renderMfuChart();
-  renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart();
+  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderMfuChart();
+  renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
   for (const chart of state.charts.values()) chart.group = 'cosmos3-run';
   connectCharts();
+  const xmode = $('#chart-xmode');
+  if (xmode) xmode.onchange = async () => {
+    state.xMode = xmode.value;
+    state.range = 0;
+    await loadRunData();
+    renderRunView();
+  };
+  const range = $('#chart-range');
+  if (range) range.onchange = () => { state.range = Number(range.value); renderCharts(body); };
+  const smooth = $('#chart-smooth');
+  if (smooth) smooth.oninput = () => {
+    state.smooth = Number(smooth.value);
+    const label = $('#chart-smooth-value');
+    if (label) label.textContent = String(state.smooth);
+    refreshCharts();
+  };
+  const annot = $('#chart-annot');
+  if (annot) annot.onchange = () => { state.showAnnotations = annot.checked; refreshCharts(); };
   const logButton = $('#chart-log');
   if (logButton) logButton.onclick = () => { state.chartLog = !state.chartLog; renderCharts(body); };
   const reset = $('#chart-reset');
@@ -668,8 +868,85 @@ function renderCharts(body) {
 
 function refreshCharts() {
   if (!state.series) return;
-  renderLossChart(); renderStepChart(); renderThroughputChart(); renderMfuChart();
-  renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart();
+  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderMfuChart();
+  renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
+}
+
+async function openStepDetail(step) {
+  if (!state.token) return;
+  try {
+    const data = await api(`/api/runs/${state.token}/steps/${Math.round(Number(step))}`);
+    state.detailStep = Number(data.iteration != null ? data.iteration : step);
+    state.detail = data;
+    renderStepDrawer();
+    const drawer = document.getElementById('step-drawer');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (drawer) { drawer.classList.add('open'); drawer.setAttribute('aria-hidden', 'false'); }
+    if (backdrop) backdrop.hidden = false;
+  } catch (error) {
+    toast(error.message, 'bad');
+  }
+}
+
+function closeStepDetail() {
+  state.detailStep = null;
+  state.detail = null;
+  const drawer = document.getElementById('step-drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  if (drawer) { drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true'); }
+  if (backdrop) backdrop.hidden = true;
+}
+
+function renderStepDrawer() {
+  const d = state.detail;
+  if (!d) return;
+  const title = document.getElementById('drawer-title');
+  const sub = document.getElementById('drawer-sub');
+  const body = document.getElementById('drawer-body');
+  if (title) title.textContent = `Iteration ${int(d.iteration)}`;
+  if (sub) {
+    sub.textContent = `Epoch ${d.epoch == null ? '—' : int(d.epoch)} · Batch ${int(d.batch_samples)} samples · micro ${int(d.micro_batch_samples)} × ${int(d.grad_accum)} · world ${int(d.world)}`;
+  }
+  const stages = d.stages || [];
+  const rows = stages.map((stage) => {
+    const share = stage.share == null ? null : Math.max(0, Math.min(1, stage.share));
+    const bar = share == null ? '<span class="muted">—</span>' : `<div class="sharebar"><span style="width:${(share * 100).toFixed(1)}%"></span></div>`;
+    return `<tr><td>${esc(stage.name)}</td><td class="num">${stage.seconds == null ? '—' : `${num(stage.seconds, 3)}s`}</td><td class="num">${share == null ? '—' : pct(share, 1)}</td><td>${bar}</td><td class="num">${stage.mfu == null ? '—' : pct(stage.mfu, 2)}</td><td class="num">${stage.flops == null ? '—' : `${num(stage.flops / 1e12, 2)} TFLOP`}</td><td>${esc(stage.source || '—')}</td><td class="stage-note">${esc(stage.note || '')}</td></tr>`;
+  }).join('');
+  const loss = d.loss || {};
+  const memory = d.memory || {};
+  if (body) {
+    body.innerHTML = `
+      <div class="drawer-kpis">
+        <div class="kpi"><div class="label">Iteration time</div><div class="value">${num(d.step_seconds, 2)}<small>s</small></div><div class="hint">${num(d.samples_per_second, 1)} samples/s</div></div>
+        <div class="kpi"><div class="label">Step MFU</div><div class="value">${d.total_mfu == null ? '—' : `${num(d.total_mfu * 100, 1)}<small>%</small>`}</div><div class="hint">${esc(d.activation_checkpointing)} checkpointing</div></div>
+        <div class="kpi"><div class="label">Loss</div><div class="value">${num(loss.total, 4)}</div><div class="hint">v ${num(loss.vision, 3)} · a ${num(loss.action, 3)}</div></div>
+        <div class="kpi"><div class="label">HBM</div><div class="value">${num(memory.device_used_gib, 1)}<small> GiB</small></div><div class="hint">allocated ${num(memory.allocated_gib, 1)} · peak ${num(memory.peak_reserved_gib, 1)}</div></div>
+      </div>
+      <div class="drawer-actions">
+        <button id="drawer-prev" class="ghost">← 上一个 step</button>
+        <button id="drawer-next" class="ghost">下一个 step →</button>
+        <span class="sep"></span>
+        <span class="hint-inline">stage MFU 把 activation recompute 计入 backward；总 step MFU 用 4× forward FLOPs</span>
+      </div>
+      <table class="table stage-table"><thead><tr><th>阶段</th><th class="num">时间</th><th class="num">占比</th><th>share</th><th class="num">阶段 MFU</th><th class="num">FLOPs</th><th>source</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="card" style="margin-top:14px"><div class="card-head"><h2>本 step 关键数据</h2><span class="muted small">${d.complete === false ? 'partial aggregate' : 'complete aggregate'}</span></div>
+        <div class="kv">
+          <div class="k">iteration</div><div class="v">${int(d.iteration)}</div>
+          <div class="k">epoch</div><div class="v">${d.epoch == null ? '—' : int(d.epoch)}</div>
+          <div class="k">batch (global samples)</div><div class="v">${int(d.batch_samples)}</div>
+          <div class="k">micro batch × accum</div><div class="v">${int(d.micro_batch_samples)} × ${int(d.grad_accum)}</div>
+          <div class="k">effective global batch</div><div class="v">${int(d.effective_global_batch)}</div>
+          <div class="k">grad norm / lr</div><div class="v">${num((d.optim || {}).grad_norm, 3)} / ${num((d.optim || {}).lr, 8)}</div>
+          <div class="k">samples / s</div><div class="v">${num(d.samples_per_second, 2)}</div>
+          <div class="k">step seconds</div><div class="v">${num(d.step_seconds, 3)}</div>
+        </div>
+      </div>`;
+  }
+  const prev = document.getElementById('drawer-prev');
+  const next = document.getElementById('drawer-next');
+  if (prev) prev.onclick = () => openStepDetail(Number(d.iteration) - 1);
+  if (next) next.onclick = () => openStepDetail(Number(d.iteration) + 1);
 }
 
 function renderRecords(body) {
@@ -682,9 +959,9 @@ function renderRecords(body) {
     const mem = record.mem || {};
     const optim = record.optim || {};
     const stepMs = perf.step_ms;
-    const samples = data.samples;
+    const samples = data.samples != null ? data.samples : data.partial_samples;
     const throughput = stepMs && samples ? samples / (stepMs / 1000) : null;
-    return `<tr><td class="num">${int(record.step)}</td><td class="num">${clock(record.time)}</td>
+    return `<tr class="clickable" data-step="${int(record.step)}"><td class="num">${int(record.step)}</td><td class="num">${int(data.epoch)}</td><td class="num">${int(samples)}</td><td class="num">${clock(record.time)}</td>
       <td class="num">${num(loss.total, 6)}</td><td class="num">${num(loss.vision, 4)}</td><td class="num">${num(loss.action, 4)}</td>
       <td class="num">${num(optim.lr, 8)}</td><td class="num">${num(optim.grad_norm, 3)}</td>
       <td class="num">${num(stepMs != null ? stepMs / 1000 : null, 1)}</td><td class="num">${num(throughput, 1)}</td>
@@ -692,7 +969,8 @@ function renderRecords(body) {
       <td>${record.complete === false ? '<span class="chip warn">partial</span>' : '<span class="chip ok">complete</span>'}</td></tr>`;
   }).join('');
   body.innerHTML = `<div class="card"><div class="card-head"><h2>记录 <span class="muted small">${total} steps</span></h2><div class="page-actions"><button id="rec-prev" class="ghost">上一页</button><button id="rec-next" class="ghost">下一页</button><a class="small" href="/api/export/${state.token}.csv?keys=${encodeURIComponent(SERIES_KEYS)}">导出 CSV</a></div></div>
-    <div class="table-scroll"><table class="table"><thead><tr><th class="num">step</th><th class="num">time</th><th class="num">loss</th><th class="num">vision</th><th class="num">action</th><th class="num">lr</th><th class="num">grad</th><th class="num">step s</th><th class="num">samples/s</th><th class="num">HBM GiB</th><th class="num">skew</th><th>complete</th></tr></thead><tbody>${table || '<tr><td colspan="12" class="muted">没有记录</td></tr>'}</tbody></table></div></div>`;
+    <div class="table-scroll"><table class="table" id="records-table"><thead><tr><th class="num">iter</th><th class="num">epoch</th><th class="num">batch</th><th class="num">time</th><th class="num">loss</th><th class="num">vision</th><th class="num">action</th><th class="num">lr</th><th class="num">grad</th><th class="num">step s</th><th class="num">samples/s</th><th class="num">HBM GiB</th><th class="num">skew</th><th>complete</th></tr></thead><tbody>${table || '<tr><td colspan="14" class="muted">没有记录</td></tr>'}</tbody></table></div></div>`;
+  $$('#records-table tr[data-step]').forEach((row) => { row.onclick = () => openStepDetail(Number(row.dataset.step)); });
   const offset = (state.records && state.records.offset) || 0;
   const limit = (state.records && state.records.limit) || 100;
   const load = async (next) => {
@@ -818,8 +1096,24 @@ function renderEvents(body) {
   const alerts = state.alerts || { active: [], counts: {} };
   const active = (alerts.active || []).map((alert) => `<div class="banner ${alert.severity === 'critical' || alert.severity === 'error' ? 'bad' : 'warn'}" style="margin-bottom:8px"><span class="icon">!</span><div class="body"><strong>${esc(alert.rule)}</strong> · ${esc(alert.message)}<div class="muted small">first ${clock(alert.first_seen)} · last ${clock(alert.last_seen)} · ×${alert.count}${alert.acked ? ' · acked' : ''}</div></div><button class="ghost" data-ack="${esc(alert.id)}">ack</button></div>`).join('');
   const rows = events.map((event) => `<tr><td class="num">${int(event.step)}</td><td>${severityChip(event.severity)}</td><td>${esc(event.kind)}</td><td class="num">${esc(event.rank ?? '—')}</td><td>${esc(event.message || '')}</td><td class="num">${clock(event.time)}</td></tr>`).join('');
+  const rules = [
+    ['nonfinite_loss', 'critical', 'loss 为 NaN/Inf'],
+    ['loss_spike / loss_drop', 'warn', 'loss 偏离 EMA 3× 或 1/3'],
+    ['step_time_jump', 'warn', 'step 超过滚动中位数 1.5×'],
+    ['rank_skew', 'warn', '最慢 rank / 平均 > 1.2'],
+    ['data_starvation', 'warn', 'dataloader wait > 30% step'],
+    ['stalled_progress', 'critical', '心跳存在但 phase/step 长时间不推进'],
+    ['stale_heartbeat', 'critical', '心跳文件超过 15s 未更新'],
+    ['rank_process_missing', 'error', '心跳 pid 不在进程表'],
+    ['checkpoint_failed', 'critical', 'ledger end status=failed'],
+    ['checkpoint_slow', 'warn', '保存耗时 > max(120s, 3× 中位数)'],
+    ['disk_low', 'critical', 'checkpoint 文件系统空间不足'],
+    ['hbm_high / hbm_critical', 'warn / error', '卡 HBM 使用 > 90% / 95%'],
+    ['temperature_high', 'warn', 'NPU 温度 > 85°C'],
+  ].map(([kind, severity, condition]) => `<tr><td class="mono">${esc(kind)}</td><td>${esc(severity)}</td><td>${esc(condition)}</td></tr>`).join('');
   body.innerHTML = `<div class="card"><div class="card-head"><h2>活跃告警</h2><span class="muted small">仅看板内；AICore% 不参与告警</span></div>${active || '<div class="muted small">没有活跃告警</div>'}</div>
-    <div class="card" style="margin-top:12px"><div class="card-head"><h2>事件</h2><span class="muted small">来自 AnomalyDetector 与 monitor 规则</span></div><div class="table-scroll"><table class="table"><thead><tr><th class="num">step</th><th>级别</th><th>kind</th><th class="num">rank</th><th>message</th><th class="num">time</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="muted">没有事件</td></tr>'}</tbody></table></div></div>`;
+    <div class="card" style="margin-top:12px"><div class="card-head"><h2>事件</h2><span class="muted small">来自 AnomalyDetector 与 monitor 规则</span></div><div class="table-scroll"><table class="table"><thead><tr><th class="num">step</th><th>级别</th><th>kind</th><th class="num">rank</th><th>message</th><th class="num">time</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="muted">没有事件</td></tr>'}</tbody></table></div></div>
+    <details class="config" style="margin-top:12px"><summary>告警规则（节选）</summary><table class="table rule-table"><thead><tr><th>kind</th><th>级别</th><th>条件</th></tr></thead><tbody>${rules}</tbody></table></details>`;
   $$('[data-ack]').forEach((button) => {
     button.onclick = async () => {
       try { await fetch(`/api/runs/${state.token}/alerts/${encodeURIComponent(button.dataset.ack)}/ack`, { method: 'POST' }); state.alerts = await api(`/api/runs/${state.token}/alerts`); renderEvents(body); } catch (error) { toast(error.message, 'bad'); }
@@ -894,6 +1188,7 @@ function openStream(token) {
     stream.addEventListener('run', (event) => {
       try {
         const payload = JSON.parse(event.data);
+        if (state.paused) return;
         if (payload && payload.data && payload.data.token === token) {
           state.run = payload.data;
           // Never rebuild the whole view here.  A live frame arriving just after a tab click used to replace
@@ -933,6 +1228,7 @@ function route() {
 function renderComparePage() {
   const selected = (location.hash.split('?')[1] || '').split('&').filter((x) => x.startsWith('runs='))[0];
   const tokens = selected ? decodeURIComponent(selected.slice(5)).split(',').filter(Boolean) : [];
+  state.compareTokens = new Set(tokens);
   const options = state.runs.map((run) => `<option value="${run.token}" ${tokens.includes(run.token) ? 'selected' : ''}>${esc(run.display_name)}</option>`).join('');
   $('#crumbs').innerHTML = '<a href="#/runs">Runs</a> <span>/</span> <strong>Compare</strong>';
   $('#view').innerHTML = `<div class="page-head"><div><h1>对比</h1><div class="subtle">按 step 对齐多个 run；曲线来自各自的 aggregated 记录</div></div></div>
@@ -970,6 +1266,22 @@ function boot() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(loadRuns, 200);
   });
+  const pause = $('#pause-toggle');
+  if (pause) {
+    pause.onclick = () => {
+      state.paused = !state.paused;
+      pause.textContent = state.paused ? '继续' : '暂停';
+      const badge = $('#live-badge');
+      if (badge) {
+        badge.textContent = state.paused ? 'paused' : 'live';
+        badge.className = state.paused ? 'chip warn' : 'chip ok';
+      }
+    };
+  }
+  const drawerClose = $('#drawer-close');
+  if (drawerClose) drawerClose.onclick = closeStepDetail;
+  const drawerBackdrop = $('#drawer-backdrop');
+  if (drawerBackdrop) drawerBackdrop.onclick = closeStepDetail;
   $('#theme-toggle').onclick = () => {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = state.theme;
@@ -979,7 +1291,10 @@ function boot() {
   };
   document.addEventListener('keydown', (event) => {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
-    if (event.key === '?') toast('快捷键：/ 搜索 · d 明暗 · g r 运行列表 · g c 曲线', '');
+    if (event.key === 'Escape') { closeStepDetail(); return; }
+    if (state.detail && event.key === 'ArrowLeft') { openStepDetail(Number(state.detail.iteration) - 1); return; }
+    if (state.detail && event.key === 'ArrowRight') { openStepDetail(Number(state.detail.iteration) + 1); return; }
+    if (event.key === '?') toast('快捷键：/ 搜索 · d 明暗 · Esc 关闭详情 · ←/→ 上/下一步', '');
     if (event.key === '/') { event.preventDefault(); search.focus(); }
     if (event.key === 'd') $('#theme-toggle').click();
   });

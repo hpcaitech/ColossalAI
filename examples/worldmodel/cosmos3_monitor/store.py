@@ -213,6 +213,13 @@ class RunStore:
         with state.lock:
             return state.system.snapshot(host)
 
+    def step_detail(self, token: str, step: int) -> Optional[Dict[str, Any]]:
+        state = self.get(token)
+        if state is None:
+            return None
+        with state.lock:
+            return state.step_detail(step)
+
     def ranks(self, token: str) -> Optional[Dict[str, Any]]:
         state = self.get(token)
         if state is None:

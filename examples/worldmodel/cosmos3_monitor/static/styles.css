@@ -262,3 +262,39 @@ details.config > summary { cursor: pointer; color: var(--text-2); font-weight: 6
 .right { text-align: right; }
 .nowrap { white-space: nowrap; }
 .sep { width: 1px; height: 18px; background: var(--border); }
+
+/* Step-detail drawer, chart controls, comparison selection. */
+.table tr.clickable { cursor: pointer; }
+.table tr.clickable:hover td { background: var(--accent-soft); }
+.chart-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.control-group { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 11px; }
+.control-group select, .control-group input[type="range"] { height: 26px; }
+.control-group input[type="range"] { width: 110px; accent-color: var(--accent); }
+.control-group .value { color: var(--muted); min-width: 16px; display: inline-block; }
+.checkbox { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 11px; }
+.cmp-select { width: 15px; height: 15px; accent-color: var(--accent); }
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 60;
+  backdrop-filter: blur(1px);
+}
+.drawer {
+  position: fixed; top: 0; right: 0; width: min(620px, 94vw); height: 100vh;
+  background: var(--surface); border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow); z-index: 61; transform: translateX(102%);
+  transition: transform .18s ease; display: flex; flex-direction: column;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+.drawer-head h2 { margin: 0; }
+.drawer-head > div { flex: 1; min-width: 0; }
+.drawer-body { padding: 16px 18px 28px; overflow: auto; }
+.drawer-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.drawer-kpis .kpi { min-height: 68px; padding: 9px 10px; }
+.drawer-kpis .kpi .value { font-size: 19px; }
+.drawer-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.stage-table td { padding: 7px 8px; }
+.stage-table .sharebar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; min-width: 70px; }
+.stage-table .sharebar > span { display: block; height: 100%; background: var(--series-1); }
+.stage-note { color: var(--muted); font-size: 10px; }
+.rule-table td, .rule-table th { padding: 5px 8px; font-size: 11px; }
+@media (max-width: 620px) { .drawer { width: 100vw; } .drawer-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); } }

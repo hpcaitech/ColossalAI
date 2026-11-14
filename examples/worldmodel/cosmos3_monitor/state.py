@@ -20,7 +20,7 @@ from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
-from .series import SeriesStore
+from .series import SeriesStore, stage_metrics
 from .system import SystemHistory, read_system_files
 
 STALE_SECONDS = 15.0
@@ -770,6 +770,7 @@ class RunState:
                 "step": step,
                 "time": _num(last.get("time")),
                 "loss": loss,
+                "samples": self.series.latest_value("data/samples"),
                 "vision": self.series.latest_value("loss/vision"),
                 "action": self.series.latest_value("loss/action"),
                 "lr": self.series.latest_value("optim/lr"),
@@ -854,6 +855,30 @@ class RunState:
             "pending": sum(1 for row in rows if row.get("status") == "pending"),
         }
         return {"checkpoints": rows, "totals": totals}
+
+    def step_detail(self, step: int) -> Optional[Dict[str, Any]]:
+        record = self.series.record_for_step(int(step))
+        if record is None:
+            return None
+        args = self._manifest.get("args")
+        if isinstance(args, list):
+            args = _args_to_dict(args)
+        if not isinstance(args, dict):
+            config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
+            args = _args_to_dict(config.get("args"))
+        checkpointing = args.get("activation_checkpointing") or args.get("checkpoint_mode") or "full"
+        detail = stage_metrics(record, self.world, checkpointing)
+        detail.update(
+            {
+                "run_id": self._manifest.get("run_id") or self.ref.display_name,
+                "world": self.world,
+                "micro_batch_samples": args.get("samples_per_rank"),
+                "grad_accum": args.get("grad_accum"),
+                "effective_global_batch": self._manifest.get("effective_global_batch"),
+                "record": record,
+            }
+        )
+        return detail
 
     def ranks_view(self) -> Dict[str, Any]:
         heartbeats = self.latest_heartbeats()

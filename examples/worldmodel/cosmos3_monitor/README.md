@@ -94,10 +94,10 @@ Run one collector per node. There is no shared state between them; the shared ru
 ## What the pages show
 
 - **Runs** — status, progress, last loss/step time/throughput/MFU/HBM, loss sparkline, alert count, age.
-- **Overview** — KPI tiles, loss and step-time charts, recent events, recent checkpoints, host list.
-- **Charts** — loss, step-time breakdown, throughput, MFU, LR, grad norm, memory, rank skew, data counts.
-  Charts share zoom and crosshair; events and checkpoints appear as mark lines.
-- **Records** — one row per aggregated log step with CSV export.
+- **Overview** — KPI tiles for iteration, epoch, batch, loss, step time, throughput, MFU, HBM, ranks and checkpoints; loss/step-time charts; recent events; recent checkpoints; a compact run-info card.
+- **Charts** — loss, step-time breakdown, per-stage MFU (forward / backward / VAE), throughput, MFU, LR, grad norm, memory, rank skew, batch/tokens and epoch. Step axes are integer-only; an elapsed-time axis is available. Toolbar: step/time axis, range, EMA smoothing, event/checkpoint annotations, log-y and zoom reset. Charts share zoom and crosshair; clicking a point opens the step detail.
+- **Step detail** — opened from a chart point, a Records row or the iteration KPI. Shows iteration, epoch, global batch, micro-batch × accumulation, total and per-stage time/share/MFU/FLOPs, loss, optimizer and memory for that step, with previous/next navigation.
+- **Records** — one row per aggregated log step (iteration, epoch, batch, loss, LR, grad, time, throughput, HBM, skew) with CSV export.
 - **Config** — the full manifest as a searchable tree; copy/download; diff against another run.
 - **Topology** — node × card grid with rank, phase, HBM and temperature; parallel group table.
 - **Checkpoints** — step, kind, start/end, duration, size, files, path, async, source (ledger or filesystem),
@@ -105,7 +105,7 @@ Run one collector per node. There is no shared state between them; the shared ru
 - **Events & Alerts** — training anomaly events and derived monitor alerts, with acknowledgement.
 - **System** — per-host CPU/memory/disk/`/dev/shm`, per-card HBM/temperature/power, process table, history.
 - **Logs** — tail of the path recorded in the manifest, with a path-traversal guard.
-- **Compare** — overlay loss and step time across runs.
+- **Compare** — select runs with the checkboxes on the Runs page; overlay loss and step time, compare KPI tables.
 
 ## Data contract
 
@@ -125,6 +125,15 @@ All files are additive; the per-rank JSONL remains the source of truth.
 ```
 
 The monitor writes only under its `--state-dir` (default `~/.cache/cosmos3_monitor`), never inside a run.
+
+## Interaction notes
+
+- The topbar pause button freezes live updates; the SSE stream and the 5 s detail refresh resume together.
+- `Pause` does not stop the sidebar's run discovery; it only stops the selected run's view from moving.
+- Charts preserve the user's zoom across refreshes; a tab switch starts from the full range.
+- The step detail's stage times are per-stage maxima across ranks, so their sum can be slightly larger than the
+  maximum end-to-end step. Stage MFU assigns the activation recompute to backward; total step MFU uses 4x the
+  forward FLOPs.
 
 ## No training impact
 

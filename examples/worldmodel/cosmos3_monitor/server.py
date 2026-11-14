@@ -173,6 +173,14 @@ def create_app(store: RunStore) -> FastAPI:
         data = store.system(token, host=host)
         return _envelope(data)
 
+    @app.get("/api/runs/{token}/steps/{step}")
+    def step_detail(token: str, step: int):
+        _require(store, token)
+        data = store.step_detail(token, step)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"step {step} is not in this run's retained records")
+        return _envelope(data)
+
     @app.get("/api/runs/{token}/ranks")
     def ranks(token: str):
         _require(store, token)

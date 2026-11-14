@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cosmos3 Monitor</title>
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="stylesheet" href="/static/styles.css?v=6">
 </head>
 <body>
   <div id="app">
@@ -28,6 +28,7 @@
         <div id="crumbs"><a href="#/runs">Runs</a></div>
         <div class="top-actions">
           <span id="live-badge" class="chip">live</span>
+          <button id="pause-toggle" class="ghost" title="暂停/继续实时刷新">暂停</button>
           <button id="theme-toggle" class="ghost" title="切换明暗 (d)">◐</button>
         </div>
       </header>
@@ -35,7 +36,15 @@
     </main>
   </div>
   <div id="toast"></div>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+  <aside id="step-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div><h2 id="drawer-title">Step</h2><div id="drawer-sub" class="muted small"></div></div>
+      <button id="drawer-close" class="ghost" title="关闭 (Esc)">✕</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
   <script src="/static/vendor/echarts.min.js"></script>
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/app.js?v=6"></script>
 </body>
 </html>
