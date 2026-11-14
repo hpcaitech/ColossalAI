@@ -32,6 +32,7 @@ returned content region is (540, 640), unchanged.
 from __future__ import annotations
 
 import os
+from bisect import bisect_right
 from pathlib import Path
 from typing import Any
 
@@ -115,22 +116,54 @@ class UpstreamDroidDataset(Dataset):
         self.dataset_revision = dataset_revision
         self._root_role = "success" if success_only else "mixed"
         self._max_episodes = max_episodes
-        self._starts = self._episode_starts()
+        self._episode_first_row = self._first_rows()
 
-    def _episode_starts(self) -> dict[int, int]:
-        """The reader's own (episode -> first global index) table, used only to report where a sample came from."""
-        out, prev = {}, 0
-        for (_ds, _ss, _vl, eid), end in zip(self._inner._episode_records, self._inner._episode_cum_ends):
-            out[int(eid)] = prev
-            prev = end
-        return out
+    def _first_rows(self) -> dict[tuple[int, int], int]:
+        """Lowest dataset row each episode owns, which is where its own frame numbering starts.
 
-    def _locate(self, index: int) -> tuple[int, int]:
-        episode, start = -1, -1
-        for eid, first in self._starts.items():
-            if first <= index and (start < 0 or first > start):
-                episode, start = eid, first
-        return episode, index - start if start >= 0 else -1
+        ``_episode_records`` holds one entry per *span*, not per episode: with the curated window filter on,
+        an episode contributes one span per kept range, and ``episode_id`` repeats across them. It also
+        counts from zero again in every registered root, so it only identifies an episode together with the
+        record's dataset index. Keying a table by ``episode_id`` alone therefore collapses entries -- the
+        earlier version of this method did, which left a run with the filter on reporting the wrong window
+        for most samples while the samples themselves were correct.
+
+        Returns:
+            dict[tuple[int, int], int]: ``(dataset index, episode id)`` to its first row in that dataset.
+        """
+        first: dict[tuple[int, int], int] = {}
+        for ds_index, row_start, _valid, episode_id in self._inner._episode_records:
+            key = (int(ds_index), int(episode_id))
+            if key not in first or row_start < first[key]:
+                first[key] = int(row_start)
+        return first
+
+    def _locate(self, index: int) -> tuple[int, int, int]:
+        """Which episode a global index falls in, and how far into that episode it starts.
+
+        The span lookup is upstream's own (``cosmos3_action_lerobot.__getitem__``): a bisect over the
+        cumulative span ends, then the span's record. Doing it the same way is the point -- a second
+        implementation of the index is exactly what the vendored copy exists to avoid, and a linear scan
+        over 55,910 episodes ran once per sample.
+
+        Args:
+            index (int): A global window index, as ``__getitem__`` receives it.
+
+        Returns:
+            tuple[int, int, int]: Dataset index, episode id, and the window's first frame counted from the
+            start of that episode.
+
+        Raises:
+            IndexError: ``index`` is outside the reader's range, which would otherwise be reported against
+                the last span.
+        """
+        if not 0 <= index < len(self._inner):
+            raise IndexError(f"window {index} is outside the reader's {len(self._inner)} window(s)")
+        span = bisect_right(self._inner._episode_cum_ends, index)
+        span_start = 0 if span == 0 else self._inner._episode_cum_ends[span - 1]
+        ds_index, row_start, _valid, episode_id = self._inner._episode_records[span]
+        first_row = self._episode_first_row[(int(ds_index), int(episode_id))]
+        return int(ds_index), int(episode_id), int(row_start) + (index - span_start) - first_row
 
     def sample_id(self, index: int) -> str:
         """Logical identity of a window, in the same shape ``droid_dataset.sample_id`` uses.
@@ -138,6 +171,11 @@ class UpstreamDroidDataset(Dataset):
         Same parts, same order, same reason: the revision, the logical root role, the episode, the first
         frame and the window length, with no physical path, so the id does not change with where the
         release is mounted.
+
+        The dataset index is part of it because ``episode_id`` counts from zero again in every registered
+        root, so on a mixed success-and-failure run the pair is what identifies an episode. The frame number
+        is counted from the start of the episode, not from the start of the span, so the several spans one
+        episode contributes under the curated window filter cannot hand two different windows the same id.
 
         **It is not the same string as the other reader's**, and deliberately so rather than by oversight.
         That one names the episode by its relative id (``RAIL/success/2023-05-20/Sat_...``); upstream's
@@ -150,12 +188,13 @@ class UpstreamDroidDataset(Dataset):
         identical (measured field by field on the pinned window), so this is a bookkeeping boundary, not a
         data one -- but a manifest cannot be carried across the ``--dataset`` switch.
         """
-        episode, ordinal = self._locate(index)
+        ds_index, episode, start = self._locate(index)
         parts = [
             self.dataset_revision,
             self._root_role,
+            f"dataset_{ds_index}",
             f"episode_{episode}",
-            str(ordinal),
+            str(start),
             str(self.chunk_length),
         ]
         return ":".join(part for part in parts if part)
@@ -178,7 +217,7 @@ class UpstreamDroidDataset(Dataset):
         padded, content_hw = resize_and_reflect_pad(video.float(), target_h, target_w)
         padded = padded / 127.5 - 1.0  # image_mean = image_std = 0.5
 
-        episode, ordinal = self._locate(index)
+        _ds_index, episode, _start = self._locate(index)
         return {
             "video": padded,
             "action": action.float(),

@@ -32,7 +32,8 @@ class _Reader:
 
     def __init__(self, **kwargs):
         type(self).last = kwargs
-        self._episode_records = [("ds", "success", 40, 0)]
+        # (dataset index, first row, windows in the span, episode id), the shape upstream appends.
+        self._episode_records = [(0, 0, 8, 0)]
         self._episode_cum_ends = [8]
 
     def __len__(self):
