@@ -83,6 +83,28 @@ AOT uses private runner/rank/process package paths, negative-caches compile/gate
 
 Historical speed figures measured before the alignment fixes or with the old loose AOT gate do not establish the speed or correctness of this version. No new GPU/NPU performance claim is made here.
 
+## Monitoring
+
+`train_sft.py` writes per-rank JSONL metrics, a run manifest, and (on rank 0) one aggregated record per log step. The optional [`cosmos3_monitor`](../cosmos3_monitor/README.md) package turns a directory of those run folders into a read-only dashboard with live charts, the full launch/config record, node × card topology, a checkpoint ledger and dashboard-only alerts.
+
+Enable the lightweight hooks explicitly when you want the extra files:
+
+```bash
+bash examples/worldmodel/cosmos3/scripts/train_with_monitor.sh \
+    --run-dir /path/to/run --interval 5 -- \
+    python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
+        --data /path/to/Cosmos3-DROID --checkpoint /path/to/Cosmos3-Edge \
+        --out /path/to/run --log-path /path/to/train.log
+```
+
+Then serve the dashboard from the node or a workstation:
+
+```bash
+python -m examples.worldmodel.cosmos3_monitor serve --roots /path/to/runs --port 18790
+```
+
+The hooks do not add a per-step synchronization, a collective, or work on non-log steps. Use `--no-heartbeat`, `--no-checkpoint-ledger` and `--no-aggregate-metrics` for a benchmark that must be free of them, and `COSMOS3_MONITOR_COLLECT=0` to skip the per-node system collector. `--collective-metrics` is an opt-in that gathers the log-step record across ranks for exact global counts.
+
 ## Validation
 
 Run from the repository root:

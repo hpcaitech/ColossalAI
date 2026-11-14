@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import random
+import time
 import uuid
 from pathlib import Path
 
@@ -67,11 +68,38 @@ def save_checkpoint(directory, model, optimizer, state, *, booster=None):
         torch.save({**state, "world_size": world, "format_version": 1}, staging / "training_state.pt")
     _barrier()
     error = [None]
+    generation = "checkpoint-" + identifier[0]
     if rank == 0:
         try:
-            files = {str(p.relative_to(staging)): file_digest(p) for p in staging.rglob("*") if p.is_file()}
-            (staging / "complete.json").write_text(json.dumps({"files": files}, sort_keys=True))
-            generation = "checkpoint-" + identifier[0]
+            files = {}
+            sizes = {}
+            total_bytes = 0
+            for path in staging.rglob("*"):
+                if not path.is_file():
+                    continue
+                name = str(path.relative_to(staging))
+                files[name] = file_digest(path)
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    size = 0
+                sizes[name] = size
+                total_bytes += size
+            (staging / "complete.json").write_text(
+                json.dumps(
+                    {
+                        "files": files,
+                        "sizes": sizes,
+                        "total_bytes": total_bytes,
+                        "step": state.get("step"),
+                        "epoch": state.get("epoch"),
+                        "world_size": world,
+                        "format_version": 1,
+                        "created_at": time.time(),
+                    },
+                    sort_keys=True,
+                )
+            )
             os.replace(staging, root / generation)
             pointer = root / (".latest-" + identifier[0])
             pointer.write_text(json.dumps({"generation": generation}))
@@ -82,6 +110,7 @@ def save_checkpoint(directory, model, optimizer, state, *, booster=None):
         dist.broadcast_object_list(error, src=0)
     if error[0] is not None:
         raise RuntimeError(f"Checkpoint publication failed: {error[0]}")
+    return root / generation
 
 
 def _validate_rng(rng, source):

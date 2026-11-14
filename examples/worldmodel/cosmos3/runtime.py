@@ -34,17 +34,20 @@ def resolve_compile_backend(requested: str, device_type: str) -> str:
     return requested
 
 
-def parallel_topology(plugin) -> list[dict]:
+def parallel_topology(plugin, extra=None) -> list[dict]:
     """Record logical groups and their actual hosts once, at startup.
 
     HSDP groups follow rank order. A shard group fits on one host only when the launcher
     assigned ranks that way; recording hosts makes that assumption observable.
+    ``extra`` adds per-rank facts (local rank, device index, pid) without a second all-gather.
     """
     groups = {}
     for name in ("dp_group", "sp_group", "mixed_dp_group", "shard_group", "replica_group"):
         group = getattr(plugin, name, None)
         groups[name] = None if group is None else dist.get_process_group_ranks(group)
     local = {"rank": dist.get_rank(), "hostname": socket.gethostname(), "groups": groups}
+    if extra:
+        local.update(extra)
     rows = [None] * dist.get_world_size()
     dist.all_gather_object(rows, local)
     return rows
