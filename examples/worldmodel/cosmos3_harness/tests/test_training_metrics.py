@@ -14,8 +14,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from training_metrics import (
+    ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
+    JsonlMetricsLogger,
     JsonlObserver,
     MetricsAggregator,
     MetricsObserver,
@@ -24,6 +26,8 @@ from training_metrics import (
     TrainingMetrics,
     WandbObserver,
     aggregate_records,
+    compute_cosmos3_flops,
+    compute_mfu,
     flatten,
     make_event,
     make_record,
@@ -354,3 +358,104 @@ def test_jsonl_observer_keeps_events_and_records_in_one_file(tmp_path):
 
     lines = _jsonl(tmp_path / "rank-007.jsonl")
     assert [line["type"] for line in lines] == ["record", "event"]
+
+
+def test_training_metrics_record_interface(tmp_path):
+    collector = _Collector()
+    metrics = TrainingMetrics(out_dir=tmp_path, rank=0, world_size=1, log_every=1, aggregate_observers=[collector])
+    metrics.start({"test": "record_interface"})
+    metrics.record("fwd", 120.5, hbm_gib=32.5)
+    metrics.record("bwd", 85.0)
+    metrics.record("vae", 25.0)
+    metrics.step(1, data={"samples": 4}, loss={"total": 1.25})
+    metrics.finish({"status": "done"})
+
+    assert len(collector.records) == 1
+    rec = collector.records[0]
+    assert rec["perf"]["fwd_ms"] == 120.5
+    assert rec["perf"]["forward_ms"] == 120.5
+    assert rec["perf"]["bwd_ms"] == 85.0
+    assert rec["perf"]["vae_ms"] == 25.0
+    assert rec["mem"]["device_used_gib"] == 32.5
+
+
+def test_telemetry_reduction_with_standard_keys():
+    rank0 = make_record(
+        step=5,
+        rank=0,
+        perf={"fwd_ms": 100.0, "bwd_ms": 150.0, "vae_ms": 30.0, "tflops": 120.0, "mfu": 0.35},
+        mem={"device_used_gib": 32.0, "peak_reserved_gib": 30.0},
+    )
+    rank1 = make_record(
+        step=5,
+        rank=1,
+        perf={"fwd_ms": 120.0, "bwd_ms": 140.0, "vae_ms": 35.0, "tflops": 110.0, "mfu": 0.33},
+        mem={"device_used_gib": 34.5, "peak_reserved_gib": 31.0},
+    )
+
+    aggregated = aggregate_records([rank0, rank1])
+
+    # Max reduction for straggler latencies and memory high-water marks
+    assert aggregated["perf"]["fwd_ms"] == 120.0
+    assert aggregated["perf"]["bwd_ms"] == 150.0
+    assert aggregated["perf"]["vae_ms"] == 35.0
+    assert aggregated["mem"]["device_used_gib"] == 34.5
+    assert aggregated["mem"]["peak_reserved_gib"] == 31.0
+
+    # Sum reduction for total cluster TFLOPS
+    assert aggregated["perf"]["tflops"] == 230.0
+
+    # Mean reduction for MFU
+    assert aggregated["perf"]["mfu"] == pytest.approx(0.34)
+
+
+def test_mfu_and_flops_computation():
+    assert ASCEND_910B2_CUBE_PEAK_TFLOPS == 353.9
+
+    # 2 samples forward: 40.68 TFLOP. With recompute: 4x -> 1.6272e14 FLOPs
+    flops_recompute = compute_cosmos3_flops(samples=2, activation_checkpointing=True, include_vae=False)
+    assert flops_recompute == pytest.approx(1.6272e14, rel=1e-3)
+
+    # Without recompute: 3x -> 1.2204e14 FLOPs
+    flops_no_recompute = compute_cosmos3_flops(samples=2, activation_checkpointing=False, include_vae=False)
+    assert flops_no_recompute == pytest.approx(1.2204e14, rel=1e-3)
+
+    # With VAE: 2 * 33 TFLOP added
+    flops_with_vae = compute_cosmos3_flops(samples=2, activation_checkpointing=True, include_vae=True)
+    assert flops_with_vae == pytest.approx(1.6272e14 + 6.6e13, rel=1e-3)
+
+    # MFU calculation: 1.6272e14 FLOPs in 1.0s on 1 NPU (353.9 TFLOPS peak)
+    # achieved TFLOPS = 162.72. MFU = 162.72 / 353.9 ≈ 0.45979
+    mfu = compute_mfu(step_ms=1000.0, total_flops=flops_recompute, world_size=1, peak_tflops_per_npu=353.9)
+    assert mfu == pytest.approx(162.72 / 353.9, rel=1e-3)
+
+    # 48 NPUs scaling
+    mfu_48 = compute_mfu(step_ms=1000.0, total_flops=flops_recompute * 48, world_size=48, peak_tflops_per_npu=353.9)
+    assert mfu_48 == pytest.approx(mfu, rel=1e-3)
+
+    # Boundary cases
+    assert compute_mfu(step_ms=0, total_flops=flops_recompute) == 0.0
+    assert compute_mfu(step_ms=1000.0, total_flops=flops_recompute, world_size=0) == 0.0
+
+
+def test_anomaly_detector_reserved_and_device_memory():
+    detector = AnomalyDetector(warmup=0, device_capacity_gib=64.0, memory_fraction=0.85)
+
+    # Below 85% threshold (50 GiB < 54.4 GiB): no warning
+    events_safe = detector.check(aggregate_records([
+        make_record(1, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 45.0, "device_used_gib": 50.0})
+    ]))
+    assert not any(e["kind"] == "memory_pressure" for e in events_safe)
+
+    # peak_reserved_gib exceeds 85% (58 GiB > 54.4 GiB)
+    events_reserved = detector.check(aggregate_records([
+        make_record(2, 0, mem={"allocated_gib": 20.0, "peak_reserved_gib": 58.0})
+    ]))
+    assert any(e["kind"] == "memory_pressure" for e in events_reserved)
+
+    # device_used_gib exceeds 85% (60 GiB > 54.4 GiB)
+    events_device = detector.check(aggregate_records([
+        make_record(3, 0, mem={"allocated_gib": 20.0, "device_used_gib": 60.0})
+    ]))
+    assert any(e["kind"] == "memory_pressure" for e in events_device)
+
