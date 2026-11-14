@@ -144,6 +144,19 @@ def parse_args(argv=None):
         "--hsdp-shard-size", type=int, help="Logical ZeRO shard group size; node locality depends on rank placement."
     )
     parser.add_argument("--zero-stage", type=int, choices=(0, 1, 2), default=2)
+    parser.add_argument(
+        "--zero-bucket-size-m",
+        type=int,
+        default=12,
+        help="Gradient reduce bucket in millions of elements; larger buckets mean fewer cross-node sync points.",
+    )
+    parser.add_argument(
+        "--overlap-allgather",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Launch ZeRO's parameter all-gather asynchronously and wait at first use, so it overlaps the next "
+        "step's data/VAE work instead of blocking the end of the optimizer step.",
+    )
     parser.add_argument("--max-iter", type=int, default=10000, help="Optimizer steps, cycling the loader as needed.")
     parser.add_argument(
         "--save-every", type=int, default=1000, help="Model export interval; exports are not training resume state."
@@ -310,6 +323,7 @@ def parse_args(argv=None):
         "save_every",
         "log_every",
         "metrics_every",
+        "zero_bucket_size_m",
     ):
         if getattr(args, name) < 1:
             parser.error(f"--{name.replace('_', '-')} must be positive")
@@ -553,6 +567,8 @@ def main():
         hsdp_shard_size=args.hsdp_shard_size,
         cast_inputs=args.cast_inputs,
         cast_buffers=args.cast_buffers,
+        zero_bucket_size_in_m=args.zero_bucket_size_m,
+        overlap_allgather=args.overlap_allgather,
     )
     unique_dp = dist.get_world_size(plugin.dp_group)
     dp_rank = dist.get_rank(plugin.dp_group)
@@ -817,7 +833,17 @@ def main():
             }
         )
     if os.environ.get("COSMOS3_REPORT_PEAK_HBM"):
-        print(f"[mem rank {coord.rank}] peak allocated {device_memory_gib().get('peak_gib', 0.0):.2f} GiB", flush=True)
+        # Report every counter, not just the allocator's: `peak allocated` alone under-reads the card by the
+        # reserved-but-idle blocks and by the device runtime's context, which is how a run can look comfortable and
+        # then OOM. `device_used_gib` is the figure npu-smi shows.
+        memory = device_memory_gib()
+        print(
+            f"[mem rank {coord.rank}] peak allocated {memory.get('peak_gib', 0.0):.2f} GiB"
+            f" | peak reserved {memory.get('peak_reserved_gib', 0.0):.2f} GiB"
+            f" | device used {memory.get('device_used_gib', 0.0):.2f} GiB"
+            f" / {memory.get('device_total_gib', 0.0):.2f} GiB",
+            flush=True,
+        )
     coord.print_on_master("done")
 
 
