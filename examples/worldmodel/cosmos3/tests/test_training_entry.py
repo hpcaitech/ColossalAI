@@ -1,5 +1,6 @@
 """CPU contracts for the online SFT entry, including real accumulated optimizer updates."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -215,7 +216,15 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     )
     monkeypatch.setattr(entry, "get_accelerator", lambda: accelerator)
     monkeypatch.setattr(
-        entry, "DistCoordinator", lambda: SimpleNamespace(rank=0, world_size=1, print_on_master=lambda *a: None)
+        entry,
+        "DistCoordinator",
+        lambda: SimpleNamespace(
+            rank=0,
+            world_size=1,
+            print_on_master=lambda *a: None,
+            is_master=lambda *a: True,
+            block_all=lambda *a: None,
+        ),
     )
     policy = SimpleNamespace(processor=SimpleNamespace(backend="naive"), packed_meta=None)
     policy.set_packed_meta = lambda meta: setattr(policy, "packed_meta", meta)
@@ -260,6 +269,8 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     monkeypatch.setattr(entry, "build_vae", lambda *a, **kw: torch.nn.Linear(1, 1))
     monkeypatch.setattr(entry, "build_optimizer", lambda model, *a: torch.optim.SGD(model.parameters(), lr=0.01))
 
+    exports = []
+
     class Booster:
         def __init__(self, **kwargs):
             pass
@@ -269,6 +280,11 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
 
         def backward(self, loss, optimizer):
             loss.backward()
+
+        def save_model(self, model, path, **kwargs):
+            # The value at the moment of the write is the point: one of these two exports has to be the
+            # average, and the other has to be the weights training is actually on.
+            exports.append((path, model.weight.detach().clone()))
 
     monkeypatch.setattr(entry, "Booster", Booster)
 
@@ -296,21 +312,53 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     )
     monkeypatch.setattr(entry, "parallel_topology", lambda plugin: [])
     monkeypatch.setattr(entry, "device_memory_gib", lambda: {})
+    ema_shadow = []
+    real_power_ema = entry.PowerEMA
+
+    class RecordingEMA(real_power_ema):
+        """Keeps a handle on the shadow so the test can check what was written was the average."""
+
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            ema_shadow.append(self.shadow[0])
+
+    monkeypatch.setattr(entry, "PowerEMA", RecordingEMA)
     entry.main()
     expected_losses = []
+    # The rate this optimizer is built with no longer decides anything: the entry applies the recipe's
+    # schedule to every parameter group before each step, so the reference has to be taken through the
+    # same schedule or it is comparing two different learning rates rather than two accumulation windows.
     reference_optim = torch.optim.SGD(reference.parameters(), lr=0.01)
-    for goals in ((1.0, 3.0, 1.0), (3.0, 1.0, 3.0)):
+    for step_index, goals in enumerate(((1.0, 3.0, 1.0), (3.0, 1.0, 3.0))):
         losses = [entry.compute_loss(reference(), targets(goal)) for goal in goals]
         loss = torch.stack(losses).mean()
         expected_losses.append(loss.item())
         loss.backward()
+        entry.set_learning_rate(reference_optim, step_index)
         reference_optim.step()
         reference_optim.zero_grad()
     torch.testing.assert_close(model.weight, reference.weight)
     assert [record["loss"]["total"] for record in records] == pytest.approx(expected_losses)
     assert [record["data"]["samples"] for record in records] == [3, 3]
     assert [record["data"]["ar_tokens"] for record in records] == [6, 6]
-    assert all(record["optim"]["lr/0"] == 0.01 for record in records)
+    # Not the rate the optimizer was built with: the recipe's schedule scales every group before each
+    # step. It scales rather than overwrites, so each group keeps its own base rate -- which is what lets
+    # the action heads hold their 5x -- and this group's base is the 0.01 it was built with. Written
+    # through the schedule rather than as a literal so that changing the schedule moves the expectation.
+    assert [record["optim"]["lr/0"] for record in records] == pytest.approx(
+        [0.01 * entry.lr_multiplier(0), 0.01 * entry.lr_multiplier(1)]
+    )
     assert manifests[0]["effective_global_batch"] == 3
     assert manifests[0]["save_kind"] == "model_export"
+    # Two steps against a save interval of 1000: without the exit-time save the run would end having
+    # written nothing, and the average it spent the whole run building would go with it.
+    written = {Path(path).name: value for path, value in exports}
+    assert sorted(written) == ["ema", "step-2"]
+    torch.testing.assert_close(written["step-2"], model.weight.detach())
+    # The EMA's first update copies the weights (beta 0 at index 0), so after two steps the average is
+    # one blend of step one's weights into step two's -- not equal to either.
+    assert not torch.equal(written["ema"], written["step-2"])
+    assert torch.equal(ema_shadow[0], written["ema"].float())
+    # And the weights training continues from are the ones it had, not the average.
+    torch.testing.assert_close(model.weight.detach(), written["step-2"])
     assert summaries[0]["steps"] == 2 and summaries[0]["completed"]
