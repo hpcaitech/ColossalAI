@@ -39,11 +39,28 @@ from pathlib import Path
 from typing import Any
 
 import av
+import numpy as np
 import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
-import torchvision.transforms.v2 as T
 from torch.utils.data import Dataset
+
+# The augmentation is torchvision's, as upstream's is. The import stays guarded because a torchvision that does
+# not match the torch/torch_npu build is a real failure mode here: it imports, registers no operators, and dies
+# later on `torchvision::nms`, which looks like a data bug rather than a dependency one. Guarded, that shows up
+# as a clear RuntimeError from `_augment` instead, and `--image-augmentation none` still runs.
+#
+# Verified working on the 910B2 nodes against torch 2.13.0+cpu / torch_npu 2.13.0rc1 with torchvision 0.28.0+cpu:
+# `_augment` on the 99x3x360x640 window costs 226-487 ms of CPU (the spread is ColorJitter drawing different
+# factors, see /mnt/disk0/jiangzs/share/bench_augmentation.py), and at 32 samples/rank with 4 workers it stays
+# inside the dataloader's prefetch and does not move the step time.
+try:
+    import torchvision.transforms.v2 as T
+except (ImportError, RuntimeError) as torchvision_error:
+    T = None
+    TORCHVISION_IMPORT_ERROR = torchvision_error
+else:
+    TORCHVISION_IMPORT_ERROR = None
 
 # cosmos-framework VIDEO_RES_SIZE_INFO: values are (width, height) and every side is a multiple of 16.
 RES_TABLE = {
@@ -381,8 +398,11 @@ def closest_canvas(h: int, w: int, resolution: str = "480") -> tuple[int, int, s
     return th, tw, key
 
 
-def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int):
+def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int, pad_columns: int | None = None):
     """Scale to fit the canvas, then reflection-pad bottom and right to the exact size.
+
+    ``pad_columns`` overrides only the right padding while the scale still uses the full canvas width, so a caller
+    that will crop the padded columns can avoid materialising them in the first place.
 
     Returns:
         tuple: The padded tensor and the ``(h, w)`` of the content region inside it.
@@ -399,6 +419,8 @@ def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int):
         # runs for DROID, but the mode still has to match for any input that does need downscaling.
         x = F.interpolate(x, size=(rh, rw), mode="bicubic", align_corners=False, antialias=True)
     pad_b, pad_r = target_h - rh, target_w - rw
+    if pad_columns is not None:
+        pad_r = int(pad_columns)
     if pad_b or pad_r:
         # Reflection padding requires the pad to be smaller than the side it mirrors; fall back to edge replication.
         mode = "reflect" if pad_b < rh and pad_r < rw else "replicate"
@@ -467,6 +489,12 @@ class DroidActionPolicyDataset(Dataset):
             when a filter file uses legacy composite URI keys. When None, ``DROID_FILTER_SOURCE_PREFIX`` is read.
         dataset_revision (str, optional): Release tag placed in front of every sample id, so two releases that
             reuse episode ids do not share identities. Defaults to an empty string.
+        action_cache (str | Path | None, optional): Directory written by ``scripts/build_action_cache.py``. Its
+            memmapped float32 slices replace the per-file parquet read. Defaults to None.
+        video_content_pad (int | None, optional): Encode only ``content width + pad`` columns instead of the full
+            canvas; must be a nonnegative multiple of 16. Defaults to None, the recipe's full canvas.
+        video_uint8 (bool, optional): Keep the sample uint8 through the dataset and pad/normalise on the device.
+            Defaults to False.
     """
 
     def __init__(
@@ -487,6 +515,9 @@ class DroidActionPolicyDataset(Dataset):
         keep_ranges: str | Path | None = None,
         filter_dict_source_prefix: str | None = None,
         dataset_revision: str = "",
+        action_cache: str | Path | None = None,
+        video_content_pad: int | None = None,
+        video_uint8: bool = False,
     ):
         self.root = Path(root)
         self.chunk_length = chunk_length
@@ -495,6 +526,22 @@ class DroidActionPolicyDataset(Dataset):
         self.resolution = resolution
         self.augment = augment
         self._augmentor: T.Compose | None = None
+        # One actions parquet per data file, kept per worker process; see _action_table for why the read cannot stay
+        # on the per-sample path.
+        self._action_tables: dict[Path, object] = {}
+        # Optional per-file float32 action/state cache written by scripts/build_action_cache.py. It turns the
+        # parquet read into a memmapped slice, which is what removes the cold-read stall at a file boundary.
+        self.action_cache = Path(action_cache) if action_cache is not None else None
+        self._action_maps: dict[Path, object] = {}
+        # Optional: encode only `content width + pad` columns instead of the full canvas. The latent is cropped to
+        # the content region anyway, so the canvas padding is VAE work whose result is thrown away; the pad keeps
+        # some right-edge context for the mid-block attention. None keeps the recipe's full canvas.
+        if video_content_pad is not None and (video_content_pad < 0 or video_content_pad % 16):
+            raise ValueError("video_content_pad must be a nonnegative multiple of 16")
+        self.video_content_pad = video_content_pad
+        # Keep the sample uint8 from the dataset to the device: the canvas pad and the x/127.5-1 affine run on the
+        # NPU (video_uint8.py), so the host never materialises the float32 frames and H2D drops 4x.
+        self.video_uint8 = video_uint8
         self.split = split
         # Upstream derives the holdout from the same randperm as the episode shuffle. None keeps that coupling
         # for callers that only pass episode_shuffle_seed; an explicit split_seed decouples the two.
@@ -682,34 +729,103 @@ class DroidActionPolicyDataset(Dataset):
             frames += [frames[-1]] * (self.n_obs - len(frames))
         return torch.stack(frames).permute(0, 3, 1, 2)  # [T, C, H, W] uint8
 
+    def _action_table(self, path: Path):
+        """The actions parquet of one data file, read once per worker process.
+
+        ``_read_actions`` used to call ``pq.read_table`` and then ``to_pylist()`` on whole columns for **every**
+        sample: that converts every row of the file to Python objects in order to keep 32 of them. Measured per
+        sample on node6, it cost 774 ms of a 1339 ms ``__getitem__`` -- more than decoding all three camera streams
+        (482 ms) and the single largest item in the data path. It is also what stalled a whole rank for ~170 s: the
+        first sample past a file boundary paid a cold full-column read while the other ranks waited at the next
+        collective.
+
+        The cache is bounded because a worker walks its index forward: it holds one file for a long stretch and needs
+        the next one only at the boundary, so two entries cover the access pattern without pinning many files per
+        worker.
+        """
+        cached = self._action_tables.get(path)
+        if cached is not None:
+            return cached
+        table = pq.read_table(
+            path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"]
+        )
+        if len(self._action_tables) >= 2:
+            self._action_tables.pop(next(iter(self._action_tables)))
+        self._action_tables[path] = table
+        return table
+
+    def _action_array(self, win: Window):
+        """Memmapped action cache for one data file, or ``None`` when the optional cache is absent."""
+        if self.action_cache is None:
+            return None
+        path = (
+            self.action_cache
+            / win.root.name
+            / "data"
+            / f"chunk-{win.data_chunk:03d}"
+            / f"file-{win.data_file:03d}.npy"
+        )
+        cached = self._action_maps.get(path)
+        if cached is not None:
+            return cached
+        if not path.is_file():
+            return None
+        array = np.load(path, mmap_mode="r")
+        if len(self._action_maps) >= 2:
+            self._action_maps.pop(next(iter(self._action_maps)))
+        self._action_maps[path] = array
+        return array
+
     def _read_actions(self, win: Window):
-        path = win.root / "data" / f"chunk-{win.data_chunk:03d}" / f"file-{win.data_file:03d}.parquet"
-        tbl = pq.read_table(path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"])
         lo = win.row_from + win.start
-        n = tbl.num_rows
-        if lo >= n:
-            raise IndexError(
-                f"Row {lo} is past the {n} rows of {path.name} (episode {win.episode_index}, start {win.start})."
-            )
-        got = tbl["episode_index"].to_pylist()[lo]
-        if got != win.episode_index:
-            raise ValueError(
-                f"Row mismatch: expected episode {win.episode_index}, but row {lo} of {path.name} belongs to "
-                f"episode {got}."
-            )
-        joint = torch.tensor(tbl[JOINT_ACTION].to_pylist()[lo : lo + self.chunk_length], dtype=torch.float32)
-        grip = torch.tensor(tbl[GRIPPER_ACTION].to_pylist()[lo : lo + self.chunk_length], dtype=torch.float32)
-        if grip.ndim == 1:
-            grip = grip.unsqueeze(-1)
+        array = self._action_array(win)
+        if array is not None:
+            if lo >= array.shape[0]:
+                raise IndexError(
+                    f"Row {lo} is past the {array.shape[0]} rows of the cached actions for {win.root.name} "
+                    f"(episode {win.episode_index}, start {win.start})."
+                )
+            got = int(array[lo, 16])
+            if got != win.episode_index:
+                raise ValueError(
+                    f"Row mismatch: expected episode {win.episode_index}, but row {lo} of the cached "
+                    f"{win.root.name} actions belongs to episode {got}."
+                )
+            block = np.asarray(array[lo : lo + self.chunk_length])
+            joint = torch.from_numpy(block[:, 0:7].copy())
+            grip = torch.from_numpy(block[:, 7:8].copy())
+            s_joint = torch.from_numpy(np.asarray(array[lo, 8:15]).copy())
+            s_grip = torch.from_numpy(np.asarray(array[lo, 15:16]).copy())
+        else:
+            path = win.root / "data" / f"chunk-{win.data_chunk:03d}" / f"file-{win.data_file:03d}.parquet"
+            tbl = self._action_table(path)
+            n = tbl.num_rows
+            if lo >= n:
+                raise IndexError(
+                    f"Row {lo} is past the {n} rows of {path.name} (episode {win.episode_index}, start {win.start})."
+                )
+            got = tbl.column("episode_index")[lo].as_py()
+            if got != win.episode_index:
+                raise ValueError(
+                    f"Row mismatch: expected episode {win.episode_index}, but row {lo} of {path.name} belongs to "
+                    f"episode {got}."
+                )
+            # Only the window's own rows are converted to Python; the rest of the column stays in Arrow.
+            block = tbl.slice(lo, self.chunk_length)
+            joint = torch.tensor(block.column(JOINT_ACTION).to_pylist(), dtype=torch.float32)
+            grip = torch.tensor(block.column(GRIPPER_ACTION).to_pylist(), dtype=torch.float32)
+            if grip.ndim == 1:
+                grip = grip.unsqueeze(-1)
+            # Robot state at the first frame of the window, in the same joint(7) + gripper(1) space as the actions.
+            s_joint = torch.tensor(tbl.column(STATE_JOINT)[lo].as_py(), dtype=torch.float32)
+            s_grip = torch.tensor(tbl.column(STATE_GRIPPER)[lo].as_py(), dtype=torch.float32)
         # The gripper channel is stored inverted in this release of the dataset. Upstream carries the fact as
         # IS_GRIPPER_ACTION_FLIPPED, True for every droid_plus_lerobot_* version, and applies 1 - g to both the
         # action gripper and the initial-state gripper. Measured on episode 26827 window 0: upstream reports 1.0
         # for all 33 steps where the raw column gives 0.0. Without this the action head learns an inverted
         # open/close command.
         grip = 1.0 - grip
-        # Robot state at the first frame of the window, in the same joint(7) + gripper(1) space as the actions.
-        s_joint = torch.tensor(tbl[STATE_JOINT].to_pylist()[lo], dtype=torch.float32)
-        s_grip = 1.0 - torch.tensor(tbl[STATE_GRIPPER].to_pylist()[lo], dtype=torch.float32)
+        s_grip = 1.0 - s_grip
         state = torch.cat([s_joint.reshape(-1), s_grip.reshape(-1)], dim=-1)
         return torch.cat([joint, grip], dim=-1), state  # [chunk, 8], [8]
 
@@ -733,8 +849,30 @@ class DroidActionPolicyDataset(Dataset):
         # the result is x - 1. Measured against upstream on one window: without the round trip our pixels are
         # higher by exactly one level on 73.9% of elements and two levels on 3.5%, never lower, relL2 1.16e-02.
         comp = (comp * 255.0).clamp(0.0, 255.0).to(torch.uint8)
-        comp, content_hw = resize_and_reflect_pad(comp.float(), th, tw)
-        comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
+        if self.video_uint8:
+            # The pixels stay uint8 (the upstream quantisation); the canvas pad and x/127.5-1 run on the device in
+            # video_uint8.py. content_hw is the composite's own size, the target is the canvas height plus the
+            # content width and the requested pad: exactly what resize_and_reflect_pad would have produced.
+            content_hw = (int(comp.shape[-2]), int(comp.shape[-1]))
+            pad_columns = int(self.video_content_pad or 0)
+            target_h = int(th)
+            target_w = content_hw[1] + pad_columns
+            if target_h < content_hw[0] or target_w > int(tw):
+                raise ValueError(
+                    f"uint8 canvas target {target_h}x{target_w} does not fit content {content_hw} "
+                    f"inside canvas {th}x{tw}"
+                )
+            video_pad_hw = torch.tensor([target_h, target_w])
+            video = comp.permute(1, 0, 2, 3)  # [C, T, H, W] uint8
+        else:
+            # With video_content_pad only `content width + pad` columns are materialised; the scale still comes
+            # from the full canvas so the content region is identical to the recipe's.
+            comp, content_hw = resize_and_reflect_pad(
+                comp.float(), th, tw, pad_columns=self.video_content_pad
+            )
+            comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
+            video_pad_hw = None
+            video = comp.permute(1, 0, 2, 3)
 
         action, state = self._read_actions(win)
         # DROID stores several human annotations of one episode joined by " | " inside a single string, so the
@@ -752,7 +890,8 @@ class DroidActionPolicyDataset(Dataset):
         # rather than counting on 32 rows and disagreeing with upstream by one frame.
         full_action = torch.cat([state.reshape(1, -1).to(action.dtype), action], dim=0)
         return {
-            "video": comp.permute(1, 0, 2, 3),  # [C, T, H, W]; the VAE encodes it in the training loop
+            "video": video,  # [C, T, H, W]; the VAE encodes it in the training loop
+            "video_pad_hw": video_pad_hw,  # None on the float path; [target_h, target_w] on the uint8 path
             "action": action,  # [chunk_length, 8], unnormalized
             "state": state,  # [8]
             "task": task,
@@ -798,6 +937,11 @@ class DroidActionPolicyDataset(Dataset):
         Returns:
             dict[str, torch.Tensor]: The same keys, augmented together.
         """
+        if T is None:
+            raise RuntimeError(
+                "image augmentation needs torchvision v2, which failed to import: "
+                f"{TORCHVISION_IMPORT_ERROR}. Pass --image-augmentation none to train without it."
+            )
         names = list(views)
         per_view = views[names[0]].shape[0]
         stacked = torch.cat([views[name] for name in names], dim=0)  # [3T, C, H, W]
