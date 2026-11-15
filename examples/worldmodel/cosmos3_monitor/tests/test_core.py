@@ -463,12 +463,65 @@ def test_partial_aggregate_uses_the_global_rank_throughput(tmp_path):
     assert snapshot["last"]["samples_per_s"] == 16
     assert snapshot["last"]["mfu"] is not None
     assert snapshot["eta_s"] is not None and 8 <= snapshot["eta_s"] <= 10
+    assert state.series.records[-1]["data"]["samples"] == 16
+    assert state.series.latest_value("data/samples") == 16
+    assert state.series.latest_value("perf/samples_per_s") == 16
     detail = state.step_detail(1)
     assert detail is not None
     assert detail["batch_samples"] == 16
     assert detail["aggregate_from_ranks"] is True
     stages = {stage["name"]: stage for stage in detail["stages"]}
     assert stages["forward"]["seconds"] is not None
+
+
+def test_partial_aggregate_scales_to_the_expected_world_before_rank_files_arrive(tmp_path):
+    run = tmp_path / "run-estimated"
+    metrics = run / "metrics"
+    metrics.mkdir(parents=True)
+    now = time.time()
+    write_json(
+        metrics / "run.json",
+        {
+            "run_id": "estimated",
+            "world_size": 4,
+            "started_at": now - 100,
+            "args": {"max_iter": 10, "samples_per_rank": 4, "grad_accum": 1},
+            "topology": [
+                {"rank": rank, "hostname": "A", "local_rank": rank, "device_index": rank} for rank in range(4)
+            ],
+        },
+    )
+    write_lines(
+        metrics / "aggregated.jsonl",
+        [
+            {
+                "type": "record",
+                "step": 1,
+                "rank": 0,
+                "time": now - 5,
+                "ranks": [0, 1],
+                "world": 2,
+                "expected_world": 4,
+                "complete": False,
+                "data": {"partial_samples": 8, "ar_tokens": 100, "dm_tokens": 200},
+                "loss": {"total": 2.0},
+                "perf": {"step_ms": 1000.0},
+            }
+        ],
+    )
+    state = RunState(discover([run])[0])
+    state.refresh()
+    snapshot = state.snapshot()
+    assert snapshot["last"]["samples"] == 16
+    assert snapshot["last"]["samples_per_s"] == 16
+    assert snapshot["last"]["mfu"] is not None
+    record = state.series.records[-1]
+    assert record["samples_estimated"] is True
+    assert record["reporting_world"] == 2
+    assert record["data"]["samples"] == 16
+    assert record["data"]["partial_samples"] == 8
+    assert record["data"]["ar_tokens"] == 200
+    assert record["data"]["dm_tokens"] == 400
 
 
 def test_step_detail_reports_each_stage_and_mfu(tmp_path):

@@ -76,6 +76,9 @@ class RunState:
         self.events: Deque[Dict[str, Any]] = deque(maxlen=4000)
         self.checkpoints: Dict[str, Dict[str, Any]] = {}
         self.pending_ranks: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        self.partial_aggregates: Dict[int, Dict[str, Any]] = {}
+        self._partial_seen_at: Dict[int, float] = {}
+        self._partial_signature: Dict[int, tuple] = {}
         self.summary: Optional[Dict[str, Any]] = None
         self._last_record: Optional[Dict[str, Any]] = None
         self._last_refresh = 0.0
@@ -123,6 +126,9 @@ class RunState:
             self.aggregated.reset()
             self.rank_tails.clear()
             self.pending_ranks.clear()
+            self.partial_aggregates.clear()
+            self._partial_seen_at.clear()
+            self._partial_signature.clear()
             self.events.clear()
             self.checkpoints.clear()
             self.checkpoint_tail.reset()
@@ -174,18 +180,80 @@ class RunState:
             self.series.clear()
             self._last_record = None
             self.pending_ranks.clear()
+            self.partial_aggregates.clear()
+            self._partial_seen_at.clear()
+            self._partial_signature.clear()
             for tail in self.rank_tails.values():
                 tail.reset()
             self.aggregated.truncated = False
         for record in self.aggregated.read_new():
             kind = record.get("type")
             if kind == "record":
-                if self.series.append(record):
-                    self._last_record = record
+                display = self._estimate_global_record(record) if record.get("complete") is False else record
+                if self.series.append(display):
+                    self._last_record = display
+                    if record.get("complete") is False:
+                        try:
+                            step = int(record.get("step"))
+                        except (TypeError, ValueError):
+                            step = None
+                        if step is not None:
+                            self.partial_aggregates[step] = record
+                            self._partial_seen_at.setdefault(step, time.time())
             elif kind == "event":
                 self._add_event(record)
             elif kind == "summary":
                 self.summary = record.get("summary") or record
+
+    def _configured_samples_per_rank(self) -> Optional[float]:
+        args = self._manifest.get("args")
+        if isinstance(args, list):
+            args = _args_to_dict(args)
+        if not isinstance(args, dict):
+            config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
+            args = _args_to_dict(config.get("args"))
+        per_rank = _num(args.get("samples_per_rank"))
+        if per_rank is None or per_rank <= 0:
+            return None
+        accum = _num(args.get("grad_accum")) or 1.0
+        return per_rank * accum
+
+    def _estimate_global_record(self, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Scale a partial aggregate to the expected world when the per-rank batch is known and uniform.
+
+        Rank 0 writes ``partial_samples = arrived_ranks x samples_per_rank``.  If that ratio matches the launch
+        arguments, the missing ranks are known to contribute the same amount, so the panel can show the global
+        batch immediately instead of waiting for the mirror.  The rank-file correction later replaces this with
+        measured token/stage totals and marks the step complete.
+        """
+        data = record.get("data") if isinstance(record.get("data"), dict) else {}
+        raw = _num(data.get("partial_samples"))
+        if raw is None:
+            raw = _num(data.get("samples"))
+        arrived = len(record.get("ranks") or []) or int(_num(record.get("world")) or 0)
+        expected = int(_num(record.get("expected_world")) or self._world or 0)
+        per_rank = self._configured_samples_per_rank()
+        if not raw or not arrived or not expected or expected <= arrived or not per_rank:
+            return record
+        ratio = raw / arrived
+        if abs(ratio - per_rank) > max(0.01, per_rank * 0.01):
+            return record
+        corrected = dict(record)
+        corrected["data"] = dict(data)
+        corrected["data"]["partial_samples"] = raw
+        corrected["data"]["samples"] = ratio * expected
+        scale = expected / arrived
+        for key in ("ar_tokens", "dm_tokens"):
+            value = _num(corrected["data"].get(key))
+            if value is not None:
+                corrected["data"][key] = value * scale
+        corrected["world"] = expected
+        corrected["expected_world"] = expected
+        corrected["reporting_world"] = arrived
+        corrected["samples_estimated"] = True
+        corrected["complete"] = False
+        corrected["source"] = corrected.get("source") or "configured_batch"
+        return corrected
 
     def _read_rank_files(self, now: float) -> None:
         """Tail every rank file: it is both the legacy aggregate source and the per-rank throughput source.
@@ -227,10 +295,13 @@ class RunState:
                     samples = _num(record.get("data", {}).get("partial_samples"))
                 step_ms = _num(record.get("perf", {}).get("step_ms"))
                 if samples is not None and step_ms:
-                    self.throughput.ingest(rank, rank_hosts.get(rank, "unknown"), step, samples, step_ms / 1e3, now)
+                    self.throughput.ingest(
+                        rank, rank_hosts.get(rank, "unknown"), step, samples, step_ms / 1e3, now, record
+                    )
         world = self._world or (max(self.rank_tails) + 1 if self.rank_tails else 0)
         host_ranks = self._host_rank_map()
         self.throughput.finalize_pending(host_ranks, world, now)
+        self._correct_partial_aggregates(now)
         if self._aggregated_seen:
             return
         for step in sorted(list(self.pending_ranks)):
@@ -241,6 +312,97 @@ class RunState:
                 self._fallback_partial_at.setdefault(step, now)
                 if any(later > step for later in self.pending_ranks):
                     self._publish_fallback(step, records, complete=False)
+
+    def _correct_partial_aggregates(self, now: float) -> None:
+        """Rewrite rank 0's partial per-step record once the mirror has the other nodes' rank records.
+
+        The original aggregate is already on the chart; ``SeriesStore.update`` replaces that same point, so a
+        late rank file does not create an out-of-order step or a duplicate sample count.
+        """
+        if not self.partial_aggregates:
+            return
+        for step in sorted(list(self.partial_aggregates)):
+            record = self.partial_aggregates.get(step)
+            if not isinstance(record, dict):
+                self.partial_aggregates.pop(step, None)
+                continue
+            entries = self.throughput.step_ranks.get(step) or {}
+            expected = int(_num(record.get("expected_world")) or self._world or 0)
+            age = now - self._partial_seen_at.get(step, now)
+            if not entries:
+                if age > 300.0:
+                    self.partial_aggregates.pop(step, None)
+                    self._partial_seen_at.pop(step, None)
+                    self._partial_signature.pop(step, None)
+                continue
+            complete = not expected or len(entries) >= expected
+            if not complete and age < 30.0:
+                continue
+            if not complete:
+                existing = self.series.record_for_step(step)
+                if isinstance(existing, dict) and existing.get("samples_estimated"):
+                    # The configured per-rank batch already gives the exact global count; replacing it with a
+                    # smaller sum of whichever ranks arrived would reintroduce the six-times-too-small view.
+                    if age > 300.0:
+                        self.partial_aggregates.pop(step, None)
+                        self._partial_seen_at.pop(step, None)
+                        self._partial_signature.pop(step, None)
+                    continue
+            samples = sum(_num(entry.get("samples")) or 0.0 for entry in entries.values())
+            signature = (len(entries), round(samples, 3), complete)
+            if self._partial_signature.get(step) == signature:
+                if complete:
+                    self.partial_aggregates.pop(step, None)
+                    self._partial_seen_at.pop(step, None)
+                    self._partial_signature.pop(step, None)
+                continue
+            step_s = max((_num(entry.get("step_s")) or 0.0) for entry in entries.values())
+            if samples <= 0 or step_s <= 0:
+                continue
+            corrected = dict(record)
+            corrected["data"] = dict(record.get("data") or {})
+            corrected["perf"] = dict(record.get("perf") or {})
+            corrected["mem"] = dict(record.get("mem") or {})
+            corrected["data"]["samples"] = samples
+            corrected["data"].pop("partial_samples", None)
+            corrected["perf"]["step_ms"] = step_s * 1e3
+            corrected["world"] = self._world or expected or len(entries)
+            corrected["expected_world"] = expected or self._world or len(entries)
+            corrected["reporting_world"] = len(entries)
+            corrected["ranks"] = sorted(entries)
+            corrected["complete"] = complete
+            corrected["aggregate_from_ranks"] = True
+            corrected["aggregate_samples"] = _num((record.get("data") or {}).get("samples"))
+            corrected["source"] = "rank_files" if complete else "rank_files_partial"
+            step_times = [_num(entry.get("step_s")) for entry in entries.values()]
+            step_times = [value for value in step_times if value is not None and value > 0]
+            if len(step_times) >= 2:
+                mean_step = sum(step_times) / len(step_times)
+                if mean_step > 0:
+                    corrected["perf"]["skew"] = max(step_times) / mean_step
+            for key in ("ar_tokens", "dm_tokens"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["data"][key] = sum(values)
+            for key in ("wait_ms", "vae_ms", "pack_ms"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["data"][key] = max(values)
+            for key in ("forward_ms", "backward_ms", "optim_ms"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["perf"][key] = max(values)
+            for key in ("device_used_gib", "peak_reserved_gib", "allocated_gib", "device_total_gib"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["mem"][key] = max(values)
+            if self.series.update(corrected):
+                self._last_record = self.series.last()
+            self._partial_signature[step] = signature
+            if complete or age > 300.0:
+                self.partial_aggregates.pop(step, None)
+                self._partial_seen_at.pop(step, None)
+                self._partial_signature.pop(step, None)
 
     def _host_rank_map(self) -> Dict[str, List[int]]:
         host_ranks: Dict[str, List[int]] = {}
@@ -1085,6 +1247,7 @@ class RunState:
         checkpointing = args.get("activation_checkpointing") or args.get("checkpoint_mode") or "full"
         view = self.throughput.step_view(int(step), self._host_rank_map())
         effective = record
+        corrected_by_ranks = False
         if record.get("complete") is False:
             ranks = view.get("ranks") or []
             if ranks:
@@ -1096,6 +1259,8 @@ class RunState:
                 effective["perf"]["step_ms"] = max((_num(entry.get("step_s")) or 0.0) for entry in ranks) * 1e3
                 effective["world"] = self.world
                 effective["complete"] = True
+                effective.pop("samples_estimated", None)
+                corrected_by_ranks = True
         detail = stage_metrics(effective, self.world, checkpointing)
         detail.update(
             {
@@ -1107,7 +1272,9 @@ class RunState:
                 "throughput": view,
                 "record": record,
                 "aggregate_complete": record.get("complete", True),
-                "aggregate_from_ranks": effective is not record,
+                "aggregate_from_ranks": bool(record.get("aggregate_from_ranks")) or corrected_by_ranks,
+                "samples_estimated": bool(record.get("samples_estimated")) and not corrected_by_ranks,
+                "reporting_world": record.get("reporting_world"),
             }
         )
         return detail

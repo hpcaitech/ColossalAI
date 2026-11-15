@@ -1072,10 +1072,10 @@ function renderStepDrawer() {
         <button id="drawer-next" class="ghost">下一个 step →</button>
         <span class="sep"></span>
         <span class="hint-inline">stage MFU 把 activation recompute 计入 backward；总 step MFU 用 4× forward FLOPs</span>
-        ${d.aggregate_from_ranks ? '<span class="chip warn">batch/MFU 由镜像的全部 rank 校正</span>' : ''}
+        ${d.aggregate_from_ranks ? '<span class="chip warn">batch/MFU 由镜像的全部 rank 校正</span>' : (d.samples_estimated ? '<span class="chip warn">samples 由单卡 batch × world 估算</span>' : '')}
       </div>
       <table class="table stage-table"><thead><tr><th>阶段</th><th class="num">时间</th><th class="num">占比</th><th>share</th><th class="num">阶段 MFU</th><th class="num">FLOPs</th><th>source</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="card" style="margin-top:14px"><div class="card-head"><h2>本 step 关键数据</h2><span class="muted small">${d.aggregate_from_ranks ? '阶段时间来自 rank 0 聚合；batch/MFU 用全部 rank' : (d.complete === false ? 'partial aggregate' : 'complete aggregate')}</span></div>
+      <div class="card" style="margin-top:14px"><div class="card-head"><h2>本 step 关键数据</h2><span class="muted small">${d.aggregate_from_ranks ? '阶段时间来自 rank 0 聚合；batch/MFU 用全部 rank' : (d.samples_estimated ? 'samples 由配置的单卡 batch × world 估算；阶段时间来自 rank 0 聚合' : (d.complete === false ? 'partial aggregate' : 'complete aggregate'))}</span></div>
         <div class="kv">
           <div class="k">iteration</div><div class="v">${int(d.iteration)}</div>
           <div class="k">epoch</div><div class="v">${d.epoch == null ? '—' : int(d.epoch)}</div>
@@ -1111,7 +1111,7 @@ function renderRecords(body) {
       <td class="num">${num(optim.lr, 8)}</td><td class="num">${num(optim.grad_norm, 3)}</td>
       <td class="num">${num(stepMs != null ? stepMs / 1000 : null, 1)}</td><td class="num">${num(throughput, 1)}</td>
       <td class="num">${num(mem.device_used_gib, 1)}</td><td class="num">${num(perf.skew, 2)}</td>
-      <td>${record.complete === false ? '<span class="chip warn">partial</span>' : '<span class="chip ok">complete</span>'}</td></tr>`;
+      <td>${record.complete === false ? `<span class="chip warn">${record.samples_estimated ? 'estimated' : 'partial'}</span>` : '<span class="chip ok">complete</span>'}</td></tr>`;
   }).join('');
   body.innerHTML = `<div class="card"><div class="card-head"><h2>记录 <span class="muted small">${total} steps</span></h2><div class="page-actions"><button id="rec-prev" class="ghost">上一页</button><button id="rec-next" class="ghost">下一页</button><a class="small" href="/api/export/${state.token}.csv?keys=${encodeURIComponent(SERIES_KEYS)}">导出 CSV</a></div></div>
     <div class="table-scroll"><table class="table" id="records-table"><thead><tr><th class="num">iter</th><th class="num">epoch</th><th class="num">batch</th><th class="num">time</th><th class="num">loss</th><th class="num">vision</th><th class="num">action</th><th class="num">lr</th><th class="num">grad</th><th class="num">step s</th><th class="num">samples/s</th><th class="num">HBM GiB</th><th class="num">skew</th><th>complete</th></tr></thead><tbody>${table || '<tr><td colspan="14" class="muted">没有记录</td></tr>'}</tbody></table></div></div>`;

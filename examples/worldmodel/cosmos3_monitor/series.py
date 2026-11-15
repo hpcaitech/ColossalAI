@@ -7,6 +7,7 @@ points, which a plain stride would do.
 
 from __future__ import annotations
 
+import bisect
 import math
 import statistics
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -99,6 +100,7 @@ class SeriesStore:
     def __init__(self, max_points: int = 200000) -> None:
         self.series: Dict[str, Series] = {key: Series(unit, label) for key, (unit, label) in METRICS.items()}
         self.records: List[Dict[str, Any]] = []
+        self.steps: List[int] = []
         self.max_points = int(max_points)
         self._last_step: Optional[int] = None
         self._world = 0
@@ -111,27 +113,10 @@ class SeriesStore:
             series.x.clear()
             series.y.clear()
         self.records.clear()
+        self.steps.clear()
         self._last_step = None
 
-    def append(self, record: Dict[str, Any]) -> bool:
-        """Add one aggregated record.  Returns False for a duplicate or an out-of-order step.
-
-        Duplicate steps can appear when a mirror rewrites a file or a resumed job replays its last step.
-        Keeping the first occurrence makes the chart stable and avoids double-counting samples.
-        """
-        if record.get("type") not in (None, "record"):
-            return False
-        try:
-            step = int(record.get("step"))
-        except (TypeError, ValueError):
-            return False
-        if self._last_step is not None and step <= self._last_step:
-            return False
-        self._last_step = step
-        self.records.append(record)
-        if len(self.records) > self.max_points:
-            del self.records[: len(self.records) - self.max_points]
-        x = float(step)
+    def _values(self, record: Dict[str, Any], step: int) -> Dict[str, Optional[float]]:
         world = _number(record.get("world")) or self._world
         if world:
             self._world = int(world)
@@ -140,6 +125,7 @@ class SeriesStore:
         if samples is None:
             samples = _number(_get(record, "data", "partial_samples"))
         complete = record.get("complete", True) is not False
+        measured = complete or record.get("samples_estimated") is True
         values: Dict[str, Optional[float]] = {
             "loss/total": _number(_get(record, "loss", "total")),
             "loss/vision": _number(_get(record, "loss", "vision")),
@@ -165,17 +151,82 @@ class SeriesStore:
         }
         throughput = (
             samples / (step_ms / 1e3)
-            if complete and samples is not None and step_ms is not None and step_ms > 0
+            if measured and samples is not None and step_ms is not None and step_ms > 0
             else None
         )
         values["perf/samples_per_s"] = throughput
         values["perf/mfu"] = (
             compute_mfu(step_ms, samples, int(world), include_vae=False)
-            if complete and step_ms is not None and samples is not None
+            if measured and step_ms is not None and samples is not None
             else None
         )
+        return values
+
+    def append(self, record: Dict[str, Any]) -> bool:
+        """Add one aggregated record.  Returns False for a duplicate or an out-of-order step.
+
+        Duplicate steps can appear when a mirror rewrites a file or a resumed job replays its last step.
+        Keeping the first occurrence makes the chart stable and avoids double-counting samples.
+        """
+        if record.get("type") not in (None, "record"):
+            return False
+        try:
+            step = int(record.get("step"))
+        except (TypeError, ValueError):
+            return False
+        if self._last_step is not None and step <= self._last_step:
+            return False
+        self._last_step = step
+        self.records.append(record)
+        self.steps.append(step)
+        if len(self.records) > self.max_points:
+            del self.records[: len(self.records) - self.max_points]
+            del self.steps[: len(self.steps) - self.max_points]
+        values = self._values(record, step)
         for key, value in values.items():
-            self.series[key].append(x, value)
+            self.series[key].append(float(step), value)
+        return True
+
+    def _index_of(self, step: int) -> Optional[int]:
+        index = bisect.bisect_left(self.steps, step)
+        if index < len(self.steps) and self.steps[index] == step:
+            return index
+        return None
+
+    def update(self, record: Dict[str, Any]) -> bool:
+        """Replace a partial record for an existing step without disturbing later steps.
+
+        The mirror may learn the other ranks' samples a few seconds after rank 0 wrote its partial aggregate.
+        Rewriting the same chart point is better than dropping the step or leaving a six-times-too-small value
+        in the Records table forever.
+        """
+        if record.get("type") not in (None, "record"):
+            return False
+        try:
+            step = int(record.get("step"))
+        except (TypeError, ValueError):
+            return False
+        index = self._index_of(step)
+        if index is None:
+            return False
+        existing = self.records[index]
+        if existing.get("complete") is not False:
+            return False
+        if (
+            record.get("complete") is False
+            and len(record.get("ranks") or []) <= len(existing.get("ranks") or [])
+            and _number(_get(record, "data", "samples")) is None
+        ):
+            return False
+        self.records[index] = record
+        values = self._values(record, step)
+        for key, value in values.items():
+            series = self.series[key]
+            # ``records`` is capped but the chart series keeps the full history, so locate the step from the tail.
+            for position in range(len(series.x) - 1, -1, -1):
+                if int(series.x[position]) == step:
+                    series.y[position] = value
+                    break
         return True
 
     def last(self) -> Optional[Dict[str, Any]]:
@@ -398,7 +449,16 @@ class ThroughputStore:
         if len(points) > self.max_points:
             del points[: len(points) - self.max_points]
 
-    def ingest(self, rank: int, host: str, step: int, samples: float, step_s: float, now: float) -> None:
+    def ingest(
+        self,
+        rank: int,
+        host: str,
+        step: int,
+        samples: float,
+        step_s: float,
+        now: float,
+        record: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if not step_s or step_s <= 0:
             return
         entry = {
@@ -409,6 +469,31 @@ class ThroughputStore:
             "step_s": float(step_s),
             "throughput": float(samples) / float(step_s),
         }
+        if isinstance(record, dict):
+            data = record.get("data") if isinstance(record.get("data"), dict) else {}
+            perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
+            mem = record.get("mem") if isinstance(record.get("mem"), dict) else {}
+            for key in ("ar_tokens", "dm_tokens", "wait_ms", "vae_ms", "pack_ms"):
+                value = _number(data.get(key))
+                if value is not None:
+                    entry[key] = value
+            forward = _number(perf.get("forward_ms"))
+            if forward is None:
+                forward = _number(perf.get("fwd_ms"))
+            backward = _number(perf.get("backward_ms"))
+            if backward is None:
+                backward = _number(perf.get("bwd_ms"))
+            if forward is not None:
+                entry["forward_ms"] = forward
+            if backward is not None:
+                entry["backward_ms"] = backward
+            optim = _number(perf.get("optim_ms"))
+            if optim is not None:
+                entry["optim_ms"] = optim
+            for key in ("device_used_gib", "peak_reserved_gib", "allocated_gib", "device_total_gib"):
+                value = _number(mem.get(key))
+                if value is not None:
+                    entry[key] = value
         self.pending.setdefault(int(step), {})[int(rank)] = entry
         self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
         self.first_seen.setdefault(int(step), now)

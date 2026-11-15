@@ -182,6 +182,10 @@ python -m examples.worldmodel.cosmos3_monitor serve \
 - Rank 0's `aggregated.jsonl` sees only the ranks on its own node.  When that record is partial, the headline
   batch, throughput, MFU and ETA fall back to the global values derived from every mirrored `rank-*.jsonl`; the
   step drawer marks the correction and keeps the original record for stage times.
+- A partial step is corrected in place rather than left at `arrived_ranks x samples_per_rank`: while the mirror
+  is still collecting, `partial_samples` is scaled by `expected_world / arrived_ranks` when that ratio matches
+  `samples_per_rank x grad_accum` (the Records table marks it `estimated`).  Once every rank file arrives, the
+  same chart point and record are replaced with measured samples, tokens, stage times and skew.
 
 ## Tests
 
