@@ -103,6 +103,22 @@ Then serve the dashboard from the node or a workstation:
 python -m examples.worldmodel.cosmos3_monitor serve --roots /path/to/runs --port 18790
 ```
 
+When every node keeps `--out` on its own local disk, rank 0 can read only its own rank files. Start the
+dashboard on a host that can SSH to all nodes and mirror them instead:
+
+```bash
+python -m examples.worldmodel.cosmos3_monitor mirror \
+    --cache-root ~/.cache/cosmos3_monitor/mirror \
+    --nodes node1,node5,node6,node7,node8,node9 \
+    --run-id <run> --out <out> --metrics-dir <out>/metrics \
+    --agent-path <shared-path>/remote_agent.py \
+    --remote-prefix 'docker exec nzf-cai-dev' --interval 5
+python -m examples.worldmodel.cosmos3_monitor serve --roots ~/.cache/cosmos3_monitor/mirror --port 18790
+```
+
+The mirror merges every node's rank, heartbeat, terminal and system files; the dashboard then reports all 48
+ranks, per-node coverage and a node with no heartbeat. See the monitor README for the full option list.
+
 The hooks do not add a per-step synchronization, a collective, or work on non-log steps. Use `--no-heartbeat`, `--no-checkpoint-ledger` and `--no-aggregate-metrics` for a benchmark that must be free of them, and `COSMOS3_MONITOR_COLLECT=0` to skip the per-node system collector. `--collective-metrics` is an opt-in that gathers the log-step record across ranks for exact global counts.
 
 ## Validation
