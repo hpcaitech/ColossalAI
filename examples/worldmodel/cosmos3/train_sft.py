@@ -9,6 +9,7 @@ Model saves are exports; resumable replay training is provided by cosmos3_harnes
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import math
 import os
@@ -79,6 +80,167 @@ TRAINABLE_KEYS = (
 )
 LR_MULTIPLIED = ("action_proj_in", "action_proj_out", "action_modality_embed")
 
+# The recipe's learning-rate schedule: action_policy_droid_nano.py:93-101 overrides /scheduler with
+# "lambdalinear" and gives warm_up_steps [0], f_start [0.0], f_max [0.4], f_min [0.0]; the cycle length
+# comes from the run's TOML and is 100000 for DROID. The schedule itself is
+# cosmos_framework/utils/functional/lr_scheduler.py:145-168. With no warm-up its first branch is dead and
+# the multiplier starts at f_max, so the first optimizer step runs at LR * 0.4 = 8e-05. A constant LR,
+# which is what this example did before, is 2.5x that on step one and diverges from the reference's rate
+# monotonically from there.
+LR_WARM_UP_STEPS = 0
+LR_F_START = 0.0
+LR_F_MAX = 0.4
+LR_F_MIN = 0.0
+LR_CYCLE_LENGTH = 100_000
+
+# The recipe's EMA: action_policy_droid_nano.py:54 overrides /ema with "power", which is
+# configs/base/defaults/ema.py:19-23, rate 0.10.
+EMA_RATE = 0.1
+
+
+def lr_multiplier(step: int) -> float:
+    """What the reference's LambdaLinear returns for a zero-based optimizer step.
+
+    Transcribed from ``LambdaLinearScheduler.schedule``. One deliberate difference: past the end of the
+    cycle the reference's ``find_in_interval`` returns ``None`` and the next line raises on it, so this
+    clamps at ``LR_F_MIN`` rather than reproducing a crash -- and certainly rather than letting the
+    multiplier go negative, which the formula does on its own.
+    """
+    if step < LR_WARM_UP_STEPS:
+        return (LR_F_MAX - LR_F_START) / LR_WARM_UP_STEPS * step + LR_F_START
+    if step >= LR_CYCLE_LENGTH:
+        return LR_F_MIN
+    span = LR_CYCLE_LENGTH - LR_WARM_UP_STEPS
+    return LR_F_MIN + (LR_F_MAX - LR_F_MIN) * (LR_CYCLE_LENGTH - step) / span
+
+
+def set_learning_rate(optimizer, step: int) -> float:
+    """Put the schedule's rate for this step on every parameter group, before the step is taken.
+
+    The reference builds a ``LambdaLR``, which applies ``lambda(0)`` when it is constructed and
+    ``lambda(n)`` after its n-th ``step()``; its ``scheduler.step()`` runs right after ``optimizer.step()``
+    (cosmos_framework/trainer/__init__.py:855), so the update with zero-based index n is taken at
+    ``lambda(n)``. Writing the rate here is the same thing and avoids handing a ``torch`` scheduler the
+    booster's optimizer wrapper, which is not a ``torch.optim.Optimizer`` and would be rejected.
+    """
+    multiplier = lr_multiplier(step)
+    for group in optimizer.param_groups:
+        group["lr"] = group.setdefault("initial_lr", group["lr"]) * multiplier
+    return multiplier
+
+
+class PowerEMA:
+    """The reference's power-function EMA, over this rank's shard of the fp32 master weights.
+
+    ``rate`` is not a decay. It is the EDM2 ``s``, and the decay exponent is derived from it once
+    (omni_mot_model.py:831) as the largest real root of ``x^3 + 7x^2 + (16 - s^-2)x + (12 - s^-2)``; for
+    s = 0.1 that is 6.937203937601809. The per-update coefficient is then ``(1 - 1/(i+1))^(exp+1)`` with
+    ``i`` the zero-based index of the update just applied, and 0 for ``i < 1``
+    (omni_mot_model.py:6720-6734). The first update therefore gets ``i = 0`` and beta 0, so the shadow is an
+    exact copy of the weights after step one -- that is the reference's warm start, and
+    cosmos_framework/posttrain/roles/trainer/diffusion.py:486 states the indexing in those words.
+
+    What is averaged: the reference keeps ``net_ema`` as a whole second network in fp32
+    (omni_mot_model.py:825) and averages every parameter of it (utils/ema.py:37-47). A frozen parameter
+    never moves and its shadow starts equal to it, so averaging it is the identity; this keeps only the
+    trainable ones, which is 1.423B values against 3.369B, 5.7 GiB of fp32 instead of 13.5 GiB, with the
+    same result.
+
+    Where the values are read: ZeRO-2 steps a sharded fp32 master copy and writes a bf16 working copy back
+    afterwards, so the masters are the counterpart of the reference's fp32 ``net``. Averaging the working
+    parameters instead would feed a bf16-rounded source into an fp32 average.
+    """
+
+    def __init__(self, model, optimizer, rate: float = EMA_RATE):
+        import numpy as np
+
+        self.exponent = float(np.roots([1.0, 7.0, 16.0 - rate**-2, 12.0 - rate**-2]).real.max())
+        trainable = [p for p in model.parameters() if p.requires_grad]
+        masters = getattr(optimizer, "get_working_to_master_map", lambda: None)()
+        if masters:
+            paired = [(p, masters[id(p)]) for p in trainable if id(p) in masters]
+            self.working = [working for working, _ in paired]
+            self.sources = [master for _, master in paired]
+            self.source_kind = "fp32 master shard"
+        else:
+            # No ZeRO, so no master copy to read: at zero_stage 0 the optimizer steps the parameters
+            # themselves and they are the only thing there is to average. Named rather than silently
+            # substituted, because with the plugin at zero_stage 2 the masters are fp32 while the working
+            # copy is bf16, and averaging the wrong one would quietly round the source of an fp32 average.
+            self.working = trainable
+            self.sources = trainable
+            self.source_kind = "parameters (no ZeRO master copy)"
+        if not self.sources:
+            raise RuntimeError(
+                "no trainable parameter to average: the EMA has no source. Check that the trainable key "
+                "set matched something, or pass --no-ema."
+            )
+        self.shadow = [t.detach().float().clone() for t in self.sources]
+        self.optimizer = optimizer
+
+    def _full(self, working: torch.Tensor, shard: torch.Tensor) -> torch.Tensor:
+        """One averaged parameter, whole, from this rank's shard of it.
+
+        ZeRO holds a flat slice of each parameter per rank, so the shadow is a slice too and no single rank
+        has a parameter to write. The gather is the one the optimizer performs on its own state in
+        ``LowLevelZeroOptimizer.state_dict``: all-gather the shard into a flat buffer of the padded width,
+        then trim to the parameter and reshape. Reusing that path rather than inventing one keeps the
+        padding and the nd-process-group handling in one place.
+
+        Args:
+            working (torch.Tensor): The parameter the shard belongs to, which gives the shape.
+            shard (torch.Tensor): This rank's averaged slice.
+
+        Returns:
+            torch.Tensor: The averaged parameter, fp32, in ``working``'s shape.
+        """
+        if self.source_kind != "fp32 master shard":
+            return shard.detach().float()
+        from colossalai.zero.low_level._utils import all_gather_into_flat_tensor_nd, get_nd_world_size
+
+        group = self.optimizer.param_to_pg[working]
+        flat = torch.empty(shard.numel() * get_nd_world_size(group), device=shard.device, dtype=torch.float32)
+        all_gather_into_flat_tensor_nd(flat, shard.detach().float().flatten(), group)
+        return flat[: working.numel()].reshape_as(working)
+
+    @contextlib.contextmanager
+    def applied(self):
+        """Put the averaged weights into the working parameters for the duration of the block.
+
+        This is how the average becomes an artefact. The recipe's released weights are the EMA's, not the
+        last step's, and the shadow lives beside the model where no checkpoint writer can see it -- so
+        without this the run finishes and the average is discarded. Writing it into the working parameters
+        means the ordinary sharded export produces it, frozen parameters and all, instead of this module
+        assembling a model file of its own.
+
+        Every rank has to enter the block: ``_full`` all-gathers. The working parameters are restored on
+        the way out, including when the body raises, so training continues from the weights it was on.
+
+        Yields:
+            None: inside the block the model carries the averaged weights.
+        """
+        with torch.no_grad():
+            backup = [working.detach().clone() for working in self.working]
+        try:
+            with torch.no_grad():
+                for working, shard in zip(self.working, self.shadow):
+                    working.data.copy_(self._full(working, shard).to(working.dtype))
+            yield
+        finally:
+            with torch.no_grad():
+                for working, saved in zip(self.working, backup):
+                    working.data.copy_(saved)
+
+    def beta(self, iteration: int) -> float:
+        return 0.0 if iteration < 1 else (1.0 - 1.0 / (iteration + 1)) ** (self.exponent + 1.0)
+
+    @torch.no_grad()
+    def update(self, iteration: int) -> float:
+        beta = self.beta(iteration)
+        torch._foreach_mul_(self.shadow, beta)
+        torch._foreach_add_(self.shadow, [t.detach().float() for t in self.sources], alpha=1.0 - beta)
+        return beta
+
 
 def package_version(name):
     """The installed distribution's version, or ``None`` when it has no metadata.
@@ -116,6 +278,14 @@ def parse_args(argv=None):
         "--save-every", type=int, default=1000, help="Model export interval; exports are not training resume state."
     )
     parser.add_argument("--log-every", type=int, default=50)
+    parser.add_argument(
+        "--ema",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Keep the recipe's power-function EMA of the trainable weights. On by default, as in the "
+        "recipe; it costs one fp32 copy of this rank's master shard.",
+    )
+
     parser.add_argument("--metrics-every", type=int, default=10)
     parser.add_argument("--metrics-dir", type=Path)
     parser.add_argument("--wandb-project")
@@ -538,6 +708,13 @@ def main():
     random.seed(args.seed + dp_rank)
     torch.manual_seed(args.seed + dp_rank)
     noise = torch.Generator().manual_seed(args.seed + dp_rank)
+    ema = PowerEMA(model, optimizer) if args.ema else None
+    if ema is not None:
+        held = sum(t.numel() for t in ema.shadow)
+        coord.print_on_master(
+            f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank, from the {ema.source_kind}"
+        )
+
     model.train()
     optimizer.zero_grad()
     observers = [ConsoleObserver()]
@@ -585,6 +762,30 @@ def main():
             "curated_ranges": args.keep_ranges,
         }
     )
+
+    def save(step: int) -> None:
+        """Export the weights, and the averaged weights beside them when the EMA is on.
+
+        The averaged weights are what the recipe releases, so an export without them is not the run's
+        result. They go in a subdirectory of the same export rather than replacing it, because both are
+        wanted: the plain weights are what a resume continues from and the average is what is evaluated.
+        The asynchronous writer is not used for the average -- it is written while the working parameters
+        hold values training is not using, so it has to finish before they are put back.
+        """
+        save_dir = args.out / f"step-{step}"
+        booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
+        if args.async_save:
+            pending_exports.append(save_dir)
+        else:
+            fix_checkpoint_modes(save_dir, coord)
+        if ema is not None:
+            if args.async_save:
+                booster.checkpoint_io._sync_io()
+            with ema.applied():
+                booster.save_model(model, str(save_dir / "ema"), shard=True, use_safetensors=True)
+            fix_checkpoint_modes(save_dir / "ema", coord)
+        coord.print_on_master(f"[save] step {step} -> {save_dir}" + (" (+ ema/)" if ema is not None else ""))
+
     watch = Stopwatch()
     iterator = None
     epoch = step = 0
@@ -650,7 +851,14 @@ def main():
             if args.async_save:
                 booster.checkpoint_io.synchronize()
             with watch.section("optim"):
+                # The reference's order for one applied update: the schedule's rate for this zero-based
+                # index, the step, then the EMA with that same index, then the gradients are cleared
+                # (cosmos_framework/trainer/__init__.py:826-840). ``step_index`` is that zero-based index;
+                # ``step`` below is it plus one and is for reporting.
+                set_learning_rate(optimizer, step_index)
                 optimizer.step()
+                if ema is not None:
+                    ema.update(step_index)
                 optimizer.zero_grad()
             step = step_index + 1
             dispatch_ms = (time.perf_counter() - window_start) * 1e3
@@ -692,13 +900,12 @@ def main():
                     mem=device_memory_gib(),
                 )
             if step % args.save_every == 0:
-                save_dir = args.out / f"step-{step}"
-                booster.save_model(model, str(save_dir), shard=True, use_safetensors=True, use_async=args.async_save)
-                if args.async_save:
-                    pending_exports.append(save_dir)
-                else:
-                    fix_checkpoint_modes(save_dir, coord)
+                save(step)
         completed = True
+        if step and step % args.save_every:
+            # The run reached its last step without landing on a save interval. Without this the weights
+            # and the average it spent the whole run building are both discarded at exit.
+            save(step)
     finally:
         shutdown_dataloader(iterator)
         if pending_exports:
