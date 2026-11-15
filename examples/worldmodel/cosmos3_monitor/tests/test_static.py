@@ -50,3 +50,15 @@ def test_header_fills_the_eta_line_after_each_rebuild():
     block = source.split("function renderRunHeader", 1)[1].split("function tabLink", 1)[0]
     assert "updateHeaderMeta();" in block
     assert "run-eta" in block
+
+
+def test_open_details_and_scroll_survive_a_tab_refresh():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "function captureOpenDetails" in source
+    assert "function restoreOpenDetails" in source
+    assert 'data-detail-key="events-rules"' in source
+    assert 'data-detail-key="config:' in source
+    block = source.split("function renderRunView", 1)[1].split("function renderOverview", 1)[0]
+    assert "captureOpenDetails()" in block
+    assert "restoreOpenDetails(openDetails)" in block
+    assert "window.scrollTo(0, scrollY)" in block

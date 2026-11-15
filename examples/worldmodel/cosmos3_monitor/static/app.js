@@ -35,6 +35,7 @@ const state = {
   compareTokens: new Set(),
   detailStep: null,
   detail: null,
+  lastRenderedTab: null,
   theme: localStorage.getItem('c3-theme') || 'dark',
 };
 
@@ -687,6 +688,7 @@ async function openRun(token, tab) {
     state.ranks = null;
     state.records = null;
     state.focusStep = null;
+    state.lastRenderedTab = null;
     disposeCharts();
     closeStream();
   }
@@ -843,8 +845,26 @@ function renderKpis() {
   });
 }
 
+function captureOpenDetails() {
+  const open = new Set();
+  document.querySelectorAll('#view details[data-detail-key]').forEach((element) => {
+    if (element.open) open.add(element.dataset.detailKey);
+  });
+  return open;
+}
+
+function restoreOpenDetails(open) {
+  if (!open || !open.size) return;
+  document.querySelectorAll('#view details[data-detail-key]').forEach((element) => {
+    if (open.has(element.dataset.detailKey)) element.open = true;
+  });
+}
+
 function renderRunView() {
   if (!state.run) return;
+  const sameTab = state.lastRenderedTab === state.tab;
+  const openDetails = captureOpenDetails();
+  const scrollY = window.scrollY;
   renderRunHeader();
   const body = $('#tab-body');
   if (!body) return;
@@ -860,6 +880,9 @@ function renderRunView() {
     else if (state.tab === 'system') renderSystem(body);
     else if (state.tab === 'logs') renderLogs(body);
   }
+  restoreOpenDetails(openDetails);
+  if (sameTab) window.scrollTo(0, scrollY);
+  state.lastRenderedTab = state.tab;
 }
 
 function renderOverview(body) {
@@ -1113,19 +1136,20 @@ function renderConfig(body) {
   };
 }
 
-function renderConfigTree(value, name = '') {
+function renderConfigTree(value, name = '', path = '') {
+  const currentPath = path || name || 'manifest';
   if (value == null) return `<span class="muted">null</span>`;
   if (Array.isArray(value)) {
     if (!value.length) return '<span class="muted">[]</span>';
     if (value.length > 12 || value.some((item) => typeof item === 'object')) {
-      return `<details class="config"><summary>${esc(name || 'array')} · ${value.length} items</summary><pre class="mono">${esc(JSON.stringify(value, null, 2))}</pre></details>`;
+      return `<details class="config" data-detail-key="config:${esc(currentPath)}"><summary>${esc(name || 'array')} · ${value.length} items</summary><pre class="mono">${esc(JSON.stringify(value, null, 2))}</pre></details>`;
     }
     return `<div class="kv"><div class="k">${esc(name)}</div><div class="v mono">${esc(JSON.stringify(value))}</div></div>`;
   }
   if (typeof value === 'object') {
     const keys = Object.keys(value).sort();
     if (!keys.length) return '<span class="muted">{}</span>';
-    return `<details class="config" ${name ? '' : 'open'}><summary>${esc(name || 'manifest')} · ${keys.length}</summary>${keys.map((key) => renderConfigTree(value[key], key)).join('')}</details>`;
+    return `<details class="config" data-detail-key="config:${esc(currentPath)}" ${name ? '' : 'open'}><summary>${esc(name || 'manifest')} · ${keys.length}</summary>${keys.map((key) => renderConfigTree(value[key], key, `${currentPath}.${key}`)).join('')}</details>`;
   }
   return `<div class="kv"><div class="k">${esc(name)}</div><div class="v mono">${esc(String(value))}</div></div>`;
 }
@@ -1222,7 +1246,7 @@ function renderEvents(body) {
   ].map(([kind, severity, condition]) => `<tr><td class="mono">${esc(kind)}</td><td>${esc(severity)}</td><td>${esc(condition)}</td></tr>`).join('');
   body.innerHTML = `<div class="card"><div class="card-head"><h2>活跃告警</h2><span class="muted small">仅看板内；AICore% 不参与告警</span></div>${active || '<div class="muted small">没有活跃告警</div>'}</div>
     <div class="card" style="margin-top:12px"><div class="card-head"><h2>事件</h2><span class="muted small">来自 AnomalyDetector 与 monitor 规则</span></div><div class="table-scroll"><table class="table"><thead><tr><th class="num">step</th><th>级别</th><th>kind</th><th class="num">rank</th><th>message</th><th class="num">time</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="muted">没有事件</td></tr>'}</tbody></table></div></div>
-    <details class="config" style="margin-top:12px"><summary>告警规则（节选）</summary><table class="table rule-table"><thead><tr><th>kind</th><th>级别</th><th>条件</th></tr></thead><tbody>${rules}</tbody></table></details>`;
+    <details class="config" data-detail-key="events-rules" style="margin-top:12px"><summary>告警规则（节选）</summary><table class="table rule-table"><thead><tr><th>kind</th><th>级别</th><th>条件</th></tr></thead><tbody>${rules}</tbody></table></details>`;
   $$('[data-ack]').forEach((button) => {
     button.onclick = async () => {
       try { await fetch(`/api/runs/${state.token}/alerts/${encodeURIComponent(button.dataset.ack)}/ack`, { method: 'POST' }); state.alerts = await api(`/api/runs/${state.token}/alerts`); renderEvents(body); } catch (error) { toast(error.message, 'bad'); }
