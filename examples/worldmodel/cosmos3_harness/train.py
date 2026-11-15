@@ -256,7 +256,9 @@ def _run_manifest(args: argparse.Namespace, device: torch.device, backend: str, 
         dist.broadcast_object_list(holder, src=0)
         identity = holder[0]
     else:
-        identity = collect_run_identity(args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None))
+        identity = collect_run_identity(
+            args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None)
+        )
     manifest = {
         "args": dict(vars(args)),
         "env": collect_env(device),
@@ -600,7 +602,19 @@ def _save_state(directory, model, optimizer, step, epoch, sampler_cursor, config
 
 
 def _save_with_ledger(
-    pending_list, ledger, stats, directory, model, optimizer, step, epoch, sampler_cursor, config, every, *, async_=False
+    pending_list,
+    ledger,
+    stats,
+    directory,
+    model,
+    optimizer,
+    step,
+    epoch,
+    sampler_cursor,
+    config,
+    every,
+    *,
+    async_=False,
 ):
     """Save a generation, record its begin in the ledger, and queue an asynchronous one for flush.
 
@@ -991,8 +1005,17 @@ def train(args: argparse.Namespace) -> int:
             _flush_pending(pending_checkpoints, ledger, checkpoint_stats)
             save_started = time.perf_counter()
             _save_with_ledger(
-                pending_checkpoints, ledger, checkpoint_stats, Path(args.save_dir), model, optimizer,
-                step + 1, epoch, sampler_cursor, config, args.save_interval,
+                pending_checkpoints,
+                ledger,
+                checkpoint_stats,
+                Path(args.save_dir),
+                model,
+                optimizer,
+                step + 1,
+                epoch,
+                sampler_cursor,
+                config,
+                args.save_interval,
                 async_=args.async_checkpoint,
             )
             save_ms = (time.perf_counter() - save_started) * 1e3
@@ -1021,8 +1044,17 @@ def train(args: argparse.Namespace) -> int:
     if args.save_dir and last_saved_step != final_step:
         _flush_pending(pending_checkpoints, ledger, checkpoint_stats)
         _save_with_ledger(
-            pending_checkpoints, ledger, checkpoint_stats, Path(args.save_dir), model, optimizer,
-            final_step, epoch, sampler_cursor, config, args.save_interval,
+            pending_checkpoints,
+            ledger,
+            checkpoint_stats,
+            Path(args.save_dir),
+            model,
+            optimizer,
+            final_step,
+            epoch,
+            sampler_cursor,
+            config,
+            args.save_interval,
             async_=args.async_checkpoint,
         )
     # Every rank leaves the loop here, so this is the point where an in-flight generation is
@@ -1057,7 +1089,9 @@ def train(args: argparse.Namespace) -> int:
             "duration_s": time.time() - begin,
             "session_id": getattr(metrics, "session_id", None),
             "run_id": run_id,
-            "peak_device_used_gib": (heartbeat.peak if heartbeat is not None else device_memory_gib().get("device_used_gib")),
+            "peak_device_used_gib": (
+                heartbeat.peak if heartbeat is not None else device_memory_gib().get("device_used_gib")
+            ),
             "checkpoint_count": checkpoint_stats["count"],
             "checkpoint_bytes": checkpoint_stats["bytes"],
         }

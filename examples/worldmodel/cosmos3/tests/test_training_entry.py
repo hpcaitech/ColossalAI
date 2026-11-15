@@ -341,9 +341,7 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     assert manifests[0]["checkpoint_schedule"]["resumable"]["format"] == "immutable_generation"
     # The recipe's averaged weights are still exported beside the generation.  Two steps of a save-every=1
     # run leave step-1/ema and step-2/ema; check the last one is the shadow, not the live weights.
-    ema_exports = [
-        value for path, value in exports if Path(path).parent.name == "step-2" and Path(path).name == "ema"
-    ]
+    ema_exports = [value for path, value in exports if Path(path).parent.name == "step-2" and Path(path).name == "ema"]
     assert len(ema_exports) == 1
     assert not torch.equal(ema_exports[0], model.weight.detach())
     assert torch.equal(ema_shadow[0], ema_exports[0].float())
@@ -371,9 +369,7 @@ def test_a_stop_request_ends_the_run_after_the_current_step(monkeypatch, tmp_pat
     control_dir = tmp_path / "control"
     control_dir.mkdir()
     (control_dir / "request.json").write_text(
-        json.dumps(
-            {"action": "stop", "request_id": "test-stop", "requested_at": time.time(), "run_started_at": None}
-        )
+        json.dumps({"action": "stop", "request_id": "test-stop", "requested_at": time.time(), "run_started_at": None})
     )
     _, _, _, _, summaries, _, _, _ = _run_toy_training(
         monkeypatch,

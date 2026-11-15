@@ -393,7 +393,9 @@ def parse_args(argv=None):
     parser.add_argument("--run-name", help="Human-readable name shown by the monitor.")
     parser.add_argument("--log-path", help="Path of this run's stdout log, so the dashboard can tail it.")
     parser.add_argument("--heartbeat-seconds", type=float, default=2.0, help="Liveness heartbeat interval.")
-    parser.add_argument("--no-heartbeat", action="store_true", help="Disable the liveness heartbeat (benchmark purity).")
+    parser.add_argument(
+        "--no-heartbeat", action="store_true", help="Disable the liveness heartbeat (benchmark purity)."
+    )
     parser.add_argument("--no-checkpoint-ledger", action="store_true", help="Disable the checkpoint ledger.")
     parser.add_argument(
         "--graceful-stop",
@@ -417,9 +419,12 @@ def parse_args(argv=None):
         help="How often the watcher thread re-reads <out>/control/request.json. Raise it on a slow filesystem.",
     )
     parser.add_argument("--no-aggregate-metrics", action="store_true", help="Disable aggregated.jsonl.")
-    parser.add_argument("--collective-metrics", action="store_true",
-                        help="Gather each log-step record across ranks instead of reading rank files; exact global "
-                             "counts at the cost of one collective per log step.")
+    parser.add_argument(
+        "--collective-metrics",
+        action="store_true",
+        help="Gather each log-step record across ranks instead of reading rank files; exact global "
+        "counts at the cost of one collective per log step.",
+    )
     parser.add_argument("--wandb-project")
     parser.add_argument("--wandb-mode", choices=("offline", "online", "disabled"), default="offline")
     parser.add_argument("--wandb-run-name")
@@ -436,7 +441,7 @@ def parse_args(argv=None):
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Rewrite the DiT norm's mean(-1) as sum(-1)/H. Bit-identical forward and backward (H is a power of two), "
-             "and it moves a full-tensor division out of the backward (probe_sum_mean_norm.py).",
+        "and it moves a full-tensor division out of the backward (probe_sum_mean_norm.py).",
     )
     parser.add_argument(
         "--prefetch-factor",
@@ -1028,6 +1033,7 @@ def main():
     random.seed(args.seed + dp_rank)
     torch.manual_seed(args.seed + dp_rank)
     noise = torch.Generator().manual_seed(args.seed + dp_rank)
+
     def capture_rank_state():
         return {"noise_generator": noise.get_state()}
 
@@ -1064,35 +1070,35 @@ def main():
     target = model.unwrap()
     rank_identity = collect_rank_identity(device)
     manifest = {
-            "args": vars(args),
-            "world_size": coord.world_size,
-            "env": {
-                "torch": torch.__version__,
-                "device": accelerator.name,
-                **{
-                    name: resolve_version(name)
-                    for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
-                },
+        "args": vars(args),
+        "world_size": coord.world_size,
+        "env": {
+            "torch": torch.__version__,
+            "device": accelerator.name,
+            **{
+                name: resolve_version(name)
+                for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
             },
-            "compiler": {"decoder": compile_backend, "vae_mode": args.vae_compile, "vae_backend": vae_backend},
-            "attention": {
-                "requested": args.attn_backend,
-                "resolved": backend,
-                "processor": type(policy.processor).__name__,
-            },
-            "precision": {
-                "parameters": "bfloat16",
-                "vae": args.vae_dtype,
-                "cast_inputs": args.cast_inputs,
-                "cast_buffers": args.cast_buffers,
-                "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
-            },
-            "loss_objective": "droid_sample_modality_mean",
-            "topology": parallel_topology(plugin, extra=rank_identity),
-            "independent_dp_replicas": unique_dp,
-            "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
-            "save_kind": "resumable_generation",
-            "curated_ranges": args.keep_ranges,
+        },
+        "compiler": {"decoder": compile_backend, "vae_mode": args.vae_compile, "vae_backend": vae_backend},
+        "attention": {
+            "requested": args.attn_backend,
+            "resolved": backend,
+            "processor": type(policy.processor).__name__,
+        },
+        "precision": {
+            "parameters": "bfloat16",
+            "vae": args.vae_dtype,
+            "cast_inputs": args.cast_inputs,
+            "cast_buffers": args.cast_buffers,
+            "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
+        },
+        "loss_objective": "droid_sample_modality_mean",
+        "topology": parallel_topology(plugin, extra=rank_identity),
+        "independent_dp_replicas": unique_dp,
+        "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
+        "save_kind": "resumable_generation",
+        "curated_ranges": args.keep_ranges,
     }
     identity = collect_run_identity(args, run_name=args.run_name, run_id=args.run_id) if coord.rank == 0 else None
     if dist.is_initialized():
@@ -1139,8 +1145,10 @@ def main():
             local_rank=rank_identity.get("local_rank"),
             device_name=rank_identity.get("device_name"),
         ).start()
-    ledger = None if args.no_checkpoint_ledger or coord.rank != 0 else CheckpointLedger(
-        metrics_dir, rank=coord.rank, run_id=manifest.get("run_id"), world_size=coord.world_size
+    ledger = (
+        None
+        if args.no_checkpoint_ledger or coord.rank != 0
+        else CheckpointLedger(metrics_dir, rank=coord.rank, run_id=manifest.get("run_id"), world_size=coord.world_size)
     )
 
     def save_ema(step: int) -> None:
@@ -1314,7 +1322,7 @@ def main():
                         # ~1.5 GiB per step (two-node A/B: 54.9 -> 58.3 -> 60.0 GiB). Return that slack once per
                         # step, while there is still headroom, instead of waiting for the card to fill up.
                         free_bytes, _total_bytes = torch.npu.mem_get_info()
-                        keep_free = float(os.environ.get("COSMOS3_EMPTY_CACHE_GIB", "8")) * 2 ** 30
+                        keep_free = float(os.environ.get("COSMOS3_EMPTY_CACHE_GIB", "8")) * 2**30
                         if free_bytes < keep_free:
                             torch.npu.empty_cache()
                     if args.pack_hash and step_index == 0 and coord.rank == 0:
@@ -1477,7 +1485,9 @@ def main():
                     "run_id": manifest.get("run_id"),
                     "last_loss": (last_values or {}).get("total"),
                     "best_loss": best_loss,
-                    "peak_device_used_gib": (heartbeat.peak if heartbeat is not None else memory.get("device_used_gib")),
+                    "peak_device_used_gib": (
+                        heartbeat.peak if heartbeat is not None else memory.get("device_used_gib")
+                    ),
                     "checkpoint_count": checkpoint_stats["count"],
                     "checkpoint_bytes": checkpoint_stats["bytes"],
                     "selective_checkpointing": get_cosmos3_selective_checkpoint_stats(target),
