@@ -42,7 +42,8 @@ const state = {
 
 const SERIES_KEYS = [
   'loss/total', 'loss/vision', 'loss/action', 'optim/lr', 'optim/grad_norm',
-  'perf/step_s', 'perf/samples_per_s', 'perf/mfu', 'perf/skew',
+  'perf/step_s', 'perf/samples_per_s', 'perf/mfu',
+  'perf/mfu_forward', 'perf/mfu_backward', 'perf/mfu_vae', 'perf/skew',
   'mem/device_used_gib', 'mem/peak_reserved_gib', 'mem/allocated_gib', 'mem/device_total_gib',
   'data/samples', 'data/ar_tokens', 'data/dm_tokens', 'data/wait_s', 'data/vae_s', 'data/epoch',
   'perf/forward_s', 'perf/backward_s', 'perf/optim_s',
@@ -571,42 +572,22 @@ function renderDataChart(id = 'chart-data') {
   makeChart(id, option);
 }
 
-function checkpointFactor() {
-  const args = (state.manifest && state.manifest.args) || {};
-  const mode = String(args.activation_checkpointing || args.checkpoint_mode || 'full').toLowerCase();
-  return mode === 'none' ? 2 : 3;
-}
-
 function renderStageMfuChart(id = 'chart-stage-mfu') {
   if (!state.series) return;
   const p = palette();
-  const samples = state.series['data/samples'];
-  const world = (state.run && state.run.world) || 0;
-  if (!samples || !world) return;
-  const index = new Map(samples.x.map((x, i) => [Math.round(x), i]));
-  const factor = checkpointFactor();
-  const peak = 353.9;
-  const points = (key, flopsPerSample) => {
-    const source = state.series[key];
-    if (!source) return [];
-    const result = [];
-    for (let i = 0; i < source.x.length; i += 1) {
-      const sample = samples.y[index.get(Math.round(source.x[i]))];
-      const seconds = source.y[i];
-      if (sample == null || !seconds) continue;
-      result.push([source.x[i], (sample * flopsPerSample * 1e12) / seconds / (world * peak * 1e12) * 100]);
-    }
-    return result;
-  };
   const option = baseOption();
   option.yAxis.name = '';
   option.yAxis.axisLabel.formatter = (value) => `${value.toFixed(0)}%`;
-  option.series = [
-    line('forward', points(state.series['perf/forward_s'] ? 'perf/forward_s' : 'perf/fwd_s', 20.34), p[0]),
-    line('backward', points(state.series['perf/backward_s'] ? 'perf/backward_s' : 'perf/bwd_s', 20.34 * factor), p[1]),
-  ];
-  const vae = points('data/vae_s', 33.0);
-  if (vae.length) option.series.push(line('VAE', vae, p[2]));
+  const series = [];
+  const stage = (name, key, color) => {
+    const values = pointsOf(state.series, key).map(([x, y]) => [x, y * 100]);
+    if (values.length) series.push(line(name, values, color));
+  };
+  // All three values are recorded by the trainer with the model geometry and checkpointing mode it ran.
+  stage('forward', 'perf/mfu_forward', p[0]);
+  stage('backward', 'perf/mfu_backward', p[1]);
+  stage('VAE', 'perf/mfu_vae', p[2]);
+  option.series = series;
   makeChart(id, option);
 }
 
@@ -1291,7 +1272,7 @@ function renderStepDrawer() {
         <button id="drawer-prev" class="ghost">← 上一个 step</button>
         <button id="drawer-next" class="ghost">下一个 step →</button>
         <span class="sep"></span>
-        <span class="hint-inline">stage MFU 把 activation recompute 计入 backward；总 step MFU 用 4× forward FLOPs</span>
+        <span class="hint-inline">MFU/FLOPs 来自训练侧记录；backward 含 activation recompute</span>
         ${d.aggregate_from_ranks ? '<span class="chip warn">batch/MFU 由镜像的全部 rank 校正</span>' : (d.samples_estimated ? '<span class="chip warn">samples 由单卡 batch × world 估算</span>' : '')}
       </div>
       <table class="table stage-table"><thead><tr><th>阶段</th><th class="num">时间</th><th class="num">占比</th><th>share</th><th class="num">阶段 MFU</th><th class="num">FLOPs</th><th>source</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>

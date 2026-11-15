@@ -78,6 +78,16 @@ def test_stop_and_resume_are_wired_into_the_run_header():
     assert "function renderControlCard" in source
 
 
+def test_vendored_echarts_has_provenance_and_a_precommit_exclusion():
+    root = Path(__file__).resolve().parents[4]
+    precommit = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "examples/worldmodel/cosmos3_monitor/static/vendor/" in precommit
+    provenance = (STATIC / "vendor" / "PROVENANCE.md").read_text(encoding="utf-8")
+    assert "6.1.0" in provenance
+    assert "b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0" in provenance
+    assert "PROVENANCE.md" in (STATIC / "index.html").read_text(encoding="utf-8")
+
+
 def test_open_details_and_scroll_survive_a_tab_refresh():
     source = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "function captureOpenDetails" in source

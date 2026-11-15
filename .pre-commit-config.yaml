@@ -2,9 +2,9 @@
 # examples/worldmodel/cosmos3/vendor/ is byte-identical to nvidia/cosmos-framework, so that checking this
 # example against a newer upstream is one `diff -r` with no formatting noise in the way. autoflake, isort
 # and black would each rewrite those files and end that property, so they are excluded here rather than
-# being allowed to reformat code this repository does not own.
-exclude: '^examples/worldmodel/cosmos3/vendor/'
-
+# being allowed to reformat code this repository does not own.  The dashboard's vendored ECharts build is
+# third-party bytes for the same reason; its provenance is recorded in static/vendor/PROVENANCE.md.
+exclude: '^(examples/worldmodel/cosmos3/vendor/|examples/worldmodel/cosmos3_monitor/static/vendor/)'
 repos:
 
   - repo: https://github.com/PyCQA/autoflake

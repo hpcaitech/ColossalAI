@@ -67,7 +67,22 @@ def make_run(tmp_path: Path, *, world: int = 2, steps: int = 3, completed: bool 
                     "epoch": 0,
                 },
                 "loss": {"total": 2.0 - step * 0.1, "vision": 1.0, "action": 0.5},
-                "perf": {"step_ms": 1000.0 * step, "forward_ms": 300.0, "backward_ms": 500.0, "optim_ms": 50.0},
+                "perf": {
+                    "step_ms": 1000.0 * step,
+                    "forward_ms": 300.0,
+                    "backward_ms": 500.0,
+                    "optim_ms": 50.0,
+                    "flops": 1.2e14,
+                    "flops_forward": 2.5e13,
+                    "flops_backward": 7.5e13,
+                    "flops_vae": 2.0e13,
+                    "mfu": 0.35,
+                    "mfu_forward": 0.55,
+                    "mfu_backward": 0.25,
+                    "mfu_vae": 0.80,
+                    "peak_tflops_per_npu": 353.9,
+                    "checkpointing_mode": "full",
+                },
                 "mem": {"device_used_gib": 40.0, "device_total_gib": 64.0, "peak_reserved_gib": 44.0},
                 "optim": {"lr": 2e-4, "grad_norm": 3.0},
             }
@@ -433,7 +448,20 @@ def test_partial_aggregate_uses_the_global_rank_throughput(tmp_path):
                 "complete": False,
                 "data": {"samples": 8},
                 "loss": {"total": 2.0},
-                "perf": {"step_ms": 1000.0, "forward_ms": 300.0, "backward_ms": 500.0},
+                "perf": {
+                    "step_ms": 1000.0,
+                    "forward_ms": 300.0,
+                    "backward_ms": 500.0,
+                    "flops": 1.2e14,
+                    "flops_forward": 2.5e13,
+                    "flops_backward": 7.5e13,
+                    "flops_vae": 0.0,
+                    "mfu": 0.30,
+                    "mfu_forward": 0.50,
+                    "mfu_backward": 0.20,
+                    "peak_tflops_per_npu": 353.9,
+                    "checkpointing_mode": "full",
+                },
             }
         ],
     )
@@ -447,7 +475,17 @@ def test_partial_aggregate_uses_the_global_rank_throughput(tmp_path):
                     "rank": rank,
                     "time": now - 5,
                     "data": {"samples": 4},
-                    "perf": {"step_ms": 1000.0},
+                    "perf": {
+                        "step_ms": 1000.0,
+                        "flops": 3.0e13,
+                        "flops_forward": 6.25e12,
+                        "flops_backward": 1.875e13,
+                        "mfu": 0.35,
+                        "mfu_forward": 0.55,
+                        "mfu_backward": 0.25,
+                        "peak_tflops_per_npu": 353.9,
+                        "checkpointing_mode": "full",
+                    },
                     "loss": {"total": 2.0},
                 }
             ],
@@ -461,7 +499,7 @@ def test_partial_aggregate_uses_the_global_rank_throughput(tmp_path):
     snapshot = state.snapshot()
     assert snapshot["last"]["samples"] == 16
     assert snapshot["last"]["samples_per_s"] == 16
-    assert snapshot["last"]["mfu"] is not None
+    assert snapshot["last"]["mfu"] == pytest.approx(0.35)
     assert snapshot["eta_s"] is not None and 8 <= snapshot["eta_s"] <= 10
     assert state.series.records[-1]["data"]["samples"] == 16
     assert state.series.latest_value("data/samples") == 16
@@ -505,7 +543,17 @@ def test_partial_aggregate_scales_to_the_expected_world_before_rank_files_arrive
                 "complete": False,
                 "data": {"partial_samples": 8, "ar_tokens": 100, "dm_tokens": 200},
                 "loss": {"total": 2.0},
-                "perf": {"step_ms": 1000.0},
+                "perf": {
+                    "step_ms": 1000.0,
+                    "flops": 1.2e14,
+                    "flops_forward": 2.5e13,
+                    "flops_backward": 7.5e13,
+                    "mfu": 0.30,
+                    "mfu_forward": 0.50,
+                    "mfu_backward": 0.20,
+                    "peak_tflops_per_npu": 353.9,
+                    "checkpointing_mode": "full",
+                },
             }
         ],
     )
@@ -522,6 +570,21 @@ def test_partial_aggregate_scales_to_the_expected_world_before_rank_files_arrive
     assert record["data"]["partial_samples"] == 8
     assert record["data"]["ar_tokens"] == 200
     assert record["data"]["dm_tokens"] == 400
+    assert record["perf"]["mfu"] == 0.30
+
+
+def test_step_detail_does_not_guess_mfu_without_recorded_flops():
+    from examples.worldmodel.cosmos3_monitor.series import stage_metrics
+
+    record = {
+        "step": 1,
+        "data": {"samples": 8, "vae_ms": 200.0},
+        "perf": {"step_ms": 1000.0, "forward_ms": 300.0, "backward_ms": 500.0},
+    }
+    detail = stage_metrics(record, 2)
+    assert detail["total_mfu"] is None
+    assert all(stage["mfu"] is None for stage in detail["stages"])
+    assert detail["total_flops"] is None
 
 
 def test_step_detail_reports_each_stage_and_mfu(tmp_path):

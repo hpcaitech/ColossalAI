@@ -12,21 +12,9 @@ import math
 import statistics
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-#: Same accounting as ``examples/worldmodel/cosmos3_harness/training_metrics.py``.  Duplicated here so the
-#: monitor does not depend on which worktree's metrics module is importable.
-ASCEND_910B2_CUBE_PEAK_TFLOPS = 353.9
-FWD_TFLOP_PER_SAMPLE = 20.34
-VAE_TFLOP_PER_SAMPLE = 33.0
-
-
-def compute_mfu(step_ms: float, samples: float, world: int, include_vae: bool = False) -> Optional[float]:
-    if not step_ms or step_ms <= 0 or world <= 0 or samples <= 0:
-        return None
-    flops = samples * FWD_TFLOP_PER_SAMPLE * 1e12 * 4.0
-    if include_vae:
-        flops += samples * VAE_TFLOP_PER_SAMPLE * 1e12
-    achieved_tflops = flops / (step_ms / 1e3) / 1e12
-    return achieved_tflops / (world * ASCEND_910B2_CUBE_PEAK_TFLOPS)
+# MFU and FLOPs are training-side facts: the trainer knows the packed token count, the checkpointing mode and
+# whether the VAE ran.  The monitor only reads ``perf/mfu`` and ``perf/flops_*`` from the record; there is no
+# second accounting here to drift from the one the run used.
 
 
 def _number(value: Any) -> Optional[float]:
@@ -86,6 +74,9 @@ METRICS: Dict[str, Tuple[str, str]] = {
     "data/epoch": ("epoch", "Epoch"),
     "perf/samples_per_s": ("samples/s", "Throughput"),
     "perf/mfu": ("%", "MFU"),
+    "perf/mfu_forward": ("%", "Forward MFU"),
+    "perf/mfu_backward": ("%", "Backward MFU"),
+    "perf/mfu_vae": ("%", "VAE MFU"),
     "perf/skew": ("x", "Rank skew"),
     "mem/device_used_gib": ("GiB", "Device used"),
     "mem/peak_reserved_gib": ("GiB", "Peak reserved"),
@@ -155,11 +146,11 @@ class SeriesStore:
             else None
         )
         values["perf/samples_per_s"] = throughput
-        values["perf/mfu"] = (
-            compute_mfu(step_ms, samples, int(world), include_vae=False)
-            if measured and step_ms is not None and samples is not None
-            else None
-        )
+        # Recorded by the trainer; the dashboard must not re-derive it from samples and a hard-coded FLOPs scale.
+        values["perf/mfu"] = _number(_get(record, "perf", "mfu"))
+        values["perf/mfu_forward"] = _number(_get(record, "perf", "mfu_forward"))
+        values["perf/mfu_backward"] = _number(_get(record, "perf", "mfu_backward"))
+        values["perf/mfu_vae"] = _number(_get(record, "perf", "mfu_vae"))
         return values
 
     def append(self, record: Dict[str, Any]) -> bool:
@@ -361,21 +352,23 @@ def _time_axis(records: List[Dict[str, Any]], from_step, to_step, count: int) ->
 #: checkpointing is on (1 forward + 1 recompute + 2 backward), 3x when it is off.  Allocating the recompute to
 #: the backward stage lets a stage MFU be meaningful instead of pretending the forward did all the work.
 def stage_metrics(record: Dict[str, Any], world: int, activation_checkpointing: str = "full") -> Dict[str, Any]:
+    """Build the step drawer from the trainer's recorded times, FLOPs and MFU.
+
+    ``world`` is kept in the signature so callers do not change, but it is deliberately not used to derive an
+    MFU: the trainer recorded the value with the geometry and checkpointing mode it actually ran.
+    """
     samples = _number(_get(record, "data", "samples"))
     if samples is None:
         samples = _number(_get(record, "data", "partial_samples"))
     samples = samples or 0.0
     step_ms = _number(_get(record, "perf", "step_ms"))
     step_s = (step_ms / 1e3) if step_ms else None
-    checkpointing = str(activation_checkpointing or "full").lower()
-    backward_factor = 3.0 if checkpointing in ("full", "selective") else 2.0
+    perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
+    checkpointing = str(perf.get("checkpointing_mode") or activation_checkpointing or "full").lower()
 
-    def stage(name, ms, flops, source, note=""):
+    def stage(name, ms, flops, mfu, source, note=""):
         seconds = (ms / 1e3) if isinstance(ms, (int, float)) and ms is not None else None
         share = (seconds / step_s) if seconds is not None and step_s else None
-        mfu = None
-        if seconds and seconds > 0 and flops and world > 0:
-            mfu = flops / seconds / (world * ASCEND_910B2_CUBE_PEAK_TFLOPS * 1e12)
         return {
             "name": name,
             "seconds": seconds,
@@ -389,33 +382,48 @@ def stage_metrics(record: Dict[str, Any], world: int, activation_checkpointing: 
     wait_ms = _number(_get(record, "data", "wait_ms"))
     pack_ms = _number(_get(record, "data", "pack_ms"))
     vae_ms = _number(_get(record, "data", "vae_ms"))
+    if vae_ms is None:
+        vae_ms = _number(_get(record, "perf", "vae_ms"))
     forward_ms = _number(_get(record, "perf", "forward_ms")) or _number(_get(record, "perf", "fwd_ms"))
     backward_ms = _number(_get(record, "perf", "backward_ms")) or _number(_get(record, "perf", "bwd_ms"))
     optim_ms = _number(_get(record, "perf", "optim_ms"))
     prep_ms = None
     if pack_ms is not None:
         prep_ms = max(0.0, pack_ms - (vae_ms or 0.0))
-    forward_flops = samples * FWD_TFLOP_PER_SAMPLE * 1e12
-    vae_flops = samples * VAE_TFLOP_PER_SAMPLE * 1e12
+    forward_flops = _number(perf.get("flops_forward"))
+    backward_flops = _number(perf.get("flops_backward"))
+    vae_flops = _number(perf.get("flops_vae"))
+    forward_mfu = _number(perf.get("mfu_forward"))
+    backward_mfu = _number(perf.get("mfu_backward"))
+    vae_mfu = _number(perf.get("mfu_vae"))
     stages = [
-        stage("data wait", wait_ms, None, "host", "loader / prefetch"),
-        stage("data prep", prep_ms, None, "device", "pack, h2d, tokenize"),
-        stage("VAE", vae_ms, vae_flops if vae_ms else None, "device", "frozen encoder"),
-        stage("forward", forward_ms, forward_flops, "device", "1x fwd FLOPs"),
-        stage("backward", backward_ms, forward_flops * backward_factor, "device", f"{backward_factor:g}x fwd FLOPs"),
-        stage("optimizer", optim_ms, None, "device", "elementwise update"),
+        stage("data wait", wait_ms, None, None, "host", "loader / prefetch"),
+        stage("data prep", prep_ms, None, None, "device", "pack, h2d, tokenize"),
+        stage(
+            "VAE",
+            vae_ms,
+            vae_flops if vae_ms is not None else None,
+            vae_mfu if vae_ms is not None else None,
+            "training record",
+            "frozen encoder",
+        ),
+        stage("forward", forward_ms, forward_flops, forward_mfu, "training record", "recorded forward FLOPs"),
+        stage("backward", backward_ms, backward_flops, backward_mfu, "training record", "backward incl. recompute"),
+        stage("optimizer", optim_ms, None, None, "device", "elementwise update"),
     ]
     known = sum(item["seconds"] for item in stages if item["seconds"] is not None)
     other_s = max(0.0, (step_s - known)) if step_s is not None else None
-    stages.append(stage("other", (other_s * 1e3) if other_s is not None else None, None, "host", "sync / logging"))
-    total_mfu = compute_mfu(step_ms or 0.0, samples, int(world or 0), include_vae=False)
+    stages.append(
+        stage("other", (other_s * 1e3) if other_s is not None else None, None, None, "host", "sync / logging")
+    )
     return {
         "iteration": _number(record.get("step")),
         "epoch": _number(_get(record, "data", "epoch")),
         "batch_samples": samples,
         "micro_batches": _number(_get(record, "data", "microsteps")),
         "step_seconds": step_s,
-        "total_mfu": total_mfu,
+        "total_flops": _number(perf.get("flops")),
+        "total_mfu": _number(perf.get("mfu")),
         "activation_checkpointing": checkpointing,
         "stages": stages,
         "samples_per_second": (samples / step_s) if step_s else None,
@@ -494,6 +502,23 @@ class ThroughputStore:
                 value = _number(mem.get(key))
                 if value is not None:
                     entry[key] = value
+            for key in (
+                "flops",
+                "flops_forward",
+                "flops_backward",
+                "flops_vae",
+                "mfu",
+                "mfu_forward",
+                "mfu_backward",
+                "mfu_vae",
+                "peak_tflops_per_npu",
+            ):
+                value = _number(perf.get(key))
+                if value is not None:
+                    entry[key] = value
+            mode = perf.get("checkpointing_mode")
+            if mode is not None:
+                entry["checkpointing_mode"] = str(mode)
         self.pending.setdefault(int(step), {})[int(rank)] = entry
         self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
         self.first_seen.setdefault(int(step), now)

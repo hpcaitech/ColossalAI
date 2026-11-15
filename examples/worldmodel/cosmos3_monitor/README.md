@@ -12,8 +12,8 @@ generation (see [Stop and resume](#stop-and-resume)).
 
 The cluster is isolated and runs Ascend NPUs; a hosted tracker is not reachable, and a self-hosted SwanLab or
 Grafana stack would add a service to operate without covering the checkpoint ledger or the rank→card topology.
-The dashboard is therefore a small FastAPI app plus a vendored Apache ECharts bundle (Apache-2.0), fully
-offline. Its information architecture follows the mature parts of W&B/SwanLab (run list, config, comparison),
+The dashboard is therefore a small FastAPI app plus a vendored Apache ECharts 6.1.0 bundle (Apache-2.0;
+version, upstream URL and SHA-256 in `static/vendor/PROVENANCE.md`), fully offline. Its information architecture follows the mature parts of W&B/SwanLab (run list, config, comparison),
 TensorBoard (step/time axes, smoothing), and Grafana (system panels, alert rules).
 
 ## Quick start
@@ -173,8 +173,10 @@ used, which writes `control/request.json` (and, with `--launch-template`, `contr
 - `Pause` does not stop the sidebar's run discovery; it only stops the selected run's view from moving.
 - Charts preserve the user's zoom across refreshes; a tab switch starts from the full range.
 - The step detail's stage times are per-stage maxima across ranks, so their sum can be slightly larger than the
-  maximum end-to-end step. Stage MFU assigns the activation recompute to backward; total step MFU uses 4x the
-  forward FLOPs.
+  maximum end-to-end step. Stage and total MFU come from the training record (`perf/mfu_forward`,
+  `perf/mfu_backward`, `perf/mfu_vae`, `perf/mfu`): the trainer computed them with the checkpoint geometry and
+  checkpointing mode it actually ran, so the dashboard has no second FLOPs accounting.  The SFT entry in #6553
+  writes those fields; a run recorded before that change shows `—` rather than a guessed value.
 
 ## No training impact
 
@@ -223,8 +225,9 @@ python -m examples.worldmodel.cosmos3_monitor serve \
 - The cache is keyed by run id and byte offsets are persisted in `mirror-state.json`, so a monitor restart does
   not lose history.  Point `serve --roots <cache-root>` at it.
 - Rank 0's `aggregated.jsonl` sees only the ranks on its own node.  When that record is partial, the headline
-  batch, throughput, MFU and ETA fall back to the global values derived from every mirrored `rank-*.jsonl`; the
-  step drawer marks the correction and keeps the original record for stage times.
+  batch, throughput, MFU and ETA fall back to every mirrored `rank-*.jsonl`: FLOPs are summed and MFU is the
+  mean of the values each rank's trainer recorded.  The step drawer marks the correction and uses the rank
+  records for stage times, FLOPs and stage MFU.
 - A partial step is corrected in place rather than left at `arrived_ranks x samples_per_rank`: while the mirror
   is still collecting, `partial_samples` is scaled by `expected_world / arrived_ranks` when that ratio matches
   `samples_per_rank x grad_accum` (the Records table marks it `estimated`).  Once every rank file arrives, the

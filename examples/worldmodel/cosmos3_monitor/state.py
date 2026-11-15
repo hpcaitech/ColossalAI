@@ -21,7 +21,7 @@ from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
-from .series import SeriesStore, ThroughputStore, compute_mfu, stage_metrics
+from .series import SeriesStore, ThroughputStore, stage_metrics
 from .system import SystemHistory, read_system_files
 
 STALE_SECONDS = 15.0
@@ -434,6 +434,24 @@ class RunState:
                 values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
                 if values:
                     corrected["mem"][key] = max(values)
+            for key in ("flops", "flops_forward", "flops_backward", "flops_vae"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["perf"][key] = sum(values)
+            for key in ("mfu", "mfu_forward", "mfu_backward", "mfu_vae"):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["perf"][key] = statistics.fmean(values)
+            for key in ("peak_tflops_per_npu",):
+                values = [_num(entry.get(key)) for entry in entries.values() if _num(entry.get(key)) is not None]
+                if values:
+                    corrected["perf"][key] = values[0]
+            modes = [entry.get("checkpointing_mode") for entry in entries.values() if entry.get("checkpointing_mode")]
+            if modes:
+                corrected["perf"]["checkpointing_mode"] = str(modes[0])
+            total_flops = _num(corrected["perf"].get("flops"))
+            if total_flops and step_s > 0:
+                corrected["perf"]["tflops"] = total_flops / step_s / 1e12
             if self.series.update(corrected):
                 self._last_record = self.series.last()
             self._partial_signature[step] = signature
@@ -968,15 +986,17 @@ class RunState:
         heartbeats = self.latest_heartbeats()
         terminals = self.latest_terminals()
         launchers = self.latest_launchers()
-        if terminals and len(terminals) >= max(1, world) and all(
-            terminal.get("stopped") for terminal in terminals.values()
+        if (
+            terminals
+            and len(terminals) >= max(1, world)
+            and all(terminal.get("stopped") for terminal in terminals.values())
         ):
             # A deliberate stop: every rank exited after the same step with a resumable generation,
             # so this is a finished run, not a failure.
             return "stopped"
-        if any(
-            not terminal.get("completed") and not terminal.get("stopped") for terminal in terminals.values()
-        ) or any(launcher.get("state") == "failed" for launcher in launchers):
+        if any(not terminal.get("completed") and not terminal.get("stopped") for terminal in terminals.values()) or any(
+            launcher.get("state") == "failed" for launcher in launchers
+        ):
             return "failed"
         if self._completed(world, terminals, launchers):
             return "completed"
@@ -1093,8 +1113,6 @@ class RunState:
                 last_samples = monitor_samples
             if monitor_throughput is not None:
                 last_throughput = monitor_throughput
-            if last_mfu is None and step_s and last_samples:
-                last_mfu = compute_mfu(step_s * 1000.0, last_samples, self.world)
         config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
         payload: Dict[str, Any] = {
             "run_id": str(self._manifest.get("run_id") or config.get("run_id") or self.ref.display_name),
