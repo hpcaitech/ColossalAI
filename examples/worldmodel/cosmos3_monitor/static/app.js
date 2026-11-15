@@ -263,24 +263,85 @@ function smoothPoints(points, window) {
   });
 }
 
+function annotationSummary() {
+  if (!state.showAnnotations || state.xMode !== 'step') return '';
+  const eventSteps = new Set();
+  for (const event of (state.events || []).filter((item) => ['warn', 'error', 'critical'].includes(item.severity))) {
+    const step = Number(event.step);
+    if (Number.isFinite(step)) eventSteps.add(step);
+  }
+  const checkpointSteps = new Set();
+  for (const checkpoint of (state.checkpoints && state.checkpoints.checkpoints) || []) {
+    const step = Number(checkpoint.step);
+    if (Number.isFinite(step)) checkpointSteps.add(step);
+  }
+  const parts = [];
+  if (eventSteps.size) {
+    parts.push(`${eventSteps.size} 个告警 step${eventSteps.size > 40 ? '（图中最近 40 个）' : ''}`);
+  }
+  if (checkpointSteps.size) {
+    parts.push(`${checkpointSteps.size} 个 checkpoint${checkpointSteps.size > 40 ? '（图中最近 40 个）' : ''}`);
+  }
+  if (!parts.length) return '没有可标注的事件或 checkpoint';
+  const dense = eventSteps.size > 8 || checkpointSteps.size > 8;
+  return `${parts.join(' · ')}${dense ? '；过密时标签用 ! / ◆ 代替，详情见事件与告警' : ''}`;
+}
+
+function updateAnnotationNote() {
+  const note = $('#annot-note');
+  if (note) note.textContent = annotationSummary();
+}
+
 function annotationLines() {
   if (!state.showAnnotations || state.xMode !== 'step') return [];
   const rows = [];
   if (state.focusStep != null) {
-    rows.push({ xAxis: state.focusStep, lineStyle: { color: css('--warning'), type: 'dashed', width: 1 }, label: { formatter: `step ${state.focusStep}`, color: css('--warning'), fontSize: 10 } });
+    rows.push({
+      xAxis: state.focusStep,
+      lineStyle: { color: css('--warning'), type: 'dashed', width: 1 },
+      label: { formatter: `step ${state.focusStep}`, color: css('--warning'), fontSize: 10, position: 'insideEndTop' },
+    });
   }
   const seen = new Set();
+  const checkpoints = [];
   for (const checkpoint of (state.checkpoints && state.checkpoints.checkpoints) || []) {
     const step = Number(checkpoint.step);
     if (!Number.isFinite(step) || seen.has(`c${step}`)) continue;
     seen.add(`c${step}`);
-    rows.push({ xAxis: step, lineStyle: { color: css('--good'), type: 'dotted', width: 1 }, label: { formatter: 'ckpt', color: css('--good'), fontSize: 9 } });
+    checkpoints.push(step);
   }
-  for (const event of (state.events || []).filter((item) => ['warn', 'error', 'critical'].includes(item.severity)).slice(-24)) {
+  const eventByStep = new Map();
+  for (const event of (state.events || []).filter((item) => ['warn', 'error', 'critical'].includes(item.severity))) {
     const step = Number(event.step);
-    if (!Number.isFinite(step) || seen.has(`e${step}${event.kind}`)) continue;
-    seen.add(`e${step}${event.kind}`);
-    rows.push({ xAxis: step, lineStyle: { color: css('--warning'), type: 'dashed', width: 1 }, label: { formatter: String(event.kind || 'event'), color: css('--warning'), fontSize: 9 } });
+    if (!Number.isFinite(step)) continue;
+    const entry = eventByStep.get(step) || { kinds: new Set(), count: 0 };
+    entry.kinds.add(String(event.kind || 'event'));
+    entry.count += 1;
+    eventByStep.set(step, entry);
+  }
+  // One line per step, not one per host/device event.  A long-running run can have thousands of events; the
+  // chart only annotates the most recent window, and dense windows use a one-character label so the labels
+  // cannot run into each other along the top edge.
+  const eventSteps = [...eventByStep.keys()].sort((a, b) => a - b).slice(-40);
+  const denseEvents = eventSteps.length > 8;
+  for (const step of eventSteps) {
+    const entry = eventByStep.get(step);
+    const kinds = [...entry.kinds];
+    const text = denseEvents ? '!' : (kinds.length === 1 ? kinds[0] : `${kinds[0]} +${kinds.length - 1}`);
+    rows.push({
+      xAxis: step,
+      lineStyle: { color: css('--warning'), type: 'dashed', width: 1, opacity: denseEvents ? 0.5 : 1 },
+      label: { formatter: text, color: css('--warning'), fontSize: 9, position: 'insideEndTop' },
+    });
+  }
+  const recentCheckpoints = checkpoints.slice(-40);
+  const denseCheckpoints = recentCheckpoints.length > 8;
+  for (const step of recentCheckpoints) {
+    rows.push({
+      xAxis: step,
+      lineStyle: { color: css('--good'), type: 'dotted', width: 1, opacity: denseCheckpoints ? 0.65 : 1 },
+      label: { formatter: denseCheckpoints ? '◆' : 'ckpt', color: css('--good'), fontSize: 9, position: 'insideEndTop' },
+    });
   }
   return rows;
 }
@@ -953,6 +1014,7 @@ function renderCharts(body) {
       <label class="control-group">范围 <select id="chart-range">${rangeOptions}</select></label>
       <label class="control-group">平滑 <input type="range" id="chart-smooth" min="0" max="20" value="${state.smooth}"><span class="value" id="chart-smooth-value">${state.smooth}</span></label>
       <label class="checkbox"><input type="checkbox" id="chart-annot" ${state.showAnnotations ? 'checked' : ''}> 事件/checkpoint 标注</label>
+      <span id="annot-note" class="hint-inline"></span>
       <button id="chart-log" class="ghost">${state.chartLog ? '对数 Y：开' : '对数 Y：关'}</button>
       <button id="chart-reset" class="ghost">重置缩放</button>
       <span class="hint-inline">滚轮缩放、拖拽平移；点击任意点打开逐 step 阶段详情</span>
@@ -975,6 +1037,7 @@ function renderCharts(body) {
   renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
   for (const chart of state.charts.values()) chart.group = 'cosmos3-run';
   connectCharts();
+  updateAnnotationNote();
   const xmode = $('#chart-xmode');
   if (xmode) xmode.onchange = async () => {
     state.xMode = xmode.value;
@@ -992,7 +1055,7 @@ function renderCharts(body) {
     refreshCharts();
   };
   const annot = $('#chart-annot');
-  if (annot) annot.onchange = () => { state.showAnnotations = annot.checked; refreshCharts(); };
+  if (annot) annot.onchange = () => { state.showAnnotations = annot.checked; refreshCharts(); updateAnnotationNote(); };
   const logButton = $('#chart-log');
   if (logButton) logButton.onclick = () => { state.chartLog = !state.chartLog; renderCharts(body); };
   const reset = $('#chart-reset');
@@ -1003,6 +1066,7 @@ function refreshCharts() {
   if (!state.series) return;
   renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderRankHeatmap(); renderMfuChart();
   renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
+  updateAnnotationNote();
 }
 
 async function openStepDetail(step) {

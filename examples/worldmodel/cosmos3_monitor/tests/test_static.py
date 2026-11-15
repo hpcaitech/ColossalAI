@@ -52,6 +52,16 @@ def test_header_fills_the_eta_line_after_each_rebuild():
     assert "run-eta" in block
 
 
+def test_dense_event_annotations_use_short_labels_and_a_toolbar_summary():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    block = source.split("function annotationLines", 1)[1].split("function markLines", 1)[0]
+    assert "eventByStep" in block
+    assert "denseEvents ? '!'" in block
+    assert "slice(-40)" in block
+    assert "function annotationSummary" in source
+    assert 'id="annot-note"' in (STATIC / "app.js").read_text(encoding="utf-8")
+
+
 def test_open_details_and_scroll_survive_a_tab_refresh():
     source = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "function captureOpenDetails" in source
