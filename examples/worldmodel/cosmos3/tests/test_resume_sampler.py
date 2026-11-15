@@ -53,7 +53,10 @@ def test_resume_matches_the_tail_and_never_reads_skipped_samples():
 
 def test_offset_is_per_rank_and_keeps_the_global_batch():
     world = 2
-    full = [batches(build(CountingDataset(23), start_batch=0, batch_size=2, rank=rank, world=world)) for rank in range(world)]
+    full = [
+        batches(build(CountingDataset(23), start_batch=0, batch_size=2, rank=rank, world=world))
+        for rank in range(world)
+    ]
     resumed = [
         batches(build(CountingDataset(23), start_batch=2, batch_size=2, rank=rank, world=world))
         for rank in range(world)

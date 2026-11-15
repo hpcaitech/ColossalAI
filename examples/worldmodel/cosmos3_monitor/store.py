@@ -317,7 +317,7 @@ class RunStore:
             return None
         with state.lock:
             facts = state.control_facts()
-            manifest = dict(state._manifest)
+            dict(state._manifest)
         snapshot = state.snapshot()
         run_state = snapshot.get("state")
         status = facts["status"]
@@ -430,7 +430,9 @@ class RunStore:
             return None
         view = self.control_view(token)
         if not view["can"].get("cancel"):
-            raise ControlError(_REASON_TEXT.get(view["reasons"].get("stop", ""), "nothing to withdraw"), code="rejected")
+            raise ControlError(
+                _REASON_TEXT.get(view["reasons"].get("stop", ""), "nothing to withdraw"), code="rejected"
+            )
         clear_request(state.ref.path)
         return self.control_view(token)
 

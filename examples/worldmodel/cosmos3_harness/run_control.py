@@ -274,13 +274,15 @@ class RunControl:
                 "phase": self._phase,
                 "step": self._step,
                 "stop_at_step": self._agree_step,
-                "request": None
-                if request is None
-                else {
-                    "action": request.action,
-                    "request_id": request.request_id,
-                    "requested_at": request.requested_at,
-                },
+                "request": (
+                    None
+                    if request is None
+                    else {
+                        "action": request.action,
+                        "request_id": request.request_id,
+                        "requested_at": request.requested_at,
+                    }
+                ),
                 "updated_at": time.time(),
             }
         return payload
@@ -289,7 +291,12 @@ class RunControl:
         if not self.enabled or self.rank != 0:
             return
         payload = self._payload()
-        signature = (payload["phase"], payload["step"], payload["stop_at_step"], (payload["request"] or {}).get("request_id"))
+        signature = (
+            payload["phase"],
+            payload["step"],
+            payload["stop_at_step"],
+            (payload["request"] or {}).get("request_id"),
+        )
         if not force and signature == self._last_published:
             return
         try:

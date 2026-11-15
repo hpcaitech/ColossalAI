@@ -32,10 +32,9 @@ import hashlib
 import os
 import types
 
-import torch
-
 import tilelang
 import tilelang.language as T
+import torch
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -59,8 +58,7 @@ def _channel_rmsnorm(B: int, C: int, S: int, chunk: int, nblk: int, scale: float
     last_start = S - chunk
 
     @T.prim_func
-    def main(x: T.Tensor((B, C, S), "bfloat16"), gamma: T.Tensor((C,), "float32"),
-             y: T.Tensor((B, C, S), "bfloat16")):
+    def main(x: T.Tensor((B, C, S), "bfloat16"), gamma: T.Tensor((C,), "float32"), y: T.Tensor((B, C, S), "bfloat16")):
         with T.Kernel(B * nblk, threads=1, is_npu=True) as cid:
             b = cid // nblk
             blk = cid % nblk
@@ -74,7 +72,7 @@ def _channel_rmsnorm(B: int, C: int, S: int, chunk: int, nblk: int, scale: float
             # The last block slides back to end exactly at S; on divisible shapes this is blk * chunk.
             s0 = T.min(blk * chunk, last_start)
             T.copy(gamma, g_ub)
-            T.copy(x[b, 0:C, s0:s0 + chunk], x_ub)
+            T.copy(x[b, 0:C, s0 : s0 + chunk], x_ub)
 
             T.tile.fill(acc, 0.0)
             for c in T.serial(C):
@@ -104,7 +102,7 @@ def _channel_rmsnorm(B: int, C: int, S: int, chunk: int, nblk: int, scale: float
                 T.tile.mul(row, row, g_row)
                 T.tile.cast(x_ub[c, 0:chunk], row, "CAST_RINT", chunk)
 
-            T.copy(x_ub, y[b, 0:C, s0:s0 + chunk])
+            T.copy(x_ub, y[b, 0:C, s0 : s0 + chunk])
 
     return main
 
@@ -133,13 +131,13 @@ def _channel_rmsnorm_reduce(B: int, C: int, S: int, chunk: int, nblk: int):
             s0 = T.min(blk * chunk, last_start)
             T.tile.fill(acc, 0.0)
             for c in T.serial(C):
-                T.copy(x[b, c, s0:s0 + chunk], stage)
+                T.copy(x[b, c, s0 : s0 + chunk], stage)
                 T.tile.cast(row, stage, "CAST_NONE", chunk)
                 T.tile.mul(sq, row, row)
                 T.tile.add(acc, acc, sq)
             T.tile.max(acc, acc, NORM_EPS * NORM_EPS)
             T.tile.sqrt(acc, acc)
-            T.copy(acc, norm_out[b, s0:s0 + chunk])
+            T.copy(acc, norm_out[b, s0 : s0 + chunk])
 
     return main
 
@@ -149,8 +147,12 @@ def _channel_rmsnorm_apply(B: int, C: int, S: int, chunk: int, nblk: int, scale:
     last_start = S - chunk
 
     @T.prim_func
-    def main(x: T.Tensor((B, C, S), "bfloat16"), gamma: T.Tensor((C,), "float32"),
-             norm_in: T.Tensor((B, S), "float32"), y: T.Tensor((B, C, S), "bfloat16")):
+    def main(
+        x: T.Tensor((B, C, S), "bfloat16"),
+        gamma: T.Tensor((C,), "float32"),
+        norm_in: T.Tensor((B, S), "float32"),
+        y: T.Tensor((B, C, S), "bfloat16"),
+    ):
         with T.Kernel(B * nblk, threads=1, is_npu=True) as cid:
             b = cid // nblk
             blk = cid % nblk
@@ -162,10 +164,10 @@ def _channel_rmsnorm_apply(B: int, C: int, S: int, chunk: int, nblk: int, scale:
             g_ub = T.alloc_ub((C,), "float32")
             s0 = T.min(blk * chunk, last_start)
             T.copy(gamma, g_ub)
-            T.copy(norm_in[b, s0:s0 + chunk], norm)
+            T.copy(norm_in[b, s0 : s0 + chunk], norm)
             for c in T.serial(C):
                 T.tile.fill(g_row, g_ub[c])
-                T.copy(x[b, c, s0:s0 + chunk], stage)
+                T.copy(x[b, c, s0 : s0 + chunk], stage)
                 T.tile.cast(row, stage, "CAST_NONE", chunk)
                 T.tile.div(row, row, norm)
                 T.tile.cast(half, row, "CAST_RINT", chunk)
@@ -176,14 +178,14 @@ def _channel_rmsnorm_apply(B: int, C: int, S: int, chunk: int, nblk: int, scale:
                 T.tile.mul(row, row, g_row)
                 # Cast cannot target global memory; round into the UB row and copy it out.
                 T.tile.cast(half, row, "CAST_RINT", chunk)
-                T.copy(half, y[b, c, s0:s0 + chunk])
+                T.copy(half, y[b, c, s0 : s0 + chunk])
 
     return main
 
 
 def _plan_two_pass(c: int, s: int):
     """Column block for the two-pass variant: one row wide, bounded by the apply kernel's UB footprint."""
-    max_chunk = (UB_BYTES // 14) // 128 * 128   # row + norm + g_row (fp32) + half (bf16) per element
+    max_chunk = (UB_BYTES // 14) // 128 * 128  # row + norm + g_row (fp32) + half (bf16) per element
     chunk = min(TWO_PASS_CHUNK, max_chunk, s // 128 * 128)
     if chunk < 128:
         return None

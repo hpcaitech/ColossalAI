@@ -124,7 +124,9 @@ def test_acknowledged_stop_is_not_offered_again(tmp_path):
     request = json.loads((run / "control" / "request.json").read_text())
     write_json(
         run / "control" / "status.json",
-        live_status(started, phase="stopping", stop_at_step=4, request={"action": "stop", "request_id": request["request_id"]}),
+        live_status(
+            started, phase="stopping", stop_at_step=4, request={"action": "stop", "request_id": request["request_id"]}
+        ),
     )
     store.refresh()
     view = store.control_view(token)
@@ -138,7 +140,14 @@ def test_resume_is_refused_without_a_launcher_but_reports_the_command(tmp_path):
     run = make_run(
         tmp_path,
         started_at=started,
-        terminal={"rank": 0, "step": 3, "completed": False, "stopped": True, "run_started_at": started, "time": time.time()},
+        terminal={
+            "rank": 0,
+            "step": 3,
+            "completed": False,
+            "stopped": True,
+            "run_started_at": started,
+            "time": time.time(),
+        },
     )
     store = store_for(tmp_path, run)
     token = store.runs()[0]["token"]
@@ -158,7 +167,14 @@ def test_resume_renders_the_launch_template_and_rejects_foreign_checkpoints(tmp_
     run = make_run(
         tmp_path,
         started_at=started,
-        terminal={"rank": 0, "step": 3, "completed": False, "stopped": True, "run_started_at": started, "time": time.time()},
+        terminal={
+            "rank": 0,
+            "step": 3,
+            "completed": False,
+            "stopped": True,
+            "run_started_at": started,
+            "time": time.time(),
+        },
     )
     store = store_for(tmp_path, run, launch_template="echo resume {checkpoint} in {run_dir}")
     token = store.runs()[0]["token"]
@@ -182,7 +198,14 @@ def test_resume_spawns_the_template_and_records_the_request(tmp_path, monkeypatc
     run = make_run(
         tmp_path,
         started_at=started,
-        terminal={"rank": 0, "step": 3, "completed": False, "stopped": True, "run_started_at": started, "time": time.time()},
+        terminal={
+            "rank": 0,
+            "step": 3,
+            "completed": False,
+            "stopped": True,
+            "run_started_at": started,
+            "time": time.time(),
+        },
     )
     launched = {}
 
@@ -215,7 +238,14 @@ def test_resume_can_name_an_individual_generation(tmp_path, monkeypatch):
     run = make_run(
         tmp_path,
         started_at=started,
-        terminal={"rank": 0, "step": 3, "completed": False, "stopped": True, "run_started_at": started, "time": time.time()},
+        terminal={
+            "rank": 0,
+            "step": 3,
+            "completed": False,
+            "stopped": True,
+            "run_started_at": started,
+            "time": time.time(),
+        },
     )
     monkeypatch.setattr(
         "examples.worldmodel.cosmos3_monitor.control.subprocess.Popen",
@@ -258,7 +288,14 @@ def test_a_terminal_from_the_previous_attempt_is_ignored(tmp_path):
     run = make_run(
         tmp_path,
         started_at=started,
-        terminal={"rank": 0, "step": 90, "completed": False, "stopped": True, "run_started_at": started - 5000, "time": time.time() - 4000},
+        terminal={
+            "rank": 0,
+            "step": 90,
+            "completed": False,
+            "stopped": True,
+            "run_started_at": started - 5000,
+            "time": time.time() - 4000,
+        },
     )
     store = store_for(tmp_path, run)
     view = store.control_view(store.runs()[0]["token"])
@@ -270,7 +307,9 @@ def test_a_summary_from_the_previous_attempt_is_ignored(tmp_path):
     run = make_run(tmp_path, started_at=time.time() - 10)
     metrics = run / "metrics"
     (metrics / "aggregated.jsonl").write_text(
-        json.dumps({"type": "summary", "time": time.time() - 4000, "summary": {"completed": True, "run_started_at": 1.0}})
+        json.dumps(
+            {"type": "summary", "time": time.time() - 4000, "summary": {"completed": True, "run_started_at": 1.0}}
+        )
         + "\n"
     )
     store = store_for(tmp_path, run)

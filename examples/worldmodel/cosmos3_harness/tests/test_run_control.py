@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import time
 
-import pytest
-
 from examples.worldmodel.cosmos3_harness.run_control import RunControl, read_request
 
 

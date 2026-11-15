@@ -15,14 +15,13 @@ The reflect pad stays on the bf16 tensor (16 columns and 4 rows out of 656x544);
 is the expensive part, is fused.
 """
 
+import tilelang
+import tilelang.language as T
 import torch
 import torch.nn.functional as F
 
-import tilelang
-import tilelang.language as T
-
-from examples.worldmodel.cosmos3.video_uint8 import reflect_pad_last2 as _reflect_pad_last2
 from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch  # noqa: F401  (reference path / fallback)
+from examples.worldmodel.cosmos3.video_uint8 import reflect_pad_last2 as _reflect_pad_last2
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -51,7 +50,7 @@ def _uint8_norm_bf16(M: int, block: int = BLOCK):
             f_ub = T.alloc_ub((block,), "float32")
             d_ub = T.alloc_ub((block,), "float32")
             o_ub = T.alloc_ub((block,), "bfloat16")
-            T.copy(src[cid * block:(cid + 1) * block], u8_ub)
+            T.copy(src[cid * block : (cid + 1) * block], u8_ub)
             # The aicore forbids an unsigned-int -> float C++ static cast; CANN's Cast does uint8 -> fp16
             # exactly (0..255 fits) and fp16 -> fp32 is exact, so the arithmetic below is the host path's.
             T.tile.cast(h_ub, u8_ub, "CAST_NONE", block)
@@ -60,7 +59,7 @@ def _uint8_norm_bf16(M: int, block: int = BLOCK):
             T.tile.div(f_ub, f_ub, d_ub)
             T.tile.add(f_ub, f_ub, -1.0)
             T.tile.cast(o_ub, f_ub, "CAST_RINT", block)
-            T.copy(o_ub, dst[cid * block:(cid + 1) * block])
+            T.copy(o_ub, dst[cid * block : (cid + 1) * block])
 
     return main
 
@@ -89,7 +88,7 @@ def normalize_uint8(video: torch.Tensor) -> torch.Tensor:
     for start in range(0, blocks, CHUNK_BLOCKS):
         n = min(CHUNK_BLOCKS, blocks - start) * BLOCK
         offset = start * BLOCK
-        outputs.append(_kernel(n)(flat[offset:offset + n]))
+        outputs.append(_kernel(n)(flat[offset : offset + n]))
     dst = outputs[0] if len(outputs) == 1 else torch.cat(outputs)
     return dst.view_as(video)
 

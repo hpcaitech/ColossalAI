@@ -19,9 +19,9 @@ from __future__ import annotations
 
 import types
 
-import torch
 import tilelang
 import tilelang.language as T
+import torch
 
 from examples.worldmodel.cosmos3.vae_norm_kernel import PASS_CONFIGS, _locked_compile
 
@@ -35,8 +35,12 @@ def _scale_tail(N: int, H: int, rows: int):
     last = N - rows
 
     @T.prim_func
-    def main(h32: T.Tensor((N, H), "float32"), r: T.Tensor((N,), "float32"), w: T.Tensor((H,), "float32"),
-             y: T.Tensor((N, H), "bfloat16")):
+    def main(
+        h32: T.Tensor((N, H), "float32"),
+        r: T.Tensor((N,), "float32"),
+        w: T.Tensor((H,), "float32"),
+        y: T.Tensor((N, H), "bfloat16"),
+    ):
         with T.Kernel(T.ceildiv(N, rows), threads=1, is_npu=True) as cid:
             n0 = T.min(cid * rows, last)
             x_ub = T.alloc_ub((rows, H), "float32")
@@ -44,16 +48,16 @@ def _scale_tail(N: int, H: int, rows: int):
             row = T.alloc_ub((H,), "float32")
             w_ub = T.alloc_ub((H,), "float32")
             r_ub = T.alloc_ub((rows,), "float32")
-            T.copy(h32[n0:n0 + rows, 0:H], x_ub)
+            T.copy(h32[n0 : n0 + rows, 0:H], x_ub)
             T.copy(w, w_ub)
-            T.copy(r[n0:n0 + rows], r_ub)
+            T.copy(r[n0 : n0 + rows], r_ub)
             for i in T.serial(rows):
                 # r is per row and w is per column: fill makes each a vector so the binary ops stay vector ops.
                 T.tile.fill(row, r_ub[i])
                 T.tile.mul(x_ub[i, 0:H], x_ub[i, 0:H], row)
                 T.tile.mul(x_ub[i, 0:H], x_ub[i, 0:H], w_ub)
                 T.tile.cast(out_ub[i, 0:H], x_ub[i, 0:H], "CAST_RINT", H)
-            T.copy(out_ub, y[n0:n0 + rows, 0:H])
+            T.copy(out_ub, y[n0 : n0 + rows, 0:H])
 
     return main
 

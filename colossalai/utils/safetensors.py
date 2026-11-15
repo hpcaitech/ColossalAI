@@ -74,9 +74,7 @@ class ThreadedSafetensorsWriter:
         self._error = None
         self._metadata = _normalise_metadata(metadata)
         host = {name: _to_host(tensor) for name, tensor in state_dict.items()}
-        self._thread = threading.Thread(
-            target=self._write, args=(host,), name="safetensors-writer", daemon=True
-        )
+        self._thread = threading.Thread(target=self._write, args=(host,), name="safetensors-writer", daemon=True)
         self._thread.start()
 
     def _write(self, state_dict: Dict[str, torch.Tensor]) -> None:

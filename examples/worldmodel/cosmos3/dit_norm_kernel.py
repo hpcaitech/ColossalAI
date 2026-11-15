@@ -96,10 +96,14 @@ def _fused_forward(module, x: torch.Tensor) -> torch.Tensor:
             float((out.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12)),
         )
         if _VERIFY["calls"] == 1:
-            atexit.register(lambda: print(
-                f"[dit-norm-verify] {_VERIFY['calls']} calls, {_VERIFY['mismatched']}/{_VERIFY['elements']} elements "
-                f"differ ({100 * _VERIFY['mismatched'] / max(_VERIFY['elements'], 1):.5f}%), worst per-call relL2 "
-                f"{_VERIFY['worst_rel']:.2e}", flush=True))
+            atexit.register(
+                lambda: print(
+                    f"[dit-norm-verify] {_VERIFY['calls']} calls, {_VERIFY['mismatched']}/{_VERIFY['elements']} elements "
+                    f"differ ({100 * _VERIFY['mismatched'] / max(_VERIFY['elements'], 1):.5f}%), worst per-call relL2 "
+                    f"{_VERIFY['worst_rel']:.2e}",
+                    flush=True,
+                )
+            )
     return out
 
 
@@ -120,8 +124,11 @@ def enable_dit_norm(model, verbose: bool = False):
             patched += 1
     model.fused_dit_norm_modules = patched
     if verbose:
-        print(f"[model] fused nemotron RMSNorm in {patched} module(s) "
-              f"(forward 7e-7 from the fp32 chain, backward bit-identical)", flush=True)
+        print(
+            f"[model] fused nemotron RMSNorm in {patched} module(s) "
+            f"(forward 7e-7 from the fp32 chain, backward bit-identical)",
+            flush=True,
+        )
     return model
 
 
