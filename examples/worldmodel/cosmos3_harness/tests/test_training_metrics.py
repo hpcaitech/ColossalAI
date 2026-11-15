@@ -17,6 +17,7 @@ from training_metrics import (
     ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
+    Cosmos3FlopsModel,
     JsonlObserver,
     MetricsAggregator,
     MetricsObserver,
@@ -25,8 +26,8 @@ from training_metrics import (
     TrainingMetrics,
     WandbObserver,
     aggregate_records,
-    compute_cosmos3_flops,
     compute_mfu,
+    cosmos3_step_flops,
     flatten,
     make_event,
     make_record,
@@ -382,13 +383,33 @@ def test_telemetry_reduction_with_standard_keys():
     rank0 = make_record(
         step=5,
         rank=0,
-        perf={"fwd_ms": 100.0, "bwd_ms": 150.0, "vae_ms": 30.0, "tflops": 120.0, "mfu": 0.35},
+        perf={
+            "step_ms": 1000.0,
+            "fwd_ms": 100.0,
+            "bwd_ms": 150.0,
+            "vae_ms": 30.0,
+            "flops": 120e12,
+            "flops_forward": 30e12,
+            "flops_backward": 90e12,
+            "mfu": 0.10,
+            "peak_tflops_per_npu": 353.9,
+        },
         mem={"device_used_gib": 32.0, "peak_reserved_gib": 30.0},
     )
     rank1 = make_record(
         step=5,
         rank=1,
-        perf={"fwd_ms": 120.0, "bwd_ms": 140.0, "vae_ms": 35.0, "tflops": 110.0, "mfu": 0.33},
+        perf={
+            "step_ms": 1000.0,
+            "fwd_ms": 120.0,
+            "bwd_ms": 140.0,
+            "vae_ms": 35.0,
+            "flops": 110e12,
+            "flops_forward": 28e12,
+            "flops_backward": 82e12,
+            "mfu": 0.09,
+            "peak_tflops_per_npu": 353.9,
+        },
         mem={"device_used_gib": 34.5, "peak_reserved_gib": 31.0},
     )
 
@@ -401,40 +422,63 @@ def test_telemetry_reduction_with_standard_keys():
     assert aggregated["mem"]["device_used_gib"] == 34.5
     assert aggregated["mem"]["peak_reserved_gib"] == 31.0
 
-    # Sum reduction for total cluster TFLOPS
-    assert aggregated["perf"]["tflops"] == 230.0
+    # FLOPs sum, but achieved TFLOPS and MFU are recomputed from the cluster totals rather than reduced.
+    assert aggregated["perf"]["flops"] == 230e12
+    assert aggregated["perf"]["tflops"] == pytest.approx(230.0)
+    assert aggregated["perf"]["mfu"] == pytest.approx(230.0 / (2 * 353.9))
 
-    # Mean reduction for MFU
-    assert aggregated["perf"]["mfu"] == pytest.approx(0.34)
 
-
-def test_mfu_and_flops_computation():
+def test_mfu_and_flops_follow_the_model_geometry():
     assert ASCEND_910B2_CUBE_PEAK_TFLOPS == 353.9
+    config = {
+        "num_hidden_layers": 28,
+        "hidden_size": 2048,
+        "intermediate_size": 9216,
+        "num_attention_heads": 16,
+        "num_key_value_heads": 8,
+        "head_dim": 128,
+        "hidden_act": "relu2",
+        "vocab_size": 131072,
+    }
+    model = Cosmos3FlopsModel.from_config(config)
+    breakdown = model.breakdown(ar_tokens=1000, dm_tokens=6388, samples=2)
+    full = cosmos3_step_flops(model, samples=2, ar_tokens=1000, dm_tokens=6388, checkpointing="full")
+    none = cosmos3_step_flops(model, samples=2, ar_tokens=1000, dm_tokens=6388, checkpointing="none")
+    selective = cosmos3_step_flops(
+        model, samples=2, ar_tokens=1000, dm_tokens=6388, checkpointing="selective", selective_stats={"mode": "mlp"}
+    )
+    with_vae = cosmos3_step_flops(
+        model, samples=2, ar_tokens=1000, dm_tokens=6388, checkpointing="full", include_vae=True
+    )
 
-    # 2 samples forward: 40.68 TFLOP. With recompute: 4x -> 1.6272e14 FLOPs
-    flops_recompute = compute_cosmos3_flops(samples=2, activation_checkpointing=True, include_vae=False)
-    assert flops_recompute == pytest.approx(1.6272e14, rel=1e-3)
+    assert full["flops_forward"] == pytest.approx(breakdown["forward"])
+    assert full["flops_backward"] == pytest.approx(2 * breakdown["forward"] + breakdown["layer_forward"])
+    assert full["flops"] == pytest.approx(full["flops_forward"] + full["flops_backward"])
+    assert none["flops_backward"] == pytest.approx(2 * breakdown["forward"])
+    assert none["flops"] < selective["flops"] < full["flops"]
+    assert with_vae["flops_vae"] == pytest.approx(2 * 33.0e12)
+    assert with_vae["flops"] == pytest.approx(full["flops"] + 2 * 33.0e12)
 
-    # Without recompute: 3x -> 1.2204e14 FLOPs
-    flops_no_recompute = compute_cosmos3_flops(samples=2, activation_checkpointing=False, include_vae=False)
-    assert flops_no_recompute == pytest.approx(1.2204e14, rel=1e-3)
+    # The old helper accepted num_layers and ignored it.  A larger checkpoint must change the scale.
+    larger = Cosmos3FlopsModel.from_config(
+        {**config, "num_hidden_layers": 36, "hidden_size": 4096, "intermediate_size": 16384}
+    )
+    larger_breakdown = larger.breakdown(ar_tokens=1000, dm_tokens=6388, samples=2)
+    larger_flops = cosmos3_step_flops(larger, samples=2, ar_tokens=1000, dm_tokens=6388)
+    assert larger_breakdown["mlp"] > 4 * breakdown["mlp"]
+    # The exact total factor also depends on attention scores, the LM head and the AR/DM token mix; the geometry
+    # itself is the part the old constant got wrong.
+    assert larger_flops["flops"] > 2.5 * full["flops"]
 
-    # With VAE: 2 * 33 TFLOP added
-    flops_with_vae = compute_cosmos3_flops(samples=2, activation_checkpointing=True, include_vae=True)
-    assert flops_with_vae == pytest.approx(1.6272e14 + 6.6e13, rel=1e-3)
+    mfu = compute_mfu(step_ms=1000.0, total_flops=full["flops"], world_size=48, peak_tflops_per_npu=353.9)
+    assert 0 < mfu < 1
+    assert compute_mfu(step_ms=0, total_flops=full["flops"]) == 0.0
+    assert compute_mfu(step_ms=1000.0, total_flops=full["flops"], world_size=0) == 0.0
 
-    # MFU calculation: 1.6272e14 FLOPs in 1.0s on 1 NPU (353.9 TFLOPS peak)
-    # achieved TFLOPS = 162.72. MFU = 162.72 / 353.9 ≈ 0.45979
-    mfu = compute_mfu(step_ms=1000.0, total_flops=flops_recompute, world_size=1, peak_tflops_per_npu=353.9)
-    assert mfu == pytest.approx(162.72 / 353.9, rel=1e-3)
 
-    # 48 NPUs scaling
-    mfu_48 = compute_mfu(step_ms=1000.0, total_flops=flops_recompute * 48, world_size=48, peak_tflops_per_npu=353.9)
-    assert mfu_48 == pytest.approx(mfu, rel=1e-3)
-
-    # Boundary cases
-    assert compute_mfu(step_ms=0, total_flops=flops_recompute) == 0.0
-    assert compute_mfu(step_ms=1000.0, total_flops=flops_recompute, world_size=0) == 0.0
+def test_flops_model_requires_the_checkpoint_geometry():
+    with pytest.raises(ValueError, match="num_hidden_layers"):
+        Cosmos3FlopsModel.from_config({"hidden_size": 2048})
 
 
 def test_anomaly_detector_reserved_and_device_memory():

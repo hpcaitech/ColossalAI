@@ -41,13 +41,17 @@ import json
 import math
 import statistics
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 __all__ = [
     "SCHEMA_VERSION",
     "ASCEND_910B2_CUBE_PEAK_TFLOPS",
-    "compute_cosmos3_flops",
+    "VAE_TFLOP_PER_SAMPLE",
+    "Cosmos3FlopsModel",
+    "cosmos3_step_flops",
+    "selective_recompute_fraction",
     "compute_mfu",
     "JsonlMetricsLogger",
     "MetricsObserver",
@@ -75,6 +79,10 @@ EVENT = "event"
 #: Hardware peak Cube compute per Huawei Ascend 910B2 (Atlas A2, DAV_2201) NPU in TFLOPS.
 ASCEND_910B2_CUBE_PEAK_TFLOPS: float = 353.9
 
+#: Frozen VAE encoder cost per video sample.  It is a model-specific estimate, kept on the training side with the
+#: rest of the accounting so the dashboard never has to guess whether the VAE ran.
+VAE_TFLOP_PER_SAMPLE: float = 33.0
+
 #: How each leaf is reduced across ranks. Keys use the flattened ``section/key`` names. Anything not listed keeps
 #: rank 0's value (``first``).
 REDUCTIONS: Dict[str, str] = {
@@ -99,8 +107,17 @@ REDUCTIONS: Dict[str, str] = {
     "perf/optim_ms": "max",
     "perf/host_dispatch_ms": "max",
     "perf/step_dispatch_ms": "max",
-    "perf/tflops": "sum",
+    "perf/flops": "sum",
+    "perf/flops_forward": "sum",
+    "perf/flops_backward": "sum",
+    "perf/flops_vae": "sum",
     "perf/mfu": "mean",
+    "perf/mfu_forward": "mean",
+    "perf/mfu_backward": "mean",
+    "perf/mfu_vae": "mean",
+    "perf/peak_tflops_per_npu": "first",
+    "perf/checkpointing_mode": "first",
+    "perf/recompute_fraction": "mean",
     "mem/allocated_gib": "max",
     "mem/peak_gib": "max",
     "mem/reserved_gib": "max",
@@ -120,35 +137,165 @@ REDUCTIONS: Dict[str, str] = {
 }
 
 
-def compute_cosmos3_flops(
-    samples: int = 1,
-    num_tokens: Optional[int] = None,
-    activation_checkpointing: bool = True,
-    include_vae: bool = False,
-    num_layers: int = 28,
-) -> float:
-    """Compute total training FLOPs for the Cosmos3 model.
+@dataclass(frozen=True)
+class Cosmos3FlopsModel:
+    """Geometry that turns a packed step into a FLOPs figure.
 
-    Cosmos3 Omni Transformer geometry:
-    - 28 layers, hidden 2048, SwiGLU intermediate 9216, GQA 16/8 heads.
-    - Forward FLOPs: ~40.68 TFLOP per 2 samples (20.34 TFLOP/sample, ~7388 packed tokens).
-    - Multiplier: 4.0x with activation checkpointing (fwd + bwd + recompute); 3.0x without recompute.
-    - VAE: ~33.0 TFLOP per video sample (forward only).
-
-    Returns:
-        float: Total floating point operations (in raw FLOPs).
+    The previous helper hard-coded one checkpoint's measured 20.34 TFLOP/sample and accepted a ``num_layers``
+    argument it never used.  That silently mis-reported a larger or smaller Cosmos 3 variant.  This object is
+    built from the model config once, so the number follows the checkpoint that is actually training.
     """
-    fwd_per_sample_flops = 20.34e12
-    if num_tokens is not None and samples > 0:
-        # Scale proportionally to packed token count if provided (nominal is ~3694 tokens/sample)
-        nominal_tokens = 3694.0 * samples
-        fwd_per_sample_flops = 20.34e12 * (num_tokens / nominal_tokens)
 
-    train_multiplier = 4.0 if activation_checkpointing else 3.0
-    transformer_flops = samples * fwd_per_sample_flops * train_multiplier
-    vae_flops = (samples * 33.0e12) if include_vae else 0.0
+    num_layers: int
+    hidden_size: int
+    intermediate_size: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    head_dim: int
+    mlp_matrices: int
+    vocab_size: int = 0
 
-    return float(transformer_flops + vae_flops)
+    @classmethod
+    def from_config(cls, config: Any) -> "Cosmos3FlopsModel":
+        """Read the fields the accounting needs from a diffusers/transformers config or a mapping."""
+
+        def field(*names: str, default: Any = None) -> Any:
+            for name in names:
+                value = config.get(name) if isinstance(config, Mapping) else getattr(config, name, None)
+                if value is not None:
+                    return value
+            return default
+
+        num_layers = field("num_hidden_layers", "num_layers")
+        hidden = field("hidden_size")
+        intermediate = field("intermediate_size")
+        heads = field("num_attention_heads")
+        if num_layers is None or hidden is None or intermediate is None or heads is None:
+            raise ValueError(
+                "Cosmos3 FLOPs need num_hidden_layers, hidden_size, intermediate_size and num_attention_heads"
+            )
+        heads = int(heads)
+        kv_heads = int(field("num_key_value_heads", default=heads) or heads)
+        head_dim = int(field("head_dim", default=max(1, int(hidden) // heads)) or max(1, int(hidden) // heads))
+        act = str(field("hidden_act", default="silu")).lower()
+        # relu2/relu/gelu are two-matrix MLPs; silu/geglu-style SwiGLU blocks have a gate and an up projection.
+        mlp_matrices = 3 if act in ("silu", "swiglu", "geglu") else 2
+        return cls(
+            num_layers=int(num_layers),
+            hidden_size=int(hidden),
+            intermediate_size=int(intermediate),
+            num_attention_heads=heads,
+            num_key_value_heads=kv_heads,
+            head_dim=head_dim,
+            mlp_matrices=mlp_matrices,
+            vocab_size=int(field("vocab_size", default=0) or 0),
+        )
+
+    def breakdown(self, ar_tokens: int, dm_tokens: int, samples: int) -> Dict[str, float]:
+        """Forward FLOPs split by component.
+
+        The attention-score term uses the average packed sequence length.  The model has both causal AR and full
+        DM attention, so this is an estimate of the mixture, not a kernel counter; the scale, which is what MFU
+        depends on, comes from the checkpoint geometry rather than a constant measured on a different model.
+        """
+        tokens = max(0, int(ar_tokens)) + max(0, int(dm_tokens))
+        tokens_per_sample = tokens / samples if samples else float(tokens)
+        attention_dim = self.num_attention_heads * self.head_dim
+        qkv_dim = attention_dim + 2 * self.num_key_value_heads * self.head_dim
+        projection_per_token = 2 * self.hidden_size * (qkv_dim + attention_dim)
+        mlp_per_token = 2 * self.hidden_size * self.intermediate_size * self.mlp_matrices
+        scores_per_token = 4 * tokens_per_sample * attention_dim
+        per_token = self.num_layers * (projection_per_token + mlp_per_token + scores_per_token)
+        layer_forward = float(tokens * per_token)
+        lm_head = float(2 * self.hidden_size * self.vocab_size * max(0, int(ar_tokens))) if self.vocab_size else 0.0
+        return {
+            "tokens": float(tokens),
+            "tokens_per_sample": float(tokens_per_sample),
+            "mlp": float(tokens * self.num_layers * mlp_per_token),
+            "attention_projection": float(tokens * self.num_layers * projection_per_token),
+            "attention_scores": float(tokens * self.num_layers * scores_per_token),
+            "layer_forward": layer_forward,
+            "lm_head": lm_head,
+            "forward": layer_forward + lm_head,
+        }
+
+    def as_dict(self) -> Dict[str, int]:
+        return {
+            "num_layers": self.num_layers,
+            "hidden_size": self.hidden_size,
+            "intermediate_size": self.intermediate_size,
+            "num_attention_heads": self.num_attention_heads,
+            "num_key_value_heads": self.num_key_value_heads,
+            "head_dim": self.head_dim,
+            "mlp_matrices": self.mlp_matrices,
+            "vocab_size": self.vocab_size,
+        }
+
+
+def selective_recompute_fraction(
+    model: Cosmos3FlopsModel,
+    breakdown: Mapping[str, float],
+    stats: Optional[Mapping[str, Any]],
+) -> float:
+    """Fraction of the decoder forward pass that selective checkpointing recomputes.
+
+    ``mlp`` keeps attention outputs and recomputes the MLP blocks.  ``sac`` checkpoints each layer and keeps the
+    attention op outputs of the first ``max_saved_layers`` layers, so the scores of the remaining layers and all
+    projections/MLPs are recomputed.  Unknown stats fall back to a full recompute rather than under-reporting
+    the cost.
+    """
+    layer_forward = float(breakdown.get("layer_forward") or 0.0)
+    if layer_forward <= 0:
+        return 0.0
+    mode = str((stats or {}).get("mode") or "").lower()
+    if mode == "mlp":
+        return min(1.0, max(0.0, float(breakdown.get("mlp") or 0.0) / layer_forward))
+    if mode == "sac":
+        saved = int((stats or {}).get("max_saved_layers") or 0)
+        saved_fraction = min(1.0, max(0.0, saved / max(1, model.num_layers)))
+        return max(0.0, 1.0 - saved_fraction * float(breakdown.get("attention_scores") or 0.0) / layer_forward)
+    return 1.0
+
+
+def cosmos3_step_flops(
+    model: Cosmos3FlopsModel,
+    *,
+    samples: int,
+    ar_tokens: int = 0,
+    dm_tokens: int = 0,
+    checkpointing: Any = "full",
+    include_vae: bool = False,
+    selective_stats: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, float]:
+    """Raw FLOPs for one optimizer step, split into forward/backward/VAE.
+
+    The backward stage includes the activation recompute, so ``flops_forward + flops_backward + flops_vae`` is
+    the total the step MFU uses.  The VAE is included only when the caller saw a VAE timing for this step.
+    """
+    breakdown = model.breakdown(ar_tokens, dm_tokens, samples)
+    if isinstance(checkpointing, bool):
+        mode = "full" if checkpointing else "none"
+    else:
+        mode = str(checkpointing or "full").lower()
+    if mode == "full":
+        fraction = 1.0
+    elif mode == "none":
+        fraction = 0.0
+    elif mode == "selective":
+        fraction = selective_recompute_fraction(model, breakdown, selective_stats)
+    else:
+        raise ValueError(f"unknown activation checkpointing mode: {checkpointing!r}")
+    forward = float(breakdown["forward"])
+    recompute = fraction * float(breakdown["layer_forward"])
+    backward = 2.0 * forward + recompute
+    vae = float(samples) * VAE_TFLOP_PER_SAMPLE * 1e12 if include_vae and samples > 0 else 0.0
+    return {
+        "flops": forward + backward + vae,
+        "flops_forward": forward,
+        "flops_backward": backward,
+        "flops_vae": vae,
+        "recompute_fraction": fraction,
+    }
 
 
 def compute_mfu(
@@ -161,8 +308,9 @@ def compute_mfu(
 
     Args:
         step_ms (float): Step duration in milliseconds.
-        total_flops (float): Total floating point operations performed in this step
-            (either raw FLOPs >= 1e6 or achieved TFLOPS < 1e6).
+        total_flops (float): Raw floating point operations performed in this step.  There is deliberately no
+            "small value means TFLOPS" branch: a caller that passes 120.0 by mistake should get a small MFU,
+            not a silently reinterpreted one.
         world_size (int): Total number of active NPUs across the cluster.
         peak_tflops_per_npu (float): Peak Cube TFLOPS per Ascend 910B2 NPU (default 353.9).
 
@@ -173,11 +321,7 @@ def compute_mfu(
         return 0.0
 
     step_s = step_ms / 1000.0
-    if total_flops >= 1e6:
-        achieved_tflops = (total_flops / step_s) / 1e12
-    else:
-        achieved_tflops = total_flops
-
+    achieved_tflops = (total_flops / step_s) / 1e12
     cluster_peak_tflops = world_size * peak_tflops_per_npu
     if cluster_peak_tflops <= 0.0:
         return 0.0
@@ -353,6 +497,14 @@ def _reduce(values: Sequence[Any], policy: str) -> Any:
     return values[0]  # "first"
 
 
+def _positive(value: Any) -> Optional[float]:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
 def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optional[Dict]:
     """Reduce per-rank records of one step into a single record.
 
@@ -402,6 +554,22 @@ def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optiona
         perf["step_ms_mean"] = mean
         perf["step_ms_max"] = peak
         perf["skew"] = peak / mean if mean else 1.0
+
+    # The per-rank MFU mean is only exact when every rank has the same step time.  Recompute the cluster values
+    # from the summed FLOPs and the slowest stage, using the peak the trainer recorded.  This is also the value
+    # the dashboard reads, so it does not have to repeat the model accounting.
+    perf = aggregated.setdefault("perf", {})
+    total_flops = _positive(perf.get("flops"))
+    step_ms = _positive(perf.get("step_ms"))
+    peak_tflops = _positive(perf.get("peak_tflops_per_npu")) or ASCEND_910B2_CUBE_PEAK_TFLOPS
+    if total_flops and step_ms and ranks:
+        perf["tflops"] = (total_flops / (step_ms / 1e3)) / 1e12
+        perf["mfu"] = compute_mfu(step_ms, total_flops, len(ranks), peak_tflops)
+    for name in ("forward", "backward", "vae"):
+        stage_flops = _positive(perf.get(f"flops_{name}"))
+        stage_ms = _positive(perf.get(f"{name}_ms"))
+        if stage_flops and stage_ms and ranks:
+            perf[f"mfu_{name}"] = compute_mfu(stage_ms, stage_flops, len(ranks), peak_tflops)
     return aggregated
 
 

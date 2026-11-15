@@ -13,7 +13,12 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from examples.worldmodel.cosmos3_harness import train
-from examples.worldmodel.cosmos3_harness.checkpoint import restore_checkpoint, save_checkpoint, validate_checkpoint
+from examples.worldmodel.cosmos3_harness.checkpoint import (
+    _rng_fields,
+    restore_checkpoint,
+    save_checkpoint,
+    validate_checkpoint,
+)
 from examples.worldmodel.cosmos3_harness.loss import normalise_packed_loss, normalise_vision_token_mean
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
 
@@ -226,6 +231,20 @@ def test_checksum_valid_but_invalid_rng_cannot_partially_restore(tmp_path, field
     after_numpy = np.random.get_state()
     assert after_numpy[0] == before[2][0] and after_numpy[2:] == before[2][2:]
     np.testing.assert_array_equal(after_numpy[1], before[2][1])
+
+
+def test_rng_schema_is_shared_with_the_writer(tmp_path):
+    assert set(_rng_fields("cpu")) == {"torch", "python", "numpy", "accelerator"}
+    assert set(_rng_fields("npu")) == {"torch", "python", "numpy", "accelerator", "device"}
+    model, booster = Toy(), CPUBooster()
+    optimizer = torch.optim.AdamW(model.parameters())
+    save_checkpoint(
+        tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 1, "config": {}}, booster=booster
+    )
+    root, _ = validate_checkpoint(tmp_path)
+    rng = torch.load(root / "rng-00000.pt", map_location="cpu", weights_only=False)
+    # The writer emits exactly the fields the reader allows; a future field has to be added to the shared schema.
+    assert set(rng) == set(_rng_fields(str(rng["accelerator"])))
 
 
 def test_an_unexpected_rng_field_is_rejected_before_model_load(tmp_path):

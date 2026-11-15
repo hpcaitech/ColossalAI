@@ -17,8 +17,9 @@ import random
 import sys
 import time
 from functools import partial
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Optional
 
 # The DROID pipeline is upstream's own code, copied byte for byte under vendor/ (see vendor/README.md).
 # Its files import themselves as ``cosmos_framework.*``, so the copy is laid out under that package name
@@ -70,11 +71,15 @@ from examples.worldmodel.cosmos3.runtime import (
 from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
 from examples.worldmodel.cosmos3_harness.training_metrics import (
+    ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
+    Cosmos3FlopsModel,
     Stopwatch,
     TrainingMetrics,
     WandbObserver,
+    compute_mfu,
+    cosmos3_step_flops,
     device_memory_gib,
 )
 
@@ -307,8 +312,23 @@ def resolve_version(distribution: str) -> str:
     """
     try:
         return version(distribution)
-    except Exception:
+    except PackageNotFoundError:
         return "absent"
+    except Exception as exc:
+        # "not installed" and "installed but its metadata is unreadable" are different facts in a manifest.
+        return f"error: {type(exc).__name__}: {exc}"
+
+
+def step_mfu(
+    step_ms: Optional[float],
+    flops: Optional[float],
+    world_size: int,
+    peak_tflops_per_npu: float = ASCEND_910B2_CUBE_PEAK_TFLOPS,
+) -> Optional[float]:
+    """MFU for a stage, or ``None`` when that stage did not run this step."""
+    if step_ms is None or step_ms <= 0 or not flops:
+        return None
+    return compute_mfu(step_ms, flops, world_size, peak_tflops_per_npu)
 
 
 def parse_args(argv=None):
@@ -829,6 +849,9 @@ def main():
         )
     model = build_model(args.checkpoint, args.reinit_action_head, args.action_head_from)
     model_config = model.config
+    # Derive the FLOPs scale from the checkpoint geometry once; the record then carries the number every
+    # consumer can read instead of each consumer guessing a per-sample constant.
+    flops_model = Cosmos3FlopsModel.from_config(model_config)
     if args.activation_checkpointing == "full":
         model.enable_gradient_checkpointing()
     optimizer = build_optimizer(model, args.optimizer, args.adamw_mode, accelerator.name)
@@ -888,6 +911,7 @@ def main():
         {
             "args": vars(args),
             "world_size": coord.world_size,
+            "flops_model": flops_model.as_dict(),
             "env": {
                 "torch": torch.__version__,
                 "device": accelerator.name,
@@ -1038,6 +1062,41 @@ def main():
                 step_ms = (time.perf_counter() - window_start) * 1e3
                 timings = watch.read_ms()
                 get_grad_norm = getattr(optimizer, "get_grad_norm", None)
+                vae_ms = timings.get("vae")
+                selective_stats = (
+                    get_cosmos3_selective_checkpoint_stats(target)
+                    if args.activation_checkpointing == "selective"
+                    else None
+                )
+                step_flops = cosmos3_step_flops(
+                    flops_model,
+                    samples=window.samples,
+                    ar_tokens=window.ar_tokens,
+                    dm_tokens=window.dm_tokens,
+                    checkpointing=args.activation_checkpointing,
+                    include_vae=vae_ms is not None,
+                    selective_stats=selective_stats,
+                )
+                peak_tflops = ASCEND_910B2_CUBE_PEAK_TFLOPS
+                flops_fields = {
+                    "flops": step_flops["flops"],
+                    "flops_forward": step_flops["flops_forward"],
+                    "flops_backward": step_flops["flops_backward"],
+                    "flops_vae": step_flops["flops_vae"],
+                    "recompute_fraction": step_flops["recompute_fraction"],
+                    "checkpointing_mode": args.activation_checkpointing,
+                    "peak_tflops_per_npu": peak_tflops,
+                    "tflops": (step_flops["flops"] / (step_ms / 1e3) / 1e12) if step_ms > 0 else None,
+                    "mfu": step_mfu(step_ms, step_flops["flops"], coord.world_size, peak_tflops),
+                    "mfu_forward": step_mfu(
+                        timings.get("forward"), step_flops["flops_forward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_backward": step_mfu(
+                        timings.get("backward"), step_flops["flops_backward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_vae": step_mfu(vae_ms, step_flops["flops_vae"], coord.world_size, peak_tflops),
+                    "vae_ms": vae_ms,
+                }
                 metrics.step(
                     step,
                     data={
@@ -1057,6 +1116,7 @@ def main():
                         "forward_ms": timings.get("forward"),
                         "backward_ms": timings.get("backward"),
                         "optim_ms": timings.get("optim"),
+                        **flops_fields,
                     },
                     optim={
                         "grad_norm": get_grad_norm() if get_grad_norm else None,
