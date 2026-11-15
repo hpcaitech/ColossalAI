@@ -129,7 +129,7 @@ class LatentCacheDataset(Dataset):
         # Check every window, not a sample of them. The sampler shuffles over the whole selection, so a gap
         # anywhere turns into a KeyError hours into a run; `len(dataset)` lookups against a dict cost nothing and
         # make a partial cache fail at startup instead.
-        missing = [self._sample_id(window) for window in base.windows if self._sample_id(window) not in self.cache]
+        missing = [base.sample_id(index) for index in range(len(base)) if base.sample_id(index) not in self.cache]
         if missing:
             raise KeyError(
                 f"{len(missing)} of {len(base)} windows are missing from {cache_dir}, e.g. {missing[0]!r}. "
@@ -137,16 +137,15 @@ class LatentCacheDataset(Dataset):
                 f"--max-episodes/--limit covering this dataset."
             )
 
-    @staticmethod
-    def _sample_id(window) -> str:
-        return f"{window.root.resolve()}:{window.episode_id}:{window.start}"
-
     def __len__(self) -> int:
         return len(self.base)
 
     def __getitem__(self, index: int) -> dict:
         window = self.base.windows[index]
-        sample_id = self._sample_id(window)
+        # The extractor keys entries by the dataset's logical sample id (revision, root role, episode, start,
+        # chunk length); reconstructing it here from the physical path would miss a cache built with a revision
+        # tag and could not distinguish chunk lengths.
+        sample_id = self.base.sample_id(index)
         cached = self.cache.get(sample_id)
         action, state = self.base._read_actions(window)
         task = random.choice(window.task.split(" | "))

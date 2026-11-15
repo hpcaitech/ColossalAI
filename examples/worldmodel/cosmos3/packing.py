@@ -25,7 +25,6 @@ from __future__ import annotations
 import contextlib
 import json
 import math
-import os
 
 import torch
 
@@ -765,29 +764,17 @@ def pack_batch(
 
             def encode_video(video):
                 if uint8_video:
-                    # Same uint8 pixels and same affine as the host path; the convert + reflect pad run on the
-                    # device, so only 40 MB/sample crosses PCIe instead of 158 MB. With
-                    # COSMOS3_VIDEO_NORM_KERNEL=1 the normalisation is one fused TileLang kernel
-                    # (uint8 -> fp16 -> fp32 divide -> bf16), bit-identical to the host path and 4.6x faster
-                    # than the four aclnn passes (probe_video_pad_norm.py).
+                    # Same uint8 pixels and same affine as the host path; the float convert + reflect pad run on
+                    # the device, so only 40 MB/sample crosses PCIe instead of 158 MB.
+                    from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch
+
                     target_h, target_w = (int(v) for v in pad_hw[0].tolist())
-                    if os.environ.get("COSMOS3_VIDEO_NORM_KERNEL", "0") == "1":
-                        from examples.worldmodel.cosmos3.video_pad_norm import pad_normalize
-
-                        value = pad_normalize(
-                            video.to(device),
-                            target_h - int(video.shape[-2]),
-                            target_w - int(video.shape[-1]),
-                        ).to(vae_dtype)
-                    else:
-                        from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch
-
-                        value = pad_normalize_torch(
-                            video.to(device),
-                            target_h - int(video.shape[-2]),
-                            target_w - int(video.shape[-1]),
-                            vae_dtype,
-                        )
+                    value = pad_normalize_torch(
+                        video.to(device),
+                        target_h - int(video.shape[-2]),
+                        target_w - int(video.shape[-1]),
+                        vae_dtype,
+                    )
                 else:
                     value = video.to(device, vae_dtype)
                 out = vae.encode(value)
@@ -995,14 +982,14 @@ def compute_loss(out, targets, return_components: bool = False):
 
     vision = torch.stack(
         [
-            ((pred.float() - target.float()).square() * mask.float()).mean()
+            ((pred.float() - target.float()).pow(2) * mask.float()).mean()
             for pred, target, mask in zip(out.sample, targets["vision"], targets["vision_noisy_mask"])
         ]
     ).mean()
     dim = targets["raw_action_dim"]
     action = torch.stack(
         [
-            ((pred[:, :dim].float() - target[:, :dim].float()).square() * mask.float()).mean()
+            ((pred[:, :dim].float() - target[:, :dim].float()).pow(2) * mask.float()).mean()
             for pred, target, mask in zip(out.action, targets["action"], targets["action_noisy_mask"])
         ]
     ).mean()

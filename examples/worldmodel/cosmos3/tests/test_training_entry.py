@@ -2,6 +2,7 @@
 
 import json
 import time
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -70,6 +71,61 @@ def test_accumulation_counts_all_microsteps_and_deduplicates_cp_copies():
     assert (follower.samples, follower.ar_tokens, follower.dm_tokens) == (0, 0, 0)
     assert leader.loss_values() == follower.loss_values() == {"total": 4.0, "vision": 4.0}
     assert leader.wait_ms == 4.0
+
+
+def test_the_understanding_key_norm_stays_frozen_like_the_reference():
+    model = torch.nn.Module()
+    model.time_embedder = torch.nn.Linear(2, 2)
+    model.add_q_proj = torch.nn.Linear(2, 2)
+    model.k_norm_und_for_gen = torch.nn.Linear(2, 2)
+    model.frozen_tower = torch.nn.Linear(2, 2)
+
+    trainable, frozen = entry.select_trainable_parameters(model)
+
+    assert model.time_embedder.weight.requires_grad and model.add_q_proj.weight.requires_grad
+    assert not model.k_norm_und_for_gen.weight.requires_grad
+    assert not model.frozen_tower.weight.requires_grad
+    assert trainable == 12 and frozen == 12
+
+
+def test_build_optimizer_names_and_rates_both_recipe_groups():
+    model = torch.nn.Module()
+    model.time_embedder = torch.nn.Linear(2, 2)
+    model.action_proj_in = torch.nn.Linear(2, 2)
+
+    optimizer = entry.build_optimizer(model, choice="adamw", mode="plain", device_type="cpu")
+
+    assert [(group["name"], group["lr"]) for group in optimizer.param_groups] == [
+        ("base", entry.LR),
+        ("action_heads", entry.LR * 5.0),
+    ]
+
+
+def test_the_recorded_learning_rates_come_from_each_parameter_group():
+    optimizer = torch.optim.SGD(
+        [
+            {"params": [torch.nn.Parameter(torch.zeros(1))], "lr": 2e-4, "name": "base"},
+            {"params": [torch.nn.Parameter(torch.zeros(1))], "lr": 1e-3, "name": "action_heads"},
+        ]
+    )
+
+    assert entry.optimizer_learning_rates(optimizer) == {"lr/base": 2e-4, "lr/action_heads": 1e-3}
+
+
+def test_a_package_without_metadata_is_recorded_as_missing(monkeypatch):
+    assert isinstance(entry.resolve_version("pytest"), str)
+
+    def missing(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr(entry, "version", missing)
+    assert entry.resolve_version("diffusers") == "absent"
+
+    def broken(name):
+        raise RuntimeError(f"no metadata for {name}")
+
+    monkeypatch.setattr(entry, "version", broken)
+    assert entry.resolve_version("diffusers").startswith("error: RuntimeError")
 
 
 class ActionHead(torch.nn.Module):
@@ -215,7 +271,16 @@ def _run_toy_training(monkeypatch, tmp_path, *extra_args):
     )
 
     class Model(torch.nn.Module):
-        config = None
+        config = {
+            "num_hidden_layers": 1,
+            "hidden_size": 16,
+            "intermediate_size": 32,
+            "num_attention_heads": 2,
+            "num_key_value_heads": 1,
+            "head_dim": 8,
+            "hidden_act": "relu2",
+            "vocab_size": 32,
+        }
 
         def __init__(self):
             super().__init__()
@@ -305,11 +370,11 @@ def _run_toy_training(monkeypatch, tmp_path, *extra_args):
 
     monkeypatch.setattr(entry, "PowerEMA", RecordingEMA)
     entry.main()
-    return entry, model, reference, records, summaries, manifests, targets, ema_shadow
+    return entry, model, reference, records, summaries, manifests, targets, ema_shadow, exports
 
 
 def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypatch, tmp_path):
-    entry, model, reference, records, summaries, manifests, targets, ema_shadow = _run_toy_training(
+    entry, model, reference, records, summaries, manifests, targets, ema_shadow, exports = _run_toy_training(
         monkeypatch, tmp_path
     )
     expected_losses = []
@@ -371,7 +436,7 @@ def test_a_stop_request_ends_the_run_after_the_current_step(monkeypatch, tmp_pat
     (control_dir / "request.json").write_text(
         json.dumps({"action": "stop", "request_id": "test-stop", "requested_at": time.time(), "run_started_at": None})
     )
-    _, _, _, _, summaries, _, _, _ = _run_toy_training(
+    _, _, _, _, summaries, _, _, _, _ = _run_toy_training(
         monkeypatch,
         tmp_path,
         "--max-iter",

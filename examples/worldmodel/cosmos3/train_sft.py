@@ -20,8 +20,9 @@ import random
 import sys
 import time
 from functools import partial
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Optional
 
 # The DROID pipeline is upstream's own code, copied byte for byte under vendor/ (see vendor/README.md).
 # Its files import themselves as ``cosmos_framework.*``, so the copy is laid out under that package name
@@ -85,11 +86,15 @@ from examples.worldmodel.cosmos3_harness.run_context import collect_rank_identit
 from examples.worldmodel.cosmos3_harness.run_control import RunControl
 from examples.worldmodel.cosmos3_harness.training_heartbeat import TrainingHeartbeat, write_terminal
 from examples.worldmodel.cosmos3_harness.training_metrics import (
+    ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
+    Cosmos3FlopsModel,
     Stopwatch,
     TrainingMetrics,
     WandbObserver,
+    compute_mfu,
+    cosmos3_step_flops,
     device_memory_gib,
 )
 
@@ -106,7 +111,6 @@ TRAINABLE_KEYS = (
     "to_add_out",
     "norm_added_q",
     "norm_added_k",
-    "k_norm_und_for_gen",
     "time_embedder",
     "proj_in",
     "proj_out",
@@ -319,8 +323,23 @@ def resolve_version(distribution: str) -> str:
     """
     try:
         return version(distribution)
-    except Exception:
+    except PackageNotFoundError:
         return "absent"
+    except Exception as exc:
+        # "not installed" and "installed but its metadata is unreadable" are different facts in a manifest.
+        return f"error: {type(exc).__name__}: {exc}"
+
+
+def step_mfu(
+    step_ms: Optional[float],
+    flops: Optional[float],
+    world_size: int,
+    peak_tflops_per_npu: float = ASCEND_910B2_CUBE_PEAK_TFLOPS,
+) -> Optional[float]:
+    """MFU for a stage, or ``None`` when that stage did not run this step."""
+    if step_ms is None or step_ms <= 0 or not flops:
+        return None
+    return compute_mfu(step_ms, flops, world_size, peak_tflops_per_npu)
 
 
 def parse_args(argv=None):
@@ -703,6 +722,18 @@ def load_action_head(model, path: Path) -> list[str]:
     return list(blob)
 
 
+def select_trainable_parameters(model):
+    """Apply the recipe's substring rule and return the trainable and frozen element counts."""
+    trainable = frozen = 0
+    for name, parameter in model.named_parameters():
+        parameter.requires_grad = any(key in name for key in TRAINABLE_KEYS)
+        if parameter.requires_grad:
+            trainable += parameter.numel()
+        else:
+            frozen += parameter.numel()
+    return trainable, frozen
+
+
 def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_from: Path = None):
     from diffusers import Cosmos3OmniTransformer
 
@@ -714,13 +745,7 @@ def build_model(checkpoint: Path, reinit_action_head: bool = False, action_head_
         print(f"[model] action head initialized: {', '.join(touched)}", flush=True)
     if action_head_from is not None:
         print(f"[model] loaded action head: {', '.join(load_action_head(model, action_head_from))}", flush=True)
-    trainable = frozen = 0
-    for name, parameter in model.named_parameters():
-        parameter.requires_grad = any(key in name for key in TRAINABLE_KEYS)
-        if parameter.requires_grad:
-            trainable += parameter.numel()
-        else:
-            frozen += parameter.numel()
+    trainable, frozen = select_trainable_parameters(model)
     print(f"[model] trainable {trainable / 1e9:.3f}B / frozen {frozen / 1e9:.3f}B", flush=True)
     return model
 
@@ -789,13 +814,21 @@ def build_optimizer(model, choice="hybrid-adam", mode="auto", device_type=None):
     for name, parameter in model.named_parameters():
         if parameter.requires_grad:
             (boosted if any(key in name for key in LR_MULTIPLIED) else base).append(parameter)
-    groups = [{"params": base, "lr": LR}, {"params": boosted, "lr": LR * 5.0}]
+    groups = [
+        {"params": base, "lr": LR, "name": "base"},
+        {"params": boosted, "lr": LR * 5.0, "name": "action_heads"},
+    ]
     kwargs = dict(betas=BETAS, eps=EPS, weight_decay=WEIGHT_DECAY)
     if choice == "hybrid-adam":
         return HybridAdam(groups, adamw_mode=True, **kwargs)
     if choice == "adamw":
         return build_adamw(groups, LR, mode=mode, device_type=device_type, **kwargs)
     raise ValueError(f"Unknown optimizer {choice!r}")
+
+
+def optimizer_learning_rates(optimizer):
+    """Each parameter group's current rate, keyed by the name :func:`build_optimizer` gave it."""
+    return {f"lr/{group.get('name', index)}": group["lr"] for index, group in enumerate(optimizer.param_groups)}
 
 
 def checkpoint_config(args, plugin, unique_dp, dataset_size):
@@ -852,6 +885,13 @@ def flush_pending(pending, ledger, stats):
     while pending:
         checkpoint, checkpoint_id = pending.pop(0)
         flush_checkpoint(checkpoint, ledger=ledger, checkpoint_id=checkpoint_id, stats=stats)
+
+
+def fix_checkpoint_modes(save_dir: Path, coord: DistCoordinator):
+    """Make finished model exports group-readable, after asynchronous writers have joined."""
+    if coord.is_master():
+        for path in save_dir.rglob("*"):
+            os.chmod(path, 0o664 if path.is_file() else 0o775)
 
 
 def main():
@@ -989,6 +1029,9 @@ def main():
         )
     model = build_model(args.checkpoint, args.reinit_action_head, args.action_head_from)
     model_config = model.config
+    # Derive the FLOPs scale from the checkpoint geometry once; the record then carries the number every
+    # consumer can read instead of each consumer guessing a per-sample constant.
+    flops_model = Cosmos3FlopsModel.from_config(model_config)
     if args.activation_checkpointing == "full":
         model.enable_gradient_checkpointing()
     optimizer = build_optimizer(model, args.optimizer, args.adamw_mode, accelerator.name)
@@ -1072,6 +1115,7 @@ def main():
     manifest = {
         "args": vars(args),
         "world_size": coord.world_size,
+        "flops_model": flops_model.as_dict(),
         "env": {
             "torch": torch.__version__,
             "device": accelerator.name,
@@ -1385,6 +1429,41 @@ def main():
                     # Exposed save cost, reported once at the first record step after the save.
                     sections["ckpt"] = {"save_ms": save_ms, "async_pending": len(pending_checkpoints)}
                     save_ms = None
+                vae_ms = timings.get("vae")
+                selective_stats = (
+                    get_cosmos3_selective_checkpoint_stats(target)
+                    if args.activation_checkpointing == "selective"
+                    else None
+                )
+                step_flops = cosmos3_step_flops(
+                    flops_model,
+                    samples=window.samples,
+                    ar_tokens=window.ar_tokens,
+                    dm_tokens=window.dm_tokens,
+                    checkpointing=args.activation_checkpointing,
+                    include_vae=vae_ms is not None,
+                    selective_stats=selective_stats,
+                )
+                peak_tflops = ASCEND_910B2_CUBE_PEAK_TFLOPS
+                flops_fields = {
+                    "flops": step_flops["flops"],
+                    "flops_forward": step_flops["flops_forward"],
+                    "flops_backward": step_flops["flops_backward"],
+                    "flops_vae": step_flops["flops_vae"],
+                    "recompute_fraction": step_flops["recompute_fraction"],
+                    "checkpointing_mode": args.activation_checkpointing,
+                    "peak_tflops_per_npu": peak_tflops,
+                    "tflops": (step_flops["flops"] / (step_ms / 1e3) / 1e12) if step_ms > 0 else None,
+                    "mfu": step_mfu(step_ms, step_flops["flops"], coord.world_size, peak_tflops),
+                    "mfu_forward": step_mfu(
+                        timings.get("forward"), step_flops["flops_forward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_backward": step_mfu(
+                        timings.get("backward"), step_flops["flops_backward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_vae": step_mfu(vae_ms, step_flops["flops_vae"], coord.world_size, peak_tflops),
+                    "vae_ms": vae_ms,
+                }
                 metrics.step(
                     step,
                     **sections,
@@ -1405,8 +1484,12 @@ def main():
                         "forward_ms": timings.get("forward"),
                         "backward_ms": timings.get("backward"),
                         "optim_ms": timings.get("optim"),
+                        **flops_fields,
                     },
-                    optim={"grad_norm": get_grad_norm() if get_grad_norm else None, "lr": LR},
+                    optim={
+                        "grad_norm": get_grad_norm() if get_grad_norm else None,
+                        **optimizer_learning_rates(optimizer),
+                    },
                     mem=device_memory_gib(),
                 )
             if step % args.save_every == 0:

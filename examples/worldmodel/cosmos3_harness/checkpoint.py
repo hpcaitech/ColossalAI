@@ -25,7 +25,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
@@ -38,6 +38,19 @@ FORMAT_VERSION = 3
 READABLE_FORMAT_VERSIONS = (1, 2, FORMAT_VERSION)
 
 MASTER_WEIGHTS_FORMAT = 1
+
+#: Shared by the writer and the validator.  ``extra`` is the caller's rank-private state (the noise generator);
+#: ``device`` exists only for a non-CPU accelerator.  A future field belongs in this schema before the writer
+#: emits it, otherwise the next resume rejects a generation its own writer just produced.
+RNG_REQUIRED_FIELDS = ("torch", "python", "numpy", "accelerator")
+RNG_OPTIONAL_FIELDS = ("device", "extra")
+
+
+def _rng_fields(accelerator_name: str) -> Tuple[str, ...]:
+    fields = RNG_REQUIRED_FIELDS
+    if accelerator_name != "cpu":
+        fields = fields + ("device",)
+    return fields
 
 
 def _rank_world():
@@ -384,9 +397,15 @@ def flush_checkpoint(pending: PendingCheckpoint, *, ledger=None, checkpoint_id=N
 
 def _validate_rng(rng, source):
     """Check saved CPU streams using isolated generators, without changing global RNG."""
-    required = {"torch", "python", "numpy", "accelerator"}
+    required = set(RNG_REQUIRED_FIELDS)
     if not isinstance(rng, dict) or not required.issubset(rng):
         raise ValueError(f"{source}: incomplete rank RNG state")
+    allowed = set(_rng_fields(str(rng.get("accelerator") or ""))) | {"extra"}
+    unexpected = set(rng) - allowed
+    if unexpected:
+        # The file is the complete rank state this format version wrote; an unknown field means the writer and
+        # this reader disagree, and silently ignoring it would resume from a state that is only partly restored.
+        raise ValueError(f"{source}: unexpected RNG fields {sorted(unexpected)}")
     if rng["accelerator"] not in ("cpu", "cuda", "npu"):
         raise ValueError(f"{source}: unsupported RNG accelerator")
     if "extra" in rng and not isinstance(rng["extra"], dict):

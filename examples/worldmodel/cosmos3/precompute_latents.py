@@ -11,7 +11,7 @@ per VAE call and writes ``shard-<rank>-<n>.pt`` files. Latents are stored alread
 exactly what ``pack_one`` consumes -- in bf16. Windows are enumerated the same way the trainer enumerates them,
 so the cache covers every window a training run of the same subset would visit.
 
-    python precompute_latents.py --checkpoint ... --data .../success --out .../latents --num-workers 4
+    python precompute_latents.py --checkpoint ... --data .../Cosmos3-DROID --out .../latents --num-workers 4
 """
 
 from __future__ import annotations
@@ -35,9 +35,7 @@ from examples.worldmodel.cosmos3.packing import normalize_latent
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument(
-        "--data", type=Path, required=True, help="LeRobot root, or the parent of success/ and failure/."
-    )
+    parser.add_argument("--data", type=Path, required=True, help="Parent of the success/ and failure/ LeRobot roots.")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--max-episodes", type=int, help="Per root; omit for every episode.")
     parser.add_argument("--limit", type=int, help="Stop after this many windows across all ranks.")

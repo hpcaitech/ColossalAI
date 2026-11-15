@@ -4,10 +4,9 @@ The pixels are the upstream uint8 quantisation and the affine is the same ``x / 
 only the float conversion and the pad move to the device. The device division can round one ulp differently from
 the host (1.19e-7 in fp32), far below the VAE's own bf16 noise (~2e-2), and the training loss A/B is the gate.
 
-Kept separate from ``video_pad_norm.py`` so the trainer does not import tilelang unless the fused kernel is asked
-for (``COSMOS3_VIDEO_NORM_KERNEL=1``). The fused kernel is bit-identical and ~1.5x faster at the normalisation
-(3.99 ms vs ~6 ms per 8-sample call), but on this path the reflect pad dominates (~22 ms), so the torch ops here
-remain the default (draft_cosmos3_online_opt_zh.md F11).
+Kept separate from ``video_pad_norm.py`` so the trainer does not import tilelang: on this stack the TileLang
+vector kernel for the same op is launch/Cast bound (~5 GB/s) while these aclnn ops do an 8-sample encode batch in
+~27 ms (draft_cosmos3_online_opt_zh.md F6).
 """
 
 from __future__ import annotations

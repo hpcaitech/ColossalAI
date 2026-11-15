@@ -17,21 +17,26 @@ Three design decisions worth stating, because each is easy to get wrong in the o
    the batch at the cost of random-access I/O. Shuffling at index-construction time and leaving the sampler
    sequential gives both the decorrelation and the sequential reads.
 
-3. **Both roots are trained, and through the curated window set.** The released conversion keeps success and
-   failure episodes in two separate roots and the recipe trains both: ``LEROBOT_ROOTS`` for this layout is
-   ``["success", "failure"]`` and ``use_success_only`` defaults to off. It also turns on
-   ``keep_ranges_1_0_1.json``, which keeps only windows inside curated frame ranges (about 74% of them) and drops
-   the episodes the file does not mention. Both are off by default here only so that a smoke run needs nothing
-   but the dataset; a reproduction run wants both.
+3. **The released conversion has two roots and a curated window set.** ``LEROBOT_ROOTS`` for this layout is
+   ``["success", "failure"]``. The base ``DROIDLeRobotDataset`` defaults ``use_success_only=False`` while the
+   ``action_policy_droid_nano`` factory defaults it to True, and the Cosmos 3 technical report describes
+   failure-demonstration removal as part of the policy recipe. The registered config leaves the curated filter
+   off (``use_filter_dict=False``, ``filter_dict_path=None``), but the official launch script
+   (``launch_sft_action_policy_droid_nano.sh``) overrides both to load ``keep_ranges_1_0_1.json``, and the report
+   describes community-provided idle-frame filtering. Reproducing the reference run therefore means the success
+   root with the curated windows; this loader defaults to both roots and no filter so a smoke run needs nothing
+   else, and exposes ``success_only``/``keep_ranges`` for the recipe settings.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import av
 import numpy as np
@@ -84,11 +89,15 @@ STATE_JOINT = "observation.state.joint_positions"
 STATE_GRIPPER = "observation.state.gripper_position"
 
 # The curated window set predates the LeRobot conversion and is keyed by the raw DROID trajectory path, which the
-# conversion kept as the episodes table's ``episode_id``. The MP4 file name is part of the key.
+# conversion kept as the episodes table's ``episode_id``. The original files use a composite URI key; the official
+# loader normalizes such keys back to the relative episode id when an explicit source prefix is supplied.
 _KEEP_RANGES_KEY = (
     "gs://xembodiment_data/r2d2/r2d2-data-full/{episode}/recordings/"
     "MP4--gs://xembodiment_data/r2d2/r2d2-data-full/{episode}/trajectory.h5"
 )
+DROID_FILTER_SOURCE_PREFIX = "DROID_FILTER_SOURCE_PREFIX"
+
+logger = logging.getLogger(__name__)
 
 
 def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.03, split: str = "train") -> list[int]:
@@ -130,46 +139,99 @@ def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.
 def resolve_shards(root: str | Path, success_only: bool = False) -> list[tuple[str, Path]]:
     """The LeRobot roots one training run reads from.
 
-    Point ``root`` at the parent directory and both roots are trained, which is what the recipe does; point it at
-    ``success`` or ``failure`` itself and only that one is. The order is upstream's ``LEROBOT_ROOTS`` order, for
-    the same reason it matters there: it decides which root an episode index refers to when the two are mixed.
+    ``root`` is the parent directory of ``success/`` and ``failure/``, and both roots are indexed — the base
+    ``DROIDLeRobotDataset`` default. The SFT factory restricts to ``success`` by default
+    (``use_success_only=True``). The order is upstream's ``LEROBOT_ROOTS`` order, for the same reason it matters
+    there: it decides which root an episode index refers to when the two are mixed. A single root is not accepted
+    on its own: the parent is the dataset, and a run that means one root says so through ``success_only``.
 
     Args:
-        root (str | Path): The parent of ``success/`` and ``failure/``, or one of the two itself.
+        root (str | Path): The parent of ``success/`` and ``failure/``.
         success_only (bool, optional): Drop the failure root, i.e. upstream's ``use_success_only``. Defaults to
-            False, the recipe's value.
+            False, the base dataset's value; the recipe factory passes True.
 
     Returns:
         list[tuple[str, Path]]: ``(name, path)`` per root, names unique.
 
     Raises:
-        FileNotFoundError: If ``root`` is neither a LeRobot root nor a parent of one or more.
+        FileNotFoundError: If ``root`` is not a parent of a ``success/`` or ``failure/`` LeRobot root.
     """
     root = Path(root)
     shards = [(name, root / name) for name in ("success", "failure") if (root / name / "meta/info.json").is_file()]
-    if shards:
-        if success_only:
-            shards = [shard for shard in shards if shard[0] == "success"]
+    if not shards:
+        raise FileNotFoundError(
+            f"{root} is not a parent of a success/ or failure/ LeRobot root; pass the directory that holds them."
+        )
+    if success_only:
+        shards = [shard for shard in shards if shard[0] == "success"]
         if not shards:
             raise FileNotFoundError(f"{root} holds no success root, and success_only was requested.")
-        return shards
-    if (root / "meta/info.json").is_file():
-        if success_only and root.name != "success":
-            raise FileNotFoundError(f"{root} is not a success root, and success_only was requested.")
-        return [(root.name, root)]
-    raise FileNotFoundError(f"{root} is neither a LeRobot root nor a parent of success/ and failure/.")
+    return shards
 
 
 def keep_ranges_key(episode_id: str) -> str:
-    """Key of one episode in ``keep_ranges_1_0_1.json``.
+    """The legacy composite URI key of one episode in ``keep_ranges_1_0_1.json``.
+
+    Older files list episodes under this key. It is preserved so such files keep working, but it is not the
+    identity the loader queries with: every key is normalized back to the relative episode id first.
 
     Args:
         episode_id (str): The episodes table's ``episode_id``, e.g. ``"AUTOLab/success/2023-07-07/Fri_Jul__7_..."``.
 
     Returns:
-        str: The key the curated window set uses for that episode.
+        str: The legacy URI key the curated window set uses for that episode.
     """
     return _KEEP_RANGES_KEY.format(episode=episode_id)
+
+
+def normalize_episode_filter_keys(filters: dict[str, Any], *, source_prefix: str = "") -> dict[str, Any]:
+    """Reduce every filter key to the relative episode id, the protocol the official loader uses.
+
+    Port of ``normalize_episode_filter_keys`` in cosmos-framework's
+    ``data/generator/action/utils/episode_filters.py`` at ``5950e7b4``. A complete relative episode id is used as
+    it is. A composite ``gs://`` URI key is reduced by stripping the ``/recordings/MP4--...`` suffix and then an
+    explicit ``source_prefix``; without a prefix a URI key is rejected rather than guessed, because a wrong guess
+    would silently select the wrong episodes. Identical duplicate entries collapse; conflicting ranges for one
+    episode raise.
+
+    Args:
+        filters (dict[str, Any]): The JSON content of a keep-ranges file, ``{key: [[start, end], ...]}``.
+        source_prefix (str, optional): Dataset URI prefix in front of the complete episode id, e.g.
+            ``"gs://xembodiment_data/r2d2/r2d2-data-full"``. Required only for URI keys.
+
+    Returns:
+        dict[str, Any]: ``{episode_id: ranges}``.
+
+    Raises:
+        ValueError: If a URI key has no prefix or the prefix does not match it, if an entry identifies no
+            episode, or if two entries give one episode different ranges.
+    """
+    normalized: dict[str, Any] = {}
+    for key, ranges in filters.items():
+        episode = key
+        if "://" in key:
+            # Relative episode ids are opaque, including any "--" in their names; only composite URI keys carry
+            # the recording/trajectory delimiter.
+            recording = key.split("/recordings/MP4--", 1)[0].rstrip("/")
+            if not source_prefix:
+                raise ValueError(
+                    "filter_dict_source_prefix is required for URI-based episode filter keys. Set "
+                    f"{DROID_FILTER_SOURCE_PREFIX} when using a DROID launcher, or pass "
+                    "filter_dict_source_prefix to the dataset. Use the URI prefix before the complete episode id."
+                )
+            prefix = source_prefix.rstrip("/") + "/"
+            if not recording.startswith(prefix):
+                raise ValueError(
+                    "Episode filter URI does not match filter_dict_source_prefix. Check "
+                    f"{DROID_FILTER_SOURCE_PREFIX} against the keys in your filter JSON."
+                )
+            episode = recording.removeprefix(prefix)
+        if not episode:
+            raise ValueError("Filter entries must identify an episode")
+        if episode in normalized and normalized[episode] != ranges:
+            raise ValueError(f"Conflicting filter ranges for episode {episode!r}")
+        normalized[episode] = ranges
+    return normalized
 
 
 def episode_starts(length: int, chunk_length: int, stride: int = 1) -> list[int]:
@@ -199,7 +261,10 @@ def filtered_starts(ranges: list[list[int]], length: int, chunk_length: int, str
 
     Transcribed from upstream's ``_append_index_records``: a range keeps the starts in
     ``[start, end - chunk_length)``, clamped to the episode. Ranges are not merged there, so overlapping ones are
-    not merged here either — merging would quietly train a different set of windows than the released run.
+    not merged here either — merging would quietly train a different set of windows than the released run. With
+    ``stride=1`` these are exactly upstream's starts. ``stride>1`` is an extension of this loader: all bounds are
+    frame offsets, so the step is anchored at the clamped range origin and the upper bound is not converted a
+    second time; it is not a transcription of the upstream filter loop.
 
     Args:
         ranges (list[list[int]]): ``[start, end]`` pairs from the curated window set.
@@ -306,19 +371,23 @@ def count_idle_frames(action: torch.Tensor, fps: float) -> int:
 class Window:
     """One training window: 33 observation frames and 32 actions starting at ``start`` inside an episode.
 
-    ``root`` is the LeRobot root the episode lives in — success and failure are separate roots — and
-    ``episode_id`` is its raw DROID trajectory id, which is what the curated window set is keyed by.
+    ``root`` is the physical LeRobot root the episode lives in — success and failure are separate roots — and
+    ``root_role`` is its logical role from :func:`resolve_shards` (``"success"``/``"failure"`` in the released
+    layout). ``episode_id`` is the raw DROID trajectory id, the relative id the curated window set is keyed by.
+    ``draw_id`` counts repeated draws of one logical window when overlapping curated ranges list it twice.
     """
 
     episode_index: int
     episode_id: str
     root: Path
+    root_role: str
     start: int  # first frame, relative to the episode
     task: str
     data_chunk: int
     data_file: int
     row_from: int  # first row of this episode **within its own parquet file**
     video: dict[str, tuple[int, int, float]]  # cam -> (chunk, file, from_timestamp)
+    draw_id: int = 0  # occurrence index when overlapping curated ranges repeat one window
 
 
 def closest_canvas(h: int, w: int, resolution: str = "480") -> tuple[int, int, str]:
@@ -383,27 +452,49 @@ class DroidActionPolicyDataset(Dataset):
     """DROID windows in LeRobot v3 layout, preprocessed the way the action-policy recipe expects.
 
     Args:
-        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained — or one
-            of those two on its own. See :func:`resolve_shards`.
+        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained unless
+            ``success_only`` says otherwise. See :func:`resolve_shards`.
         chunk_length (int, optional): Number of actions per window; the window holds ``chunk_length + 1``
             observation frames. Defaults to 32.
         fps (float, optional): Frame rate the video timestamps are resolved against. Defaults to 15.0.
         resolution (str, optional): Key into :data:`RES_TABLE`. Defaults to "480".
-        sample_stride (int, optional): Step between window starts inside an episode. Defaults to 1.
+        sample_stride (int, optional): Step between window starts inside an episode. Defaults to 1, upstream's
+            value; values above one are an extension of this loader.
         episode_shuffle_seed (int, optional): Seed of the episode-order shuffle. Defaults to 42.
         max_episodes (int | None, optional): Index only the first N episodes after the shuffle and after the
             curated filter, for smoke runs. Defaults to None.
-        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, seed 42, 3% held
-            out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates ``"val"``; it is
-            what training must exclude.
-        split_seed (int, optional): Permutation seed of the split. Defaults to 42.
-        split_val_ratio (float, optional): Fraction held out. Defaults to 0.03.
-        success_only (bool, optional): Train on the success root alone, i.e. upstream's ``use_success_only``.
-            Defaults to False, the recipe's value.
-        keep_ranges (str | Path | None, optional): ``keep_ranges_1_0_1.json`` from the recipe. When given, only
-            windows inside the curated frame ranges are indexed, and episodes the file does not mention are
-            dropped. Defaults to None, which indexes every window.
         augment (bool, optional): Apply the image augmentation. Defaults to False.
+        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, ``split_seed``,
+            3% held out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates
+            ``"val"``; it is what training must exclude.
+        split_val_ratio (float, optional): Fraction held out. Defaults to 0.03.
+
+    The first ten arguments keep the positional order they had before the multi-root extension; everything below
+    is keyword-only.
+
+    Keyword Args:
+        split_seed (int | None, optional): Permutation seed of the split. None (default) uses
+            ``episode_shuffle_seed``, matching upstream, where one ``randperm`` is both the holdout and the
+            episode shuffle; pass an explicit value to give the split its own seed.
+        success_only (bool, optional): Train on the success root alone, i.e. upstream's ``use_success_only``.
+            Defaults to False, the base dataset's value; the ``action_policy_droid_nano`` factory sets it True,
+            which is why the reference recipe excludes failure demonstrations.
+        keep_ranges (str | Path | None, optional): A curated keep-ranges JSON such as
+            ``keep_ranges_1_0_1.json``. The registered config leaves the filter off, but the official launch
+            script enables it for the reference reproduction; the loader keeps it opt-in. When given, only
+            windows inside the listed frame ranges are indexed, and episodes the file does not mention are
+            dropped. Keys are normalized to relative episode ids first — see
+            :func:`normalize_episode_filter_keys`. Defaults to None, which indexes every window.
+        filter_dict_source_prefix (str | None, optional): URI prefix in front of the complete episode id, needed
+            when a filter file uses legacy composite URI keys. When None, ``DROID_FILTER_SOURCE_PREFIX`` is read.
+        dataset_revision (str, optional): Release tag placed in front of every sample id, so two releases that
+            reuse episode ids do not share identities. Defaults to an empty string.
+        action_cache (str | Path | None, optional): Directory written by ``scripts/build_action_cache.py``. Its
+            memmapped float32 slices replace the per-file parquet read. Defaults to None.
+        video_content_pad (int | None, optional): Encode only ``content width + pad`` columns instead of the full
+            canvas; must be a nonnegative multiple of 16. Defaults to None, the recipe's full canvas.
+        video_uint8 (bool, optional): Keep the sample uint8 through the dataset and pad/normalise on the device.
+            Defaults to False.
     """
 
     def __init__(
@@ -415,12 +506,15 @@ class DroidActionPolicyDataset(Dataset):
         sample_stride: int = 1,
         episode_shuffle_seed: int = 42,
         max_episodes: int | None = None,
+        augment: bool = False,
         split: str = "train",
-        split_seed: int = 42,
         split_val_ratio: float = 0.03,
+        *,
+        split_seed: int | None = None,
         success_only: bool = False,
         keep_ranges: str | Path | None = None,
-        augment: bool = False,
+        filter_dict_source_prefix: str | None = None,
+        dataset_revision: str = "",
         action_cache: str | Path | None = None,
         video_content_pad: int | None = None,
         video_uint8: bool = False,
@@ -449,11 +543,21 @@ class DroidActionPolicyDataset(Dataset):
         # NPU (video_uint8.py), so the host never materialises the float32 frames and H2D drops 4x.
         self.video_uint8 = video_uint8
         self.split = split
+        # Upstream derives the holdout from the same randperm as the episode shuffle. None keeps that coupling
+        # for callers that only pass episode_shuffle_seed; an explicit split_seed decouples the two.
+        self.split_seed = episode_shuffle_seed if split_seed is None else split_seed
+        self.dataset_revision = dataset_revision
+        self.filter_dict_source_prefix = (
+            filter_dict_source_prefix
+            if filter_dict_source_prefix is not None
+            else os.environ.get(DROID_FILTER_SOURCE_PREFIX, "")
+        )
+        self.filter_stats: dict[str, int] | None = None
         self.shards = resolve_shards(self.root, success_only)
         self.split_ids = {
             name: split_episode_ids(
                 int(json.loads((path / "meta/info.json").read_text())["total_episodes"]),
-                split_seed,
+                self.split_seed,
                 split_val_ratio,
                 split,
             )
@@ -468,7 +572,7 @@ class DroidActionPolicyDataset(Dataset):
 
     # ---------- index ----------
 
-    def _read_episodes(self, root: Path) -> list[dict]:
+    def _read_episodes(self, root: Path, root_role: str) -> list[dict]:
         """Every row of one root's episodes table, with the fields the index needs."""
         cols = ["episode_index", "episode_id", "tasks", "length", "data/chunk_index", "data/file_index"]
         cols.append("dataset_from_index")
@@ -492,6 +596,7 @@ class DroidActionPolicyDataset(Dataset):
         for r in rows:
             r["_row_from"] = r["dataset_from_index"] - base[(r["data/chunk_index"], r["data/file_index"])]
             r["_root"] = root
+            r["_root_role"] = root_role
         return rows
 
     def _build_index(self, stride, seed, max_episodes, keep_ranges) -> list[Window]:
@@ -500,7 +605,7 @@ class DroidActionPolicyDataset(Dataset):
         filter_dict = None
         if keep_ranges is not None:
             with open(keep_ranges) as f:
-                filter_dict = json.load(f)
+                filter_dict = normalize_episode_filter_keys(json.load(f), source_prefix=self.filter_dict_source_prefix)
 
         # Drop the episodes this split excludes before shuffling, so max_episodes truncates inside the split
         # rather than across both. LeRobot numbers episode_index 0..total_episodes-1 in table order, which is
@@ -508,8 +613,11 @@ class DroidActionPolicyDataset(Dataset):
         # upstream's positional indexing.
         rows: list[dict] = []
         for name, path in self.shards:
+            # The physical path is logged, never embedded in a sample identity: the same release mounted at
+            # another path must produce the same ids.
+            logger.info("Indexing LeRobot root %r at %s", name, path.resolve())
             allowed = set(self.split_ids[name])
-            by_id = {int(r["episode_index"]): r for r in self._read_episodes(path)}
+            by_id = {int(r["episode_index"]): r for r in self._read_episodes(path, name)}
             # Preserve upstream's torch permutation within each root. Split membership has its own seed;
             # changing the traversal order must never move a validation episode into training.
             total = int(json.loads((path / "meta/info.json").read_text())["total_episodes"])
@@ -518,14 +626,24 @@ class DroidActionPolicyDataset(Dataset):
         if filter_dict is not None:
             # Dropping unlisted episodes before truncating keeps max_episodes meaning "N episodes that are actually
             # trained", rather than "N episodes, some of which the curated set then throws away".
-            rows = [r for r in rows if keep_ranges_key(r["episode_id"]) in filter_dict]
+            matched = [r for r in rows if r["episode_id"] in filter_dict]
+            if not matched:
+                raise ValueError(
+                    f"{keep_ranges} is non-empty but matches none of the {len(rows)} episodes in the split; "
+                    "check the episode ids. Relative ids are used directly; URI keys need an explicit "
+                    "filter_dict_source_prefix (or DROID_FILTER_SOURCE_PREFIX)."
+                )
+            rows = matched
         if max_episodes is not None:
             rows = rows[:max_episodes]
 
         windows: list[Window] = []
+        # Occurrence count per logical window: overlapping curated ranges legitimately list one window twice,
+        # and those draws keep one identity and differ only by draw_id.
+        draws: dict[tuple[str, str, int], int] = {}
         for r in rows:
             if filter_dict is not None:
-                ranges = filter_dict[keep_ranges_key(r["episode_id"])]
+                ranges = filter_dict[r["episode_id"]]
                 starts = filtered_starts(ranges, r["length"], self.chunk_length, stride)
             else:
                 starts = episode_starts(r["length"], self.chunk_length, stride)
@@ -540,23 +658,54 @@ class DroidActionPolicyDataset(Dataset):
                 for c in CAMS
             }
             for start in starts:
+                key = (r["_root_role"], r["episode_id"], start)
+                draw_id = draws.get(key, 0)
+                draws[key] = draw_id + 1
                 windows.append(
                     Window(
-                        r["episode_index"],
-                        r["episode_id"],
-                        r["_root"],
-                        start,
-                        task,
-                        r["data/chunk_index"],
-                        r["data/file_index"],
-                        r["_row_from"],
-                        video,
+                        episode_index=r["episode_index"],
+                        episode_id=r["episode_id"],
+                        root=r["_root"],
+                        root_role=r["_root_role"],
+                        start=start,
+                        task=task,
+                        data_chunk=r["data/chunk_index"],
+                        data_file=r["data/file_index"],
+                        row_from=r["_row_from"],
+                        video=video,
+                        draw_id=draw_id,
                     )
                 )
+        if filter_dict is not None:
+            self.filter_stats = {"matched_episodes": len(rows), "kept_windows": len(windows)}
+            logger.info(
+                "keep-ranges filter %s: %d episodes matched, %d windows kept",
+                keep_ranges,
+                len(rows),
+                len(windows),
+            )
         return windows
 
     def __len__(self) -> int:
         return len(self.windows)
+
+    def sample_id(self, index: int) -> str:
+        """Logical identity of the window at ``index``, independent of where the release is mounted.
+
+        ``dataset_revision`` (when set), the logical root role, the relative episode id, the first frame and the
+        window length. The physical root path is deliberately absent, so the same release read on two machines
+        yields the same ids, and the window length makes ``chunk_length=16`` and ``32`` distinguishable. Repeated
+        draws of one window (overlapping curated ranges) share this id; ``draw_id`` separates them.
+        """
+        window = self.windows[index]
+        parts = [
+            self.dataset_revision,
+            window.root_role,
+            window.episode_id,
+            str(window.start),
+            str(self.chunk_length),
+        ]
+        return ":".join(part for part in parts if part)
 
     # ---------- reading ----------
 
@@ -741,7 +890,8 @@ class DroidActionPolicyDataset(Dataset):
             "idle_frames": count_idle_frames(full_action, self.fps),
             "additional_view_description": CONCAT_VIEW_DESCRIPTION,
             "episode_index": win.episode_index,
-            "sample_id": f"{win.root.resolve()}:{win.episode_id}:{win.start}",
+            "sample_id": self.sample_id(idx),
+            "draw_id": win.draw_id,
             "start": win.start,
             "canvas_hw": torch.tensor([th, tw]),
             "content_hw": torch.tensor(content_hw),
@@ -789,19 +939,11 @@ class DroidActionPolicyDataset(Dataset):
         stacked = torch.cat([views[name] for name in names], dim=0)  # [3T, C, H, W]
         if self._augmentor is None:
             h, w = stacked.shape[-2:]
-            jitter = T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
-            if os.environ.get("COSMOS3_FAST_JITTER", "0") == "1":
-                # Same draws, same order, same values: only the hue adjustment (71% of the chain) runs through
-                # inductor. probe_augment_compile.py: bit-identical, 992 -> 598 ms per sample. Needs
-                # TORCHINDUCTOR_CACHE_DIR on local disk, or every worker recompiles on the network filesystem.
-                from examples.worldmodel.cosmos3.fast_color_jitter import FastColorJitter
-
-                jitter = FastColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
             self._augmentor = T.Compose(
                 [
                     T.RandomCrop((int(h * 0.95), int(w * 0.95))),
                     T.Resize((h, w), antialias=True),
-                    jitter,
+                    T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
                 ]
             )
         out = self._augmentor(stacked)
@@ -820,9 +962,16 @@ def collate(batch: list[dict]) -> dict:
     description and the idle-frame count -- 104 tokens where upstream, on the same window, emits 149.
     """
     keys = batch[0].keys()
-    missing = [k for b in batch for k in set(keys).symmetric_difference(b)]
-    if missing:
-        raise ValueError(f"The samples of a batch do not carry the same keys; missing: {sorted(set(missing))}")
+    # Symmetric difference, not ``keys - b``: a later sample can also carry a field the first one lacks, and that
+    # extra field would otherwise be dropped silently.
+    mismatch = [k for b in batch for k in set(keys).symmetric_difference(b)]
+    if mismatch:
+        # "same keys" keeps the upstream contract and its test; "schema mismatch" says what the symmetric
+        # difference actually means -- a later sample may carry an extra field, not only miss one.
+        raise ValueError(
+            "The samples of a batch do not carry the same keys (schema mismatch); "
+            f"mismatched keys: {sorted(set(mismatch))}"
+        )
     out: dict = {}
     for key in keys:
         values = [b[key] for b in batch]
