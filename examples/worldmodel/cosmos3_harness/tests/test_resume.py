@@ -15,10 +15,14 @@ import torch.multiprocessing as mp
 
 from examples.worldmodel.cosmos3_harness import train
 from examples.worldmodel.cosmos3_harness.checkpoint import (
+    apply_master_weights,
     flush_checkpoint,
+    load_master_weights,
+    master_weights_payload,
     restore_checkpoint,
     save_checkpoint,
     validate_checkpoint,
+    validate_master_weights,
 )
 from examples.worldmodel.cosmos3_harness.loss import normalise_packed_loss, normalise_vision_token_mean
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
@@ -221,6 +225,47 @@ def test_policy_rejects_incompatible_device_before_loading(tmp_path):
 
     with pytest.raises(ValueError, match="requires that device"):
         DroidWamPolicy.from_pretrained(tmp_path, transformer_path=None, config={}, device="cpu", backend="cuda")
+
+
+class _MasterOptimizer:
+    """Minimal mixed-precision optimizer surface used by the master-weight helpers."""
+
+    def __init__(self, masters, workings):
+        self.param_groups = [{"params": masters}]
+        self._map = {id(master): working for master, working in zip(masters, workings)}
+
+    def get_master_to_working_map(self):
+        return self._map
+
+
+def test_master_weights_round_trip_preserves_fp32(tmp_path):
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor([1.0, 2.0], dtype=torch.bfloat16))
+
+    model = Model()
+    master = torch.nn.Parameter(torch.tensor([1.0001, 2.0001], dtype=torch.float32))
+    optimizer = _MasterOptimizer([master], [model.weight])
+
+    payload = master_weights_payload(model, optimizer)
+    assert payload is not None
+    assert payload["keys"] == ["weight#0"]
+    assert payload["tensors"][0].dtype == torch.float32
+    path = tmp_path / "master-00000.pt"
+    torch.save(payload, path)
+    keys, tensors = load_master_weights(path)
+    validate_master_weights(keys, tensors, model, optimizer)
+
+    # This is what booster.load_model() does before the optimizer is restored: it rounds the master
+    # parameters to the working bf16 values.  The saved fp32 payload must put the exact values back.
+    master.data.copy_(model.weight.data)
+    assert master[0].item() == 1.0
+    apply_master_weights(tensors, model, optimizer)
+    torch.testing.assert_close(master, torch.tensor([1.0001, 2.0001]), rtol=0, atol=0)
+
+    with pytest.raises(ValueError, match="keys"):
+        validate_master_weights(["other#0"], tensors, model, optimizer)
 
 
 def test_checkpoint_integrity_and_atomic_publication(tmp_path):

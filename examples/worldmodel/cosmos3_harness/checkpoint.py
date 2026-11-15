@@ -31,10 +31,13 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 # Version 1 wrote the optimizer in the legacy .bin layout and carried no per-rank extra state.
-# Both stay readable, so an older generation remains resumable.
-READABLE_FORMAT_VERSIONS = (1, FORMAT_VERSION)
+# Version 2 added the immutable generation layout.  Version 3 adds the fp32 master weights that
+# mixed-precision training actually updates; the bf16 model shards alone round those values away.
+READABLE_FORMAT_VERSIONS = (1, 2, FORMAT_VERSION)
+
+MASTER_WEIGHTS_FORMAT = 1
 
 
 def _rank_world():
@@ -58,6 +61,82 @@ def _accelerator():
     from colossalai.accelerator import get_accelerator
 
     return get_accelerator()
+
+
+def _master_parameter_targets(model, optimizer):
+    """Return ``(keys, master_tensors)`` for the optimizer's fp32 master parameters.
+
+    Mixed-precision plugins keep a working bf16/fp16 model parameter and a separate fp32 master
+    parameter that the optimizer actually updates.  Booster's model save writes the working
+    parameter; its optimizer save writes the moments, not the master values.  Loading therefore
+    rounds the masters back to the working dtype unless we snapshot them here.
+    """
+    getter = getattr(optimizer, "get_master_to_working_map", None)
+    master_to_working = getter() if callable(getter) else None
+    if not master_to_working:
+        return [], []
+    sources = [optimizer]
+    inner = getattr(optimizer, "optim", None)
+    if inner is not None:
+        sources.append(inner)
+    masters = []
+    for source in sources:
+        params = [p for group in getattr(source, "param_groups", ()) for p in group["params"]]
+        masters = [p for p in params if id(p) in master_to_working]
+        if masters:
+            break
+    if not masters:
+        raise RuntimeError("mixed-precision optimizer exposes master weights but no master tensors were found")
+    names = {id(param): name for name, param in model.named_parameters()}
+    keys = []
+    seen = {}
+    for index, master in enumerate(masters):
+        working = master_to_working.get(id(master))
+        name = names.get(id(working), f"param-{index}")
+        count = seen.get(name, 0)
+        seen[name] = count + 1
+        keys.append(f"{name}#{count}")
+    return keys, masters
+
+
+def master_weights_payload(model, optimizer):
+    """Snapshot the fp32 master parameters for the checkpoint, or ``None`` for a pure fp32 run."""
+    keys, masters = _master_parameter_targets(model, optimizer)
+    if not masters:
+        return None
+    tensors = [master.detach().float().cpu().contiguous() for master in masters]
+    return {"format": MASTER_WEIGHTS_FORMAT, "keys": keys, "tensors": tensors}
+
+
+def load_master_weights(path):
+    payload = torch.load(Path(path), map_location="cpu", weights_only=True)
+    if not isinstance(payload, dict) or payload.get("format") != MASTER_WEIGHTS_FORMAT:
+        raise ValueError(f"{path}: unsupported master-weight payload")
+    keys, tensors = payload.get("keys"), payload.get("tensors")
+    if not isinstance(keys, list) or not isinstance(tensors, list) or len(keys) != len(tensors):
+        raise ValueError(f"{path}: malformed master-weight payload")
+    for index, tensor in enumerate(tensors):
+        if not isinstance(tensor, torch.Tensor) or tensor.dtype != torch.float32:
+            raise ValueError(f"{path}: master weight {index} is not a float32 tensor")
+    return keys, tensors
+
+
+def validate_master_weights(keys, tensors, model, optimizer):
+    current_keys, masters = _master_parameter_targets(model, optimizer)
+    if keys != current_keys:
+        raise ValueError("master-weight keys differ from the current model/optimizer layout")
+    if len(tensors) != len(masters):
+        raise ValueError("master-weight count differs from the current optimizer")
+    for index, (tensor, master) in enumerate(zip(tensors, masters)):
+        if tuple(tensor.shape) != tuple(master.shape):
+            raise ValueError(f"master weight {index} shape {tuple(tensor.shape)} != {tuple(master.shape)}")
+
+
+def apply_master_weights(tensors, model, optimizer):
+    _, masters = _master_parameter_targets(model, optimizer)
+    with torch.no_grad():
+        for tensor, master in zip(tensors, masters):
+            master.data.copy_(tensor.to(device=master.device, dtype=master.dtype))
 
 
 def apply_checkpoint_modes(root) -> None:
@@ -209,6 +288,13 @@ def save_checkpoint(
     checkpoint_io = getattr(booster, "checkpoint_io", None)
     booster.save_model(model, str(staging / "model"), shard=True, use_safetensors=True, use_async=async_)
     booster.save_optimizer(optimizer, str(staging / "optimizer"), shard=True, use_async=async_)
+    # The working parameters above are bf16/fp16 under mixed precision.  The optimizer updates the
+    # separate fp32 master parameters, and Booster's optimizer save does not persist their values.
+    # Snapshot them into the same staging generation; the host copy is the exposed cost of an exact
+    # resume, while serialization joins the generation's normal publication path.
+    master_payload = master_weights_payload(model, optimizer)
+    if master_payload is not None:
+        torch.save(master_payload, staging / f"master-{rank:05d}.pt")
     accelerator = _accelerator()
     rng = {
         "torch": torch.get_rng_state(),
@@ -223,7 +309,15 @@ def save_checkpoint(
         rng["extra"] = extra
     torch.save(rng, staging / f"rng-{rank:05d}.pt")
     if rank == 0:
-        torch.save({**state, "world_size": world, "format_version": FORMAT_VERSION}, staging / "training_state.pt")
+        torch.save(
+            {
+                **state,
+                "world_size": world,
+                "format_version": FORMAT_VERSION,
+                "master_weights": master_payload is not None,
+            },
+            staging / "training_state.pt",
+        )
     _barrier()
     pending = PendingCheckpoint(
         generation=root / ("checkpoint-" + identifier[0]),
@@ -405,6 +499,13 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
         raise ValueError("Checkpoint configuration must be a mapping or None")
     if expected_config is not None and state.get("config") != expected_config:
         raise ValueError("Resume configuration/replay fingerprint differs from the checkpoint")
+    master_weights = state.get("master_weights", False)
+    if not isinstance(master_weights, bool):
+        raise ValueError("Checkpoint master-weight flag must be boolean")
+    if master_weights:
+        for rank in range(world):
+            if not (root / f"master-{rank:05d}.pt").is_file():
+                raise ValueError(f"missing master-{rank:05d}.pt")
     for rank in range(world):
         name = f"rng-{rank:05d}.pt"
         _validate_rng(torch.load(root / name, map_location="cpu", weights_only=False), name)
@@ -434,12 +535,20 @@ def apply_checkpoint(root, state, model, optimizer, *, booster=None, on_rank_sta
                 saved.dtype != live.dtype or saved.shape != live.shape for saved, live in zip(rng["device"], reference)
             ):
                 raise ValueError("Device RNG tensor type/shape differs from the current accelerator")
-        return rng, accelerator
+        master_payload = None
+        if state.get("master_weights"):
+            master_payload = load_master_weights(Path(root) / f"master-{rank:05d}.pt")
+            validate_master_weights(master_payload[0], master_payload[1], model, optimizer)
+        return rng, accelerator, master_payload
 
-    rng, accelerator = _collective_preflight(check_local_device)
+    rng, accelerator, master_payload = _collective_preflight(check_local_device)
     booster = booster or model._colossal_booster
     booster.load_model(model, str(Path(root) / "model"))
     booster.load_optimizer(optimizer, str(Path(root) / "optimizer"))
+    if master_payload is not None:
+        # load_model seeds the master parameters from the bf16 working shards; restore the exact fp32 values
+        # that were present when the generation was written.
+        apply_master_weights(master_payload[1], model, optimizer)
     torch.set_rng_state(rng["torch"])
     random.setstate(rng["python"])
     np.random.set_state(rng["numpy"])
