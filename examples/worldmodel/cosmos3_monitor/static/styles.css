@@ -75,6 +75,8 @@ button:hover { border-color: var(--border-strong); background: var(--surface-3);
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover { filter: brightness(1.08); }
 button.ghost { background: transparent; }
+button.ghost.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 45%, var(--border)); }
+button.ghost.danger:hover { background: color-mix(in srgb, var(--critical) 12%, transparent); }
 button:disabled { opacity: .45; cursor: default; }
 input, select {
   background: var(--surface-2);
@@ -177,6 +179,8 @@ h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-2); }
 .status.failed .dot { background: var(--critical); }
 .status.initializing .dot, .status.unknown .dot { background: var(--muted); }
 .status.completed { color: var(--good); }
+.status.stopped .dot { background: var(--muted); }
+.status.stopped { color: var(--text-2); }
 .status.failed { color: var(--critical); }
 .status.attention { color: var(--warning); }
 .status.running { color: var(--accent); }

@@ -1,9 +1,12 @@
 """Read-only monitoring for the Cosmos 3 SFT and replay training entries.
 
 The package turns the JSONL telemetry that :mod:`examples.worldmodel.cosmos3_harness.training_metrics`
-already writes into a durable run registry, a small read-only HTTP API and an offline single-page
-dashboard.  It never writes inside a run directory: the files a training process produces are the source
-of truth, and every view here can be rebuilt from them.
+already writes into a durable run registry, a small HTTP API and an offline single-page dashboard.  The
+files a training process produces are the source of truth, and every view here can be rebuilt from them.
+
+The one write path is the control channel (:mod:`.control`): a stop or resume request dropped into
+``<run>/control/request.json``, which the training loop's watcher thread (``cosmos3_harness.run_control``)
+honours after the current step.  ``serve --no-control`` turns it off and leaves the dashboard read-only.
 """
 
 from __future__ import annotations

@@ -1,10 +1,12 @@
 # Cosmos 3 training monitor
 
-A read-only dashboard over the JSONL telemetry that `examples/worldmodel/cosmos3/train_sft.py` and
+A dashboard over the JSONL telemetry that `examples/worldmodel/cosmos3/train_sft.py` and
 `examples/worldmodel/cosmos3_harness/train.py` already write. It turns a directory of run folders into a run
 list, live charts, a configuration viewer, a node/card topology, a checkpoint ledger and a dashboard-only alert
-list. Nothing here runs inside the training process; the only training-side additions are a 2 s heartbeat, one
-aggregated record per log step, a checkpoint ledger after each save, and terminal/session files at exit.
+list. The training-side additions are a 2 s heartbeat, one aggregated record per log step, a checkpoint ledger
+after each save, terminal/session files at exit, and — behind `--graceful-stop`, on by default — a control
+watcher that lets the dashboard stop a run after its current step and start it again from its latest
+generation (see [Stop and resume](#stop-and-resume)).
 
 ## Why not a tracking SaaS
 
@@ -58,6 +60,9 @@ python3 -m venv ~/.cache/cosmos3-monitor-venv
 | `--no-heartbeat` | disable the background heartbeat |
 | `--no-checkpoint-ledger` | disable `checkpoints.jsonl` |
 | `--no-aggregate-metrics` | disable `aggregated.jsonl` |
+| `--graceful-stop` / `--no-graceful-stop` | honour `<run>/control/request.json` (default on; costs one 4-byte all-reduce per step) |
+| `--stop-poll-every` | agree a stop every N steps (default 1) |
+| `--control-poll-seconds` | how often the watcher re-reads the request file (default 1 s) |
 
 For a benchmark that must be free of extra processes, also start the collector with
 `COSMOS3_MONITOR_COLLECT=0` or `--no-collect` (see below).
@@ -107,6 +112,40 @@ Run one collector per node. There is no shared state between them; the shared ru
 - **Logs** — tail of the path recorded in the manifest, with a path-traversal guard.
 - **Compare** — select runs with the checkboxes on the Runs page; overlay loss and step time, compare KPI tables.
 
+## Stop and resume
+
+The run header shows two buttons, and the Overview has a `续训与停止` card with the channel state, the latest
+generation and the command to run by hand.
+
+**Stop** asks the loop to finish the step it is in, write one more resumable generation for exactly that
+iteration and exit as `stopped` instead of `failed`. The request is a file, so it reaches a container the
+dashboard cannot signal; the training process reads it in a background thread and only ever consults a boolean.
+Every rank must leave on the same iteration — one rank leaving alone would pair its checkpoint all-gather with
+another rank's gradient all-reduce and hang the job — so `boundary()` runs **one four-byte all-reduce per step**
+whose maximum is "some rank has seen a request". That is the only cost, about 0.1 ms on a multi-second step;
+`--no-graceful-stop` removes it for a benchmark.
+
+Requests carry `run_started_at`, copied out of the run manifest. A new attempt in the same directory rewrites the
+manifest, so a request aimed at the previous attempt cannot stop the resumed one, and no clock is compared across
+machines.
+
+**Resume** needs something that can start a process. Start the server with the command that launched the run,
+with `{checkpoint}` and `{run_dir}` placeholders:
+
+```bash
+python -m examples.worldmodel.cosmos3_monitor serve --roots /mnt/disk0/runs --port 18790 \
+    --launch-template 'cd /mnt/disk0/repo && bash train.sh --out {run_dir} --resume {checkpoint}'
+```
+
+The substituted values are shell-quoted, the child is detached (`start_new_session`) so it outlives the
+dashboard, its output goes to `<run>/control/launch-<timestamp>.log`, and the dashboard remembers the pid and
+exit code in memory. Without `--launch-template` the buttons still record the request and the card shows the
+`--resume <root>` argument to add to the original command by hand — nothing is guessed.
+
+The template starts **one** process on the host that runs the server. A multi-node run needs a template that
+starts every node (the cluster launcher, or an `ssh` loop), because the dashboard has no opinion about
+`torchrun --nnodes`. The server has no authentication: keep it on loopback and use the SSH tunnel.
+
 ## Data contract
 
 All files are additive; the per-rank JSONL remains the source of truth.
@@ -124,7 +163,9 @@ All files are additive; the per-rank JSONL remains the source of truth.
   system/node-<host>.jsonl  # per-node collector, 5 s
 ```
 
-The monitor writes only under its `--state-dir` (default `~/.cache/cosmos3_monitor`), never inside a run.
+The monitor writes only under its `--state-dir` (default `~/.cache/cosmos3_monitor`) unless a control action is
+used, which writes `control/request.json` (and, with `--launch-template`, `control/launch-*.log`) inside the run.
+`serve --no-control` removes even that.
 
 ## Interaction notes
 
@@ -141,7 +182,9 @@ The monitor writes only under its `--state-dir` (default `~/.cache/cosmos3_monit
 - `aggregated.jsonl` is written at the same log steps as the console/W&B sinks.
 - The checkpoint ledger appends two small lines per save and reads size from the safetensors index or
   `complete.json`; it never walks a checkpoint tree in the hot path.
-- No new collective, synchronization or per-step device read is added.
+- The control watcher is a thread doing one `stat` and at most one small read per second; the training thread
+  reads a boolean. Its one collective — the four-byte stop agreement — is the single per-step addition, and
+  `--no-graceful-stop` removes it. No other per-step collective or device read is added.
 - The collector is a separate process with a 5 s interval, timeouts and `nice 10`.
 - The server only tails files; a slow filesystem makes a snapshot stale, not the training slower.
 
@@ -192,11 +235,12 @@ python -m examples.worldmodel.cosmos3_monitor serve \
 ```bash
 python -m pytest -q examples/worldmodel/cosmos3_monitor/tests \
     examples/worldmodel/cosmos3_harness/tests/test_training_hooks.py \
-    examples/worldmodel/cosmos3_harness/tests/test_training_metrics.py
+    examples/worldmodel/cosmos3_harness/tests/test_training_metrics.py \
+    examples/worldmodel/cosmos3_harness/tests/test_run_control.py
 ```
 
-The core tests need neither an accelerator nor FastAPI; the API is exercised by running uvicorn in a fixture
-only when FastAPI is available.
+The core tests need neither an accelerator nor FastAPI; `tests/test_api_control.py` skips itself when FastAPI or
+httpx is missing, so a workstation venv with `fastapi` exercises the control endpoints through `TestClient`.
 
 ## Limitations
 
@@ -204,4 +248,9 @@ only when FastAPI is available.
   add later.
 - AICore% is not collected; HBM, temperature, power and the process table are the reliable signals.
 - The server is single-worker and in-memory. It rebuilds its index by scanning `--roots` on startup.
+- The built-in resume launcher starts one process on the server's host. Multi-node runs need a
+  `--launch-template` that starts every node, and a run served from an SSH mirror (whose cache is a copy, not the
+  directory the training writes) or from a read-only mount offers no buttons at all.
+- The control channel is for one run directory. Two runs sharing a directory (a resume that keeps the same
+  `--out`) share the channel; the `run_started_at` stamp keeps a stale request from affecting the new attempt.
 - Python 3.9+ is supported (the workstation's system Python); the training container uses 3.12.

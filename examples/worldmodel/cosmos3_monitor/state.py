@@ -16,6 +16,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
+from .control import STATUS_FRESH_SECONDS, checkpoint_root, latest_generation
 from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
@@ -53,6 +54,31 @@ def _flatten_record(record: Dict[str, Any]) -> Dict[str, Any]:
     return flat
 
 
+#: An end-of-run record written by a build without ``run_started_at`` is judged by its timestamp; this grace
+#: covers ordinary clock skew between a rank and the rank that wrote the manifest.
+_CLOCK_GRACE_SECONDS = 60.0
+
+
+def _belongs_to_current_run(item: Dict[str, Any], started_at: Optional[float]) -> bool:
+    """Whether a terminal/summary record describes the *current* attempt in this run directory.
+
+    ``run_started_at`` is copied out of the manifest by both sides, so comparing it is exact and needs no
+    clock agreement.  Records from older builds fall back to their timestamp.
+    """
+    if started_at is None:
+        return True
+    stamp = item.get("run_started_at")
+    if stamp is not None:
+        try:
+            return abs(float(stamp) - float(started_at)) <= 1e-3
+        except (TypeError, ValueError):
+            return True
+    when = _num(item.get("time")) if item.get("time") is not None else _num(item.get("ended_at"))
+    if when is None:
+        return True
+    return when >= float(started_at) - _CLOCK_GRACE_SECONDS
+
+
 class RunState:
     """Everything the dashboard knows about one run directory."""
 
@@ -70,6 +96,8 @@ class RunState:
         self.heartbeat_files: Dict[int, JsonFile] = {}
         self.terminal_files: Dict[int, JsonFile] = {}
         self.launcher_files: Dict[str, JsonFile] = {}
+        self.control_request_file = JsonFile(ref.path / "control" / "request.json")
+        self.control_status_file = JsonFile(ref.path / "control" / "status.json")
         self.series = SeriesStore()
         self.throughput = ThroughputStore()
         self.system = SystemHistory()
@@ -139,7 +167,12 @@ class RunState:
         self._run_id = run_id or self._run_id
         self._world = world_size(self._manifest) or self._world
         self._max_steps = manifest_max_steps(self._manifest) or self._max_steps
-        self._started_at = _num(self._manifest.get("started_at")) or self._started_at
+        started_at = _num(self._manifest.get("started_at"))
+        if started_at is not None and self._started_at is not None and abs(started_at - self._started_at) > 1e-3:
+            # The same directory started a new attempt (a resume).  Its summary.json record and terminal
+            # files describe the previous one until they are rewritten, so drop the summary now.
+            self.summary = None
+        self._started_at = started_at or self._started_at
         self.series.set_world(self._world)
         self._errors = []
         try:
@@ -148,6 +181,7 @@ class RunState:
             self._read_heartbeats()
             self._read_terminals()
             self._read_launchers()
+            self._read_control()
             self._read_checkpoint_ledger(now)
             read_system_files(self.ref.metrics_dir, self.system)
         except Exception as exc:  # a monitor must never take the server down with it
@@ -203,7 +237,11 @@ class RunState:
             elif kind == "event":
                 self._add_event(record)
             elif kind == "summary":
-                self.summary = record.get("summary") or record
+                payload = record.get("summary") or record
+                if _belongs_to_current_run(record, self._started_at) and _belongs_to_current_run(
+                    payload, self._started_at
+                ):
+                    self.summary = payload
 
     def _configured_samples_per_rank(self) -> Optional[float]:
         args = self._manifest.get("args")
@@ -525,6 +563,11 @@ class RunState:
                 reader = self.launcher_files[str(path)] = JsonFile(path)
             reader.read()
 
+    def _read_control(self) -> None:
+        """The stop/resume channel: what the dashboard asked for and what the loop last reported."""
+        self.control_request_file.read()
+        self.control_status_file.read()
+
     def _read_checkpoint_ledger(self, now: float) -> None:
         path = self.ref.metrics_dir / "checkpoints.jsonl"
         if path.is_file():
@@ -662,7 +705,9 @@ class RunState:
         result: Dict[int, Dict[str, Any]] = {}
         for rank, reader in self.terminal_files.items():
             value = reader.read()
-            if isinstance(value, dict):
+            # A terminal file from the previous attempt in this directory survives a resume; only the
+            # files stamped with this attempt's start (or, for older writers, newer than it) count.
+            if isinstance(value, dict) and _belongs_to_current_run(value, self._started_at):
                 result[rank] = value
         return result
 
@@ -693,7 +738,11 @@ class RunState:
             legacy_grace = max(1800.0, 3 * (self._median_step_s() or 0.0))
             if age > legacy_grace:
                 add("stale_run", f"no heartbeat or terminal files; last update {age:.0f}s ago", "warn")
-        failed_ranks = [rank for rank, terminal in terminals.items() if not terminal.get("completed")]
+        failed_ranks = [
+            rank
+            for rank, terminal in terminals.items()
+            if not terminal.get("completed") and not terminal.get("stopped")
+        ]
         failed_launchers = [launcher for launcher in launchers if launcher.get("state") == "failed"]
         if failed_ranks or failed_launchers:
             add("process_failure", f"failed ranks={sorted(failed_ranks)} launchers={len(failed_launchers)}", "critical")
@@ -919,9 +968,15 @@ class RunState:
         heartbeats = self.latest_heartbeats()
         terminals = self.latest_terminals()
         launchers = self.latest_launchers()
-        if any(not terminal.get("completed") for terminal in terminals.values()) or any(
-            launcher.get("state") == "failed" for launcher in launchers
+        if terminals and len(terminals) >= max(1, world) and all(
+            terminal.get("stopped") for terminal in terminals.values()
         ):
+            # A deliberate stop: every rank exited after the same step with a resumable generation,
+            # so this is a finished run, not a failure.
+            return "stopped"
+        if any(
+            not terminal.get("completed") and not terminal.get("stopped") for terminal in terminals.values()
+        ) or any(launcher.get("state") == "failed" for launcher in launchers):
             return "failed"
         if self._completed(world, terminals, launchers):
             return "completed"
@@ -980,11 +1035,14 @@ class RunState:
             if partial_aggregate or recent_batch_median is None:
                 recent_batch_median = monitor_batch or recent_batch_median
         remaining_steps = max(0, max_steps - step) if max_steps else 0
-        completed_now = self.state(now) == "completed"
+        run_state = self.state(now)
+        # A stopped run is finished like a completed one: it has nothing left to estimate, and its elapsed
+        # time must stop at the terminal file instead of growing while the dashboard keeps polling.
+        completed_now = run_state in ("completed", "stopped")
         eta_s = None
         eta_source = None
         if completed_now:
-            eta_s, eta_source = 0.0, "completed"
+            eta_s, eta_source = 0.0, run_state
         elif max_steps and remaining_steps:
             if recent_throughput and recent_batch_median:
                 eta_s = remaining_steps * recent_batch_median / recent_throughput
@@ -1047,7 +1105,7 @@ class RunState:
             "dir": str(self.ref.path),
             "metrics_dir": str(self.ref.metrics_dir),
             "layout": self.ref.layout,
-            "state": self.state(now),
+            "state": run_state,
             "age_s": self.age_s(now),
             "stale": self.age_s(now) > 3 * self.stale_seconds,
             "updated_at": self.updated_at(),
@@ -1103,6 +1161,36 @@ class RunState:
         if include_manifest:
             payload["manifest"] = self._manifest
         return payload
+
+    @staticmethod
+    def _control_document(reader: JsonFile) -> Optional[Dict[str, Any]]:
+        """Read on demand: a request must be visible the moment the dashboard writes it, and a withdrawn
+        one must disappear even though ``JsonFile`` keeps its last good value."""
+        value = reader.read()
+        if not reader.path.is_file() or not isinstance(value, dict):
+            return None
+        return dict(value)
+
+    def control_facts(self) -> Dict[str, Any]:
+        """The file side of the control channel.  Capabilities are decided by the store, not here."""
+        request = self._control_document(self.control_request_file)
+        status = self._control_document(self.control_status_file)
+        if request is not None:
+            request["age_s"] = self.control_request_file.age_s
+        if status is not None:
+            status["age_s"] = self.control_status_file.age_s
+        age = status.get("age_s") if status else None
+        return {
+            "channel": {
+                "present": status is not None,
+                "fresh": bool(status is not None and age is not None and age <= STATUS_FRESH_SECONDS),
+                "run_started_at": self._started_at,
+            },
+            "request": request,
+            "status": status,
+            "checkpoint": latest_generation(checkpoint_root(self._manifest, self.ref.path)),
+            "launcher": self.latest_launchers(),
+        }
 
     def _last_checkpoint(self) -> Optional[Dict[str, Any]]:
         if not self.checkpoints:

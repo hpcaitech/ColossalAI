@@ -1,12 +1,16 @@
-"""A read-only registry of run directories and the background thread that refreshes them.
+"""A registry of run directories and the background thread that refreshes them.
 
 The store owns no training data: it keeps one :class:`~.state.RunState` per directory and incrementally tails
 the files those directories already contain.  A slow filesystem only makes a snapshot stale; it never blocks
 the training process, and a malformed file becomes a warning on that run rather than a server error.
+
+The one place it writes is :meth:`RunStore.request_control`, which drops a stop request into the run and, when
+the server was configured with ``--launch-template``, starts a resumed run from the latest generation.
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from pathlib import Path
@@ -14,8 +18,26 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from . import MONITOR_VERSION
 from .alerts import AlertEngine
+from .control import ControlError, LaunchManager, clear_request, format_command, write_request
 from .discovery import discover
 from .state import RunState
+
+#: One line per refusal code.  The dashboard translates the code; this is the fallback text.
+_REASON_TEXT = {
+    "control_disabled": "controls are disabled on this server (--no-control)",
+    "read_only": "the run directory is not writable from this server",
+    "mirrored": "this run is an SSH mirror of a remote host; controls are only available on the training host",
+    "no_channel": "this run's training process did not enable graceful stop (needs the current train_sft.py/train.py)",
+    "not_responding": "the training process has not updated its control status for over a minute",
+    "not_running": "the run is not running",
+    "already_stopping": "a stop is already in progress",
+    "no_checkpoint": "no published checkpoint generation was found",
+    "no_launcher": "this server has no --launch-template, so it cannot start a run",
+    "launch_running": "a resumed run is already starting",
+    "still_running": "stop the run before resuming it",
+    "bad_checkpoint": "checkpoint is not a generation of this run",
+    "bad_action": "unknown control action",
+}
 
 
 class RunStore:
@@ -30,7 +52,11 @@ class RunStore:
         stall_seconds: float = 300.0,
         depth: int = 3,
         max_runs: int = 2000,
+        control_enabled: bool = True,
+        launch_template: Optional[str] = None,
     ) -> None:
+        self.control_enabled = bool(control_enabled)
+        self.launches = LaunchManager(launch_template)
         self.roots = [Path(root).expanduser() for root in roots]
         self.state_dir = Path(state_dir).expanduser()
         self.state_dir.mkdir(parents=True, exist_ok=True)
@@ -270,6 +296,143 @@ class RunStore:
             except (OSError, ValueError):
                 inside = False
             return path if inside or path.is_file() else None
+
+    # -- control ------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def _writable(path: Path) -> bool:
+        """Whether this server could write inside the run directory (a mirror cache usually cannot)."""
+        candidate = Path(path)
+        while True:
+            if candidate.exists():
+                return os.access(candidate, os.W_OK)
+            if candidate.parent == candidate:
+                return False
+            candidate = candidate.parent
+
+    def control_view(self, token: str) -> Optional[Dict[str, Any]]:
+        """What the channel says, plus what this server can do about it."""
+        state = self.get(token)
+        if state is None:
+            return None
+        with state.lock:
+            facts = state.control_facts()
+            manifest = dict(state._manifest)
+        snapshot = state.snapshot()
+        run_state = snapshot.get("state")
+        status = facts["status"]
+        request = facts["request"]
+        checkpoint = facts["checkpoint"]
+        channel = facts["channel"]
+        run_dir = state.ref.path
+        writable = self._writable(run_dir)
+        # A mirror cache is writable, but the training process is on another host and reads the real run
+        # directory: a request written here would never be seen.
+        mirrored = (run_dir / "mirror-state.json").is_file()
+        acknowledged = bool(
+            status and request and (status.get("request") or {}).get("request_id") == request.get("request_id")
+        )
+        phase = (status or {}).get("phase")
+        can = {"stop": False, "resume": False, "cancel": False}
+        reasons: Dict[str, str] = {}
+        if not self.control_enabled:
+            reasons["stop"] = reasons["resume"] = "control_disabled"
+        elif mirrored:
+            reasons["stop"] = reasons["resume"] = "mirrored"
+        elif not writable:
+            reasons["stop"] = reasons["resume"] = "read_only"
+        else:
+            if run_state not in ("running", "attention", "initializing"):
+                reasons["stop"] = "not_running"
+            elif acknowledged or phase in ("stopping", "stopped", "completed", "failed"):
+                reasons["stop"] = "already_stopping"
+            elif request is not None and request.get("action") == "stop":
+                # One outstanding request is enough; the user can still withdraw it.
+                reasons["stop"] = "already_stopping"
+            elif channel["fresh"]:
+                can["stop"] = True
+            else:
+                reasons["stop"] = "no_channel" if not channel["present"] else "not_responding"
+            if run_state in ("stopped", "failed", "completed"):
+                if checkpoint is None:
+                    reasons["resume"] = "no_checkpoint"
+                elif not self.launches.enabled:
+                    reasons["resume"] = "no_launcher"
+                elif (self.launches.status(token) or {}).get("state") == "running":
+                    reasons["resume"] = "launch_running"
+                else:
+                    can["resume"] = True
+            elif run_state in ("running", "attention", "initializing"):
+                reasons["resume"] = "still_running"
+        if request is not None and not acknowledged:
+            can["cancel"] = self.control_enabled and writable
+        resume_command = None
+        if checkpoint is not None and self.launches.enabled:
+            resume_command = format_command(self.launches.template, run_dir=run_dir, checkpoint=checkpoint["root"])
+        return {
+            "available": self.control_enabled,
+            "writable": writable,
+            "channel": channel,
+            "request": request,
+            "status": status,
+            "checkpoint": checkpoint,
+            "launch": self.launches.status(token),
+            "launcher_configured": self.launches.enabled,
+            "resume_command": resume_command,
+            "manual_command": f"--resume {checkpoint['root']}" if checkpoint else None,
+            "can": can,
+            "reasons": reasons,
+            "run_state": run_state,
+        }
+
+    def request_control(self, token: str, action: str, checkpoint: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Publish a stop, or spawn a resume, then return the new view.  Raises :class:`ControlError`."""
+        state = self.get(token)
+        if state is None:
+            return None
+        if action not in ("stop", "resume"):
+            raise ControlError(f"unknown action {action!r}", code="bad_action")
+        view = self.control_view(token)
+        if not view["can"].get(action):
+            code = view["reasons"].get(action) or "rejected"
+            raise ControlError(_REASON_TEXT.get(code, code), code=code)
+        run_dir = state.ref.path
+        started_at = view["channel"].get("run_started_at")
+        if action == "stop":
+            write_request(run_dir, "stop", run_started_at=started_at)
+            return self.control_view(token)
+        target = self._resume_target(view, checkpoint)
+        with state.lock:
+            cwd = (state._manifest.get("run") or {}).get("cwd")
+        self.launches.spawn(token, run_dir=run_dir, checkpoint=target, cwd=cwd)
+        write_request(run_dir, "resume", run_started_at=started_at, checkpoint=str(target))
+        return self.control_view(token)
+
+    def _resume_target(self, view: Dict[str, Any], requested: Optional[str]) -> Path:
+        """The directory handed to ``--resume``: the generation root, or a validated generation inside it."""
+        root = Path(str((view.get("checkpoint") or {}).get("root") or ""))
+        if not root.is_dir():
+            raise ControlError("the checkpoint root is not readable from this host", code="no_checkpoint")
+        if not requested:
+            return root
+        candidate = Path(str(requested)).expanduser()
+        try:
+            inside = candidate.resolve().is_relative_to(root.resolve())
+        except (OSError, ValueError):
+            inside = False
+        if not inside or not ((candidate / "complete.json").is_file() or candidate == root):
+            raise ControlError("checkpoint is not a generation of this run", code="bad_checkpoint")
+        return candidate
+
+    def cancel_control(self, token: str) -> Optional[Dict[str, Any]]:
+        state = self.get(token)
+        if state is None:
+            return None
+        view = self.control_view(token)
+        if not view["can"].get("cancel"):
+            raise ControlError(_REASON_TEXT.get(view["reasons"].get("stop", ""), "nothing to withdraw"), code="rejected")
+        clear_request(state.ref.path)
+        return self.control_view(token)
 
     def health(self) -> Dict[str, Any]:
         with self._lock:

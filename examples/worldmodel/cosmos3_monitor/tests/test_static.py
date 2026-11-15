@@ -62,6 +62,22 @@ def test_dense_event_annotations_use_short_labels_and_a_toolbar_summary():
     assert 'id="annot-note"' in (STATIC / "app.js").read_text(encoding="utf-8")
 
 
+def test_stop_and_resume_are_wired_into_the_run_header():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "function controlAction" in source
+    assert "apiSend(" in source
+    assert "/control" in source
+    assert "'ctl-stop': 'stop'" in source
+    assert "stopped: '已停止'" in source
+    header = source.split("function renderRunHeader", 1)[1].split("function tabLink", 1)[0]
+    assert "controlButtons()" in header
+    assert "run-control" in header
+    # The note is refreshed by the live path too, not only by a full re-render.
+    meta = source.split("function updateHeaderMeta", 1)[1].split("function runCrumbs", 1)[0]
+    assert "controlNote()" in meta
+    assert "function renderControlCard" in source
+
+
 def test_open_details_and_scroll_survive_a_tab_refresh():
     source = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "function captureOpenDetails" in source

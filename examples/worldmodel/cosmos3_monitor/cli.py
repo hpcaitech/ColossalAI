@@ -82,6 +82,8 @@ def command_serve(args) -> int:
         stall_seconds=args.stall_seconds,
         depth=args.depth,
         max_runs=args.max_runs,
+        control_enabled=not args.no_control,
+        launch_template=args.launch_template,
     )
     app = create_app(store)
     if args.host not in ("127.0.0.1", "localhost", "::1"):
@@ -195,6 +197,18 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--state-dir", default=_default_state_dir())
     serve.add_argument("--scan-interval", type=float, default=2.0)
     serve.add_argument("--log-level", default="info")
+    serve.add_argument(
+        "--no-control",
+        action="store_true",
+        help="Disable the stop/resume buttons: the server never writes into a run directory.",
+    )
+    serve.add_argument(
+        "--launch-template",
+        default=None,
+        help="Command that starts a run, with {checkpoint} and {run_dir} substituted, e.g. "
+        "'bash train.sh --resume {checkpoint}'. Without it the dashboard shows the command instead of "
+        "starting anything itself.",
+    )
     serve.set_defaults(func=command_serve)
 
     collect = sub.add_parser("collect", help="run the per-node system collector")

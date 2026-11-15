@@ -17,6 +17,7 @@ const state = {
   records: null,
   events: [],
   checkpoints: null,
+  control: null,
   system: null,
   ranks: null,
   throughput: null,
@@ -118,7 +119,7 @@ function pct(value, digits = 1) {
 function statusPill(name) {
   const label = {
     running: '运行中', completed: '已完成', attention: '需关注', failed: '失败',
-    initializing: '初始化', unknown: '未知', stale: '过期',
+    stopped: '已停止', initializing: '初始化', unknown: '未知', stale: '过期',
   }[name] || name || '未知';
   return `<span class="status ${esc(name || 'unknown')}"><span class="dot"></span>${esc(label)}</span>`;
 }
@@ -131,6 +132,21 @@ function severityChip(sev) {
 
 async function api(path) {
   const response = await fetch(path, { cache: 'no-store' });
+  let body = null;
+  try { body = await response.json(); } catch (_) { /* empty body */ }
+  if (!response.ok) {
+    throw new Error((body && body.detail) || `${response.status} ${response.statusText}`);
+  }
+  return body ? body.data : null;
+}
+
+async function apiSend(path, method, payload) {
+  const response = await fetch(path, {
+    method,
+    cache: 'no-store',
+    headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
   let body = null;
   try { body = await response.json(); } catch (_) { /* empty body */ }
   if (!response.ok) {
@@ -743,6 +759,7 @@ async function openRun(token, tab) {
     state.run = null;
     state.series = null;
     state.checkpoints = null;
+    state.control = null;
     state.events = [];
     state.alerts = null;
     state.system = null;
@@ -770,7 +787,7 @@ async function loadRunData() {
   if (state.token !== token) return;
   state.run = detail;
   state.manifest = detail.manifest || null;
-  const [series, events, checkpoints, alerts, system, ranks, nodeThroughput, rankThroughput] = await Promise.all([
+  const [series, events, checkpoints, alerts, system, ranks, nodeThroughput, rankThroughput, control] = await Promise.all([
     api(`/api/runs/${token}/series?keys=${encodeURIComponent(SERIES_KEYS)}&max_points=5000&x=${state.xMode}`).catch(() => null),
     api(`/api/runs/${token}/events?limit=400`).catch(() => ({ events: [] })),
     api(`/api/runs/${token}/checkpoints`).catch(() => null),
@@ -779,11 +796,13 @@ async function loadRunData() {
     api(`/api/runs/${token}/ranks`).catch(() => null),
     api(`/api/runs/${token}/throughput?source=nodes&x=${state.xMode}&max_points=5000`).catch(() => null),
     api(`/api/runs/${token}/throughput?source=ranks&x=${state.xMode}&max_points=2000`).catch(() => null),
+    api(`/api/runs/${token}/control`).catch(() => null),
   ]);
   if (state.token !== token) return;
   state.series = series ? series.series : null;
   state.events = (events && events.events) || [];
   state.checkpoints = checkpoints;
+  state.control = control;
   state.alerts = alerts;
   state.system = system;
   state.ranks = ranks;
@@ -832,11 +851,107 @@ function updateHeaderMeta() {
     const finish = run.completion_at ? clock(run.completion_at) : '—';
     etaLine.textContent = `elapsed ${elapsed} · ETA ${eta}${run.eta_source ? ` (${run.eta_source})` : ''} · total ${total} · finish ${finish}`;
   }
+  const controlLine = $('#run-control');
+  if (controlLine) controlLine.textContent = controlNote();
+  // The buttons depend on the loop's answer, which arrives through the same 5 s refresh as the KPIs;
+  // rebuild them only when the available actions actually changed.
+  const actions = $('#run-control-actions');
+  if (actions) {
+    const markup = controlButtons();
+    if (actions.innerHTML !== markup) {
+      actions.innerHTML = markup;
+      wireControlButtons();
+    }
+  }
 }
 
 function runCrumbs() {
   const run = state.run || {};
   $('#crumbs').innerHTML = `<a href="#/runs">Runs</a> <span>/</span> <strong>${esc(run.display_name || run.run_id || state.token)}</strong>`;
+}
+
+/* --------------------------------------------------------------------------------------------------------- */
+/* Stop / resume                                                                                              */
+/* --------------------------------------------------------------------------------------------------------- */
+const CONTROL_REASONS = {
+  control_disabled: '本服务用 --no-control 关闭了控制',
+  read_only: 'run 目录对本服务不可写',
+  mirrored: '这是远端主机的 SSH 镜像，控制只能在训练主机上使用',
+  no_channel: '训练进程未启用 graceful stop（需要新版 train_sft.py / train.py）',
+  not_responding: '训练进程超过一分钟没有更新控制状态',
+  not_running: 'run 当前没有在运行',
+  already_stopping: '停止请求已在处理中',
+  no_checkpoint: '没有找到已发布的 checkpoint 代',
+  no_launcher: '本服务未配置 --launch-template，无法直接拉起训练',
+  launch_running: '续训进程正在启动',
+  still_running: '请先停止当前 run 再续训',
+  bad_checkpoint: '该 checkpoint 不属于这个 run',
+};
+
+function controlReason(code) {
+  return CONTROL_REASONS[code] || code || '';
+}
+
+// The note under the progress bar: what was asked for and what the loop has confirmed.
+function controlNote() {
+  const control = state.control;
+  if (!control) return '';
+  const request = control.request;
+  const status = control.status || {};
+  const acknowledged = request && status.request && status.request.request_id === request.request_id;
+  if (acknowledged) {
+    if (request.action === 'stop') {
+      const at = status.stop_at_step != null ? status.stop_at_step : status.step;
+      return `停止请求已确认：第 ${int(at)} 步结束后停止，并写一个可续训 generation`;
+    }
+    return '续训请求已确认';
+  }
+  if (request && request.action === 'stop') return '停止请求已发送，等待训练进程确认…';
+  const launch = control.launch;
+  if (launch) {
+    if (launch.state === 'running') return `续训进程已启动（pid ${launch.pid}），等待 run.json 与心跳…`;
+    if (launch.state === 'failed') return `续训进程已退出（exit ${launch.exit_code}），日志：${launch.log_path}`;
+  }
+  if (control.status && control.status.phase === 'stopping') return '正在收尾：写最后一个 generation 并退出';
+  return '';
+}
+
+function controlButtons() {
+  const control = state.control;
+  if (!control || !control.can) return '';
+  const buttons = [];
+  if (control.can.cancel) buttons.push('<button id="ctl-cancel" class="ghost">撤销请求</button>');
+  if (control.can.stop) buttons.push('<button id="ctl-stop" class="ghost danger">停止（本 step 后）</button>');
+  if (control.can.resume) buttons.push('<button id="ctl-resume" class="primary">续训</button>');
+  return buttons.join('');
+}
+
+function wireControlButtons() {
+  const actions = { 'ctl-stop': 'stop', 'ctl-resume': 'resume', 'ctl-cancel': 'cancel' };
+  for (const [id, action] of Object.entries(actions)) {
+    const button = document.getElementById(id);
+    if (button) button.onclick = () => controlAction(action);
+  }
+}
+
+async function controlAction(action) {
+  const question = {
+    stop: '在当前 step 结束后停止训练，并写一个可续训的 checkpoint？',
+    resume: '从最新 checkpoint 启动续训？',
+    cancel: '撤销尚未被训练进程看到的请求？',
+  }[action];
+  if (question && !window.confirm(question)) return;
+  try {
+    const data = action === 'cancel'
+      ? await apiSend(`/api/runs/${state.token}/control`, 'DELETE')
+      : await apiSend(`/api/runs/${state.token}/control`, 'POST', { action });
+    state.control = data;
+    toast({ stop: '停止请求已发送', resume: '续训已启动', cancel: '请求已撤销' }[action] || '已提交');
+    await loadRunData();
+    renderRunView();
+  } catch (error) {
+    toast(error.message, 'bad');
+  }
 }
 
 function renderRunHeader() {
@@ -856,12 +971,13 @@ function renderRunHeader() {
         <div class="subtle">${esc(run.dir)} · <span class="mono">${esc(run.token)}</span> · ${esc(run.layout)}</div>
       </div>
       <div class="spacer"></div>
-      <div class="page-actions"><span id="run-status">${statusPill(run.state)}</span>${run.stale ? '<span class="chip warn">数据过期</span>' : ''}<span class="chip" id="run-age">${esc(ago(run.age_s))}</span></div>
+      <div class="page-actions"><span id="run-control-actions">${controlButtons()}</span><span id="run-status">${statusPill(run.state)}</span>${run.stale ? '<span class="chip warn">数据过期</span>' : ''}<span class="chip" id="run-age">${esc(ago(run.age_s))}</span></div>
     </div>
     ${alertBanner}
     <div class="card" style="margin-bottom:14px">
       <div class="bar-row"><div class="progress"><span id="run-progress" style="width:${(progress * 100).toFixed(1)}%"></span></div><strong id="run-step">${int(step)}${total ? ` / ${int(total)}` : ''}</strong><span class="muted small" id="run-progress-label">${progress ? `${(progress * 100).toFixed(1)}%` : ''}</span></div>
       <div class="hint-inline" id="run-eta" style="margin-top:6px"></div>
+      <div class="hint-inline" id="run-control" style="margin-top:4px"></div>
       <div class="grid k4" style="margin-top:12px" id="kpis"></div>
     </div>
     <div class="tabs" id="tabs">
@@ -872,6 +988,7 @@ function renderRunHeader() {
   // renderRunHeader rebuilds the ETA node empty; fill it immediately.  Waiting for the 5 s timer left the
   // line blank on every tab switch, while the SSE frame only filled it when a new frame happened to arrive.
   updateHeaderMeta();
+  wireControlButtons();
   $$('#tabs .tab').forEach((el) => { el.onclick = () => { state.tab = el.dataset.tab; history.replaceState(null, '', `#/run/${state.token}/${state.tab}`); renderRunView(); }; });
 }
 
@@ -977,9 +1094,48 @@ function renderOverview(body) {
       </div>
     </div>
     <div class="card" style="margin-top:12px"><div class="card-head"><h2>节点</h2><span class="muted small">rank → host 来自 manifest；live 来自每 rank 心跳</span></div><div class="page-actions" style="margin-bottom:8px">${coverageLine}</div><div class="list">${hosts || '<span class="muted small">manifest 中没有 topology</span>'}</div></div>
+    ${renderControlCard()}
     ${renderRunInfoCard()}`;
   renderLossChart('chart-loss-overview');
   renderStepChart('chart-step-overview');
+}
+
+function renderControlCard() {
+  const control = state.control;
+  if (!control) return '';
+  const status = control.status || {};
+  const channel = control.channel || {};
+  const checkpoint = control.checkpoint;
+  const reasons = control.reasons || {};
+  const channelText = channel.fresh
+    ? `已连接 · ${esc(status.phase || '—')} · step ${int(status.step)}`
+    : channel.present
+      ? '<span class="warn">状态已过期（训练进程可能已退出）</span>'
+      : '未启用（训练进程未写 status.json）';
+  const rows = [
+    ['控制通道', channelText],
+    ['最新 checkpoint', checkpoint ? `step ${int(checkpoint.step)} · <span class="mono">${esc(checkpoint.generation)}</span>` : '没有已发布的代'],
+  ];
+  const launch = control.launch;
+  if (launch) {
+    rows.push(['最近一次续训', `${esc(launch.state)} · pid ${int(launch.pid)} · <span class="mono">${esc(launch.command)}</span>`]);
+  }
+  const blocked = [];
+  for (const [action, label] of [['stop', '停止'], ['resume', '续训']]) {
+    if ((control.can || {})[action]) continue;
+    const code = reasons[action];
+    if (code) blocked.push(`${label}不可用：${esc(controlReason(code))}`);
+  }
+  const manual = control.manual_command
+    ? `<div class="hint-inline" style="margin-top:8px">手动续训：在训练节点上给原命令加 <code class="mono">${esc(control.manual_command)}</code></div>`
+    : '';
+  const command = control.resume_command
+    ? `<details class="config" data-detail-key="control:resume-command" style="margin-top:8px"><summary>续训命令（--launch-template 渲染）</summary><pre class="mono">${esc(control.resume_command)}</pre></details>`
+    : '';
+  return `<div class="card" style="margin-top:12px"><div class="card-head"><h2>续训与停止</h2><span class="muted small">文件通道 · &lt;run&gt;/control · 停止在当前 step 结束后生效</span></div>
+    <div class="kv">${rows.map(([key, value]) => `<div class="k">${esc(key)}</div><div class="v">${value}</div>`).join('')}</div>
+    ${blocked.length ? `<div class="hint-inline" style="margin-top:8px">${blocked.join(' · ')}</div>` : ''}
+    ${manual}${command}</div>`;
 }
 
 function renderRunInfoCard() {

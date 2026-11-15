@@ -1,7 +1,8 @@
-"""FastAPI application: a read-only REST/SSE API over :class:`~.store.RunStore` plus the SPA.
+"""FastAPI application: the REST/SSE API over :class:`~.store.RunStore` plus the SPA.
 
 The server has one worker and one store.  Every response is JSON-safe; a run that is being written by a
-training process can only produce a stale or partial snapshot, never a 500.
+training process can only produce a stale or partial snapshot, never a 500.  The only write endpoints are the
+control ones, which drop a request file into the run and (with ``--launch-template``) start a resumed run.
 """
 
 from __future__ import annotations
@@ -14,12 +15,13 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import MONITOR_VERSION
 from .contracts import json_safe, nonfinite_leaves
+from .control import ControlError
 from .store import RunStore
 
 DEFAULT_KEYS = [
@@ -208,6 +210,38 @@ def create_app(store: RunStore) -> FastAPI:
         state = _require(store, token)
         ok = store.alerts.ack(state.ref.token, alert_id)
         return _envelope({"acked": ok, "alert_id": alert_id})
+
+    @app.get("/api/runs/{token}/control")
+    def control(token: str):
+        _require(store, token)
+        view = store.control_view(token)
+        if view is None:
+            raise HTTPException(status_code=404, detail=f"unknown run {token!r}")
+        return _envelope(view)
+
+    @app.post("/api/runs/{token}/control")
+    def control_action(token: str, payload: Dict[str, Any] = Body(...)):
+        _require(store, token)
+        action = str(payload.get("action") or "").strip()
+        checkpoint = payload.get("checkpoint")
+        try:
+            view = store.request_control(token, action, checkpoint=str(checkpoint) if checkpoint else None)
+        except ControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        if view is None:
+            raise HTTPException(status_code=404, detail=f"unknown run {token!r}")
+        return _envelope(view)
+
+    @app.delete("/api/runs/{token}/control")
+    def control_cancel(token: str):
+        _require(store, token)
+        try:
+            view = store.cancel_control(token)
+        except ControlError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
+        if view is None:
+            raise HTTPException(status_code=404, detail=f"unknown run {token!r}")
+        return _envelope(view)
 
     @app.get("/api/runs/{token}/log")
     def log(token: str, tail: int = Query(500, ge=1, le=5000), offset: int = 0):
