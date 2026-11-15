@@ -143,12 +143,6 @@ def collect_run_identity(args=None, *, run_name: Optional[str] = None, run_id: O
         host = "".join(ch if ch.isalnum() or ch in "-_." else "-" for ch in socket.gethostname())[:32]
         chosen_id = f"{stamp}-{host}-{os.getpid()}"
     name = run_name or (getattr(args, "run_name", None) if args is not None else None)
-    try:
-        import psutil
-
-        process_started_at = psutil.Process().create_time()
-    except Exception:
-        process_started_at = now
     return {
         "run_id": str(chosen_id),
         "run_name": name,
@@ -160,7 +154,6 @@ def collect_run_identity(args=None, *, run_name: Optional[str] = None, run_id: O
             "python": sys.version.split()[0],
             "hostname": socket.gethostname(),
             "pid": os.getpid(),
-            "process_started_at": process_started_at,
             "git": _git(),
         },
         "launcher": launcher_env(),

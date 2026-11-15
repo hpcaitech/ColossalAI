@@ -39,7 +39,8 @@ def parallel_topology(plugin, extra=None) -> list[dict]:
 
     HSDP groups follow rank order. A shard group fits on one host only when the launcher
     assigned ranks that way; recording hosts makes that assumption observable.
-    ``extra`` adds per-rank facts (local rank, device index, pid) without a second all-gather.
+
+    ``extra`` lets the caller add per-rank facts (local rank, device index, pid) without a second all-gather.
     """
     groups = {}
     for name in ("dp_group", "sp_group", "mixed_dp_group", "shard_group", "replica_group"):

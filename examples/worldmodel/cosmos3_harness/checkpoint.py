@@ -1,4 +1,18 @@
-"""Collective, immutable checkpoint generations with rank-local random state."""
+"""Collective, immutable checkpoint generations with rank-local random state.
+
+A save stages shards and per-rank files on every rank and is published by rank zero alone:
+it hashes the staged tree into ``complete.json``, renames the staging directory into a
+generation and swaps ``latest.json``.  A failed generation never replaces ``latest.json``.
+
+With ``async_=True`` the shard writers are background threads and rank zero's publisher thread
+joins them itself, then publishes as soon as the bytes are on disk.  The training step
+therefore pays only the device-to-host staging copy -- the same exposed cost as the upstream
+Cosmos ``DistributedCheckpointer`` -- and never waits for serialization, hashing or the rename.
+Non-saving ranks have no asynchronous writer at all, and every rank's small synchronous files
+(``rng-<rank>.pt``, ``training_state.pt``) are on disk before the save-time barrier, so the
+publisher needs no further collective.  ``flush_checkpoint`` is where all ranks confirm the
+outcome together.
+"""
 
 from __future__ import annotations
 
@@ -6,13 +20,21 @@ import hashlib
 import json
 import os
 import random
+import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable, Optional
 
 import numpy as np
 import torch
 import torch.distributed as dist
+
+FORMAT_VERSION = 2
+# Version 1 wrote the optimizer in the legacy .bin layout and carried no per-rank extra state.
+# Both stay readable, so an older generation remains resumable.
+READABLE_FORMAT_VERSIONS = (1, FORMAT_VERSION)
 
 
 def _rank_world():
@@ -38,22 +60,155 @@ def _accelerator():
     return get_accelerator()
 
 
-def save_checkpoint(directory, model, optimizer, state, *, booster=None):
+def apply_checkpoint_modes(root) -> None:
+    """Make a finished generation group-readable. Called before publication, never during a write."""
+    for path in Path(root).rglob("*"):
+        os.chmod(path, 0o664 if path.is_file() else 0o775)
+
+
+def _digest_tree(root: Path):
+    files = {}
+    sizes = {}
+    total_bytes = 0
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        name = str(path.relative_to(root))
+        files[name] = file_digest(path)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            size = 0
+        sizes[name] = size
+        total_bytes += size
+    return files, sizes, total_bytes
+
+
+def _collective_errors(local_error: Optional[str]) -> None:
+    """Gate every rank on the same outcome. All ranks MUST call this, even after a local failure.
+
+    A single ``all_gather_object`` is both the barrier and the error aggregation: a rank that
+    raises before it would leave its peers waiting inside the next collective.
+    """
+    rank, _ = _rank_world()
+    if local_error is not None:
+        local_error = f"rank {rank}: {local_error}"
+    if not dist.is_initialized():
+        if local_error is not None:
+            raise RuntimeError(f"Checkpoint flush failed: {local_error}")
+        return
+    errors = [None] * dist.get_world_size()
+    try:
+        dist.all_gather_object(errors, local_error)
+    except Exception as exc:
+        raise RuntimeError(f"Checkpoint error aggregation failed; a peer may have died: {exc}") from exc
+    failures = [error for error in errors if error is not None]
+    if failures:
+        raise RuntimeError("Checkpoint flush failed; " + "; ".join(failures))
+
+
+@dataclass
+class PendingCheckpoint:
+    """A generation whose files are queued or written but which is not yet published.
+
+    ``publisher`` exists on rank zero only; the other ranks hold the same deterministic paths
+    and learn the outcome from :func:`flush_checkpoint`.
+    """
+
+    generation: Path
+    staging: Path
+    identifier: str
+    step: Optional[int] = None
+    epoch: Optional[int] = None
+    world: int = 1
+    checkpoint_io: Any = None
+    publisher: Optional[threading.Thread] = None
+    error: Optional[str] = None
+
+    def start_publisher(self, writers=(), chmod: bool = False):
+        self.publisher = threading.Thread(
+            target=self._publish,
+            args=(list(writers), chmod),
+            name="checkpoint-publisher",
+            daemon=True,
+        )
+        self.publisher.start()
+        return self
+
+    def _publish(self, writers, chmod: bool) -> None:
+        try:
+            _publish_generation(self, writers, chmod)
+        except BaseException as exc:  # reported by flush_checkpoint on every rank
+            self.error = f"{type(exc).__name__}: {exc}"
+
+
+def _publish_generation(pending: PendingCheckpoint, writers, chmod: bool) -> None:
+    """Rank zero only. Joins the shard writers, then makes the generation visible.
+
+    No collectives: this runs on the publisher thread while training continues.
+    """
+    for writer in writers:
+        writer.synchronize()
+    if chmod:
+        apply_checkpoint_modes(pending.staging)
+    files, sizes, total_bytes = _digest_tree(pending.staging)
+    (pending.staging / "complete.json").write_text(
+        json.dumps(
+            {
+                "files": files,
+                "sizes": sizes,
+                "total_bytes": total_bytes,
+                "step": pending.step,
+                "epoch": pending.epoch,
+                "world_size": pending.world,
+                "format_version": FORMAT_VERSION,
+                "created_at": time.time(),
+            },
+            sort_keys=True,
+        )
+    )
+    root = pending.generation.parent
+    os.replace(pending.staging, pending.generation)
+    pointer = root / (".latest-" + pending.identifier)
+    pointer.write_text(json.dumps({"generation": pending.generation.name}))
+    os.replace(pointer, root / "latest.json")
+
+
+def save_checkpoint(
+    directory,
+    model,
+    optimizer,
+    state,
+    *,
+    booster=None,
+    async_: bool = False,
+    on_rank_state: Optional[Callable[[], dict]] = None,
+    chmod: bool = False,
+) -> PendingCheckpoint:
     """All ranks participate; only rank zero publishes a complete generation.
 
-    Model/optimizer writers are owned by Booster's checkpoint IO. The completion
-    manifest covers every shard and RNG file. A failed generation never replaces latest.
+    Model/optimizer writers are owned by Booster's checkpoint IO.  The completion manifest
+    covers every shard and RNG file.  A failed generation never replaces latest.
+
+    ``on_rank_state`` snapshots rank-private randomness that the global RNG does not cover
+    (a separate ``torch.Generator``, for example); it is stored under ``rng-<rank>.pt["extra"]``
+    and handed back by :func:`apply_checkpoint`.
+
+    With ``async_=True`` the returned generation is not published yet.  The caller must pass it
+    to :func:`flush_checkpoint` at a point every rank reaches.
     """
     rank, world = _rank_world()
     root = Path(directory)
+    root.mkdir(parents=True, exist_ok=True)
     identifier = [uuid.uuid4().hex if rank == 0 else None]
     if dist.is_initialized():
         dist.broadcast_object_list(identifier, src=0)
     staging = root / (".incomplete-" + identifier[0])
     staging.mkdir(parents=True, exist_ok=True)
     booster = booster or model._colossal_booster
-    booster.save_model(model, str(staging / "model"), shard=True, use_safetensors=True)
-    booster.save_optimizer(optimizer, str(staging / "optimizer"), shard=True)
+    checkpoint_io = getattr(booster, "checkpoint_io", None)
+    booster.save_model(model, str(staging / "model"), shard=True, use_safetensors=True, use_async=async_)
+    booster.save_optimizer(optimizer, str(staging / "optimizer"), shard=True, use_async=async_)
     accelerator = _accelerator()
     rng = {
         "torch": torch.get_rng_state(),
@@ -63,54 +218,74 @@ def save_checkpoint(directory, model, optimizer, state, *, booster=None):
     }
     if accelerator.name != "cpu":
         rng["device"] = accelerator.get_rng_state_all()
+    extra = on_rank_state() if on_rank_state is not None else None
+    if extra is not None:
+        rng["extra"] = extra
     torch.save(rng, staging / f"rng-{rank:05d}.pt")
     if rank == 0:
-        torch.save({**state, "world_size": world, "format_version": 1}, staging / "training_state.pt")
+        torch.save({**state, "world_size": world, "format_version": FORMAT_VERSION}, staging / "training_state.pt")
     _barrier()
+    pending = PendingCheckpoint(
+        generation=root / ("checkpoint-" + identifier[0]),
+        staging=staging,
+        identifier=identifier[0],
+        step=state.get("step"),
+        epoch=state.get("epoch"),
+        world=world,
+        checkpoint_io=checkpoint_io,
+    )
+    # Copy the writer list: the publisher must not race the training thread's next registration,
+    # and clearing it here would break CheckpointIO._sync_io as the back-pressure point.
+    writers = list(getattr(checkpoint_io, "async_writers", ()) or ()) if async_ else []
+    if async_:
+        if rank == 0:
+            pending.start_publisher(writers, chmod=chmod)
+        return pending
     error = [None]
-    generation = "checkpoint-" + identifier[0]
     if rank == 0:
         try:
-            files = {}
-            sizes = {}
-            total_bytes = 0
-            for path in staging.rglob("*"):
-                if not path.is_file():
-                    continue
-                name = str(path.relative_to(staging))
-                files[name] = file_digest(path)
-                try:
-                    size = path.stat().st_size
-                except OSError:
-                    size = 0
-                sizes[name] = size
-                total_bytes += size
-            (staging / "complete.json").write_text(
-                json.dumps(
-                    {
-                        "files": files,
-                        "sizes": sizes,
-                        "total_bytes": total_bytes,
-                        "step": state.get("step"),
-                        "epoch": state.get("epoch"),
-                        "world_size": world,
-                        "format_version": 1,
-                        "created_at": time.time(),
-                    },
-                    sort_keys=True,
-                )
-            )
-            os.replace(staging, root / generation)
-            pointer = root / (".latest-" + identifier[0])
-            pointer.write_text(json.dumps({"generation": generation}))
-            os.replace(pointer, root / "latest.json")
+            _publish_generation(pending, writers=(), chmod=chmod)
         except Exception as exc:
             error[0] = f"{type(exc).__name__}: {exc}"
     if dist.is_initialized():
         dist.broadcast_object_list(error, src=0)
     if error[0] is not None:
         raise RuntimeError(f"Checkpoint publication failed: {error[0]}")
-    return root / generation
+    # All ranks know the generation id; the path is deterministic even on ranks that did not publish it.
+    return pending
+
+
+def flush_checkpoint(pending: PendingCheckpoint, *, ledger=None, checkpoint_id=None, stats=None) -> Path:
+    """Join a pending generation on every rank and publish one shared outcome.
+
+    Collective. Every rank reaches this at the same point in the loop: on the next save (before
+    staging into the reused pinned buffers) and once on the way out.
+    """
+    rank, _ = _rank_world()
+    local_error = None
+    if rank == 0 and pending.publisher is not None:
+        pending.publisher.join()
+        if pending.error is not None:
+            local_error = pending.error
+    # Drain this rank's own writers. Rank zero's were already joined by its publisher; the list
+    # is still registered, so this second synchronous join is what frees the staging buffers.
+    if pending.checkpoint_io is not None:
+        try:
+            pending.checkpoint_io._sync_io()
+        except BaseException as exc:
+            local_error = local_error or f"{type(exc).__name__}: {exc}"
+    _collective_errors(local_error)
+    if ledger is not None and checkpoint_id is not None:
+        finished = ledger.end(
+            checkpoint_id,
+            status="complete",
+            path=pending.generation,
+            generation=pending.generation.name,
+        )
+        if stats is not None:
+            stats["count"] += 1
+            stats["bytes"] += int(finished.get("bytes") or 0)
+    return pending.generation
 
 
 def _validate_rng(rng, source):
@@ -120,6 +295,8 @@ def _validate_rng(rng, source):
         raise ValueError(f"{source}: incomplete rank RNG state")
     if rng["accelerator"] not in ("cpu", "cuda", "npu"):
         raise ValueError(f"{source}: unsupported RNG accelerator")
+    if "extra" in rng and not isinstance(rng["extra"], dict):
+        raise ValueError(f"{source}: rank extra state must be a mapping")
     value = rng["torch"]
     if not isinstance(value, torch.Tensor) or value.dtype != torch.uint8 or value.ndim != 1:
         raise ValueError(f"{source}: torch RNG must be a one-dimensional uint8 tensor")
@@ -220,7 +397,7 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
     if (
         type(state["format_version"]) is not int
         or type(state["world_size"]) is not int
-        or state["format_version"] != 1
+        or state["format_version"] not in READABLE_FORMAT_VERSIONS
         or state["world_size"] != world
     ):
         raise ValueError("Resume requires the same world size and supported checkpoint format")
@@ -239,12 +416,12 @@ def validate_checkpoint(directory, *, expected_config=None):
     return _collective_preflight(lambda: _validate_checkpoint_local(directory, expected_config=expected_config))
 
 
-def restore_checkpoint(directory, model, optimizer, *, expected_config=None, booster=None):
-    root, state = validate_checkpoint(directory, expected_config=expected_config)
-    rank, _ = _rank_world()
+def apply_checkpoint(root, state, model, optimizer, *, booster=None, on_rank_state=None):
+    """Load a validated generation into live training state. Collective."""
 
     def check_local_device():
-        rng = torch.load(root / f"rng-{rank:05d}.pt", map_location="cpu", weights_only=False)
+        rank, _ = _rank_world()
+        rng = torch.load(Path(root) / f"rng-{rank:05d}.pt", map_location="cpu", weights_only=False)
         _validate_rng(rng, f"rng-{rank:05d}.pt")
         accelerator = _accelerator()
         if rng["accelerator"] != accelerator.name:
@@ -261,11 +438,18 @@ def restore_checkpoint(directory, model, optimizer, *, expected_config=None, boo
 
     rng, accelerator = _collective_preflight(check_local_device)
     booster = booster or model._colossal_booster
-    booster.load_model(model, str(root / "model"))
-    booster.load_optimizer(optimizer, str(root / "optimizer"))
+    booster.load_model(model, str(Path(root) / "model"))
+    booster.load_optimizer(optimizer, str(Path(root) / "optimizer"))
     torch.set_rng_state(rng["torch"])
     random.setstate(rng["python"])
     np.random.set_state(rng["numpy"])
     if "device" in rng:
         accelerator.set_rng_state_all(rng["device"])
+    if on_rank_state is not None:
+        on_rank_state(rng.get("extra"))
     return state
+
+
+def restore_checkpoint(directory, model, optimizer, *, expected_config=None, booster=None, on_rank_state=None):
+    root, state = validate_checkpoint(directory, expected_config=expected_config)
+    return apply_checkpoint(root, state, model, optimizer, booster=booster, on_rank_state=on_rank_state)

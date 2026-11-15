@@ -89,6 +89,22 @@ before loading weights. Resume requires matching world size, CP topology, object
 accumulation and replay fingerprints. Old unverified checkpoint layouts are rejected. The same command runs on
 Ascend with `--device npu --attn-backend npu`; communication is selected from the accelerator.
 
+`--async-checkpoint` stages the shards into pinned host buffers and lets a background writer serialize them while
+training continues; rank 0 hashes and publishes the generation from its own thread and `latest.json` appears as soon
+as the bytes are on disk. Only the device-to-host copy is exposed to the step. Every rank confirms the outcome in one
+collective at the next checkpoint entry or at the end of the run, and a failed writer or publisher stops all ranks
+there with the same message. It does not need TensorNVMe. The default stays synchronous, matching the upstream
+Cosmos recipe.
+
+`--graceful-stop` (default on) makes the run stoppable from the dashboard. A watcher thread reads
+`<run>/control/request.json` once a second; when it holds a `stop` request stamped with this attempt's manifest
+`started_at`, the loop writes one more generation for the step it is in, records `stopped` in the terminal files and
+the summary, and exits 0. Every rank leaves on the same iteration — the agreement is one four-byte all-reduce per
+step (`--stop-poll-every N` makes it one per N steps at the cost of a later stop) — because ranks leaving at
+different steps would deadlock the next collective. `--no-graceful-stop` removes the collective for a pure
+benchmark, and then the dashboard reports that this run cannot be stopped. The held-out evaluation is skipped on a
+stopped run. `--control-poll-seconds` tunes the watcher's interval on a slow filesystem.
+
 ## Kernel and benchmark evidence
 
 ```bash

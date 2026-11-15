@@ -17,33 +17,45 @@ Three design decisions worth stating, because each is easy to get wrong in the o
    the batch at the cost of random-access I/O. Shuffling at index-construction time and leaving the sampler
    sequential gives both the decorrelation and the sequential reads.
 
-3. **The released conversion has two roots and a curated window set.** ``LEROBOT_ROOTS`` for this layout is
-   ``["success", "failure"]``. The base ``DROIDLeRobotDataset`` defaults ``use_success_only=False`` while the
-   ``action_policy_droid_nano`` factory defaults it to True, and the Cosmos 3 technical report describes
-   failure-demonstration removal as part of the policy recipe. The registered config leaves the curated filter
-   off (``use_filter_dict=False``, ``filter_dict_path=None``), but the official launch script
-   (``launch_sft_action_policy_droid_nano.sh``) overrides both to load ``keep_ranges_1_0_1.json``, and the report
-   describes community-provided idle-frame filtering. Reproducing the reference run therefore means the success
-   root with the curated windows; this loader defaults to both roots and no filter so a smoke run needs nothing
-   else, and exposes ``success_only``/``keep_ranges`` for the recipe settings.
+3. **Both roots are trained, and through the curated window set.** The released conversion keeps success and
+   failure episodes in two separate roots and the recipe trains both: ``LEROBOT_ROOTS`` for this layout is
+   ``["success", "failure"]`` and ``use_success_only`` defaults to off. It also turns on
+   ``keep_ranges_1_0_1.json``, which keeps only windows inside curated frame ranges (about 74% of them) and drops
+   the episodes the file does not mention. Both are off by default here only so that a smoke run needs nothing
+   but the dataset; a reproduction run wants both.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import av
+import numpy as np
 import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
-import torchvision.transforms.v2 as T
 from torch.utils.data import Dataset
+
+# The augmentation is torchvision's, as upstream's is. The import stays guarded because a torchvision that does
+# not match the torch/torch_npu build is a real failure mode here: it imports, registers no operators, and dies
+# later on `torchvision::nms`, which looks like a data bug rather than a dependency one. Guarded, that shows up
+# as a clear RuntimeError from `_augment` instead, and `--image-augmentation none` still runs.
+#
+# Verified working on the 910B2 nodes against torch 2.13.0+cpu / torch_npu 2.13.0rc1 with torchvision 0.28.0+cpu:
+# `_augment` on the 99x3x360x640 window costs 226-487 ms of CPU (the spread is ColorJitter drawing different
+# factors, see /mnt/disk0/jiangzs/share/bench_augmentation.py), and at 32 samples/rank with 4 workers it stays
+# inside the dataloader's prefetch and does not move the step time.
+try:
+    import torchvision.transforms.v2 as T
+except (ImportError, RuntimeError) as torchvision_error:
+    T = None
+    TORCHVISION_IMPORT_ERROR = torchvision_error
+else:
+    TORCHVISION_IMPORT_ERROR = None
 
 # cosmos-framework VIDEO_RES_SIZE_INFO: values are (width, height) and every side is a multiple of 16.
 RES_TABLE = {
@@ -72,15 +84,11 @@ STATE_JOINT = "observation.state.joint_positions"
 STATE_GRIPPER = "observation.state.gripper_position"
 
 # The curated window set predates the LeRobot conversion and is keyed by the raw DROID trajectory path, which the
-# conversion kept as the episodes table's ``episode_id``. The original files use a composite URI key; the official
-# loader normalizes such keys back to the relative episode id when an explicit source prefix is supplied.
+# conversion kept as the episodes table's ``episode_id``. The MP4 file name is part of the key.
 _KEEP_RANGES_KEY = (
     "gs://xembodiment_data/r2d2/r2d2-data-full/{episode}/recordings/"
     "MP4--gs://xembodiment_data/r2d2/r2d2-data-full/{episode}/trajectory.h5"
 )
-DROID_FILTER_SOURCE_PREFIX = "DROID_FILTER_SOURCE_PREFIX"
-
-logger = logging.getLogger(__name__)
 
 
 def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.03, split: str = "train") -> list[int]:
@@ -122,99 +130,46 @@ def split_episode_ids(total_episodes: int, seed: int = 42, val_ratio: float = 0.
 def resolve_shards(root: str | Path, success_only: bool = False) -> list[tuple[str, Path]]:
     """The LeRobot roots one training run reads from.
 
-    ``root`` is the parent directory of ``success/`` and ``failure/``, and both roots are indexed — the base
-    ``DROIDLeRobotDataset`` default. The SFT factory restricts to ``success`` by default
-    (``use_success_only=True``). The order is upstream's ``LEROBOT_ROOTS`` order, for the same reason it matters
-    there: it decides which root an episode index refers to when the two are mixed. A single root is not accepted
-    on its own: the parent is the dataset, and a run that means one root says so through ``success_only``.
+    Point ``root`` at the parent directory and both roots are trained, which is what the recipe does; point it at
+    ``success`` or ``failure`` itself and only that one is. The order is upstream's ``LEROBOT_ROOTS`` order, for
+    the same reason it matters there: it decides which root an episode index refers to when the two are mixed.
 
     Args:
-        root (str | Path): The parent of ``success/`` and ``failure/``.
+        root (str | Path): The parent of ``success/`` and ``failure/``, or one of the two itself.
         success_only (bool, optional): Drop the failure root, i.e. upstream's ``use_success_only``. Defaults to
-            False, the base dataset's value; the recipe factory passes True.
+            False, the recipe's value.
 
     Returns:
         list[tuple[str, Path]]: ``(name, path)`` per root, names unique.
 
     Raises:
-        FileNotFoundError: If ``root`` is not a parent of a ``success/`` or ``failure/`` LeRobot root.
+        FileNotFoundError: If ``root`` is neither a LeRobot root nor a parent of one or more.
     """
     root = Path(root)
     shards = [(name, root / name) for name in ("success", "failure") if (root / name / "meta/info.json").is_file()]
-    if not shards:
-        raise FileNotFoundError(
-            f"{root} is not a parent of a success/ or failure/ LeRobot root; pass the directory that holds them."
-        )
-    if success_only:
-        shards = [shard for shard in shards if shard[0] == "success"]
+    if shards:
+        if success_only:
+            shards = [shard for shard in shards if shard[0] == "success"]
         if not shards:
             raise FileNotFoundError(f"{root} holds no success root, and success_only was requested.")
-    return shards
+        return shards
+    if (root / "meta/info.json").is_file():
+        if success_only and root.name != "success":
+            raise FileNotFoundError(f"{root} is not a success root, and success_only was requested.")
+        return [(root.name, root)]
+    raise FileNotFoundError(f"{root} is neither a LeRobot root nor a parent of success/ and failure/.")
 
 
 def keep_ranges_key(episode_id: str) -> str:
-    """The legacy composite URI key of one episode in ``keep_ranges_1_0_1.json``.
-
-    Older files list episodes under this key. It is preserved so such files keep working, but it is not the
-    identity the loader queries with: every key is normalized back to the relative episode id first.
+    """Key of one episode in ``keep_ranges_1_0_1.json``.
 
     Args:
         episode_id (str): The episodes table's ``episode_id``, e.g. ``"AUTOLab/success/2023-07-07/Fri_Jul__7_..."``.
 
     Returns:
-        str: The legacy URI key the curated window set uses for that episode.
+        str: The key the curated window set uses for that episode.
     """
     return _KEEP_RANGES_KEY.format(episode=episode_id)
-
-
-def normalize_episode_filter_keys(filters: dict[str, Any], *, source_prefix: str = "") -> dict[str, Any]:
-    """Reduce every filter key to the relative episode id, the protocol the official loader uses.
-
-    Port of ``normalize_episode_filter_keys`` in cosmos-framework's
-    ``data/generator/action/utils/episode_filters.py`` at ``5950e7b4``. A complete relative episode id is used as
-    it is. A composite ``gs://`` URI key is reduced by stripping the ``/recordings/MP4--...`` suffix and then an
-    explicit ``source_prefix``; without a prefix a URI key is rejected rather than guessed, because a wrong guess
-    would silently select the wrong episodes. Identical duplicate entries collapse; conflicting ranges for one
-    episode raise.
-
-    Args:
-        filters (dict[str, Any]): The JSON content of a keep-ranges file, ``{key: [[start, end], ...]}``.
-        source_prefix (str, optional): Dataset URI prefix in front of the complete episode id, e.g.
-            ``"gs://xembodiment_data/r2d2/r2d2-data-full"``. Required only for URI keys.
-
-    Returns:
-        dict[str, Any]: ``{episode_id: ranges}``.
-
-    Raises:
-        ValueError: If a URI key has no prefix or the prefix does not match it, if an entry identifies no
-            episode, or if two entries give one episode different ranges.
-    """
-    normalized: dict[str, Any] = {}
-    for key, ranges in filters.items():
-        episode = key
-        if "://" in key:
-            # Relative episode ids are opaque, including any "--" in their names; only composite URI keys carry
-            # the recording/trajectory delimiter.
-            recording = key.split("/recordings/MP4--", 1)[0].rstrip("/")
-            if not source_prefix:
-                raise ValueError(
-                    "filter_dict_source_prefix is required for URI-based episode filter keys. Set "
-                    f"{DROID_FILTER_SOURCE_PREFIX} when using a DROID launcher, or pass "
-                    "filter_dict_source_prefix to the dataset. Use the URI prefix before the complete episode id."
-                )
-            prefix = source_prefix.rstrip("/") + "/"
-            if not recording.startswith(prefix):
-                raise ValueError(
-                    "Episode filter URI does not match filter_dict_source_prefix. Check "
-                    f"{DROID_FILTER_SOURCE_PREFIX} against the keys in your filter JSON."
-                )
-            episode = recording.removeprefix(prefix)
-        if not episode:
-            raise ValueError("Filter entries must identify an episode")
-        if episode in normalized and normalized[episode] != ranges:
-            raise ValueError(f"Conflicting filter ranges for episode {episode!r}")
-        normalized[episode] = ranges
-    return normalized
 
 
 def episode_starts(length: int, chunk_length: int, stride: int = 1) -> list[int]:
@@ -244,10 +199,7 @@ def filtered_starts(ranges: list[list[int]], length: int, chunk_length: int, str
 
     Transcribed from upstream's ``_append_index_records``: a range keeps the starts in
     ``[start, end - chunk_length)``, clamped to the episode. Ranges are not merged there, so overlapping ones are
-    not merged here either — merging would quietly train a different set of windows than the released run. With
-    ``stride=1`` these are exactly upstream's starts. ``stride>1`` is an extension of this loader: all bounds are
-    frame offsets, so the step is anchored at the clamped range origin and the upper bound is not converted a
-    second time; it is not a transcription of the upstream filter loop.
+    not merged here either — merging would quietly train a different set of windows than the released run.
 
     Args:
         ranges (list[list[int]]): ``[start, end]`` pairs from the curated window set.
@@ -354,23 +306,19 @@ def count_idle_frames(action: torch.Tensor, fps: float) -> int:
 class Window:
     """One training window: 33 observation frames and 32 actions starting at ``start`` inside an episode.
 
-    ``root`` is the physical LeRobot root the episode lives in — success and failure are separate roots — and
-    ``root_role`` is its logical role from :func:`resolve_shards` (``"success"``/``"failure"`` in the released
-    layout). ``episode_id`` is the raw DROID trajectory id, the relative id the curated window set is keyed by.
-    ``draw_id`` counts repeated draws of one logical window when overlapping curated ranges list it twice.
+    ``root`` is the LeRobot root the episode lives in — success and failure are separate roots — and
+    ``episode_id`` is its raw DROID trajectory id, which is what the curated window set is keyed by.
     """
 
     episode_index: int
     episode_id: str
     root: Path
-    root_role: str
     start: int  # first frame, relative to the episode
     task: str
     data_chunk: int
     data_file: int
     row_from: int  # first row of this episode **within its own parquet file**
     video: dict[str, tuple[int, int, float]]  # cam -> (chunk, file, from_timestamp)
-    draw_id: int = 0  # occurrence index when overlapping curated ranges repeat one window
 
 
 def closest_canvas(h: int, w: int, resolution: str = "480") -> tuple[int, int, str]:
@@ -381,8 +329,11 @@ def closest_canvas(h: int, w: int, resolution: str = "480") -> tuple[int, int, s
     return th, tw, key
 
 
-def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int):
+def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int, pad_columns: int | None = None):
     """Scale to fit the canvas, then reflection-pad bottom and right to the exact size.
+
+    ``pad_columns`` overrides only the right padding while the scale still uses the full canvas width, so a caller
+    that will crop the padded columns can avoid materialising them in the first place.
 
     Returns:
         tuple: The padded tensor and the ``(h, w)`` of the content region inside it.
@@ -399,6 +350,8 @@ def resize_and_reflect_pad(x: torch.Tensor, target_h: int, target_w: int):
         # runs for DROID, but the mode still has to match for any input that does need downscaling.
         x = F.interpolate(x, size=(rh, rw), mode="bicubic", align_corners=False, antialias=True)
     pad_b, pad_r = target_h - rh, target_w - rw
+    if pad_columns is not None:
+        pad_r = int(pad_columns)
     if pad_b or pad_r:
         # Reflection padding requires the pad to be smaller than the side it mirrors; fall back to edge replication.
         mode = "reflect" if pad_b < rh and pad_r < rw else "replicate"
@@ -430,43 +383,27 @@ class DroidActionPolicyDataset(Dataset):
     """DROID windows in LeRobot v3 layout, preprocessed the way the action-policy recipe expects.
 
     Args:
-        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained unless
-            ``success_only`` says otherwise. See :func:`resolve_shards`.
+        root (str | Path): The parent directory holding ``success/`` and ``failure/`` — both are trained — or one
+            of those two on its own. See :func:`resolve_shards`.
         chunk_length (int, optional): Number of actions per window; the window holds ``chunk_length + 1``
             observation frames. Defaults to 32.
         fps (float, optional): Frame rate the video timestamps are resolved against. Defaults to 15.0.
         resolution (str, optional): Key into :data:`RES_TABLE`. Defaults to "480".
-        sample_stride (int, optional): Step between window starts inside an episode. Defaults to 1, upstream's
-            value; values above one are an extension of this loader.
+        sample_stride (int, optional): Step between window starts inside an episode. Defaults to 1.
         episode_shuffle_seed (int, optional): Seed of the episode-order shuffle. Defaults to 42.
         max_episodes (int | None, optional): Index only the first N episodes after the shuffle and after the
             curated filter, for smoke runs. Defaults to None.
-        augment (bool, optional): Apply the image augmentation. Defaults to False.
-        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, ``split_seed``,
-            3% held out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates
-            ``"val"``; it is what training must exclude.
+        split (str, optional): ``"train"`` (default), ``"val"`` or ``"full"``. Episode-level, seed 42, 3% held
+            out, drawn once per root — see :func:`split_episode_ids`. The recipe never evaluates ``"val"``; it is
+            what training must exclude.
+        split_seed (int, optional): Permutation seed of the split. Defaults to 42.
         split_val_ratio (float, optional): Fraction held out. Defaults to 0.03.
-
-    The first ten arguments keep the positional order they had before the multi-root extension; everything below
-    is keyword-only.
-
-    Keyword Args:
-        split_seed (int | None, optional): Permutation seed of the split. None (default) uses
-            ``episode_shuffle_seed``, matching upstream, where one ``randperm`` is both the holdout and the
-            episode shuffle; pass an explicit value to give the split its own seed.
         success_only (bool, optional): Train on the success root alone, i.e. upstream's ``use_success_only``.
-            Defaults to False, the base dataset's value; the ``action_policy_droid_nano`` factory sets it True,
-            which is why the reference recipe excludes failure demonstrations.
-        keep_ranges (str | Path | None, optional): A curated keep-ranges JSON such as
-            ``keep_ranges_1_0_1.json``. The registered config leaves the filter off, but the official launch
-            script enables it for the reference reproduction; the loader keeps it opt-in. When given, only
-            windows inside the listed frame ranges are indexed, and episodes the file does not mention are
-            dropped. Keys are normalized to relative episode ids first — see
-            :func:`normalize_episode_filter_keys`. Defaults to None, which indexes every window.
-        filter_dict_source_prefix (str | None, optional): URI prefix in front of the complete episode id, needed
-            when a filter file uses legacy composite URI keys. When None, ``DROID_FILTER_SOURCE_PREFIX`` is read.
-        dataset_revision (str, optional): Release tag placed in front of every sample id, so two releases that
-            reuse episode ids do not share identities. Defaults to an empty string.
+            Defaults to False, the recipe's value.
+        keep_ranges (str | Path | None, optional): ``keep_ranges_1_0_1.json`` from the recipe. When given, only
+            windows inside the curated frame ranges are indexed, and episodes the file does not mention are
+            dropped. Defaults to None, which indexes every window.
+        augment (bool, optional): Apply the image augmentation. Defaults to False.
     """
 
     def __init__(
@@ -478,15 +415,15 @@ class DroidActionPolicyDataset(Dataset):
         sample_stride: int = 1,
         episode_shuffle_seed: int = 42,
         max_episodes: int | None = None,
-        augment: bool = False,
         split: str = "train",
+        split_seed: int = 42,
         split_val_ratio: float = 0.03,
-        *,
-        split_seed: int | None = None,
         success_only: bool = False,
         keep_ranges: str | Path | None = None,
-        filter_dict_source_prefix: str | None = None,
-        dataset_revision: str = "",
+        augment: bool = False,
+        action_cache: str | Path | None = None,
+        video_content_pad: int | None = None,
+        video_uint8: bool = False,
     ):
         self.root = Path(root)
         self.chunk_length = chunk_length
@@ -495,22 +432,28 @@ class DroidActionPolicyDataset(Dataset):
         self.resolution = resolution
         self.augment = augment
         self._augmentor: T.Compose | None = None
+        # One actions parquet per data file, kept per worker process; see _action_table for why the read cannot stay
+        # on the per-sample path.
+        self._action_tables: dict[Path, object] = {}
+        # Optional per-file float32 action/state cache written by scripts/build_action_cache.py. It turns the
+        # parquet read into a memmapped slice, which is what removes the cold-read stall at a file boundary.
+        self.action_cache = Path(action_cache) if action_cache is not None else None
+        self._action_maps: dict[Path, object] = {}
+        # Optional: encode only `content width + pad` columns instead of the full canvas. The latent is cropped to
+        # the content region anyway, so the canvas padding is VAE work whose result is thrown away; the pad keeps
+        # some right-edge context for the mid-block attention. None keeps the recipe's full canvas.
+        if video_content_pad is not None and (video_content_pad < 0 or video_content_pad % 16):
+            raise ValueError("video_content_pad must be a nonnegative multiple of 16")
+        self.video_content_pad = video_content_pad
+        # Keep the sample uint8 from the dataset to the device: the canvas pad and the x/127.5-1 affine run on the
+        # NPU (video_uint8.py), so the host never materialises the float32 frames and H2D drops 4x.
+        self.video_uint8 = video_uint8
         self.split = split
-        # Upstream derives the holdout from the same randperm as the episode shuffle. None keeps that coupling
-        # for callers that only pass episode_shuffle_seed; an explicit split_seed decouples the two.
-        self.split_seed = episode_shuffle_seed if split_seed is None else split_seed
-        self.dataset_revision = dataset_revision
-        self.filter_dict_source_prefix = (
-            filter_dict_source_prefix
-            if filter_dict_source_prefix is not None
-            else os.environ.get(DROID_FILTER_SOURCE_PREFIX, "")
-        )
-        self.filter_stats: dict[str, int] | None = None
         self.shards = resolve_shards(self.root, success_only)
         self.split_ids = {
             name: split_episode_ids(
                 int(json.loads((path / "meta/info.json").read_text())["total_episodes"]),
-                self.split_seed,
+                split_seed,
                 split_val_ratio,
                 split,
             )
@@ -525,7 +468,7 @@ class DroidActionPolicyDataset(Dataset):
 
     # ---------- index ----------
 
-    def _read_episodes(self, root: Path, root_role: str) -> list[dict]:
+    def _read_episodes(self, root: Path) -> list[dict]:
         """Every row of one root's episodes table, with the fields the index needs."""
         cols = ["episode_index", "episode_id", "tasks", "length", "data/chunk_index", "data/file_index"]
         cols.append("dataset_from_index")
@@ -549,7 +492,6 @@ class DroidActionPolicyDataset(Dataset):
         for r in rows:
             r["_row_from"] = r["dataset_from_index"] - base[(r["data/chunk_index"], r["data/file_index"])]
             r["_root"] = root
-            r["_root_role"] = root_role
         return rows
 
     def _build_index(self, stride, seed, max_episodes, keep_ranges) -> list[Window]:
@@ -558,7 +500,7 @@ class DroidActionPolicyDataset(Dataset):
         filter_dict = None
         if keep_ranges is not None:
             with open(keep_ranges) as f:
-                filter_dict = normalize_episode_filter_keys(json.load(f), source_prefix=self.filter_dict_source_prefix)
+                filter_dict = json.load(f)
 
         # Drop the episodes this split excludes before shuffling, so max_episodes truncates inside the split
         # rather than across both. LeRobot numbers episode_index 0..total_episodes-1 in table order, which is
@@ -566,11 +508,8 @@ class DroidActionPolicyDataset(Dataset):
         # upstream's positional indexing.
         rows: list[dict] = []
         for name, path in self.shards:
-            # The physical path is logged, never embedded in a sample identity: the same release mounted at
-            # another path must produce the same ids.
-            logger.info("Indexing LeRobot root %r at %s", name, path.resolve())
             allowed = set(self.split_ids[name])
-            by_id = {int(r["episode_index"]): r for r in self._read_episodes(path, name)}
+            by_id = {int(r["episode_index"]): r for r in self._read_episodes(path)}
             # Preserve upstream's torch permutation within each root. Split membership has its own seed;
             # changing the traversal order must never move a validation episode into training.
             total = int(json.loads((path / "meta/info.json").read_text())["total_episodes"])
@@ -579,24 +518,14 @@ class DroidActionPolicyDataset(Dataset):
         if filter_dict is not None:
             # Dropping unlisted episodes before truncating keeps max_episodes meaning "N episodes that are actually
             # trained", rather than "N episodes, some of which the curated set then throws away".
-            matched = [r for r in rows if r["episode_id"] in filter_dict]
-            if not matched:
-                raise ValueError(
-                    f"{keep_ranges} is non-empty but matches none of the {len(rows)} episodes in the split; "
-                    "check the episode ids. Relative ids are used directly; URI keys need an explicit "
-                    "filter_dict_source_prefix (or DROID_FILTER_SOURCE_PREFIX)."
-                )
-            rows = matched
+            rows = [r for r in rows if keep_ranges_key(r["episode_id"]) in filter_dict]
         if max_episodes is not None:
             rows = rows[:max_episodes]
 
         windows: list[Window] = []
-        # Occurrence count per logical window: overlapping curated ranges legitimately list one window twice,
-        # and those draws keep one identity and differ only by draw_id.
-        draws: dict[tuple[str, str, int], int] = {}
         for r in rows:
             if filter_dict is not None:
-                ranges = filter_dict[r["episode_id"]]
+                ranges = filter_dict[keep_ranges_key(r["episode_id"])]
                 starts = filtered_starts(ranges, r["length"], self.chunk_length, stride)
             else:
                 starts = episode_starts(r["length"], self.chunk_length, stride)
@@ -611,54 +540,23 @@ class DroidActionPolicyDataset(Dataset):
                 for c in CAMS
             }
             for start in starts:
-                key = (r["_root_role"], r["episode_id"], start)
-                draw_id = draws.get(key, 0)
-                draws[key] = draw_id + 1
                 windows.append(
                     Window(
-                        episode_index=r["episode_index"],
-                        episode_id=r["episode_id"],
-                        root=r["_root"],
-                        root_role=r["_root_role"],
-                        start=start,
-                        task=task,
-                        data_chunk=r["data/chunk_index"],
-                        data_file=r["data/file_index"],
-                        row_from=r["_row_from"],
-                        video=video,
-                        draw_id=draw_id,
+                        r["episode_index"],
+                        r["episode_id"],
+                        r["_root"],
+                        start,
+                        task,
+                        r["data/chunk_index"],
+                        r["data/file_index"],
+                        r["_row_from"],
+                        video,
                     )
                 )
-        if filter_dict is not None:
-            self.filter_stats = {"matched_episodes": len(rows), "kept_windows": len(windows)}
-            logger.info(
-                "keep-ranges filter %s: %d episodes matched, %d windows kept",
-                keep_ranges,
-                len(rows),
-                len(windows),
-            )
         return windows
 
     def __len__(self) -> int:
         return len(self.windows)
-
-    def sample_id(self, index: int) -> str:
-        """Logical identity of the window at ``index``, independent of where the release is mounted.
-
-        ``dataset_revision`` (when set), the logical root role, the relative episode id, the first frame and the
-        window length. The physical root path is deliberately absent, so the same release read on two machines
-        yields the same ids, and the window length makes ``chunk_length=16`` and ``32`` distinguishable. Repeated
-        draws of one window (overlapping curated ranges) share this id; ``draw_id`` separates them.
-        """
-        window = self.windows[index]
-        parts = [
-            self.dataset_revision,
-            window.root_role,
-            window.episode_id,
-            str(window.start),
-            str(self.chunk_length),
-        ]
-        return ":".join(part for part in parts if part)
 
     # ---------- reading ----------
 
@@ -682,34 +580,103 @@ class DroidActionPolicyDataset(Dataset):
             frames += [frames[-1]] * (self.n_obs - len(frames))
         return torch.stack(frames).permute(0, 3, 1, 2)  # [T, C, H, W] uint8
 
+    def _action_table(self, path: Path):
+        """The actions parquet of one data file, read once per worker process.
+
+        ``_read_actions`` used to call ``pq.read_table`` and then ``to_pylist()`` on whole columns for **every**
+        sample: that converts every row of the file to Python objects in order to keep 32 of them. Measured per
+        sample on node6, it cost 774 ms of a 1339 ms ``__getitem__`` -- more than decoding all three camera streams
+        (482 ms) and the single largest item in the data path. It is also what stalled a whole rank for ~170 s: the
+        first sample past a file boundary paid a cold full-column read while the other ranks waited at the next
+        collective.
+
+        The cache is bounded because a worker walks its index forward: it holds one file for a long stretch and needs
+        the next one only at the boundary, so two entries cover the access pattern without pinning many files per
+        worker.
+        """
+        cached = self._action_tables.get(path)
+        if cached is not None:
+            return cached
+        table = pq.read_table(
+            path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"]
+        )
+        if len(self._action_tables) >= 2:
+            self._action_tables.pop(next(iter(self._action_tables)))
+        self._action_tables[path] = table
+        return table
+
+    def _action_array(self, win: Window):
+        """Memmapped action cache for one data file, or ``None`` when the optional cache is absent."""
+        if self.action_cache is None:
+            return None
+        path = (
+            self.action_cache
+            / win.root.name
+            / "data"
+            / f"chunk-{win.data_chunk:03d}"
+            / f"file-{win.data_file:03d}.npy"
+        )
+        cached = self._action_maps.get(path)
+        if cached is not None:
+            return cached
+        if not path.is_file():
+            return None
+        array = np.load(path, mmap_mode="r")
+        if len(self._action_maps) >= 2:
+            self._action_maps.pop(next(iter(self._action_maps)))
+        self._action_maps[path] = array
+        return array
+
     def _read_actions(self, win: Window):
-        path = win.root / "data" / f"chunk-{win.data_chunk:03d}" / f"file-{win.data_file:03d}.parquet"
-        tbl = pq.read_table(path, columns=[JOINT_ACTION, GRIPPER_ACTION, STATE_JOINT, STATE_GRIPPER, "episode_index"])
         lo = win.row_from + win.start
-        n = tbl.num_rows
-        if lo >= n:
-            raise IndexError(
-                f"Row {lo} is past the {n} rows of {path.name} (episode {win.episode_index}, start {win.start})."
-            )
-        got = tbl["episode_index"].to_pylist()[lo]
-        if got != win.episode_index:
-            raise ValueError(
-                f"Row mismatch: expected episode {win.episode_index}, but row {lo} of {path.name} belongs to "
-                f"episode {got}."
-            )
-        joint = torch.tensor(tbl[JOINT_ACTION].to_pylist()[lo : lo + self.chunk_length], dtype=torch.float32)
-        grip = torch.tensor(tbl[GRIPPER_ACTION].to_pylist()[lo : lo + self.chunk_length], dtype=torch.float32)
-        if grip.ndim == 1:
-            grip = grip.unsqueeze(-1)
+        array = self._action_array(win)
+        if array is not None:
+            if lo >= array.shape[0]:
+                raise IndexError(
+                    f"Row {lo} is past the {array.shape[0]} rows of the cached actions for {win.root.name} "
+                    f"(episode {win.episode_index}, start {win.start})."
+                )
+            got = int(array[lo, 16])
+            if got != win.episode_index:
+                raise ValueError(
+                    f"Row mismatch: expected episode {win.episode_index}, but row {lo} of the cached "
+                    f"{win.root.name} actions belongs to episode {got}."
+                )
+            block = np.asarray(array[lo : lo + self.chunk_length])
+            joint = torch.from_numpy(block[:, 0:7].copy())
+            grip = torch.from_numpy(block[:, 7:8].copy())
+            s_joint = torch.from_numpy(np.asarray(array[lo, 8:15]).copy())
+            s_grip = torch.from_numpy(np.asarray(array[lo, 15:16]).copy())
+        else:
+            path = win.root / "data" / f"chunk-{win.data_chunk:03d}" / f"file-{win.data_file:03d}.parquet"
+            tbl = self._action_table(path)
+            n = tbl.num_rows
+            if lo >= n:
+                raise IndexError(
+                    f"Row {lo} is past the {n} rows of {path.name} (episode {win.episode_index}, start {win.start})."
+                )
+            got = tbl.column("episode_index")[lo].as_py()
+            if got != win.episode_index:
+                raise ValueError(
+                    f"Row mismatch: expected episode {win.episode_index}, but row {lo} of {path.name} belongs to "
+                    f"episode {got}."
+                )
+            # Only the window's own rows are converted to Python; the rest of the column stays in Arrow.
+            block = tbl.slice(lo, self.chunk_length)
+            joint = torch.tensor(block.column(JOINT_ACTION).to_pylist(), dtype=torch.float32)
+            grip = torch.tensor(block.column(GRIPPER_ACTION).to_pylist(), dtype=torch.float32)
+            if grip.ndim == 1:
+                grip = grip.unsqueeze(-1)
+            # Robot state at the first frame of the window, in the same joint(7) + gripper(1) space as the actions.
+            s_joint = torch.tensor(tbl.column(STATE_JOINT)[lo].as_py(), dtype=torch.float32)
+            s_grip = torch.tensor(tbl.column(STATE_GRIPPER)[lo].as_py(), dtype=torch.float32)
         # The gripper channel is stored inverted in this release of the dataset. Upstream carries the fact as
         # IS_GRIPPER_ACTION_FLIPPED, True for every droid_plus_lerobot_* version, and applies 1 - g to both the
         # action gripper and the initial-state gripper. Measured on episode 26827 window 0: upstream reports 1.0
         # for all 33 steps where the raw column gives 0.0. Without this the action head learns an inverted
         # open/close command.
         grip = 1.0 - grip
-        # Robot state at the first frame of the window, in the same joint(7) + gripper(1) space as the actions.
-        s_joint = torch.tensor(tbl[STATE_JOINT].to_pylist()[lo], dtype=torch.float32)
-        s_grip = 1.0 - torch.tensor(tbl[STATE_GRIPPER].to_pylist()[lo], dtype=torch.float32)
+        s_grip = 1.0 - s_grip
         state = torch.cat([s_joint.reshape(-1), s_grip.reshape(-1)], dim=-1)
         return torch.cat([joint, grip], dim=-1), state  # [chunk, 8], [8]
 
@@ -733,8 +700,30 @@ class DroidActionPolicyDataset(Dataset):
         # the result is x - 1. Measured against upstream on one window: without the round trip our pixels are
         # higher by exactly one level on 73.9% of elements and two levels on 3.5%, never lower, relL2 1.16e-02.
         comp = (comp * 255.0).clamp(0.0, 255.0).to(torch.uint8)
-        comp, content_hw = resize_and_reflect_pad(comp.float(), th, tw)
-        comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
+        if self.video_uint8:
+            # The pixels stay uint8 (the upstream quantisation); the canvas pad and x/127.5-1 run on the device in
+            # video_uint8.py. content_hw is the composite's own size, the target is the canvas height plus the
+            # content width and the requested pad: exactly what resize_and_reflect_pad would have produced.
+            content_hw = (int(comp.shape[-2]), int(comp.shape[-1]))
+            pad_columns = int(self.video_content_pad or 0)
+            target_h = int(th)
+            target_w = content_hw[1] + pad_columns
+            if target_h < content_hw[0] or target_w > int(tw):
+                raise ValueError(
+                    f"uint8 canvas target {target_h}x{target_w} does not fit content {content_hw} "
+                    f"inside canvas {th}x{tw}"
+                )
+            video_pad_hw = torch.tensor([target_h, target_w])
+            video = comp.permute(1, 0, 2, 3)  # [C, T, H, W] uint8
+        else:
+            # With video_content_pad only `content width + pad` columns are materialised; the scale still comes
+            # from the full canvas so the content region is identical to the recipe's.
+            comp, content_hw = resize_and_reflect_pad(
+                comp.float(), th, tw, pad_columns=self.video_content_pad
+            )
+            comp = comp / 127.5 - 1.0  # image_mean = image_std = 0.5
+            video_pad_hw = None
+            video = comp.permute(1, 0, 2, 3)
 
         action, state = self._read_actions(win)
         # DROID stores several human annotations of one episode joined by " | " inside a single string, so the
@@ -752,15 +741,15 @@ class DroidActionPolicyDataset(Dataset):
         # rather than counting on 32 rows and disagreeing with upstream by one frame.
         full_action = torch.cat([state.reshape(1, -1).to(action.dtype), action], dim=0)
         return {
-            "video": comp.permute(1, 0, 2, 3),  # [C, T, H, W]; the VAE encodes it in the training loop
+            "video": video,  # [C, T, H, W]; the VAE encodes it in the training loop
+            "video_pad_hw": video_pad_hw,  # None on the float path; [target_h, target_w] on the uint8 path
             "action": action,  # [chunk_length, 8], unnormalized
             "state": state,  # [8]
             "task": task,
             "idle_frames": count_idle_frames(full_action, self.fps),
             "additional_view_description": CONCAT_VIEW_DESCRIPTION,
             "episode_index": win.episode_index,
-            "sample_id": self.sample_id(idx),
-            "draw_id": win.draw_id,
+            "sample_id": f"{win.root.resolve()}:{win.episode_id}:{win.start}",
             "start": win.start,
             "canvas_hw": torch.tensor([th, tw]),
             "content_hw": torch.tensor(content_hw),
@@ -798,16 +787,29 @@ class DroidActionPolicyDataset(Dataset):
         Returns:
             dict[str, torch.Tensor]: The same keys, augmented together.
         """
+        if T is None:
+            raise RuntimeError(
+                "image augmentation needs torchvision v2, which failed to import: "
+                f"{TORCHVISION_IMPORT_ERROR}. Pass --image-augmentation none to train without it."
+            )
         names = list(views)
         per_view = views[names[0]].shape[0]
         stacked = torch.cat([views[name] for name in names], dim=0)  # [3T, C, H, W]
         if self._augmentor is None:
             h, w = stacked.shape[-2:]
+            jitter = T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
+            if os.environ.get("COSMOS3_FAST_JITTER", "0") == "1":
+                # Same draws, same order, same values: only the hue adjustment (71% of the chain) runs through
+                # inductor. probe_augment_compile.py: bit-identical, 992 -> 598 ms per sample. Needs
+                # TORCHINDUCTOR_CACHE_DIR on local disk, or every worker recompiles on the network filesystem.
+                from examples.worldmodel.cosmos3.fast_color_jitter import FastColorJitter
+
+                jitter = FastColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
             self._augmentor = T.Compose(
                 [
                     T.RandomCrop((int(h * 0.95), int(w * 0.95))),
                     T.Resize((h, w), antialias=True),
-                    T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
+                    jitter,
                 ]
             )
         out = self._augmentor(stacked)
@@ -826,16 +828,9 @@ def collate(batch: list[dict]) -> dict:
     description and the idle-frame count -- 104 tokens where upstream, on the same window, emits 149.
     """
     keys = batch[0].keys()
-    # Symmetric difference, not ``keys - b``: a later sample can also carry a field the first one lacks, and that
-    # extra field would otherwise be dropped silently.
-    mismatch = [k for b in batch for k in set(keys).symmetric_difference(b)]
-    if mismatch:
-        # "same keys" keeps the upstream contract and its test; "schema mismatch" says what the symmetric
-        # difference actually means -- a later sample may carry an extra field, not only miss one.
-        raise ValueError(
-            "The samples of a batch do not carry the same keys (schema mismatch); "
-            f"mismatched keys: {sorted(set(mismatch))}"
-        )
+    missing = [k for b in batch for k in set(keys).symmetric_difference(b)]
+    if missing:
+        raise ValueError(f"The samples of a batch do not carry the same keys; missing: {sorted(set(missing))}")
     out: dict = {}
     for key in keys:
         values = [b[key] for b in batch]

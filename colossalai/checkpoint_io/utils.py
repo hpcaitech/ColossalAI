@@ -1012,7 +1012,28 @@ def get_shard_filename(weights_name: str, idx: int):
     return shard_file
 
 
+_PIN_SUPPORTED: Optional[bool] = None
+
+
+def _pin_supported() -> bool:
+    """Probe once: CPU-only and some accelerator builds cannot allocate pinned host memory.
+
+    Async saving must keep working there — it only loses the copy-engine shortcut, not the
+    background write.
+    """
+    global _PIN_SUPPORTED
+    if _PIN_SUPPORTED is None:
+        try:
+            torch.empty(1, pin_memory=True)
+            _PIN_SUPPORTED = True
+        except Exception:
+            _PIN_SUPPORTED = False
+    return _PIN_SUPPORTED
+
+
 def _pin_tensor(tensor: torch.Tensor, empty: bool = True) -> torch.Tensor:
+    if not _pin_supported():
+        return torch.empty_like(tensor, device="cpu") if empty else tensor.detach().to("cpu")
     if empty:
         return torch.empty_like(tensor, pin_memory=True, device="cpu")
     return tensor.pin_memory()

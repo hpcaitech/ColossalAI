@@ -4,7 +4,7 @@ This example follows `action_policy_droid_nano` with the diffusers Cosmos 3 mode
 
 ## Alignment reference
 
-The integration builds on the numerical/data contracts merged into official `npu/dev` at `bc9b776fd2a268e2406757f494afea5c13c2a709` (2026-11-12): [6516](https://github.com/hpcaitech/ColossalAI/pull/6516), [6518](https://github.com/hpcaitech/ColossalAI/pull/6518), [6519](https://github.com/hpcaitech/ColossalAI/pull/6519), [6522](https://github.com/hpcaitech/ColossalAI/pull/6522), [6525](https://github.com/hpcaitech/ColossalAI/pull/6525), the follow-up [6526](https://github.com/hpcaitech/ColossalAI/pull/6526) and the Cosmos 3 series [6527](https://github.com/hpcaitech/ColossalAI/pull/6527), [6528](https://github.com/hpcaitech/ColossalAI/pull/6528), [6529](https://github.com/hpcaitech/ColossalAI/pull/6529). Where this example and upstream implement the same contract, the official data/precision semantics are unchanged; the example adds the SFT entry, the replay/evaluation harness and the comparison ledger under [upstream](upstream/README.md).
+The integration uses the numerical/data contracts merged into official `npu/dev` at `7c8bd8af36ef5f095c855193ae77c2366c5865f5` (2026-11-12): [6516](https://github.com/hpcaitech/ColossalAI/pull/6516), [6518](https://github.com/hpcaitech/ColossalAI/pull/6518), [6519](https://github.com/hpcaitech/ColossalAI/pull/6519), [6522](https://github.com/hpcaitech/ColossalAI/pull/6522), [6525](https://github.com/hpcaitech/ColossalAI/pull/6525) and the follow-up [6526](https://github.com/hpcaitech/ColossalAI/pull/6526). This branch syncs that state and keeps the local CP, HSDP, selective checkpointing, VAE and replay extensions on top; where the two implement the same contract, the official data/precision semantics are unchanged. The synced reference recipe is under [upstream](upstream/README.md).
 
 The default contract is:
 
@@ -23,7 +23,7 @@ Install ColossalAI in the accelerator's supported PyTorch environment, then inst
 
 The repository-wide diffusers 0.35.2 pin conflicts with this example, whose model classes require 0.40.0. This example does not change the repository-wide dependency contract. Transformers follows the repository's 5.17.0 pin. CUDA attention additionally needs a PyTorch CUDA build supplying `torch.nn.attention.varlen`; requesting it without the adapter raises an error.
 
-A checkpoint directory must contain `transformer/`, `vae/` and `text_tokenizer/`. The dataset is DROID in LeRobot v3 layout, passed as the parent of `success/` and `failure/`. The reference recipe removes failure demonstrations, so the entry trains the `success/` root by default; `--no-success-only` includes both roots. The episode split excludes validation episodes. Supply the recipe's `keep_ranges_1_0_1.json` through `--keep-ranges` to reproduce the curated windows: the registered config leaves the filter off (`use_filter_dict=False`, `filter_dict_path=None`), but the official launch script enables it and the Cosmos 3 technical report describes community-provided idle-frame filtering. Omitting `--keep-ranges` trains all eligible windows and is recorded in the manifest.
+A checkpoint directory must contain `transformer/`, `vae/` and `text_tokenizer/`. The dataset is DROID in LeRobot v3 layout. A parent containing both `success/` and `failure/` includes both roots; `--success-only` limits it to success. The episode split excludes validation episodes. Supply the recipe's `keep_ranges_1_0_1.json` through `--keep-ranges` to use the curated windows; omitting it trains all eligible windows and is recorded in the manifest.
 
 ## Run
 
@@ -45,7 +45,7 @@ A single-device smoke run:
 
 ```bash
 python -m torch.distributed.run --nproc_per_node=1 train_sft.py \
-    --data /path/to/Cosmos3-DROID \
+    --data /path/to/Cosmos3-DROID/success \
     --checkpoint /path/to/Cosmos3-Edge-Policy-DROID \
     --no-reinit-action-head --zero-stage 0 \
     --samples-per-rank 1 --grad-accum 1 --max-iter 10 --max-episodes 8
@@ -63,29 +63,33 @@ Effective global batch is:
 
 CP copies do not multiply it. Counts include every microstep and are reported only once per CP group. The loader cycles across epochs until `--max-iter` optimizer steps have completed. Metrics separate synchronized end-to-end step time from host dispatch time, label device-event/fallback section timings, and record process-group ranks and actual hostnames.
 
-`--hsdp-shard-size` partitions the mixed DP group into logical shard and replica groups. Contiguous ranks are on one host only if the launcher places them there; the manifest makes this observable. HSDP needs ZeRO stage 1 or 2: stage 0 with a shard size smaller than the DP group is refused by both the entry and the plugin instead of silently running plain DDP. CPU tests cover four-rank AdamW, accumulation, nonzero gradient clipping, state round trips and async all-gather; actual accelerator streams/offload transfers and multi-host NCCL/HCCL remain device validation work.
+`--hsdp-shard-size` partitions the mixed DP group into logical shard and replica groups. Contiguous ranks are on one host only if the launcher places them there; the manifest makes this observable. HSDP needs ZeRO stage 1 or 2. CPU tests cover four-rank AdamW, accumulation, nonzero gradient clipping, state round trips and async all-gather; actual accelerator streams/offload transfers and multi-host NCCL/HCCL remain device validation work.
 
 `--activation-checkpointing full|selective|none` (`--checkpoint-mode` alias) selects one mode. Full and selective cannot be stacked. `--selective-budget-gib` is an estimate of saved activations, re-evaluated when pack geometry/dtype changes, not a hard HBM limit. Statistics expose the chosen mode, estimates, actual attention dispatch hits and saves. `--compile-blocks` compiles only after booster replacements, attention installation, precision wrappers and checkpoint configuration. Compiler `auto` resolves to Inductor on CUDA or npugraph_ex on NPU.
 
-`--save-every` writes model exports. They do not include optimizer, RNG and sampler progress and cannot resume the same training trajectory. The harness checkpoint format instead publishes immutable, checksummed generations with a single shared-state writer and separate rank RNG files; see its README for the resume CLI.
+`--save-every` writes the same immutable, checksummed generations the harness uses, under `<out>/checkpoints/`: model/optimizer shards, one RNG file per rank, the rank-local noise generator, and a public `training_state.pt` with step, epoch and sampler cursor. `latest.json` is replaced only after the SHA256 completion manifest is written, so an incomplete generation is never resumed. `--resume <run dir or checkpoint-*>` continues the same trajectory: the sampler skips the batches that step already consumed instead of re-decoding them, and the resume is rejected unless the topology, batching, data and seed fingerprint matches.
+
+`--async-save` stages the shards into pinned host buffers and hands them to a background writer; rank 0 publishes the generation from a first background thread and every rank confirms it at the next checkpoint entry or at the end of the run. The step therefore pays the device-to-host copy only — serialization, hashing and the rename overlap the following steps. It needs no TensorNVMe: when that extension is absent the same contract is served by a background thread (`colossalai.utils.safetensors.ThreadedSafetensorsWriter`). `--no-async-save` keeps the previous fully synchronous behaviour, matching the upstream Cosmos recipe default.
+
+One limitation is specific to online augmentation: the workers draw from their own RNG, so a resume reproduces the sample sequence, model, optimizer and every rank's Python/NumPy/Torch/accelerator state, but not the per-sample augmentation draws of batches already consumed.
 
 ## Experimental VAE options
 
-BF16, the diffusers encoder and its default window are the baseline. FP16, the conservative RMSNorm replacement, fast convolution, wider chunk windows and compilation are independent opt-ins:
+BF16, the diffusers encoder and its default window are the baseline. FP16, fused norm, fast convolution, wider chunk windows and compilation are independent opt-ins:
 
 - `--vae-dtype float16`, `--fuse-vae-norm`, `--fast-vae-encoder`.
 - `--vae-chunk-frames N` for a positive multiple of four; zero leaves the diffusers loop intact.
 - `--vae-compile jit|aot`; the legacy `--compile-vae` and `--compile-vae-aot` aliases remain. JIT and AOT are mutually exclusive. AOT requires CUDA and chooses a four-frame chunk when none was specified.
 
-The RMSNorm path (`--fuse-vae-norm`, a historical name) is a conservative replacement forward, not a fused kernel: it preserves FP32 normalization before casting and affine operations and does not clamp an FP16 reciprocal. No speed claim is attached to it. Chunk tests cover first frames, tails and repeated calls. CPU equivalence does not imply identical output on every accelerator.
+The RMSNorm path preserves FP32 normalization before casting and affine operations; it does not clamp an FP16 reciprocal. Chunk tests cover first frames, tails and repeated calls. CPU equivalence does not imply identical output on every accelerator.
 
-AOT uses private runner/rank/process package paths, negative-caches compile/gate/runtime failures and keys variants by input/cache layouts, dtype, device, weight identity/version and compiler settings. A correctness gate checks latent and every returned cache, finite values and structure, per-element error and independent relative L2. Default absolute tolerance scales by each reference tensor's RMS and dtype epsilon; the default L2 budget is twice dtype epsilon. Tests pin both defaults at their exact ULP boundaries, and a real `torch.export` graph is executed through the gate on CPU; Inductor compilation and the tolerances on production weights still need device validation. `--vae-gate-rtol`, `--vae-gate-atol` and `--vae-gate-relative-l2` expose the budgets. `.data` or external-storage weight changes require `runner.invalidate()`.
+AOT uses private runner/rank/process package paths, negative-caches compile/gate/runtime failures and keys variants by input/cache layouts, dtype, device, weight identity/version and compiler settings. A correctness gate checks latent and every returned cache, finite values and structure, per-element error and independent relative L2. Default absolute tolerance scales by each reference tensor's RMS and dtype epsilon; the default L2 budget is twice dtype epsilon. `--vae-gate-rtol`, `--vae-gate-atol` and `--vae-gate-relative-l2` expose the budgets. They still need calibration on real checkpoints. `.data` or external-storage weight changes require `runner.invalidate()`.
 
 Historical speed figures measured before the alignment fixes or with the old loose AOT gate do not establish the speed or correctness of this version. No new GPU/NPU performance claim is made here.
 
 ## Monitoring
 
-`train_sft.py` writes per-rank JSONL metrics, a run manifest, and (on rank 0) one aggregated record per log step. The optional [`cosmos3_monitor`](../cosmos3_monitor/README.md) package turns a directory of those run folders into a read-only dashboard with live charts, the full launch/config record, node × card topology, a checkpoint ledger and dashboard-only alerts.
+`train_sft.py` writes per-rank JSONL metrics, a run manifest, and (on rank 0) one aggregated record per log step. The optional [`cosmos3_monitor`](../cosmos3_monitor/README.md) package turns a directory of those run folders into a dashboard with live charts, the full launch/config record, node × card topology, a checkpoint ledger, dashboard-only alerts, and stop/resume buttons.
 
 Enable the lightweight hooks explicitly when you want the extra files:
 
@@ -119,17 +123,19 @@ python -m examples.worldmodel.cosmos3_monitor serve --roots ~/.cache/cosmos3_mon
 The mirror merges every node's rank, heartbeat, terminal and system files; the dashboard then reports all 48
 ranks, per-node coverage and a node with no heartbeat. See the monitor README for the full option list.
 
-The hooks do not add a per-step synchronization, a collective, or work on non-log steps. Use `--no-heartbeat`, `--no-checkpoint-ledger` and `--no-aggregate-metrics` for a benchmark that must be free of them, and `COSMOS3_MONITOR_COLLECT=0` to skip the per-node system collector. `--collective-metrics` is an opt-in that gathers the log-step record across ranks for exact global counts.
+The hooks do not add work on non-log steps, except the stop agreement described next. Use `--no-heartbeat`, `--no-checkpoint-ledger` and `--no-aggregate-metrics` for a benchmark that must be free of them, and `COSMOS3_MONITOR_COLLECT=0` to skip the per-node system collector.
+
+`--graceful-stop` (default on) lets the dashboard stop the run after its current step and resume it later. A watcher thread reads `<out>/control/request.json`; when the loop agrees, it writes one more generation for exactly that step and exits as `stopped` (not `failed`), so `--resume` continues from there. The agreement is one four-byte all-reduce per step — the only per-step collective this entry adds — because every rank must leave on the same iteration. `--no-graceful-stop` removes it and the dashboard then reports the run as not stoppable; `--stop-poll-every N` trades a later stop for fewer collectives and `--control-poll-seconds` tunes the watcher. To resume from the dashboard, start the server with `--launch-template` (see the monitor README); otherwise it shows the exact `--resume` argument to add by hand.
 
 ## Validation
 
 Run from the repository root:
 
 ```bash
-python -m pytest -q -o addopts='' examples/worldmodel/cosmos3/tests examples/worldmodel/cosmos3_harness/tests tests/test_booster/test_plugin/test_hybrid_casting.py tests/test_shardformer/test_model/test_cosmos3_policy.py tests/test_shardformer/test_model/test_cosmos3_fp32_timestep.py tests/test_shardformer/test_model/test_cosmos3_fp32_sinusoid.py tests/test_shardformer/test_model/test_cosmos3_runtime_contracts.py tests/test_shardformer/test_model/test_cosmos3_selective_checkpointing.py tests/test_shardformer/test_model/test_cosmos3_hsdp_optimizer.py tests/test_shardformer/test_model/test_hsdp_and_context_parallel.py tests/test_shardformer/test_model/test_cosmos3_example_helpers.py tests/test_shardformer/test_layer/test_two_way_attn.py tests/test_shardformer/test_model/test_cosmos_mot_packing.py tests/test_shardformer/test_model/test_shard_cosmos3.py tests/test_zero/test_low_level/test_step_helpers.py
+python -m pytest -q -o addopts='' examples/worldmodel/cosmos3/tests examples/worldmodel/cosmos3_harness/tests tests/test_booster/test_plugin/test_hybrid_casting.py tests/test_shardformer/test_model/test_cosmos3_policy.py tests/test_shardformer/test_model/test_cosmos3_fp32_timestep.py tests/test_shardformer/test_model/test_cosmos3_fp32_sinusoid.py tests/test_shardformer/test_model/test_cosmos3_runtime_contracts.py tests/test_shardformer/test_model/test_cosmos3_selective_checkpointing.py tests/test_shardformer/test_model/test_cosmos3_hsdp_optimizer.py tests/test_shardformer/test_model/test_hsdp_and_context_parallel.py tests/test_shardformer/test_model/test_cosmos3_example_helpers.py tests/test_shardformer/test_layer/test_two_way_attn.py tests/test_shardformer/test_model/test_cosmos_mot_packing.py tests/test_shardformer/test_model/test_shard_cosmos3.py
 ```
 
-CPU coverage includes data/targets, whole-window SFT updates, unequal-length loss/gradient oracles, all input/buffer cast combinations, FP32 timestep wrappers under fullgraph AOT-eager, real Gloo CP contracts, HSDP AdamW, uninterrupted-versus-resumed replay, and the two scalar collectives: the gradient norm is reduced in float32 with a max-scaled sum (HCCL has no float64 all-reduce, and torch_npu casts float64 back to float32) and the supervised-token count as int64. VAE microbatch 0/1/2 compares inputs, FP32 targets, metadata, RNG, loss and gradients, and composes with chunked encode over two window widths; tiny random Wan encoders cover FP16/BF16/FP32 causal caches. CUDA-only and optional real-checkpoint tests skip without their prerequisites.
+CPU coverage includes data/targets, whole-window SFT updates, unequal-length loss/gradient oracles, all input/buffer cast combinations, FP32 timestep wrappers under fullgraph AOT-eager, real Gloo CP contracts, HSDP AdamW and uninterrupted-versus-resumed replay. VAE microbatch 0/1/2 compares inputs, FP32 targets, metadata, RNG, loss and gradients; tiny random Wan encoders cover FP16/BF16/FP32 causal caches. CUDA-only and optional real-checkpoint tests skip without their prerequisites.
 
 The local verification environment is Python 3.11, torch 2.15.0, diffusers 0.40.0 and transformers 5.22.1. The torch/transformers versions differ from the repository's declared training environment. CPU results establish regression contracts, not full numerical alignment on CUDA/NPU. Real production checkpoints, target compiler backends, real AOT packages, multi-host training and loss curves still require device validation.
 

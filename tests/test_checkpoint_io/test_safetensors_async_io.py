@@ -175,3 +175,89 @@ def test_save_load():
         del f_writer
         load_state_dict = load_file(model_saved_path)
         check_state_dict_equal(model_state_dict, load_state_dict)
+
+
+@pytest.fixture
+def threaded_backend(monkeypatch):
+    """Force the TensorNVMe-free writer, so the fallback is on the critical path everywhere."""
+    from colossalai.utils import safetensors as safetensors_utils
+
+    monkeypatch.setattr(safetensors_utils, "AsyncFileWriter", None)
+    monkeypatch.setattr(safetensors_utils, "_threaded_fallback_warned", True)
+
+
+def test_threaded_writer_round_trips_model_state(threaded_backend):
+    state = {
+        "bf16": torch.rand((8, 4), dtype=torch.bfloat16),
+        "fp32": torch.rand((8, 4)),
+        "int64": torch.arange(6),
+        "bool": torch.tensor([True, False]),
+        "scalar": torch.tensor(3.0),
+    }
+    with tempfile.TemporaryDirectory() as tempdir:
+        path = f"{tempdir}/model.safetensors"
+        f_writer = save(path, state)
+        assert type(f_writer).__name__ == "ThreadedSafetensorsWriter"
+        f_writer.sync_before_step()
+        f_writer.synchronize()
+        assert f_writer.done
+        check_state_dict_equal(state, load_file(path))
+
+
+def test_threaded_writer_round_trips_optimizer_state(threaded_backend):
+    state = gen_optim_state_dict()
+    with tempfile.TemporaryDirectory() as tempdir:
+        path = f"{tempdir}/optim.safetensors"
+        f_writer = save_nested(path, state)
+        f_writer.synchronize()
+        check_state_dict_equal(state, load_flat(path))
+
+
+def test_move_and_save_stages_into_the_pinned_buffer(threaded_backend):
+    source = {"weight": torch.arange(16, dtype=torch.float32).view(4, 4)}
+    pinned = {"weight": torch.empty_like(source["weight"], pin_memory=True, device="cpu")}
+    with tempfile.TemporaryDirectory() as tempdir:
+        path = f"{tempdir}/staged.safetensors"
+        f_writer = move_and_save(path, source, pinned)
+        # The copy into the pinned buffer happens before the thread starts, so the caller may
+        # overwrite the live tensor as soon as this returns.
+        assert torch.equal(pinned["weight"], source["weight"])
+        source["weight"].zero_()
+        f_writer.synchronize()
+        check_state_dict_equal({"weight": torch.arange(16, dtype=torch.float32).view(4, 4)}, load_file(path))
+
+
+def test_threaded_writer_raises_the_background_failure(threaded_backend):
+    with tempfile.TemporaryDirectory() as tempdir:
+        missing = f"{tempdir}/missing/model.safetensors"
+        f_writer = save(missing, {"weight": torch.zeros(2)})
+        with pytest.raises(RuntimeError, match="Background safetensors write failed"):
+            f_writer.synchronize()
+        # The error is delivered once, and the writer still reports as finished.
+        f_writer.synchronize()
+        assert f_writer.done
+
+
+def test_threaded_writer_is_non_blocking_until_synchronized(threaded_backend, monkeypatch):
+    import threading
+
+    from colossalai.utils import safetensors as safetensors_utils
+
+    gate = threading.Event()
+    original = safetensors_utils.save_file
+
+    def blocking_save_file(state_dict, path, metadata=None):
+        gate.wait(timeout=10)
+        return original(state_dict, path, metadata=metadata)
+
+    # Park the writer thread in serialization: sync_before_step must return immediately while
+    # the write is still running, and synchronize must wait for the gate.
+    monkeypatch.setattr(safetensors_utils, "save_file", blocking_save_file)
+    with tempfile.TemporaryDirectory() as tempdir:
+        f_writer = save(f"{tempdir}/slow.safetensors", {"weight": torch.zeros(2)})
+        f_writer.sync_before_step()
+        assert not f_writer.done
+        gate.set()
+        f_writer.synchronize()
+        assert f_writer.done
+        assert load_file(f"{tempdir}/slow.safetensors")["weight"].shape == (2,)
