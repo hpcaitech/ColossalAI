@@ -235,6 +235,10 @@ table.table { width: 100%; border-collapse: collapse; }
 .topo-card .rank { font-weight: 650; font-size: 13px; }
 .topo-card .hbm { font-size: 10px; color: var(--text-2); }
 .topo-card.empty { opacity: .35; }
+.topo-card.offline { opacity: .55; border-style: dashed; }
+.node-strip { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.node-strip .chip { cursor: pointer; }
+button.chip { padding: 2px 7px; }
 @media (max-width: 800px) { .topo-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 details.config { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; background: var(--surface); }

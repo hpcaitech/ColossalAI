@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
+import socket
 import time
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -291,6 +294,111 @@ def test_remote_agent_and_mirror_round_trip(tmp_path):
     payload2 = collect(metrics, control, {"aggregated": payload["aggregated"]["offset"]}, 0, "no-such-entry", "")
     mirror._ingest("nodeA", payload2)
     assert (tmp_path / "cache" / "mirror-run" / "metrics" / "aggregated.jsonl").read_text().count("\n") == 2
+
+
+def test_mirror_merges_every_node_and_preserves_heartbeat_age(tmp_path):
+    from examples.worldmodel.cosmos3_monitor.mirror import Mirror
+    from examples.worldmodel.cosmos3_monitor.remote_agent import collect
+
+    root = tmp_path / "remote"
+    metrics_a = root / "a" / "metrics"
+    metrics_b = root / "b" / "metrics"
+    control = root / "control"
+    for directory in (metrics_a, metrics_b, control):
+        directory.mkdir(parents=True)
+    write_json(metrics_a / "run.json", {"run_id": "multi", "world_size": 16})
+    write_lines(metrics_a / "aggregated.jsonl", [{"type": "record", "step": 1, "rank": 0}])
+    write_lines(metrics_b / "aggregated.jsonl", [{"type": "record", "step": 2, "rank": 8}])
+    old = time.time() - 10
+    for metrics, rank in ((metrics_a, 0), (metrics_b, 8)):
+        heartbeat = metrics / f"heartbeat-{rank:03d}.json"
+        write_json(heartbeat, {"rank": rank, "phase": "forward", "step": 1, "time": old})
+        os.utime(heartbeat, (old, old))
+        write_lines(
+            metrics / f"rank-{rank:03d}.jsonl",
+            [{"type": "record", "step": 1, "rank": rank, "data": {"samples": 4}, "perf": {"step_ms": 1000}}],
+        )
+    write_lines(metrics_a / "system" / "node-A.jsonl", [{"hostname": "A", "time": old, "devices": []}])
+    write_lines(metrics_b / "system" / "node-B.jsonl", [{"hostname": "B", "time": old, "devices": []}])
+
+    mirror = Mirror(
+        {"run_id": "multi", "out": str(root / "out")},
+        cache_root=tmp_path / "cache",
+        nodes=["nodeA", "nodeB"],
+        remote_repo="/repo",
+        metrics_dir=str(metrics_a),
+        control_dir=str(control),
+    )
+    with mock.patch("examples.worldmodel.cosmos3_monitor.remote_agent.socket.gethostname", return_value="A"):
+        payload_a = collect(metrics_a, control, {}, 0, "no-such-entry", "")
+    with mock.patch("examples.worldmodel.cosmos3_monitor.remote_agent.socket.gethostname", return_value="B"):
+        payload_b = collect(metrics_b, control, {}, 1, "no-such-entry", "")
+    mirror._ingest("nodeA", payload_a)
+    mirror._ingest("nodeB", payload_b)
+    cache = tmp_path / "cache" / "multi" / "metrics"
+    assert (cache / "rank-000.jsonl").is_file()
+    assert (cache / "rank-008.jsonl").is_file()
+    assert (cache / "heartbeat-000.json").is_file()
+    assert (cache / "heartbeat-008.json").is_file()
+    assert (cache / "system" / "node-A.jsonl").is_file()
+    assert (cache / "system" / "node-B.jsonl").is_file()
+    # Only rank 0's aggregated ledger is authoritative; a non-primary node may hold a stale slice.
+    assert '"rank": 0' in (cache / "aggregated.jsonl").read_text()
+    assert '"rank": 8' not in (cache / "aggregated.jsonl").read_text()
+    # The mirror preserves the remote heartbeat age instead of stamping the copy with "now".
+    age = time.time() - (cache / "heartbeat-008.json").stat().st_mtime
+    assert 8 <= age <= 13
+
+
+def test_remote_agent_only_mirrors_its_own_system_file(tmp_path):
+    from examples.worldmodel.cosmos3_monitor.remote_agent import collect
+
+    metrics = tmp_path / "remote" / "metrics"
+    control = tmp_path / "remote" / "control"
+    control.mkdir(parents=True)
+    own = f"node-{socket.gethostname()}.jsonl"
+    write_lines(metrics / "system" / own, [{"hostname": socket.gethostname(), "time": time.time(), "devices": []}])
+    # A copied file from another node must not be mirrored a second time through this node's offsets.
+    write_lines(metrics / "system" / "node-other.jsonl", [{"hostname": "other", "time": time.time(), "devices": []}])
+    payload = collect(metrics, control, {}, 0, "no-such-entry", "")
+    assert set(payload["system"]) == {own}
+
+
+def test_snapshot_reports_every_host_even_when_one_has_no_heartbeat(tmp_path):
+    run = tmp_path / "run-coverage"
+    metrics = run / "metrics"
+    metrics.mkdir(parents=True)
+    write_json(
+        metrics / "run.json",
+        {
+            "run_id": "coverage",
+            "world_size": 4,
+            "topology": [
+                {"rank": rank, "hostname": "A" if rank < 2 else "B", "local_rank": rank % 2, "device_index": rank % 2}
+                for rank in range(4)
+            ],
+        },
+    )
+    now = time.time()
+    for rank in (0, 1):
+        write_json(
+            metrics / f"heartbeat-{rank:03d}.json",
+            {"rank": rank, "hostname": "A", "phase": "forward", "step": 3, "time": now, "local_rank": rank},
+        )
+    state = RunState(discover([run])[0])
+    state.refresh()
+    snapshot = state.snapshot()
+    coverage = snapshot["coverage"]
+    assert coverage["nodes_expected"] == 2
+    assert coverage["nodes_reporting"] == 1
+    assert coverage["nodes_live"] == 1
+    assert snapshot["live_ranks"] == 2
+    hosts = {row["hostname"]: row for row in coverage["hosts"]}
+    assert hosts["B"]["live"] == 0
+    assert hosts["B"]["missing"] == 2
+    ranks = state.ranks_view()
+    assert ranks["ranks"][0]["hostname"] == "A"
+    assert ranks["ranks"][2]["status"] == "missing"
 
 
 def test_step_detail_reports_each_stage_and_mfu(tmp_path):

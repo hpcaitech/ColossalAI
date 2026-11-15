@@ -145,20 +145,40 @@ The monitor writes only under its `--state-dir` (default `~/.cache/cosmos3_monit
 - The collector is a separate process with a 5 s interval, timeouts and `nice 10`.
 - The server only tails files; a slow filesystem makes a snapshot stale, not the training slower.
 
-## SSH mirror (node-local metrics)
+## SSH mirror (node-local metrics, all ranks)
 
-When `--metrics-dir` is on a node-local `/tmp` (the validation cluster did this deliberately), mirror it:
+When `--metrics-dir` is on a node-local disk (the validation cluster and the 6-node SFT benchmark do this),
+rank 0's directory contains only its own eight `rank-*.jsonl`/`heartbeat-*` files.  Run the mirror from a host
+that can SSH to every node; it polls the nodes in parallel and merges their disjoint files:
 
 ```bash
-python -m examples.worldmodel.cosmos3_monitor mirror run-config.json \
+python -m examples.worldmodel.cosmos3_monitor mirror \
     --cache-root ~/.cache/cosmos3_monitor/mirror \
-    --remote-repo /mnt/disk0/jiangzs/nzf/ColossalAI \
-    --nodes node5,node7,node8,node9 \
-    --metrics-dir /tmp/run/metrics --control-dir /tmp/run/control --interval 5
+    --nodes node1,node5,node6,node7,node8,node9 \
+    --run-id cosmos3_6node_1115 \
+    --out /mnt/disk0/jiangzs/nzf/bench_online/runs/cosmos3_6node_1115 \
+    --metrics-dir /mnt/disk0/jiangzs/nzf/bench_online/runs/cosmos3_6node_1115/metrics \
+    --control-dir /mnt/disk0/jiangzs/nzf/bench_online/runs/cosmos3_6node_1115/control \
+    --agent-path /mnt/disk0/jiangzs/nzf/c3agent/remote_agent.py \
+    --remote-prefix 'docker exec nzf-cai-dev' --interval 5
+python -m examples.worldmodel.cosmos3_monitor serve \
+    --roots ~/.cache/cosmos3_monitor/mirror --port 18790
 ```
 
-The mirror materialises `<cache-root>/<run_id>/metrics/` with stable byte offsets in `mirror-state.json`, so a
-monitor restart does not lose history. Point `serve --roots <cache-root>` at it.
+- Every node contributes its own `rank-*.jsonl`, `heartbeat-*.json`, `terminal-*.json` and
+  `system/node-<host>.jsonl`; `run.json`, `summary.json`, `aggregated.jsonl`, `checkpoints.jsonl` and the log are
+  taken from the first node only.  The Ranks KPI and topology then show all 48 ranks and six nodes, and a node
+  with no heartbeat is visible as `0/8 live` instead of silently disappearing.
+- `--remote-prefix` runs the standard-library agent inside a container (`docker exec ...`) when the host user
+  cannot read the root-owned run directory; `--agent-path` points at `remote_agent.py` on each node (it has no
+  dependencies and can be copied to a shared path).
+- The first poll copies at most `--max-initial-bytes` (default 2 MiB) of each rank/system file; later polls send
+  only appends.  `--once` performs a single poll, useful to validate the setup.
+- File content is written only when it changes, and a heartbeat's remote age is preserved on the local mtime.
+  A dead training therefore looks stale even while the mirror keeps polling.  For the same reason the mirror's
+  own state file lives outside `metrics/`.
+- The cache is keyed by run id and byte offsets are persisted in `mirror-state.json`, so a monitor restart does
+  not lose history.  Point `serve --roots <cache-root>` at it.
 
 ## Tests
 

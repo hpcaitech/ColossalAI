@@ -567,6 +567,19 @@ class RunState:
                     )
                 if heartbeat.get("error"):
                     add("heartbeat_sampling_error", str(heartbeat["error"]), "warn", rank=rank)
+            host_ranks = self._host_rank_map()
+            launch_reference = self._started_at or (
+                min((_num(item.get("time")) or now) for item in heartbeats.values()) if heartbeats else None
+            )
+            if launch_reference and now - launch_reference > max(120.0, self.stall_seconds):
+                for host, ranks in sorted(host_ranks.items()):
+                    if ranks and not any(rank in heartbeats for rank in ranks):
+                        add(
+                            "node_no_heartbeat",
+                            f"no heartbeat from any of {len(ranks)} ranks on {host}",
+                            "error",
+                            host=host,
+                        )
 
         # A launcher can outlive the heartbeat thread; the collector's process table is independent evidence.
         latest_system = {item.get("hostname"): item for item in self.system.latest()}
@@ -760,8 +773,10 @@ class RunState:
     def updated_at(self) -> float:
         # Deliberately not the server's refresh time: a dead writer must look old even while the monitor keeps
         # polling.  File mtimes are the cross-host clock-free signal; the record timestamp is a fallback.
+        # The run root is intentionally excluded: a mirror writes its bookkeeping there every few seconds, so
+        # including it would keep a dead run looking fresh forever.  ``metrics_dir`` is the data plane.
         candidates = []
-        for path in (self.ref.metrics_dir, self.ref.path / "control", self.ref.path):
+        for path in (self.ref.metrics_dir, self.ref.path / "control"):
             try:
                 candidates.append(path.stat().st_mtime)
             except OSError:
@@ -783,6 +798,7 @@ class RunState:
     def _snapshot_locked(self, now: float, *, include_manifest: bool) -> Dict[str, Any]:
         heartbeats = self.latest_heartbeats()
         terminals = self.latest_terminals()
+        coverage = self.coverage(heartbeats, terminals)
         issues = self.issues(now)
         last = self.last_record or {}
         flat = _flatten_record(last)
@@ -855,12 +871,9 @@ class RunState:
             "updated_at": self.updated_at(),
             "started_at": self._started_at,
             "world": self.world,
-            "live_ranks": sum(
-                1
-                for heartbeat in heartbeats.values()
-                if (_num(heartbeat.get("_file_age_s")) or self.stale_seconds + 1) <= self.stale_seconds
-            ),
-            "terminal_ranks": len(terminals),
+            "live_ranks": coverage["live_ranks"],
+            "terminal_ranks": coverage["terminal_ranks"],
+            "coverage": coverage,
             "step": step,
             "max_steps": max_steps,
             "progress": (step / max_steps) if max_steps else None,
@@ -893,7 +906,7 @@ class RunState:
             "issues": issues,
             "warnings": self._errors
             + [f"{reader.path}: {reader.error}" for reader in (self.manifest, self.config) if reader and reader.error],
-            "hosts": self._hosts(),
+            "hosts": coverage["hosts"],
             "topology": derive_topology(self._manifest, self.world),
             "checkpoints": {
                 "count": len(self.checkpoints),
@@ -928,6 +941,83 @@ class RunState:
         for host, entry in hosts.items():
             entry["ranks"] = sorted(rank for rank in entry["ranks"] if rank is not None)
         return list(hosts.values())
+
+    def coverage(self, heartbeats=None, terminals=None) -> Dict[str, Any]:
+        """Per-host rank liveness, so a six-node run reports 48 ranks instead of rank 0's eight.
+
+        ``host_ranks`` combines the manifest topology with heartbeat hostnames: a mirrored run may have a
+        heartbeat before its manifest is complete, and a node with no heartbeat at all must still appear with
+        ``live=0`` rather than silently disappearing from the node count.
+        """
+        heartbeats = self.latest_heartbeats() if heartbeats is None else heartbeats
+        terminals = self.latest_terminals() if terminals is None else terminals
+        host_ranks = self._host_rank_map()
+        system_hosts = self.system.snapshot().get("hosts", {})
+        derived_hosts: Dict[str, bool] = {}
+        for row in derive_topology(self._manifest, self.world):
+            host = row.get("hostname")
+            if host:
+                derived_hosts[str(host)] = bool(row.get("derived"))
+        rows: List[Dict[str, Any]] = []
+        seen = set()
+        for host, ranks in sorted(host_ranks.items()):
+            ranks = sorted({int(rank) for rank in ranks if rank is not None})
+            ages: List[float] = []
+            reporting = 0
+            for rank in ranks:
+                heartbeat = heartbeats.get(rank)
+                if not isinstance(heartbeat, dict):
+                    continue
+                reporting += 1
+                age = _num(heartbeat.get("_file_age_s"))
+                if age is not None:
+                    ages.append(age)
+            live = sum(1 for age in ages if age <= self.stale_seconds)
+            system_entry = system_hosts.get(host) or {}
+            rows.append(
+                {
+                    "hostname": host,
+                    "ranks": ranks,
+                    "reporting": reporting,
+                    "live": live,
+                    "missing": len(ranks) - reporting,
+                    "stale": reporting - live,
+                    "newest_age_s": min(ages) if ages else None,
+                    "oldest_age_s": max(ages) if ages else None,
+                    "system_age_s": system_entry.get("age_s"),
+                    "derived": derived_hosts.get(host, False),
+                }
+            )
+            seen.add(host)
+        for host, system_entry in sorted(system_hosts.items()):
+            if host in seen:
+                continue
+            rows.append(
+                {
+                    "hostname": host,
+                    "ranks": [],
+                    "reporting": 0,
+                    "live": 0,
+                    "missing": 0,
+                    "stale": 0,
+                    "newest_age_s": None,
+                    "oldest_age_s": None,
+                    "system_age_s": system_entry.get("age_s"),
+                    "derived": True,
+                }
+            )
+        expected = len(derived_hosts) or len(rows)
+        return {
+            "world": self.world,
+            "live_ranks": sum(row["live"] for row in rows),
+            "reporting_ranks": len(heartbeats),
+            "terminal_ranks": len(terminals),
+            "nodes_expected": expected,
+            "nodes_reporting": sum(1 for row in rows if row["reporting"]),
+            "nodes_live": sum(1 for row in rows if row["live"]),
+            "nodes_system": sum(1 for row in rows if row["system_age_s"] is not None),
+            "hosts": rows,
+        }
 
     # -- views --------------------------------------------------------------------------------------------
 
@@ -990,18 +1080,37 @@ class RunState:
     def ranks_view(self) -> Dict[str, Any]:
         heartbeats = self.latest_heartbeats()
         terminals = self.latest_terminals()
+        host_of = self._rank_hosts()
         world = self.world or (max(heartbeats) + 1 if heartbeats else 0)
         rows = []
         for rank in range(world):
             heartbeat = heartbeats.get(rank)
             terminal = terminals.get(rank)
-            row = {
-                "rank": rank,
-                "heartbeat": heartbeat,
-                "terminal": terminal,
-                "alive": bool(heartbeat and (_num(heartbeat.get("_file_age_s")) or 1e9) <= self.stale_seconds),
-            }
-            rows.append(row)
+            age = _num(heartbeat.get("_file_age_s")) if heartbeat else None
+            alive = bool(age is not None and age <= self.stale_seconds)
+            if terminal and terminal.get("completed"):
+                status = "completed"
+            elif alive:
+                status = "live"
+            elif heartbeat:
+                status = "stale"
+            else:
+                status = "missing"
+            rows.append(
+                {
+                    "rank": rank,
+                    "hostname": (heartbeat.get("hostname") if heartbeat else None) or host_of.get(rank),
+                    "local_rank": heartbeat.get("local_rank") if heartbeat else None,
+                    "device_index": heartbeat.get("device_index") if heartbeat else None,
+                    "phase": heartbeat.get("phase") if heartbeat else None,
+                    "step": heartbeat.get("step") if heartbeat else None,
+                    "age_s": age,
+                    "status": status,
+                    "alive": alive,
+                    "heartbeat": heartbeat,
+                    "terminal": terminal,
+                }
+            )
         return {"world": world, "ranks": rows}
 
 

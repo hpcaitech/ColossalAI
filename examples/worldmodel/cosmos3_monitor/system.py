@@ -354,15 +354,23 @@ class SystemHistory:
             return [entry["latest"]] if entry and entry["latest"] else []
         return [entry["latest"] for entry in self.hosts.values() if entry["latest"]]
 
+    def note_file_age(self, host: str, age_s: float) -> None:
+        """Record the local file mtime age, which is skew-free even when the sample came from another node."""
+        entry = self.hosts.setdefault(str(host), {"latest": None, "points": [], "devices": {}})
+        entry["file_age_s"] = max(0.0, float(age_s))
+
     def snapshot(self, host: Optional[str] = None) -> Dict[str, Any]:
         hosts = {}
         for name, entry in self.hosts.items():
             if host and name != host:
                 continue
+            age = entry.get("file_age_s")
+            if age is None:
+                age = file_age_latest(entry["latest"])
             hosts[name] = {
                 "hostname": name,
                 "latest": entry["latest"],
-                "age_s": file_age_latest(entry["latest"]),
+                "age_s": age,
                 "devices": {
                     index: {key: values[-500:] for key, values in series.items()}
                     for index, series in entry["devices"].items()
@@ -389,9 +397,12 @@ def read_system_files(metrics_dir, history: SystemHistory) -> None:
     for path in sorted(directory.glob("node-*.jsonl")):
         offset = getattr(history, "_offsets", {}).get(str(path), 0)
         try:
-            size = path.stat().st_size
+            info = path.stat()
         except OSError:
             continue
+        size = info.st_size
+        host = path.stem[5:] if path.stem.startswith("node-") else path.stem
+        history.note_file_age(host, time.time() - info.st_mtime)
         if size < offset:
             offset = 0
         try:

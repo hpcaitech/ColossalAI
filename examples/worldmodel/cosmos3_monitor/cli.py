@@ -114,18 +114,34 @@ def command_collect(args) -> int:
 def command_mirror(args) -> int:
     from .mirror import Mirror
 
-    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    config = json.loads(Path(args.config).read_text(encoding="utf-8")) if args.config else {}
     nodes = [item for item in args.nodes.split(",") if item] if args.nodes else None
+    if nodes:
+        config["nodes"] = nodes
+    if args.run_id:
+        config["run_id"] = args.run_id
+    if args.out:
+        config["out"] = args.out
+    if args.metrics_dir:
+        config["metrics_dir"] = args.metrics_dir
+    if args.control_dir:
+        config["control_dir"] = args.control_dir
     mirror = Mirror(
         config,
         cache_root=args.cache_root,
         nodes=nodes,
         remote_repo=args.remote_repo,
+        agent_path=args.agent_path,
         metrics_dir=args.metrics_dir,
         control_dir=args.control_dir,
         interval=args.interval,
         entry=args.entry,
         log_path=args.log_path,
+        remote_prefix=args.remote_prefix,
+        ssh_args=["-o", "BatchMode=yes", "-o", "ConnectTimeout=5"] + list(args.ssh_arg),
+        timeout=args.timeout,
+        max_workers=args.max_workers,
+        max_initial_bytes=args.max_initial_bytes,
     )
     mirror.run(max_polls=1 if args.once else 0)
     return 0
@@ -193,15 +209,23 @@ def build_parser() -> argparse.ArgumentParser:
     collect.set_defaults(func=command_collect)
 
     mirror = sub.add_parser("mirror", help="mirror node-local metrics over SSH")
-    mirror.add_argument("config", help="run config JSON with run_id/out/nodes")
+    mirror.add_argument("config", nargs="?", help="optional run config JSON with run_id/out/nodes")
     mirror.add_argument("--cache-root", required=True)
-    mirror.add_argument("--remote-repo", required=True)
+    mirror.add_argument("--remote-repo", default="")
+    mirror.add_argument("--agent-path", default=None, help="remote path to remote_agent.py")
     mirror.add_argument("--nodes", default="")
+    mirror.add_argument("--run-id", default=None)
+    mirror.add_argument("--out", default=None)
     mirror.add_argument("--metrics-dir", default=None)
     mirror.add_argument("--control-dir", default=None)
     mirror.add_argument("--interval", type=float, default=5.0)
     mirror.add_argument("--entry", default="train_sft.py")
     mirror.add_argument("--log-path", default=None, help="Remote stdout log to mirror for the Logs tab.")
+    mirror.add_argument("--remote-prefix", default="", help="Prefix for the remote command, e.g. 'docker exec c'.")
+    mirror.add_argument("--ssh-arg", action="append", default=[], help="Extra ssh option, repeatable.")
+    mirror.add_argument("--timeout", type=float, default=30.0)
+    mirror.add_argument("--max-workers", type=int, default=8)
+    mirror.add_argument("--max-initial-bytes", type=int, default=2 * 1024 * 1024)
     mirror.add_argument("--once", action="store_true")
     mirror.set_defaults(func=command_mirror)
 

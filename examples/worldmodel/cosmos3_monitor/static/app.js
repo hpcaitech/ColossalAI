@@ -826,6 +826,7 @@ function renderKpis() {
   const micro = args.samples_per_rank != null ? args.samples_per_rank : '—';
   const accum = args.grad_accum != null ? args.grad_accum : '—';
   const step = state.run.step || 0;
+  const cov = state.run.coverage || {};
   const kpis = [
     ['Iteration', `${int(step)}${state.run.max_steps ? `<small> / ${int(state.run.max_steps)}</small>` : ''}`, `<a href="#" class="step-link" data-step="${step}">查看 step ${int(step)} 阶段详情</a>`],
     ['Epoch', int(state.run.epoch), `iteration ${int(step)}`],
@@ -835,7 +836,7 @@ function renderKpis() {
     ['Throughput', `${num(last.samples_per_s, 1)}<small>samples/s</small>`, last.lr != null ? `lr ${num(last.lr, 6)}` : ''],
     ['MFU', last.mfu != null ? `${num(last.mfu * 100, 1)}<small>%</small>` : '—', last.grad_norm != null ? `grad ${num(last.grad_norm, 2)}` : ''],
     ['HBM', last.device_used_gib != null ? `${num(last.device_used_gib, 1)}<small>/${num(last.device_total_gib, 1)} GiB</small>` : '—', last.hbm_fraction != null ? pct(last.hbm_fraction, 0) : ''],
-    ['Ranks', `${int(state.run.live_ranks)}<small>/${int(state.run.world)} live</small>`, `${int(state.run.terminal_ranks)} terminal`],
+    ['Ranks', `${int(state.run.live_ranks)}<small>/${int(state.run.world)} live</small>`, `${int(cov.nodes_live ?? 0)}/${int(cov.nodes_expected ?? 0)} nodes · ${int(state.run.terminal_ranks)} terminal`],
     ['Checkpoints', `${int(state.run.checkpoints && state.run.checkpoints.count)}`, state.run.checkpoints && state.run.checkpoints.last ? `step ${int(state.run.checkpoints.last.step)}` : 'none yet'],
     ['Elapsed / ETA', state.run.eta_s != null ? duration(state.run.eta_s) : '—', `elapsed ${duration(state.run.elapsed_s)} · total ${duration(state.run.total_s)}${state.run.completion_at ? ` · finish ${clock(state.run.completion_at)}` : ''}`],
   ];
@@ -889,7 +890,18 @@ function renderOverview(body) {
   disposeCharts();
   const run = state.run;
   const last = run.last || {};
-  const hosts = (run.hosts || []).map((h) => `<span class="chip">${esc(h.hostname)} · ${esc((h.ranks || []).length)} ranks</span>`).join(' ');
+  const cov = run.coverage || {};
+  const hosts = (cov.hosts || run.hosts || []).map((h) => {
+    const total = (h.ranks || []).length;
+    const live = h.live ?? 0;
+    const cls = total && live >= total ? 'ok' : (live > 0 ? 'warn' : 'bad');
+    const system = h.system_age_s != null ? ` · sys ${ago(h.system_age_s)}` : '';
+    const detail = `${h.reporting ?? 0}/${total} reporting${h.stale ? ` · ${h.stale} stale` : ''}${h.missing ? ` · ${h.missing} missing` : ''}`;
+    return `<span class="chip ${cls}" title="${esc(detail)}">${esc(h.hostname)} · ${int(live)}/${int(total)} live${esc(system)}</span>`;
+  }).join(' ');
+  const coverageLine = cov.nodes_expected
+    ? `<span class="chip">${int(cov.nodes_live)}/${int(cov.nodes_expected)} nodes live</span><span class="chip">${int(cov.reporting_ranks)}/${int(cov.world)} ranks reporting</span>${cov.nodes_system != null ? `<span class="chip">${int(cov.nodes_system)}/${int(cov.nodes_expected)} system</span>` : ''}`
+    : '';
   const recent = (state.events || []).slice(0, 8).map((event) => `<div class="list-row"><div>${severityChip(event.severity)}</div><div class="grow"><div class="ellipsis">${esc(event.message || event.kind)}</div><div class="muted small">step ${esc(event.step)} · ${esc(clock(event.time))}</div></div></div>`).join('');
   const ckpt = state.checkpoints && state.checkpoints.checkpoints ? state.checkpoints.checkpoints.slice(-5).reverse() : [];
   body.innerHTML = `
@@ -903,7 +915,7 @@ function renderOverview(body) {
         ${ckpt.length ? `<table class="table"><thead><tr><th>step</th><th>状态</th><th class="num">大小</th><th class="num">耗时</th></tr></thead><tbody>${ckpt.map((c) => `<tr><td>${int(c.step)}</td><td>${esc(c.status || '—')}</td><td class="num">${bytes(c.bytes)}</td><td class="num">${c.duration_ms != null ? duration(c.duration_ms / 1000) : '—'}</td></tr>`).join('')}</tbody></table>` : '<div class="muted small">还没有 checkpoint 记录</div>'}
       </div>
     </div>
-    <div class="card" style="margin-top:12px"><div class="card-head"><h2>节点</h2><span class="muted small">rank → host 来自 manifest；derived 表示按节点/卡数推断</span></div><div class="list">${hosts || '<span class="muted small">manifest 中没有 topology</span>'}</div></div>
+    <div class="card" style="margin-top:12px"><div class="card-head"><h2>节点</h2><span class="muted small">rank → host 来自 manifest；live 来自每 rank 心跳</span></div><div class="page-actions" style="margin-bottom:8px">${coverageLine}</div><div class="list">${hosts || '<span class="muted small">manifest 中没有 topology</span>'}</div></div>
     ${renderRunInfoCard()}`;
   renderLossChart('chart-loss-overview');
   renderStepChart('chart-step-overview');
@@ -1186,22 +1198,34 @@ function renderTopology(body) {
   }
   const rankState = {};
   if (state.ranks && state.ranks.ranks) for (const item of state.ranks.ranks) rankState[item.rank] = item;
+  const covHosts = {};
+  for (const item of ((state.run && state.run.coverage && state.run.coverage.hosts) || [])) covHosts[item.hostname] = item;
   const nodeCards = Object.keys(byHost).sort().map((host) => {
     const system = latest[host];
     const devices = (system && system.devices) || [];
+    const coverage = covHosts[host];
     const cards = byHost[host].slice().sort((a, b) => (a.local_rank || 0) - (b.local_rank || 0)).map((row) => {
       const rank = row.rank;
       const device = devices.find((d) => Number(d.index) === Number(row.device_index ?? row.local_rank));
       const used = device && device.hbm_used_mib != null && device.hbm_total_mib ? device.hbm_used_mib / device.hbm_total_mib : null;
-      const heartbeat = rankState[rank] && rankState[rank].heartbeat;
+      const item = rankState[rank];
+      const heartbeat = item && item.heartbeat;
+      const status = item ? item.status : 'missing';
       const phase = heartbeat ? heartbeat.phase : '—';
+      const stepText = item && item.step != null ? `step ${int(item.step)}` : '';
+      const ageText = item && item.age_s != null ? `hb ${ago(item.age_s)}` : '';
+      const statusText = status === 'live' ? 'live' : (status === 'stale' ? 'stale' : (status === 'completed' ? 'done' : 'missing'));
+      const offline = status === 'live' || status === 'completed' ? '' : ' offline';
       const color = used == null ? 'transparent' : `rgba(57,135,229,${Math.max(0.08, Math.min(0.7, used * 0.7))})`;
-      return `<div class="topo-card" style="background:${color}" title="rank ${rank} · ${esc(host)} · ${device ? `${num(device.hbm_used_mib / 1024, 1)}/${num(device.hbm_total_mib / 1024, 1)} GiB · ${num(device.temperature_c, 0)}°C` : 'no device sample'}">
-        <div class="idx">NPU ${esc(row.device_index ?? row.local_rank ?? '?')}</div><div class="rank">rank ${esc(rank)}</div><div class="hbm">${device ? `${num(device.hbm_used_mib / 1024, 1)} GiB · ${num(device.temperature_c, 0)}°C` : '<span class="muted">—</span>'}</div><div class="hbm">${esc(phase)}</div>
+      const detail = [stepText, ageText, statusText].filter(Boolean).join(' · ');
+      return `<div class="topo-card${offline}" style="background:${color}" title="rank ${rank} · ${esc(host)} · ${device ? `${num(device.hbm_used_mib / 1024, 1)}/${num(device.hbm_total_mib / 1024, 1)} GiB · ${num(device.temperature_c, 0)}°C` : 'no device sample'} · ${esc(detail)}">
+        <div class="idx">NPU ${esc(row.device_index ?? row.local_rank ?? '?')}</div><div class="rank">rank ${esc(rank)}</div><div class="hbm">${device ? `${num(device.hbm_used_mib / 1024, 1)} GiB · ${num(device.temperature_c, 0)}°C` : '<span class="muted">—</span>'}</div><div class="hbm">${esc(phase)} · ${esc(statusText)}</div>
       </div>`;
     }).join('');
     const empty = Array.from({ length: Math.max(0, 8 - byHost[host].length) }).map(() => '<div class="topo-card empty"></div>').join('');
-    return `<div class="topo-node"><div class="topo-node-head"><span>${esc(host)}${(byHost[host][0] || {}).derived ? ' <span class="chip">derived</span>' : ''}</span><span class="muted small">${(byHost[host] || []).length} ranks</span></div><div class="topo-cards">${cards}${empty}</div></div>`;
+    const liveText = coverage ? `${int(coverage.live)}/${int((coverage.ranks || []).length)} live` : `${(byHost[host] || []).length} ranks`;
+    const sysText = coverage && coverage.system_age_s != null ? ` · sys ${ago(coverage.system_age_s)}` : '';
+    return `<div class="topo-node"><div class="topo-node-head"><span>${esc(host)}${(byHost[host][0] || {}).derived ? ' <span class="chip">derived</span>' : ''}</span><span class="muted small">${liveText}${esc(sysText)}</span></div><div class="topo-cards">${cards}${empty}</div></div>`;
   }).join('');
   const groupRows = rows.length && rows[0].groups ? Object.entries(rows[0].groups).map(([name, ranks]) => `<tr><td>${esc(name)}</td><td class="mono">${esc((ranks || []).join(', '))}</td></tr>`).join('') : '';
   body.innerHTML = `<div class="card"><div class="card-head"><h2>节点 × 卡</h2><span class="muted small">颜色 = HBM 使用率；悬停查看温度与容量</span></div><div class="topology">${nodeCards || '<div class="muted small">manifest 中没有 topology</div>'}</div></div>
@@ -1267,6 +1291,14 @@ function renderSystem(body) {
   const latest = entry.latest || {};
   const host = latest.host || {};
   const devices = latest.devices || [];
+  const cov = (state.run && state.run.coverage) || {};
+  const stripHosts = (cov.hosts || []).map((item) => {
+    const total = (item.ranks || []).length;
+    const cls = item.live > 0 ? 'ok' : (item.reporting > 0 ? 'warn' : 'bad');
+    const system = item.system_age_s != null ? `sys ${ago(item.system_age_s)}` : 'no sys';
+    return `<button class="chip ${cls}" data-sys-host="${esc(item.hostname)}">${esc(item.hostname)} · ${int(item.live)}/${int(total)} ranks · ${esc(system)}</button>`;
+  }).join('');
+  const strip = cov.nodes_expected ? `<div class="card" style="margin-bottom:12px"><div class="page-actions"><span class="chip">${int(cov.nodes_live)}/${int(cov.nodes_expected)} nodes live</span><span class="chip">${int(cov.nodes_system)}/${int(cov.nodes_expected)} system samples</span><span class="chip">${int(cov.reporting_ranks)}/${int(cov.world)} ranks reporting</span></div><div class="node-strip">${stripHosts}</div></div>` : '';
   const deviceCards = devices.map((device) => {
     const used = device.hbm_used_mib != null ? device.hbm_used_mib / 1024 : null;
     const total = device.hbm_total_mib != null ? device.hbm_total_mib / 1024 : null;
@@ -1274,7 +1306,7 @@ function renderSystem(body) {
     return `<div class="topo-card"><div class="idx">NPU ${esc(device.index)}</div><div class="rank">${num(used, 1)}<span class="muted small">/${num(total, 1)} GiB</span></div><div class="hbm">${frac != null ? pct(frac, 0) : '—'} · ${num(device.temperature_c, 0)}°C · ${num(device.power_w, 0)}W</div><div class="hbm muted">${(device.processes || []).length} proc</div></div>`;
   }).join('');
   const processes = (latest.processes || []).map((proc) => `<tr><td class="num">${int(proc.pid)}</td><td class="num">${proc.rank == null ? '—' : int(proc.rank)}</td><td>${esc(proc.state || '—')}</td><td>${esc(proc.wchan || '—')}</td><td class="mono ellipsis" title="${esc(proc.command || '')}">${esc(proc.command || '')}</td></tr>`).join('');
-  body.innerHTML = `<div class="card" style="margin-bottom:12px"><div class="page-actions"><label class="hint-inline">节点</label><select id="sys-host">${names.map((name) => `<option ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><span class="chip">采集 ${esc(ago(entry.age_s))}</span><span class="chip ${latest.collector && latest.collector.errors && latest.collector.errors.length ? 'bad' : 'ok'}">${latest.collector && latest.collector.errors && latest.collector.errors.length ? esc(latest.collector.errors[0]) : 'collector ok'}</span></div></div>
+  body.innerHTML = `${strip}<div class="card" style="margin-bottom:12px"><div class="page-actions"><label class="hint-inline">节点</label><select id="sys-host">${names.map((name) => `<option ${name === selected ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select><span class="chip">采集 ${esc(ago(entry.age_s))}</span><span class="chip ${latest.collector && latest.collector.errors && latest.collector.errors.length ? 'bad' : 'ok'}">${latest.collector && latest.collector.errors && latest.collector.errors.length ? esc(latest.collector.errors[0]) : 'collector ok'}</span></div></div>
     <div class="grid k4">
       <div class="kpi"><div class="label">CPU</div><div class="value">${num(host.cpu_percent, 0)}<small>%</small></div><div class="hint">load ${num(host.load1, 1)} / ${num(host.load5, 1)}</div></div>
       <div class="kpi"><div class="label">Memory</div><div class="value">${num((host.memory || {}).available_gib, 0)}<small>GiB free</small></div><div class="hint">${num((host.memory || {}).total_gib, 0)} GiB total</div></div>
@@ -1286,6 +1318,9 @@ function renderSystem(body) {
     <div class="card" style="margin-top:12px"><div class="card-head"><h2>进程</h2><span class="muted small">来自 /proc；rank 由 RANK 环境变量映射</span></div><div class="table-scroll"><table class="table"><thead><tr><th class="num">pid</th><th class="num">rank</th><th>state</th><th>wchan</th><th>command</th></tr></thead><tbody>${processes || '<tr><td colspan="5" class="muted">没有训练进程</td></tr>'}</tbody></table></div></div>`;
   const selector = $('#sys-host');
   if (selector) selector.onchange = (event) => { state.systemHost = event.target.value; renderSystem(body); };
+  $$('[data-sys-host]').forEach((button) => {
+    button.onclick = () => { state.systemHost = button.dataset.sysHost; renderSystem(body); };
+  });
   renderSystemCharts(selected);
 }
 
