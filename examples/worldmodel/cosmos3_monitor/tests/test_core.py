@@ -311,3 +311,73 @@ def test_step_detail_reports_each_stage_and_mfu(tmp_path):
     assert stages["backward"]["flops"] == pytest.approx(stages["forward"]["flops"] * 3)
     assert detail["total_mfu"] is not None and detail["total_mfu"] > 0
     assert state.step_detail(99) is None
+
+
+def test_throughput_store_reports_rank_and_node_rates():
+    from examples.worldmodel.cosmos3_monitor.series import ThroughputStore
+
+    store = ThroughputStore()
+    now = time.time()
+    store.ingest(0, "nodeA", 1, 8, 1.0, now)
+    store.ingest(1, "nodeA", 1, 8, 1.2, now)
+    store.ingest(2, "nodeB", 1, 8, 1.5, now)
+    host_ranks = {"nodeA": [0, 1], "nodeB": [2]}
+    store.finalize_pending(host_ranks, 3, now)
+    view = store.step_view(1, host_ranks)
+    nodes = {node["host"]: node for node in view["nodes"]}
+    assert nodes["nodeA"]["samples"] == 16
+    assert nodes["nodeA"]["step_s"] == 1.2
+    assert nodes["nodeA"]["throughput"] == pytest.approx(16 / 1.2)
+    assert nodes["nodeB"]["throughput"] == pytest.approx(8 / 1.5)
+    assert view["total"] == pytest.approx(24 / 1.5)
+    assert len(view["ranks"]) == 3
+    series = store.series("nodes", max_points=100)
+    assert set(series) == {"nodeA", "nodeB"}
+
+
+def test_step_detail_includes_per_rank_throughput(tmp_path):
+    run = make_run(tmp_path, world=2, steps=3, completed=True)
+    metrics = run / "metrics"
+    for rank in range(2):
+        rows = [
+            {
+                "type": "record",
+                "schema": 1,
+                "step": step,
+                "rank": rank,
+                "time": time.time(),
+                "data": {"samples": 4, "epoch": 0},
+                "perf": {"step_ms": 1000.0 + rank * 100},
+            }
+            for step in range(1, 4)
+        ]
+        write_lines(metrics / f"rank-{rank:03d}.jsonl", rows)
+    ref = discover([run])[0]
+    state = RunState(ref)
+    state.refresh()
+    detail = state.step_detail(2)
+    throughput = detail["throughput"]
+    assert len(throughput["ranks"]) == 2
+    assert throughput["nodes"][0]["host"] == "nodeA"
+    assert throughput["nodes"][0]["samples"] == 8
+    assert throughput["nodes"][0]["step_s"] == pytest.approx(1.1)
+    assert throughput["total"] == pytest.approx(8 / 1.1)
+
+
+def test_running_run_reports_throughput_based_eta(tmp_path):
+    run = make_run(tmp_path, world=1, steps=3, completed=False, fresh=True)
+    metrics = run / "metrics"
+    # Remove the partial-step marker and let the run look live: heartbeats exist, no terminal files.
+    for path in metrics.glob("terminal-*.json"):
+        path.unlink()
+    manifest = json.loads((metrics / "run.json").read_text())
+    manifest["args"]["max_iter"] = 10
+    write_json(metrics / "run.json", manifest)
+    ref = discover([run])[0]
+    state = RunState(ref)
+    state.refresh()
+    snapshot = state.snapshot()
+    assert snapshot["eta_s"] is not None and snapshot["eta_s"] > 0
+    assert snapshot["eta_source"] == "throughput"
+    assert snapshot["elapsed_s"] is not None
+    assert snapshot["total_s"] == pytest.approx(snapshot["elapsed_s"] + snapshot["eta_s"])

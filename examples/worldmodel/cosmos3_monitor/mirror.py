@@ -73,7 +73,7 @@ class Mirror:
         atomic_write_json(self.state_path, self.state)
 
     def _node_state(self, node: str) -> Dict[str, Any]:
-        return self.state["nodes"].setdefault(node, {"aggregated": 0, "checkpoints": 0, "system": {}})
+        return self.state["nodes"].setdefault(node, {"aggregated": 0, "checkpoints": 0, "system": {}, "ranks": {}})
 
     def _agent_path(self) -> str:
         return self.remote_repo + "/examples/worldmodel/cosmos3_monitor/remote_agent.py"
@@ -85,6 +85,7 @@ class Mirror:
             "aggregated": state.get("aggregated", 0),
             "checkpoints": state.get("checkpoints", 0),
             "system": state.get("system") or {},
+            "ranks": state.get("ranks") or {},
         }
         remote_command = shlex.join(
             [
@@ -143,7 +144,7 @@ class Mirror:
                         path.unlink()
                     except OSError:
                         pass
-                for pattern in ("heartbeat-*.json", "terminal-*.json", "run.json", "summary.json"):
+                for pattern in ("heartbeat-*.json", "terminal-*.json", "run.json", "summary.json", "rank-*.jsonl"):
                     for path in self.metrics.glob(pattern):
                         try:
                             path.unlink()
@@ -152,6 +153,7 @@ class Mirror:
                 state["aggregated"] = 0
                 state["checkpoints"] = 0
                 state["system"] = {}
+                state["ranks"] = {}
             if incoming:
                 state["run_id"] = incoming
         for name, value in files.items():
@@ -172,8 +174,10 @@ class Mirror:
         self._append_delta(self.metrics / "checkpoints.jsonl", payload.get("checkpoints"), state, "checkpoints")
         for name, chunk in (payload.get("system") or {}).items():
             system_state = state.setdefault("system", {})
-            int(system_state.get(name, 0))
             self._append_delta(self.metrics / "system" / name, chunk, system_state, name, offset_key=None)
+        for name, chunk in (payload.get("ranks") or {}).items():
+            rank_state = state.setdefault("ranks", {})
+            self._append_delta(self.metrics / name, chunk, rank_state, name, offset_key=None)
 
     def _append_delta(
         self,

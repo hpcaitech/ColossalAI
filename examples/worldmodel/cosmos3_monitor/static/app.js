@@ -19,6 +19,7 @@ const state = {
   checkpoints: null,
   system: null,
   ranks: null,
+  throughput: null,
   alerts: null,
   charts: new Map(),
   stream: null,
@@ -224,6 +225,18 @@ function line(name, points, color, extra = {}) {
   }, extra);
 }
 
+function pointsFromItem(item) {
+  if (!item || !Array.isArray(item.x)) return [];
+  let pairs = item.x.map((x, i) => [x, item.y[i]]).filter((pair) => pair[1] != null);
+  if (state.range && state.xMode === 'step' && pairs.length) {
+    const last = Math.max(...pairs.map((pair) => pair[0]));
+    pairs = pairs.filter((pair) => pair[0] >= last - state.range + 1);
+  } else if (state.range && state.xMode === 'time' && pairs.length) {
+    pairs = pairs.slice(-state.range);
+  }
+  return pairs;
+}
+
 function pointsOf(series, key) {
   const item = series && series[key];
   if (!item) return [];
@@ -349,8 +362,74 @@ function renderStepChart(id = 'chart-step') {
 
 function renderThroughputChart(id = 'chart-throughput') {
   if (!state.series) return;
+  const p = palette();
   const option = baseOption();
-  option.series = [line('throughput', pointsOf(state.series, 'perf/samples_per_s'), palette()[2])];
+  option.series = [
+    line('total', pointsOf(state.series, 'perf/samples_per_s'), p[0], { lineStyle: { width: 2.5, color: p[0] } }),
+  ];
+  const nodes = (state.throughput && state.throughput.nodes) || {};
+  Object.keys(nodes).sort().forEach((host, index) => {
+    option.series.push(line(host, pointsFromItem(nodes[host]), p[(index + 1) % p.length], {
+      lineStyle: { width: 1.2, color: p[(index + 1) % p.length] },
+    }));
+  });
+  makeChart(id, option);
+}
+
+function renderRankHeatmap(id = 'chart-rank-heat') {
+  const ranks = (state.throughput && state.throughput.ranks) || {};
+  const keys = Object.keys(ranks).map(Number).sort((a, b) => a - b);
+  if (!keys.length) return;
+  const rankIndex = new Map(keys.map((rank, index) => [rank, index]));
+  const data = [];
+  let maximum = 0;
+  for (const rank of keys) {
+    for (const [x, y] of pointsFromItem(ranks[rank])) {
+      data.push([x, rankIndex.get(rank), y]);
+      if (y > maximum) maximum = y;
+    }
+  }
+  if (!data.length) return;
+  const option = {
+    backgroundColor: 'transparent',
+    animation: false,
+    textStyle: { color: css('--text-2'), fontSize: 11 },
+    grid: { left: 54, right: 78, top: 18, bottom: 34 },
+    tooltip: {
+      trigger: 'item',
+      backgroundColor: css('--surface'),
+      borderColor: css('--border-strong'),
+      textStyle: { color: css('--text'), fontSize: 11 },
+      formatter: (params) => `rank ${keys[params.value[1]]} · step ${params.value[0]}<br>${num(params.value[2], 2)} samples/s`,
+    },
+    xAxis: {
+      type: 'value',
+      minInterval: state.xMode === 'step' ? 1 : null,
+      axisLine: { lineStyle: { color: css('--grid') } },
+      axisLabel: {
+        color: css('--muted'), fontSize: 10,
+        formatter: state.xMode === 'step' ? (v) => (v >= 1000 ? `${v / 1000}k` : v) : (v) => elapsed(v),
+      },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: keys.map(String),
+      axisLine: { lineStyle: { color: css('--grid') } },
+      axisLabel: { color: css('--muted'), fontSize: 10, interval: 'auto' },
+      splitLine: { show: false },
+    },
+    visualMap: {
+      min: 0, max: maximum || 1, calculable: true, orient: 'vertical', right: 0, top: 18, bottom: 18,
+      inRange: { color: ['#cde2fb', '#3987e5', '#0d366b'] },
+      textStyle: { color: css('--muted'), fontSize: 10 },
+    },
+    dataZoom: [{ type: 'inside', filterMode: 'none' }],
+    series: [{
+      type: 'heatmap', data, progressive: 2000,
+      emphasis: { itemStyle: { borderColor: css('--text'), borderWidth: 1 } },
+    }],
+  };
   makeChart(id, option);
 }
 
@@ -628,13 +707,15 @@ async function loadRunData() {
   if (state.token !== token) return;
   state.run = detail;
   state.manifest = detail.manifest || null;
-  const [series, events, checkpoints, alerts, system, ranks] = await Promise.all([
+  const [series, events, checkpoints, alerts, system, ranks, nodeThroughput, rankThroughput] = await Promise.all([
     api(`/api/runs/${token}/series?keys=${encodeURIComponent(SERIES_KEYS)}&max_points=5000&x=${state.xMode}`).catch(() => null),
     api(`/api/runs/${token}/events?limit=400`).catch(() => ({ events: [] })),
     api(`/api/runs/${token}/checkpoints`).catch(() => null),
     api(`/api/runs/${token}/alerts`).catch(() => null),
     api(`/api/runs/${token}/system`).catch(() => null),
     api(`/api/runs/${token}/ranks`).catch(() => null),
+    api(`/api/runs/${token}/throughput?source=nodes&x=${state.xMode}&max_points=5000`).catch(() => null),
+    api(`/api/runs/${token}/throughput?source=ranks&x=${state.xMode}&max_points=2000`).catch(() => null),
   ]);
   if (state.token !== token) return;
   state.series = series ? series.series : null;
@@ -643,6 +724,10 @@ async function loadRunData() {
   state.alerts = alerts;
   state.system = system;
   state.ranks = ranks;
+  state.throughput = {
+    nodes: (nodeThroughput && nodeThroughput.series) || {},
+    ranks: (rankThroughput && rankThroughput.series) || {},
+  };
 }
 
 async function refreshDetailQuiet() {
@@ -676,6 +761,14 @@ function updateHeaderMeta() {
   if (step) step.textContent = `${int(run.step)}${run.max_steps ? ` / ${int(run.max_steps)}` : ''}`;
   const label = $('#run-progress-label');
   if (label) label.textContent = run.progress != null ? `${(progress * 100).toFixed(1)}%` : '';
+  const etaLine = $('#run-eta');
+  if (etaLine) {
+    const eta = run.eta_s != null ? duration(run.eta_s) : '—';
+    const elapsed = run.elapsed_s != null ? duration(run.elapsed_s) : '—';
+    const total = run.total_s != null ? duration(run.total_s) : '—';
+    const finish = run.completion_at ? clock(run.completion_at) : '—';
+    etaLine.textContent = `elapsed ${elapsed} · ETA ${eta}${run.eta_source ? ` (${run.eta_source})` : ''} · total ${total} · finish ${finish}`;
+  }
 }
 
 function runCrumbs() {
@@ -705,6 +798,7 @@ function renderRunHeader() {
     ${alertBanner}
     <div class="card" style="margin-bottom:14px">
       <div class="bar-row"><div class="progress"><span id="run-progress" style="width:${(progress * 100).toFixed(1)}%"></span></div><strong id="run-step">${int(step)}${total ? ` / ${int(total)}` : ''}</strong><span class="muted small" id="run-progress-label">${progress ? `${(progress * 100).toFixed(1)}%` : ''}</span></div>
+      <div class="hint-inline" id="run-eta" style="margin-top:6px"></div>
       <div class="grid k4" style="margin-top:12px" id="kpis"></div>
     </div>
     <div class="tabs" id="tabs">
@@ -738,7 +832,7 @@ function renderKpis() {
     ['HBM', last.device_used_gib != null ? `${num(last.device_used_gib, 1)}<small>/${num(last.device_total_gib, 1)} GiB</small>` : '—', last.hbm_fraction != null ? pct(last.hbm_fraction, 0) : ''],
     ['Ranks', `${int(state.run.live_ranks)}<small>/${int(state.run.world)} live</small>`, `${int(state.run.terminal_ranks)} terminal`],
     ['Checkpoints', `${int(state.run.checkpoints && state.run.checkpoints.count)}`, state.run.checkpoints && state.run.checkpoints.last ? `step ${int(state.run.checkpoints.last.step)}` : 'none yet'],
-    ['Elapsed / ETA', duration(state.run.eta_s != null ? state.run.eta_s : null), state.run.started_at ? `since ${clock(state.run.started_at)}` : ''],
+    ['Elapsed / ETA', state.run.eta_s != null ? duration(state.run.eta_s) : '—', `elapsed ${duration(state.run.elapsed_s)} · total ${duration(state.run.total_s)}${state.run.completion_at ? ` · finish ${clock(state.run.completion_at)}` : ''}`],
   ];
   el.innerHTML = kpis.map(([label, value, hint]) => `<div class="kpi"><div class="label">${esc(label)}</div><div class="value">${value}</div><div class="hint">${hint.startsWith('<a ') ? hint : esc(hint)}</div></div>`).join('');
   document.querySelectorAll('.step-link').forEach((link) => {
@@ -829,7 +923,8 @@ function renderCharts(body) {
       <div class="card"><div class="chart-head"><h2>Loss</h2><span class="unit">loss</span></div><div id="chart-loss" class="chart tall"></div></div>
       <div class="card"><div class="chart-head"><h2>Step time</h2><span class="unit">seconds</span></div><div id="chart-step" class="chart tall"></div></div>
       <div class="card"><div class="chart-head"><h2>Stage MFU</h2><span class="unit">% · forward / backward / VAE</span></div><div id="chart-stage-mfu" class="chart"></div></div>
-      <div class="card"><div class="chart-head"><h2>Throughput</h2><span class="unit">samples/s</span></div><div id="chart-throughput" class="chart"></div></div>
+      <div class="card"><div class="chart-head"><h2>Throughput</h2><span class="unit">samples/s · total + per node</span></div><div id="chart-throughput" class="chart"></div></div>
+      <div class="card"><div class="chart-head"><h2>Rank throughput</h2><span class="unit">samples/s · rank × step</span></div><div id="chart-rank-heat" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>MFU</h2><span class="unit">% of step</span></div><div id="chart-mfu" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Learning rate</h2><span class="unit">lr</span></div><div id="chart-lr" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Gradient norm</h2><span class="unit">norm</span></div><div id="chart-grad" class="chart"></div></div>
@@ -838,7 +933,7 @@ function renderCharts(body) {
       <div class="card"><div class="chart-head"><h2>Batch / tokens per step</h2><span class="unit">log count</span></div><div id="chart-data" class="chart"></div></div>
       <div class="card"><div class="chart-head"><h2>Epoch</h2><span class="unit">data.epoch</span></div><div id="chart-epoch" class="chart"></div></div>
     </div>`;
-  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderMfuChart();
+  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderRankHeatmap(); renderMfuChart();
   renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
   for (const chart of state.charts.values()) chart.group = 'cosmos3-run';
   connectCharts();
@@ -868,7 +963,7 @@ function renderCharts(body) {
 
 function refreshCharts() {
   if (!state.series) return;
-  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderMfuChart();
+  renderLossChart(); renderStepChart(); renderStageMfuChart(); renderThroughputChart(); renderRankHeatmap(); renderMfuChart();
   renderLrChart(); renderGradChart(); renderMemoryChart(); renderSkewChart(); renderDataChart(); renderEpochChart();
 }
 
@@ -895,6 +990,17 @@ function closeStepDetail() {
   const backdrop = document.getElementById('drawer-backdrop');
   if (drawer) { drawer.classList.remove('open'); drawer.setAttribute('aria-hidden', 'true'); }
   if (backdrop) backdrop.hidden = true;
+}
+
+function renderStepThroughput(throughput) {
+  if (!throughput) return '';
+  const nodes = throughput.nodes || [];
+  const ranks = throughput.ranks || [];
+  const nodeRows = nodes.map((node) => `<tr><td>${esc(node.host)}</td><td class="num">${node.ranks.length}</td><td class="num">${int(node.samples)}</td><td class="num">${num(node.step_s, 3)}</td><td class="num">${num(node.throughput, 2)}</td><td>${node.complete ? '<span class="chip ok">complete</span>' : '<span class="chip warn">partial</span>'}</td></tr>`).join('');
+  const rankRows = ranks.map((rank) => `<tr><td class="num">${int(rank.rank)}</td><td>${esc(rank.host)}</td><td class="num">${int(rank.samples)}</td><td class="num">${num(rank.step_s, 3)}</td><td class="num">${num(rank.throughput, 2)}</td></tr>`).join('');
+  return `<div class="card" style="margin-top:14px"><div class="card-head"><h2>Throughput by node</h2><span class="muted small">sum(samples) / slowest rank step</span></div>
+    <table class="table"><thead><tr><th>node</th><th class="num">ranks</th><th class="num">samples</th><th class="num">step s</th><th class="num">samples/s</th><th>状态</th></tr></thead><tbody>${nodeRows || '<tr><td colspan="6" class="muted">没有 rank 数据</td></tr>'}</tbody></table></div>
+    <details class="config" style="margin-top:8px"><summary>Per-rank throughput · ${ranks.length} ranks</summary><table class="table"><thead><tr><th class="num">rank</th><th>node</th><th class="num">samples</th><th class="num">step s</th><th class="num">samples/s</th></tr></thead><tbody>${rankRows || '<tr><td colspan="5" class="muted">没有 rank 数据</td></tr>'}</tbody></table></details>`;
 }
 
 function renderStepDrawer() {

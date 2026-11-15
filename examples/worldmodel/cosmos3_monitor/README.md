@@ -94,9 +94,9 @@ Run one collector per node. There is no shared state between them; the shared ru
 ## What the pages show
 
 - **Runs** — status, progress, last loss/step time/throughput/MFU/HBM, loss sparkline, alert count, age.
-- **Overview** — KPI tiles for iteration, epoch, batch, loss, step time, throughput, MFU, HBM, ranks and checkpoints; loss/step-time charts; recent events; recent checkpoints; a compact run-info card.
-- **Charts** — loss, step-time breakdown, per-stage MFU (forward / backward / VAE), throughput, MFU, LR, grad norm, memory, rank skew, batch/tokens and epoch. Step axes are integer-only; an elapsed-time axis is available. Toolbar: step/time axis, range, EMA smoothing, event/checkpoint annotations, log-y and zoom reset. Charts share zoom and crosshair; clicking a point opens the step detail.
-- **Step detail** — opened from a chart point, a Records row or the iteration KPI. Shows iteration, epoch, global batch, micro-batch × accumulation, total and per-stage time/share/MFU/FLOPs, loss, optimizer and memory for that step, with previous/next navigation.
+- **Overview** — KPI tiles for iteration, epoch, batch, loss, step time, throughput, MFU, HBM, ranks and checkpoints; elapsed / ETA / total / finish-time line; loss/step-time charts; recent events; recent checkpoints; a compact run-info card. ETA uses the recent throughput (samples/s) and recent batch size, and total time is elapsed + ETA.
+- **Charts** — loss, step-time breakdown, per-stage MFU (forward / backward / VAE), total + per-node throughput, rank × step throughput heatmap, MFU, LR, grad norm, memory, rank skew, batch/tokens and epoch. Step axes are integer-only; an elapsed-time axis is available. Toolbar: step/time axis, range, EMA smoothing, event/checkpoint annotations, log-y and zoom reset. Charts share zoom and crosshair; clicking a point opens the step detail.
+- **Step detail** — opened from a chart point, a Records row or the iteration KPI. Shows iteration, epoch, global batch, micro-batch × accumulation, total and per-stage time/share/MFU/FLOPs, per-node and per-rank throughput, loss, optimizer and memory for that step, with previous/next navigation.
 - **Records** — one row per aggregated log step (iteration, epoch, batch, loss, LR, grad, time, throughput, HBM, skew) with CSV export.
 - **Config** — the full manifest as a searchable tree; copy/download; diff against another run.
 - **Topology** — node × card grid with rank, phase, HBM and temperature; parallel group table.

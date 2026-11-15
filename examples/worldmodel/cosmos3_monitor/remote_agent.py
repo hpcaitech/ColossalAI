@@ -107,6 +107,10 @@ def collect(
     system_offsets = offsets.get("system") or {}
     for path in sorted((metrics_dir / "system").glob("node-*.jsonl")):
         system[path.name] = _tail(path, int(system_offsets.get(path.name, 0)))
+    ranks = {}
+    rank_offsets = offsets.get("ranks") or {}
+    for path in sorted(metrics_dir.glob("rank-*.jsonl")):
+        ranks[path.name] = _tail(path, int(rank_offsets.get(path.name, 0)))
     log_chunk = {"offset": 0, "size": 0, "data": ""}
     if log_path:
         log_file = Path(log_path)
@@ -127,6 +131,7 @@ def collect(
         "aggregated": aggregated,
         "checkpoints": checkpoints,
         "system": system,
+        "ranks": ranks,
         "processes": _processes(entry, out),
         "metrics_dir": str(metrics_dir),
         "log": log_chunk,

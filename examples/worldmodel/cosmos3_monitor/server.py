@@ -173,6 +173,17 @@ def create_app(store: RunStore) -> FastAPI:
         data = store.system(token, host=host)
         return _envelope(data)
 
+    @app.get("/api/runs/{token}/throughput")
+    def throughput(
+        token: str,
+        source: str = "nodes",
+        x: str = "step",
+        max_points: int = Query(5000, ge=10, le=200000),
+    ):
+        _require(store, token)
+        data = store.throughput(token, source=source, x_axis="time" if x == "time" else "step", max_points=max_points)
+        return _envelope({"source": source, "x": x, "series": data})
+
     @app.get("/api/runs/{token}/steps/{step}")
     def step_detail(token: str, step: int):
         _require(store, token)

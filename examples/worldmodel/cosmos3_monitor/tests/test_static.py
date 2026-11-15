@@ -34,3 +34,12 @@ def test_charts_use_integer_step_ticks_and_expose_step_detail():
     assert "chart-epoch" in source
     assert "compare-selected" in source
     assert "pause-toggle" in (STATIC / "index.html").read_text(encoding="utf-8")
+
+
+def test_throughput_views_are_wired():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "function renderRankHeatmap" in source
+    assert "function renderStepThroughput" in source
+    assert "/throughput?source=nodes" in source
+    assert "/throughput?source=ranks" in source
+    assert 'id="run-eta"' in source

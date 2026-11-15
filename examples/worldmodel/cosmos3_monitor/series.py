@@ -372,3 +372,131 @@ def stage_metrics(record: Dict[str, Any], world: int, activation_checkpointing: 
         "memory": _get(record, "mem"),
         "complete": record.get("complete"),
     }
+
+
+class ThroughputStore:
+    """Per-rank and per-node sample throughput, bounded so a long run stays cheap to serve.
+
+    A node's throughput is the sum of its ranks' samples divided by the slowest rank's step time on that node:
+    the node waited for that rank.  The total throughput remains the rank-0 aggregated ``perf/samples_per_s``.
+    """
+
+    def __init__(self, max_points: int = 5000, max_steps: int = 4000) -> None:
+        self.max_points = int(max_points)
+        self.max_steps = int(max_steps)
+        self.rank_points: Dict[int, List[List[float]]] = {}
+        self.node_points: Dict[str, List[List[float]]] = {}
+        self.step_ranks: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        self.step_nodes: Dict[int, Dict[str, Dict[str, Any]]] = {}
+        self.pending: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        self.first_seen: Dict[int, float] = {}
+
+    def _append(self, table: Dict[Any, List[List[float]]], key: Any, step: float, value: float) -> None:
+        points = table.setdefault(key, [])
+        points.append([step, value])
+        if len(points) > self.max_points:
+            del points[: len(points) - self.max_points]
+
+    def ingest(self, rank: int, host: str, step: int, samples: float, step_s: float, now: float) -> None:
+        if not step_s or step_s <= 0:
+            return
+        entry = {
+            "rank": int(rank),
+            "host": host,
+            "step": int(step),
+            "samples": float(samples),
+            "step_s": float(step_s),
+            "throughput": float(samples) / float(step_s),
+        }
+        self.pending.setdefault(int(step), {})[int(rank)] = entry
+        self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
+        self.first_seen.setdefault(int(step), now)
+        self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+
+    def finalize(self, step: int, host_ranks: Dict[str, List[int]], world: int, *, force: bool = False) -> None:
+        pending = self.pending.get(int(step))
+        if not pending:
+            return
+        expected = max(int(world or 0), len(pending))
+        if len(pending) < expected and not force:
+            return
+        nodes = self.step_nodes.setdefault(int(step), {})
+        for host, ranks in host_ranks.items():
+            entries = [pending[rank] for rank in ranks if rank in pending]
+            if not entries:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max(entry["step_s"] for entry in entries)
+            if step_s <= 0:
+                continue
+            node = {
+                "host": host,
+                "step": int(step),
+                "ranks": [entry["rank"] for entry in entries],
+                "samples": samples,
+                "step_s": step_s,
+                "throughput": samples / step_s,
+                "complete": len(entries) == len(ranks),
+            }
+            nodes[host] = node
+            self._append(self.node_points, host, int(step), node["throughput"])
+        self.pending.pop(int(step), None)
+        self.first_seen.pop(int(step), None)
+        self._trim_steps()
+
+    def finalize_pending(self, host_ranks: Dict[str, List[int]], world: int, now: float, timeout: float = 30.0) -> None:
+        for step in list(self.pending):
+            pending = self.pending[step]
+            if len(pending) >= max(int(world or 0), 1):
+                self.finalize(step, host_ranks, world)
+            elif now - self.first_seen.get(step, now) > timeout:
+                self.finalize(step, host_ranks, world, force=True)
+
+    def _trim_steps(self) -> None:
+        if len(self.step_ranks) <= self.max_steps:
+            return
+        keep = set(sorted(self.step_ranks)[-self.max_steps :])
+        for step in [step for step in self.step_ranks if step not in keep]:
+            self.step_ranks.pop(step, None)
+            self.step_nodes.pop(step, None)
+
+    def step_view(self, step: int, host_ranks: Dict[str, List[int]]) -> Dict[str, Any]:
+        step = int(step)
+        ranks = sorted(self.step_ranks.get(step, {}).values(), key=lambda item: item["rank"])
+        nodes = self.step_nodes.get(step) or {}
+        if not nodes and ranks:
+            # A partial step may not have been finalized; derive the node rows from the ranks we have.
+            derived: Dict[str, Dict[str, Any]] = {}
+            for host, expected in host_ranks.items():
+                entries = [entry for entry in ranks if entry["host"] == host]
+                if not entries:
+                    continue
+                samples = sum(entry["samples"] for entry in entries)
+                step_s = max(entry["step_s"] for entry in entries)
+                derived[host] = {
+                    "host": host,
+                    "step": step,
+                    "ranks": [entry["rank"] for entry in entries],
+                    "samples": samples,
+                    "step_s": step_s,
+                    "throughput": samples / step_s if step_s else None,
+                    "complete": len(entries) == len(expected),
+                }
+            nodes = derived
+        return {
+            "ranks": ranks,
+            "nodes": sorted(nodes.values(), key=lambda item: item["host"]),
+            "total": (
+                (sum(entry["samples"] for entry in ranks) / max((entry["step_s"] for entry in ranks), default=0.0))
+                if ranks
+                else None
+            ),
+        }
+
+    def series(self, source: str, max_points: int) -> Dict[str, Any]:
+        table = self.node_points if source == "nodes" else self.rank_points
+        result: Dict[str, Any] = {}
+        for key, points in sorted(table.items(), key=lambda item: str(item[0])):
+            xs, ys = _decimate([(point[0], point[1]) for point in points[-max_points:]], max_points)
+            result[str(key)] = {"x": xs, "y": ys, "total": len(points)}
+        return result

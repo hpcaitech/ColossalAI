@@ -20,7 +20,7 @@ from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
-from .series import SeriesStore, stage_metrics
+from .series import SeriesStore, ThroughputStore, stage_metrics
 from .system import SystemHistory, read_system_files
 
 STALE_SECONDS = 15.0
@@ -71,6 +71,7 @@ class RunState:
         self.terminal_files: Dict[int, JsonFile] = {}
         self.launcher_files: Dict[str, JsonFile] = {}
         self.series = SeriesStore()
+        self.throughput = ThroughputStore()
         self.system = SystemHistory()
         self.events: Deque[Dict[str, Any]] = deque(maxlen=4000)
         self.checkpoints: Dict[str, Dict[str, Any]] = {}
@@ -127,6 +128,7 @@ class RunState:
             self.checkpoint_tail.reset()
             self.summary = None
             self._last_record = None
+            self.throughput = ThroughputStore()
             self.system = SystemHistory()
         self._run_id = run_id or self._run_id
         self._world = world_size(self._manifest) or self._world
@@ -136,8 +138,7 @@ class RunState:
         self._errors = []
         try:
             self._read_aggregated()
-            if not self._aggregated_seen:
-                self._read_rank_fallback(now)
+            self._read_rank_files(now)
             self._read_heartbeats()
             self._read_terminals()
             self._read_launchers()
@@ -186,16 +187,16 @@ class RunState:
             elif kind == "summary":
                 self.summary = record.get("summary") or record
 
-    def _read_rank_fallback(self, now: float) -> None:
-        """Aggregate per-rank files when a run predates ``aggregated.jsonl``.
+    def _read_rank_files(self, now: float) -> None:
+        """Tail every rank file: it is both the legacy aggregate source and the per-rank throughput source.
 
-        A step is published when every expected rank has written it, or, if the run is old enough, when a
-        later step has appeared.  The latter is a partial view and is marked ``complete: false``, exactly as
-        the training-side aggregator does.
+        Only the last 512 KiB of each rank file is read when the monitor first sees it, so opening a
+        100k-step run does not parse the whole history.  Live tails continue from there.
         """
         paths = sorted(self.ref.metrics_dir.glob("rank-*.jsonl"))
         if not paths:
             return
+        rank_hosts = self._rank_hosts()
         for path in paths:
             try:
                 rank = int(path.stem.split("-")[-1])
@@ -203,10 +204,15 @@ class RunState:
                 continue
             tail = self.rank_tails.get(rank)
             if tail is None:
-                tail = self.rank_tails[rank] = JsonlTail(path)
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    size = 0
+                tail = self.rank_tails[rank] = JsonlTail(path, offset=max(0, size - 512 * 1024))
             for record in tail.read_new():
                 if record.get("type") == "event":
-                    self._add_event(record)
+                    if not self._aggregated_seen:
+                        self._add_event(record)
                     continue
                 if record.get("type") != "record":
                     continue
@@ -214,8 +220,19 @@ class RunState:
                     step = int(record.get("step"))
                 except (TypeError, ValueError):
                     continue
-                self.pending_ranks.setdefault(step, {})[rank] = record
+                if not self._aggregated_seen:
+                    self.pending_ranks.setdefault(step, {})[rank] = record
+                samples = _num(record.get("data", {}).get("samples"))
+                if samples is None:
+                    samples = _num(record.get("data", {}).get("partial_samples"))
+                step_ms = _num(record.get("perf", {}).get("step_ms"))
+                if samples is not None and step_ms:
+                    self.throughput.ingest(rank, rank_hosts.get(rank, "unknown"), step, samples, step_ms / 1e3, now)
         world = self._world or (max(self.rank_tails) + 1 if self.rank_tails else 0)
+        host_ranks = self._host_rank_map()
+        self.throughput.finalize_pending(host_ranks, world, now)
+        if self._aggregated_seen:
+            return
         for step in sorted(list(self.pending_ranks)):
             records = self.pending_ranks[step]
             if world and set(records) >= set(range(world)):
@@ -224,6 +241,44 @@ class RunState:
                 self._fallback_partial_at.setdefault(step, now)
                 if any(later > step for later in self.pending_ranks):
                     self._publish_fallback(step, records, complete=False)
+
+    def _host_rank_map(self) -> Dict[str, List[int]]:
+        host_ranks: Dict[str, List[int]] = {}
+        for row in derive_topology(self._manifest, self.world):
+            host = row.get("hostname")
+            rank = row.get("rank")
+            if host is not None and rank is not None:
+                host_ranks.setdefault(str(host), []).append(int(rank))
+        for rank, heartbeat in self.latest_heartbeats().items():
+            host = heartbeat.get("hostname")
+            if host and all(rank not in ranks for ranks in host_ranks.values()):
+                host_ranks.setdefault(str(host), []).append(int(rank))
+        for ranks in host_ranks.values():
+            ranks.sort()
+        return host_ranks
+
+    def _rank_hosts(self) -> Dict[int, str]:
+        return {rank: host for host, ranks in self._host_rank_map().items() for rank in ranks}
+
+    def throughput_series(self, source: str, x_axis: str = "step", max_points: int = 5000) -> Dict[str, Any]:
+        data = self.throughput.series("nodes" if source == "nodes" else "ranks", max_points)
+        if x_axis != "time":
+            return data
+        times = {int(record.get("step", -1)): _num(record.get("time")) for record in self.series.records}
+        values = [value for value in times.values() if value is not None]
+        if not values:
+            return data
+        base = min(values)
+        for item in data.values():
+            xs, ys = [], []
+            for x, y in zip(item.get("x", []), item.get("y", [])):
+                timestamp = times.get(int(x))
+                if timestamp is None:
+                    continue
+                xs.append(timestamp - base)
+                ys.append(y)
+            item["x"], item["y"] = xs, ys
+        return data
 
     def _publish_fallback(self, step: int, records: Dict[int, Dict[str, Any]], complete: bool) -> None:
         values = list(records.values())
@@ -735,7 +790,52 @@ class RunState:
         max_steps = self.max_steps
         step_s = self.series.latest_value("perf/step_s")
         median = self._median_step_s()
-        eta_s = (max_steps - step) * median if max_steps and median and step < max_steps else None
+        recent_tp = [value for value in self.series.series["perf/samples_per_s"].y[-20:] if value and value > 0]
+        recent_batch = [value for value in self.series.series["data/samples"].y[-20:] if value and value > 0]
+        recent_throughput = statistics.median(recent_tp) if recent_tp else None
+        recent_batch_median = statistics.median(recent_batch) if recent_batch else None
+        remaining_steps = max(0, max_steps - step) if max_steps else 0
+        completed_now = self.state(now) == "completed"
+        eta_s = None
+        eta_source = None
+        if completed_now:
+            eta_s, eta_source = 0.0, "completed"
+        elif max_steps and remaining_steps:
+            if recent_throughput and recent_batch_median:
+                eta_s = remaining_steps * recent_batch_median / recent_throughput
+                eta_source = "throughput"
+            elif median:
+                eta_s = remaining_steps * median
+                eta_source = "step_time"
+        summary_duration = _num((self.summary or {}).get("duration_s")) if isinstance(self.summary, dict) else None
+        first_time = _num(self.series.records[0].get("time")) if self.series.records else None
+        last_time = _num(self.series.records[-1].get("time")) if self.series.records else None
+        terminal_times = [_num(terminal.get("time")) for terminal in terminals.values()]
+        terminal_times = [value for value in terminal_times if value is not None]
+        end_time = max(terminal_times) if terminal_times else last_time
+        run_meta = self._manifest.get("run") if isinstance(self._manifest.get("run"), dict) else {}
+        process_started = _num(run_meta.get("process_started_at"))
+        if completed_now and process_started is not None and end_time is not None:
+            elapsed_s = max(0.0, end_time - process_started)
+        elif completed_now and summary_duration is not None:
+            elapsed_s = summary_duration
+        elif completed_now and first_time is not None and last_time is not None:
+            elapsed_s = max(0.0, last_time - first_time)
+        elif not completed_now and process_started is not None:
+            elapsed_s = max(0.0, now - process_started)
+        elif self._started_at is not None:
+            elapsed_s = max(0.0, now - self._started_at)
+        elif first_time is not None and last_time is not None:
+            elapsed_s = max(0.0, last_time - first_time)
+        else:
+            elapsed_s = None
+        total_s = elapsed_s + eta_s if elapsed_s is not None and eta_s is not None else None
+        if completed_now:
+            completion_at = end_time or (
+                process_started + elapsed_s if process_started is not None and elapsed_s is not None else now
+            )
+        else:
+            completion_at = now + eta_s if eta_s is not None else None
         loss = self.series.latest_value("loss/total")
         device_used = self.series.latest_value("mem/device_used_gib")
         device_total = self.series.latest_value("mem/device_total_gib")
@@ -765,6 +865,12 @@ class RunState:
             "max_steps": max_steps,
             "progress": (step / max_steps) if max_steps else None,
             "eta_s": eta_s,
+            "eta_source": eta_source,
+            "elapsed_s": elapsed_s,
+            "total_s": total_s,
+            "completion_at": completion_at,
+            "recent_throughput": recent_throughput,
+            "recent_batch": recent_batch_median,
             "epoch": self.series.latest_value("data/epoch"),
             "last": {
                 "step": step,
@@ -875,6 +981,7 @@ class RunState:
                 "micro_batch_samples": args.get("samples_per_rank"),
                 "grad_accum": args.get("grad_accum"),
                 "effective_global_batch": self._manifest.get("effective_global_batch"),
+                "throughput": self.throughput.step_view(int(step), self._host_rank_map()),
                 "record": record,
             }
         )

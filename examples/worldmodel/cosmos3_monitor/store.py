@@ -213,6 +213,15 @@ class RunStore:
         with state.lock:
             return state.system.snapshot(host)
 
+    def throughput(
+        self, token: str, source: str = "nodes", x_axis: str = "step", max_points: int = 5000
+    ) -> Optional[Dict[str, Any]]:
+        state = self.get(token)
+        if state is None:
+            return None
+        with state.lock:
+            return state.throughput_series(source, x_axis, max_points)
+
     def step_detail(self, token: str, step: int) -> Optional[Dict[str, Any]]:
         state = self.get(token)
         if state is None:
