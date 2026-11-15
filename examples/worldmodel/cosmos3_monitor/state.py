@@ -20,7 +20,7 @@ from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
-from .series import SeriesStore, ThroughputStore, stage_metrics
+from .series import SeriesStore, ThroughputStore, compute_mfu, stage_metrics
 from .system import SystemHistory, read_system_files
 
 STALE_SECONDS = 15.0
@@ -810,6 +810,13 @@ class RunState:
         recent_batch = [value for value in self.series.series["data/samples"].y[-20:] if value and value > 0]
         recent_throughput = statistics.median(recent_tp) if recent_tp else None
         recent_batch_median = statistics.median(recent_batch) if recent_batch else None
+        partial_aggregate = last.get("complete") is False
+        if partial_aggregate or recent_throughput is None or recent_batch_median is None:
+            monitor_throughput, monitor_batch = self.throughput.recent_totals(self.world)
+            if partial_aggregate or recent_throughput is None:
+                recent_throughput = monitor_throughput or recent_throughput
+            if partial_aggregate or recent_batch_median is None:
+                recent_batch_median = monitor_batch or recent_batch_median
         remaining_steps = max(0, max_steps - step) if max_steps else 0
         completed_now = self.state(now) == "completed"
         eta_s = None
@@ -855,6 +862,19 @@ class RunState:
         loss = self.series.latest_value("loss/total")
         device_used = self.series.latest_value("mem/device_used_gib")
         device_total = self.series.latest_value("mem/device_total_gib")
+        last_samples = self.series.latest_value("data/samples")
+        last_throughput = self.series.latest_value("perf/samples_per_s")
+        last_mfu = self.series.latest_value("perf/mfu")
+        if last.get("complete") is False:
+            # Rank 0 can only aggregate the ranks whose files it can read.  On node-local metrics that is one
+            # node; the mirror has all of them, so the headline batch/throughput/MFU use the global window.
+            monitor_throughput, monitor_samples, _ = self.throughput.last_total(self.world)
+            if monitor_samples is not None:
+                last_samples = monitor_samples
+            if monitor_throughput is not None:
+                last_throughput = monitor_throughput
+            if last_mfu is None and step_s and last_samples:
+                last_mfu = compute_mfu(step_s * 1000.0, last_samples, self.world)
         config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
         payload: Dict[str, Any] = {
             "run_id": str(self._manifest.get("run_id") or config.get("run_id") or self.ref.display_name),
@@ -889,14 +909,14 @@ class RunState:
                 "step": step,
                 "time": _num(last.get("time")),
                 "loss": loss,
-                "samples": self.series.latest_value("data/samples"),
+                "samples": last_samples,
                 "vision": self.series.latest_value("loss/vision"),
                 "action": self.series.latest_value("loss/action"),
                 "lr": self.series.latest_value("optim/lr"),
                 "grad_norm": self.series.latest_value("optim/grad_norm"),
                 "step_s": step_s,
-                "samples_per_s": self.series.latest_value("perf/samples_per_s"),
-                "mfu": self.series.latest_value("perf/mfu"),
+                "samples_per_s": last_throughput,
+                "mfu": last_mfu,
                 "device_used_gib": device_used,
                 "device_total_gib": device_total,
                 "hbm_fraction": (device_used / device_total) if device_used and device_total else None,
@@ -1063,7 +1083,20 @@ class RunState:
             config = self._manifest.get("config") if isinstance(self._manifest.get("config"), dict) else {}
             args = _args_to_dict(config.get("args"))
         checkpointing = args.get("activation_checkpointing") or args.get("checkpoint_mode") or "full"
-        detail = stage_metrics(record, self.world, checkpointing)
+        view = self.throughput.step_view(int(step), self._host_rank_map())
+        effective = record
+        if record.get("complete") is False:
+            ranks = view.get("ranks") or []
+            if ranks:
+                effective = dict(record)
+                effective["data"] = dict(record.get("data") or {})
+                effective["perf"] = dict(record.get("perf") or {})
+                effective["data"]["samples"] = sum(_num(entry.get("samples")) or 0.0 for entry in ranks)
+                effective["data"].pop("partial_samples", None)
+                effective["perf"]["step_ms"] = max((_num(entry.get("step_s")) or 0.0) for entry in ranks) * 1e3
+                effective["world"] = self.world
+                effective["complete"] = True
+        detail = stage_metrics(effective, self.world, checkpointing)
         detail.update(
             {
                 "run_id": self._manifest.get("run_id") or self.ref.display_name,
@@ -1071,8 +1104,10 @@ class RunState:
                 "micro_batch_samples": args.get("samples_per_rank"),
                 "grad_accum": args.get("grad_accum"),
                 "effective_global_batch": self._manifest.get("effective_global_batch"),
-                "throughput": self.throughput.step_view(int(step), self._host_rank_map()),
+                "throughput": view,
                 "record": record,
+                "aggregate_complete": record.get("complete", True),
+                "aggregate_from_ranks": effective is not record,
             }
         )
         return detail

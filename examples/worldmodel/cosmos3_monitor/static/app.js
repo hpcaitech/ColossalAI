@@ -1072,9 +1072,10 @@ function renderStepDrawer() {
         <button id="drawer-next" class="ghost">下一个 step →</button>
         <span class="sep"></span>
         <span class="hint-inline">stage MFU 把 activation recompute 计入 backward；总 step MFU 用 4× forward FLOPs</span>
+        ${d.aggregate_from_ranks ? '<span class="chip warn">batch/MFU 由镜像的全部 rank 校正</span>' : ''}
       </div>
       <table class="table stage-table"><thead><tr><th>阶段</th><th class="num">时间</th><th class="num">占比</th><th>share</th><th class="num">阶段 MFU</th><th class="num">FLOPs</th><th>source</th><th>说明</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="card" style="margin-top:14px"><div class="card-head"><h2>本 step 关键数据</h2><span class="muted small">${d.complete === false ? 'partial aggregate' : 'complete aggregate'}</span></div>
+      <div class="card" style="margin-top:14px"><div class="card-head"><h2>本 step 关键数据</h2><span class="muted small">${d.aggregate_from_ranks ? '阶段时间来自 rank 0 聚合；batch/MFU 用全部 rank' : (d.complete === false ? 'partial aggregate' : 'complete aggregate')}</span></div>
         <div class="kv">
           <div class="k">iteration</div><div class="v">${int(d.iteration)}</div>
           <div class="k">epoch</div><div class="v">${d.epoch == null ? '—' : int(d.epoch)}</div>

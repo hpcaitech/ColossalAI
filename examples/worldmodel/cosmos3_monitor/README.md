@@ -179,6 +179,9 @@ python -m examples.worldmodel.cosmos3_monitor serve \
   own state file lives outside `metrics/`.
 - The cache is keyed by run id and byte offsets are persisted in `mirror-state.json`, so a monitor restart does
   not lose history.  Point `serve --roots <cache-root>` at it.
+- Rank 0's `aggregated.jsonl` sees only the ranks on its own node.  When that record is partial, the headline
+  batch, throughput, MFU and ETA fall back to the global values derived from every mirrored `rank-*.jsonl`; the
+  step drawer marks the correction and keeps the original record for stage times.
 
 ## Tests
 

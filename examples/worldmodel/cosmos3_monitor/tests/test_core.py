@@ -401,6 +401,76 @@ def test_snapshot_reports_every_host_even_when_one_has_no_heartbeat(tmp_path):
     assert ranks["ranks"][2]["status"] == "missing"
 
 
+def test_partial_aggregate_uses_the_global_rank_throughput(tmp_path):
+    run = tmp_path / "run-partial"
+    metrics = run / "metrics"
+    metrics.mkdir(parents=True)
+    now = time.time()
+    write_json(
+        metrics / "run.json",
+        {
+            "run_id": "partial",
+            "world_size": 4,
+            "started_at": now - 100,
+            "args": {"max_iter": 10},
+            "topology": [
+                {"rank": rank, "hostname": "A", "local_rank": rank, "device_index": rank} for rank in range(4)
+            ],
+        },
+    )
+    # Rank 0's aggregate saw only half the ranks; its samples and throughput are deliberately partial.
+    write_lines(
+        metrics / "aggregated.jsonl",
+        [
+            {
+                "type": "record",
+                "step": 1,
+                "rank": 0,
+                "time": now - 5,
+                "ranks": [0, 1, 2, 3],
+                "world": 4,
+                "expected_world": 4,
+                "complete": False,
+                "data": {"samples": 8},
+                "loss": {"total": 2.0},
+                "perf": {"step_ms": 1000.0, "forward_ms": 300.0, "backward_ms": 500.0},
+            }
+        ],
+    )
+    for rank in range(4):
+        write_lines(
+            metrics / f"rank-{rank:03d}.jsonl",
+            [
+                {
+                    "type": "record",
+                    "step": 1,
+                    "rank": rank,
+                    "time": now - 5,
+                    "data": {"samples": 4},
+                    "perf": {"step_ms": 1000.0},
+                    "loss": {"total": 2.0},
+                }
+            ],
+        )
+        write_json(
+            metrics / f"heartbeat-{rank:03d}.json",
+            {"rank": rank, "hostname": "A", "phase": "step_complete", "step": 1, "time": now, "local_rank": rank},
+        )
+    state = RunState(discover([run])[0])
+    state.refresh()
+    snapshot = state.snapshot()
+    assert snapshot["last"]["samples"] == 16
+    assert snapshot["last"]["samples_per_s"] == 16
+    assert snapshot["last"]["mfu"] is not None
+    assert snapshot["eta_s"] is not None and 8 <= snapshot["eta_s"] <= 10
+    detail = state.step_detail(1)
+    assert detail is not None
+    assert detail["batch_samples"] == 16
+    assert detail["aggregate_from_ranks"] is True
+    stages = {stage["name"]: stage for stage in detail["stages"]}
+    assert stages["forward"]["seconds"] is not None
+
+
 def test_step_detail_reports_each_stage_and_mfu(tmp_path):
     run = make_run(tmp_path, world=2, steps=3, completed=True)
     ref = discover([run])[0]

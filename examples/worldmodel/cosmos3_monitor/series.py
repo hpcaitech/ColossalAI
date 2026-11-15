@@ -8,6 +8,7 @@ points, which a plain stride would do.
 from __future__ import annotations
 
 import math
+import statistics
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 #: Same accounting as ``examples/worldmodel/cosmos3_harness/training_metrics.py``.  Duplicated here so the
@@ -459,6 +460,43 @@ class ThroughputStore:
         for step in [step for step in self.step_ranks if step not in keep]:
             self.step_ranks.pop(step, None)
             self.step_nodes.pop(step, None)
+
+    def recent_totals(self, world: int = 0, last_n: int = 20) -> Tuple[Optional[float], Optional[float]]:
+        """Global samples/s and samples per step derived from the mirrored rank files.
+
+        The training's ``aggregated.jsonl`` is complete only when rank 0 can read every rank's file.  With
+        node-local metrics it sees just its own node, so the headline throughput and ETA must come from the
+        per-rank records the mirror collected instead.
+        """
+        steps = [step for step in sorted(self.step_ranks) if not world or len(self.step_ranks[step]) >= world]
+        if not steps:
+            steps = sorted(self.step_ranks)
+        steps = steps[-max(1, int(last_n)) :]
+        throughputs: List[float] = []
+        batches: List[float] = []
+        for step in steps:
+            entries = list(self.step_ranks[step].values())
+            if not entries:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max((entry["step_s"] for entry in entries), default=0.0)
+            if samples > 0 and step_s > 0:
+                throughputs.append(samples / step_s)
+                batches.append(samples)
+        if not throughputs:
+            return None, None
+        return statistics.median(throughputs), statistics.median(batches)
+
+    def last_total(self, world: int = 0) -> Tuple[Optional[float], Optional[float], Optional[int]]:
+        for step in sorted(self.step_ranks, reverse=True):
+            entries = list(self.step_ranks[step].values())
+            if world and len(entries) < world:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max((entry["step_s"] for entry in entries), default=0.0)
+            if samples > 0 and step_s > 0:
+                return samples / step_s, samples, step
+        return None, None, None
 
     def step_view(self, step: int, host_ranks: Dict[str, List[int]]) -> Dict[str, Any]:
         step = int(step)
