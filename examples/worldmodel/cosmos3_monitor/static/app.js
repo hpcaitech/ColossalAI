@@ -806,6 +806,9 @@ function renderRunHeader() {
     </div>
     <div id="tab-body"></div>`;
   renderKpis();
+  // renderRunHeader rebuilds the ETA node empty; fill it immediately.  Waiting for the 5 s timer left the
+  // line blank on every tab switch, while the SSE frame only filled it when a new frame happened to arrive.
+  updateHeaderMeta();
   $$('#tabs .tab').forEach((el) => { el.onclick = () => { state.tab = el.dataset.tab; history.replaceState(null, '', `#/run/${state.token}/${state.tab}`); renderRunView(); }; });
 }
 

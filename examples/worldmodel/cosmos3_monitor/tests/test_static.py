@@ -43,3 +43,10 @@ def test_throughput_views_are_wired():
     assert "/throughput?source=nodes" in source
     assert "/throughput?source=ranks" in source
     assert 'id="run-eta"' in source
+
+
+def test_header_fills_the_eta_line_after_each_rebuild():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    block = source.split("function renderRunHeader", 1)[1].split("function tabLink", 1)[0]
+    assert "updateHeaderMeta();" in block
+    assert "run-eta" in block
