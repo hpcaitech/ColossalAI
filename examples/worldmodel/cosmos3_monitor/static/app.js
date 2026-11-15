@@ -295,7 +295,7 @@ function makeChart(id, option) {
   const chart = existing || echarts.init(el, null, { renderer: 'canvas' });
   // Replacing every option resets the user's zoom on each 5 s refresh.  Keep the viewport and replace only the
   // data series; a tab switch still disposes the instance and starts clean.
-  chart.setOption(option, existing ? { notMerge: false, replaceMerge: ['series'] } : true);
+  chart.setOption(option, existing ? { notMerge: false, replaceMerge: ['series', 'visualMap'] } : true);
   if (!chart.__c3Click) {
     chart.on('click', (params) => {
       if (state.xMode !== 'step') return;
