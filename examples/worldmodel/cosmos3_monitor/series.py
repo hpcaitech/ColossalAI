@@ -1,0 +1,650 @@
+"""In-memory time series derived from aggregated step records.
+
+The browser receives small, decimated arrays; the ECharts ``sampling: 'lttb'`` option handles visual
+smoothing.  Decimation here is a cheap bucket min/max so a spike is never dropped between two sampled
+points, which a plain stride would do.
+"""
+
+from __future__ import annotations
+
+import bisect
+import math
+import statistics
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+# MFU and FLOPs are training-side facts: the trainer knows the packed token count, the checkpointing mode and
+# whether the VAE ran.  The monitor only reads ``perf/mfu`` and ``perf/flops_*`` from the record; there is no
+# second accounting here to drift from the one the run used.
+
+
+def _number(value: Any) -> Optional[float]:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _get(record: Dict[str, Any], *path: str) -> Any:
+    cursor: Any = record
+    for key in path:
+        if not isinstance(cursor, dict):
+            return None
+        cursor = cursor.get(key)
+    return cursor
+
+
+class Series:
+    __slots__ = ("x", "y", "unit", "label")
+
+    def __init__(self, unit: str = "", label: str = "") -> None:
+        self.x: List[float] = []
+        self.y: List[Optional[float]] = []
+        self.unit = unit
+        self.label = label
+
+    def append(self, x: float, y: Optional[float]) -> None:
+        self.x.append(x)
+        self.y.append(y)
+
+    def __len__(self) -> int:
+        return len(self.x)
+
+
+#: key -> (unit, label).  Keeping the catalogue here makes the API predictable and the frontend's key list
+#: explicit instead of every caller inventing names.
+METRICS: Dict[str, Tuple[str, str]] = {
+    "loss/total": ("loss", "Loss"),
+    "loss/vision": ("loss", "Vision loss"),
+    "loss/action": ("loss", "Action loss"),
+    "optim/lr": ("lr", "Learning rate"),
+    "optim/grad_norm": ("norm", "Grad norm"),
+    "perf/step_s": ("s", "Step time"),
+    "perf/forward_s": ("s", "Forward"),
+    "perf/backward_s": ("s", "Backward"),
+    "perf/optim_s": ("s", "Optimizer"),
+    "data/wait_s": ("s", "Data wait"),
+    "data/vae_s": ("s", "VAE encode"),
+    "data/pack_s": ("s", "Pack total"),
+    "data/samples": ("count", "Samples"),
+    "data/ar_tokens": ("count", "AR tokens"),
+    "data/dm_tokens": ("count", "DM tokens"),
+    "data/epoch": ("epoch", "Epoch"),
+    "perf/samples_per_s": ("samples/s", "Throughput"),
+    "perf/mfu": ("%", "MFU"),
+    "perf/mfu_forward": ("%", "Forward MFU"),
+    "perf/mfu_backward": ("%", "Backward MFU"),
+    "perf/mfu_vae": ("%", "VAE MFU"),
+    "perf/skew": ("x", "Rank skew"),
+    "mem/device_used_gib": ("GiB", "Device used"),
+    "mem/peak_reserved_gib": ("GiB", "Peak reserved"),
+    "mem/allocated_gib": ("GiB", "Allocated"),
+    "mem/device_total_gib": ("GiB", "Device total"),
+}
+
+
+class SeriesStore:
+    """All scalar history of one run, plus the raw aggregated records for the Records table."""
+
+    def __init__(self, max_points: int = 200000) -> None:
+        self.series: Dict[str, Series] = {key: Series(unit, label) for key, (unit, label) in METRICS.items()}
+        self.records: List[Dict[str, Any]] = []
+        self.steps: List[int] = []
+        self.max_points = int(max_points)
+        self._last_step: Optional[int] = None
+        self._world = 0
+
+    def set_world(self, world: int) -> None:
+        self._world = max(0, int(world or 0))
+
+    def clear(self) -> None:
+        for series in self.series.values():
+            series.x.clear()
+            series.y.clear()
+        self.records.clear()
+        self.steps.clear()
+        self._last_step = None
+
+    def _values(self, record: Dict[str, Any], step: int) -> Dict[str, Optional[float]]:
+        world = _number(record.get("world")) or self._world
+        if world:
+            self._world = int(world)
+        step_ms = _number(_get(record, "perf", "step_ms"))
+        samples = _number(_get(record, "data", "samples"))
+        if samples is None:
+            samples = _number(_get(record, "data", "partial_samples"))
+        complete = record.get("complete", True) is not False
+        measured = complete or record.get("samples_estimated") is True
+        values: Dict[str, Optional[float]] = {
+            "loss/total": _number(_get(record, "loss", "total")),
+            "loss/vision": _number(_get(record, "loss", "vision")),
+            "loss/action": _number(_get(record, "loss", "action")),
+            "optim/lr": _number(_get(record, "optim", "lr")),
+            "optim/grad_norm": _number(_get(record, "optim", "grad_norm")),
+            "perf/step_s": step_ms / 1e3 if step_ms is not None else None,
+            "perf/forward_s": _ms(_get(record, "perf", "forward_ms") or _get(record, "perf", "fwd_ms")),
+            "perf/backward_s": _ms(_get(record, "perf", "backward_ms") or _get(record, "perf", "bwd_ms")),
+            "perf/optim_s": _ms(_get(record, "perf", "optim_ms")),
+            "data/wait_s": _ms(_get(record, "data", "wait_ms")),
+            "data/vae_s": _ms(_get(record, "data", "vae_ms")),
+            "data/pack_s": _ms(_get(record, "data", "pack_ms")),
+            "data/samples": samples,
+            "data/ar_tokens": _number(_get(record, "data", "ar_tokens")),
+            "data/dm_tokens": _number(_get(record, "data", "dm_tokens")),
+            "data/epoch": _number(_get(record, "data", "epoch")),
+            "perf/skew": _number(_get(record, "perf", "skew")),
+            "mem/device_used_gib": _number(_get(record, "mem", "device_used_gib")),
+            "mem/peak_reserved_gib": _number(_get(record, "mem", "peak_reserved_gib")),
+            "mem/allocated_gib": _number(_get(record, "mem", "allocated_gib")),
+            "mem/device_total_gib": _number(_get(record, "mem", "device_total_gib")),
+        }
+        throughput = (
+            samples / (step_ms / 1e3)
+            if measured and samples is not None and step_ms is not None and step_ms > 0
+            else None
+        )
+        values["perf/samples_per_s"] = throughput
+        # Recorded by the trainer; the dashboard must not re-derive it from samples and a hard-coded FLOPs scale.
+        values["perf/mfu"] = _number(_get(record, "perf", "mfu"))
+        values["perf/mfu_forward"] = _number(_get(record, "perf", "mfu_forward"))
+        values["perf/mfu_backward"] = _number(_get(record, "perf", "mfu_backward"))
+        values["perf/mfu_vae"] = _number(_get(record, "perf", "mfu_vae"))
+        return values
+
+    def append(self, record: Dict[str, Any]) -> bool:
+        """Add one aggregated record.  Returns False for a duplicate or an out-of-order step.
+
+        Duplicate steps can appear when a mirror rewrites a file or a resumed job replays its last step.
+        Keeping the first occurrence makes the chart stable and avoids double-counting samples.
+        """
+        if record.get("type") not in (None, "record"):
+            return False
+        try:
+            step = int(record.get("step"))
+        except (TypeError, ValueError):
+            return False
+        if self._last_step is not None and step <= self._last_step:
+            return False
+        self._last_step = step
+        self.records.append(record)
+        self.steps.append(step)
+        if len(self.records) > self.max_points:
+            del self.records[: len(self.records) - self.max_points]
+            del self.steps[: len(self.steps) - self.max_points]
+        values = self._values(record, step)
+        for key, value in values.items():
+            self.series[key].append(float(step), value)
+        return True
+
+    def _index_of(self, step: int) -> Optional[int]:
+        index = bisect.bisect_left(self.steps, step)
+        if index < len(self.steps) and self.steps[index] == step:
+            return index
+        return None
+
+    def update(self, record: Dict[str, Any]) -> bool:
+        """Replace a partial record for an existing step without disturbing later steps.
+
+        The mirror may learn the other ranks' samples a few seconds after rank 0 wrote its partial aggregate.
+        Rewriting the same chart point is better than dropping the step or leaving a six-times-too-small value
+        in the Records table forever.
+        """
+        if record.get("type") not in (None, "record"):
+            return False
+        try:
+            step = int(record.get("step"))
+        except (TypeError, ValueError):
+            return False
+        index = self._index_of(step)
+        if index is None:
+            return False
+        existing = self.records[index]
+        if existing.get("complete") is not False:
+            return False
+        if (
+            record.get("complete") is False
+            and len(record.get("ranks") or []) <= len(existing.get("ranks") or [])
+            and _number(_get(record, "data", "samples")) is None
+        ):
+            return False
+        self.records[index] = record
+        values = self._values(record, step)
+        for key, value in values.items():
+            series = self.series[key]
+            # ``records`` is capped but the chart series keeps the full history, so locate the step from the tail.
+            for position in range(len(series.x) - 1, -1, -1):
+                if int(series.x[position]) == step:
+                    series.y[position] = value
+                    break
+        return True
+
+    def last(self) -> Optional[Dict[str, Any]]:
+        return self.records[-1] if self.records else None
+
+    def latest_value(self, key: str) -> Optional[float]:
+        series = self.series.get(key)
+        if series is None:
+            return None
+        for value in reversed(series.y):
+            if value is not None:
+                return value
+        return None
+
+    def query(
+        self,
+        keys: Iterable[str],
+        *,
+        x_axis: str = "step",
+        max_points: int = 5000,
+        from_step: Optional[float] = None,
+        to_step: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for key in keys:
+            series = self.series.get(key)
+            if series is None:
+                continue
+            points = _window(series, from_step, to_step)
+            xs, ys = _decimate(points, max_points)
+            if x_axis == "time":
+                xs = _time_axis(self.records, from_step, to_step, len(xs))
+            result[key] = {
+                "x": xs,
+                "y": ys,
+                "unit": series.unit,
+                "label": series.label,
+                "total": len(points),
+            }
+        return result
+
+    def record_for_step(self, step: int) -> Optional[Dict[str, Any]]:
+        for record in reversed(self.records):
+            try:
+                if int(record.get("step")) == int(step):
+                    return record
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def records_page(self, offset: int = 0, limit: int = 100, order: str = "asc") -> Dict[str, Any]:
+        total = len(self.records)
+        rows = list(self.records)
+        if order == "desc":
+            rows = rows[::-1]
+        offset = max(0, int(offset))
+        limit = max(1, min(int(limit), 2000))
+        page = rows[offset : offset + limit]
+        return {"total": total, "offset": offset, "limit": limit, "rows": page}
+
+
+def _ms(value: Any) -> Optional[float]:
+    number = _number(value)
+    return number / 1e3 if number is not None else None
+
+
+def _window(series: Series, from_step: Optional[float], to_step: Optional[float]):
+    if from_step is None and to_step is None:
+        return list(zip(series.x, series.y))
+    low = -math.inf if from_step is None else from_step
+    high = math.inf if to_step is None else to_step
+    return [(x, y) for x, y in zip(series.x, series.y) if low <= x <= high]
+
+
+def _decimate(
+    points: List[Tuple[float, Optional[float]]], max_points: int
+) -> Tuple[List[float], List[Optional[float]]]:
+    """Bucket min/max decimation: preserve extremes, keep the first/last point.
+
+    A plain stride hides a one-point loss spike, exactly the event the dashboard exists to show.  For each
+    bucket this keeps the lowest and highest finite y (in original order) and a NaN/None marker if the bucket
+    contained one, so gaps stay visible.
+    """
+    max_points = max(2, int(max_points))
+    if len(points) <= max_points:
+        return [x for x, _ in points], [y for _, y in points]
+    bucket = max(1, len(points) // max_points)
+    out: List[Tuple[float, Optional[float]]] = []
+    for start in range(0, len(points), bucket):
+        chunk = points[start : start + bucket]
+        if not chunk:
+            continue
+        finite = [(x, y) for x, y in chunk if y is not None]
+        if not finite:
+            out.append((chunk[0][0], None))
+            continue
+        low = min(finite, key=lambda item: item[1])
+        high = max(finite, key=lambda item: item[1])
+        if chunk[0][1] is None:
+            # Preserve the fact that this bucket contained a gap, without inventing one when it did not.
+            out.append((chunk[0][0], None))
+        for item in sorted({low, high}, key=lambda pair: pair[0]):
+            out.append(item)
+    return [x for x, _ in out], [y for _, y in out]
+
+
+def _time_axis(records: List[Dict[str, Any]], from_step, to_step, count: int) -> List[float]:
+    """Return elapsed seconds from the first record for the decimated x values.
+
+    The decimated x values are step numbers; ``count`` lets us return a matching time axis by sampling the
+    record timestamps.  When the lengths differ (records were pruned), fall back to the record index.
+    """
+    rows = records
+    if from_step is not None or to_step is not None:
+        low = -math.inf if from_step is None else from_step
+        high = math.inf if to_step is None else to_step
+        rows = [row for row in records if low <= _number(row.get("step")) <= high]
+    if not rows:
+        return []
+    base = _number(rows[0].get("time")) or 0.0
+    times = [(_number(row.get("time")) or base) - base for row in rows]
+    if len(times) == count:
+        return times
+    if count <= 1:
+        return [0.0]
+    step = max(1, len(times) // count)
+    sampled = [times[min(index * step, len(times) - 1)] for index in range(count)]
+    return sampled
+
+
+#: Stage accounting for the step-detail view.  The total step is 4x the forward FLOPs when activation
+#: checkpointing is on (1 forward + 1 recompute + 2 backward), 3x when it is off.  Allocating the recompute to
+#: the backward stage lets a stage MFU be meaningful instead of pretending the forward did all the work.
+def stage_metrics(record: Dict[str, Any], world: int, activation_checkpointing: str = "full") -> Dict[str, Any]:
+    """Build the step drawer from the trainer's recorded times, FLOPs and MFU.
+
+    ``world`` is kept in the signature so callers do not change, but it is deliberately not used to derive an
+    MFU: the trainer recorded the value with the geometry and checkpointing mode it actually ran.
+    """
+    samples = _number(_get(record, "data", "samples"))
+    if samples is None:
+        samples = _number(_get(record, "data", "partial_samples"))
+    samples = samples or 0.0
+    step_ms = _number(_get(record, "perf", "step_ms"))
+    step_s = (step_ms / 1e3) if step_ms else None
+    perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
+    checkpointing = str(perf.get("checkpointing_mode") or activation_checkpointing or "full").lower()
+
+    def stage(name, ms, flops, mfu, source, note=""):
+        seconds = (ms / 1e3) if isinstance(ms, (int, float)) and ms is not None else None
+        share = (seconds / step_s) if seconds is not None and step_s else None
+        return {
+            "name": name,
+            "seconds": seconds,
+            "share": share,
+            "flops": flops,
+            "mfu": mfu,
+            "source": source,
+            "note": note,
+        }
+
+    wait_ms = _number(_get(record, "data", "wait_ms"))
+    pack_ms = _number(_get(record, "data", "pack_ms"))
+    vae_ms = _number(_get(record, "data", "vae_ms"))
+    if vae_ms is None:
+        vae_ms = _number(_get(record, "perf", "vae_ms"))
+    forward_ms = _number(_get(record, "perf", "forward_ms")) or _number(_get(record, "perf", "fwd_ms"))
+    backward_ms = _number(_get(record, "perf", "backward_ms")) or _number(_get(record, "perf", "bwd_ms"))
+    optim_ms = _number(_get(record, "perf", "optim_ms"))
+    prep_ms = None
+    if pack_ms is not None:
+        prep_ms = max(0.0, pack_ms - (vae_ms or 0.0))
+    forward_flops = _number(perf.get("flops_forward"))
+    backward_flops = _number(perf.get("flops_backward"))
+    vae_flops = _number(perf.get("flops_vae"))
+    forward_mfu = _number(perf.get("mfu_forward"))
+    backward_mfu = _number(perf.get("mfu_backward"))
+    vae_mfu = _number(perf.get("mfu_vae"))
+    stages = [
+        stage("data wait", wait_ms, None, None, "host", "loader / prefetch"),
+        stage("data prep", prep_ms, None, None, "device", "pack, h2d, tokenize"),
+        stage(
+            "VAE",
+            vae_ms,
+            vae_flops if vae_ms is not None else None,
+            vae_mfu if vae_ms is not None else None,
+            "training record",
+            "frozen encoder",
+        ),
+        stage("forward", forward_ms, forward_flops, forward_mfu, "training record", "recorded forward FLOPs"),
+        stage("backward", backward_ms, backward_flops, backward_mfu, "training record", "backward incl. recompute"),
+        stage("optimizer", optim_ms, None, None, "device", "elementwise update"),
+    ]
+    known = sum(item["seconds"] for item in stages if item["seconds"] is not None)
+    other_s = max(0.0, (step_s - known)) if step_s is not None else None
+    stages.append(
+        stage("other", (other_s * 1e3) if other_s is not None else None, None, None, "host", "sync / logging")
+    )
+    return {
+        "iteration": _number(record.get("step")),
+        "epoch": _number(_get(record, "data", "epoch")),
+        "batch_samples": samples,
+        "micro_batches": _number(_get(record, "data", "microsteps")),
+        "step_seconds": step_s,
+        "total_flops": _number(perf.get("flops")),
+        "total_mfu": _number(perf.get("mfu")),
+        "activation_checkpointing": checkpointing,
+        "stages": stages,
+        "samples_per_second": (samples / step_s) if step_s else None,
+        "loss": _get(record, "loss"),
+        "optim": _get(record, "optim"),
+        "memory": _get(record, "mem"),
+        "complete": record.get("complete"),
+    }
+
+
+class ThroughputStore:
+    """Per-rank and per-node sample throughput, bounded so a long run stays cheap to serve.
+
+    A node's throughput is the sum of its ranks' samples divided by the slowest rank's step time on that node:
+    the node waited for that rank.  The total throughput remains the rank-0 aggregated ``perf/samples_per_s``.
+    """
+
+    def __init__(self, max_points: int = 5000, max_steps: int = 4000) -> None:
+        self.max_points = int(max_points)
+        self.max_steps = int(max_steps)
+        self.rank_points: Dict[int, List[List[float]]] = {}
+        self.node_points: Dict[str, List[List[float]]] = {}
+        self.step_ranks: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        self.step_nodes: Dict[int, Dict[str, Dict[str, Any]]] = {}
+        self.pending: Dict[int, Dict[int, Dict[str, Any]]] = {}
+        self.first_seen: Dict[int, float] = {}
+
+    def _append(self, table: Dict[Any, List[List[float]]], key: Any, step: float, value: float) -> None:
+        points = table.setdefault(key, [])
+        points.append([step, value])
+        if len(points) > self.max_points:
+            del points[: len(points) - self.max_points]
+
+    def ingest(
+        self,
+        rank: int,
+        host: str,
+        step: int,
+        samples: float,
+        step_s: float,
+        now: float,
+        record: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not step_s or step_s <= 0:
+            return
+        entry = {
+            "rank": int(rank),
+            "host": host,
+            "step": int(step),
+            "samples": float(samples),
+            "step_s": float(step_s),
+            "throughput": float(samples) / float(step_s),
+        }
+        if isinstance(record, dict):
+            data = record.get("data") if isinstance(record.get("data"), dict) else {}
+            perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
+            mem = record.get("mem") if isinstance(record.get("mem"), dict) else {}
+            for key in ("ar_tokens", "dm_tokens", "wait_ms", "vae_ms", "pack_ms"):
+                value = _number(data.get(key))
+                if value is not None:
+                    entry[key] = value
+            forward = _number(perf.get("forward_ms"))
+            if forward is None:
+                forward = _number(perf.get("fwd_ms"))
+            backward = _number(perf.get("backward_ms"))
+            if backward is None:
+                backward = _number(perf.get("bwd_ms"))
+            if forward is not None:
+                entry["forward_ms"] = forward
+            if backward is not None:
+                entry["backward_ms"] = backward
+            optim = _number(perf.get("optim_ms"))
+            if optim is not None:
+                entry["optim_ms"] = optim
+            for key in ("device_used_gib", "peak_reserved_gib", "allocated_gib", "device_total_gib"):
+                value = _number(mem.get(key))
+                if value is not None:
+                    entry[key] = value
+            for key in (
+                "flops",
+                "flops_forward",
+                "flops_backward",
+                "flops_vae",
+                "mfu",
+                "mfu_forward",
+                "mfu_backward",
+                "mfu_vae",
+                "peak_tflops_per_npu",
+            ):
+                value = _number(perf.get(key))
+                if value is not None:
+                    entry[key] = value
+            mode = perf.get("checkpointing_mode")
+            if mode is not None:
+                entry["checkpointing_mode"] = str(mode)
+        self.pending.setdefault(int(step), {})[int(rank)] = entry
+        self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
+        self.first_seen.setdefault(int(step), now)
+        self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+
+    def finalize(self, step: int, host_ranks: Dict[str, List[int]], world: int, *, force: bool = False) -> None:
+        pending = self.pending.get(int(step))
+        if not pending:
+            return
+        expected = max(int(world or 0), len(pending))
+        if len(pending) < expected and not force:
+            return
+        nodes = self.step_nodes.setdefault(int(step), {})
+        for host, ranks in host_ranks.items():
+            entries = [pending[rank] for rank in ranks if rank in pending]
+            if not entries:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max(entry["step_s"] for entry in entries)
+            if step_s <= 0:
+                continue
+            node = {
+                "host": host,
+                "step": int(step),
+                "ranks": [entry["rank"] for entry in entries],
+                "samples": samples,
+                "step_s": step_s,
+                "throughput": samples / step_s,
+                "complete": len(entries) == len(ranks),
+            }
+            nodes[host] = node
+            self._append(self.node_points, host, int(step), node["throughput"])
+        self.pending.pop(int(step), None)
+        self.first_seen.pop(int(step), None)
+        self._trim_steps()
+
+    def finalize_pending(self, host_ranks: Dict[str, List[int]], world: int, now: float, timeout: float = 30.0) -> None:
+        for step in list(self.pending):
+            pending = self.pending[step]
+            if len(pending) >= max(int(world or 0), 1):
+                self.finalize(step, host_ranks, world)
+            elif now - self.first_seen.get(step, now) > timeout:
+                self.finalize(step, host_ranks, world, force=True)
+
+    def _trim_steps(self) -> None:
+        if len(self.step_ranks) <= self.max_steps:
+            return
+        keep = set(sorted(self.step_ranks)[-self.max_steps :])
+        for step in [step for step in self.step_ranks if step not in keep]:
+            self.step_ranks.pop(step, None)
+            self.step_nodes.pop(step, None)
+
+    def recent_totals(self, world: int = 0, last_n: int = 20) -> Tuple[Optional[float], Optional[float]]:
+        """Global samples/s and samples per step derived from the mirrored rank files.
+
+        The training's ``aggregated.jsonl`` is complete only when rank 0 can read every rank's file.  With
+        node-local metrics it sees just its own node, so the headline throughput and ETA must come from the
+        per-rank records the mirror collected instead.
+        """
+        steps = [step for step in sorted(self.step_ranks) if not world or len(self.step_ranks[step]) >= world]
+        if not steps:
+            steps = sorted(self.step_ranks)
+        steps = steps[-max(1, int(last_n)) :]
+        throughputs: List[float] = []
+        batches: List[float] = []
+        for step in steps:
+            entries = list(self.step_ranks[step].values())
+            if not entries:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max((entry["step_s"] for entry in entries), default=0.0)
+            if samples > 0 and step_s > 0:
+                throughputs.append(samples / step_s)
+                batches.append(samples)
+        if not throughputs:
+            return None, None
+        return statistics.median(throughputs), statistics.median(batches)
+
+    def last_total(self, world: int = 0) -> Tuple[Optional[float], Optional[float], Optional[int]]:
+        for step in sorted(self.step_ranks, reverse=True):
+            entries = list(self.step_ranks[step].values())
+            if world and len(entries) < world:
+                continue
+            samples = sum(entry["samples"] for entry in entries)
+            step_s = max((entry["step_s"] for entry in entries), default=0.0)
+            if samples > 0 and step_s > 0:
+                return samples / step_s, samples, step
+        return None, None, None
+
+    def step_view(self, step: int, host_ranks: Dict[str, List[int]]) -> Dict[str, Any]:
+        step = int(step)
+        ranks = sorted(self.step_ranks.get(step, {}).values(), key=lambda item: item["rank"])
+        nodes = self.step_nodes.get(step) or {}
+        if not nodes and ranks:
+            # A partial step may not have been finalized; derive the node rows from the ranks we have.
+            derived: Dict[str, Dict[str, Any]] = {}
+            for host, expected in host_ranks.items():
+                entries = [entry for entry in ranks if entry["host"] == host]
+                if not entries:
+                    continue
+                samples = sum(entry["samples"] for entry in entries)
+                step_s = max(entry["step_s"] for entry in entries)
+                derived[host] = {
+                    "host": host,
+                    "step": step,
+                    "ranks": [entry["rank"] for entry in entries],
+                    "samples": samples,
+                    "step_s": step_s,
+                    "throughput": samples / step_s if step_s else None,
+                    "complete": len(entries) == len(expected),
+                }
+            nodes = derived
+        return {
+            "ranks": ranks,
+            "nodes": sorted(nodes.values(), key=lambda item: item["host"]),
+            "total": (
+                (sum(entry["samples"] for entry in ranks) / max((entry["step_s"] for entry in ranks), default=0.0))
+                if ranks
+                else None
+            ),
+        }
+
+    def series(self, source: str, max_points: int) -> Dict[str, Any]:
+        table = self.node_points if source == "nodes" else self.rank_points
+        result: Dict[str, Any] = {}
+        for key, points in sorted(table.items(), key=lambda item: str(item[0])):
+            xs, ys = _decimate([(point[0], point[1]) for point in points[-max_points:]], max_points)
+            result[str(key)] = {"x": xs, "y": ys, "total": len(points)}
+        return result

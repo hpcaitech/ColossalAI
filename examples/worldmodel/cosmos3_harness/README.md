@@ -89,6 +89,32 @@ before loading weights. Resume requires matching world size, CP topology, object
 accumulation and replay fingerprints. Old unverified checkpoint layouts are rejected. The same command runs on
 Ascend with `--device npu --attn-backend npu`; communication is selected from the accelerator.
 
+`--async-checkpoint` stages the shards into pinned host buffers and lets a background writer serialize them while
+training continues; rank 0 hashes and publishes the generation from its own thread and `latest.json` appears as soon
+as the bytes are on disk. Only the device-to-host copy is exposed to the step. Every rank confirms the outcome in one
+collective at the next checkpoint entry or at the end of the run, and a failed writer or publisher stops all ranks
+there with the same message. It does not need TensorNVMe. The default stays synchronous, matching the upstream
+Cosmos recipe.
+
+Resume also works when `--out` is each node's local disk, which is how the multi-node benchmarks run. The model,
+optimizer and `training_state.pt` exist only on rank 0's node, and each node keeps the `rng-<rank>.pt` and
+`master-<rank>.pt` files it wrote; `complete.json` covers all of them because every rank gathers its own file
+digests before the save-time barrier. On `--resume`, rank 0 publishes the generation name and manifest, each rank
+reports whether its node is complete, and a node missing the shared files receives them over the training
+interconnect — once per node, in `COSMOS3_CHECKPOINT_TRANSFER_CHUNK_MIB` (default 64) chunks, writing on each
+node's `LOCAL_RANK` 0 — before validation loads anything. The node keeps the result as a published generation, so
+the next resume on that node is local. `scripts/check_checkpoint_complete.py <run-dir> --world N` reads one node's
+directory and says whether that node can take part.
+
+`--graceful-stop` (default on) makes the run stoppable from the dashboard. A watcher thread reads
+`<run>/control/request.json` once a second; when it holds a `stop` request stamped with this attempt's manifest
+`started_at`, the loop writes one more generation for the step it is in, records `stopped` in the terminal files and
+the summary, and exits 0. Every rank leaves on the same iteration — the agreement is one four-byte all-reduce per
+step (`--stop-poll-every N` makes it one per N steps at the cost of a later stop) — because ranks leaving at
+different steps would deadlock the next collective. `--no-graceful-stop` removes the collective for a pure
+benchmark, and then the dashboard reports that this run cannot be stopped. The held-out evaluation is skipped on a
+stopped run. `--control-poll-seconds` tunes the watcher's interval on a slow filesystem.
+
 ## Kernel and benchmark evidence
 
 ```bash

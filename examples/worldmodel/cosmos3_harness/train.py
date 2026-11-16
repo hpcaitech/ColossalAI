@@ -44,9 +44,13 @@ from colossalai.shardformer.modeling.cosmos3 import clear_cosmos3_packed_meta, s
 from colossalai.shardformer.modeling.cosmos_mot import Cosmos3PackedBatch, pack_cosmos3_samples, two_way_varlen_summary
 
 try:
+    from examples.worldmodel.cosmos3_harness.checkpoint_ledger import CheckpointLedger
     from examples.worldmodel.cosmos3_harness.heldout import load_split_manifest
     from examples.worldmodel.cosmos3_harness.loss import combine_modality_losses, normalise_packed_loss, velocity_mse
     from examples.worldmodel.cosmos3_harness.optim import build_adamw
+    from examples.worldmodel.cosmos3_harness.run_context import collect_rank_identity, enrich_manifest
+    from examples.worldmodel.cosmos3_harness.run_control import RunControl
+    from examples.worldmodel.cosmos3_harness.training_heartbeat import TrainingHeartbeat, write_terminal
     from examples.worldmodel.cosmos3_harness.training_metrics import (
         AnomalyDetector,
         ConsoleObserver,
@@ -55,9 +59,13 @@ try:
         device_memory_gib,
     )
 except ImportError:  # direct execution from the example directory
+    from checkpoint_ledger import CheckpointLedger
     from heldout import load_split_manifest
     from loss import combine_modality_losses, normalise_packed_loss, velocity_mse
     from optim import build_adamw
+    from run_context import collect_rank_identity, enrich_manifest
+    from run_control import RunControl
+    from training_heartbeat import TrainingHeartbeat, write_terminal
     from training_metrics import AnomalyDetector, ConsoleObserver, TrainingMetrics, WandbObserver, device_memory_gib
 
 
@@ -102,6 +110,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--save-dir", help="Directory for model/optimizer checkpoints and training state.")
     parser.add_argument("--save-interval", type=int, default=50)
+    parser.add_argument(
+        "--async-checkpoint",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Stage model/optimizer shards into pinned host buffers and publish the generation from a "
+        "background thread, so the step only waits for the device-to-host copy. Off by default, matching "
+        "the upstream Cosmos recipe.",
+    )
     parser.add_argument("--resume", help="Checkpoint directory written by this script.")
     parser.add_argument("--log-interval", type=int, default=1)
     parser.add_argument(
@@ -116,6 +132,35 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         "<save-dir>/metrics when --save-dir is set.",
     )
     parser.add_argument("--metrics-every", type=int, default=10, help="Aggregate and report metrics every N steps.")
+    parser.add_argument("--run-id", help="Override the generated run identifier.")
+    parser.add_argument("--run-name", help="Human-readable name shown by the monitor.")
+    parser.add_argument("--log-path", help="Path of this run's stdout log, for the dashboard's log tab.")
+    parser.add_argument("--heartbeat-seconds", type=float, default=2.0)
+    parser.add_argument("--no-heartbeat", action="store_true")
+    parser.add_argument("--no-checkpoint-ledger", action="store_true")
+    parser.add_argument(
+        "--graceful-stop",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Honour <metrics-dir>/../control/request.json: stop after the current step, write the final "
+        "generation and exit cleanly, so the dashboard can stop and resume this run. Costs one four-byte "
+        "all-reduce per step so every rank leaves on the same iteration; --no-graceful-stop removes it.",
+    )
+    parser.add_argument(
+        "--stop-poll-every",
+        type=int,
+        default=1,
+        help="Agree a stop every N steps. The gate uses the step number, identical on every rank; a larger N "
+        "shortens the collective sequence but delays a stop by up to N steps.",
+    )
+    parser.add_argument(
+        "--control-poll-seconds",
+        type=float,
+        default=1.0,
+        help="How often the watcher thread re-reads <run>/control/request.json. Raise it on a slow filesystem.",
+    )
+    parser.add_argument("--no-aggregate-metrics", action="store_true")
+    parser.add_argument("--collective-metrics", action="store_true")
     parser.add_argument("--wandb-project", help="Log the aggregated metrics to Weights & Biases from rank 0.")
     parser.add_argument(
         "--wandb-mode",
@@ -132,6 +177,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
             parser.error(f"--{name.replace('_', '-')} must be positive")
     if args.steps < 0:
         parser.error("--steps must be nonnegative")
+    if args.heartbeat_seconds <= 0:
+        parser.error("--heartbeat-seconds must be positive")
     return args
 
 
@@ -197,7 +244,22 @@ def _run_manifest(args: argparse.Namespace, device: torch.device, backend: str, 
     except ImportError:  # direct execution from the example directory
         from bench_ops import collect_env
 
-    return {
+    import torch.distributed as dist
+
+    if dist.is_initialized():
+        identity = (
+            collect_run_identity(args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None))
+            if dist.get_rank() == 0
+            else None
+        )
+        holder = [identity]
+        dist.broadcast_object_list(holder, src=0)
+        identity = holder[0]
+    else:
+        identity = collect_run_identity(
+            args, run_name=getattr(args, "run_name", None), run_id=getattr(args, "run_id", None)
+        )
+    manifest = {
         "args": dict(vars(args)),
         "env": collect_env(device),
         "backend": backend,
@@ -208,6 +270,28 @@ def _run_manifest(args: argparse.Namespace, device: torch.device, backend: str, 
         "eval_pack": args.eval_pack,
         "heldout_manifest": args.heldout_manifest,
     }
+    return enrich_manifest(
+        manifest,
+        args=args,
+        device=device,
+        identity=identity,
+        run_name=getattr(args, "run_name", None),
+        run_id=getattr(args, "run_id", None),
+        checkpoint_schedule={
+            "resumable": {
+                "every": args.save_interval,
+                "root": str(args.save_dir) if args.save_dir else None,
+                "pattern": "checkpoint-{generation}",
+                "format": "immutable_generation",
+                "async": bool(getattr(args, "async_checkpoint", False)),
+            },
+            "save_kind": "resumable_generation",
+        },
+        log_path=getattr(args, "log_path", None),
+        heartbeat_seconds=getattr(args, "heartbeat_seconds", 2.0),
+        metrics_every=args.metrics_every,
+        log_every=args.log_interval,
+    )
 
 
 def _build_metrics(args: argparse.Namespace, rank: int, world_size: int, device: torch.device, backend: str):
@@ -227,6 +311,8 @@ def _build_metrics(args: argparse.Namespace, rank: int, world_size: int, device:
         log_every=args.metrics_every,
         aggregate_observers=aggregate_observers,
         detector=AnomalyDetector(device_capacity_gib=_device_capacity_gib(device)),
+        write_aggregate=not getattr(args, "no_aggregate_metrics", False),
+        collective=getattr(args, "collective_metrics", False),
     )
     metrics.start(_run_manifest(args, device, backend, world_size))
     return metrics
@@ -503,12 +589,78 @@ def _global_count(count, device, group=None):
     return int(value.item())
 
 
-def _save_state(directory, model, optimizer, step, epoch, sampler_cursor, config=None):
+def _save_state(directory, model, optimizer, step, epoch, sampler_cursor, config=None, *, async_=False):
     from examples.worldmodel.cosmos3_harness.checkpoint import save_checkpoint
 
-    save_checkpoint(
-        directory, model, optimizer, {"step": step, "epoch": epoch, "sampler_cursor": sampler_cursor, "config": config}
+    return save_checkpoint(
+        directory,
+        model,
+        optimizer,
+        {"step": step, "epoch": epoch, "sampler_cursor": sampler_cursor, "config": config},
+        async_=async_,
     )
+
+
+def _save_with_ledger(
+    pending_list,
+    ledger,
+    stats,
+    directory,
+    model,
+    optimizer,
+    step,
+    epoch,
+    sampler_cursor,
+    config,
+    every,
+    *,
+    async_=False,
+):
+    """Save a generation, record its begin in the ledger, and queue an asynchronous one for flush.
+
+    With ``async_`` the generation is published in the background and the ledger entry stays open
+    until ``_flush_pending``.  The entry is queued here, not by the caller, and the condition is
+    the flag rather than the ledger id: the ledger only exists on rank zero, so keying on it
+    would leave the ranks with different queue lengths and diverge the flush collective.
+    """
+    checkpoint_id = None
+    if ledger is not None:
+        checkpoint_id = ledger.begin(
+            step=step,
+            kind="resumable_generation",
+            path=directory,
+            async_=async_,
+            format_="immutable_generation",
+            schedule_every=every,
+        )
+    try:
+        pending = _save_state(directory, model, optimizer, step, epoch, sampler_cursor, config, async_=async_)
+    except Exception as exc:
+        if ledger is not None and checkpoint_id is not None:
+            ledger.fail(checkpoint_id, f"{type(exc).__name__}: {exc}")
+        raise
+    if async_:
+        pending_list.append((pending, checkpoint_id))
+        return pending
+    if ledger is not None and checkpoint_id is not None:
+        finished = ledger.end(
+            checkpoint_id,
+            status="complete",
+            path=pending.generation,
+            generation=pending.generation.name,
+        )
+        stats["count"] += 1
+        stats["bytes"] += int(finished.get("bytes") or 0)
+    return pending
+
+
+def _flush_pending(pending_checkpoints, ledger, stats):
+    """Publish every finished asynchronous generation. Collective: every rank calls this."""
+    from examples.worldmodel.cosmos3_harness.checkpoint import flush_checkpoint
+
+    while pending_checkpoints:
+        pending, checkpoint_id = pending_checkpoints.pop(0)
+        flush_checkpoint(pending, ledger=ledger, checkpoint_id=checkpoint_id, stats=stats)
 
 
 def _restore_state(directory, model, optimizer, config=None):
@@ -628,6 +780,43 @@ def train(args: argparse.Namespace) -> int:
     model._colossal_booster = booster
 
     metrics = _build_metrics(args, rank, world_size, next(model.parameters()).device, backend)
+    run_device = next(model.parameters()).device
+    metrics_dir = Path(_metrics_dir(args)) if _metrics_dir(args) else None
+    run_identity = getattr(metrics, "manifest", {}) if metrics is not None else {}
+    run_id = run_identity.get("run_id") if isinstance(run_identity, dict) else None
+    heartbeat = None
+    ledger = None
+    if metrics_dir is not None and metrics is not None:
+        if not getattr(args, "no_heartbeat", False):
+            identity = collect_rank_identity(run_device)
+            heartbeat = TrainingHeartbeat(
+                metrics_dir,
+                rank,
+                run_device,
+                getattr(args, "heartbeat_seconds", 2.0),
+                run_id=run_id,
+                world_size=world_size,
+                local_rank=identity.get("local_rank"),
+                device_name=identity.get("device_name"),
+            ).start()
+        if rank == 0 and not getattr(args, "no_checkpoint_ledger", False):
+            ledger = CheckpointLedger(metrics_dir, rank=rank, run_id=run_id, world_size=world_size)
+    # The dashboard writes <run>/control; the run directory is the one that holds metrics/, which is what
+    # discovery sees.  Without metrics there is nothing for the dashboard to show, so the channel is inert.
+    control = RunControl(
+        metrics_dir.parent if metrics_dir is not None else Path(args.save_dir),
+        rank=rank,
+        world_size=world_size,
+        device=run_device,
+        enabled=metrics_dir is not None and getattr(args, "graceful_stop", True),
+        every=getattr(args, "stop_poll_every", 1),
+        poll_seconds=getattr(args, "control_poll_seconds", 1.0),
+        run_started_at=(run_identity.get("started_at") if isinstance(run_identity, dict) else None),
+        run_id=run_id,
+    ).start()
+    checkpoint_stats = {"count": 0, "bytes": 0}
+    completed = False
+    stopped = False
 
     dp_rank = dist.get_rank(plugin.dp_group)
     data_parallel_size = dist.get_world_size(plugin.dp_group)
@@ -692,7 +881,12 @@ def train(args: argparse.Namespace) -> int:
     step_times: List[float] = []
     timing_sources = set()
     last_saved_step = None
+    pending_checkpoints = []
+    save_ms = None
+    final_step = start_step
     for step in range(start_step, args.steps):
+        if heartbeat:
+            heartbeat.update("data", step=step)
         measure_device = (
             bool(args.bench_json)
             or (step + 1) % args.log_interval == 0
@@ -709,9 +903,11 @@ def train(args: argparse.Namespace) -> int:
         optimizer.zero_grad(set_to_none=True)
         loss = torch.zeros((), device=device)
         batches = []
-        for samples in window:
+        for micro_index, samples in enumerate(window):
             batch = _pack_replay_samples(samples)
             batches.append(batch)
+            if heartbeat:
+                heartbeat.update("forward", step=step, microstep=micro_index + 1, microsteps=len(window))
             try:
                 micro_loss = _loss_for_batch(
                     model,
@@ -722,11 +918,19 @@ def train(args: argparse.Namespace) -> int:
                     global_count=global_count,
                     dp_group=plugin.dp_group,
                 )
+                if heartbeat:
+                    heartbeat.update("backward", step=step, microstep=micro_index + 1, microsteps=len(window))
                 booster.backward(micro_loss, optimizer)
                 loss += micro_loss.detach()
             finally:
                 clear_cosmos3_packed_meta(model, strict=True)
+        if heartbeat:
+            heartbeat.update("optimizer", step=step)
         optimizer.step()
+        final_step = step + 1
+        if heartbeat:
+            heartbeat.update("step_complete", step=step + 1)
+        control.mark("step_complete", step=step + 1)
         step_dispatch_ms = (time.perf_counter() - step_start) * 1e3
         if measure_device:
             accelerator.synchronize()
@@ -791,10 +995,36 @@ def train(args: argparse.Namespace) -> int:
                 sections["loss"] = {"total": loss_value}
                 sections["optim"] = optim_section
                 sections["mem"] = device_memory_gib()
+            if save_ms is not None:
+                # Report the exposed save cost once, at the first metrics step after the save.
+                sections["ckpt"] = {"save_ms": save_ms, "async_pending": len(pending_checkpoints)}
+                save_ms = None
             metrics.step(step + 1, **sections)
         if args.save_dir and (step + 1) % args.save_interval == 0:
-            _save_state(Path(args.save_dir), model, optimizer, step + 1, epoch, sampler_cursor, config)
+            # Publish the previous generation before staging into the buffers it is still using.
+            _flush_pending(pending_checkpoints, ledger, checkpoint_stats)
+            save_started = time.perf_counter()
+            _save_with_ledger(
+                pending_checkpoints,
+                ledger,
+                checkpoint_stats,
+                Path(args.save_dir),
+                model,
+                optimizer,
+                step + 1,
+                epoch,
+                sampler_cursor,
+                config,
+                args.save_interval,
+                async_=args.async_checkpoint,
+            )
+            save_ms = (time.perf_counter() - save_started) * 1e3
             last_saved_step = step + 1
+        # Collective: every rank asks at the same point of every step and leaves on the same iteration.
+        if control.boundary(step + 1):
+            stopped = True
+            control.mark("stopping", step=step + 1)
+            break
 
     if args.bench_json and rank == 0:
         _write_bench_report(
@@ -806,10 +1036,34 @@ def train(args: argparse.Namespace) -> int:
             next(model.parameters()).device,
         )
 
-    if last_saved_step != args.steps:
-        _save_state(Path(args.save_dir), model, optimizer, args.steps, epoch, sampler_cursor, config)
+    if stopped and final_step >= args.steps:
+        # The request arrived at the last scheduled iteration: the run finished its schedule after all.
+        stopped = False
+    # A stop is resumable from the iteration it happened at, so the final generation is written for
+    # ``final_step`` -- the last completed optimizer step -- not for the requested --steps.
+    if args.save_dir and last_saved_step != final_step:
+        _flush_pending(pending_checkpoints, ledger, checkpoint_stats)
+        _save_with_ledger(
+            pending_checkpoints,
+            ledger,
+            checkpoint_stats,
+            Path(args.save_dir),
+            model,
+            optimizer,
+            final_step,
+            epoch,
+            sampler_cursor,
+            config,
+            args.save_interval,
+            async_=args.async_checkpoint,
+        )
+    # Every rank leaves the loop here, so this is the point where an in-flight generation is
+    # confirmed and published before the ledger and the summary are written.
+    _flush_pending(pending_checkpoints, ledger, checkpoint_stats)
+    completed = not stopped
 
-    if eval_packs is not None:
+    if eval_packs is not None and not stopped:
+        # A stopped run asks to stop: the held-out pass would add minutes after the user pressed the button.
         model.eval()
         with torch.no_grad():
             losses = []
@@ -824,10 +1078,23 @@ def train(args: argparse.Namespace) -> int:
         if rank == 0:
             print(json.dumps({"heldout_losses": losses}), flush=True)
 
+    final_phase = "completed" if completed else ("stopped" if stopped else "failed")
     if metrics is not None:
         timed = step_times[args.bench_warmup :] or step_times
         ordered = sorted(timed)
-        summary = {"steps": args.steps - start_step}
+        summary = {
+            "steps": final_step - start_step,
+            "completed": completed,
+            "stopped": stopped,
+            "duration_s": time.time() - begin,
+            "session_id": getattr(metrics, "session_id", None),
+            "run_id": run_id,
+            "peak_device_used_gib": (
+                heartbeat.peak if heartbeat is not None else device_memory_gib().get("device_used_gib")
+            ),
+            "checkpoint_count": checkpoint_stats["count"],
+            "checkpoint_bytes": checkpoint_stats["bytes"],
+        }
         if ordered:
             summary.update(
                 {
@@ -837,9 +1104,30 @@ def train(args: argparse.Namespace) -> int:
                     "timing_sources": {"step_ms": next(iter(timing_sources)) if len(timing_sources) == 1 else "mixed"},
                 }
             )
-        if eval_packs is not None:
+        if eval_packs is not None and not stopped:
             summary["heldout_losses"] = losses
         metrics.finish(summary)
+
+    if heartbeat:
+        heartbeat.update(final_phase, step=final_step)
+        heartbeat.close()
+    control.mark(final_phase, step=final_step)
+    control.close()
+    if metrics_dir is not None:
+        write_terminal(
+            metrics_dir,
+            rank,
+            {
+                "step": final_step,
+                "completed": completed,
+                "stopped": stopped,
+                "duration_s": time.time() - begin,
+                "last_phase": final_phase,
+            },
+        )
+    if ledger is not None:
+        ledger.complete_pending(status="complete" if completed else ("stopped" if stopped else "aborted"))
+        ledger.close()
 
     dist.destroy_process_group()
     return 0

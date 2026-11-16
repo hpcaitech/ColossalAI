@@ -30,6 +30,7 @@ from .general_checkpoint_io import GeneralCheckpointIO
 from .index_file import CheckpointIndexFile
 from .utils import (
     StateDictSharder,
+    _pin_tensor,
     async_save_state_dict_shards,
     create_pinned_state_dict,
     gather_distributed_param,
@@ -147,6 +148,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         self.use_zero = zero_stage > 0
         self.verbose = verbose
         self.coordinator = DistCoordinator()
+        # Async writers still reading the pinned buffers of a given model/optimizer. Those buffers
+        # are reused by the next save of the same object, so it must join these writers first.
+        self._staging_writers: Dict[object, list] = {}
 
     @staticmethod
     def _model_sharder(
@@ -170,7 +174,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 param_ = to_unpadded_tensor(param_)
             if pinned_state_dicts is not None:
                 if (prefix + name) not in pinned_state_dicts:
-                    pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
+                    pinned_state_dicts[prefix + name] = _pin_tensor(param_)
                 pinned_state_dicts[prefix + name].copy_(param_)
                 param_ = pinned_state_dicts[prefix + name]
             block, block_size = state_dict_sharder.append_param(prefix + name, param_)
@@ -184,7 +188,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                 buffer = buf if keep_vars else buf.detach()
                 if pinned_state_dicts is not None:
                     if (prefix + name) not in pinned_state_dicts:
-                        pinned_state_dicts[prefix + name] = torch.empty_like(param_, pin_memory=True, device="cpu")
+                        pinned_state_dicts[prefix + name] = _pin_tensor(buffer)
                     pinned_state_dicts[prefix + name].copy_(buffer)
                     buffer = pinned_state_dicts[prefix + name]
                 block, block_size = state_dict_sharder.append_param(prefix + name, buffer)
@@ -198,9 +202,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
             is not torch.nn.Module.get_extra_state
         ):
             extra_state = model.get_extra_state()
-            if pinned_state_dicts is not None:
+            if pinned_state_dicts is not None and isinstance(extra_state, torch.Tensor):
                 if extra_state_key not in pinned_state_dicts:
-                    pinned_state_dicts[extra_state_key] = torch.empty_like(param_, pin_memory=True, device="cpu")
+                    pinned_state_dicts[extra_state_key] = _pin_tensor(extra_state)
                 pinned_state_dicts[extra_state_key].copy_(extra_state)
                 extra_state = pinned_state_dicts[extra_state_key]
             block, block_size = state_dict_sharder.append_param(extra_state_key, extra_state)
@@ -303,7 +307,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Then collect the sharded parameters & buffers along tp_group.
         # Only devices with tp_rank == 0 are responsible for model saving.
         control_saving = self.tp_rank == 0 and self.sp_rank == 0 and self.replica_rank == 0
+        staging_key = ("model", hash(model))
         if control_saving and use_async:
+            self._join_pending_writers(self._staging_writers.pop(staging_key, ()))
             if hash(model) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[hash(model)] = {}
             pinned_state_dicts = self.pinned_state_dicts[hash(model)]
@@ -327,6 +333,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_preprocess=False,
                 )
                 self.async_writers.extend(writers)
+                if pinned_state_dicts is not None:
+                    self._staging_writers[staging_key] = writers
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -370,6 +378,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_preprocess=False,
                 )
                 self.async_writers.extend(writers)
+                if pinned_state_dicts is not None:
+                    self._staging_writers[staging_key] = writers
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -562,7 +572,9 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
         # Only devices with (dp_rank == 0 and tp_rank == 0) are responsible for states saving.
         control_saving = self.dp_rank == 0 and self.tp_rank == 0 and self.sp_rank == 0 and self.replica_rank == 0
 
+        optimizer_staging_key = ("optimizer", id(optimizer))
         if use_async and control_saving:
+            self._join_pending_writers(self._staging_writers.pop(optimizer_staging_key, ()))
             if id(optimizer) not in self.pinned_state_dicts:
                 self.pinned_state_dicts[id(optimizer)] = {}
             pinned_state_dicts = self.pinned_state_dicts[id(optimizer)]
@@ -592,6 +604,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_preprocess=True,
                 )
                 self.async_writers.extend(writers)
+                if pinned_state_dicts is not None:
+                    self._staging_writers[optimizer_staging_key] = writers
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -649,6 +663,8 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
                     state_preprocess=True,
                 )
                 self.async_writers.extend(writers)
+                if pinned_state_dicts is not None:
+                    self._staging_writers[optimizer_staging_key] = writers
             else:
                 total_size = save_state_dict_shards(
                     sharded_state_dict=state_dict_shard,
@@ -1130,7 +1146,7 @@ class HybridParallelCheckpointIO(GeneralCheckpointIO):
 
                 if pinned_state_dicts is not None:
                     if k not in pinned_state_dicts:
-                        pinned_state_dicts[k] = torch.empty_like(v, pin_memory=True, device="cpu")
+                        pinned_state_dicts[k] = _pin_tensor(v)
                     pinned_state_dicts[k].copy_(v)
                     state_[k] = pinned_state_dicts[k]
                 else:

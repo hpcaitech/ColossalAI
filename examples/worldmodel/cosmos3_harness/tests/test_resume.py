@@ -2,6 +2,7 @@
 
 import json
 import random
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -15,9 +16,14 @@ import torch.multiprocessing as mp
 from examples.worldmodel.cosmos3_harness import train
 from examples.worldmodel.cosmos3_harness.checkpoint import (
     _rng_fields,
+    apply_master_weights,
+    flush_checkpoint,
+    load_master_weights,
+    master_weights_payload,
     restore_checkpoint,
     save_checkpoint,
     validate_checkpoint,
+    validate_master_weights,
 )
 from examples.worldmodel.cosmos3_harness.loss import normalise_packed_loss, normalise_vision_token_mean
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
@@ -38,21 +44,79 @@ class Toy(torch.nn.Module):
 
 
 class CPUBooster:
-    """Exercise harness publication with actual DDP weights and AdamW state."""
+    """Exercise harness publication with actual DDP weights and AdamW state.
+
+    ``async_=True`` stages the state dicts eagerly and writes them from real background threads
+    registered on a ``checkpoint_io``, so the publication path runs exactly as in the GPU flows.
+    """
+
+    class _Writer:
+        def __init__(self, write):
+            self._error = None
+            self._thread = threading.Thread(target=self._run, args=(write,), daemon=True)
+            self._thread.start()
+
+        def _run(self, write):
+            try:
+                write()
+            except BaseException as exc:
+                self._error = exc
+
+        @property
+        def done(self):
+            return not self._thread.is_alive()
+
+        def sync_before_step(self):
+            return None
+
+        def synchronize(self):
+            self._thread.join()
+            if self._error is not None:
+                error, self._error = self._error, None
+                raise RuntimeError("Background checkpoint write failed") from error
+
+    class _CheckpointIO:
+        def __init__(self):
+            self.async_writers = []
+
+        def _sync_io(self):
+            writers, self.async_writers = self.async_writers, []
+            for writer in writers:
+                writer.synchronize()
+
+    def __init__(self, async_=False):
+        self.async_ = async_
+        self.checkpoint_io = self._CheckpointIO()
 
     @staticmethod
     def _module(model):
         return model.module if hasattr(model, "module") else model
 
+    def _write(self, write):
+        if self.async_:
+            self.checkpoint_io.async_writers.append(self._Writer(write))
+        else:
+            write()
+
     def save_model(self, model, path, **kwargs):
-        if not dist.is_initialized() or dist.get_rank() == 0:
-            Path(path).mkdir()
-            torch.save(self._module(model).state_dict(), Path(path) / "weights.pt")
+        state = self._module(model).state_dict() if not dist.is_initialized() or dist.get_rank() == 0 else None
+
+        def write():
+            if state is not None:
+                Path(path).mkdir()
+                torch.save(state, Path(path) / "weights.pt")
+
+        self._write(write)
 
     def save_optimizer(self, optimizer, path, **kwargs):
-        if not dist.is_initialized() or dist.get_rank() == 0:
-            Path(path).mkdir()
-            torch.save(optimizer.state_dict(), Path(path) / "state.pt")
+        state = optimizer.state_dict() if not dist.is_initialized() or dist.get_rank() == 0 else None
+
+        def write():
+            if state is not None:
+                Path(path).mkdir()
+                torch.save(state, Path(path) / "state.pt")
+
+        self._write(write)
 
     def load_model(self, model, path):
         self._module(model).load_state_dict(torch.load(Path(path) / "weights.pt", weights_only=True))
@@ -164,6 +228,47 @@ def test_policy_rejects_incompatible_device_before_loading(tmp_path):
         DroidWamPolicy.from_pretrained(tmp_path, transformer_path=None, config={}, device="cpu", backend="cuda")
 
 
+class _MasterOptimizer:
+    """Minimal mixed-precision optimizer surface used by the master-weight helpers."""
+
+    def __init__(self, masters, workings):
+        self.param_groups = [{"params": masters}]
+        self._map = {id(master): working for master, working in zip(masters, workings)}
+
+    def get_master_to_working_map(self):
+        return self._map
+
+
+def test_master_weights_round_trip_preserves_fp32(tmp_path):
+    class Model(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor([1.0, 2.0], dtype=torch.bfloat16))
+
+    model = Model()
+    master = torch.nn.Parameter(torch.tensor([1.0001, 2.0001], dtype=torch.float32))
+    optimizer = _MasterOptimizer([master], [model.weight])
+
+    payload = master_weights_payload(model, optimizer)
+    assert payload is not None
+    assert payload["keys"] == ["weight#0"]
+    assert payload["tensors"][0].dtype == torch.float32
+    path = tmp_path / "master-00000.pt"
+    torch.save(payload, path)
+    keys, tensors = load_master_weights(path)
+    validate_master_weights(keys, tensors, model, optimizer)
+
+    # This is what booster.load_model() does before the optimizer is restored: it rounds the master
+    # parameters to the working bf16 values.  The saved fp32 payload must put the exact values back.
+    master.data.copy_(model.weight.data)
+    assert master[0].item() == 1.0
+    apply_master_weights(tensors, model, optimizer)
+    torch.testing.assert_close(master, torch.tensor([1.0001, 2.0001]), rtol=0, atol=0)
+
+    with pytest.raises(ValueError, match="keys"):
+        validate_master_weights(["other#0"], tensors, model, optimizer)
+
+
 def test_checkpoint_integrity_and_atomic_publication(tmp_path):
     model = Toy()
     optimizer = torch.optim.AdamW(model.parameters())
@@ -186,6 +291,33 @@ def test_checkpoint_integrity_and_atomic_publication(tmp_path):
     (root / "rng-00000.pt").write_bytes(b"corrupt")
     with pytest.raises(ValueError, match="checksum"):
         restore_checkpoint(tmp_path, model, optimizer, booster=booster)
+
+
+def test_only_the_node_head_hashes_the_shared_shards(tmp_path, monkeypatch):
+    """A resume reads each file once per node, not once per rank: 48 ranks * 24 GiB is not a check."""
+    from examples.worldmodel.cosmos3_harness import checkpoint
+
+    model = Toy()
+    optimizer = torch.optim.AdamW(model.parameters())
+    booster = CPUBooster()
+    save_checkpoint(
+        tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 0, "config": None}, booster=booster
+    )
+
+    seen = []
+    original = checkpoint.file_digest
+    monkeypatch.setattr(checkpoint, "file_digest", lambda path: (seen.append(Path(path).name), original(path))[1])
+
+    monkeypatch.setattr(checkpoint, "_local_rank_index", lambda: 0)
+    checkpoint._validate_checkpoint_local(tmp_path)
+    assert "weights.pt" in seen and "state.pt" in seen, seen  # the CPUBooster's model/optimizer shards
+    assert "rng-00000.pt" in seen
+
+    seen.clear()
+    monkeypatch.setattr(checkpoint, "_local_rank_index", lambda: 3)
+    checkpoint._validate_checkpoint_local(tmp_path)
+    # A rank that is not its node's head checks only the file it will restore.
+    assert seen == ["rng-00000.pt"], seen
 
 
 def _rewrite_rng(root, rank, mutate):
@@ -243,8 +375,8 @@ def test_rng_schema_is_shared_with_the_writer(tmp_path):
     )
     root, _ = validate_checkpoint(tmp_path)
     rng = torch.load(root / "rng-00000.pt", map_location="cpu", weights_only=False)
-    # The writer emits exactly the fields the reader allows; a future field has to be added to the shared schema.
-    assert set(rng) == set(_rng_fields(str(rng["accelerator"])))
+    # The writer's fields are a subset of the schema the reader allows; ``extra`` is the optional rank state.
+    assert set(rng) <= set(_rng_fields(str(rng["accelerator"]))) | {"extra"}
 
 
 def test_an_unexpected_rng_field_is_rejected_before_model_load(tmp_path):
@@ -254,7 +386,7 @@ def test_an_unexpected_rng_field_is_rejected_before_model_load(tmp_path):
         tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 1, "config": {}}, booster=booster
     )
     root, _ = validate_checkpoint(tmp_path)
-    _rewrite_rng(root, 0, lambda rng: rng.update({"extra": "unexpected"}))
+    _rewrite_rng(root, 0, lambda rng: rng.update({"future": "unexpected"}))
     with patch.object(booster, "load_model") as model_load, patch.object(booster, "load_optimizer") as optim_load:
         with pytest.raises(ValueError, match="unexpected RNG fields"):
             restore_checkpoint(tmp_path, model, optimizer, booster=booster)
@@ -305,6 +437,10 @@ def _worker(rank, world, rendezvous, directory):
         _exercise_window_gradient(rank)
         for mode in ("replicated", "sharded"):
             _exercise_resume(rank, str(Path(directory) / mode), mode)
+            _exercise_resume(rank, str(Path(directory) / f"{mode}-async"), mode, async_save=True)
+        _exercise_flush_queue(rank, str(Path(directory) / "flush-queue"))
+        _exercise_async_publication(rank, str(Path(directory) / "publication"))
+        _exercise_failed_publication(rank, str(Path(directory) / "publication-failure"))
     finally:
         dist.destroy_process_group()
 
@@ -329,7 +465,7 @@ def _exercise_window_gradient(rank):
     torch.testing.assert_close(model.module.weight.grad, 2 * expected / 0.75)
 
 
-def _exercise_resume(rank, directory, mode):
+def _exercise_resume(rank, directory, mode, async_save=False):
     def seed():
         torch.manual_seed(111 + rank)
         random.seed(222 + rank)
@@ -365,14 +501,20 @@ def _exercise_resume(rank, directory, mode):
     split = torch.nn.parallel.DistributedDataParallel(Toy(stochastic=True))
     opt_split = torch.optim.AdamW(split.parameters(), lr=0.01)
     cursor, before = run(split, opt_split, 0, 0, 2)
-    booster = CPUBooster()
-    save_checkpoint(
+    booster = CPUBooster(async_=async_save)
+    pending = save_checkpoint(
         directory,
         split,
         opt_split,
         {"step": 2, "epoch": cursor // len(packs), "sampler_cursor": cursor, "config": {"cp": 1}},
         booster=booster,
+        async_=async_save,
     )
+    if async_save:
+        # The generation is only visible once every rank confirms it.
+        flush_checkpoint(pending)
+        assert pending.generation.is_dir()
+        assert json.loads((Path(directory) / "latest.json").read_text())["generation"] == pending.generation.name
     # Model/optimizer construction and unrelated work consume RNG before restoration.
     torch.rand(17)
     random.random()
@@ -424,6 +566,171 @@ def _exercise_resume(rank, directory, mode):
         optim_load.assert_not_called()
     dist.all_gather_object(messages, str(error.value))
     assert messages[0] == messages[1]
+
+
+def _exercise_flush_queue(rank, directory):
+    """Every rank queues the same number of generations, so the flush collective cannot diverge.
+
+    The ledger exists on rank zero only.  Keying the queue on the ledger id left the other ranks
+    with an empty list and made them skip the collective the publisher's rank was waiting in.
+    """
+    from examples.worldmodel.cosmos3_harness import train
+    from examples.worldmodel.cosmos3_harness.checkpoint_ledger import CheckpointLedger
+
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    booster = CPUBooster(async_=True)
+    model._colossal_booster = booster
+    ledger = CheckpointLedger(directory, rank=rank, world_size=2) if rank == 0 else None
+    stats = {"count": 0, "bytes": 0}
+    pending = []
+    try:
+        train._save_with_ledger(
+            pending,
+            ledger,
+            stats,
+            Path(directory),
+            model,
+            optimizer,
+            1,
+            0,
+            0,
+            {"cp": 1},
+            1,
+            async_=True,
+        )
+        assert len(pending) == 1
+        train._flush_pending(pending, ledger, stats)
+        assert pending == []
+    finally:
+        if ledger is not None:
+            ledger.close()
+    if rank == 0:
+        assert stats["count"] == 1
+        events = [json.loads(line) for line in (Path(directory) / "checkpoints.jsonl").read_text().splitlines()]
+        assert events[-1]["event"] == "end" and events[-1]["status"] == "complete"
+    dist.barrier()
+    assert (Path(directory) / "latest.json").is_file()
+
+
+def _exercise_async_publication(rank, directory):
+    """An asynchronous generation stays invisible until every rank flushes it."""
+    from examples.worldmodel.cosmos3_harness import checkpoint
+
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    state = {"step": 1, "epoch": 0, "sampler_cursor": 0, "config": {"cp": 1}}
+    booster = CPUBooster(async_=True)
+    entered, release = threading.Event(), threading.Event()
+    original = checkpoint.file_digest
+
+    def gated(path):
+        entered.set()
+        release.wait(timeout=60)
+        return original(path)
+
+    if rank == 0:
+        # Park the publisher inside the manifest walk: the rename and the pointer have not
+        # happened, so neither the generation nor latest.json may be visible.
+        with patch.object(checkpoint, "file_digest", side_effect=gated):
+            pending = save_checkpoint(directory, model, optimizer, state, booster=booster, async_=True)
+            assert entered.wait(timeout=60)
+            assert not (Path(directory) / "latest.json").exists()
+            assert not pending.generation.exists()
+            release.set()
+            flush_checkpoint(pending)
+    else:
+        pending = save_checkpoint(directory, model, optimizer, state, booster=booster, async_=True)
+        flush_checkpoint(pending)
+    dist.barrier()
+    assert pending.generation.is_dir()
+    root, saved = validate_checkpoint(directory)
+    assert saved["step"] == 1
+    assert json.loads((Path(directory) / "latest.json").read_text())["generation"] == pending.generation.name
+
+
+def _exercise_failed_publication(rank, directory):
+    """A failed publisher makes every rank raise together and leaves the pointer untouched."""
+    from examples.worldmodel.cosmos3_harness import checkpoint
+
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    state = {"step": 1, "epoch": 0, "sampler_cursor": 0, "config": None}
+    booster = CPUBooster(async_=True)
+    if rank == 0:
+        with patch.object(checkpoint, "file_digest", side_effect=OSError("disk gone")):
+            pending = save_checkpoint(directory, model, optimizer, state, booster=booster, async_=True)
+            with pytest.raises(RuntimeError, match="rank 0"):
+                flush_checkpoint(pending)
+    else:
+        pending = save_checkpoint(directory, model, optimizer, state, booster=booster, async_=True)
+        with pytest.raises(RuntimeError, match="rank 0"):
+            flush_checkpoint(pending)
+    assert not (Path(directory) / "latest.json").exists()
+    assert not pending.generation.exists()
+
+
+def _node_local_resume(rank, base):
+    """Each rank's ``--out`` is its own disk: rank 0 publishes, rank 1 keeps only the RNG it wrote.
+
+    This is the six-node layout.  Rank 1 has no ``latest.json``, no weights and an unpublished staging
+    directory; resume must still find the generation, fetch the shared files from rank 0's node and leave
+    a complete local copy behind.
+    """
+    root = Path(base) / f"node{rank}" / "checkpoints"
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    booster = CPUBooster()
+    model._colossal_booster = booster
+    pending = save_checkpoint(
+        root,
+        model,
+        optimizer,
+        {"step": 5, "epoch": 1, "sampler_cursor": 7, "config": {"cp": 1}},
+        booster=booster,
+    )
+    dist.barrier()
+    if rank == 0:
+        manifest = json.loads((pending.generation / "complete.json").read_text())
+        # Rank files stay on the node that wrote them, but the manifest still vouches for all of them.
+        assert "rng-00001.pt" in manifest["files"]
+        assert "rng-00001.pt" in manifest["sizes"]
+        assert (pending.generation / "model" / "weights.pt").is_file()
+    else:
+        assert not pending.generation.exists()
+        assert not (root / "latest.json").exists()
+        assert (root / (".incomplete-" + pending.identifier) / "rng-00001.pt").is_file()
+    dist.barrier()
+
+    resumed = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer_resumed = torch.optim.AdamW(resumed.parameters(), lr=0.01)
+    state = restore_checkpoint(root, resumed, optimizer_resumed, booster=booster, expected_config={"cp": 1})
+    assert state["step"] == 5
+    # Both nodes now hold a published, complete generation for the next resume.
+    assert (root / "latest.json").is_file()
+    generation = root / pending.generation.name
+    assert (generation / "complete.json").is_file()
+    assert (generation / "model" / "weights.pt").is_file()
+    # Each node holds its own rank file and only its own.
+    assert (generation / f"rng-{rank:05d}.pt").is_file()
+    assert not (generation / f"rng-{1 - rank:05d}.pt").exists()
+    torch.testing.assert_close(resumed.module.weight, model.module.weight, rtol=0, atol=0)
+
+
+def _node_local_worker(rank, world, rendezvous, base):
+    from colossalai.accelerator import set_accelerator
+
+    set_accelerator("cpu")
+    dist.init_process_group("gloo", init_method=f"file://{rendezvous}", rank=rank, world_size=world)
+    try:
+        _node_local_resume(rank, base)
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")
+def test_node_local_disks_fetch_the_generation_from_rank_zero(tmp_path):
+    mp.spawn(_node_local_worker, args=(2, str(tmp_path / "rendezvous"), str(tmp_path)), nprocs=2, join=True)
 
 
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")

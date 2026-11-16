@@ -1,5 +1,6 @@
 # a python safetensors serializer modified from https://github.com/huggingface/safetensors/blob/41bd1acf38ad28ac559522d40596c6c802f79453/safetensors/src/tensor.rs#L214
 import json
+import threading
 import warnings
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -17,17 +18,83 @@ try:
 except Exception:
     AsyncFileWriter = None
     HAS_TENSORNVME = False
-    warnings.warn(
-        "Please install the latest tensornvme to use async save. pip install git+https://github.com/hpcaitech/TensorNVMe.git"
-    )
 _TYPES_INV = {v: k for k, v in _TYPES.items()}
 ASYNC_WRITE_ENTRIES = 32
+
+# TensorNVMe is a CUDA-only native extension, so Ascend NPU and CPU runs have no async backend
+# there.  One warning is enough; a warning per save would drown the training log.
+_threaded_fallback_warned = False
 
 
 def _require_async_file_writer():
     if AsyncFileWriter is None:
         raise RuntimeError("Async checkpoint I/O requires TensorNVMe")
     return AsyncFileWriter
+
+
+def _normalise_metadata(metadata: Optional[Dict[str, str]]) -> Dict[str, str]:
+    """Safetensors metadata values are strings; optimizer schemas are JSON encoded once."""
+    normalised = {k: v if isinstance(v, str) else json.dumps(v) for k, v in (metadata or {}).items()}
+    if any(type(k) is not str for k in normalised):
+        raise TypeError("Safetensors metadata keys must be strings")
+    return normalised
+
+
+def _to_host(tensor):
+    """Detach a tensor and make sure a background thread may read it without a device copy."""
+    if not isinstance(tensor, torch.Tensor):
+        return tensor
+    tensor = tensor.data.cpu()
+    return tensor if tensor.is_contiguous() else tensor.contiguous()
+
+
+class ThreadedSafetensorsWriter:
+    """Background safetensors writer used when TensorNVMe is unavailable.
+
+    Upstream Cosmos pays exactly one device-to-host staging copy before a save returns and
+    leaves serialization, disk I/O and the ``latest`` pointer to a background worker.  The
+    checkpoint IO's pinned buffers already provide that staging copy, so this writer keeps the
+    same contract as :class:`tensornvme.async_file_io.AsyncFileWriter`
+    (``sync_before_step`` / ``synchronize``) and only moves the write off the caller's thread.
+    Every tensor is host-resident before the thread starts: a device tensor here would be read
+    while the optimizer is already updating it.
+    """
+
+    def __init__(self, path: str, state_dict: Dict[str, torch.Tensor], metadata=None):
+        global _threaded_fallback_warned
+        if not _threaded_fallback_warned:
+            _threaded_fallback_warned = True
+            warnings.warn(
+                "TensorNVMe is not installed; async checkpoint writes fall back to a background thread. "
+                "The device-to-host copy is still staged before the save returns, so the training step "
+                "is not blocked on serialization or disk I/O.",
+                RuntimeWarning,
+            )
+        self.path = path
+        self._error = None
+        self._metadata = _normalise_metadata(metadata)
+        host = {name: _to_host(tensor) for name, tensor in state_dict.items()}
+        self._thread = threading.Thread(target=self._write, args=(host,), name="safetensors-writer", daemon=True)
+        self._thread.start()
+
+    def _write(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        try:
+            save_file(state_dict, self.path, metadata=self._metadata)
+        except BaseException as exc:  # re-raised on the training thread by synchronize()
+            self._error = exc
+
+    @property
+    def done(self) -> bool:
+        return not self._thread.is_alive()
+
+    def sync_before_step(self) -> None:
+        """The host copy happened in the caller; nothing device-side is still in flight."""
+
+    def synchronize(self) -> None:
+        self._thread.join()
+        if self._error is not None:
+            error, self._error = self._error, None
+            raise RuntimeError(f"Background safetensors write failed for {self.path}") from error
 
 
 @dataclass
@@ -60,9 +127,7 @@ def prepare(
 ) -> Tuple[PreparedData, List[torch.Tensor], List[str]]:
     # Safetensors metadata values are strings. Do not mutate cached metadata or
     # JSON-encode already encoded optimizer schemas a second time.
-    metadata = {k: v if isinstance(v, str) else json.dumps(v) for k, v in (metadata or {}).items()}
-    if any(type(k) is not str for k in metadata):
-        raise TypeError("Safetensors metadata keys must be strings")
+    metadata = _normalise_metadata(metadata)
 
     tensors = []
     tensor_keys = []
@@ -95,6 +160,8 @@ def prepare(
 
 
 def save(path: str, state_dict: Dict[str, torch.Tensor], metadata: Optional[Dict[str, str]] = None) -> None:
+    if AsyncFileWriter is None:
+        return ThreadedSafetensorsWriter(path, state_dict, metadata)
     prepared_data, tensors, _ = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
     writer_cls = _require_async_file_writer()
@@ -118,6 +185,18 @@ def move_and_save(
     state_dict_pinned: Optional[Dict[str, torch.Tensor]] = None,
     metadata: Optional[Dict[str, str]] = None,
 ) -> None:
+    if AsyncFileWriter is None:
+        # Same staging as the TensorNVMe path, done synchronously: the caller must not hand a
+        # live device tensor to a thread that runs while the optimizer keeps updating it.
+        host = {}
+        for name, tensor in state_dict.items():
+            pinned = state_dict_pinned.get(name) if state_dict_pinned is not None else None
+            if isinstance(pinned, torch.Tensor) and pinned.shape == tensor.shape and pinned.dtype == tensor.dtype:
+                pinned.copy_(tensor)
+                host[name] = pinned
+            else:
+                host[name] = tensor
+        return ThreadedSafetensorsWriter(path, host, metadata)
     prepared_data, _, tensor_keys = prepare(state_dict, metadata)
     n, header_bytes, _ = prepared_data.n, prepared_data.header_bytes, prepared_data.offset
     writer_cls = _require_async_file_writer()

@@ -140,6 +140,11 @@ class LatentCacheDataset(Dataset):
     def __len__(self) -> int:
         return len(self.base)
 
+    def set_visit_epoch(self, epoch: int) -> None:
+        setter = getattr(self.base, "set_visit_epoch", None)
+        if callable(setter):
+            setter(epoch)
+
     def __getitem__(self, index: int) -> dict:
         window = self.base.windows[index]
         # The extractor keys entries by the dataset's logical sample id (revision, root role, episode, start,
@@ -148,7 +153,10 @@ class LatentCacheDataset(Dataset):
         sample_id = self.base.sample_id(index)
         cached = self.cache.get(sample_id)
         action, state = self.base._read_actions(window)
-        task = random.choice(window.task.split(" | "))
+        # The cached latent replaces the video, so the caption draw is the only per-visit randomness left;
+        # seed it from the same visit seed the online path uses, or a resume would re-describe the window.
+        seed = self.base.visit_seed_for(index) if hasattr(self.base, "visit_seed_for") else None
+        task = (random if seed is None else random.Random(seed)).choice(window.task.split(" | "))
         full_action = torch.cat([state.reshape(1, -1).to(action.dtype), action], dim=0)
         return {
             # pack_one wants a [B, C, T, H, W] latent; the extractor stores each sample with its own leading batch

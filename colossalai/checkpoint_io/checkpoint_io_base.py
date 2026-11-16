@@ -68,9 +68,17 @@ class CheckpointIO(ABC):
         self.async_writers = []
 
     def _sync_io(self):
-        for writer in self.async_writers:
-            writer.synchronize()
-        self.async_writers.clear()
+        # Drain before raising: an aborted loop would leave the remaining writers registered and
+        # their staging buffers live, and the next save would overwrite them mid-write.
+        writers, self.async_writers = self.async_writers, []
+        errors = []
+        for writer in writers:
+            try:
+                writer.synchronize()
+            except BaseException as exc:
+                errors.append(exc)
+        if errors:
+            raise RuntimeError(f"{len(errors)} asynchronous checkpoint writer(s) failed") from errors[0]
 
     def _sync_d2h(self):
         for writer in self.async_writers:
@@ -80,9 +88,29 @@ class CheckpointIO(ABC):
         """This method must be called before updating the model weights."""
         self._sync_d2h()
 
+    def _join_pending_writers(self, writers) -> None:
+        """Join writers that own pinned staging buffers before those buffers are reused.
+
+        ``_sync_io`` joins everything, which is right at a save entry but wrong between the model
+        and optimizer halves of one checkpoint: it would kill the overlap of the half just queued.
+        """
+        writers = list(writers)
+        if not writers:
+            return
+        for writer in writers:
+            writer.synchronize()
+        joined = {id(writer) for writer in writers}
+        self.async_writers = [writer for writer in self.async_writers if id(writer) not in joined]
+
     def __del__(self):
-        self._sync_d2h()
-        self._sync_io()
+        # Finalizers must not raise; a failed writer is already reported at the explicit flush.
+        for writer in self.async_writers:
+            for join in (writer.sync_before_step, writer.synchronize):
+                try:
+                    join()
+                except BaseException:
+                    pass
+        self.async_writers.clear()
 
     def load_model(
         self,

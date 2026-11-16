@@ -45,6 +45,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
+from examples.worldmodel.cosmos3.runtime import VisitRandomness
+
 # The augmentation is torchvision's, as upstream's is. The import stays guarded because a torchvision that does
 # not match the torch/torch_npu build is a real failure mode here: it imports, registers no operators, and dies
 # later on `torchvision::nms`, which looks like a data bug rather than a dependency one. Guarded, that shows up
@@ -511,6 +513,7 @@ class DroidActionPolicyDataset(Dataset):
         split_val_ratio: float = 0.03,
         *,
         split_seed: int | None = None,
+        augment_seed: int | None = None,
         success_only: bool = False,
         keep_ranges: str | Path | None = None,
         filter_dict_source_prefix: str | None = None,
@@ -525,6 +528,9 @@ class DroidActionPolicyDataset(Dataset):
         self.fps = fps
         self.resolution = resolution
         self.augment = augment
+        # With a seed, the augmentation and the caption draw become a property of (seed, epoch, index)
+        # instead of the worker's RNG, so a resumed run with --num-workers > 0 replays them exactly.
+        self._visit = VisitRandomness(augment_seed) if augment_seed is not None else None
         self._augmentor: T.Compose | None = None
         # One actions parquet per data file, kept per worker process; see _action_table for why the read cannot stay
         # on the per-sample path.
@@ -823,14 +829,30 @@ class DroidActionPolicyDataset(Dataset):
         state = torch.cat([s_joint.reshape(-1), s_grip.reshape(-1)], dim=-1)
         return torch.cat([joint, grip], dim=-1), state  # [chunk, 8], [8]
 
+    def set_visit_epoch(self, epoch: int) -> None:
+        """Keep the per-visit seed in step with the sampler's epoch (``resume_sampler`` forwards it)."""
+        if self._visit is not None:
+            self._visit.set_epoch(epoch)
+
+    def visit_seed_for(self, index: int) -> int | None:
+        """This visit's augmentation seed, or ``None`` when per-visit seeding is off."""
+        return None if self._visit is None else self._visit.seed_for(index)
+
     def __getitem__(self, idx: int) -> dict:
         win = self.windows[idx]
+        # One seed per visit, so a resumed run draws the same augmentation and the same caption for the same
+        # window instead of whatever the worker's RNG happened to hold.
+        visit = self.visit_seed_for(idx)
         # [0, 1], not [0, 255], because that is the range upstream composes in: LeRobotDataset hands out float
         # frames already divided by 255, and the composition and augmentation run on those values. The range
         # matters at the end of this method, where the round trip back to uint8 is what upstream quantises.
         views = {c: self._read_frames(c, win).float() / 255.0 for c in CAMS}
         if self.augment:
-            views = self._augment(views)
+            if visit is None:
+                views = self._augment(views)
+            else:
+                with VisitRandomness.seeded(visit):
+                    views = self._augment(views)
         comp = compose_concat_view(views["wrist"], views["left"], views["right"])
         th, tw, aspect = closest_canvas(*comp.shape[-2:], resolution=self.resolution)
         # Quantise before normalising, because upstream does: its dataset ends at
@@ -875,8 +897,10 @@ class DroidActionPolicyDataset(Dataset):
         # instructions glued with pipe characters, a sentence no annotator wrote. The split is unconditional here
         # while upstream gates it on HAS_MULTI_LANGUAGE_ANNOTATIONS[version]; that is the same behaviour for every
         # listed version, because the ones with the flag off contain no " | " and the split is then a no-op.
-        # Pinning the draw for a comparison run is the caller's business, not this method's.
-        task = random.choice(win.task.split(" | "))
+        # Pinning the draw for a comparison run is what ``augment_seed`` does; without it the global stream
+        # decides, as before.
+        chooser = random if visit is None else random.Random(visit)
+        task = chooser.choice(win.task.split(" | "))
         # The prompt's idle_frame field counts idle frames in the action chunk the prompt describes, and that chunk
         # is the one with the initial state row prepended. packing.pack_one does the prepend, so do it here too
         # rather than counting on 32 rows and disagreeing with upstream by one frame.

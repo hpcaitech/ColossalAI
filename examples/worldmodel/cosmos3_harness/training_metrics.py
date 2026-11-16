@@ -39,8 +39,10 @@ import contextlib
 import importlib
 import json
 import math
+import os
 import statistics
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -98,7 +100,11 @@ REDUCTIONS: Dict[str, str] = {
     "data/wait_ms": "max",
     "data/pack_ms": "max",
     "data/vae_ms": "max",
+    "data/h2d_ms": "max",
+    "data/packing_ms": "max",
+    "data/microsteps": "max",
     "perf/step_ms": "max",
+    "perf/wall_elapsed_ms": "max",
     "perf/forward_ms": "max",
     "perf/backward_ms": "max",
     "perf/fwd_ms": "max",
@@ -124,6 +130,8 @@ REDUCTIONS: Dict[str, str] = {
     "mem/peak_reserved_gib": "max",
     "mem/device_used_gib": "max",
     "mem/device_total_gib": "max",
+    "mem/device_free_gib": "min",
+    "mem/sampled_device_peak_gib": "max",
     "ckpt/save_ms": "max",
     "ckpt/async_pending": "max",
     # Callers normalize losses for their declared sample/element objective; see the module docstring.
@@ -521,6 +529,11 @@ def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optiona
     present = [record for record in records if record]
     if not present:
         return None
+    if len({int(record.get("step", -1)) for record in present}) > 1:
+        raise ValueError("Cannot aggregate different optimizer steps")
+    ranks = [int(record.get("rank", 0)) for record in present]
+    if len(ranks) != len(set(ranks)):
+        raise ValueError("Cannot aggregate duplicate ranks")
 
     flats = [flatten(record) for record in present]
     keys = sorted(set().union(*(flat.keys() for flat in flats)))
@@ -1299,6 +1312,8 @@ class TrainingMetrics:
         aggregate_observers: Sequence[MetricsObserver] = (),
         detector: Optional[AnomalyDetector] = None,
         write_jsonl: bool = True,
+        write_aggregate: bool = True,
+        collective: bool = False,
     ) -> None:
         self.rank = int(rank)
         self.world_size = int(world_size)
@@ -1310,7 +1325,14 @@ class TrainingMetrics:
             local.insert(0, JsonlObserver(self.out_dir / f"rank-{self.rank:03d}.jsonl"))
         self.local_observers = local
         self.aggregate_observers = list(aggregate_observers)
+        if write_aggregate and self.out_dir is not None and self.rank == 0:
+            # The aggregated record is what a dashboard wants: one line per log step, already reduced across
+            # ranks.  The per-rank JSONL remains the source of truth if this file is lost.
+            self.aggregate_observers.insert(0, JsonlObserver(self.out_dir / "aggregated.jsonl"))
         self.detector = detector
+        self.collective = bool(collective)
+        self.session_id = uuid.uuid4().hex[:12]
+        self.manifest: Dict[str, Any] = {}
 
         self._aggregator = None
         if self.out_dir is not None and self.rank == 0 and self.world_size > 1:
@@ -1323,20 +1345,50 @@ class TrainingMetrics:
 
     def start(self, manifest: Optional[Mapping[str, Any]] = None) -> None:
         """Write the run manifest on rank 0 and notify the sinks."""
+        if manifest is not None:
+            self.manifest = dict(manifest)
         if manifest is not None and self.out_dir is not None and self.rank == 0:
             self.out_dir.mkdir(parents=True, exist_ok=True)
-            (self.out_dir / "run.json").write_text(
-                json.dumps(dict(manifest), indent=2, default=_json_default) + "\n", encoding="utf-8"
-            )
+            path = self.out_dir / "run.json"
+            temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(dict(manifest), indent=2, default=_json_default) + "\n", encoding="utf-8")
+            os.replace(temporary, path)
+            session = {
+                "type": "session",
+                "session_id": self.session_id,
+                "run_id": manifest.get("run_id"),
+                "run_name": manifest.get("run_name"),
+                "started_at": time.time(),
+                "argv": (manifest.get("run") or {}).get("argv"),
+                "pid": os.getpid(),
+                "resume_from": manifest.get("resume_from"),
+            }
+            with (self.out_dir / "sessions.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(session, default=_json_default, allow_nan=False) + "\n")
         for observer in self.local_observers + self.aggregate_observers:
             observer.on_run_start(manifest or {})
 
     def finish(self, summary: Optional[Mapping[str, Any]] = None) -> None:
         """Write the summary on rank 0, forward any still-queued events, and close every sink."""
         if summary is not None and self.out_dir is not None and self.rank == 0:
-            (self.out_dir / "summary.json").write_text(
-                json.dumps(dict(summary), indent=2, default=_json_default) + "\n", encoding="utf-8"
-            )
+            path = self.out_dir / "summary.json"
+            temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(dict(summary), indent=2, default=_json_default) + "\n", encoding="utf-8")
+            os.replace(temporary, path)
+            with (self.out_dir / "sessions.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "session_end",
+                            "session_id": self.session_id,
+                            "ended_at": time.time(),
+                            "completed": summary.get("completed"),
+                        },
+                        default=_json_default,
+                        allow_nan=False,
+                    )
+                    + "\n"
+                )
         if self.rank == 0:
             # An event after the last log step has no step left to be forwarded at; report it with the summary.
             for pending_step in sorted(self._pending_events):
@@ -1409,6 +1461,17 @@ class TrainingMetrics:
         for observer in self.local_observers:
             observer.on_step(record)
 
+        gathered = None
+        if self.collective and self.world_size > 1:
+            # Opt-in: gather the complete record at a log step so a published global sample count cannot be a
+            # partial file view.  This is a collective, so it is off by default and never runs on non-log steps.
+            import torch.distributed as dist
+
+            gathered = [None] * self.world_size
+            dist.all_gather_object(gathered, record)
+            if {int(item["rank"]) for item in gathered if item} != set(range(self.world_size)):
+                raise RuntimeError("Metrics collective did not contain every expected rank")
+
         if self.rank != 0 or not (int(step) == 1 or int(step) % self.log_every == 0):
             return
 
@@ -1418,13 +1481,20 @@ class TrainingMetrics:
             if pending_step <= int(step)
             for event in self._pending_events.pop(pending_step)
         ]
-        if self._aggregator is not None:
-            gathered, gathered_events = self._aggregator.collect(int(step), own_record=record)
-            if gathered:
-                records = gathered
+        if gathered is not None:
+            records = [dict(item) for item in gathered if item]
+        elif self._aggregator is not None:
+            file_records, gathered_events = self._aggregator.collect(int(step), own_record=record)
+            if file_records:
+                records = file_records
             events.extend(gathered_events)
 
         aggregated = aggregate_records(records) or record
+        aggregated["expected_world"] = self.world_size
+        aggregated["complete"] = int(aggregated.get("world", 1)) == int(self.world_size)
+        if not aggregated["complete"]:
+            # A partial view is useful for diagnosis, but its sum must not be mistaken for job throughput.
+            aggregated.setdefault("data", {})["partial_samples"] = aggregated.get("data", {}).pop("samples", None)
         if self.detector is not None:
             detected = self.detector.check(aggregated)
             for event in detected:
