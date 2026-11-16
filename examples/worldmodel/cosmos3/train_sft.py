@@ -635,8 +635,8 @@ def parse_args(argv=None):
     ):
         if getattr(args, name) < 1:
             parser.error(f"--{name.replace('_', '-')} must be positive")
-    if args.fps <= 0 or args.selective_budget_gib < 0 or args.num_workers < 0:
-        parser.error("fps must be positive; selective budget and worker count must be nonnegative")
+    if args.fps <= 0 or args.selective_budget_gib < 0 or args.num_workers < 0 or args.prefetch_factor < 0:
+        parser.error("fps must be positive; selective budget, worker count and prefetch factor must be nonnegative")
     if args.heartbeat_seconds <= 0:
         parser.error("--heartbeat-seconds must be positive")
     if args.vae_encode_batch < 0 or args.vae_chunk_frames < 0 or args.vae_chunk_frames % 4:

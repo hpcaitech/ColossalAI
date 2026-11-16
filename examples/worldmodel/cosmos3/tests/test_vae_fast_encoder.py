@@ -18,8 +18,14 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from diffusers.models.autoencoders.autoencoder_kl_wan import WanCausalConv3d, WanResidualDownBlock
-from vae_fast_encoder import _fast_conv_forward, _fast_down_forward, disable_fast_encoder, enable_fast_encoder
+from diffusers.models.autoencoders.autoencoder_kl_wan import AvgDown3D, WanCausalConv3d, WanResidualDownBlock
+from vae_fast_encoder import (
+    _fast_avgdown_forward,
+    _fast_conv_forward,
+    _fast_down_forward,
+    disable_fast_encoder,
+    enable_fast_encoder,
+)
 
 CONV_CONFIGS = [
     # kernel, stride, padding, input T, cache frames
@@ -128,10 +134,32 @@ def test_enable_and_disable_round_trip():
     module = torch.nn.Sequential(
         WanCausalConv3d(4, 4, 3, padding=1),
         WanResidualDownBlock(4, 4, 0.0, num_res_blocks=1, temperal_downsample=False, down_flag=False),
+        AvgDown3D(4, 4, factor_t=1, factor_s=1),
     )
     enable_fast_encoder(module)
     assert module[0].forward.__func__ is _fast_conv_forward
     assert module[1].forward.__func__ is _fast_down_forward
+    assert module[2].forward.__func__ is _fast_avgdown_forward
     disable_fast_encoder(module)
     assert "forward" not in module[0].__dict__
     assert "forward" not in module[1].__dict__
+    assert "forward" not in module[2].__dict__
+
+
+@pytest.mark.parametrize(
+    "in_c,out_c,ft,fs,t",
+    [
+        (4, 4, 1, 1, 4),
+        (4, 8, 1, 2, 4),
+        (4, 8, 2, 2, 4),  # divisible T -> zero-width pad skipped
+        (4, 8, 2, 2, 5),  # non-divisible T -> still pads to multiple of factor_t
+    ],
+)
+def test_avgdown_matches_diffusers_bitwise(in_c, out_c, ft, fs, t):
+    torch.manual_seed(0)
+    module = AvgDown3D(in_c, out_c, factor_t=ft, factor_s=fs).eval()
+    x = torch.randn(2, in_c, t, 8, 8)
+    with torch.no_grad():
+        expected = module(x)
+        actual = _fast_avgdown_forward(module, x)
+    assert torch.equal(actual, expected)
