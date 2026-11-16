@@ -335,7 +335,7 @@ def _local_rank_file(local_root: Path, generation: str, name: str) -> Optional[P
     """Where this node kept a rank file at save time: the published generation, else its staging dir."""
     candidates = [local_root / generation / name]
     if generation.startswith("checkpoint-"):
-        candidates.append(local_root / (".incomplete-" + generation[len("checkpoint-"):]) / name)
+        candidates.append(local_root / (".incomplete-" + generation[len("checkpoint-") :]) / name)
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -368,7 +368,9 @@ def _fetch_generation(payload, local_root: Path, generation_dir: Path, *, rank: 
     missing = [
         name
         for name in files
-        if _is_rank_local(name) and _rank_of_file(name) == rank and _local_rank_file(local_root, generation, name) is None
+        if _is_rank_local(name)
+        and _rank_of_file(name) == rank
+        and _local_rank_file(local_root, generation, name) is None
     ]
     local_error = None
     if missing:
@@ -399,7 +401,9 @@ def _fetch_generation(payload, local_root: Path, generation_dir: Path, *, rank: 
         if target is not None:
             target.parent.mkdir(parents=True, exist_ok=True)
         if rank == 0:
-            print(f"[checkpoint] sending {name} ({int(sizes.get(name) or 0) / 2**20:.0f} MiB) to every node", flush=True)
+            print(
+                f"[checkpoint] sending {name} ({int(sizes.get(name) or 0) / 2**20:.0f} MiB) to every node", flush=True
+            )
         _transfer_file(
             generation_dir / name if rank == 0 else None,
             target,
@@ -618,9 +622,7 @@ def save_checkpoint(
     rank_files: Dict[str, Dict[str, Any]] = {}
     master_payload = master_weights_payload(model, optimizer)
     if master_payload is not None:
-        rank_files[f"master-{rank:05d}.pt"] = _save_with_digest(
-            master_payload, staging / f"master-{rank:05d}.pt"
-        )
+        rank_files[f"master-{rank:05d}.pt"] = _save_with_digest(master_payload, staging / f"master-{rank:05d}.pt")
     accelerator = _accelerator()
     rng = {
         "torch": torch.get_rng_state(),

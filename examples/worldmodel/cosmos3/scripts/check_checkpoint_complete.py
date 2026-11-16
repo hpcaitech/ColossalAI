@@ -70,8 +70,10 @@ def main() -> int:
         ranks = sorted({rank_of(name) for name in held if is_rank_file(name)} - {None})
         print(f"[ckpt] this node never published; newest staging is {staging.name}")
         print(f"[ckpt] it holds {len(ranks)} rank file(s): {ranks[:8]}{' ...' if len(ranks) > 8 else ''}")
-        print("[ckpt] RESUME-SAFE from this node: --resume fetches model/optimizer/training_state from "
-              "rank 0's node and keeps these rank files")
+        print(
+            "[ckpt] RESUME-SAFE from this node: --resume fetches model/optimizer/training_state from "
+            "rank 0's node and keeps these rank files"
+        )
         return 0
 
     print(f"[ckpt] generation {generation.name}")
@@ -81,7 +83,7 @@ def main() -> int:
         return 1
     manifest = json.loads(complete.read_text())
     files = manifest.get("files") or {}
-    sizes = manifest.get("sizes") or {}
+    manifest.get("sizes") or {}
     print(f"[ckpt] manifest lists {len(files)} files, {manifest.get('total_bytes', 0) / 2**30:.1f} GiB")
 
     problems: list[str] = []
