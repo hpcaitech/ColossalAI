@@ -11,8 +11,9 @@ which this backend scalarises into a per-element ``SetValue`` with a pipe barrie
 below compile to real vector instructions, and ``CAST_RINT`` is the only fp32->bf16 mode that matches torch
 (``probe_tile_ops.py``).
 
-The reflect pad stays on the bf16 tensor (16 columns and 4 rows out of 656x544); only the normalisation, which
-is the expensive part, is fused.
+The reflect pad runs on the uint8 tensor before the fused normalisation (16 columns and 4 rows out of 656x544), so
+the flip+cat moves one byte per element instead of two; only the normalisation, which is the expensive part, is
+fused.
 """
 
 import tilelang
