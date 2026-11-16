@@ -3,9 +3,8 @@
 import pytest
 import torch
 import torch.distributed as dist
-from torch.distributed.fsdp import FullStateDictConfig
+from torch.distributed.fsdp import FullStateDictConfig, MixedPrecision, StateDictType
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp import MixedPrecision, StateDictType
 
 import colossalai
 from colossalai.accelerator import get_accelerator

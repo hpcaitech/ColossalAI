@@ -252,7 +252,7 @@ def build_training_sample(
 
     # Masking.
     max_predictions_per_seq = masked_lm_prob * max_num_tokens
-    (tokens, masked_positions, masked_labels, _) = create_masked_lm_predictions(
+    tokens, masked_positions, masked_labels, _ = create_masked_lm_predictions(
         tokens,
         vocab_id_list,
         vocab_id_to_token_dict,

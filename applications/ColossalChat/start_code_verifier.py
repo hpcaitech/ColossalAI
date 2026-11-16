@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from coati.distributed.reward.code_reward.utils import check_correctness  # Assuming utils.py is in the same directory
+from coati.distributed.reward.code_reward.utils import check_correctness
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
