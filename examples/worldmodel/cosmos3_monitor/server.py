@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,8 +27,11 @@ from .store import RunStore
 
 DEFAULT_KEYS = [
     "loss/total",
+    "loss/objective",
     "loss/vision",
     "loss/action",
+    "loss/vision_supervised_mse",
+    "loss/action_supervised_mse",
     "optim/lr",
     "optim/grad_norm",
     "perf/step_s",
@@ -75,6 +79,10 @@ def _require(store: RunStore, token: str):
 def create_app(store: RunStore) -> FastAPI:
     static_dir = Path(__file__).resolve().parent / "static"
     app = FastAPI(title="Cosmos3 training monitor", version=MONITOR_VERSION, docs_url="/api/docs", redoc_url=None)
+    # Metric payloads are numeric JSON, which compresses about 8-12x; over a tunnel or a slow link that is
+    # the difference between a chart appearing at once and a multi-second wait.  Below 2 KiB the header
+    # overhead is not worth it, and event streams are excluded so SSE keeps flushing per event.
+    app.add_middleware(GZipMiddleware, minimum_size=2048)
 
     @app.on_event("startup")
     async def _startup() -> None:
@@ -170,9 +178,19 @@ def create_app(store: RunStore) -> FastAPI:
         return _envelope(data)
 
     @app.get("/api/runs/{token}/system")
-    def system(token: str, host: Optional[str] = None):
+    def system(
+        token: str,
+        host: Optional[str] = None,
+        processes: int = Query(0, ge=0, le=1),
+        points: int = Query(0, ge=0, le=2000),
+    ):
+        """Per-host telemetry.  ``processes=1`` adds the /proc rows, ``points`` the device series.
+
+        Both are opt-in: the process tables and the 500-sample device series are ~90% of the response and
+        only the System tab draws them, while the topology view needs neither.
+        """
         _require(store, token)
-        data = store.system(token, host=host)
+        data = store.system(token, host=host, processes=bool(processes), points=points)
         return _envelope(data)
 
     @app.get("/api/runs/{token}/throughput")

@@ -98,3 +98,42 @@ def test_open_details_and_scroll_survive_a_tab_refresh():
     assert "captureOpenDetails()" in block
     assert "restoreOpenDetails(openDetails)" in block
     assert "window.scrollTo(0, scrollY)" in block
+
+
+def test_charts_lock_zoom_by_exact_data_values_and_refresh_in_place():
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert "rangeMode: ['value', 'value']" in source
+    assert "dz0.startValue = savedZoom.startValue;" in source
+    assert "dz0.endValue = savedZoom.endValue;" in source
+    assert "sessionStorage" in source
+    assert "echarts.connect" not in source
+    assert "function syncSiblingZoom" in source
+
+    quiet = source.split("async function refreshDetailQuiet", 1)[1].split("function updateTabBadges", 1)[0]
+    assert "renderRunView" not in quiet
+    for fn in (
+        "refreshCharts",
+        "refreshOverviewInPlace",
+        "refreshCheckpointsInPlace",
+        "refreshSystemInPlace",
+        "refreshTopologyInPlace",
+        "refreshEventsInPlace",
+        "refreshRecordsInPlace",
+    ):
+        assert fn in quiet
+
+
+def test_chart_modal_filters_and_checkpoint_row_drawer_are_wired():
+    index = (STATIC / "index.html").read_text(encoding="utf-8")
+    source = (STATIC / "app.js").read_text(encoding="utf-8")
+    for elem_id in ("sidebar-toggle", "refresh-now", "shortcut-help", "chart-modal-backdrop", "chart-modal-canvas"):
+        assert elem_id in index
+    assert "function openChartModal" in source
+    assert "function applyChartCategoryFilter" in source
+    assert "function applyZoomModeToCharts" in source
+    ckpt = source.split("function renderCheckpoints", 1)[1].split("function refreshCheckpointsInPlace", 1)[0]
+    assert "openStepDetail" in ckpt
+    route_block = source.split("function route", 1)[1].split("function renderComparePage", 1)[0]
+    assert ".split('?')" in route_block
+    compare_block = source.split("function renderComparePage", 1)[1].split("function applySidebarCollapsed", 1)[0]
+    assert "pointsOf(entry.series, 'loss/total', true)" in compare_block

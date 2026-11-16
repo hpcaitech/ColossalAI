@@ -14,7 +14,7 @@ import pytest
 from examples.worldmodel.cosmos3_monitor.alerts import AlertEngine
 from examples.worldmodel.cosmos3_monitor.discovery import discover, load_manifest, world_size
 from examples.worldmodel.cosmos3_monitor.readers import JsonlTail
-from examples.worldmodel.cosmos3_monitor.series import SeriesStore
+from examples.worldmodel.cosmos3_monitor.series import SeriesStore, normalise_loss_record
 from examples.worldmodel.cosmos3_monitor.state import RunState
 from examples.worldmodel.cosmos3_monitor.system import HostSampler, parse_npu_smi
 
@@ -121,6 +121,9 @@ def test_jsonl_tail_keeps_a_partial_line_and_resets_after_truncation(tmp_path):
         stream.write(" 2}\n")
     assert [row["step"] for row in tail.read_new()] == [2]
     path.write_text('{"step": 9}\n', encoding="utf-8")
+    # A shrink may be a copy in progress, so the first short poll waits; a file that stays short is rebuilt.
+    assert tail.read_new() == []
+    tail.shrink_grace_s = 0.0
     assert [row["step"] for row in tail.read_new()] == [9]
     assert tail.truncated is True
 
@@ -675,3 +678,187 @@ def test_running_run_reports_throughput_based_eta(tmp_path):
     assert snapshot["eta_source"] == "throughput"
     assert snapshot["elapsed_s"] is not None
     assert snapshot["total_s"] == pytest.approx(snapshot["elapsed_s"] + snapshot["eta_s"])
+
+
+def test_system_snapshot_keeps_process_tables_and_series_opt_in():
+    """The dashboard's default system view must stay small: the process rows and the device series are
+    only drawn by the System tab, and together they were ~90% of a four-node response."""
+    from examples.worldmodel.cosmos3_monitor.system import SystemHistory
+
+    history = SystemHistory()
+    base = {
+        "hostname": "A",
+        "training_processes": 1,
+        "processes": [{"pid": 7, "command": "train" * 50}],
+        "ranked_processes": [{"pid": 7, "command": "train" * 50}],
+        "devices": [
+            {"index": 0, "hbm_used_mib": 100.0, "temperature_c": 40.0, "power_w": 300.0, "processes": [{"pid": 7}]}
+        ],
+    }
+    now = time.time()
+    for index in range(20):
+        history.ingest({**base, "time": now - 20 + index})
+
+    compact = history.snapshot()["hosts"]["A"]
+    assert "processes" not in compact["latest"] and "ranked_processes" not in compact["latest"]
+    assert compact["latest"]["process_count"] == 1
+    assert compact["latest"]["devices"][0]["process_count"] == 1
+    assert "processes" not in compact["latest"]["devices"][0]
+    assert compact["devices"]["0"]["hbm_used_mib"] == []
+    # The compact form still carries what the topology view draws.
+    assert compact["latest"]["devices"][0]["hbm_used_mib"] == 100.0
+
+    full = history.snapshot(processes=True, points=5)["hosts"]["A"]
+    assert full["latest"]["processes"][0]["pid"] == 7
+    assert len(full["devices"]["0"]["hbm_used_mib"]) == 5
+    # The stored history is untouched: a later compact read is still compact.
+    assert "processes" not in history.snapshot()["hosts"]["A"]["latest"]
+
+
+def test_jsonl_tail_survives_an_atomic_replace_and_a_transient_short_copy(tmp_path):
+    """The relay publishes by rename, and a plain copy is briefly short: neither is a rewritten history."""
+    path = tmp_path / "rank-000.jsonl"
+    write_lines(path, [{"step": 1}, {"step": 2}, {"step": 3}])
+    tail = JsonlTail(path)
+    assert [row["step"] for row in tail.read_new()] == [1, 2, 3]
+
+    # Atomic replace: same path, new inode, one appended record.  Only the new record may come back.
+    staging = tmp_path / ".rank-000.jsonl.tmp"
+    write_lines(staging, [{"step": 1}, {"step": 2}, {"step": 3}, {"step": 4}])
+    os.replace(staging, path)
+    assert [row["step"] for row in tail.read_new()] == [4]
+
+    # A copy caught mid-write: the file is shorter for a moment.  Nothing is returned and nothing is reset.
+    path.write_text('{"step": 1}\n')
+    assert tail.read_new() == []
+    assert tail.truncated is False and tail.offset > 0
+    # Once the copy finishes, reading resumes from the offset without duplicating the earlier records.
+    write_lines(path, [{"step": 1}, {"step": 2}, {"step": 3}, {"step": 4}, {"step": 5}])
+    assert [row["step"] for row in tail.read_new()] == [5]
+
+    # A file that stays short is a real rewrite: after the grace period the tail starts over.
+    path.write_text('{"step": 40}\n')
+    assert tail.read_new() == []  # first short poll: wait, it may be a copy in progress
+    tail.shrink_grace_s = 0.0  # the deadline passed
+    assert [row["step"] for row in tail.read_new()] == [40]
+    assert tail.truncated is True
+
+
+def test_throughput_store_does_not_duplicate_points_on_a_re_read(tmp_path):
+    from examples.worldmodel.cosmos3_monitor.series import ThroughputStore
+
+    store = ThroughputStore()
+    now = time.time()
+    for step in (5, 6, 7):
+        store.ingest(0, "h", step, 32, 1.0, now)
+    # A re-read of the file from the start repeats steps 5-7; the series must not grow.
+    for step in (5, 6, 7):
+        store.ingest(0, "h", step, 32, 1.0, now)
+    assert [int(x) for x, _ in store.rank_points[0]] == [5, 6, 7]
+    assert sorted(store.step_ranks) == [5, 6, 7]
+
+
+def test_legacy_droid_loss_conversion_is_explicit_idempotent_and_read_only():
+    manifest = {"loss_objective": "droid_sample_modality_mean", "args": {"chunk_length": 32}}
+    record = {"loss": {"total": 1.82, "vision": 1.7, "action": 0.12}}
+    converted = normalise_loss_record(record, manifest)
+    assert converted["loss"] == pytest.approx(
+        {
+            "total": 1.82,
+            "vision": 0.17,
+            "action": 0.012,
+            "objective": 1.82,
+            "vision_supervised_mse": 0.19125,
+            "action_supervised_mse": 0.012375,
+        }
+    )
+    assert record["loss"]["vision"] == 1.7
+    assert normalise_loss_record(converted, manifest) is converted
+    assert normalise_loss_record(record, {}) is record
+    assert normalise_loss_record(record, {"loss_objective": "droid_sample_modality_mean"}) is record
+
+    # v1 normalized only the masked elements. Restore upstream's full denominator and retain both MSE views.
+    manifest["loss_metrics"] = "supervised_mse_v1"
+    v1 = {"loss": {"total": 0.203625, "vision": 0.19125, "action": 0.012375, "objective": 1.82}}
+    converted_v1 = normalise_loss_record(v1, manifest)
+    assert converted_v1["loss"] == pytest.approx(
+        {
+            "total": 1.82,
+            "vision": 0.17,
+            "action": 0.012,
+            "objective": 1.82,
+            "vision_supervised_mse": 0.19125,
+            "action_supervised_mse": 0.012375,
+        }
+    )
+    assert normalise_loss_record(converted_v1, manifest) is converted_v1
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("partial_aggregate", [False, True])
+def test_global_loss_is_corrected_after_delayed_rank_arrival(tmp_path, legacy, partial_aggregate):
+    run = make_run(tmp_path, world=2, steps=1, completed=False)
+    metrics = run / "metrics"
+    manifest = json.loads((metrics / "run.json").read_text())
+    manifest.update(loss_objective="droid_sample_modality_mean", args={"chunk_length": 32})
+    write_json(metrics / "run.json", manifest)
+
+    def rank_record(rank, samples, vision, action):
+        objective = 10 * (vision + action)
+        loss = {
+            "total": vision * 9 / 8 + action * 33 / 32,
+            "vision": vision * 9 / 8,
+            "action": action * 33 / 32,
+            "objective": objective,
+        }
+        if legacy:
+            loss = {"total": objective, "vision": vision * 10, "action": action * 10}
+        return {
+            "type": "record",
+            "step": 1,
+            "rank": rank,
+            "time": time.time(),
+            "data": {"samples": samples},
+            "perf": {"step_ms": 1000},
+            "loss": loss,
+        }
+
+    if legacy:
+        manifest.pop("loss_metrics", None)
+    else:
+        manifest["loss_metrics"] = "supervised_mse_v1"
+    write_json(metrics / "run.json", manifest)
+
+    first, second = rank_record(0, 1, 1.0, 4.0), rank_record(1, 3, 9.0, 16.0)
+    if partial_aggregate:
+        write_lines(
+            metrics / "aggregated.jsonl", [{**first, "ranks": [0], "world": 1, "expected_world": 2, "complete": False}]
+        )
+    else:
+        (metrics / "aggregated.jsonl").unlink()
+    write_lines(metrics / "rank-000.jsonl", [first])
+    state = RunState(discover([run])[0])
+    state.refresh()
+    if partial_aggregate:
+        assert state.series.latest_value("loss/total") == pytest.approx(50.0)
+
+    write_lines(metrics / "rank-001.jsonl", [second])
+    state.refresh()
+    expected_objective = 10 * (7 + 13)
+    expected = {
+        "total": expected_objective,
+        "vision": 7.0,
+        "action": 13.0,
+        "objective": expected_objective,
+        "vision_supervised_mse": 7 * 9 / 8,
+        "action_supervised_mse": 13 * 33 / 32,
+    }
+    record = state.series.last()
+    assert record["complete"] is True
+    assert record["loss"] == pytest.approx(expected)
+    assert record["data"]["samples"] == 4
+    assert state.series.latest_value("loss/vision") == pytest.approx(7.0)
+    assert state.series.latest_value("loss/objective") == pytest.approx(expected_objective)
+    assert state.snapshot()["last"]["loss"] == pytest.approx(expected_objective)
+    assert state.step_detail(1)["loss"] == pytest.approx(expected)
+    assert json.loads((metrics / "rank-000.jsonl").read_text())["loss"] == first["loss"]

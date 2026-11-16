@@ -75,6 +75,20 @@ record at each log step instead of reading rank files, so a point is never parti
 collective per log step. It is off by default; the dashboard marks `complete=false` points as partial and
 does not compute throughput from a partial sum.
 
+For online DROID SFT, `loss/vision` and `loss/action` use the upstream convention: masked squared error divided by
+the full element count, averaged per sample, with each modality's fixed training weight removed. These values
+can be compared directly with upstream references. The separate `loss/vision_supervised_mse` and
+`loss/action_supervised_mse` series divide by the supervised element count, excluding conditioning positions and
+padded action channels. `loss/total` and `loss/objective` show the weighted scalar used for backward, so the
+headline Loss curve is the quantity the optimizer minimizes. Records, step details and CSV exports retain both
+conventions. The monitor converts legacy DROID weighted records and records from the earlier supervised-MSE
+display convention using the manifest's loss metric version and chunk length (one conditioning latent frame, one
+initial action state, temporal compression 4). Other harness objectives retain their original convention. For
+v1 figures recorded outside the monitor, convert to upstream convention with `vision × (frames - 1) / frames`
+and `action × chunk_length / (chunk_length + 1)`, where `frames = chunk_length // 4 + 1`. Source JSONL files are
+never rewritten. When rank files arrive from the other nodes, loss is recomputed from all reporting independent
+samples along with batch and throughput, rather than retaining rank 0's partial loss.
+
 The per-node system collector is a separate process:
 
 ```bash
@@ -144,7 +158,15 @@ exit code in memory. Without `--launch-template` the buttons still record the re
 
 The template starts **one** process on the host that runs the server. A multi-node run needs a template that
 starts every node (the cluster launcher, or an `ssh` loop), because the dashboard has no opinion about
-`torchrun --nnodes`. The server has no authentication: keep it on loopback and use the SSH tunnel.
+`torchrun --nnodes`; from the workstation that is one command, and every node reads its own copy of the
+generation (see the harness README's "one generation per node"):
+
+```bash
+NODES="node1 node5 node6 node7" MASTER=<rank0 ip> \
+RESUME=/mnt/disk0/.../runs/<stopped tag>/checkpoints bash run_6node_train.sh <new tag>
+```
+
+The server has no authentication: keep it on loopback and use the SSH tunnel.
 
 ## Data contract
 
@@ -171,7 +193,7 @@ used, which writes `control/request.json` (and, with `--launch-template`, `contr
 
 - The topbar pause button freezes live updates; the SSE stream and the 5 s detail refresh resume together.
 - `Pause` does not stop the sidebar's run discovery; it only stops the selected run's view from moving.
-- Charts preserve the user's zoom across refreshes; a tab switch starts from the full range.
+- Charts lock the user's zoom by exact axis values across live refreshes, tab switches, theme toggles, and reloads in the same browser session; double-clicking a chart or clicking `重置缩放` / `✕` returns to the full range.
 - The step detail's stage times are per-stage maxima across ranks, so their sum can be slightly larger than the
   maximum end-to-end step. Stage and total MFU come from the training record (`perf/mfu_forward`,
   `perf/mfu_backward`, `perf/mfu_vae`, `perf/mfu`): the trainer computed them with the checkpoint geometry and

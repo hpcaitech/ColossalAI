@@ -162,6 +162,56 @@ def test_the_mask_removes_the_conditioning_frame_and_the_padded_channels(packed)
     assert _loss(supervised, zeros_v, zeros_a) > base * 2
 
 
+def test_display_mse_excludes_conditioning_and_padding_without_changing_backward():
+    vision = [torch.full((1, 2, frames, 1, 1), value, requires_grad=True) for frames, value in [(2, 2.0), (4, 3.0)]]
+    action = [torch.full((frames, 4), value, requires_grad=True) for frames, value in [(3, 4.0), (5, 5.0)]]
+    vision_masks = [torch.tensor([0.0] + [1.0] * (value.shape[2] - 1)).view(-1, 1, 1) for value in vision]
+    action_masks = [torch.tensor([0.0] + [1.0] * (value.shape[0] - 1)).view(-1, 1) for value in action]
+    targets = {
+        "vision": [torch.zeros_like(value) for value in vision],
+        "action": [torch.zeros_like(value) for value in action],
+        "vision_noisy_mask": vision_masks,
+        "action_noisy_mask": action_masks,
+        "raw_action_dim": 2,
+    }
+    with torch.no_grad():
+        for value in vision:
+            value[:, :, :1] = 1000  # masked from the numerator; retained only by the upstream full denominator
+        for value in action:
+            value[:1] = 1000
+            value[:, 2:] = 1000  # padded channels carry no supervision
+    output = types.SimpleNamespace(sample=vision, action=action)
+    objective, metrics = compute_loss(output, targets, return_components=True)
+    expected = 10 * (
+        torch.stack([(value.square() * mask).mean() for value, mask in zip(vision, vision_masks)]).mean()
+        + torch.stack([(value[:, :2].square() * mask).mean() for value, mask in zip(action, action_masks)]).mean()
+    )
+    assert torch.equal(objective, expected)
+    assert metrics["vision"].item() == pytest.approx((2 + 6.75) / 2)
+    assert metrics["action"].item() == pytest.approx((64 / 6 + 20) / 2)
+    assert metrics["vision_supervised_mse"].item() == pytest.approx((4 + 9) / 2)
+    assert metrics["action_supervised_mse"].item() == pytest.approx((16 + 25) / 2)
+    assert all(not value.requires_grad for value in metrics.values())
+    actual_grads = torch.autograd.grad(objective, vision + action, retain_graph=True)
+    expected_grads = torch.autograd.grad(expected, vision + action)
+    for actual, reference in zip(actual_grads, expected_grads):
+        assert torch.equal(actual, reference)
+
+
+def test_display_mse_is_zero_when_nothing_is_supervised(packed):
+    _, _, _, _, sample = packed
+    targets = {key: [sample[key]] for key in ("vision", "action", "vision_noisy_mask", "action_noisy_mask")}
+    targets["raw_action_dim"] = sample["raw_action_dim"]
+    targets["vision_noisy_mask"] = [torch.zeros_like(sample["vision_noisy_mask"])]
+    targets["action_noisy_mask"] = [torch.zeros_like(sample["action_noisy_mask"])]
+    output = types.SimpleNamespace(
+        sample=[torch.zeros_like(sample["vision"])], action=[torch.zeros_like(sample["action"])]
+    )
+    objective, metrics = compute_loss(output, targets, return_components=True)
+    assert objective.item() == 0
+    assert all(value.item() == 0 for value in metrics.values())
+
+
 def test_the_action_domain_id_is_droids(packed):
     """The action projectors are per-embodiment; DROID's slot is 8.
 

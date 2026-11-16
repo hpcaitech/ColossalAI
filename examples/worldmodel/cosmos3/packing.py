@@ -973,11 +973,13 @@ def compute_loss(out, targets, return_components: bool = False):
     Args:
         out: The transformer output, with ``sample`` and ``action`` lists.
         targets (dict): The targets from :func:`pack_batch`.
-        return_components (bool, optional): Also return the two weighted terms, detached, for logging. They
-            sum to the scalar. Defaults to False.
+        return_components (bool, optional): Also return detached, unweighted modality losses using the same
+            full-element denominator as upstream, plus supervised-element MSEs averaged per sample. Conditioning
+            elements and padded action channels are excluded only from the latter. Defaults to False.
 
     Returns:
-        torch.Tensor or tuple: The scalar loss, or ``(loss, {"vision": term, "action": term})``.
+        torch.Tensor or tuple: The scalar loss, or ``(loss, components)`` where ``vision`` and ``action`` use the
+        upstream denominator and the ``*_supervised_mse`` entries use only supervised elements.
 
     Raises:
         ValueError: If the model returned no vision or action predictions.
@@ -992,22 +994,32 @@ def compute_loss(out, targets, return_components: bool = False):
         if not (len(predictions) == len(targets[modality]) == len(targets[f"{modality}_noisy_mask"])):
             raise ValueError(f"{modality} predictions, targets and masks must have the same sample count")
 
-    vision = torch.stack(
-        [
-            ((pred.float() - target.float()).square() * mask.float()).mean()
-            for pred, target, mask in zip(out.sample, targets["vision"], targets["vision_noisy_mask"])
-        ]
-    ).mean()
+    vision_losses = [
+        ((pred.float() - target.float()).square() * mask.float()).mean()
+        for pred, target, mask in zip(out.sample, targets["vision"], targets["vision_noisy_mask"])
+    ]
+    vision = torch.stack(vision_losses).mean()
     dim = targets["raw_action_dim"]
-    action = torch.stack(
-        [
-            ((pred[:, :dim].float() - target[:, :dim].float()).square() * mask.float()).mean()
-            for pred, target, mask in zip(out.action, targets["action"], targets["action_noisy_mask"])
-        ]
-    ).mean()
+    action_losses = [
+        ((pred[:, :dim].float() - target[:, :dim].float()).square() * mask.float()).mean()
+        for pred, target, mask in zip(out.action, targets["action"], targets["action_noisy_mask"])
+    ]
+    action = torch.stack(action_losses).mean()
     vision_term = vision * VISION_LOSS_SCALE
     action_term = action * ACTION_LOSS_WEIGHT
     total = vision_term + action_term
     if return_components:
-        return total, {"vision": vision_term.detach(), "action": action_term.detach()}
+
+        def supervised_mse(losses, masks):
+            # Reuse the existing reduction; only the small frame mask is summed, with no device synchronisation.
+            return torch.stack(
+                [loss.detach() * mask.numel() / mask.float().sum().clamp_min(1) for loss, mask in zip(losses, masks)]
+            ).mean()
+
+        return total, {
+            "vision": vision.detach(),
+            "action": action.detach(),
+            "vision_supervised_mse": supervised_mse(vision_losses, targets["vision_noisy_mask"]),
+            "action_supervised_mse": supervised_mse(action_losses, targets["action_noisy_mask"]),
+        }
     return total

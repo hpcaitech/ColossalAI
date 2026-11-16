@@ -36,6 +36,64 @@ def _get(record: Dict[str, Any], *path: str) -> Any:
     return cursor
 
 
+def normalise_loss_record(record: Dict[str, Any], manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """Read DROID loss records in the upstream full-denominator convention.
+
+    DROID conditions on one vision latent frame and one initial action state. Its Wan VAE compresses time
+    by four. Pre-v1 records contain weighted upstream modality losses; v1 records contain supervised-element
+    MSEs. The run manifest distinguishes those formats, so both can be converted exactly without rewriting the
+    source JSONL. Other harness objectives keep their original meaning.
+    """
+    loss = record.get("loss")
+    if not isinstance(loss, dict):
+        return record
+    if manifest.get("loss_objective") != "droid_sample_modality_mean":
+        return record
+    metric_version = manifest.get("loss_metrics")
+    if metric_version == "upstream_mean_v2":
+        return record
+    args = manifest.get("args") or {}
+    chunk = _number(args.get("chunk_length")) if isinstance(args, dict) else None
+    vision, action = _number(loss.get("vision")), _number(loss.get("action"))
+    if chunk is None or chunk < 4 or vision is None or action is None:
+        return record
+    chunk = int(chunk)
+    frames = chunk // 4 + 1
+    if metric_version == "supervised_mse_v1":
+        # v1 re-normalized the masked full mean to active elements. Undo that factor to match upstream's .mean().
+        if "objective" not in loss or ("vision_supervised_mse" in loss and "action_supervised_mse" in loss):
+            return record
+        vision_supervised, action_supervised = vision, action
+        vision *= (frames - 1) / frames
+        action *= chunk / (chunk + 1)
+        objective = _number(loss.get("objective"))
+    else:
+        # Older DROID records store the fixed-weight terms and the weighted sum used by backward.
+        if "objective" in loss:
+            return record
+        vision /= 10.0
+        action /= 10.0
+        vision_supervised = vision * frames / (frames - 1)
+        action_supervised = action * (chunk + 1) / chunk
+        objective = _number(loss.get("total"))
+        if objective is None:
+            objective = 10.0 * (vision + action)
+    if objective is None:
+        return record
+    return {
+        **record,
+        "loss": {
+            **loss,
+            "total": objective,
+            "vision": vision,
+            "action": action,
+            "objective": objective,
+            "vision_supervised_mse": vision_supervised,
+            "action_supervised_mse": action_supervised,
+        },
+    }
+
+
 class Series:
     __slots__ = ("x", "y", "unit", "label")
 
@@ -56,9 +114,12 @@ class Series:
 #: key -> (unit, label).  Keeping the catalogue here makes the API predictable and the frontend's key list
 #: explicit instead of every caller inventing names.
 METRICS: Dict[str, Tuple[str, str]] = {
-    "loss/total": ("loss", "Loss"),
-    "loss/vision": ("loss", "Vision loss"),
-    "loss/action": ("loss", "Action loss"),
+    "loss/total": ("loss", "Training objective"),
+    "loss/vision": ("loss", "Vision loss (upstream mean)"),
+    "loss/action": ("loss", "Action loss (upstream mean)"),
+    "loss/objective": ("loss", "Weighted training objective"),
+    "loss/vision_supervised_mse": ("loss", "Vision supervised-element MSE"),
+    "loss/action_supervised_mse": ("loss", "Action supervised-element MSE"),
     "optim/lr": ("lr", "Learning rate"),
     "optim/grad_norm": ("norm", "Grad norm"),
     "perf/step_s": ("s", "Step time"),
@@ -121,6 +182,9 @@ class SeriesStore:
             "loss/total": _number(_get(record, "loss", "total")),
             "loss/vision": _number(_get(record, "loss", "vision")),
             "loss/action": _number(_get(record, "loss", "action")),
+            "loss/objective": _number(_get(record, "loss", "objective")),
+            "loss/vision_supervised_mse": _number(_get(record, "loss", "vision_supervised_mse")),
+            "loss/action_supervised_mse": _number(_get(record, "loss", "action_supervised_mse")),
             "optim/lr": _number(_get(record, "optim", "lr")),
             "optim/grad_norm": _number(_get(record, "optim", "grad_norm")),
             "perf/step_s": step_ms / 1e3 if step_ms is not None else None,
@@ -445,6 +509,7 @@ class ThroughputStore:
         self.max_points = int(max_points)
         self.max_steps = int(max_steps)
         self.rank_points: Dict[int, List[List[float]]] = {}
+        self.last_step: Dict[int, int] = {}
         self.node_points: Dict[str, List[List[float]]] = {}
         self.step_ranks: Dict[int, Dict[int, Dict[str, Any]]] = {}
         self.step_nodes: Dict[int, Dict[str, Dict[str, Any]]] = {}
@@ -481,6 +546,8 @@ class ThroughputStore:
             data = record.get("data") if isinstance(record.get("data"), dict) else {}
             perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
             mem = record.get("mem") if isinstance(record.get("mem"), dict) else {}
+            if isinstance(record.get("loss"), dict):
+                entry["loss"] = record["loss"]
             for key in ("ar_tokens", "dm_tokens", "wait_ms", "vae_ms", "pack_ms"):
                 value = _number(data.get(key))
                 if value is not None:
@@ -522,7 +589,15 @@ class ThroughputStore:
         self.pending.setdefault(int(step), {})[int(rank)] = entry
         self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
         self.first_seen.setdefault(int(step), now)
-        self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+        # A rank file may be re-read from the start (an atomic replace, or a reader that saw a short copy), so
+        # the same step can arrive twice.  ``step_ranks`` is keyed by step and takes the repeat harmlessly, but
+        # the per-rank series is a list: appending the repeat would push the real history out of the
+        # ``max_points`` window.  Telemetry steps only ever increase, so a step at or below the last one is a
+        # re-read, not new progress.
+        last = self.last_step.get(int(rank))
+        if last is None or int(step) > last:
+            self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+            self.last_step[int(rank)] = int(step)
 
     def finalize(self, step: int, host_ranks: Dict[str, List[int]], world: int, *, force: bool = False) -> None:
         pending = self.pending.get(int(step))

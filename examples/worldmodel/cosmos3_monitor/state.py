@@ -16,17 +16,22 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
+from examples.worldmodel.cosmos3_harness.training_metrics import aggregate_losses
+
 from .control import STATUS_FRESH_SECONDS, checkpoint_root, latest_generation
 from .discovery import RunRef, derive_topology, load_manifest
 from .discovery import max_steps as manifest_max_steps
 from .discovery import world_size
 from .readers import JsonFile, JsonlTail, file_age, read_json
-from .series import SeriesStore, ThroughputStore, stage_metrics
+from .series import SeriesStore, ThroughputStore, normalise_loss_record, stage_metrics
 from .system import SystemHistory, read_system_files
 
 STALE_SECONDS = 15.0
 STALL_SECONDS = 300.0
 CHECKPOINT_PENDING_SECONDS = 900.0
+#: A rank file at or below this size is read from the start on first sight; a larger one only from its tail.
+INITIAL_RANK_BYTES = 8 * 1024 * 1024
+TAIL_RANK_BYTES = 512 * 1024
 
 
 def _num(value: Any) -> Optional[float]:
@@ -223,6 +228,7 @@ class RunState:
         for record in self.aggregated.read_new():
             kind = record.get("type")
             if kind == "record":
+                record = normalise_loss_record(record, self._manifest)
                 display = self._estimate_global_record(record) if record.get("complete") is False else record
                 if self.series.append(display):
                     self._last_record = display
@@ -314,7 +320,11 @@ class RunState:
                     size = path.stat().st_size
                 except OSError:
                     size = 0
-                tail = self.rank_tails[rank] = JsonlTail(path, offset=max(0, size - 512 * 1024))
+                # Read a small rank file from the start: a restart then keeps the run's whole per-rank history,
+                # which the step drawer and the rank heatmap need (2.4 MB ≈ 2.5k steps).  A long run's file is
+                # only tailed, so a restart does not turn into a many-hundred-megabyte parse.
+                offset = 0 if size <= INITIAL_RANK_BYTES else max(0, size - TAIL_RANK_BYTES)
+                tail = self.rank_tails[rank] = JsonlTail(path, offset=offset)
             for record in tail.read_new():
                 if record.get("type") == "event":
                     if not self._aggregated_seen:
@@ -322,6 +332,7 @@ class RunState:
                     continue
                 if record.get("type") != "record":
                     continue
+                record = normalise_loss_record(record, self._manifest)
                 try:
                     step = int(record.get("step"))
                 except (TypeError, ValueError):
@@ -412,6 +423,11 @@ class RunState:
             corrected["aggregate_from_ranks"] = True
             corrected["aggregate_samples"] = _num((record.get("data") or {}).get("samples"))
             corrected["source"] = "rank_files" if complete else "rank_files_partial"
+            loss = aggregate_losses(
+                {"loss": entry.get("loss"), "data": {"samples": entry["samples"]}} for entry in entries.values()
+            )
+            if loss:
+                corrected["loss"] = loss
             step_times = [_num(entry.get("step_s")) for entry in entries.values()]
             step_times = [value for value in step_times if value is not None and value > 0]
             if len(step_times) >= 2:
@@ -502,8 +518,6 @@ class RunState:
         values = list(records.values())
         flat = [_flatten_record(record) for record in values]
         sample = sum(_num(item.get("data/samples")) or 0.0 for item in flat)
-        loss_values = [_num(item.get("loss/total")) for item in flat]
-        finite_loss = [value for value in loss_values if value is not None]
         aggregated = {
             "type": "record",
             "schema": 1,
@@ -522,7 +536,7 @@ class RunState:
                 "vae_ms": max((_num(item.get("data/vae_ms")) or 0.0) for item in flat),
                 "pack_ms": max((_num(item.get("data/pack_ms")) or 0.0) for item in flat),
             },
-            "loss": {"total": statistics.fmean(finite_loss)} if finite_loss else {},
+            "loss": aggregate_losses(values),
             "perf": {
                 "step_ms": max((_num(item.get("perf/step_ms")) or 0.0) for item in flat),
                 "forward_ms": max(
@@ -1150,6 +1164,8 @@ class RunState:
                 "samples": last_samples,
                 "vision": self.series.latest_value("loss/vision"),
                 "action": self.series.latest_value("loss/action"),
+                "vision_supervised_mse": self.series.latest_value("loss/vision_supervised_mse"),
+                "action_supervised_mse": self.series.latest_value("loss/action_supervised_mse"),
                 "lr": self.series.latest_value("optim/lr"),
                 "grad_norm": self.series.latest_value("optim/grad_norm"),
                 "step_s": step_s,
@@ -1364,7 +1380,12 @@ class RunState:
                 effective["data"].pop("partial_samples", None)
                 effective["perf"]["step_ms"] = max((_num(entry.get("step_s")) or 0.0) for entry in ranks) * 1e3
                 effective["world"] = self.world
-                effective["complete"] = True
+                effective["complete"] = len(ranks) >= self.world
+                loss = aggregate_losses(
+                    {"loss": entry.get("loss"), "data": {"samples": entry["samples"]}} for entry in ranks
+                )
+                if loss:
+                    effective["loss"] = loss
                 effective.pop("samples_estimated", None)
                 corrected_by_ranks = True
         detail = stage_metrics(effective, self.world, checkpointing)

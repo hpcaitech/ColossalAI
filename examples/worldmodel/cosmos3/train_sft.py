@@ -1243,6 +1243,7 @@ def main():
             "buffers": {name: str(value.dtype) for name, value in target.named_buffers()},
         },
         "loss_objective": "droid_sample_modality_mean",
+        "loss_metrics": "upstream_mean_v2",
         "topology": parallel_topology(plugin, extra=rank_identity),
         "independent_dp_replicas": unique_dp,
         "effective_global_batch": args.samples_per_rank * args.grad_accum * unique_dp,
@@ -1518,7 +1519,10 @@ def main():
                     best_loss = values["total"] if best_loss is None else min(best_loss, values["total"])
             if print_now:
                 coord.print_on_master(
-                    f"[step {step}] loss {values['total']:.6f} (v {values['vision']:.4f} a {values['action']:.4f})"
+                    f"[step {step}] rank0 objective {values['objective']:.6f} "
+                    f"(upstream vision {values['vision']:.6f} action {values['action']:.6f}; "
+                    f"supervised MSE vision {values['vision_supervised_mse']:.6f} "
+                    f"action {values['action_supervised_mse']:.6f})"
                 )
             if record_now:
                 accelerator.synchronize()

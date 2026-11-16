@@ -4,32 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cosmos3 Monitor</title>
-  <link rel="stylesheet" href="/static/styles.css?v=17">
+  <link rel="stylesheet" href="/static/styles.css?v=21">
 </head>
 <body>
   <div id="app">
     <aside id="sidebar">
       <div class="brand">
         <div class="brand-mark">C3</div>
-        <div>
+        <div class="brand-text">
           <div class="brand-title">Cosmos3 Monitor</div>
-          <div class="brand-sub">SFT · replay · NPU</div>
+          <div class="brand-sub">SFT · Replay · Ascend NPU</div>
         </div>
       </div>
       <div class="sidebar-search">
-        <input id="run-search" placeholder="搜索 run / 路径…" autocomplete="off">
+        <div class="search-wrap">
+          <input id="run-search" placeholder="搜索 run / 路径… (/)" autocomplete="off">
+          <button id="run-search-clear" class="icon-btn" title="清除搜索" hidden>✕</button>
+        </div>
+        <div class="sidebar-filters" id="sidebar-filters">
+          <button class="filter-pill active" data-filter="all">全部</button>
+          <button class="filter-pill" data-filter="running">运行中</button>
+          <button class="filter-pill" data-filter="issues">异常</button>
+        </div>
       </div>
-      <div class="sidebar-section">Runs</div>
+      <div class="sidebar-section">
+        <span>Runs</span>
+        <span id="sidebar-count" class="sidebar-count"></span>
+      </div>
       <div id="run-list"><div class="empty"><span class="spinner"></span></div></div>
       <div class="sidebar-foot" id="health">connecting…</div>
     </aside>
     <main id="main">
       <header id="topbar">
-        <div id="crumbs"><a href="#/runs">Runs</a></div>
+        <div class="topbar-left">
+          <button id="sidebar-toggle" class="ghost icon-only" title="收起/展开侧边栏 (b)">☰</button>
+          <div id="crumbs"><a href="#/runs">Runs</a></div>
+        </div>
         <div class="top-actions">
-          <span id="live-badge" class="chip">live</span>
-          <button id="pause-toggle" class="ghost" title="暂停/继续实时刷新">暂停</button>
-          <button id="theme-toggle" class="ghost" title="切换明暗 (d)">◐</button>
+          <span id="live-badge" class="chip ok"><span class="live-dot"></span>live</span>
+          <button id="refresh-now" class="ghost" title="立即刷新 (r)">↻ 刷新</button>
+          <button id="pause-toggle" class="ghost" title="暂停/继续实时刷新 (p)">暂停</button>
+          <button id="shortcut-help" class="ghost icon-only" title="快捷键 (?)">?</button>
+          <button id="theme-toggle" class="ghost icon-only" title="切换明暗 (d)">◐</button>
         </div>
       </header>
       <section id="view"></section>
@@ -44,8 +60,20 @@
     </div>
     <div id="drawer-body" class="drawer-body"></div>
   </aside>
+  <div id="chart-modal-backdrop" class="modal-backdrop" hidden>
+    <div id="chart-modal" class="chart-modal" role="dialog" aria-modal="true">
+      <div class="chart-modal-head">
+        <div><h2 id="chart-modal-title">Chart</h2><span id="chart-modal-unit" class="unit-badge"></span></div>
+        <div class="chart-modal-actions">
+          <button id="chart-modal-reset" class="ghost">重置缩放</button>
+          <button id="chart-modal-close" class="ghost" title="关闭 (Esc)">✕</button>
+        </div>
+      </div>
+      <div id="chart-modal-canvas" class="chart modal-chart"></div>
+    </div>
+  </div>
   <!-- ECharts 6.1.0, Apache-2.0; provenance and SHA-256 in static/vendor/PROVENANCE.md. -->
   <script src="/static/vendor/echarts.min.js"></script>
-  <script src="/static/app.js?v=17"></script>
+  <script src="/static/app.js?v=23"></script>
 </body>
 </html>

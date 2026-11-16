@@ -283,8 +283,12 @@ def test_compute_loss_matches_pow2_reference():
     expected_a = (
         (pred_a[0][:, :8].float() - tgt_a[0][:, :8].float()).pow(2) * mask_a[0].float()
     ).mean() * packing.ACTION_LOSS_WEIGHT
-    assert torch.equal(comps["vision"], expected_v)
-    assert torch.equal(comps["action"], expected_a)
+    expected_mse_v = ((pred_v[0].float() - tgt_v[0]).square() * mask_v[0]).sum() / mask_v[0].expand_as(pred_v[0]).sum()
+    expected_mse_a = (pred_a[0][:, :8].float() - tgt_a[0][:, :8]).square().mean()
+    torch.testing.assert_close(comps["vision"], ((pred_v[0].float() - tgt_v[0]).square() * mask_v[0]).mean())
+    torch.testing.assert_close(comps["action"], expected_a / packing.ACTION_LOSS_WEIGHT)
+    torch.testing.assert_close(comps["vision_supervised_mse"], expected_mse_v)
+    torch.testing.assert_close(comps["action_supervised_mse"], expected_mse_a)
     assert torch.equal(total, expected_v + expected_a)
 
 
@@ -377,8 +381,12 @@ def test_compute_loss_square_matches_pow_on_device():
         (pred_a[0][:, :8].float() - tgt_a[0][:, :8].float()).pow(2) * mask_a[0].float()
     ).mean() * packing.ACTION_LOSS_WEIGHT
 
-    assert torch.equal(comps["vision"], expected_v)
-    assert torch.equal(comps["action"], expected_a)
+    expected_mse_v = ((pred_v[0].float() - tgt_v[0]).square() * mask_v[0]).sum() / mask_v[0].expand_as(pred_v[0]).sum()
+    expected_mse_a = (pred_a[0][:, :8].float() - tgt_a[0][:, :8]).square().mean()
+    torch.testing.assert_close(comps["vision"], ((pred_v[0].float() - tgt_v[0]).square() * mask_v[0]).mean())
+    torch.testing.assert_close(comps["action"], expected_a / packing.ACTION_LOSS_WEIGHT)
+    torch.testing.assert_close(comps["vision_supervised_mse"], expected_mse_v)
+    torch.testing.assert_close(comps["action_supervised_mse"], expected_mse_a)
     assert torch.equal(total, expected_v + expected_a)
 
 
