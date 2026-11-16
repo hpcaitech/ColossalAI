@@ -1090,7 +1090,21 @@ def main():
 
     if resume_root is not None:
         # After the seeding above, so the restored streams are the ones the run continues from.
-        apply_checkpoint(resume_root, resume_state, model, optimizer, on_rank_state=restore_rank_state)
+        # booster explicitly: apply_checkpoint falls back to model._colossal_booster, which only the
+        # harness entry sets, so without this the resume dies on an AttributeError before loading anything.
+        apply_checkpoint(resume_root, resume_state, model, optimizer, booster=booster, on_rank_state=restore_rank_state)
+    # Initialize the EMA after the resume: its shadow starts from the fp32 masters the run continues from.
+    ema = PowerEMA(model, optimizer) if args.ema else None
+    if ema is not None and resume_root is not None:
+        # After construction, because the shadow's shape comes from the restored masters. The file's digest
+        # was checked in the preflight with the rest of this rank's own files.
+        ema.load_state(*load_rank_tensors(Path(resume_root) / f"ema-{coord.rank:05d}.pt"))
+        coord.print_on_master("[ema] shadow restored from the checkpoint")
+    if ema is not None:
+        held = sum(t.numel() for t in ema.shadow)
+        coord.print_on_master(
+            f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank, from the {ema.source_kind}"
+        )
     # Initialize the EMA after the resume: its shadow starts from the fp32 masters the run continues from.
     ema = PowerEMA(model, optimizer) if args.ema else None
     if ema is not None:
