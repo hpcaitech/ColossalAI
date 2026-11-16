@@ -136,6 +136,8 @@ def enable_fast_avgdown(vae, verbose: bool = False):
 
 
 def enable_fast_encoder(vae, verbose: bool = False):
+    # The order of the last two does not matter: avgdown patches the AvgDown3D children, while the down-block
+    # forward resolves self.avg_shortcut at call time, so either order patches the same module tree.
     enable_fast_conv(vae, verbose)
     enable_fast_avgdown(vae, verbose)
     enable_fast_downblock(vae, verbose)

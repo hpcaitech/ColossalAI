@@ -277,7 +277,8 @@ def _two_pass_kernels(b: int, c: int, s: int, scale: float):
 def _gamma_fp32(module) -> torch.Tensor:
     """The bf16 parameter widened to fp32 once (the widening is exact); the VAE is frozen.
 
-    Keyed by the parameter's storage, not the module id, so a recycled id can never serve the wrong gamma.
+    The key pairs the module id with the parameter's current storage address, so a recycled module id or a
+    replaced parameter misses the cache instead of serving the wrong gamma.
     """
     source = module.gamma.detach()
     key = (id(module), source.data_ptr())
