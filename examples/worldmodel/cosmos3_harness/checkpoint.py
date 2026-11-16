@@ -444,8 +444,17 @@ def _fetch_generation(payload, local_root: Path, generation_dir: Path, *, rank: 
         raise ValueError("Checkpoint resume cannot rebuild the generation: " + "; ".join(failures))
 
     writer_node = local == 0 and needs_write
-    staging = local_root / (".resume-" + uuid.uuid4().hex)
+    # Every rank on an incomplete node copies its own rank file in here, but only the node head creates
+    # the directory, so its name has to be the same for all of them: a per-process ``uuid4`` gave each
+    # rank a directory of its own and only the head's existed, so every other rank on the node died on
+    # the copy below while the rest of the job waited for it inside the broadcast.  One rank per node --
+    # the only layout that was tested -- never reaches that, because there the head is the only rank.
+    # The generation's own identifier is the same on every rank and distinct per generation.
+    suffix = generation[len("checkpoint-") :] if generation.startswith("checkpoint-") else generation
+    staging = local_root / (".resume-" + suffix)
     if writer_node:
+        # An interrupted resume leaves one behind; publishing it would mix that attempt's files with these.
+        shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True, exist_ok=True)
     _barrier()
     device = _transfer_device()
