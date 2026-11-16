@@ -44,6 +44,8 @@ def test_aligned_defaults_and_legacy_aliases():
         ["--hsdp-shard-size", "2", "--zero-stage", "0"],
         ["--vae-gate-atol", "nan"],
         ["--prefetch-factor", "-1"],
+        ["--fuse-vae-norm", "--vae-norm-kernel"],
+        ["--dit-norm-kernel", "--dit-sum-mean-norm"],
         ["--latents", "/old-latents"],
     ],
 )

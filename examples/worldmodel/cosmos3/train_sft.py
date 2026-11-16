@@ -637,6 +637,10 @@ def parse_args(argv=None):
             parser.error(f"--{name.replace('_', '-')} must be positive")
     if args.fps <= 0 or args.selective_budget_gib < 0 or args.num_workers < 0 or args.prefetch_factor < 0:
         parser.error("fps must be positive; selective budget, worker count and prefetch factor must be nonnegative")
+    if args.fuse_vae_norm and args.vae_norm_kernel:
+        parser.error("--fuse-vae-norm and --vae-norm-kernel are alternative WanRMS_norm patchers; choose one")
+    if args.dit_norm_kernel and args.dit_sum_mean_norm:
+        parser.error("--dit-norm-kernel and --dit-sum-mean-norm are alternative Cosmos3NemotronRMSNorm patchers")
     if args.heartbeat_seconds <= 0:
         parser.error("--heartbeat-seconds must be positive")
     if args.vae_encode_batch < 0 or args.vae_chunk_frames < 0 or args.vae_chunk_frames % 4:
