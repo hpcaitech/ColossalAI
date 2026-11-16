@@ -189,6 +189,46 @@ def test_compute_loss_matches_pow2_reference():
     assert torch.equal(total, expected_v + expected_a)
 
 
+def test_compute_loss_square_matches_pow_on_device():
+    """The CPU test cannot observe Ascend's aclnnPowTensorScalar path; repeat the comparison on NPU.
+
+    The default path changed from pow(2) to square(), and those are mathematically equal but not necessarily
+    bitwise equal across backends.  This test is skipped on hosts without torch_npu; it was validated on an
+    Ascend 910B2, where all three tensors match exactly.
+    """
+    pytest.importorskip("torch_npu")
+    if not torch.npu.is_available():
+        pytest.skip("NPU required")
+    torch.manual_seed(0)
+    device = "npu:0"
+    pred_v = [torch.randn(2, 16, 2, 4, 4, dtype=torch.bfloat16, device=device)]
+    tgt_v = [torch.randn(2, 16, 2, 4, 4, dtype=torch.float32, device=device)]
+    mask_v = [torch.randint(0, 2, (2, 1, 2, 4, 4), dtype=torch.bool, device=device)]
+    pred_a = [torch.randn(8, 12, dtype=torch.bfloat16, device=device)]
+    tgt_a = [torch.randn(8, 12, dtype=torch.float32, device=device)]
+    mask_a = [torch.ones(8, 1, dtype=torch.bool, device=device)]
+
+    out = SimpleNamespace(sample=pred_v, action=pred_a)
+    targets = {
+        "vision": tgt_v,
+        "vision_noisy_mask": mask_v,
+        "action": tgt_a,
+        "action_noisy_mask": mask_a,
+        "raw_action_dim": 8,
+    }
+    total, comps = packing.compute_loss(out, targets, return_components=True)
+    expected_v = (
+        ((pred_v[0].float() - tgt_v[0].float()).pow(2) * mask_v[0].float()).mean() * packing.VISION_LOSS_SCALE
+    )
+    expected_a = (
+        (pred_a[0][:, :8].float() - tgt_a[0][:, :8].float()).pow(2) * mask_a[0].float()
+    ).mean() * packing.ACTION_LOSS_WEIGHT
+
+    assert torch.equal(comps["vision"], expected_v)
+    assert torch.equal(comps["action"], expected_a)
+    assert torch.equal(total, expected_v + expected_a)
+
+
 def test_new_optimization_cli_flags():
     parsed = entry.parse_args(
         [
