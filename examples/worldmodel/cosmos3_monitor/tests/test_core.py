@@ -121,6 +121,9 @@ def test_jsonl_tail_keeps_a_partial_line_and_resets_after_truncation(tmp_path):
         stream.write(" 2}\n")
     assert [row["step"] for row in tail.read_new()] == [2]
     path.write_text('{"step": 9}\n', encoding="utf-8")
+    # A shrink may be a copy in progress, so the first short poll waits; a file that stays short is rebuilt.
+    assert tail.read_new() == []
+    tail.shrink_grace_s = 0.0
     assert [row["step"] for row in tail.read_new()] == [9]
     assert tail.truncated is True
 
@@ -675,3 +678,80 @@ def test_running_run_reports_throughput_based_eta(tmp_path):
     assert snapshot["eta_source"] == "throughput"
     assert snapshot["elapsed_s"] is not None
     assert snapshot["total_s"] == pytest.approx(snapshot["elapsed_s"] + snapshot["eta_s"])
+
+
+def test_system_snapshot_keeps_process_tables_and_series_opt_in():
+    """The dashboard's default system view must stay small: the process rows and the device series are
+    only drawn by the System tab, and together they were ~90% of a four-node response."""
+    from examples.worldmodel.cosmos3_monitor.system import SystemHistory
+
+    history = SystemHistory()
+    base = {
+        "hostname": "A",
+        "training_processes": 1,
+        "processes": [{"pid": 7, "command": "train" * 50}],
+        "ranked_processes": [{"pid": 7, "command": "train" * 50}],
+        "devices": [{"index": 0, "hbm_used_mib": 100.0, "temperature_c": 40.0, "power_w": 300.0,
+                     "processes": [{"pid": 7}]}],
+    }
+    now = time.time()
+    for index in range(20):
+        history.ingest({**base, "time": now - 20 + index})
+
+    compact = history.snapshot()["hosts"]["A"]
+    assert "processes" not in compact["latest"] and "ranked_processes" not in compact["latest"]
+    assert compact["latest"]["process_count"] == 1
+    assert compact["latest"]["devices"][0]["process_count"] == 1
+    assert "processes" not in compact["latest"]["devices"][0]
+    assert compact["devices"]["0"]["hbm_used_mib"] == []
+    # The compact form still carries what the topology view draws.
+    assert compact["latest"]["devices"][0]["hbm_used_mib"] == 100.0
+
+    full = history.snapshot(processes=True, points=5)["hosts"]["A"]
+    assert full["latest"]["processes"][0]["pid"] == 7
+    assert len(full["devices"]["0"]["hbm_used_mib"]) == 5
+    # The stored history is untouched: a later compact read is still compact.
+    assert "processes" not in history.snapshot()["hosts"]["A"]["latest"]
+
+
+def test_jsonl_tail_survives_an_atomic_replace_and_a_transient_short_copy(tmp_path):
+    """The relay publishes by rename, and a plain copy is briefly short: neither is a rewritten history."""
+    path = tmp_path / "rank-000.jsonl"
+    write_lines(path, [{"step": 1}, {"step": 2}, {"step": 3}])
+    tail = JsonlTail(path)
+    assert [row["step"] for row in tail.read_new()] == [1, 2, 3]
+
+    # Atomic replace: same path, new inode, one appended record.  Only the new record may come back.
+    staging = tmp_path / ".rank-000.jsonl.tmp"
+    write_lines(staging, [{"step": 1}, {"step": 2}, {"step": 3}, {"step": 4}])
+    os.replace(staging, path)
+    assert [row["step"] for row in tail.read_new()] == [4]
+
+    # A copy caught mid-write: the file is shorter for a moment.  Nothing is returned and nothing is reset.
+    path.write_text('{"step": 1}\n')
+    assert tail.read_new() == []
+    assert tail.truncated is False and tail.offset > 0
+    # Once the copy finishes, reading resumes from the offset without duplicating the earlier records.
+    write_lines(path, [{"step": 1}, {"step": 2}, {"step": 3}, {"step": 4}, {"step": 5}])
+    assert [row["step"] for row in tail.read_new()] == [5]
+
+    # A file that stays short is a real rewrite: after the grace period the tail starts over.
+    path.write_text('{"step": 40}\n')
+    assert tail.read_new() == []          # first short poll: wait, it may be a copy in progress
+    tail.shrink_grace_s = 0.0             # the deadline passed
+    assert [row["step"] for row in tail.read_new()] == [40]
+    assert tail.truncated is True
+
+
+def test_throughput_store_does_not_duplicate_points_on_a_re_read(tmp_path):
+    from examples.worldmodel.cosmos3_monitor.series import ThroughputStore
+
+    store = ThroughputStore()
+    now = time.time()
+    for step in (5, 6, 7):
+        store.ingest(0, "h", step, 32, 1.0, now)
+    # A re-read of the file from the start repeats steps 5-7; the series must not grow.
+    for step in (5, 6, 7):
+        store.ingest(0, "h", step, 32, 1.0, now)
+    assert [int(x) for x, _ in store.rank_points[0]] == [5, 6, 7]
+    assert sorted(store.step_ranks) == [5, 6, 7]

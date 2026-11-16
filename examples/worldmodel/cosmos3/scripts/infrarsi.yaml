@@ -1,0 +1,96 @@
+# InfraRSI manifest for the Cosmos 3 SFT screen on 8 Ascend 910B2, hand-edited after `infrarsi init`.
+#
+# What this file is for: give the search a short, deterministic job with a knob surface that cannot change what is
+# computed. The generated draft offered NCCL_NVLS_ENABLE and PYTORCH_CUDA_ALLOC_CONF, which do not exist on this
+# stack, and grad_accum, which changes the definition of an update. All three are gone; every knob below changes
+# scheduling, memory or compilation only.
+#
+# Deliberately pinned, not knobs:
+#   --samples-per-rank 32   fixes the per-update workload (and therefore the MFU denominator)
+#   --num-workers           changes each DataLoader worker's RNG, so it changes the augmentation draws and hence the
+#                           loss; a knob that moves the loss is a data change, not a speedup
+#   --image-augmentation    the recipe's torchvision path; turning it off would be faster and wrong
+schema: infrarsi-project-v1
+name: infrarsi-cosmos3
+framework: pytorch
+
+launch:
+  # STEPS is an environment variable in train.sh; the manifest's step count drives it here.
+  # timeout: 10 updates need ~4 min of startup (imports, dataset index, VAE load, rendezvous) plus ~32 s each, so
+  # ~9 min of healthy run. 900 s killed the first attempt at update 8 of 10; 1800 s leaves room for one stall
+  # without hiding a genuinely hung run.
+  command: STEPS={steps} bash train.sh {args}
+  timeout_s: 1800
+
+config:
+  file: null
+
+knobs:
+  ZERO_BUCKET:
+    type: int
+    env: ZERO_BUCKET
+    choices: [3, 6, 12, 24, 48]
+    default: 12
+  VAE_BATCH:
+    type: int
+    env: VAE_BATCH
+    choices: [4, 8, 16]
+    default: 8
+  OMP_NUM_THREADS:
+    type: int
+    env: OMP_NUM_THREADS
+    choices: [4, 8, 16]
+    default: 8
+  CKPT:
+    type: str
+    env: CKPT
+    choices: [full, selective]
+    default: full
+  ATTN_BACKEND:
+    type: str
+    env: ATTN_BACKEND
+    choices: [auto, npu]
+    default: auto
+  COMPILE_BLOCKS:
+    type: str
+    env: COMPILE_BLOCKS
+    choices: ['0', '1']
+    default: '0'
+  VAE_COMPILE:
+    type: str
+    env: VAE_COMPILE
+    choices: [none, jit]
+    default: none
+
+constraints: []
+
+code:
+  mutable: []
+  frozen: []
+  readable:
+    - train.sh
+
+signals:
+  source: log
+
+workload:
+  steps: 10
+  window: [4, 10]
+  model:
+    params_b: 3.369
+  seq_len: 3242
+  invariants: {}
+
+hardware:
+  gpus: 8
+  memory_gib: 64
+  gpu_type: Ascend910B2
+
+verify:
+  tolerance: 0.03
+
+search:
+  strategy: auto
+  budget:
+    screens: 10
+    wall_hours: 6

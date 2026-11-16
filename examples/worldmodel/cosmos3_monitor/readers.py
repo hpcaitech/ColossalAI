@@ -75,12 +75,20 @@ class JsonlTail:
             forever; telemetry lines are kilobytes, not megabytes.
     """
 
-    def __init__(self, path, offset: int = 0, max_line_bytes: int = 4 * 1024 * 1024) -> None:
+    def __init__(
+        self,
+        path,
+        offset: int = 0,
+        max_line_bytes: int = 4 * 1024 * 1024,
+        shrink_grace_s: float = 3.0,
+    ) -> None:
         self.path = Path(path)
         self.offset = max(0, int(offset))
         self.max_line_bytes = int(max_line_bytes)
+        self.shrink_grace_s = float(shrink_grace_s)
         self._pending = b""
         self._inode: Optional[int] = None
+        self._short_since: Optional[float] = None
         self.error: Optional[str] = None
         self.truncated = False
 
@@ -92,12 +100,25 @@ class JsonlTail:
         if info is None:
             self.error = "missing"
             return []
-        if self._inode is not None and info.st_ino != self._inode:
-            self.reset()
+        # A relay that publishes by rename gives the same path a new inode without changing a byte below the
+        # offset; that is not a rewrite of the history, so keep reading from where we were.
         self._inode = info.st_ino
         if info.st_size < self.offset:
+            # A copy in progress (truncate, then write) looks exactly like this for a few milliseconds, and the
+            # next poll sees the full file again.  Re-reading the whole history for that would duplicate every
+            # per-rank point and, on a 2.4 MB file, cost more than the poll itself.  Only a file that is still
+            # short after ``shrink_grace_s`` is treated as genuinely rewritten.
+            now = time.monotonic()
+            if self._short_since is None:
+                self._short_since = now
+                return []
+            if now - self._short_since < self.shrink_grace_s:
+                return []
+            self._short_since = None
             self.reset()
             self.truncated = True
+        else:
+            self._short_since = None
         if info.st_size == self.offset:
             self.error = None
             return []

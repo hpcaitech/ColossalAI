@@ -232,12 +232,14 @@ class RunStore:
         with state.lock:
             return state.checkpoints_view()
 
-    def system(self, token: str, host: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def system(
+        self, token: str, host: Optional[str] = None, *, processes: bool = False, points: int = 0
+    ) -> Optional[Dict[str, Any]]:
         state = self.get(token)
         if state is None:
             return None
         with state.lock:
-            return state.system.snapshot(host)
+            return state.system.snapshot(host, processes=processes, points=points)
 
     def throughput(
         self, token: str, source: str = "nodes", x_axis: str = "step", max_points: int = 5000
