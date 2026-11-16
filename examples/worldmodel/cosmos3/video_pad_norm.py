@@ -20,6 +20,7 @@ import tilelang.language as T
 import torch
 import torch.nn.functional as F
 
+from examples.worldmodel.cosmos3.tilelang_lock import locked_compile
 from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch  # noqa: F401  (reference path / fallback)
 from examples.worldmodel.cosmos3.video_uint8 import reflect_pad_last2 as _reflect_pad_last2
 
@@ -82,7 +83,9 @@ def _block_for(m: int) -> int:
 def _kernel(m: int, block: int = BLOCK):
     kernel = _KERNELS.get((m, block))
     if kernel is None:
-        kernel = _uint8_norm_bf16(m, block)
+        # Every rank compiles the same padded shape at its first step; serialise the disk-cache write
+        # across ranks exactly as the VAE norm kernel does.
+        kernel = locked_compile(f"video_pad_norm:{m}:{block}", lambda: _uint8_norm_bf16(m, block))
         _KERNELS[(m, block)] = kernel
     return kernel
 

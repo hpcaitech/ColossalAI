@@ -139,6 +139,38 @@ def test_vae_norm_kernel_planners_fallback_and_patching(monkeypatch):
     assert vae.cl.forward == cl_orig
 
 
+def test_tilelang_lock_creates_the_shared_directory_and_runs_the_build(tmp_path, monkeypatch):
+    monkeypatch.setenv("COSMOS3_TILELANG_LOCK_DIR", str(tmp_path / "locks"))
+    from examples.worldmodel.cosmos3.tilelang_lock import locked_compile
+
+    calls = []
+    assert locked_compile("test-signature", lambda: calls.append("build") or 7) == 7
+    assert calls == ["build"]
+    assert (tmp_path / "locks").is_dir()
+    assert any(path.suffix == ".lock" for path in (tmp_path / "locks").iterdir())
+
+
+def test_video_pad_norm_compiles_under_the_shared_lock(monkeypatch):
+    _install_tilelang_stub(monkeypatch)
+    sys.modules.pop("examples.worldmodel.cosmos3.video_pad_norm", None)
+    vpn = importlib.import_module("examples.worldmodel.cosmos3.video_pad_norm")
+    vpn._KERNELS.clear()
+    calls = []
+
+    def locked(signature, build):
+        calls.append(signature)
+        return build()
+
+    sentinel = object()
+    monkeypatch.setattr(vpn, "locked_compile", locked)
+    monkeypatch.setattr(vpn, "_uint8_norm_bf16", lambda m, block: sentinel)
+    assert vpn._kernel(4096, 4096) is sentinel
+    assert calls == ["video_pad_norm:4096:4096"]
+    # The compiled kernel is cached, so later calls neither lock nor build again.
+    assert vpn._kernel(4096, 4096) is sentinel
+    assert calls == ["video_pad_norm:4096:4096"]
+
+
 def test_video_pad_norm_block_sizing_and_cpu_fallback(monkeypatch):
     _install_tilelang_stub(monkeypatch)
     sys.modules.pop("examples.worldmodel.cosmos3.video_pad_norm", None)

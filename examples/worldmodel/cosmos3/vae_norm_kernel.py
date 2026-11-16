@@ -27,14 +27,14 @@ contiguous block; one 2-D ``T.copy`` still turns it into a single multi-row DMA 
 on a non-divisible S recompute the same columns from the same input, so the duplicate writes are identical.
 """
 
-import fcntl
-import hashlib
 import os
 import types
 
 import tilelang
 import tilelang.language as T
 import torch
+
+from examples.worldmodel.cosmos3.tilelang_lock import locked_compile
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -228,25 +228,10 @@ _GAMMA = {}
 TWO_PASS_MIN_S = 65536
 
 
-def _locked_compile(signature: str, build):
-    """Serialise one tilelang compile across the ranks that share the tilelang disk cache.
-
-    tilelang's cache only has an in-process lock, so eight ranks compiling the same kernel at the same moment
-    can load a half-written ``kernel_lib.so`` (observed: SIGSEGV on four ranks at the first fused-norm call).
-    """
-    digest = hashlib.sha1(signature.encode()).hexdigest()[:16]
-    # Next to the disk cache, not /tmp: a multi-node run shares the cache (NFS home), so the lock must live
-    # where the cache lives, not on each node's local /tmp.
-    lock_root = os.path.expanduser("~/.tilelang")
-    if not os.path.isdir(lock_root):
-        lock_root = "/tmp"
-    lock_path = os.path.join(lock_root, f"tilelang_vae_norm_{digest}.lock")
-    with open(lock_path, "w") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            return build()
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+# Shared with the video pad/norm kernel; kept under this name for the VAE and dit-tail call sites.
+# The helper creates the lock directory next to the shared TileLang cache instead of silently falling
+# back to a per-node /tmp lock.
+_locked_compile = locked_compile
 
 
 def _compile_locked(key, plan, b: int, c: int, s: int, scale: float):
