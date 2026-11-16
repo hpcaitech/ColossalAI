@@ -17,8 +17,12 @@ Usage (from a node, with the container's environment)::
 
     COSMOS3_NUMA_PIN=$(python -m examples.worldmodel.cosmos3.numa_affinity --print-map)
 
-and in the trainer, ``COSMOS3_NUMA_PIN`` set without ``--print-map``.  When the variable is unset nothing happens,
-which keeps every existing recipe and benchmark bit-for-bit unchanged.
+or export ``COSMOS3_NUMA_PIN=auto`` on every node, and each rank derives its own node's map in-process.  ``auto``
+is the safe form for a heterogeneous job: node5 and node9 expose 4 domains, so a map exported job-wide from an
+8-domain node pins their ranks to a socket that is not their NPU's.  A failed derivation (no ``npu-smi``, timeout,
+unreadable sysfs) is a no-op with a note, because pinning is an optimization and must not fail training.
+
+When the variable is unset nothing happens, which keeps every existing recipe and benchmark bit-for-bit unchanged.
 """
 
 from __future__ import annotations
@@ -124,11 +128,48 @@ def build_map(device_buses: list[str], sysfs: Path | str = "/sys") -> list[str]:
     return entries
 
 
+def _visible_buses(buses: list[str]) -> list[str]:
+    """Restrict ``buses`` to ``ASCEND_RT_VISIBLE_DEVICES`` so LOCAL_RANK indexes the visible subset."""
+    raw = os.environ.get("ASCEND_RT_VISIBLE_DEVICES", "").strip()
+    if not raw or raw.lower() in {"all", "-1"}:
+        return buses
+    picked: list[str] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        index = int(item)
+        if not 0 <= index < len(buses):
+            raise ValueError(f"ASCEND_RT_VISIBLE_DEVICES entry {index} is not one of {len(buses)} devices")
+        picked.append(buses[index])
+    return picked or buses
+
+
+def derive_map(npu_smi: str = "npu-smi", sysfs: Path | str = "/sys") -> str:
+    """Ask ``npu-smi`` which devices this node has and return the map for the visible ones."""
+    import subprocess
+
+    text = subprocess.run([npu_smi, "info"], capture_output=True, text=True, check=True, timeout=60).stdout
+    buses = parse_device_buses(text)
+    if not buses:
+        raise ValueError("npu-smi info listed no devices")
+    return ";".join(build_map(_visible_buses(buses), sysfs))
+
+
 def apply_affinity(spec: str | None = None, local_rank: int | None = None) -> tuple[bool, str]:
-    """Pin the current process to its rank's cpuset. No-op (returns False) when ``COSMOS3_NUMA_PIN`` is unset."""
+    """Pin the current process to its rank's cpuset. No-op (returns False) when ``COSMOS3_NUMA_PIN`` is unset.
+
+    ``spec="auto"`` derives this node's map in-process, so one job-wide environment cannot carry an 8-domain
+    node's map onto a 4-domain host.  Derivation failures are reported as a no-op, never raised.
+    """
     spec = spec if spec is not None else os.environ.get("COSMOS3_NUMA_PIN", "")
     if not spec:
         return False, "COSMOS3_NUMA_PIN unset, no pinning"
+    if spec.strip().lower() == "auto":
+        try:
+            spec = derive_map()
+        except Exception as exc:  # npu-smi missing/slow, no devices, unreadable sysfs
+            return False, f"COSMOS3_NUMA_PIN=auto could not derive this node's map ({exc}), no pinning"
     if not hasattr(os, "sched_setaffinity"):  # macOS and other non-Linux hosts
         return False, "sched_setaffinity unavailable on this platform, no pinning"
     if local_rank is None:
@@ -141,7 +182,6 @@ def apply_affinity(spec: str | None = None, local_rank: int | None = None) -> tu
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    import subprocess
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--print-map", action="store_true", help="print the COSMOS3_NUMA_PIN value for this node")
@@ -149,11 +189,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.print_map:
         parser.error("nothing to do; pass --print-map")
-    text = subprocess.run([args.npu_smi, "info"], capture_output=True, text=True, check=True).stdout
-    buses = parse_device_buses(text)
-    if not buses:
-        raise SystemExit("npu-smi info listed no devices")
-    print(";".join(build_map(buses)))
+    try:
+        print(derive_map(args.npu_smi))
+    except Exception as exc:
+        raise SystemExit(f"could not derive this node's NUMA map: {exc}") from exc
     return 0
 
 
