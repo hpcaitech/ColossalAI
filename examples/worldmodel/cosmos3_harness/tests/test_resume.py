@@ -1,6 +1,7 @@
 """CPU tests for replay weighting and complete collective resume (no model weights)."""
 
 import json
+import os
 import random
 import threading
 from pathlib import Path
@@ -15,11 +16,14 @@ import torch.multiprocessing as mp
 
 from examples.worldmodel.cosmos3_harness import train
 from examples.worldmodel.cosmos3_harness.checkpoint import (
+    _describe_config_difference,
     _rng_fields,
     apply_master_weights,
     flush_checkpoint,
     load_master_weights,
+    load_rank_tensors,
     master_weights_payload,
+    rank_tensors_payload,
     restore_checkpoint,
     save_checkpoint,
     validate_checkpoint,
@@ -237,6 +241,9 @@ class _MasterOptimizer:
 
     def get_master_to_working_map(self):
         return self._map
+
+    def state_dict(self):
+        return {}
 
 
 def test_master_weights_round_trip_preserves_fp32(tmp_path):
@@ -717,6 +724,69 @@ def _node_local_resume(rank, base):
     torch.testing.assert_close(resumed.module.weight, model.module.weight, rtol=0, atol=0)
 
 
+def _node_local_pair_resume(rank, base):
+    """Two nodes of two ranks each: the layout the six-node runs actually have.
+
+    Only the node head publishes the generation, and only the node head creates the directory a resume
+    rebuilds it in, but *every* rank on the node copies its own rank file into that directory.  With one
+    rank per node (the test above) the head is the only rank there is, so this never came up.
+    """
+    node = rank // 2
+    root = Path(base) / f"node{node}" / "checkpoints"
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    booster = CPUBooster()
+    model._colossal_booster = booster
+    pending = save_checkpoint(
+        root,
+        model,
+        optimizer,
+        {"step": 5, "epoch": 1, "sampler_cursor": 7, "config": {"cp": 1}},
+        booster=booster,
+    )
+    dist.barrier()
+    if node == 0:
+        assert (pending.generation / "model" / "weights.pt").is_file()
+    else:
+        # This node published nothing: both of its ranks left their rank file in the staging directory.
+        assert not pending.generation.exists()
+        assert (root / (".incomplete-" + pending.identifier) / f"rng-{rank:05d}.pt").is_file()
+    dist.barrier()
+
+    resumed = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer_resumed = torch.optim.AdamW(resumed.parameters(), lr=0.01)
+    state = restore_checkpoint(root, resumed, optimizer_resumed, booster=booster, expected_config={"cp": 1})
+    assert state["step"] == 5
+
+    generation = root / pending.generation.name
+    assert (generation / "complete.json").is_file()
+    assert (generation / "model" / "weights.pt").is_file()
+    # Both of this node's ranks are there, neither of the other node's.
+    for mine in (2 * node, 2 * node + 1):
+        assert (generation / f"rng-{mine:05d}.pt").is_file(), f"rank {rank}: rng-{mine:05d}.pt is missing"
+    for theirs in (2 * (1 - node), 2 * (1 - node) + 1):
+        assert not (generation / f"rng-{theirs:05d}.pt").exists()
+    torch.testing.assert_close(resumed.module.weight, model.module.weight, rtol=0, atol=0)
+
+
+def _node_local_pair_worker(rank, world, rendezvous, base):
+    from colossalai.accelerator import set_accelerator
+
+    set_accelerator("cpu")
+    os.environ["LOCAL_RANK"] = str(rank % 2)
+    os.environ["LOCAL_WORLD_SIZE"] = "2"
+    dist.init_process_group("gloo", init_method=f"file://{rendezvous}", rank=rank, world_size=world)
+    try:
+        _node_local_pair_resume(rank, base)
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")
+def test_node_local_disks_with_several_ranks_per_node(tmp_path):
+    mp.spawn(_node_local_pair_worker, args=(4, str(tmp_path / "rendezvous"), str(tmp_path)), nprocs=4, join=True)
+
+
 def _node_local_worker(rank, world, rendezvous, base):
     from colossalai.accelerator import set_accelerator
 
@@ -736,3 +806,123 @@ def test_node_local_disks_fetch_the_generation_from_rank_zero(tmp_path):
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")
 def test_two_rank_uninterrupted_equals_resume(tmp_path):
     mp.spawn(_worker, args=(2, str(tmp_path / "rendezvous"), str(tmp_path / "checkpoint")), nprocs=2, join=True)
+
+
+def test_a_named_rank_payload_round_trips(tmp_path):
+    """State the caller owns, big enough that it needs a file of its own rather than the RNG file.
+
+    Every rank reads its own RNG file, so a payload the size of a model copy -- an EMA's shadow -- has to
+    live beside the master weights instead, read only by the rank that wrote it.
+    """
+    model, booster = Toy(), CPUBooster()
+    optimizer = torch.optim.AdamW(model.parameters())
+    shadow = [torch.tensor([1.5, -0.25]), torch.tensor([[3.0]])]
+    payload = rank_tensors_payload(["a#0", "b#0"], shadow)
+    state = {"step": 1, "epoch": 0, "sampler_cursor": 2, "config": None}
+
+    save_checkpoint(tmp_path, model, optimizer, state, booster=booster, rank_tensors={"ema": payload})
+
+    root, saved = validate_checkpoint(tmp_path)
+    assert saved["rank_tensors"] == ["ema"]
+    keys, tensors = load_rank_tensors(root / "ema-00000.pt")
+    assert keys == ["a#0", "b#0"]
+    torch.testing.assert_close(tensors[0], shadow[0])
+    torch.testing.assert_close(tensors[1], shadow[1])
+
+
+def test_a_generation_without_the_payload_says_so(tmp_path):
+    """The flag is what lets a run that keeps such state refuse a checkpoint that does not carry it."""
+    model, booster = Toy(), CPUBooster()
+    optimizer = torch.optim.AdamW(model.parameters())
+    save_checkpoint(
+        tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 2, "config": None}, booster=booster
+    )
+    _, saved = validate_checkpoint(tmp_path)
+    assert saved["rank_tensors"] == []
+
+
+def test_a_fingerprint_mismatch_names_the_keys_that_differ():
+    """The operator is looking at a run that just refused to start; "it differs" leaves them to diff two
+    nested dicts by hand. This found a stale copy of the entry on one node in a two-machine resume."""
+    stored = {"topology": {"world_size": 4}, "ema": {"enabled": True, "rate": 0.1}, "seed": 42}
+    expected = {"topology": {"world_size": 8}, "seed": 42}
+    message = _describe_config_difference(stored, expected)
+    assert "topology.world_size: checkpoint 4, this run 8" in message
+    assert "ema:" in message and "<absent>" in message
+    assert "seed" not in message
+    assert _describe_config_difference({"a": 1}, {"a": 1}) == ""
+
+
+def _save_with_label(tmp_path, label, optimizer=None):
+    model, booster = Toy(), CPUBooster()
+    optimizer = optimizer if optimizer is not None else torch.optim.AdamW(model.parameters())
+    payload = rank_tensors_payload(["a#0"], [torch.zeros(2)])
+    save_checkpoint(
+        tmp_path,
+        model,
+        optimizer,
+        {"step": 1, "epoch": 0, "sampler_cursor": 2, "config": None},
+        booster=booster,
+        rank_tensors={label: payload},
+    )
+
+
+def test_a_label_that_would_overwrite_the_rng_file_is_refused(tmp_path):
+    """ "rng" passes the prefix check and the RNG file is written first, so the caller's tensors would
+    replace it, on disk and in the manifest, and the resume would read the wrong thing back."""
+    with pytest.raises(ValueError, match="would overwrite"):
+        _save_with_label(tmp_path, "rng")
+
+
+def test_a_label_that_would_overwrite_the_master_weights_is_refused(tmp_path):
+    """The same for "master", which only exists when the optimizer keeps an fp32 copy -- which is the
+    configuration the recipe runs in."""
+    model = Toy()
+    masters = [torch.nn.Parameter(p.detach().float()) for p in model.parameters()]
+    optimizer = _MasterOptimizer(masters, list(model.parameters()))
+    with pytest.raises(ValueError, match="would overwrite"):
+        _save_with_label(tmp_path, "master", optimizer=optimizer)
+
+
+@pytest.mark.parametrize("label", ["ema-../../escape", "ema/nested", "EMA", "", "ema.1"])
+def test_a_label_that_is_not_a_plain_name_is_refused(tmp_path, label):
+    """The label becomes a file name under the staging directory, so it may not carry a path.
+
+    ``ema-../../escape`` is the one that matters: it starts with a known rank-local prefix, so the
+    prefix check passes and the write lands outside the generation being staged.
+    """
+    with pytest.raises(ValueError, match="must match|rank-local file prefix"):
+        _save_with_label(tmp_path, label)
+
+
+def test_a_label_without_a_rank_local_prefix_is_refused(tmp_path):
+    """Written under an unknown name the file would be treated as shared and demanded of every node."""
+    model, booster = Toy(), CPUBooster()
+    optimizer = torch.optim.AdamW(model.parameters())
+    payload = rank_tensors_payload(["a#0"], [torch.zeros(2)])
+    with pytest.raises(ValueError, match="rank-local file prefix"):
+        save_checkpoint(
+            tmp_path,
+            model,
+            optimizer,
+            {"step": 1, "epoch": 0, "sampler_cursor": 2, "config": None},
+            booster=booster,
+            rank_tensors={"shadow": payload},
+        )
+
+
+def test_a_payload_is_checked_before_the_caller_sees_it(tmp_path):
+    torch.save({"format": "something else"}, tmp_path / "ema-00000.pt")
+    with pytest.raises(ValueError, match="unsupported rank tensor payload"):
+        load_rank_tensors(tmp_path / "ema-00000.pt")
+    torch.save(
+        {"format": "cosmos3-rank-tensors-1", "keys": ["a#0"], "tensors": [torch.zeros(2, dtype=torch.bfloat16)]},
+        tmp_path / "ema-00001.pt",
+    )
+    with pytest.raises(ValueError, match="not a float32 tensor"):
+        load_rank_tensors(tmp_path / "ema-00001.pt")
+
+
+def test_mismatched_keys_and_tensors_are_refused():
+    with pytest.raises(ValueError, match="differ in length"):
+        rank_tensors_payload(["a#0", "b#0"], [torch.zeros(2)])
