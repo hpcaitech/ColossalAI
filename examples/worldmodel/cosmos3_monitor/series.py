@@ -445,6 +445,7 @@ class ThroughputStore:
         self.max_points = int(max_points)
         self.max_steps = int(max_steps)
         self.rank_points: Dict[int, List[List[float]]] = {}
+        self.last_step: Dict[int, int] = {}
         self.node_points: Dict[str, List[List[float]]] = {}
         self.step_ranks: Dict[int, Dict[int, Dict[str, Any]]] = {}
         self.step_nodes: Dict[int, Dict[str, Dict[str, Any]]] = {}
@@ -522,7 +523,15 @@ class ThroughputStore:
         self.pending.setdefault(int(step), {})[int(rank)] = entry
         self.step_ranks.setdefault(int(step), {})[int(rank)] = entry
         self.first_seen.setdefault(int(step), now)
-        self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+        # A rank file may be re-read from the start (an atomic replace, or a reader that saw a short copy), so
+        # the same step can arrive twice.  ``step_ranks`` is keyed by step and takes the repeat harmlessly, but
+        # the per-rank series is a list: appending the repeat would push the real history out of the
+        # ``max_points`` window.  Telemetry steps only ever increase, so a step at or below the last one is a
+        # re-read, not new progress.
+        last = self.last_step.get(int(rank))
+        if last is None or int(step) > last:
+            self._append(self.rank_points, int(rank), int(step), entry["throughput"])
+            self.last_step[int(rank)] = int(step)
 
     def finalize(self, step: int, host_ranks: Dict[str, List[int]], world: int, *, force: bool = False) -> None:
         pending = self.pending.get(int(step))

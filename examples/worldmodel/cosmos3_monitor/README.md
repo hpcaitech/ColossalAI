@@ -144,7 +144,15 @@ exit code in memory. Without `--launch-template` the buttons still record the re
 
 The template starts **one** process on the host that runs the server. A multi-node run needs a template that
 starts every node (the cluster launcher, or an `ssh` loop), because the dashboard has no opinion about
-`torchrun --nnodes`. The server has no authentication: keep it on loopback and use the SSH tunnel.
+`torchrun --nnodes`; from the workstation that is one command, and every node reads its own copy of the
+generation (see the harness README's "one generation per node"):
+
+```bash
+NODES="node1 node5 node6 node7" MASTER=<rank0 ip> \
+RESUME=/mnt/disk0/.../runs/<stopped tag>/checkpoints bash run_6node_train.sh <new tag>
+```
+
+The server has no authentication: keep it on loopback and use the SSH tunnel.
 
 ## Data contract
 
@@ -171,7 +179,7 @@ used, which writes `control/request.json` (and, with `--launch-template`, `contr
 
 - The topbar pause button freezes live updates; the SSE stream and the 5 s detail refresh resume together.
 - `Pause` does not stop the sidebar's run discovery; it only stops the selected run's view from moving.
-- Charts preserve the user's zoom across refreshes; a tab switch starts from the full range.
+- Charts lock the user's zoom by exact axis values across live refreshes, tab switches, theme toggles, and reloads in the same browser session; double-clicking a chart or clicking `重置缩放` / `✕` returns to the full range.
 - The step detail's stage times are per-stage maxima across ranks, so their sum can be slightly larger than the
   maximum end-to-end step. Stage and total MFU come from the training record (`perf/mfu_forward`,
   `perf/mfu_backward`, `perf/mfu_vae`, `perf/mfu`): the trainer computed them with the checkpoint geometry and
