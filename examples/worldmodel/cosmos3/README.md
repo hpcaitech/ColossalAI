@@ -73,6 +73,8 @@ CP copies do not multiply it. Counts include every microstep and are reported on
 
 One limitation is specific to online augmentation: the workers draw from their own RNG, so a resume reproduces the sample sequence, model, optimizer and every rank's Python/NumPy/Torch/accelerator state, but not the per-sample augmentation draws of batches already consumed.
 
+Multi-node runs keep `--out` on each node's local disk, and resume handles that layout. Rank 0's node publishes the generation (model/optimizer/`training_state.pt`); every other node keeps only the `rng-<rank>.pt` and `master-<rank>.pt` files its ranks wrote, and `complete.json` covers all of them because each rank gathers its own digests before the save barrier. On `--resume`, rank 0 shares the generation name and manifest, each rank says whether its node is complete, and a node missing the shared files receives them over the training interconnect (one stream per file, `COSMOS3_CHECKPOINT_TRANSFER_CHUNK_MIB` chunks, written by each node's `LOCAL_RANK` 0) before validation and loading. The node then keeps a published copy, so its next resume is local. `scripts/check_checkpoint_complete.py <run-dir> --world 48` reports whether one node can take part.
+
 ## Experimental VAE options
 
 BF16, the diffusers encoder and its default window are the baseline. FP16, fused norm, fast convolution, wider chunk windows and compilation are independent opt-ins:

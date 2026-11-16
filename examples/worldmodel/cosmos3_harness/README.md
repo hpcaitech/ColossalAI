@@ -96,6 +96,16 @@ collective at the next checkpoint entry or at the end of the run, and a failed w
 there with the same message. It does not need TensorNVMe. The default stays synchronous, matching the upstream
 Cosmos recipe.
 
+Resume also works when `--out` is each node's local disk, which is how the multi-node benchmarks run. The model,
+optimizer and `training_state.pt` exist only on rank 0's node, and each node keeps the `rng-<rank>.pt` and
+`master-<rank>.pt` files it wrote; `complete.json` covers all of them because every rank gathers its own file
+digests before the save-time barrier. On `--resume`, rank 0 publishes the generation name and manifest, each rank
+reports whether its node is complete, and a node missing the shared files receives them over the training
+interconnect — once per node, in `COSMOS3_CHECKPOINT_TRANSFER_CHUNK_MIB` (default 64) chunks, writing on each
+node's `LOCAL_RANK` 0 — before validation loads anything. The node keeps the result as a published generation, so
+the next resume on that node is local. `scripts/check_checkpoint_complete.py <run-dir> --world N` reads one node's
+directory and says whether that node can take part.
+
 `--graceful-stop` (default on) makes the run stoppable from the dashboard. A watcher thread reads
 `<run>/control/request.json` once a second; when it holds a `stop` request stamped with this attempt's manifest
 `started_at`, the loop writes one more generation for the step it is in, records `stopped` in the terminal files and

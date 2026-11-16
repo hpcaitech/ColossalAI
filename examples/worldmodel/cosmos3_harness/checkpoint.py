@@ -12,6 +12,14 @@ Non-saving ranks have no asynchronous writer at all, and every rank's small sync
 (``rng-<rank>.pt``, ``training_state.pt``) are on disk before the save-time barrier, so the
 publisher needs no further collective.  ``flush_checkpoint`` is where all ranks confirm the
 outcome together.
+
+When ``--out`` is each node's local disk, rank zero's node holds the model, optimizer and training
+state while every other node holds only the rank files it wrote.  The manifest still covers all of
+them (each rank gathers its own file digests before the barrier), and resume runs on every node at
+once: :func:`materialize_local_generation` reads the generation name and manifest from rank zero,
+each rank reports whether its node is complete, and only a node that is missing the shared files
+receives them, streamed over the interconnect the job already has open.  A shared filesystem makes
+that step a no-op.
 """
 
 from __future__ import annotations
@@ -20,12 +28,13 @@ import hashlib
 import json
 import os
 import random
+import shutil
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -176,6 +185,292 @@ def _digest_tree(root: Path):
     return files, sizes, total_bytes
 
 
+#: Files that exactly one rank writes and that only that rank reads back.  They live on the node that
+#: wrote them, so a run whose ``--out`` is each node's local disk legitimately lacks the other nodes'
+#: copies; ``complete.json`` still records every one of them, digest included.
+_RANK_FILE_PREFIXES = ("rng-", "master-")
+
+
+class _DigestingFile:
+    """A file object that hashes the bytes it writes, so a saved file's digest costs no second read."""
+
+    def __init__(self, stream) -> None:
+        self._stream = stream
+        self._digest = hashlib.sha256()
+
+    def write(self, data) -> int:
+        self._digest.update(data)
+        return self._stream.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def hexdigest(self) -> str:
+        return self._digest.hexdigest()
+
+
+def _save_with_digest(payload, path) -> Dict[str, Any]:
+    path = Path(path)
+    with path.open("wb") as stream:
+        writer = _DigestingFile(stream)
+        torch.save(payload, writer)
+    return {"sha256": writer.hexdigest(), "size": path.stat().st_size}
+
+
+def _is_rank_local(name) -> bool:
+    return str(name).startswith(_RANK_FILE_PREFIXES)
+
+
+def _rank_of_file(name) -> Optional[int]:
+    stem = Path(str(name)).name
+    _, _, suffix = stem.partition("-")
+    try:
+        return int(suffix.split(".")[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _local_rank_index() -> int:
+    """This process's rank inside its node.  torchrun sets ``LOCAL_RANK``; a single-process run is 0."""
+    raw = os.environ.get("LOCAL_RANK")
+    try:
+        return int(raw) if raw is not None else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _checkpoint_root_of(directory) -> Path:
+    """The directory that holds the generations, whichever of the two a caller passed."""
+    path = Path(directory)
+    return path.parent if path.name.startswith("checkpoint-") else path
+
+
+def _describe_generation(directory) -> Dict[str, Any]:
+    """Rank zero's view of a generation: its name, the manifest, and the size of every shared file.
+
+    Only rank zero's node holds ``complete.json`` when ``--out`` is node-local, so this is the payload
+    every other node receives before it knows what to fetch.
+    """
+    root = Path(directory)
+    if (root / "latest.json").is_file():
+        name = json.loads((root / "latest.json").read_text())["generation"]
+        if Path(name).name != name:
+            raise ValueError("Invalid checkpoint generation")
+        root = root / name
+    if not (root / "complete.json").is_file():
+        raise ValueError(f"Incomplete checkpoint: {root}")
+    manifest_text = (root / "complete.json").read_text()
+    manifest = json.loads(manifest_text)
+    files = manifest.get("files")
+    if not isinstance(files, dict) or not files:
+        raise ValueError(f"{root}: complete.json has no file table")
+    sizes = dict(manifest.get("sizes") or {})
+    for name in files:
+        if _is_rank_local(name) or name in sizes:
+            continue
+        path = root / name
+        if not path.is_file():
+            raise ValueError(f"{root}: manifest lists {name}, which is not on rank 0's node")
+        sizes[name] = path.stat().st_size
+    return {"generation": root.name, "files": files, "sizes": sizes, "manifest": manifest_text}
+
+
+def _generation_ready(directory: Path, files: Dict[str, Any], rank: int) -> bool:
+    """Whether this node already holds every file this rank will read."""
+    if not (directory / "complete.json").is_file():
+        return False
+    for name in files:
+        if _is_rank_local(name) and _rank_of_file(name) != rank:
+            continue
+        if not (directory / name).is_file():
+            return False
+    return True
+
+
+def _transfer_device():
+    accelerator = _accelerator()
+    if accelerator.name == "cpu":
+        return torch.device("cpu")
+    return accelerator.get_current_device()
+
+
+def _transfer_chunk_bytes() -> int:
+    raw = os.environ.get("COSMOS3_CHECKPOINT_TRANSFER_CHUNK_MIB", "64")
+    try:
+        mebibytes = max(1, int(raw))
+    except (TypeError, ValueError):
+        mebibytes = 64
+    return mebibytes * 1024 * 1024
+
+
+def _transfer_file(source, destination, size, *, device, chunk_bytes) -> None:
+    """Stream one file from rank zero to every node; only each node's head rank writes it."""
+    if not dist.is_initialized():
+        raise RuntimeError("checkpoint transfer requires an initialized process group")
+    rank = dist.get_rank()
+    reader = Path(source).open("rb") if rank == 0 and source is not None else None
+    writer = Path(destination).open("wb") if destination is not None else None
+    try:
+        remaining = int(size)
+        while remaining > 0:
+            count = min(chunk_bytes, remaining)
+            buffer = torch.empty(count, dtype=torch.uint8, device=device)
+            if reader is not None:
+                data = reader.read(count)
+                if len(data) != count:
+                    raise RuntimeError(f"{source}: short read while transferring the checkpoint")
+                buffer.copy_(torch.frombuffer(data, dtype=torch.uint8))
+            dist.broadcast(buffer, src=0)
+            if writer is not None:
+                writer.write(buffer.cpu().numpy().tobytes())
+            remaining -= count
+    finally:
+        if reader is not None:
+            reader.close()
+        if writer is not None:
+            writer.close()
+
+
+def _local_rank_file(local_root: Path, generation: str, name: str) -> Optional[Path]:
+    """Where this node kept a rank file at save time: the published generation, else its staging dir."""
+    candidates = [local_root / generation / name]
+    if generation.startswith("checkpoint-"):
+        candidates.append(local_root / (".incomplete-" + generation[len("checkpoint-"):]) / name)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _node_needs_write(flags, rank: int, local: int) -> bool:
+    """Whether this node is missing something.  Ranks are laid out node by node, as torchrun starts them."""
+    raw = os.environ.get("LOCAL_WORLD_SIZE")
+    try:
+        local_world = max(1, int(raw)) if raw is not None else 1
+    except (TypeError, ValueError):
+        local_world = 1
+    start = rank - local
+    stop = min(len(flags), start + local_world)
+    return not all(bool(flags[index]) for index in range(max(0, start), max(0, stop)))
+
+
+def _fetch_generation(payload, local_root: Path, generation_dir: Path, *, rank: int, world: int, flags) -> None:
+    """Rebuild this node's copy of the generation: rank zero's shared files plus the rank files it wrote.
+
+    Every rank joins the broadcast, but only a node that is actually incomplete writes the bytes out;
+    a node whose disks are already complete participates and keeps its files.
+    """
+    generation = payload["generation"]
+    files = payload["files"]
+    sizes = payload.get("sizes") or {}
+    local = _local_rank_index()
+    needs_write = _node_needs_write(flags, rank, local)
+    missing = [
+        name
+        for name in files
+        if _is_rank_local(name) and _rank_of_file(name) == rank and _local_rank_file(local_root, generation, name) is None
+    ]
+    local_error = None
+    if missing:
+        local_error = (
+            f"rank {rank}: this node no longer has {', '.join(sorted(missing))}; the save wrote them here and "
+            "only this node ever held them"
+        )
+    errors = [local_error]
+    if dist.is_initialized():
+        errors = [None] * world
+        dist.all_gather_object(errors, local_error)
+    failures = [error for error in errors if error]
+    if failures:
+        raise ValueError("Checkpoint resume cannot rebuild the generation: " + "; ".join(failures))
+
+    writer_node = local == 0 and needs_write
+    staging = local_root / (".resume-" + uuid.uuid4().hex)
+    if writer_node:
+        staging.mkdir(parents=True, exist_ok=True)
+    _barrier()
+    device = _transfer_device()
+    chunk_bytes = _transfer_chunk_bytes()
+    transferred = 0
+    for name in sorted(files):
+        if _is_rank_local(name):
+            continue
+        target = staging / name if writer_node else None
+        if target is not None:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        if rank == 0:
+            print(f"[checkpoint] sending {name} ({int(sizes.get(name) or 0) / 2**20:.0f} MiB) to every node", flush=True)
+        _transfer_file(
+            generation_dir / name if rank == 0 else None,
+            target,
+            int(sizes.get(name) or 0),
+            device=device,
+            chunk_bytes=chunk_bytes,
+        )
+        transferred += 1
+    if needs_write:
+        # This rank's own files never leave their node: copy them out of the staging directory the save wrote.
+        for name in files:
+            if not _is_rank_local(name) or _rank_of_file(name) != rank:
+                continue
+            source = _local_rank_file(local_root, generation, name)
+            shutil.copyfile(source, staging / name)
+        if local == 0:
+            (staging / "complete.json").write_text(payload["manifest"])
+    _barrier()
+    if writer_node:
+        if generation_dir.exists():
+            shutil.rmtree(generation_dir)
+        os.replace(staging, generation_dir)
+        pointer = local_root / ".latest-resume"
+        pointer.write_text(json.dumps({"generation": generation}))
+        os.replace(pointer, local_root / "latest.json")
+    _barrier()
+    if rank == 0:
+        print(f"[checkpoint] materialised {generation} from {transferred} shared files", flush=True)
+
+
+def materialize_local_generation(directory) -> Path:
+    """Make the generation complete on this node, fetching rank zero's files when the disks are local.
+
+    A run whose ``--out`` is each node's local disk publishes the model, optimizer and training state on
+    rank zero's node only; every other node keeps just the rank files it wrote.  Resume runs on all nodes
+    at once, so rank zero publishes the generation's name and manifest, each rank reports whether its node
+    is complete, and a node that is missing the shared files receives them -- once per node, streamed over
+    the interconnect the job already has open.  A shared filesystem makes this a no-op.
+    """
+    rank, world = _rank_world()
+    payload, error = None, None
+    if rank == 0:
+        try:
+            payload = _describe_generation(directory)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+    if dist.is_initialized():
+        holder = [{"payload": payload, "error": error}]
+        dist.broadcast_object_list(holder, src=0)
+        payload, error = holder[0]["payload"], holder[0]["error"]
+    if error is not None:
+        raise ValueError(f"Checkpoint generation on rank 0's node is not readable: {error}")
+    if not isinstance(payload, dict):
+        raise ValueError("Checkpoint generation is not readable")
+    generation_dir = _checkpoint_root_of(directory) / payload["generation"]
+    ready = _generation_ready(generation_dir, payload["files"], rank)
+    flags = [ready]
+    if dist.is_initialized():
+        flags = [None] * world
+        dist.all_gather_object(flags, ready)
+    if all(flags):
+        return generation_dir
+    if not dist.is_initialized():
+        raise ValueError(
+            f"Incomplete checkpoint on this node: {generation_dir}; fetching the shared files needs the "
+            "distributed job that resume runs in"
+        )
+    _fetch_generation(payload, _checkpoint_root_of(directory), generation_dir, rank=rank, world=world, flags=flags)
+    return generation_dir
+
+
 def _collective_errors(local_error: Optional[str]) -> None:
     """Gate every rank on the same outcome. All ranks MUST call this, even after a local failure.
 
@@ -216,6 +511,9 @@ class PendingCheckpoint:
     checkpoint_io: Any = None
     publisher: Optional[threading.Thread] = None
     error: Optional[str] = None
+    #: Every rank's own files (``rng-*``, ``master-*``) with their digests.  They are written on that rank's
+    #: node, so rank zero only knows them because they were gathered before the barrier.
+    rank_files: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def start_publisher(self, writers=(), chmod: bool = False):
         self.publisher = threading.Thread(
@@ -244,6 +542,18 @@ def _publish_generation(pending: PendingCheckpoint, writers, chmod: bool) -> Non
     if chmod:
         apply_checkpoint_modes(pending.staging)
     files, sizes, total_bytes = _digest_tree(pending.staging)
+    # Rank files written on other nodes are in no local walk; the gather is the only record of them.
+    local_names = set(sizes)
+    for name, meta in (pending.rank_files or {}).items():
+        digest = meta.get("sha256")
+        if not isinstance(digest, str):
+            continue
+        files[name] = digest
+        if name in local_names:
+            continue
+        size = int(meta.get("size") or 0)
+        sizes[name] = size
+        total_bytes += size
     (pending.staging / "complete.json").write_text(
         json.dumps(
             {
@@ -305,9 +615,12 @@ def save_checkpoint(
     # separate fp32 master parameters, and Booster's optimizer save does not persist their values.
     # Snapshot them into the same staging generation; the host copy is the exposed cost of an exact
     # resume, while serialization joins the generation's normal publication path.
+    rank_files: Dict[str, Dict[str, Any]] = {}
     master_payload = master_weights_payload(model, optimizer)
     if master_payload is not None:
-        torch.save(master_payload, staging / f"master-{rank:05d}.pt")
+        rank_files[f"master-{rank:05d}.pt"] = _save_with_digest(
+            master_payload, staging / f"master-{rank:05d}.pt"
+        )
     accelerator = _accelerator()
     rng = {
         "torch": torch.get_rng_state(),
@@ -320,7 +633,15 @@ def save_checkpoint(
     extra = on_rank_state() if on_rank_state is not None else None
     if extra is not None:
         rng["extra"] = extra
-    torch.save(rng, staging / f"rng-{rank:05d}.pt")
+    rank_files[f"rng-{rank:05d}.pt"] = _save_with_digest(rng, staging / f"rng-{rank:05d}.pt")
+    if dist.is_initialized():
+        # One small object exchange: every rank's own files stay on its node, so this is how the manifest
+        # rank zero writes can still vouch for them when the run resumes from node-local disks.
+        gathered = [None] * world
+        dist.all_gather_object(gathered, {"rank": rank, "files": dict(rank_files)})
+        for entry in gathered:
+            if isinstance(entry, dict):
+                rank_files.update(entry.get("files") or {})
     if rank == 0:
         torch.save(
             {
@@ -340,6 +661,7 @@ def save_checkpoint(
         epoch=state.get("epoch"),
         world=world,
         checkpoint_io=checkpoint_io,
+        rank_files=rank_files,
     )
     # Copy the writer list: the publisher must not race the training thread's next registration,
     # and clearing it here would break CheckpointIO._sync_io as the back-pressure point.
@@ -489,8 +811,8 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
     if not (root / "complete.json").is_file():
         raise ValueError(f"Incomplete checkpoint: {root}")
     files = json.loads((root / "complete.json").read_text())["files"]
-    _, world = _rank_world()
-    required = {"training_state.pt", *(f"rng-{r:05d}.pt" for r in range(world))}
+    rank, world = _rank_world()
+    required = {"training_state.pt", f"rng-{rank:05d}.pt"}
     if (
         not required.issubset(files)
         or not any(k.startswith("model/") for k in files)
@@ -499,6 +821,12 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
         raise ValueError("Checkpoint is missing training state, rank RNG, model or optimizer files")
     for name, digest in files.items():
         path = root / name
+        if not path.exists():
+            # A rank file belongs to the node that wrote it; this node fetches the shared files at resume,
+            # never another node's rank state, which nothing here reads.
+            if _is_rank_local(name) and _rank_of_file(name) != rank:
+                continue
+            raise ValueError(f"Checkpoint checksum mismatch or missing file: {name}")
         if not path.resolve().is_relative_to(root.resolve()) or not path.is_file() or file_digest(path) != digest:
             raise ValueError(f"Checkpoint checksum mismatch or missing file: {name}")
     state = torch.load(root / "training_state.pt", map_location="cpu", weights_only=False)
@@ -522,18 +850,24 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
     if not isinstance(master_weights, bool):
         raise ValueError("Checkpoint master-weight flag must be boolean")
     if master_weights:
-        for rank in range(world):
-            if not (root / f"master-{rank:05d}.pt").is_file():
-                raise ValueError(f"missing master-{rank:05d}.pt")
-    for rank in range(world):
-        name = f"rng-{rank:05d}.pt"
-        _validate_rng(torch.load(root / name, map_location="cpu", weights_only=False), name)
+        name = f"master-{rank:05d}.pt"
+        if name not in files or not (root / name).is_file():
+            raise ValueError(f"missing {name}")
+    # Validate every RNG file this node holds: a shared filesystem still checks the whole cluster, and a
+    # node-local one checks its own ranks without demanding files it never wrote.
+    for name in sorted(files):
+        if not name.startswith("rng-"):
+            continue
+        path = root / name
+        if path.is_file():
+            _validate_rng(torch.load(path, map_location="cpu", weights_only=False), name)
     return root, state
 
 
 def validate_checkpoint(directory, *, expected_config=None):
-    """Collectively verify all files and every rank's RNG without modifying live state."""
-    return _collective_preflight(lambda: _validate_checkpoint_local(directory, expected_config=expected_config))
+    """Collectively verify the generation, materialising it on every node first when disks are node-local."""
+    root = materialize_local_generation(directory)
+    return _collective_preflight(lambda: _validate_checkpoint_local(root, expected_config=expected_config))
 
 
 def apply_checkpoint(root, state, model, optimizer, *, booster=None, on_rank_state=None):

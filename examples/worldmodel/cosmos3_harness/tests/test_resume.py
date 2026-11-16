@@ -643,6 +643,69 @@ def _exercise_failed_publication(rank, directory):
     assert not pending.generation.exists()
 
 
+def _node_local_resume(rank, base):
+    """Each rank's ``--out`` is its own disk: rank 0 publishes, rank 1 keeps only the RNG it wrote.
+
+    This is the six-node layout.  Rank 1 has no ``latest.json``, no weights and an unpublished staging
+    directory; resume must still find the generation, fetch the shared files from rank 0's node and leave
+    a complete local copy behind.
+    """
+    root = Path(base) / f"node{rank}" / "checkpoints"
+    model = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    booster = CPUBooster()
+    model._colossal_booster = booster
+    pending = save_checkpoint(
+        root,
+        model,
+        optimizer,
+        {"step": 5, "epoch": 1, "sampler_cursor": 7, "config": {"cp": 1}},
+        booster=booster,
+    )
+    dist.barrier()
+    if rank == 0:
+        manifest = json.loads((pending.generation / "complete.json").read_text())
+        # Rank files stay on the node that wrote them, but the manifest still vouches for all of them.
+        assert "rng-00001.pt" in manifest["files"]
+        assert "rng-00001.pt" in manifest["sizes"]
+        assert (pending.generation / "model" / "weights.pt").is_file()
+    else:
+        assert not pending.generation.exists()
+        assert not (root / "latest.json").exists()
+        assert (root / (".incomplete-" + pending.identifier) / "rng-00001.pt").is_file()
+    dist.barrier()
+
+    resumed = torch.nn.parallel.DistributedDataParallel(Toy())
+    optimizer_resumed = torch.optim.AdamW(resumed.parameters(), lr=0.01)
+    state = restore_checkpoint(root, resumed, optimizer_resumed, booster=booster, expected_config={"cp": 1})
+    assert state["step"] == 5
+    # Both nodes now hold a published, complete generation for the next resume.
+    assert (root / "latest.json").is_file()
+    generation = root / pending.generation.name
+    assert (generation / "complete.json").is_file()
+    assert (generation / "model" / "weights.pt").is_file()
+    # Each node holds its own rank file and only its own.
+    assert (generation / f"rng-{rank:05d}.pt").is_file()
+    assert not (generation / f"rng-{1 - rank:05d}.pt").exists()
+    torch.testing.assert_close(resumed.module.weight, model.module.weight, rtol=0, atol=0)
+
+
+def _node_local_worker(rank, world, rendezvous, base):
+    from colossalai.accelerator import set_accelerator
+
+    set_accelerator("cpu")
+    dist.init_process_group("gloo", init_method=f"file://{rendezvous}", rank=rank, world_size=world)
+    try:
+        _node_local_resume(rank, base)
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")
+def test_node_local_disks_fetch_the_generation_from_rank_zero(tmp_path):
+    mp.spawn(_node_local_worker, args=(2, str(tmp_path / "rendezvous"), str(tmp_path)), nprocs=2, join=True)
+
+
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo required")
 def test_two_rank_uninterrupted_equals_resume(tmp_path):
     mp.spawn(_worker, args=(2, str(tmp_path / "rendezvous"), str(tmp_path / "checkpoint")), nprocs=2, join=True)
