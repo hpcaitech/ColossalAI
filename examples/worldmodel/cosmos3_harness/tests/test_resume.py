@@ -16,6 +16,7 @@ import torch.multiprocessing as mp
 
 from examples.worldmodel.cosmos3_harness import train
 from examples.worldmodel.cosmos3_harness.checkpoint import (
+    _describe_config_difference,
     _rng_fields,
     apply_master_weights,
     flush_checkpoint,
@@ -240,6 +241,9 @@ class _MasterOptimizer:
 
     def get_master_to_working_map(self):
         return self._map
+
+    def state_dict(self):
+        return {}
 
 
 def test_master_weights_round_trip_preserves_fp32(tmp_path):
@@ -835,6 +839,60 @@ def test_a_generation_without_the_payload_says_so(tmp_path):
     )
     _, saved = validate_checkpoint(tmp_path)
     assert saved["rank_tensors"] == []
+
+
+def test_a_fingerprint_mismatch_names_the_keys_that_differ():
+    """The operator is looking at a run that just refused to start; "it differs" leaves them to diff two
+    nested dicts by hand. This found a stale copy of the entry on one node in a two-machine resume."""
+    stored = {"topology": {"world_size": 4}, "ema": {"enabled": True, "rate": 0.1}, "seed": 42}
+    expected = {"topology": {"world_size": 8}, "seed": 42}
+    message = _describe_config_difference(stored, expected)
+    assert "topology.world_size: checkpoint 4, this run 8" in message
+    assert "ema:" in message and "<absent>" in message
+    assert "seed" not in message
+    assert _describe_config_difference({"a": 1}, {"a": 1}) == ""
+
+
+def _save_with_label(tmp_path, label, optimizer=None):
+    model, booster = Toy(), CPUBooster()
+    optimizer = optimizer if optimizer is not None else torch.optim.AdamW(model.parameters())
+    payload = rank_tensors_payload(["a#0"], [torch.zeros(2)])
+    save_checkpoint(
+        tmp_path,
+        model,
+        optimizer,
+        {"step": 1, "epoch": 0, "sampler_cursor": 2, "config": None},
+        booster=booster,
+        rank_tensors={label: payload},
+    )
+
+
+def test_a_label_that_would_overwrite_the_rng_file_is_refused(tmp_path):
+    """ "rng" passes the prefix check and the RNG file is written first, so the caller's tensors would
+    replace it, on disk and in the manifest, and the resume would read the wrong thing back."""
+    with pytest.raises(ValueError, match="would overwrite"):
+        _save_with_label(tmp_path, "rng")
+
+
+def test_a_label_that_would_overwrite_the_master_weights_is_refused(tmp_path):
+    """The same for "master", which only exists when the optimizer keeps an fp32 copy -- which is the
+    configuration the recipe runs in."""
+    model = Toy()
+    masters = [torch.nn.Parameter(p.detach().float()) for p in model.parameters()]
+    optimizer = _MasterOptimizer(masters, list(model.parameters()))
+    with pytest.raises(ValueError, match="would overwrite"):
+        _save_with_label(tmp_path, "master", optimizer=optimizer)
+
+
+@pytest.mark.parametrize("label", ["ema-../../escape", "ema/nested", "EMA", "", "ema.1"])
+def test_a_label_that_is_not_a_plain_name_is_refused(tmp_path, label):
+    """The label becomes a file name under the staging directory, so it may not carry a path.
+
+    ``ema-../../escape`` is the one that matters: it starts with a known rank-local prefix, so the
+    prefix check passes and the write lands outside the generation being staged.
+    """
+    with pytest.raises(ValueError, match="must match|rank-local file prefix"):
+        _save_with_label(tmp_path, label)
 
 
 def test_a_label_without_a_rank_local_prefix_is_refused(tmp_path):

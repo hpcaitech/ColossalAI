@@ -915,6 +915,9 @@ def checkpoint_config(args, plugin, unique_dp, dataset_size):
         },
         "seed": args.seed,
         "loss_objective": "droid_sample_modality_mean",
+        # In the fingerprint rather than checked on the side: a shadow averaged with a different rate is
+        # not this run's, and resuming a run that kept one with --no-ema drops the average silently.
+        "ema": {"enabled": bool(args.ema), "rate": EMA_RATE if args.ema else None},
     }
 
 

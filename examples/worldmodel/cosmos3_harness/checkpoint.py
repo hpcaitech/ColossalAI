@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import threading
 import time
@@ -189,6 +190,11 @@ def _digest_tree(root: Path):
 #: wrote them, so a run whose ``--out`` is each node's local disk legitimately lacks the other nodes'
 #: copies; ``complete.json`` still records every one of them, digest included.
 _RANK_FILE_PREFIXES = ("rng-", "master-", "ema-")
+
+#: A caller's label becomes a file name, so it may not carry a path or collide with a name this save
+#: already wrote: "rng" and "master" both pass the prefix check above and would otherwise replace the
+#: RNG state or the master weights, on disk and in the manifest, without a word.
+_RANK_TENSOR_LABEL = re.compile(r"[a-z][a-z0-9_]*")
 
 
 class _DigestingFile:
@@ -708,9 +714,13 @@ def save_checkpoint(
         rng["extra"] = extra
     rank_files[f"rng-{rank:05d}.pt"] = _save_with_digest(rng, staging / f"rng-{rank:05d}.pt")
     for label in sorted(rank_tensors or {}):
+        if not _RANK_TENSOR_LABEL.fullmatch(label):
+            raise ValueError(f"rank tensor label {label!r} must match [a-z][a-z0-9_]*")
         name = f"{label}-{rank:05d}.pt"
         if not _is_rank_local(name):
             raise ValueError(f"rank tensor label {label!r} is not a known rank-local file prefix")
+        if name in rank_files:
+            raise ValueError(f"rank tensor label {label!r} would overwrite {name}, which this save wrote")
         rank_files[name] = _save_with_digest(rank_tensors[label], staging / name)
     if dist.is_initialized():
         # One small object exchange: every rank's own files stay on its node, so this is how the manifest
@@ -880,6 +890,27 @@ def _collective_preflight(check):
     return result
 
 
+def _describe_config_difference(stored, expected, prefix="", limit=6):
+    """Which keys of the fingerprint differ, for the resume error.
+
+    A bare "the fingerprint differs" leaves the operator to diff two nested dicts by hand, on a run that
+    has just refused to start; the keys that differ are what they need, and there are rarely many.
+    """
+    if isinstance(stored, dict) and isinstance(expected, dict):
+        found = []
+        for key in sorted(set(stored) | set(expected)):
+            found.extend(
+                _describe_config_difference(
+                    stored.get(key, "<absent>"), expected.get(key, "<absent>"), f"{prefix}{key}."
+                )
+            )
+        return "; ".join(found[:limit]) if not prefix else found[:limit]
+    if stored == expected:
+        return [] if prefix else ""
+    one = f"{prefix.rstrip('.') or '<root>'}: checkpoint {stored!r}, this run {expected!r}"
+    return [one] if prefix else one
+
+
 def _validate_checkpoint_local(directory, *, expected_config=None):
     root = Path(directory)
     if (root / "latest.json").is_file():
@@ -932,7 +963,10 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
     if state["config"] is not None and not isinstance(state["config"], dict):
         raise ValueError("Checkpoint configuration must be a mapping or None")
     if expected_config is not None and state.get("config") != expected_config:
-        raise ValueError("Resume configuration/replay fingerprint differs from the checkpoint")
+        raise ValueError(
+            "Resume configuration/replay fingerprint differs from the checkpoint: "
+            + _describe_config_difference(state.get("config"), expected_config)
+        )
     master_weights = state.get("master_weights", False)
     if not isinstance(master_weights, bool):
         raise ValueError("Checkpoint master-weight flag must be boolean")
