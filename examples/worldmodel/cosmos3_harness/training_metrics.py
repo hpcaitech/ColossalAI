@@ -15,9 +15,10 @@ Design contract, in order of importance:
 3. **The per-step path is a buffered append.** Files are line-buffered and never ``fsync``-ed; a crash loses at
    most the last few records, not the run.
 4. **Aggregation is explicit about reduction.** Counts sum, with callers excluding CP copies; step times take
-   the maximum (the straggler). Losses take the rank mean. Callers must normalize to their declared objective:
+   the maximum (the straggler). Legacy losses take the rank mean. Callers must normalize to their declared objective:
    ``local_sum * dp / global_count`` yields a global mean over samples for DROID or supervised elements for the
-   generic replay objective. Equal-sized SFT packs already have equal sample weight; CP copies repeat that loss.
+   generic replay objective. SFT display MSEs carry a separate ``loss/objective`` and are reduced by independent
+   sample count, excluding CP copies.
 
 Typical use::
 
@@ -68,6 +69,7 @@ __all__ = [
     "Stopwatch",
     "TrainingMetrics",
     "aggregate_records",
+    "aggregate_losses",
     "device_memory_gib",
     "flatten",
     "make_event",
@@ -138,6 +140,7 @@ REDUCTIONS: Dict[str, str] = {
     "loss/total": "mean",
     "loss/vision": "mean",
     "loss/action": "mean",
+    "loss/objective": "mean",
     "optim/grad_norm": "mean",
     "optim/lr": "first",
     "optim/skipped": "sum",
@@ -513,6 +516,29 @@ def _positive(value: Any) -> Optional[float]:
     return number if math.isfinite(number) and number > 0 else None
 
 
+def aggregate_losses(records: Iterable[Mapping[str, Any]]) -> Dict[str, float]:
+    """Merge display MSEs by independent sample count; legacy normalized objectives keep their rank mean.
+
+    New SFT records identify their display MSEs by keeping the training scalar in ``loss/objective``.
+    A CP follower reports zero independent samples and must not count as another data replica.
+    """
+    present = [record for record in records if isinstance(record.get("loss"), Mapping)]
+    sample_mean = bool(present) and all("objective" in record["loss"] for record in present)
+    result = {}
+    for key in ("total", "vision", "action", "objective"):
+        values = []
+        for record in present:
+            value = record["loss"].get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                continue
+            weight = float(record.get("data", {}).get("samples", 0)) if sample_mean else 1.0
+            if weight > 0:
+                values.append((value, weight))
+        if values:
+            result[key] = sum(value * weight for value, weight in values) / sum(weight for _, weight in values)
+    return result
+
+
 def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optional[Dict]:
     """Reduce per-rank records of one step into a single record.
 
@@ -546,6 +572,8 @@ def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optiona
             reduced[key] = _reduce(values, REDUCTIONS.get(key, "first"))
 
     aggregated = _unflatten(reduced)
+    if any("loss" in record for record in present):
+        aggregated.setdefault("loss", {}).update(aggregate_losses(present))
     ranks = sorted({int(record.get("rank", 0)) for record in present})
     aggregated.update(
         {
@@ -842,9 +870,11 @@ class ConsoleObserver(MetricsObserver):
 
         loss = record.get("loss", {})
         if "total" in loss:
-            text = f"loss {loss['total']:.6f}"
+            text = f"{'MSE' if 'objective' in loss else 'loss'} {loss['total']:.6f}"
             if "vision" in loss and "action" in loss:
-                text += f" (v {loss['vision']:.4f} a {loss['action']:.4f})"
+                text += f" (v {loss['vision']:.6f} a {loss['action']:.6f})"
+            if "objective" in loss:
+                text += f" objective {loss['objective']:.6f}"
             parts.append(text)
 
         data = record.get("data", {})
@@ -887,8 +917,10 @@ class ConsoleObserver(MetricsObserver):
         elif "allocated_gib" in mem:
             parts.append(f"mem {mem['allocated_gib']:.1f} GiB")
 
-        if "ranks" in record and record.get("world", 1) > 1:
-            parts.append(f"ranks {record['world']}")
+        if "ranks" in record:
+            arrived = len(record["ranks"])
+            expected = record.get("expected_world", record.get("world", arrived))
+            parts.append(f"ranks {arrived}/{expected}" + (" (partial)" if record.get("complete") is False else ""))
 
         self._print(f"[step {step}] " + " | ".join(parts) if parts else f"[step {step}]")
 

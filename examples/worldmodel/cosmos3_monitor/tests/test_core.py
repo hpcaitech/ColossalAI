@@ -14,7 +14,7 @@ import pytest
 from examples.worldmodel.cosmos3_monitor.alerts import AlertEngine
 from examples.worldmodel.cosmos3_monitor.discovery import discover, load_manifest, world_size
 from examples.worldmodel.cosmos3_monitor.readers import JsonlTail
-from examples.worldmodel.cosmos3_monitor.series import SeriesStore
+from examples.worldmodel.cosmos3_monitor.series import SeriesStore, normalise_loss_record
 from examples.worldmodel.cosmos3_monitor.state import RunState
 from examples.worldmodel.cosmos3_monitor.system import HostSampler, parse_npu_smi
 
@@ -756,3 +756,68 @@ def test_throughput_store_does_not_duplicate_points_on_a_re_read(tmp_path):
         store.ingest(0, "h", step, 32, 1.0, now)
     assert [int(x) for x, _ in store.rank_points[0]] == [5, 6, 7]
     assert sorted(store.step_ranks) == [5, 6, 7]
+
+
+def test_legacy_droid_loss_conversion_is_explicit_idempotent_and_read_only():
+    manifest = {"loss_objective": "droid_sample_modality_mean", "args": {"chunk_length": 32}}
+    record = {"loss": {"total": 1.82, "vision": 1.7, "action": 0.12}}
+    converted = normalise_loss_record(record, manifest)
+    assert converted["loss"] == pytest.approx(
+        {"total": 0.19125 + 0.012375, "vision": 0.19125, "action": 0.012375, "objective": 1.82}
+    )
+    assert record["loss"]["vision"] == 1.7
+    assert normalise_loss_record(converted, manifest) is converted
+    assert normalise_loss_record(record, {}) is record
+    assert normalise_loss_record(record, {"loss_objective": "droid_sample_modality_mean"}) is record
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("partial_aggregate", [False, True])
+def test_global_loss_is_corrected_after_delayed_rank_arrival(tmp_path, legacy, partial_aggregate):
+    run = make_run(tmp_path, world=2, steps=1, completed=False)
+    metrics = run / "metrics"
+    manifest = json.loads((metrics / "run.json").read_text())
+    manifest.update(loss_objective="droid_sample_modality_mean", args={"chunk_length": 32})
+    write_json(metrics / "run.json", manifest)
+
+    def rank_record(rank, samples, vision, action):
+        objective = vision * 10 * 8 / 9 + action * 10 * 32 / 33
+        loss = {"total": vision + action, "vision": vision, "action": action, "objective": objective}
+        if legacy:
+            loss = {"total": objective, "vision": vision * 10 * 8 / 9, "action": action * 10 * 32 / 33}
+        return {
+            "type": "record",
+            "step": 1,
+            "rank": rank,
+            "time": time.time(),
+            "data": {"samples": samples},
+            "perf": {"step_ms": 1000},
+            "loss": loss,
+        }
+
+    first, second = rank_record(0, 1, 1.0, 4.0), rank_record(1, 3, 9.0, 16.0)
+    if partial_aggregate:
+        write_lines(
+            metrics / "aggregated.jsonl", [{**first, "ranks": [0], "world": 1, "expected_world": 2, "complete": False}]
+        )
+    else:
+        (metrics / "aggregated.jsonl").unlink()
+    write_lines(metrics / "rank-000.jsonl", [first])
+    state = RunState(discover([run])[0])
+    state.refresh()
+    if partial_aggregate:
+        assert state.series.latest_value("loss/total") == pytest.approx(5.0)
+
+    write_lines(metrics / "rank-001.jsonl", [second])
+    state.refresh()
+    expected_objective = 7 * 10 * 8 / 9 + 13 * 10 * 32 / 33
+    expected = {"total": 20.0, "vision": 7.0, "action": 13.0, "objective": expected_objective}
+    record = state.series.last()
+    assert record["complete"] is True
+    assert record["loss"] == pytest.approx(expected)
+    assert record["data"]["samples"] == 4
+    assert state.series.latest_value("loss/vision") == pytest.approx(7.0)
+    assert state.series.latest_value("loss/objective") == pytest.approx(expected_objective)
+    assert state.snapshot()["last"]["loss"] == pytest.approx(20.0)
+    assert state.step_detail(1)["loss"] == pytest.approx(expected)
+    assert json.loads((metrics / "rank-000.jsonl").read_text())["loss"] == first["loss"]

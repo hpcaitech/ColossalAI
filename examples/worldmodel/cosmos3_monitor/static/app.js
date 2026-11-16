@@ -81,7 +81,7 @@ const state = {
 };
 
 const SERIES_KEYS = [
-  'loss/total', 'loss/vision', 'loss/action', 'optim/lr', 'optim/grad_norm',
+  'loss/total', 'loss/vision', 'loss/action', 'loss/objective', 'optim/lr', 'optim/grad_norm',
   'perf/step_s', 'perf/samples_per_s', 'perf/mfu',
   'perf/mfu_forward', 'perf/mfu_backward', 'perf/mfu_vae', 'perf/skew',
   'mem/device_used_gib', 'mem/peak_reserved_gib', 'mem/allocated_gib', 'mem/device_total_gib',
@@ -856,14 +856,15 @@ function renderLossChart(id = 'chart-loss', tall = false, scope = 'charts') {
   const total = pointsOf(state.series, 'loss/total');
   const vision = pointsOf(state.series, 'loss/vision');
   const action = pointsOf(state.series, 'loss/action');
+  const mse = pointsOf(state.series, 'loss/objective').some((point) => point[1] != null);
   option.series = [
-    line('total', total, p[0], {
+    line(mse ? 'MSE sum' : 'total', total, p[0], {
       lineStyle: { width: 2.25, color: p[0] },
       areaStyle: state.chartLog ? undefined : areaFill(p[0], 0.16),
       markLine: { symbol: 'none', data: markLines(), silent: true },
     }),
-    line('vision', vision, p[1], { lineStyle: { width: 1.6, color: p[1] } }),
-    line('action', action, p[2], { lineStyle: { width: 1.6, color: p[2] } }),
+    line(mse ? 'vision MSE' : 'vision', vision, p[1], { lineStyle: { width: 1.6, color: p[1] } }),
+    line(mse ? 'action MSE' : 'action', action, p[2], { lineStyle: { width: 1.6, color: p[2] } }),
   ];
   if (state.smooth) {
     option.series.push(line(`total (EMA ${state.smooth})`, smoothPoints(total, state.smooth), css('--text-2'), {
@@ -2170,7 +2171,7 @@ function renderStepDrawer() {
       <div class="drawer-kpis">
         <div class="kpi"><div class="label">Iteration time</div><div class="value">${num(d.step_seconds, 2)}<small>s</small></div><div class="hint">${num(d.samples_per_second, 1)} samples/s</div></div>
         <div class="kpi"><div class="label">Step MFU</div><div class="value">${d.total_mfu == null ? '—' : `${num(d.total_mfu * 100, 1)}<small>%</small>`}</div><div class="hint">${esc(d.activation_checkpointing)} ckpt</div></div>
-        <div class="kpi"><div class="label">Loss</div><div class="value">${num(loss.total, 4)}</div><div class="hint">v ${num(loss.vision, 3)} · a ${num(loss.action, 3)}</div></div>
+        <div class="kpi"><div class="label">${loss.objective != null ? 'MSE sum' : 'Loss'}</div><div class="value">${num(loss.total, 6)}</div><div class="hint">v ${num(loss.vision, 6)} · a ${num(loss.action, 6)}${loss.objective != null ? ` · weighted objective ${num(loss.objective, 4)}` : ''}</div></div>
         <div class="kpi"><div class="label">HBM</div><div class="value">${num(memory.device_used_gib, 1)}<small> GiB</small></div><div class="hint">alloc ${num(memory.allocated_gib, 1)} · peak ${num(memory.peak_reserved_gib, 1)}</div></div>
       </div>
       <div class="drawer-actions">
@@ -2218,7 +2219,7 @@ function recordRowsMarkup() {
     const samples = data.samples != null ? data.samples : data.partial_samples;
     const throughput = stepMs && samples ? samples / (stepMs / 1000) : null;
     return `<tr class="clickable" data-step="${int(record.step)}"><td class="num">${int(record.step)}</td><td class="num">${int(data.epoch)}</td><td class="num">${int(samples)}</td><td class="num">${clock(record.time)}</td>
-      <td class="num">${num(loss.total, 6)}</td><td class="num">${num(loss.vision, 4)}</td><td class="num">${num(loss.action, 4)}</td>
+      <td class="num">${num(loss.total, 6)}</td><td class="num">${num(loss.vision, 6)}</td><td class="num">${num(loss.action, 6)}</td><td class="num">${num(loss.objective, 6)}</td>
       <td class="num">${num(optim.lr, 8)}</td><td class="num">${num(optim.grad_norm, 3)}</td>
       <td class="num">${num(stepMs != null ? stepMs / 1000 : null, 1)}</td><td class="num">${num(throughput, 1)}</td>
       <td class="num">${num(mem.device_used_gib, 1)}</td><td class="num">${num(perf.skew, 2)}</td>
@@ -2230,7 +2231,7 @@ function renderRecords(body) {
   const total = state.records ? state.records.total : 0;
   const table = recordRowsMarkup();
   body.innerHTML = `<div class="card"><div class="card-head"><h2>记录 <span class="muted small" id="rec-total">${total} steps</span></h2><div class="page-actions"><button id="rec-prev" class="ghost">上一页</button><button id="rec-next" class="ghost">下一页</button><a class="small" href="/api/export/${state.token}.csv?keys=${encodeURIComponent(SERIES_KEYS)}">导出 CSV</a></div></div>
-    <div class="table-scroll"><table class="table" id="records-table"><thead><tr><th class="num">iter</th><th class="num">epoch</th><th class="num">batch</th><th class="num">time</th><th class="num">loss</th><th class="num">vision</th><th class="num">action</th><th class="num">lr</th><th class="num">grad</th><th class="num">step s</th><th class="num">samples/s</th><th class="num">HBM GiB</th><th class="num">skew</th><th>complete</th></tr></thead><tbody id="records-tbody">${table || '<tr><td colspan="14" class="muted">没有记录</td></tr>'}</tbody></table></div></div>`;
+    <div class="table-scroll"><table class="table" id="records-table"><thead><tr><th class="num">iter</th><th class="num">epoch</th><th class="num">batch</th><th class="num">time</th><th class="num">loss / MSE sum</th><th class="num">vision</th><th class="num">action</th><th class="num">weighted objective</th><th class="num">lr</th><th class="num">grad</th><th class="num">step s</th><th class="num">samples/s</th><th class="num">HBM GiB</th><th class="num">skew</th><th>complete</th></tr></thead><tbody id="records-tbody">${table || '<tr><td colspan="15" class="muted">没有记录</td></tr>'}</tbody></table></div></div>`;
   $$('#records-table tr[data-step]').forEach((row) => { row.onclick = () => openStepDetail(Number(row.dataset.step)); });
   const offset = (state.records && state.records.offset) || 0;
   const limit = (state.records && state.records.limit) || 100;

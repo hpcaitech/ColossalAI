@@ -36,6 +36,32 @@ def _get(record: Dict[str, Any], *path: str) -> Any:
     return cursor
 
 
+def normalise_loss_record(record: Dict[str, Any], manifest: Dict[str, Any]) -> Dict[str, Any]:
+    """Read old DROID weighted terms as supervised MSEs, without rewriting the source JSONL.
+
+    DROID conditions on one vision latent frame and one initial action state. Its Wan VAE compresses time
+    by four. Only this declared objective has enough information to convert historical records exactly;
+    other harness objectives keep their original meaning. New records carry ``objective`` and pass through.
+    """
+    loss = record.get("loss")
+    if not isinstance(loss, dict) or "objective" in loss:
+        return record
+    if manifest.get("loss_objective") != "droid_sample_modality_mean":
+        return record
+    args = manifest.get("args") or {}
+    chunk = _number(args.get("chunk_length")) if isinstance(args, dict) else None
+    vision, action = _number(loss.get("vision")), _number(loss.get("action"))
+    if chunk is None or chunk < 4 or vision is None or action is None:
+        return record
+    frames = int(chunk) // 4 + 1
+    vision = vision / 10.0 * frames / (frames - 1)
+    action = action / 10.0 * (chunk + 1) / chunk
+    return {
+        **record,
+        "loss": {"total": vision + action, "vision": vision, "action": action, "objective": loss.get("total")},
+    }
+
+
 class Series:
     __slots__ = ("x", "y", "unit", "label")
 
@@ -59,6 +85,7 @@ METRICS: Dict[str, Tuple[str, str]] = {
     "loss/total": ("loss", "Loss"),
     "loss/vision": ("loss", "Vision loss"),
     "loss/action": ("loss", "Action loss"),
+    "loss/objective": ("loss", "Weighted training objective"),
     "optim/lr": ("lr", "Learning rate"),
     "optim/grad_norm": ("norm", "Grad norm"),
     "perf/step_s": ("s", "Step time"),
@@ -121,6 +148,7 @@ class SeriesStore:
             "loss/total": _number(_get(record, "loss", "total")),
             "loss/vision": _number(_get(record, "loss", "vision")),
             "loss/action": _number(_get(record, "loss", "action")),
+            "loss/objective": _number(_get(record, "loss", "objective")),
             "optim/lr": _number(_get(record, "optim", "lr")),
             "optim/grad_norm": _number(_get(record, "optim", "grad_norm")),
             "perf/step_s": step_ms / 1e3 if step_ms is not None else None,
@@ -482,6 +510,8 @@ class ThroughputStore:
             data = record.get("data") if isinstance(record.get("data"), dict) else {}
             perf = record.get("perf") if isinstance(record.get("perf"), dict) else {}
             mem = record.get("mem") if isinstance(record.get("mem"), dict) else {}
+            if isinstance(record.get("loss"), dict):
+                entry["loss"] = record["loss"]
             for key in ("ar_tokens", "dm_tokens", "wait_ms", "vae_ms", "pack_ms"):
                 value = _number(data.get(key))
                 if value is not None:

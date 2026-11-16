@@ -75,7 +75,7 @@ def test_accumulation_counts_all_microsteps_and_deduplicates_cp_copies():
             window.add(meta.num_samples, meta, torch.tensor(value), {"vision": torch.tensor(value)}, wait_ms=2.0)
     assert (leader.samples, leader.ar_tokens, leader.dm_tokens) == (3, 11, 16)
     assert (follower.samples, follower.ar_tokens, follower.dm_tokens) == (0, 0, 0)
-    assert leader.loss_values() == follower.loss_values() == {"total": 4.0, "vision": 4.0}
+    assert leader.loss_values() == follower.loss_values() == {"total": 5.0, "vision": 5.0, "objective": 4.0}
     assert leader.wait_ms == 4.0
 
 
@@ -397,7 +397,9 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
         reference_optim.step()
         reference_optim.zero_grad()
     torch.testing.assert_close(model.weight, reference.weight)
-    assert [record["loss"]["total"] for record in records] == pytest.approx(expected_losses)
+    assert [record["loss"]["objective"] for record in records] == pytest.approx(expected_losses)
+    assert [record["loss"]["total"] for record in records] == pytest.approx([value / 10 for value in expected_losses])
+    assert manifests[0]["loss_metrics"] == "supervised_mse_v1"
     assert [record["data"]["samples"] for record in records] == [3, 3]
     assert [record["data"]["ar_tokens"] for record in records] == [6, 6]
     # Not the rate the optimizer was built with: the recipe's schedule scales every group before each

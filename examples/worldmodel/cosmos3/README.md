@@ -39,6 +39,13 @@ python -m torch.distributed.run --nproc_per_node=8 train_sft.py \
 
 Defaults are 32 samples per independent DP pack and 32 microsteps per optimizer step, with LR `2e-4`, action-head LR multiplied by five, betas `(0.9, 0.99)`, epsilon `1e-8`, weight decay `0.05` and gradient clipping at `1.0`. VAE sample microbatching (`--vae-encode-batch`, for example 4) limits encode-call memory without changing packing or loss.
 
+Logs and metrics report unweighted flow-velocity MSE over supervised elements, averaged per sample. Conditioning
+frames and padded action channels do not enter these display denominators. `loss/total` is the sum of the vision
+and action MSEs; `loss/objective` retains the weighted recipe scalar used for backward, whose denominator includes
+conditioning positions. For example, the old weighted vision value `1.7` with 9 latent frames becomes
+`1.7 / 10 * 9 / 8 = 0.19125`. This reporting change does not change the training objective or gradients.
+The direct stdout line is explicitly rank 0's local pack; aggregated lines show the reporting rank coverage.
+
 The base recipe reinitializes the two action projections and modality embedding. When starting from a trained policy checkpoint, pass `--no-reinit-action-head`. For a pinned comparison, `--action-head-from` imports a complete reference head export or an explicitly named domain slice after initialization.
 
 A single-device smoke run:

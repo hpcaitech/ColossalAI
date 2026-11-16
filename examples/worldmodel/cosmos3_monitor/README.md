@@ -75,6 +75,14 @@ record at each log step instead of reading rank files, so a point is never parti
 collective per log step. It is off by default; the dashboard marks `complete=false` points as partial and
 does not compute throughput from a partial sum.
 
+For online DROID SFT, vision/action curves show unweighted MSE over supervised elements, averaged per sample;
+`total` is their sum. The weighted backward scalar is retained as `loss/objective`, visible in Records, step
+details and CSV exports. The monitor converts legacy DROID weighted records to this display convention using
+the recorded chunk length (one conditioning latent frame, one initial action state, temporal compression 4).
+Other harness objectives retain their original convention. Source JSONL files are never rewritten. When rank
+files arrive from the other nodes, loss is recomputed from all reporting independent samples along with batch
+and throughput, rather than retaining rank 0's partial loss.
+
 The per-node system collector is a separate process:
 
 ```bash

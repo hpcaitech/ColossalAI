@@ -96,6 +96,29 @@ def test_aggregate_sums_counts_maximises_durations_and_averages_loss():
     assert aggregated["type"] == "record" and aggregated["step"] == 5
 
 
+def test_display_mse_aggregation_weights_samples_and_excludes_cp_followers():
+    records = [
+        make_record(
+            1,
+            rank,
+            data={"samples": samples},
+            loss={"total": value, "vision": value / 2, "action": value / 2, "objective": value * 10},
+        )
+        for rank, samples, value in [(0, 1, 2.0), (1, 3, 6.0), (2, 0, 1000.0)]
+    ]
+    loss = aggregate_records(records)["loss"]
+    assert loss == {"total": 5.0, "vision": 2.5, "action": 2.5, "objective": 50.0}
+
+
+def test_console_names_display_mse_objective_and_partial_rank_coverage(capsys):
+    record = make_record(7, 0, loss={"total": 0.21, "vision": 0.2, "action": 0.01, "objective": 1.9})
+    record.update(ranks=[0, 1], world=2, expected_world=4, complete=False)
+    ConsoleObserver().on_step(record)
+    text = capsys.readouterr().out
+    assert "MSE 0.210000" in text and "a 0.010000" in text
+    assert "objective 1.900000" in text and "ranks 2/4 (partial)" in text
+
+
 def test_aggregate_of_one_record_has_no_skew_and_ignores_none_entries():
     record = make_record(7, 0, perf={"step_ms": 1000})
 

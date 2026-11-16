@@ -111,11 +111,12 @@ def parallel_topology(plugin, extra=None) -> list[dict]:
 
 
 class AccumulationWindow:
-    """Count independent samples and average loss over every microstep of an optimizer step."""
+    """Average display MSEs by sample and retain the optimizer's mean objective over microsteps."""
 
     def __init__(self, count_samples: bool = True):
         self.count_samples = count_samples
         self.samples = self.ar_tokens = self.dm_tokens = self.microsteps = 0
+        self.metric_samples = 0
         self.wait_ms = 0.0
         self.loss_sum = None
         self.component_names = ()
@@ -131,14 +132,16 @@ class AccumulationWindow:
         if self.microsteps > 1 and names != self.component_names:
             raise ValueError("Loss components changed inside an accumulation window")
         self.component_names = names
-        values = torch.stack([loss.detach(), *(components[name].detach() for name in names)])
+        self.metric_samples += samples
+        values = torch.stack([loss.detach(), *(components[name].detach() * samples for name in names)])
         self.loss_sum = values if self.loss_sum is None else self.loss_sum + values
 
     def loss_values(self) -> dict[str, float]:
         if self.microsteps == 0:
             raise ValueError("Cannot report an empty accumulation window")
-        values = (self.loss_sum / self.microsteps).tolist()
-        return dict(zip(("total", *self.component_names), values))
+        values = self.loss_sum.tolist()
+        components = dict(zip(self.component_names, (value / self.metric_samples for value in values[1:])))
+        return {"total": sum(components.values()), **components, "objective": values[0] / self.microsteps}
 
 
 def shutdown_dataloader(iterator) -> None:
