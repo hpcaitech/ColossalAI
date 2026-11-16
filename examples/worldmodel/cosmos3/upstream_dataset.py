@@ -45,6 +45,7 @@ from examples.worldmodel.cosmos3.droid_dataset import (
     closest_canvas,
     resize_and_reflect_pad,
 )
+from examples.worldmodel.cosmos3.runtime import VisitRandomness
 
 # The reader derives the dataset version from the directory's basename and rejects anything it does not
 # know, so the root it is given has to carry one of upstream's names. A checkout under another name needs a
@@ -73,7 +74,22 @@ class UpstreamDroidDataset(Dataset):
         keep_ranges: str | Path | None = None,
         filter_dict_source_prefix: str | None = None,
         dataset_revision: str = "",
+        augment_seed: int | None = None,
+        action_cache: str | Path | None = None,
+        video_content_pad: int | None = None,
+        video_uint8: bool = False,
     ) -> None:
+        # train_sft passes the example reader's whole option set to whichever reader it selected.  The
+        # three options below are that reader's own (a parquet action cache, and the uint8/partial-canvas
+        # post-processing); accepting them keeps the default reader callable, and refusing the values
+        # that would change behaviour keeps a run from silently training on a path it did not ask for.
+        if action_cache is not None:
+            raise ValueError("--action-cache is only implemented by --dataset example")
+        if video_content_pad is not None:
+            raise ValueError("--vae-content-pad is only implemented by --dataset example")
+        if video_uint8:
+            raise ValueError("--video-uint8 is only implemented by --dataset example")
+        self._visit = VisitRandomness(augment_seed) if augment_seed is not None else None
         root = Path(root)
         if root.name not in KNOWN_ROOT_NAMES:
             raise ValueError(
@@ -202,8 +218,23 @@ class UpstreamDroidDataset(Dataset):
     def __len__(self) -> int:
         return len(self._inner)
 
+    def set_visit_epoch(self, epoch: int) -> None:
+        """Keep the per-visit seed in step with the sampler's epoch (``resume_sampler`` forwards it)."""
+        if self._visit is not None:
+            self._visit.set_epoch(epoch)
+
+    def visit_seed_for(self, index: int) -> int | None:
+        """This visit's augmentation seed, or ``None`` when per-visit seeding is off."""
+        return None if self._visit is None else self._visit.seed_for(index)
+
     def __getitem__(self, index: int) -> dict[str, Any]:
-        sample = self._inner[index]
+        if self._visit is None:
+            sample = self._inner[index]
+        else:
+            # Upstream's transforms and caption draw use the process streams.  Pinning them per visit is what
+            # makes a resumed run replay a sample instead of depending on which worker happened to draw it.
+            with VisitRandomness.seeded(self.visit_seed_for(index)):
+                sample = self._inner[index]
 
         # The reader prepends the initial state as row 0 of the action when use_state is on. pack_one does
         # that prepend itself, so the row is taken back off here rather than the packer being changed: the

@@ -961,6 +961,9 @@ def main():
         # A cached latent freezes whatever augmentation produced it, so the online transforms must be off on this
         # path; the cache itself already carries the augmented pixels.
         augment=args.image_augmentation == "torchvision" and args.latent_cache is None,
+        # The augmentation and the caption draw become a function of (seed, epoch, index), so a resumed run
+        # replays them whatever --num-workers is; see runtime.VisitRandomness.
+        augment_seed=args.seed,
         max_episodes=args.max_episodes,
         keep_ranges=args.keep_ranges,
         success_only=args.success_only,

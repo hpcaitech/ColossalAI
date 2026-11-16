@@ -21,6 +21,13 @@ class ResumeDistributedSampler(torch.utils.data.DistributedSampler):
         self.batch_size = int(batch_size)
         if int(start_epoch) != self.epoch:
             self.epoch = int(start_epoch)
+        self._sync_dataset_epoch()
+
+    def _sync_dataset_epoch(self) -> None:
+        """The dataset seeds each visit's augmentation from the epoch; workers read it from a shared value."""
+        setter = getattr(self.dataset, "set_visit_epoch", None)
+        if callable(setter):
+            setter(self.epoch)
 
     def set_epoch(self, epoch: int) -> None:
         if epoch != self.epoch:
@@ -28,6 +35,7 @@ class ResumeDistributedSampler(torch.utils.data.DistributedSampler):
             # same epoch again (the resume path) must keep the offset.
             self.start_batch = 0
         super().set_epoch(epoch)
+        self._sync_dataset_epoch()
 
     def __iter__(self):
         indices = list(super().__iter__())

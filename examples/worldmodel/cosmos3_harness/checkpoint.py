@@ -821,13 +821,21 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
         or not any(k.startswith("optimizer/") for k in files)
     ):
         raise ValueError("Checkpoint is missing training state, rank RNG, model or optimizer files")
+    # Verify each file once per machine that holds it: a rank file by the rank that owns it, the shared
+    # shards by the node's head rank.  ``_collective_preflight`` aggregates the failures, so one bad digest
+    # still stops every rank before anything loads; what it no longer does is read the whole generation once
+    # per rank -- 48 ranks times ~24 GiB on the six-node run, before the first step of every resume.
+    head = _local_rank_index() == 0
     for name, digest in files.items():
+        owner = _rank_of_file(name) if _is_rank_local(name) else None
+        if owner is not None and owner != rank:
+            # Another rank's RNG or master weights: on this node only when the filesystem is shared, and
+            # that rank verifies them there.
+            continue
+        if owner is None and not head:
+            continue
         path = root / name
         if not path.exists():
-            # A rank file belongs to the node that wrote it; this node fetches the shared files at resume,
-            # never another node's rank state, which nothing here reads.
-            if _is_rank_local(name) and _rank_of_file(name) != rank:
-                continue
             raise ValueError(f"Checkpoint checksum mismatch or missing file: {name}")
         if not path.resolve().is_relative_to(root.resolve()) or not path.is_file() or file_digest(path) != digest:
             raise ValueError(f"Checkpoint checksum mismatch or missing file: {name}")
@@ -855,14 +863,10 @@ def _validate_checkpoint_local(directory, *, expected_config=None):
         name = f"master-{rank:05d}.pt"
         if name not in files or not (root / name).is_file():
             raise ValueError(f"missing {name}")
-    # Validate every RNG file this node holds: a shared filesystem still checks the whole cluster, and a
-    # node-local one checks its own ranks without demanding files it never wrote.
-    for name in sorted(files):
-        if not name.startswith("rng-"):
-            continue
-        path = root / name
-        if path.is_file():
-            _validate_rng(torch.load(path, map_location="cpu", weights_only=False), name)
+    # Each rank restores only its own stream, so each validates only its own; every rank still does one, and
+    # the preflight aggregates the failures.
+    name = f"rng-{rank:05d}.pt"
+    _validate_rng(torch.load(root / name, map_location="cpu", weights_only=False), name)
     return root, state
 
 

@@ -293,6 +293,33 @@ def test_checkpoint_integrity_and_atomic_publication(tmp_path):
         restore_checkpoint(tmp_path, model, optimizer, booster=booster)
 
 
+def test_only_the_node_head_hashes_the_shared_shards(tmp_path, monkeypatch):
+    """A resume reads each file once per node, not once per rank: 48 ranks * 24 GiB is not a check."""
+    from examples.worldmodel.cosmos3_harness import checkpoint
+
+    model = Toy()
+    optimizer = torch.optim.AdamW(model.parameters())
+    booster = CPUBooster()
+    save_checkpoint(
+        tmp_path, model, optimizer, {"step": 1, "epoch": 0, "sampler_cursor": 0, "config": None}, booster=booster
+    )
+
+    seen = []
+    original = checkpoint.file_digest
+    monkeypatch.setattr(checkpoint, "file_digest", lambda path: (seen.append(Path(path).name), original(path))[1])
+
+    monkeypatch.setattr(checkpoint, "_local_rank_index", lambda: 0)
+    checkpoint._validate_checkpoint_local(tmp_path)
+    assert "weights.pt" in seen and "state.pt" in seen, seen  # the CPUBooster's model/optimizer shards
+    assert "rng-00000.pt" in seen
+
+    seen.clear()
+    monkeypatch.setattr(checkpoint, "_local_rank_index", lambda: 3)
+    checkpoint._validate_checkpoint_local(tmp_path)
+    # A rank that is not its node's head checks only the file it will restore.
+    assert seen == ["rng-00000.pt"], seen
+
+
 def _rewrite_rng(root, rank, mutate):
     from examples.worldmodel.cosmos3_harness.checkpoint import file_digest
 
