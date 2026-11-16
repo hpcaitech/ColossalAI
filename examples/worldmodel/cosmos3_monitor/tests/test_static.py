@@ -137,5 +137,3 @@ def test_chart_modal_filters_and_checkpoint_row_drawer_are_wired():
     assert ".split('?')" in route_block
     compare_block = source.split("function renderComparePage", 1)[1].split("function applySidebarCollapsed", 1)[0]
     assert "pointsOf(entry.series, 'loss/total', true)" in compare_block
-
-

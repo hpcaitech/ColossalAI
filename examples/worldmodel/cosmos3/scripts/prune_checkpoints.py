@@ -61,7 +61,7 @@ def main() -> int:
         except (OSError, ValueError):
             pointer = None
     protected = {rows[-1][1].name} | ({pointer} if pointer else set())
-    keep = {path.name for _, path, _, _ in rows[-args.keep:]}
+    keep = {path.name for _, path, _, _ in rows[-args.keep :]}
     doomed = [row for row in rows if row[1].name not in keep and row[1].name not in protected]
 
     freed = sum(row[3] for row in doomed)
