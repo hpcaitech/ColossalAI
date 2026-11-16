@@ -41,8 +41,12 @@ PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_MEMORY_PLANNING: True,
 }
 
-# UB is 192 KB; the tile plus four fp32 rows and the gamma copies must fit inside it.
+# UB is 192 KB; the tile plus four fp32 rows and the gamma copies must fit inside it.  The legacy
+# tile-size cap keeps the historical 160 KiB budget so existing production shapes keep the same DMA
+# width; the full-footprint check uses the hardware capacity so a small-C shape cannot plan a tile
+# that does not fit.
 UB_BYTES = 160 * 1024
+UB_CAPACITY_BYTES = 192 * 1024
 NORM_EPS = 1e-12
 
 
@@ -185,7 +189,11 @@ def _channel_rmsnorm_apply(B: int, C: int, S: int, chunk: int, nblk: int, scale:
 
 def _plan_two_pass(c: int, s: int):
     """Column block for the two-pass variant: one row wide, bounded by the apply kernel's UB footprint."""
-    max_chunk = (UB_BYTES // 14) // 128 * 128  # row + norm + g_row (fp32) + half (bf16) per element
+    max_chunk = min(
+        (UB_BYTES // 14) // 128 * 128,
+        # row + norm + g_row (12 B) + half + stage (4 B) per element, plus the C-wide gamma row.
+        ((UB_CAPACITY_BYTES - 4 * c) // 16) // 128 * 128,
+    )
     chunk = min(TWO_PASS_CHUNK, max_chunk, s // 128 * 128)
     if chunk < 128:
         return None
@@ -198,7 +206,11 @@ def _plan_two_pass(c: int, s: int):
 
 def _plan(c: int, s: int):
     """Pick the UB tile width; returns (chunk, nblk) or None when the shape is not worth a kernel."""
-    max_chunk = (UB_BYTES // (c * 2)) // 128 * 128
+    max_chunk = min(
+        (UB_BYTES // (c * 2)) // 128 * 128,
+        # x tile (2 B) + five fp32 rows (20 B) per element, plus the C-wide gamma row.
+        ((UB_CAPACITY_BYTES - 4 * c) // (c * 2 + 20)) // 128 * 128,
+    )
     chunk = min(max_chunk, s // 128 * 128)
     if chunk < 128:
         return None
@@ -311,22 +323,25 @@ def _kernel_forward(module, x: torch.Tensor) -> torch.Tensor:
         return _reference_forward(module, x)
     b, c = int(x.shape[0]), int(x.shape[1])
     s = x.numel() // (b * c)
-    if _plan(c, s) is None:
+    # Decide the path before the one-pass gate: a shape can be too large for the one-pass tile but
+    # still fit the two-pass apply footprint.
+    two_pass_plan = None
+    if os.environ.get("COSMOS3_NORM_TWOPASS", "1") == "1" and s >= TWO_PASS_MIN_S:
+        two_pass_plan = _plan_two_pass(c, s)
+    if two_pass_plan is None and _plan(c, s) is None:
         return _reference_forward(module, x)
     scale = float(module.scale)
     flat = x.view(b, c, s)
     gamma = _gamma_fp32(module)
     # Default on: bit-identical to the one-pass kernel and 1.4-2.3x faster on the wide shapes
     # (358 -> 756 GB/s on 8x160x356864). COSMOS3_NORM_TWOPASS=0 restores the one-pass path.
-    if os.environ.get("COSMOS3_NORM_TWOPASS", "1") == "1" and s >= TWO_PASS_MIN_S:
-        plan = _plan_two_pass(c, s)
-        if plan is not None:
-            reduce_k, apply_k = _two_pass_kernels(b, c, s, scale)
-            norm = torch.empty((b, s), dtype=torch.float32, device=x.device)
-            out = torch.empty_like(flat)
-            reduce_k(flat, norm)
-            apply_k(flat, gamma, norm, out)
-            return out.view_as(x)
+    if two_pass_plan is not None:
+        reduce_k, apply_k = _two_pass_kernels(b, c, s, scale)
+        norm = torch.empty((b, s), dtype=torch.float32, device=x.device)
+        out = torch.empty_like(flat)
+        reduce_k(flat, norm)
+        apply_k(flat, gamma, norm, out)
+        return out.view_as(x)
     return _kernel(b, c, s, scale)(flat, gamma).view_as(x)
 
 

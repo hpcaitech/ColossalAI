@@ -97,6 +97,26 @@ def test_vae_norm_kernel_planners_fallback_and_patching(monkeypatch):
     assert vnk._plan_two_pass(160, 356864) is not None
     assert vnk._plan_two_pass(160, 64) is None
 
+    def one_pass_bytes(c, chunk):
+        # x tile (bf16) + row/sq/acc/norm/g_row (five fp32) + gamma (C-wide fp32).
+        return 2 * c * chunk + 20 * chunk + 4 * c
+
+    def two_pass_bytes(c, chunk):
+        # row/norm/g_row (three fp32) + half/stage (two bf16) + gamma.
+        return 16 * chunk + 4 * c
+
+    # Small C used to plan a tile larger than the 192 KiB UB; the full-footprint bound must fall back
+    # or shrink it, while production channel counts keep their historical chunk width.
+    for c, s in ((32, 1 << 20), (96, 65536), (160, 65536)):
+        plan = vnk._plan(c, s)
+        assert plan is not None
+        assert one_pass_bytes(c, plan[0]) <= vnk.UB_CAPACITY_BYTES
+    assert vnk._plan(96, 65536)[0] == 768
+    assert vnk._plan(160, 65536)[0] == 512
+    two_pass = vnk._plan_two_pass(160, 356864)
+    assert two_pass is not None and two_pass[0] == 8192
+    assert two_pass_bytes(160, two_pass[0]) <= vnk.UB_CAPACITY_BYTES
+
     torch.manual_seed(0)
     norm_cf = WanRMS_norm(16, channel_first=True, images=False).eval().to(torch.bfloat16)
     with torch.no_grad():
@@ -217,9 +237,7 @@ def test_compute_loss_square_matches_pow_on_device():
         "raw_action_dim": 8,
     }
     total, comps = packing.compute_loss(out, targets, return_components=True)
-    expected_v = (
-        ((pred_v[0].float() - tgt_v[0].float()).pow(2) * mask_v[0].float()).mean() * packing.VISION_LOSS_SCALE
-    )
+    expected_v = ((pred_v[0].float() - tgt_v[0].float()).pow(2) * mask_v[0].float()).mean() * packing.VISION_LOSS_SCALE
     expected_a = (
         (pred_a[0][:, :8].float() - tgt_a[0][:, :8].float()).pow(2) * mask_a[0].float()
     ).mean() * packing.ACTION_LOSS_WEIGHT
