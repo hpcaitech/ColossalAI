@@ -688,7 +688,9 @@ def save_checkpoint(
         dist.broadcast_object_list(identifier, src=0)
     staging = root / (".incomplete-" + identifier[0])
     staging.mkdir(parents=True, exist_ok=True)
-    booster = booster or model._colossal_booster
+    booster = booster if booster is not None else getattr(model, "_colossal_booster", None)
+    if booster is None:
+        raise ValueError("this save/load needs the Booster that built the model; pass booster=")
     checkpoint_io = getattr(booster, "checkpoint_io", None)
     booster.save_model(model, str(staging / "model"), shard=True, use_safetensors=True, use_async=async_)
     booster.save_optimizer(optimizer, str(staging / "optimizer"), shard=True, use_async=async_)
@@ -1012,7 +1014,9 @@ def apply_checkpoint(root, state, model, optimizer, *, booster=None, on_rank_sta
         return rng, accelerator, master_payload
 
     rng, accelerator, master_payload = _collective_preflight(check_local_device)
-    booster = booster or model._colossal_booster
+    booster = booster if booster is not None else getattr(model, "_colossal_booster", None)
+    if booster is None:
+        raise ValueError("this save/load needs the Booster that built the model; pass booster=")
     booster.load_model(model, str(Path(root) / "model"))
     booster.load_optimizer(optimizer, str(Path(root) / "optimizer"))
     if master_payload is not None:
