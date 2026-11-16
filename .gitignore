@@ -173,3 +173,8 @@ applications/ColossalChat/stdin
 applications/ColossalChat/*.zip
 applications/ColossalChat/*.prof
 applications/ColossalChat/*.png
+
+# cosmos3 local scratch: profiler traces, ad-hoc work dirs and Feishu draft exports
+tmp/
+vae_profile/
+draft_*/
