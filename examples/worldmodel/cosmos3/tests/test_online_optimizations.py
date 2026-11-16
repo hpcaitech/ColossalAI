@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+import torch.distributed as dist
 import torchvision.transforms.v2 as T
 import torchvision.transforms.v2.functional as F
 from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
@@ -239,6 +240,62 @@ def test_compute_loss_matches_pow2_reference():
     assert torch.equal(comps["vision"], expected_v)
     assert torch.equal(comps["action"], expected_a)
     assert torch.equal(total, expected_v + expected_a)
+
+
+def test_empty_cache_threshold_is_its_own_setting(monkeypatch):
+    monkeypatch.delenv("COSMOS3_EMPTY_CACHE_GIB", raising=False)
+    # The VAE kernel keeps its historical default; every other path is off unless the variable says otherwise.
+    assert entry.empty_cache_threshold_gib(False) == 0
+    assert entry.empty_cache_threshold_gib(True) == 8
+    monkeypatch.setenv("COSMOS3_EMPTY_CACHE_GIB", "4")
+    assert entry.empty_cache_threshold_gib(False) == 4
+    assert entry.empty_cache_threshold_gib(True) == 4
+    monkeypatch.setenv("COSMOS3_EMPTY_CACHE_GIB", "0")
+    assert entry.empty_cache_threshold_gib(True) == 0
+
+
+def test_maybe_empty_cache_is_opt_in_and_all_rank_agreed(monkeypatch):
+    class Flag:
+        def __init__(self, value):
+            self.value = float(value)
+
+        def item(self):
+            return self.value
+
+    emptied = []
+    npu = SimpleNamespace(
+        mem_get_info=lambda: (3 * 2**30, 61 * 2**30),
+        empty_cache=lambda: emptied.append("empty"),
+    )
+    monkeypatch.setattr(torch, "npu", npu, raising=False)
+    device = SimpleNamespace(type="npu")
+
+    # Disabled threshold and non-NPU devices never query the allocator.
+    assert entry.maybe_empty_cache(0, device) is False
+    assert entry.maybe_empty_cache(8 * 2**30, SimpleNamespace(type="cpu")) is False
+    assert emptied == []
+
+    # Below the threshold: this rank empties, no collective needed when no process group exists.
+    monkeypatch.setattr(dist, "is_available", lambda: False)
+    assert entry.maybe_empty_cache(8 * 2**30, device) is True
+    assert emptied == ["empty"]
+
+    # Plenty of free memory here, but the all-reduced flag says a peer is low: this rank empties too,
+    # so the next collective is entered by every rank at the same point.
+    npu.mem_get_info = lambda: (40 * 2**30, 61 * 2**30)
+    seen = {}
+
+    def fake_all_reduce(flag, op=None):
+        seen["op"] = op
+        flag.value = 1.0
+
+    monkeypatch.setattr(torch, "tensor", lambda data, **kwargs: Flag(data[0]))
+    monkeypatch.setattr(dist, "is_available", lambda: True)
+    monkeypatch.setattr(dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(dist, "all_reduce", fake_all_reduce)
+    assert entry.maybe_empty_cache(8 * 2**30, device) is True
+    assert seen["op"] == dist.ReduceOp.MAX
+    assert emptied == ["empty", "empty"]
 
 
 def test_compute_loss_square_matches_pow_on_device():

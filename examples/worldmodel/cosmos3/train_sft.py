@@ -884,6 +884,36 @@ def advance_cursor(batches_in_epoch, epoch, batches_per_epoch):
     return batches_in_epoch, epoch, False
 
 
+def empty_cache_threshold_gib(vae_norm_kernel: bool) -> float:
+    """``COSMOS3_EMPTY_CACHE_GIB``, defaulting to 8 with the VAE kernel and 0 otherwise.
+
+    The fused norm is what made the allocator hold one cached block per (shape, micro-batch) pair, so its flag
+    keeps the old default; every other path reaches the guard by setting the variable explicitly.
+    """
+    return float(os.environ.get("COSMOS3_EMPTY_CACHE_GIB", "8" if vae_norm_kernel else "0"))
+
+
+def maybe_empty_cache(threshold_bytes: float, device) -> bool:
+    """Return cached device memory when this rank, or any peer, is below ``threshold_bytes`` free.
+
+    Called once per optimizer step, not per micro-batch.  The decision is all-reduced so every rank takes it
+    together: ``empty_cache()`` synchronizes the device and releases the whole allocator, and a rank-local
+    decision would leave one rank in the call while the others enter the next collective.
+    """
+    if threshold_bytes <= 0 or device.type != "npu":
+        return False
+    free_bytes, _total_bytes = torch.npu.mem_get_info()
+    low = free_bytes < threshold_bytes
+    if dist.is_available() and dist.is_initialized():
+        flag = torch.tensor([1.0 if low else 0.0], dtype=torch.float32, device=device)
+        # MAX: if any rank is low, all ranks empty, so the next collective starts aligned.
+        dist.all_reduce(flag, op=dist.ReduceOp.MAX)
+        low = bool(flag.item())
+    if low:
+        torch.npu.empty_cache()
+    return low
+
+
 def flush_pending(pending, ledger, stats):
     """Publish every finished asynchronous generation. Collective: every rank calls this."""
     while pending:
@@ -1292,6 +1322,7 @@ def main():
             checkpoint_stats["bytes"] += int(finished.get("bytes") or 0)
         return cost_ms
 
+    empty_cache_bytes = empty_cache_threshold_gib(args.vae_norm_kernel) * 2**30
     try:
         for step_index in range(start_step, args.max_iter):
             active_profiler = None
@@ -1366,16 +1397,6 @@ def main():
                                 tokens=inputs["input_ids"], positions=inputs["position_ids"], payload=(inputs, targets)
                             )
                     inputs.pop("_sample_ids")
-                    if args.vae_norm_kernel and device.type == "npu":
-                        # The VAE phase allocates one full activation per fused-norm call and the micro-batch
-                        # sizes vary, so the allocator ends up holding a cached block per (shape, batch)
-                        # combination: measured 19 GiB live against 56 GiB reserved on a 61 GiB card, climbing
-                        # ~1.5 GiB per step (two-node A/B: 54.9 -> 58.3 -> 60.0 GiB). Return that slack once per
-                        # step, while there is still headroom, instead of waiting for the card to fill up.
-                        free_bytes, _total_bytes = torch.npu.mem_get_info()
-                        keep_free = float(os.environ.get("COSMOS3_EMPTY_CACHE_GIB", "8")) * 2**30
-                        if free_bytes < keep_free:
-                            torch.npu.empty_cache()
                     if args.pack_hash and step_index == 0 and coord.rank == 0:
                         # Deterministic fingerprint of the packed step, for comparing two data paths that are
                         # supposed to produce the same inputs (online encode vs a pre-extracted latent cache).
@@ -1409,6 +1430,10 @@ def main():
                 if ema is not None:
                     ema.update(step_index)
                 optimizer.zero_grad()
+            # Once per step, after the update and before the next step's data phase, which is where the VAE
+            # phase's varying micro-batch shapes accumulate cached blocks (measured 19 GiB live against 56 GiB
+            # reserved, climbing ~1.5 GiB/step on a 61 GiB card).  All ranks decide together.
+            maybe_empty_cache(empty_cache_bytes, device)
             if active_profiler is not None:
                 active_profiler.stop()
                 print("[profile] stopped", flush=True)

@@ -85,7 +85,8 @@ Multi-node runs keep `--out` on each node's local disk, and resume handles that 
 BF16, the diffusers encoder and its default window are the baseline. FP16, fused norm, fast convolution, wider chunk windows and compilation are independent opt-ins:
 
 - `--vae-dtype float16`, `--fuse-vae-norm`, `--vae-norm-kernel`, `--fast-vae-encoder`.
-- `COSMOS3_VIDEO_NORM_KERNEL=1` enables the TileLang uint8 device normalization kernel (`video_pad_norm.py`) when `--video-uint8` is active; `--vae-norm-kernel` runs the TileLang channel-first RMSNorm kernel on NPU (bitwise exact, paired with an adaptive `empty_cache()` guard controlled by `COSMOS3_EMPTY_CACHE_GIB`, default `8`).
+- `COSMOS3_VIDEO_NORM_KERNEL=1` enables the TileLang uint8 device normalization kernel (`video_pad_norm.py`) when `--video-uint8` is active; `--vae-norm-kernel` runs the TileLang channel-first RMSNorm kernel on NPU (bitwise exact).
+- `COSMOS3_EMPTY_CACHE_GIB` sets the free-memory floor for an `empty_cache()` cleanup, evaluated once per optimizer step; its default is `8` with `--vae-norm-kernel` and `0` (off) otherwise. The decision is all-reduced, so when one rank is below the floor every rank empties its allocator together.
 - Both TileLang paths take a file lock while they compile, so the first step's identical shapes are not built and dlopened by every rank at once. The lock lives in `COSMOS3_TILELANG_LOCK_DIR`, else `TILELANG_CACHE_DIR`, else `~/.tilelang`; keep it on storage shared by the ranks and nodes that share the TileLang cache.
 - `--vae-chunk-frames N` for a positive multiple of four; zero leaves the diffusers loop intact.
 - `--vae-compile jit|aot`; the legacy `--compile-vae` and `--compile-vae-aot` aliases remain. JIT and AOT are mutually exclusive. AOT requires CUDA and chooses a four-frame chunk when none was specified.
