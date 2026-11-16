@@ -1,9 +1,11 @@
 import warnings
-from functools import lru_cache
+from dataclasses import dataclass, field
+from functools import lru_cache, partial
 from importlib.metadata import version
 from importlib.util import find_spec
-from typing import List
+from typing import Callable, List, Optional, Tuple, Type
 
+import torch
 from packaging.version import Version
 
 from .extensions import (
@@ -130,43 +132,103 @@ class FlashAttentionDaoLoader(KernelLoader):
     REGISTRY = [FlashAttentionDaoCudaExtension]
 
 
+def _flash_attention_support(q, v, attention_mask, dropout_p, is_causal, causal_alignment, non_square, *, hopper=False):
+    # ROCm reuses torch.cuda, but its architecture numbers are not NVIDIA SMs.
+    # These adapters are validated for NVIDIA; ROCm needs its own capability policy.
+    if torch.version.hip is not None:
+        return "requires NVIDIA CUDA in this adapter; ROCm is not supported"
+    if q.dtype not in (torch.float16, torch.bfloat16):
+        return "requires float16 or bfloat16 inputs"
+    if attention_mask is not None:
+        return "does not support an arbitrary attention_mask"
+    if q.shape[-1] != v.shape[-1] or q.shape[-1] > 256 or q.shape[-1] % 8 != 0:
+        return "requires equal Q/K/V head dimensions divisible by 8 and at most 256"
+    if not hopper and q.shape[-1] > 192:
+        return "supports head dimensions at most 192 in the explicit training adapter"
+    if is_causal and non_square and causal_alignment == "upper_left":
+        return "does not support non-square upper-left causal attention"
+    if hopper and dropout_p != 0:
+        return "does not support nonzero dropout"
+    major, minor = torch.cuda.get_device_capability(q.device)
+    if hopper and (major, minor) != (9, 0):
+        return "requires a Hopper (SM90) GPU in this adapter"
+    if not hopper and major < 8:
+        return "requires an Ampere or newer GPU"
+    return None
+
+
+@dataclass(frozen=True)
+class _AttentionBackend:
+    extension: Type[_Extension]
+    device_types: Optional[Tuple[str, ...]] = None
+    capability: Optional[Callable] = None
+    package: Optional[str] = None
+    minimum_version: Optional[Tuple[str, str]] = None
+    load_kwargs: dict = field(default_factory=dict)
+    host_lengths: bool = False
+
+
 class FlashAttentionBackendLoader:
     """Load an explicitly selected attention backend without an execution-time fallback.
 
     Unlike the legacy priority-based loader, a broken installed extension must surface its
     import/ABI error. Only a missing optional package makes a backend unavailable to auto.
-    Callers check request-specific capabilities before using this loader.
+    REGISTRY insertion order defines auto priority within a device type. Generic
+    backends (device_types=None) come last. Adapters accept causal_alignment and
+    obey True=allowed masks; native conventions are converted inside the adapter.
+    Register before first use; clear load's cache if replacing an existing entry.
     """
+
+    REGISTRY = {
+        "fa3": _AttentionBackend(
+            FlashAttentionDaoV3CudaExtension, ("cuda",), partial(_flash_attention_support, hopper=True), "flash_attn_3"
+        ),
+        "fa2": _AttentionBackend(
+            FlashAttentionDaoCudaExtension, ("cuda",), _flash_attention_support, "flash_attn", ("flash-attn", "2.1")
+        ),
+        "sdpa": _AttentionBackend(FlashAttentionSdpaCudaExtension, load_kwargs={"strict": True}, host_lengths=True),
+    }
+
+    @classmethod
+    def get_backend(cls, backend):
+        if not isinstance(backend, str) or backend not in cls.REGISTRY:
+            raise ValueError(f"Unknown attention backend {backend!r}; expected one of {tuple(cls.REGISTRY)}")
+        return cls.REGISTRY[backend]
+
+    @classmethod
+    def candidates(cls, device_type):
+        specific = [
+            name for name, spec in cls.REGISTRY.items() if spec.device_types and device_type in spec.device_types
+        ]
+        generic = [name for name, spec in cls.REGISTRY.items() if spec.device_types is None]
+        return specific + generic
 
     @staticmethod
     def is_available(backend: str) -> bool:
-        if backend == "sdpa":
-            return True
-        package = {"fa2": "flash_attn", "fa3": "flash_attn_3"}[backend]
-        if find_spec(package) is None:
+        spec = FlashAttentionBackendLoader.get_backend(backend)
+        if spec.package is not None and find_spec(spec.package) is None:
             return False
         # FA2 changed non-square causal alignment in 2.1. Earlier releases do
         # not implement the shared lower-right contract. Do not infer a version
         # for an unidentifiable/broken installation.
-        return backend != "fa2" or Version(version("flash-attn")) >= Version("2.1")
+        if spec.minimum_version is not None:
+            distribution, minimum = spec.minimum_version
+            return Version(version(distribution)) >= Version(minimum)
+        return True
 
     @staticmethod
-    @lru_cache(maxsize=6)
+    @lru_cache(maxsize=None)
     def load(backend: str, packed: bool = False):
-        extension = {
-            "fa2": FlashAttentionDaoCudaExtension,
-            "fa3": FlashAttentionDaoV3CudaExtension,
-            "sdpa": FlashAttentionSdpaCudaExtension,
-        }[backend]()
+        spec = FlashAttentionBackendLoader.get_backend(backend)
         if not FlashAttentionBackendLoader.is_available(backend):
-            if backend == "fa2" and find_spec("flash_attn") is not None:
-                raise NotImplementedError("The explicit FA2 backend requires flash-attn >= 2.1")
+            if spec.minimum_version is not None and find_spec(spec.package) is not None:
+                distribution, minimum = spec.minimum_version
+                raise NotImplementedError(f"Attention backend {backend!r} requires {distribution} >= {minimum}")
             raise ModuleNotFoundError(f"Attention backend {backend!r} requires its optional package to be installed")
+        extension = spec.extension()
         if packed:
             return extension.load_varlen()
-        if backend == "sdpa":
-            return extension.load(strict=True)
-        return extension.load()
+        return extension.load(**spec.load_kwargs)
 
 
 class FlashAttentionWithCustomMaskLoader(KernelLoader):

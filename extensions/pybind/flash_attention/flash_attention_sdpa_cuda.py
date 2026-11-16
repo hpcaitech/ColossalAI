@@ -45,9 +45,24 @@ class FlashAttentionSdpaCudaExtension(_Extension):
             max_seqlen_kv: Optional[int] = None,
             q_indices: Optional[torch.Tensor] = None,
             kv_indices: Optional[torch.Tensor] = None,
+            causal_alignment: Optional[str] = None,
         ):
             kwargs = {}
             if strict:
+                sq, sk = q.shape[2], k.shape[2]
+                if is_causal and (attention_mask is not None or (sq != sk and causal_alignment == "lower_right")):
+                    offset = sk - sq if causal_alignment == "lower_right" else 0
+                    keep = (
+                        torch.arange(sk, device=q.device)[None, :]
+                        <= torch.arange(sq, device=q.device)[:, None] + offset
+                    )
+                    if attention_mask is None:
+                        attention_mask = keep
+                    elif attention_mask.dtype == torch.bool:
+                        attention_mask = attention_mask & keep
+                    else:
+                        attention_mask = attention_mask.masked_fill(~keep, float("-inf"))
+                    is_causal = False
                 # Legacy calls already encode causal attention in attention_mask.
                 # The new explicit API can use native causal attention and GQA.
                 kwargs["is_causal"] = is_causal
@@ -103,29 +118,21 @@ class FlashAttentionSdpaCudaExtension(_Extension):
         ):
             # Correctness fallback, not a fused varlen implementation. Slice each
             # sample independently so no token can attend across sample boundaries.
-            q_bounds = cu_seqlens_q.tolist()
-            kv_bounds = cu_seqlens_kv.tolist()
+            q_bounds = cu_seqlens_q.tolist() if isinstance(cu_seqlens_q, torch.Tensor) else cu_seqlens_q
+            kv_bounds = cu_seqlens_kv.tolist() if isinstance(cu_seqlens_kv, torch.Tensor) else cu_seqlens_kv
             outputs = []
             for q_start, q_end, kv_start, kv_end in zip(q_bounds[:-1], q_bounds[1:], kv_bounds[:-1], kv_bounds[1:]):
                 qi = q[q_start:q_end].transpose(0, 1).unsqueeze(0)
                 ki = k[kv_start:kv_end].transpose(0, 1).unsqueeze(0)
                 vi = v[kv_start:kv_end].transpose(0, 1).unsqueeze(0)
-                mask = None
-                native_causal = is_causal
-                if is_causal and causal_alignment == "lower_right" and q_end - q_start != kv_end - kv_start:
-                    sq, sk = q_end - q_start, kv_end - kv_start
-                    mask = torch.arange(sk, device=q.device)[None, :] <= (
-                        torch.arange(sq, device=q.device)[:, None] + sk - sq
-                    )
-                    native_causal = False
                 out = dense_attention(
                     qi,
                     ki,
                     vi,
                     dropout_p=dropout_p,
                     scale=scale,
-                    attention_mask=mask,
-                    is_causal=native_causal,
+                    is_causal=is_causal,
+                    causal_alignment=causal_alignment,
                 )
                 outputs.append(out.squeeze(0).transpose(0, 1))
             return torch.cat(outputs, dim=0)

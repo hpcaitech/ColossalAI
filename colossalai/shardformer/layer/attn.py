@@ -1,6 +1,8 @@
 import math
+from collections.abc import Sequence
 from enum import Enum
-from typing import Callable, Dict, Optional, Tuple
+from numbers import Integral
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import torch
 import torch.distributed
@@ -135,34 +137,16 @@ class ColoAttention:
         causal_alignment,
         non_square,
     ):
-        if backend not in ("auto", "fa2", "fa3", "sdpa"):
-            raise ValueError("backend must be 'auto', 'fa2', 'fa3' or 'sdpa'")
-        candidates = ("fa3", "fa2", "sdpa") if backend == "auto" else (backend,)
+        if backend != "auto":
+            FlashAttentionBackendLoader.get_backend(backend)
+        candidates = FlashAttentionBackendLoader.candidates(q.device.type) if backend == "auto" else (backend,)
         for candidate in candidates:
+            spec = FlashAttentionBackendLoader.get_backend(candidate)
             reason = None
-            if candidate != "sdpa":
-                if q.device.type != "cuda":
-                    reason = "requires CUDA tensors"
-                elif q.dtype not in (torch.float16, torch.bfloat16):
-                    reason = "requires float16 or bfloat16 inputs"
-                elif attention_mask is not None:
-                    reason = "does not support an arbitrary attention_mask"
-                elif q.shape[-1] != v.shape[-1] or q.shape[-1] > 256 or q.shape[-1] % 8 != 0:
-                    reason = "requires equal Q/K/V head dimensions divisible by 8 and at most 256"
-                elif candidate == "fa2" and q.shape[-1] > 192:
-                    # Larger-head backward support depends on the FA2 version,
-                    # GPU and dropout. Keep the explicit training contract portable.
-                    reason = "supports head dimensions at most 192 in the explicit training adapter"
-                elif is_causal and non_square and causal_alignment == "upper_left":
-                    reason = "does not support non-square upper-left causal attention"
-                elif candidate == "fa3" and dropout_p != 0:
-                    reason = "does not support nonzero dropout"
-                else:
-                    major, _ = torch.cuda.get_device_capability(q.device)
-                    if candidate == "fa3" and major != 9:
-                        reason = "requires a Hopper (SM90) GPU in this adapter"
-                    elif candidate == "fa2" and major < 8:
-                        reason = "requires an Ampere or newer GPU"
+            if spec.device_types is not None and q.device.type not in spec.device_types:
+                reason = f"requires tensors on {spec.device_types}"
+            elif spec.capability is not None:
+                reason = spec.capability(q, v, attention_mask, dropout_p, is_causal, causal_alignment, non_square)
             if reason is not None:
                 if backend != "auto":
                     raise NotImplementedError(f"Attention backend {candidate!r} {reason}")
@@ -194,20 +178,6 @@ class ColoAttention:
             causal_alignment,
             sq != sk,
         )
-        if (
-            selected == "sdpa"
-            and is_causal
-            and (attention_mask is not None or (sq != sk and causal_alignment == "lower_right"))
-        ):
-            offset = sk - sq if causal_alignment == "lower_right" else 0
-            keep = torch.arange(sk, device=q.device)[None, :] <= torch.arange(sq, device=q.device)[:, None] + offset
-            if attention_mask is None:
-                attention_mask = keep
-            elif attention_mask.dtype == torch.bool:
-                attention_mask = attention_mask & keep
-            else:
-                attention_mask = attention_mask.masked_fill(~keep, float("-inf"))
-            is_causal = False
         # Never retry another backend after loading or executing the selected one.
         attn_func = FlashAttentionBackendLoader.load(selected)
         return attn_func(
@@ -218,6 +188,7 @@ class ColoAttention:
             scale=scale,
             attention_mask=attention_mask,
             is_causal=is_causal,
+            causal_alignment=causal_alignment,
         )
 
     @staticmethod
@@ -225,8 +196,8 @@ class ColoAttention:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        cu_seqlens_q: torch.Tensor,
-        cu_seqlens_kv: torch.Tensor,
+        cu_seqlens_q: Union[torch.Tensor, Sequence[int]],
+        cu_seqlens_kv: Union[torch.Tensor, Sequence[int]],
         max_seqlen_q: int,
         max_seqlen_kv: int,
         *,
@@ -235,65 +206,98 @@ class ColoAttention:
         causal_alignment: Optional[str] = None,
         dropout_p: float = 0.0,
         scale: Optional[float] = None,
+        validate: bool = True,
     ) -> torch.Tensor:
         """Attention over packed samples, without padding or cross-sample attention.
 
         Q is [Tq, Hq, D], K/V are [Tkv, Hkv, D]. Hq must be divisible by Hkv.
-        The output is [Tq, Hq, Dv]. Contiguous int32 cumulative lengths on the
-        input device start at zero and end at Tq/Tkv, with one positive-length
-        interval per sample. Q and KV may have different lengths per sample.
-        Max lengths must cover their longest interval. Zero-length samples are
-        rejected. Validation reads lengths on the host; dynamic packed inputs
-        are not currently supported inside a fullgraph torch.compile region.
+        The output is [Tq, Hq, Dv]. Cumulative lengths are contiguous int32
+        tensors on the input device or host integer sequences. They start at zero,
+        end at Tq/Tkv and contain one positive-length interval per sample. Max
+        lengths must cover the longest interval. Zero-length samples are rejected.
+
+        validate=True checks tensor values on the host. For previously validated
+        device tensors, validate=False avoids these reads in FA2/FA3; callers must
+        guarantee valid boundaries and maxima. Shape/dtype/device checks remain,
+        and host sequences are always validated. Causal calls with unchecked
+        tensor values require an explicit alignment and are conservatively treated
+        as non-square (FA2/FA3 require lower_right). SDPA still reads boundaries
+        for slicing. Reuse device tensors across layers to avoid repeated host-list
+        conversion. Dynamic packed fullgraph compilation is not guaranteed.
 
         Explicit backends are strict: unsupported requests, missing packages and
-        execution errors do not fall back. Auto checks FA3, FA2, then SDPA before
-        execution. SDPA loops over samples and is a correctness fallback, not a
-        fused varlen kernel. FA3 supports dropout=0 only. Non-square causal samples
+        execution errors do not fall back. Auto checks registered device backends
+        before SDPA (FA3, FA2, SDPA on NVIDIA CUDA). SDPA loops over samples as a
+        correctness fallback, not a fused varlen kernel. FA3 supports dropout=0 only. Non-square causal samples
         require 'upper_left' or 'lower_right'; FA2/FA3 support only lower-right.
+        Query rows with no visible keys produce zero output and no gradient contribution.
         Dropout is applied according to dropout_p even during evaluation: pass 0
         explicitly for inference. This method always returns a Tensor.
         """
         ColoAttention._validate_inputs(q, k, v, True, dropout_p, scale)
-        lengths = []
+        if not isinstance(validate, bool):
+            raise TypeError("validate must be a bool")
+        prefixes = []
+        host_bounds = []
+        counts = []
         for name, prefix, total, maximum in (
             ("q", cu_seqlens_q, q.shape[0], max_seqlen_q),
             ("kv", cu_seqlens_kv, k.shape[0], max_seqlen_kv),
         ):
-            if prefix.ndim != 1 or prefix.numel() < 2 or prefix.dtype != torch.int32:
-                raise ValueError(f"cu_seqlens_{name} must be a 1D int32 tensor with at least two elements")
-            if prefix.device != q.device or not prefix.is_contiguous():
-                raise ValueError(f"cu_seqlens_{name} must be contiguous and on the input device")
             if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
                 raise ValueError(f"max_seqlen_{name} must be a positive integer")
-            bounds = prefix.tolist()
-            sizes = [end - start for start, end in zip(bounds[:-1], bounds[1:])]
-            if bounds[0] != 0 or bounds[-1] != total or min(sizes) <= 0:
-                raise ValueError(f"cu_seqlens_{name} must partition all tokens into nonempty samples")
-            if max(sizes) > maximum:
-                raise ValueError(f"max_seqlen_{name} is smaller than the longest sample")
-            lengths.append(sizes)
-        if len(lengths[0]) != len(lengths[1]):
+            if total > torch.iinfo(torch.int32).max:
+                raise ValueError(f"cu_seqlens_{name} exceeds the int32 token limit")
+            if isinstance(prefix, torch.Tensor):
+                if prefix.ndim != 1 or prefix.numel() < 2 or prefix.dtype != torch.int32:
+                    raise ValueError(f"cu_seqlens_{name} must be a 1D int32 tensor with at least two elements")
+                if prefix.device != q.device or not prefix.is_contiguous():
+                    raise ValueError(f"cu_seqlens_{name} must be contiguous and on the input device")
+                counts.append(prefix.numel())
+                bounds = prefix.tolist() if validate else None
+            elif isinstance(prefix, Sequence) and not isinstance(prefix, (str, bytes)):
+                if len(prefix) < 2 or any(isinstance(x, bool) or not isinstance(x, Integral) for x in prefix):
+                    raise ValueError(f"cu_seqlens_{name} must be a sequence of at least two integers")
+                bounds = [int(x) for x in prefix]
+                counts.append(len(bounds))
+            else:
+                raise TypeError(f"cu_seqlens_{name} must be a tensor or an integer sequence")
+            if bounds is not None:
+                sizes = [end - start for start, end in zip(bounds[:-1], bounds[1:])]
+                if bounds[0] != 0 or bounds[-1] != total or min(sizes) <= 0:
+                    raise ValueError(f"cu_seqlens_{name} must partition all tokens into nonempty samples")
+                if max(sizes) > maximum:
+                    raise ValueError(f"max_seqlen_{name} is smaller than the longest sample")
+            prefixes.append(prefix)
+            host_bounds.append(bounds)
+        if counts[0] != counts[1]:
             raise ValueError("Q and KV cumulative lengths must describe the same number of samples")
-        non_square = lengths[0] != lengths[1]
+        # Unknown lengths must not be assumed square: equal totals/maxima do not
+        # imply equal per-sample lengths. Requiring alignment preserves semantics.
+        non_square = any(bounds is None for bounds in host_bounds) or host_bounds[0] != host_bounds[1]
         ColoAttention._validate_causal(is_causal, causal_alignment, non_square)
         selected = ColoAttention._select_backend(
             q, v, backend, None, dropout_p, is_causal, causal_alignment, non_square
         )
         attn_func = FlashAttentionBackendLoader.load(selected, packed=True)
-        kwargs = {"causal_alignment": causal_alignment} if selected == "sdpa" else {}
+        spec = FlashAttentionBackendLoader.get_backend(selected)
+        for i, (prefix, bounds) in enumerate(zip(prefixes, host_bounds)):
+            if spec.host_lengths:
+                prefixes[i] = bounds if bounds is not None else prefix.tolist()
+            elif not isinstance(prefix, torch.Tensor):
+                prefixes[i] = torch.tensor(bounds, dtype=torch.int32, device=q.device)
         return attn_func(
             q,
             k,
             v,
-            cu_seqlens_q,
-            cu_seqlens_kv,
+            prefixes[0],
+            prefixes[1],
             max_seqlen_q,
             max_seqlen_kv,
             dropout_p=dropout_p,
             scale=scale,
             is_causal=is_causal,
-            **kwargs,
+            causal_alignment=causal_alignment,
         )
 
     @staticmethod
@@ -487,6 +491,9 @@ class ColoAttention:
                 Explicit 'fa2', 'fa3' and 'sdpa' never fall back; 'auto' selects a
                 supported backend before execution. New calls use is_causal and a
                 CUSTOM attention_mask (bool True means allowed; float is additive).
+                All explicit backends must preserve this convention; adapters convert
+                to native mask conventions. Fully masked rows produce zero output
+                and no gradient contribution.
                 Legacy mask enums/padding metadata cannot be mixed with an explicit
                 backend; use attention_varlen for packed samples instead. FA3 requires
                 dropout_p=0. SDPA supports CPU and CUDA; FA2/FA3 require CUDA half types.

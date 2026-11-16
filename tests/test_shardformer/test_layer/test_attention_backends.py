@@ -10,6 +10,7 @@ GPU skips in an ordinary CPU run do not establish GPU compatibility.
 import hashlib
 import json
 import os
+import sys
 from contextlib import nullcontext
 from importlib.metadata import distribution
 from importlib.util import find_spec
@@ -147,7 +148,11 @@ def test_attention_dense_cpu(sq, sk, alignment):
     reference = lambda **kw: _reference(**kw, causal=alignment is not None, alignment=alignment, scale=0.2)
     actual = lambda **kw: ColoAttention.attention(**kw, backend="sdpa", **options)
     truth = run_fwd_bwd(reference, inputs, torch.float64)
-    _assert_traces(run_fwd_bwd(actual, inputs, torch.float64), truth, truth)
+    test = run_fwd_bwd(actual, inputs, torch.float64)
+    _assert_traces(test, truth, truth)
+    if alignment == "lower_right" and sq > sk:
+        assert torch.count_nonzero(test["out"][:, :, : sq - sk]) == 0
+        assert torch.count_nonzero(test["grad/q"][:, :, : sq - sk]) == 0
 
 
 @pytest.mark.parametrize("alignment,expected", [("upper_left", [1.0, 1.5]), ("lower_right", [2.5, 3.0])])
@@ -185,11 +190,16 @@ def test_attention_custom_mask_gqa_and_gradients(floating):
 
 
 @pytest.mark.parametrize("alignment", [None, "upper_left", "lower_right"])
-def test_attention_varlen_cpu_and_isolation(alignment):
+@pytest.mark.parametrize("metadata", ["tensor", "host", "mixed", "unchecked"])
+def test_attention_varlen_cpu_and_isolation(alignment, metadata):
     torch.manual_seed(7)
     inputs = {"q": torch.randn(8, 4, 8, dtype=torch.float64)}
     inputs.update({name: torch.randn(6, 2, 8, dtype=torch.float64) for name in ("k", "v")})
     cuq, cuk = torch.tensor([0, 3, 8], dtype=torch.int32), torch.tensor([0, 2, 6], dtype=torch.int32)
+    if metadata in ("host", "mixed"):
+        cuq = cuq.tolist()
+    if metadata == "host":
+        cuk = tuple(cuk.tolist())
 
     def actual(**kw):
         return ColoAttention.attention_varlen(
@@ -201,6 +211,7 @@ def test_attention_varlen_cpu_and_isolation(alignment):
             backend="sdpa",
             is_causal=alignment is not None,
             causal_alignment=alignment,
+            validate=metadata != "unchecked",
         )
 
     truth = run_fwd_bwd(
@@ -413,6 +424,135 @@ def test_attention_execution_error_is_not_fallback(monkeypatch, backend):
     assert calls == ["fa3"]
 
 
+@pytest.mark.parametrize("operation", ["is_available", "load"])
+def test_attention_loader_unknown_backend(operation):
+    with pytest.raises(ValueError, match="Unknown attention backend"):
+        getattr(FlashAttentionBackendLoader, operation)("unknown")
+
+
+def test_attention_registered_backend(monkeypatch):
+    calls = []
+
+    class Extension:
+        def load(self):
+            def dense(q, k, v, **kwargs):
+                calls.append(kwargs)
+                return q
+
+            return dense
+
+        def load_varlen(self):
+            def packed(q, k, v, cq, ck, *args, **kwargs):
+                assert cq.dtype == ck.dtype == torch.int32
+                calls.append(kwargs)
+                return q
+
+            return packed
+
+    spec = kernel_loader._AttentionBackend(Extension, ("cpu", "npu"))
+    monkeypatch.setitem(FlashAttentionBackendLoader.REGISTRY, "test_device", spec)
+    FlashAttentionBackendLoader.load.cache_clear()
+    try:
+        assert FlashAttentionBackendLoader.candidates("cuda") == ["fa3", "fa2", "sdpa"]
+        assert FlashAttentionBackendLoader.candidates("npu") == ["test_device", "sdpa"]
+        q = torch.randn(1, 2, 4, 8)
+        assert ColoAttention.attention(q, q, q, backend="auto") is q
+        packed = q.squeeze(0).transpose(0, 1)
+        assert ColoAttention.attention_varlen(packed, packed, packed, [0, 4], [0, 4], 4, 4) is packed
+        assert len(calls) == 2
+        assert all("causal_alignment" in call for call in calls)
+        # A rejected request must skip the registered backend only in auto mode.
+        monkeypatch.setitem(
+            FlashAttentionBackendLoader.REGISTRY,
+            "test_device",
+            kernel_loader._AttentionBackend(Extension, ("cpu",), lambda *args: "unsupported request"),
+        )
+        with pytest.raises(NotImplementedError, match="unsupported request"):
+            ColoAttention.attention(q, q, q, backend="test_device")
+        assert ColoAttention._select_backend(q, q, "auto", None, 0, False, None, False) == "sdpa"
+    finally:
+        FlashAttentionBackendLoader.load.cache_clear()
+
+
+@pytest.mark.parametrize("backend", ["fa2", "fa3"])
+def test_attention_rocm_is_not_nvidia(backend, monkeypatch):
+    q = SimpleNamespace(device=torch.device("cuda"), dtype=torch.bfloat16, shape=(1, 2, 5, 128))
+    monkeypatch.setattr(torch.version, "hip", "6.2")
+    # A HIP request must be rejected before interpreting its architecture as SM.
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda device: pytest.fail("queried HIP as NVIDIA"))
+    monkeypatch.setattr(FlashAttentionBackendLoader, "is_available", lambda backend: True)
+    with pytest.raises(NotImplementedError, match="NVIDIA"):
+        ColoAttention._select_backend(q, q, backend, None, 0, False, None, False)
+    assert ColoAttention._select_backend(q, q, "auto", None, 0, False, None, False) == "sdpa"
+
+
+@pytest.mark.parametrize("packed", [False, True])
+@pytest.mark.parametrize("result_type", ["tensor", "tuple", "invalid"])
+def test_attention_fa3_return_contract(packed, result_type, monkeypatch):
+    def native(q, k, v, *args, **kwargs):
+        out = 2 * q + k + v
+        return (out, None) if result_type == "tuple" else (None if result_type == "invalid" else out)
+
+    module = SimpleNamespace(flash_attn_func=native, flash_attn_varlen_func=native)
+    monkeypatch.setitem(sys.modules, "flash_attn_3", SimpleNamespace(flash_attn_interface=module))
+    extension = kernel_loader.FlashAttentionDaoV3CudaExtension()
+    shape = (5, 2, 8) if packed else (1, 2, 5, 8)
+    inputs = [torch.randn(shape, requires_grad=True) for _ in range(3)]
+    cu = torch.tensor([0, 5], dtype=torch.int32)
+    call = (lambda: extension.load_varlen()(*inputs, cu, cu, 5, 5)) if packed else (lambda: extension.load()(*inputs))
+    if result_type == "invalid":
+        with pytest.raises(TypeError, match="FA3 must return"):
+            call()
+        return
+    out = call()
+    torch.testing.assert_close(out, 2 * inputs[0] + inputs[1] + inputs[2])
+    for gradient, expected in zip(torch.autograd.grad(out.sum(), inputs), (2, 1, 1)):
+        torch.testing.assert_close(gradient, torch.full_like(gradient, expected))
+
+
+@pytest.mark.parametrize("validate", [False, True])
+def test_attention_varlen_sdpa_reads_prefix_once(validate, monkeypatch):
+    q = torch.randn(8, 2, 8)
+    prefix = torch.tensor([0, 3, 8], dtype=torch.int32)
+    reads = []
+    original = torch.Tensor.tolist
+
+    def tolist(tensor):
+        reads.append(tensor)
+        return original(tensor)
+
+    monkeypatch.setattr(torch.Tensor, "tolist", tolist)
+    ColoAttention.attention_varlen(q, q, q, prefix, prefix, 5, 5, backend="sdpa", validate=validate)
+    assert len(reads) == 2
+    assert all(tensor is prefix for tensor in reads)
+
+
+def test_attention_varlen_unchecked_tensor_contract(monkeypatch):
+    q = torch.randn(8, 2, 8)
+    prefix = torch.tensor([0, 3, 8], dtype=torch.int32)
+    # Exercise routing without a GPU; this stub does not claim kernel validation.
+    monkeypatch.setattr(ColoAttention, "_select_backend", lambda *args: "fa3")
+    monkeypatch.setattr(FlashAttentionBackendLoader, "load", lambda *args, **kwargs: lambda q, *a, **kw: q)
+    monkeypatch.setattr(torch.Tensor, "tolist", lambda self: pytest.fail("unexpected host read"))
+    assert ColoAttention.attention_varlen(q, q, q, prefix, prefix, 5, 5, validate=False) is q
+    with pytest.raises(ValueError, match="explicit causal_alignment"):
+        ColoAttention.attention_varlen(q, q, q, prefix, prefix, 5, 5, validate=False, is_causal=True)
+    with pytest.raises(ValueError, match="int32"):
+        ColoAttention.attention_varlen(q, q, q, prefix.long(), prefix, 5, 5, validate=False)
+    with pytest.raises(ValueError, match="same number"):
+        ColoAttention.attention_varlen(q, q, q, prefix, prefix[:2], 5, 5, validate=False)
+    with pytest.raises(TypeError, match="validate"):
+        ColoAttention.attention_varlen(q, q, q, prefix, prefix, 5, 5, validate=0)
+
+
+@pytest.mark.parametrize("prefix", [[0, 0, 8], [0, 3, 7], [0, True, 8], [0, 3.5, 8], [0], "038"])
+def test_attention_varlen_host_validation(prefix):
+    q = torch.randn(8, 2, 8)
+    # Host values remain cheap to validate, even with tensor validation disabled.
+    with pytest.raises((ValueError, TypeError)):
+        ColoAttention.attention_varlen(q, q, q, prefix, [0, 3, 8], 5, 5, backend="sdpa", validate=False)
+
+
 def test_attention_compile_dense_forward_backward():
     fn = lambda q, k, v: ColoAttention.attention(
         q, k, v, backend="sdpa", is_causal=True, causal_alignment="lower_right"
@@ -553,7 +693,11 @@ def test_attention_gpu_numerics_no_fallback(backend, dtype, dim, heads, seed, pa
         actual = lambda **kw: ColoAttention.attention(
             **kw, backend=backend, is_causal=causal, causal_alignment=alignment
         )
-    _check_backend_numerics(actual, reference, inputs, dtype, backend, packed, monkeypatch)
+    trace = _check_backend_numerics(actual, reference, inputs, dtype, backend, packed, monkeypatch)
+    if causal and sq > sk:
+        for name in ("out", "grad/q"):
+            rows = trace[name][3 : 3 + sq - sk] if packed else trace[name][:, :, : sq - sk]
+            assert torch.count_nonzero(rows) == 0
 
 
 def _check_backend_numerics(actual, reference, inputs, dtype, backend, packed, monkeypatch):
@@ -595,6 +739,7 @@ def _check_backend_numerics(actual, reference, inputs, dtype, backend, packed, m
     _assert_traces(traces[2][1], traces[1][1], traces[0][1])
     report.assert_pass()
     original_load.cache_clear()
+    return traces[2][1]
 
 
 @pytest.mark.parametrize("backend", ["fa2", "fa3", "sdpa"])
@@ -781,3 +926,47 @@ def test_attention_gpu_compile_forward_backward(backend):
     ref = run_fwd_bwd(_reference, inputs, torch.bfloat16)
     _assert_traces(reference, ref, truth)
     _assert_traces(test, ref, truth)
+
+
+@pytest.mark.parametrize("backend", ["fa2", "fa3", "sdpa"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("metadata", ["host", "mixed", "unchecked"])
+def test_attention_gpu_varlen_metadata(backend, dtype, metadata, monkeypatch):
+    _require_gpu(backend)
+    generator = torch.Generator(device="cuda").manual_seed(41)
+    inputs = {
+        name: torch.randn(tokens, heads, 64, device="cuda", dtype=torch.float64, generator=generator)
+        for name, tokens, heads in (("q", 8, 4), ("k", 6, 2), ("v", 6, 2))
+    }
+    cuq, cuk = [0, 3, 8], [0, 4, 6]
+    if metadata in ("mixed", "unchecked"):
+        cuk = torch.tensor(cuk, dtype=torch.int32, device="cuda")
+    if metadata == "unchecked":
+        cuq = torch.tensor(cuq, dtype=torch.int32, device="cuda")
+    reference = lambda **kw: _packed_reference(
+        **kw, q_lengths=[3, 5], kv_lengths=[4, 2], causal=True, alignment="lower_right"
+    )
+    actual = lambda **kw: ColoAttention.attention_varlen(
+        **kw,
+        cu_seqlens_q=cuq,
+        cu_seqlens_kv=cuk,
+        max_seqlen_q=5,
+        max_seqlen_kv=4,
+        backend=backend,
+        is_causal=True,
+        causal_alignment="lower_right",
+        validate=metadata != "unchecked",
+    )
+    # For the trusted fused path, fail if production tries a device-to-host read.
+    if metadata == "unchecked" and backend != "sdpa":
+        original = torch.Tensor.tolist
+
+        def tolist(tensor):
+            if tensor is cuq or tensor is cuk:
+                pytest.fail("unexpected host read")
+            return original(tensor)
+
+        monkeypatch.setattr(torch.Tensor, "tolist", tolist)
+    trace = _check_backend_numerics(actual, reference, inputs, dtype, backend, True, monkeypatch)
+    for name in ("out", "grad/q"):
+        assert torch.count_nonzero(trace[name][3:6]) == 0

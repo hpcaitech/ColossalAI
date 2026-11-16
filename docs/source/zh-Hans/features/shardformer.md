@@ -311,15 +311,28 @@ if dist.get_world_size() > 1:
 `sdpa` 时不会 fallback；`auto` 在执行前选择支持该请求的实现。不传
 `backend` 保留旧的 mask 与分发合同。新入口通过 `is_causal` 和可选的自定义
 `attention_mask` 表达关注规则，bool True 表示允许读取，浮点 mask 是加性偏置，
-不能混用旧 mask 枚举。不等长 causal 请求必须指定 `causal_alignment="upper_left"`
+不能混用旧 mask 枚举。所有显式后端必须遵守上述 mask 语义，由适配器转换到原生
+接口约定。整行被遮挡的 query 输出为零，且不贡献梯度；这包括 `Sq > Skv` 的右下 causal 对齐。不等长 causal 请求必须指定 `causal_alignment="upper_left"`
 或 `"lower_right"`；此时 FA2/FA3 只支持后者。
 
 `ColoAttention.attention_varlen` 接收 packed Q `[Tq, Hq, D]` 和 K/V
 `[Tkv, Hkv, D]`，分别提供 `cu_seqlens_q`、`cu_seqlens_kv`、`max_seqlen_q`
-与 `max_seqlen_kv`。累计长度必须是输入设备上的连续 int32 张量，从 0 开始，
-覆盖所有 token，且没有空样本。例如长度 `[3, 5]` 的前缀是 `[0, 3, 8]`，
-两条样本不会互相读取。长度校验会在主机读取前缀，暂不支持动态 packed
-fullgraph 编译。SDPA 逐条计算 packed 样本，作为正确性 fallback，不是融合 varlen 内核。
+与 `max_seqlen_kv`。累计长度可以是主机整数序列，或输入设备上的连续 int32 张量，
+从 0 开始，覆盖所有 token；拒绝零长度样本。例如长度 `[3, 5]` 的前缀是 `[0, 3, 8]`，
+两条样本不会互相读取。
+
+默认会将 tensor 边界值读回主机校验。对已校验的设备 tensor，可以设置
+`validate=False`，省去 FA2/FA3 路径上的边界值读取，仍保留形状、dtype、设备和
+样本数检查；此时调用方负责保证边界和最大长度合法。未校验的 causal 调用必须
+显式指定对齐方式，FA2/FA3 要求 `lower_right`，因为不能假设每条样本的 Q/K 等长。
+主机整数序列始终校验，只有需要 tensor 的适配器才将其转换为设备 int32。
+应跨层复用准备好的 tensor，避免重复转换。SDPA 复用已读取的主机边界，或者读取
+一次用于切片；它仍是逐样本的正确性路径，不是融合 varlen 内核。此选项不保证
+动态 packed fullgraph 编译支持。
+
+显式 loader 使用单一内部注册表，先按注册顺序选择对应设备的后端，再尝试 SDPA
+等通用后端。内置 CUDA 顺序保持 FA3、FA2、SDPA。新增设备后端不必修改共享
+选择器，但其适配器必须遵守统一接口合同。
 
 FA3 是可选依赖，使用官方
 [`54b044c8`](https://github.com/Dao-AILab/flash-attention/tree/54b044c8cf897dfcc2577a665559d1bfda0bfc80/hopper)
@@ -330,12 +343,16 @@ Diffusers 0.35.2 的 attention dispatcher 会覆盖该 FA3 算子的 schema；
 组合视频路径已在 Diffusers 0.36.0 验证。
 显式 FA2 路径要求 `flash-attn>=2.1`，head dimension 限制为不超过 192，
 避免更大维度的反向能力依赖具体版本和显卡。
+这两个显式 FA 适配器当前限定 NVIDIA CUDA。上游 FA2 也有 ROCm 实现，但在此
+启用前需要独立的能力判断和验证。FA3 兼容 Tensor 和 `(output, softmax_lse)`
+两种返回形式；这不代表所有历史 FA3 构建都已经兼容。
 
 CPU 合同测试命令为 `pytest tests/test_shardformer/test_layer/test_attention_backends.py -k 'not gpu'`。
 单卡 FA3 严格验收复用现有 runner：
 `bash .github/scripts/ci/run_colossalai_batch.sh 4f <gpu_index>`。
 缺少 CUDA 或 FA3 会失败，数值结果和 profiler 记录保存在 `COLOSSAL_RESULTS` 下。
-现有 full-matrix workflow 在镜像具备 FA3 后可手动选择 batch `4f`；默认矩阵暂不包含它。
+现有 full-matrix workflow 在镜像具备兼容 FA3 后可手动选择 batch `4f`；它仅供主动选择，
+不属于默认矩阵，也不属于标准 Layer 2 的 `2`、`4a`、`5` 批次。
 
 ## Shardformer的工作原理
 
