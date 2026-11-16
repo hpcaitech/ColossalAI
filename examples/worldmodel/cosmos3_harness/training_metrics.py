@@ -41,11 +41,19 @@ import json
 import math
 import statistics
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 __all__ = [
     "SCHEMA_VERSION",
+    "ASCEND_910B2_CUBE_PEAK_TFLOPS",
+    "VAE_TFLOP_PER_SAMPLE",
+    "Cosmos3FlopsModel",
+    "cosmos3_step_flops",
+    "selective_recompute_fraction",
+    "compute_mfu",
+    "JsonlMetricsLogger",
     "MetricsObserver",
     "CompositeObserver",
     "ConsoleObserver",
@@ -68,6 +76,13 @@ SCHEMA_VERSION = 1
 RECORD = "record"
 EVENT = "event"
 
+#: Hardware peak Cube compute per Huawei Ascend 910B2 (Atlas A2, DAV_2201) NPU in TFLOPS.
+ASCEND_910B2_CUBE_PEAK_TFLOPS: float = 353.9
+
+#: Frozen VAE encoder cost per video sample.  It is a model-specific estimate, kept on the training side with the
+#: rest of the accounting so the dashboard never has to guess whether the VAE ran.
+VAE_TFLOP_PER_SAMPLE: float = 33.0
+
 #: How each leaf is reduced across ranks. Keys use the flattened ``section/key`` names. Anything not listed keeps
 #: rank 0's value (``first``).
 REDUCTIONS: Dict[str, str] = {
@@ -86,11 +101,29 @@ REDUCTIONS: Dict[str, str] = {
     "perf/step_ms": "max",
     "perf/forward_ms": "max",
     "perf/backward_ms": "max",
+    "perf/fwd_ms": "max",
+    "perf/bwd_ms": "max",
+    "perf/vae_ms": "max",
     "perf/optim_ms": "max",
     "perf/host_dispatch_ms": "max",
     "perf/step_dispatch_ms": "max",
+    "perf/flops": "sum",
+    "perf/flops_forward": "sum",
+    "perf/flops_backward": "sum",
+    "perf/flops_vae": "sum",
+    "perf/mfu": "mean",
+    "perf/mfu_forward": "mean",
+    "perf/mfu_backward": "mean",
+    "perf/mfu_vae": "mean",
+    "perf/peak_tflops_per_npu": "first",
+    "perf/checkpointing_mode": "first",
+    "perf/recompute_fraction": "mean",
     "mem/allocated_gib": "max",
     "mem/peak_gib": "max",
+    "mem/reserved_gib": "max",
+    "mem/peak_reserved_gib": "max",
+    "mem/device_used_gib": "max",
+    "mem/device_total_gib": "max",
     "ckpt/save_ms": "max",
     "ckpt/async_pending": "max",
     # Callers normalize losses for their declared sample/element objective; see the module docstring.
@@ -102,6 +135,198 @@ REDUCTIONS: Dict[str, str] = {
     "optim/skipped": "sum",
     "data/epoch": "first",
 }
+
+
+@dataclass(frozen=True)
+class Cosmos3FlopsModel:
+    """Geometry that turns a packed step into a FLOPs figure.
+
+    The previous helper hard-coded one checkpoint's measured 20.34 TFLOP/sample and accepted a ``num_layers``
+    argument it never used.  That silently mis-reported a larger or smaller Cosmos 3 variant.  This object is
+    built from the model config once, so the number follows the checkpoint that is actually training.
+    """
+
+    num_layers: int
+    hidden_size: int
+    intermediate_size: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    head_dim: int
+    mlp_matrices: int
+    vocab_size: int = 0
+
+    @classmethod
+    def from_config(cls, config: Any) -> "Cosmos3FlopsModel":
+        """Read the fields the accounting needs from a diffusers/transformers config or a mapping."""
+
+        def field(*names: str, default: Any = None) -> Any:
+            for name in names:
+                value = config.get(name) if isinstance(config, Mapping) else getattr(config, name, None)
+                if value is not None:
+                    return value
+            return default
+
+        num_layers = field("num_hidden_layers", "num_layers")
+        hidden = field("hidden_size")
+        intermediate = field("intermediate_size")
+        heads = field("num_attention_heads")
+        if num_layers is None or hidden is None or intermediate is None or heads is None:
+            raise ValueError(
+                "Cosmos3 FLOPs need num_hidden_layers, hidden_size, intermediate_size and num_attention_heads"
+            )
+        heads = int(heads)
+        kv_heads = int(field("num_key_value_heads", default=heads) or heads)
+        head_dim = int(field("head_dim", default=max(1, int(hidden) // heads)) or max(1, int(hidden) // heads))
+        act = str(field("hidden_act", default="silu")).lower()
+        # relu2/relu/gelu are two-matrix MLPs; silu/geglu-style SwiGLU blocks have a gate and an up projection.
+        mlp_matrices = 3 if act in ("silu", "swiglu", "geglu") else 2
+        return cls(
+            num_layers=int(num_layers),
+            hidden_size=int(hidden),
+            intermediate_size=int(intermediate),
+            num_attention_heads=heads,
+            num_key_value_heads=kv_heads,
+            head_dim=head_dim,
+            mlp_matrices=mlp_matrices,
+            vocab_size=int(field("vocab_size", default=0) or 0),
+        )
+
+    def breakdown(self, ar_tokens: int, dm_tokens: int, samples: int) -> Dict[str, float]:
+        """Forward FLOPs split by component.
+
+        The attention-score term uses the average packed sequence length.  The model has both causal AR and full
+        DM attention, so this is an estimate of the mixture, not a kernel counter; the scale, which is what MFU
+        depends on, comes from the checkpoint geometry rather than a constant measured on a different model.
+        """
+        tokens = max(0, int(ar_tokens)) + max(0, int(dm_tokens))
+        tokens_per_sample = tokens / samples if samples else float(tokens)
+        attention_dim = self.num_attention_heads * self.head_dim
+        qkv_dim = attention_dim + 2 * self.num_key_value_heads * self.head_dim
+        projection_per_token = 2 * self.hidden_size * (qkv_dim + attention_dim)
+        mlp_per_token = 2 * self.hidden_size * self.intermediate_size * self.mlp_matrices
+        scores_per_token = 4 * tokens_per_sample * attention_dim
+        per_token = self.num_layers * (projection_per_token + mlp_per_token + scores_per_token)
+        layer_forward = float(tokens * per_token)
+        lm_head = float(2 * self.hidden_size * self.vocab_size * max(0, int(ar_tokens))) if self.vocab_size else 0.0
+        return {
+            "tokens": float(tokens),
+            "tokens_per_sample": float(tokens_per_sample),
+            "mlp": float(tokens * self.num_layers * mlp_per_token),
+            "attention_projection": float(tokens * self.num_layers * projection_per_token),
+            "attention_scores": float(tokens * self.num_layers * scores_per_token),
+            "layer_forward": layer_forward,
+            "lm_head": lm_head,
+            "forward": layer_forward + lm_head,
+        }
+
+    def as_dict(self) -> Dict[str, int]:
+        return {
+            "num_layers": self.num_layers,
+            "hidden_size": self.hidden_size,
+            "intermediate_size": self.intermediate_size,
+            "num_attention_heads": self.num_attention_heads,
+            "num_key_value_heads": self.num_key_value_heads,
+            "head_dim": self.head_dim,
+            "mlp_matrices": self.mlp_matrices,
+            "vocab_size": self.vocab_size,
+        }
+
+
+def selective_recompute_fraction(
+    model: Cosmos3FlopsModel,
+    breakdown: Mapping[str, float],
+    stats: Optional[Mapping[str, Any]],
+) -> float:
+    """Fraction of the decoder forward pass that selective checkpointing recomputes.
+
+    ``mlp`` keeps attention outputs and recomputes the MLP blocks.  ``sac`` checkpoints each layer and keeps the
+    attention op outputs of the first ``max_saved_layers`` layers, so the scores of the remaining layers and all
+    projections/MLPs are recomputed.  Unknown stats fall back to a full recompute rather than under-reporting
+    the cost.
+    """
+    layer_forward = float(breakdown.get("layer_forward") or 0.0)
+    if layer_forward <= 0:
+        return 0.0
+    mode = str((stats or {}).get("mode") or "").lower()
+    if mode == "mlp":
+        return min(1.0, max(0.0, float(breakdown.get("mlp") or 0.0) / layer_forward))
+    if mode == "sac":
+        saved = int((stats or {}).get("max_saved_layers") or 0)
+        saved_fraction = min(1.0, max(0.0, saved / max(1, model.num_layers)))
+        return max(0.0, 1.0 - saved_fraction * float(breakdown.get("attention_scores") or 0.0) / layer_forward)
+    return 1.0
+
+
+def cosmos3_step_flops(
+    model: Cosmos3FlopsModel,
+    *,
+    samples: int,
+    ar_tokens: int = 0,
+    dm_tokens: int = 0,
+    checkpointing: Any = "full",
+    include_vae: bool = False,
+    selective_stats: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, float]:
+    """Raw FLOPs for one optimizer step, split into forward/backward/VAE.
+
+    The backward stage includes the activation recompute, so ``flops_forward + flops_backward + flops_vae`` is
+    the total the step MFU uses.  The VAE is included only when the caller saw a VAE timing for this step.
+    """
+    breakdown = model.breakdown(ar_tokens, dm_tokens, samples)
+    if isinstance(checkpointing, bool):
+        mode = "full" if checkpointing else "none"
+    else:
+        mode = str(checkpointing or "full").lower()
+    if mode == "full":
+        fraction = 1.0
+    elif mode == "none":
+        fraction = 0.0
+    elif mode == "selective":
+        fraction = selective_recompute_fraction(model, breakdown, selective_stats)
+    else:
+        raise ValueError(f"unknown activation checkpointing mode: {checkpointing!r}")
+    forward = float(breakdown["forward"])
+    recompute = fraction * float(breakdown["layer_forward"])
+    backward = 2.0 * forward + recompute
+    vae = float(samples) * VAE_TFLOP_PER_SAMPLE * 1e12 if include_vae and samples > 0 else 0.0
+    return {
+        "flops": forward + backward + vae,
+        "flops_forward": forward,
+        "flops_backward": backward,
+        "flops_vae": vae,
+        "recompute_fraction": fraction,
+    }
+
+
+def compute_mfu(
+    step_ms: float,
+    total_flops: float,
+    world_size: int = 1,
+    peak_tflops_per_npu: float = ASCEND_910B2_CUBE_PEAK_TFLOPS,
+) -> float:
+    """Compute Model FLOPs Utilization (MFU) on Ascend 910B2 cluster.
+
+    Args:
+        step_ms (float): Step duration in milliseconds.
+        total_flops (float): Raw floating point operations performed in this step.  There is deliberately no
+            "small value means TFLOPS" branch: a caller that passes 120.0 by mistake should get a small MFU,
+            not a silently reinterpreted one.
+        world_size (int): Total number of active NPUs across the cluster.
+        peak_tflops_per_npu (float): Peak Cube TFLOPS per Ascend 910B2 NPU (default 353.9).
+
+    Returns:
+        float: MFU ratio (e.g. 0.354 for 35.4% MFU).
+    """
+    if step_ms <= 0.0 or world_size <= 0 or peak_tflops_per_npu <= 0.0:
+        return 0.0
+
+    step_s = step_ms / 1000.0
+    achieved_tflops = (total_flops / step_s) / 1e12
+    cluster_peak_tflops = world_size * peak_tflops_per_npu
+    if cluster_peak_tflops <= 0.0:
+        return 0.0
+
+    return float(achieved_tflops / cluster_peak_tflops)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -133,18 +358,18 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"{type(value).__name__} is not JSON serialisable")
 
 
-def make_record(step: int, rank: int, time_s: Optional[float] = None, **sections: Optional[Mapping[str, Any]]) -> Dict:
+def make_record(
+    step: int,
+    rank: int = 0,
+    time_s: Optional[float] = None,
+    timings: Optional[Mapping[str, Any]] = None,
+    memory: Optional[Mapping[str, Any]] = None,
+    **sections: Any,
+) -> Dict:
     """Build one step record, dropping sections and leaves that are ``None``.
 
-    Args:
-        step (int): Optimizer step this record belongs to.
-        rank (int): Rank that produced it.
-        time_s (float, optional): Wall-clock timestamp; defaults to now.
-        **sections: Named sections such as ``data``, ``loss``, ``perf``, ``mem``, ``ckpt``. A ``None`` section or
-            leaf is omitted so a partial record does not lie with zeros.
-
-    Returns:
-        dict: ``{"type": "record", "schema", "step", "rank", "time", ...sections}``.
+    Supports both structured section dictionaries (data, perf, mem, loss) and
+    convenience parameters (timings, memory, loss, tokens).
     """
     record: Dict[str, Any] = {
         "type": RECORD,
@@ -153,13 +378,63 @@ def make_record(step: int, rank: int, time_s: Optional[float] = None, **sections
         "rank": int(rank),
         "time": time.time() if time_s is None else float(time_s),
     }
+
+    if timings is not None:
+        perf_sec = record.setdefault("perf", {})
+        for k, v in timings.items():
+            if v is not None:
+                plain_v = _plain(v)
+                key_ms = f"{k}_ms" if not k.endswith("_ms") else k
+                perf_sec[key_ms] = plain_v
+                record[f"perf/{key_ms}"] = plain_v
+                if k in ("fwd", "forward"):
+                    perf_sec["fwd_ms"] = plain_v
+                    perf_sec["forward_ms"] = plain_v
+                    record["perf/fwd_ms"] = plain_v
+                elif k in ("bwd", "backward"):
+                    perf_sec["bwd_ms"] = plain_v
+                    perf_sec["backward_ms"] = plain_v
+                    record["perf/bwd_ms"] = plain_v
+
+    if memory is not None:
+        mem_sec = record.setdefault("mem", {})
+        for k, v in memory.items():
+            if v is not None:
+                plain_v = _plain(v)
+                mem_sec[k] = plain_v
+                record[f"mem/{k}"] = plain_v
+
     for name, values in sections.items():
         if values is None:
             continue
-        kept = {key: _plain(value) for key, value in values.items() if value is not None}
-        if kept:
-            record[name] = kept
+        if name == "loss" and isinstance(values, (int, float)):
+            record["train/loss"] = _plain(values)
+            record.setdefault("loss", {})["total"] = _plain(values)
+        elif name == "tokens" and isinstance(values, (int, float)):
+            record["data/tokens"] = _plain(values)
+            record.setdefault("data", {})["tokens"] = _plain(values)
+        elif isinstance(values, Mapping):
+            kept = {key: _plain(value) for key, value in values.items() if value is not None}
+            if kept:
+                if name in record and isinstance(record[name], dict):
+                    record[name].update(kept)
+                else:
+                    record[name] = kept
+        else:
+            record[name] = _plain(values)
     return record
+
+
+class JsonlMetricsLogger:
+    """Lightweight JSONL metrics logger for writing flat or nested step telemetry."""
+
+    def __init__(self, path: Union[str, Path]):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def log(self, metrics: Mapping[str, Any]) -> None:
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(dict(metrics), default=_json_default) + "\n")
 
 
 def make_event(
@@ -222,6 +497,14 @@ def _reduce(values: Sequence[Any], policy: str) -> Any:
     return values[0]  # "first"
 
 
+def _positive(value: Any) -> Optional[float]:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number > 0 else None
+
+
 def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optional[Dict]:
     """Reduce per-rank records of one step into a single record.
 
@@ -271,13 +554,41 @@ def aggregate_records(records: Iterable[Optional[Mapping[str, Any]]]) -> Optiona
         perf["step_ms_mean"] = mean
         perf["step_ms_max"] = peak
         perf["skew"] = peak / mean if mean else 1.0
+
+    # The per-rank MFU mean is only exact when every rank has the same step time.  Recompute the cluster values
+    # from the summed FLOPs and the slowest stage, using the peak the trainer recorded.  This is also the value
+    # the dashboard reads, so it does not have to repeat the model accounting.
+    perf = aggregated.setdefault("perf", {})
+    total_flops = _positive(perf.get("flops"))
+    step_ms = _positive(perf.get("step_ms"))
+    peak_tflops = _positive(perf.get("peak_tflops_per_npu")) or ASCEND_910B2_CUBE_PEAK_TFLOPS
+    if total_flops and step_ms and ranks:
+        perf["tflops"] = (total_flops / (step_ms / 1e3)) / 1e12
+        perf["mfu"] = compute_mfu(step_ms, total_flops, len(ranks), peak_tflops)
+    for name in ("forward", "backward", "vae"):
+        stage_flops = _positive(perf.get(f"flops_{name}"))
+        stage_ms = _positive(perf.get(f"{name}_ms"))
+        if stage_flops and stage_ms and ranks:
+            perf[f"mfu_{name}"] = compute_mfu(stage_ms, stage_flops, len(ranks), peak_tflops)
     return aggregated
 
 
 def device_memory_gib() -> Dict[str, float]:
-    """Allocated and peak GiB on the current accelerator, or an empty dict when there is none.
+    """Every memory counter the accelerator exposes, in GiB; empty when there is no accelerator.
 
-    Both values are host-side allocator counters, so this is free and never synchronizes.
+    ``allocated``/``peak`` are the caching allocator's tensor counters and are what a naive report shows. They
+    under-report what the card is actually holding, in three ways that all showed up on this cluster:
+
+    * the allocator keeps freed blocks (``reserved``), so ``allocated`` can fall to zero while the card stays
+      occupied until those blocks are reused;
+    * the device runtime's context is outside the allocator entirely;
+    * a card can be shared, and another process's memory is invisible here.
+
+    ``device_used_gib`` comes from ``mem_get_info`` and is the number that agrees with ``npu-smi``, so that is the
+    figure to compare against the card's capacity. ``peak_reserved_gib`` is the allocator's high-water mark and is
+    the honest "how close did we get to OOM" for this process.
+
+    All of these are host-side counter reads; nothing here synchronizes a stream.
     """
     try:
         import torch
@@ -288,10 +599,22 @@ def device_memory_gib() -> Dict[str, float]:
         if module is None or not hasattr(module, "memory_allocated"):
             continue
         try:
-            return {
+            info = {
                 "allocated_gib": module.memory_allocated() / 2**30,
                 "peak_gib": module.max_memory_allocated() / 2**30,
             }
+            # The reserved counters are not on every backend; report what exists rather than a fake zero.
+            for key, function in (
+                ("reserved_gib", "memory_reserved"),
+                ("peak_reserved_gib", "max_memory_reserved"),
+            ):
+                if hasattr(module, function):
+                    info[key] = getattr(module, function)() / 2**30
+            if hasattr(module, "mem_get_info"):
+                free, total = module.mem_get_info()
+                info["device_total_gib"] = total / 2**30
+                info["device_used_gib"] = (total - free) / 2**30
+            return info
         except Exception:  # an accelerator that is present but not initialised
             return {}
     return {}
@@ -329,9 +652,9 @@ class Stopwatch:
             older builds).
     """
 
-    def __init__(self, use_events: Optional[bool] = None) -> None:
+    def __init__(self, use_events: Optional[bool] = None, enabled: bool = True) -> None:
         self._use_events = _events_available() if use_events is None else bool(use_events)
-        self._enabled = False
+        self._enabled = bool(enabled)
         self._spans: Dict[str, List[Tuple[float, float, Any, Any]]] = {}
         self.timing_sources: Dict[str, str] = {}
 
@@ -340,6 +663,22 @@ class Stopwatch:
         self._spans.clear()
         self.timing_sources.clear()
         self._enabled = bool(enabled)
+
+    def synchronize(self, device: Optional[Any] = None) -> None:
+        """Explicitly synchronize the accelerator device to ensure all recorded events have completed."""
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize(device)
+            elif hasattr(torch, "npu") and hasattr(torch.npu, "synchronize"):
+                torch.npu.synchronize(device)
+        except Exception:
+            pass
+
+    def time(self, name: str):
+        """Context manager alias for section(name)."""
+        return self.section(name)
 
     def _record_event(self):
         if not self._use_events:
@@ -524,7 +863,15 @@ class ConsoleObserver(MetricsObserver):
             parts.append(f"data ({', '.join(sections)})")
 
         mem = record.get("mem", {})
-        if "allocated_gib" in mem:
+        # Device-level first: that is the figure npu-smi shows and the one that predicts an OOM. The allocator's
+        # own counters follow, so a gap between them (reserved blocks, runtime context) stays visible instead of
+        # being reported as headroom that does not exist.
+        if "device_used_gib" in mem:
+            parts.append(
+                f"mem {mem['device_used_gib']:.1f}/{mem.get('device_total_gib', 0.0):.1f} GiB"
+                f" (peak_reserved {mem.get('peak_reserved_gib', 0.0):.1f})"
+            )
+        elif "allocated_gib" in mem:
             parts.append(f"mem {mem['allocated_gib']:.1f} GiB")
 
         if "ranks" in record and record.get("world", 1) > 1:
@@ -876,19 +1223,41 @@ class AnomalyDetector:
             )
 
         mem = record.get("mem", {})
-        allocated = mem.get("allocated_gib")
-        if allocated is not None and self.device_capacity_gib:
-            fraction = allocated / self.device_capacity_gib
-            if fraction > self.memory_fraction:
+        if self.device_capacity_gib:
+            allocated = mem.get("allocated_gib")
+            peak_reserved = mem.get("peak_reserved_gib")
+            device_used = mem.get("device_used_gib")
+
+            pressure_val = None
+            pressure_label = None
+            pressure_frac = None
+
+            for label, val in (
+                ("device_used", device_used),
+                ("peak_reserved", peak_reserved),
+                ("allocated", allocated),
+            ):
+                if val is not None:
+                    frac = val / self.device_capacity_gib
+                    if frac > self.memory_fraction:
+                        if pressure_frac is None or frac > pressure_frac:
+                            pressure_val = val
+                            pressure_label = label
+                            pressure_frac = frac
+
+            if pressure_label is not None:
                 events.append(
                     make_event(
                         step,
                         "memory_pressure",
-                        f"allocated {allocated:.1f} GiB is {fraction:.0%} of the "
+                        f"{pressure_label} {pressure_val:.1f} GiB is {pressure_frac:.0%} of the "
                         f"{self.device_capacity_gib:.1f} GiB device",
                         "warn",
+                        metric=pressure_label,
                         allocated_gib=allocated,
-                        fraction=fraction,
+                        peak_reserved_gib=peak_reserved,
+                        device_used_gib=device_used,
+                        fraction=pressure_frac,
                     )
                 )
 
@@ -947,6 +1316,8 @@ class TrainingMetrics:
         if self.out_dir is not None and self.rank == 0 and self.world_size > 1:
             self._aggregator = MetricsAggregator(self.out_dir, self.world_size, rank=self.rank)
         self._pending_events: Dict[int, List[Dict]] = {}
+        self._buffered_perf: Dict[str, float] = {}
+        self._buffered_mem: Dict[str, float] = {}
 
     # -- lifecycle ----------------------------------------------------------------------------------------------
 
@@ -977,6 +1348,31 @@ class TrainingMetrics:
 
     # -- data ---------------------------------------------------------------------------------------------------
 
+    def record(self, section: str, duration_ms: float, hbm_gib: Optional[float] = None) -> None:
+        """Buffer a section duration and optional HBM occupancy for the current step.
+
+        Standardizes section keys (e.g. 'fwd' -> 'fwd_ms' and 'forward_ms', 'bwd' -> 'bwd_ms').
+        """
+        clean_section = section.strip().lower()
+        key = clean_section if clean_section.endswith("_ms") else f"{clean_section}_ms"
+        self._buffered_perf[key] = float(duration_ms)
+
+        if clean_section in ("fwd", "forward"):
+            self._buffered_perf["fwd_ms"] = float(duration_ms)
+            self._buffered_perf["forward_ms"] = float(duration_ms)
+        elif clean_section in ("bwd", "backward"):
+            self._buffered_perf["bwd_ms"] = float(duration_ms)
+            self._buffered_perf["backward_ms"] = float(duration_ms)
+        elif clean_section == "vae":
+            self._buffered_perf["vae_ms"] = float(duration_ms)
+        elif clean_section == "optim":
+            self._buffered_perf["optim_ms"] = float(duration_ms)
+        elif clean_section == "step":
+            self._buffered_perf["step_ms"] = float(duration_ms)
+
+        if hbm_gib is not None:
+            self._buffered_mem["device_used_gib"] = float(hbm_gib)
+
     def event(self, step: int, kind: str, message: str, severity: str = "warn", **values: Any) -> None:
         """Report a rank-local event immediately; rank 0 forwards it at the next log step."""
         event = make_event(step, kind, message, severity, rank=self.rank, **values)
@@ -993,7 +1389,23 @@ class TrainingMetrics:
             step (int): Optimizer step, 1-based.
             **sections: ``data``, ``loss``, ``optim``, ``perf``, ``mem``, ``ckpt``; ``None`` sections are omitted.
         """
+        # Incorporate buffered section timings and memory telemetry if present
+        perf_data = dict(self._buffered_perf)
+        if "perf" in sections and sections["perf"] is not None:
+            perf_data.update(sections["perf"])
+        if perf_data:
+            sections["perf"] = perf_data
+        self._buffered_perf.clear()
+
+        mem_data = dict(self._buffered_mem)
+        if "mem" in sections and sections["mem"] is not None:
+            mem_data.update(sections["mem"])
+        if mem_data:
+            sections["mem"] = mem_data
+        self._buffered_mem.clear()
+
         record = make_record(step, self.rank, **sections)
+
         for observer in self.local_observers:
             observer.on_step(record)
 

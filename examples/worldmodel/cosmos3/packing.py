@@ -679,6 +679,7 @@ def pack_batch(
     payload_dtype: torch.dtype = torch.bfloat16,
     stopwatch=None,
     vae_encode_batch: int = 0,
+    latents=None,
 ):
     """Pack a batch of samples into one sequence and install the per-sample boundaries on the policy.
 
@@ -720,10 +721,14 @@ def pack_batch(
         ValueError: If no VAE was given.
     """
     device = _as_device(device)
-    n = batch["video"].shape[0]
+    # With a latent cache the batch carries the latent and no video at all: `n` has to come from whichever of the
+    # two the caller supplied.
+    n = latents.shape[0] if latents is not None else batch["video"].shape[0]
 
-    if vae is None:
-        raise ValueError("pack_batch encodes the video here and needs a VAE; there is no precomputed-latent path.")
+    if latents is None and vae is None:
+        raise ValueError(
+            "pack_batch needs either a VAE to encode the video or a `latents` batch from a pre-extracted cache."
+        )
 
     # The latent is always encoded here, never read from disk, and there is no way to hand one in. That removes
     # the only route by which a latent could reach the model without passing through normalize_latent, which is
@@ -745,23 +750,46 @@ def pack_batch(
         raise ValueError("vae_encode_batch must be nonnegative")
     if n < 1:
         raise ValueError("Cannot pack an empty video batch")
-    vae_dtype = next(vae.parameters()).dtype
-    encode = stopwatch.section("vae") if stopwatch is not None else contextlib.nullcontext()
+    with torch.no_grad():
+        if latents is not None:
+            # The cache holds latents already normalised and cropped to the content region, which is exactly what
+            # pack_one takes. Re-normalising or re-cropping here would apply both twice.
+            latent = latents.to(device).float()
+            spatial_factor = None
+        else:
+            vae_dtype = next(vae.parameters()).dtype
+            video = batch["video"]
+            pad_hw = batch.get("video_pad_hw")
+            uint8_video = video.dtype == torch.uint8
 
-    def encode_video(video):
-        out = vae.encode(video.to(device, vae_dtype))
-        dist = getattr(out, "latent_dist", None)
-        if dist is not None:
-            return dist.mode()
-        return out[0] if isinstance(out, (tuple, list)) else out
+            def encode_video(video):
+                if uint8_video:
+                    # Same uint8 pixels and same affine as the host path; the float convert + reflect pad run on
+                    # the device, so only 40 MB/sample crosses PCIe instead of 158 MB.
+                    from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch
 
-    with torch.no_grad(), encode:
-        video = batch["video"]
-        size = vae_encode_batch or n
-        latent = torch.cat([encode_video(video[start : start + size]) for start in range(0, n, size)])
-        # Micro-batching changes only encode calls. Normalization and its cast point match the baseline;
-        # the clean payload remains FP32 until pack_one casts x_t at the model entrance.
-        latent = normalize_latent(latent, vae).float()
+                    target_h, target_w = (int(v) for v in pad_hw[0].tolist())
+                    value = pad_normalize_torch(
+                        video.to(device),
+                        target_h - int(video.shape[-2]),
+                        target_w - int(video.shape[-1]),
+                        vae_dtype,
+                    )
+                else:
+                    value = video.to(device, vae_dtype)
+                out = vae.encode(value)
+                dist = getattr(out, "latent_dist", None)
+                if dist is not None:
+                    return dist.mode()
+                return out[0] if isinstance(out, (tuple, list)) else out
+
+            encode = stopwatch.section("vae") if stopwatch is not None else contextlib.nullcontext()
+            size = vae_encode_batch or n
+            with encode:
+                latent = torch.cat([encode_video(video[start : start + size]) for start in range(0, n, size)])
+            # Micro-batching changes only encode calls. Normalization and its cast point match the baseline;
+            # the clean payload remains FP32 until pack_one casts x_t at the model entrance.
+            latent = normalize_latent(latent, vae).float()
 
     # The canvas is padded; the latent must not be. ``resize_and_reflect_pad`` fits the composite inside the
     # bucket canvas and reflection-pads the bottom and right edges, so for DROID a 540x640 composite sits in a
@@ -775,12 +803,20 @@ def pack_batch(
     #
     # The factor is read off the two shapes rather than named as a constant, so a VAE whose compression differs
     # from the recipe's 16 cannot silently crop to the wrong place.
-    spatial_factor = batch["video"].shape[-2] // latent.shape[-2]
-    if latent.shape[-1] * spatial_factor != batch["video"].shape[-1]:
-        raise ValueError(
-            f"The VAE does not compress the two spatial axes equally: video {tuple(batch['video'].shape[-2:])} "
-            f"-> latent {tuple(latent.shape[-2:])}; the padding cannot be mapped into latent space."
-        )
+    if latents is None:
+        if batch["video"].dtype == torch.uint8:
+            # The uint8 batch carries the content; the padded target is what the device pad produced.
+            target_h, target_w = (int(v) for v in batch["video_pad_hw"][0].tolist())
+            spatial_factor = target_h // latent.shape[-2]
+            compressed = (target_h, target_w)
+        else:
+            spatial_factor = batch["video"].shape[-2] // latent.shape[-2]
+            compressed = tuple(batch["video"].shape[-2:])
+        if latent.shape[-1] * spatial_factor != compressed[1]:
+            raise ValueError(
+                f"The VAE does not compress the two spatial axes equally: video {compressed} "
+                f"-> latent {tuple(latent.shape[-2:])}; the padding cannot be mapped into latent space."
+            )
 
     per_sample = []
     for index in range(n):
@@ -800,11 +836,17 @@ def pack_batch(
         )
         ids = tokenize_prompt(prompt, tokenizer, generator=generator)
         content_h, content_w = (int(v) for v in batch["content_hw"][index].tolist())
-        keep_h = max(content_h // spatial_factor, 1)
-        keep_w = max(content_w // spatial_factor, 1)
+        if latents is not None:
+            # The cache entry is already cropped to the content region at extraction time; cropping again with the
+            # same rule would be a no-op at best and a double crop if the geometry ever disagreed.
+            piece = latent[index : index + 1].contiguous()
+        else:
+            keep_h = max(content_h // spatial_factor, 1)
+            keep_w = max(content_w // spatial_factor, 1)
+            piece = latent[index : index + 1, :, :, :keep_h, :keep_w].contiguous()
         per_sample.append(
             pack_one(
-                latent[index : index + 1, :, :, :keep_h, :keep_w].contiguous(),
+                piece,
                 batch["action"][index].float(),
                 ids,
                 cfg,

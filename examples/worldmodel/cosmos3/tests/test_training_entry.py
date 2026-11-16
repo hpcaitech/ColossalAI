@@ -1,5 +1,6 @@
 """CPU contracts for the online SFT entry, including real accumulated optimizer updates."""
 
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -110,13 +111,19 @@ def test_the_recorded_learning_rates_come_from_each_parameter_group():
 
 
 def test_a_package_without_metadata_is_recorded_as_missing(monkeypatch):
-    assert isinstance(entry.package_version("pytest"), str)
+    assert isinstance(entry.resolve_version("pytest"), str)
 
     def missing(name):
-        raise entry.PackageNotFoundError(name)
+        raise PackageNotFoundError(name)
 
     monkeypatch.setattr(entry, "version", missing)
-    assert entry.package_version("diffusers") is None
+    assert entry.resolve_version("diffusers") == "absent"
+
+    def broken(name):
+        raise RuntimeError(f"no metadata for {name}")
+
+    monkeypatch.setattr(entry, "version", broken)
+    assert entry.resolve_version("diffusers").startswith("error: RuntimeError")
 
 
 class ActionHead(torch.nn.Module):
@@ -255,7 +262,16 @@ def test_sft_cycles_short_loader_and_reports_the_whole_optimizer_window(monkeypa
     )
 
     class Model(torch.nn.Module):
-        config = None
+        config = {
+            "num_hidden_layers": 1,
+            "hidden_size": 16,
+            "intermediate_size": 32,
+            "num_attention_heads": 2,
+            "num_key_value_heads": 1,
+            "head_dim": 8,
+            "hidden_act": "relu2",
+            "vocab_size": 32,
+        }
 
         def __init__(self):
             super().__init__()

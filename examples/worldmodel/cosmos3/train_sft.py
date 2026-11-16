@@ -19,6 +19,7 @@ import time
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Optional
 
 # The DROID pipeline is upstream's own code, copied byte for byte under vendor/ (see vendor/README.md).
 # Its files import themselves as ``cosmos_framework.*``, so the copy is laid out under that package name
@@ -70,11 +71,15 @@ from examples.worldmodel.cosmos3.runtime import (
 from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3_harness.optim import build_adamw
 from examples.worldmodel.cosmos3_harness.training_metrics import (
+    ASCEND_910B2_CUBE_PEAK_TFLOPS,
     AnomalyDetector,
     ConsoleObserver,
+    Cosmos3FlopsModel,
     Stopwatch,
     TrainingMetrics,
     WandbObserver,
+    compute_mfu,
+    cosmos3_step_flops,
     device_memory_gib,
 )
 
@@ -266,16 +271,64 @@ class PowerEMA:
         return beta
 
 
-def package_version(name):
-    """The installed distribution's version, or ``None`` when it has no metadata.
+def _tensor_digest(payload) -> str:
+    """Deterministic short fingerprint of a nested tensor structure.
 
-    A source or vendored install can be importable without a distribution record; a reporting field must not be able
-    to stop the run before the first step.
+    Used to compare two data paths that must produce the same packed step. Shapes and dtypes are folded in, so a
+    tensor that is numerically equal but laid out differently still shows up as a different digest.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+
+    def feed(value):
+        if isinstance(value, dict):
+            for key in sorted(value):
+                digest.update(str(key).encode())
+                feed(value[key])
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                feed(item)
+        elif torch.is_tensor(value):
+            tensor = value.detach().to("cpu").contiguous()
+            digest.update(f"{tuple(tensor.shape)}|{tensor.dtype}|".encode())
+            # `.numpy()` refuses bf16 (the targets are bf16), so widen first: bf16 -> float64 is exact and the
+            # digest therefore still distinguishes any two tensors that differ in a single mantissa bit.
+            digest.update(tensor.to(torch.float64).numpy().tobytes())
+        else:
+            digest.update(repr(value).encode())
+
+    feed(payload)
+    return digest.hexdigest()[:16]
+
+
+def resolve_version(distribution: str) -> str:
+    """Installed version of a distribution, or ``"absent"`` when it is not installed.
+
+    Manifests record the resolved environment, and a package that is absent is itself a fact worth recording:
+    on these Ascend nodes torchvision is present but a mismatched build imports without registering its
+    operators, so the version alone does not prove the augmentation works -- that is what the run's
+    augmentation mode records.
     """
     try:
-        return version(name)
+        return version(distribution)
     except PackageNotFoundError:
+        return "absent"
+    except Exception as exc:
+        # "not installed" and "installed but its metadata is unreadable" are different facts in a manifest.
+        return f"error: {type(exc).__name__}: {exc}"
+
+
+def step_mfu(
+    step_ms: Optional[float],
+    flops: Optional[float],
+    world_size: int,
+    peak_tflops_per_npu: float = ASCEND_910B2_CUBE_PEAK_TFLOPS,
+) -> Optional[float]:
+    """MFU for a stage, or ``None`` when that stage did not run this step."""
+    if step_ms is None or step_ms <= 0 or not flops:
         return None
+    return compute_mfu(step_ms, flops, world_size, peak_tflops_per_npu)
 
 
 def parse_args(argv=None):
@@ -297,6 +350,19 @@ def parse_args(argv=None):
         "--hsdp-shard-size", type=int, help="Logical ZeRO shard group size; node locality depends on rank placement."
     )
     parser.add_argument("--zero-stage", type=int, choices=(0, 1, 2), default=2)
+    parser.add_argument(
+        "--zero-bucket-size-m",
+        type=int,
+        default=12,
+        help="Gradient reduce bucket in millions of elements; larger buckets mean fewer cross-node sync points.",
+    )
+    parser.add_argument(
+        "--overlap-allgather",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Launch ZeRO's parameter all-gather asynchronously and wait at first use, so it overlaps the next "
+        "step's data/VAE work instead of blocking the end of the optimizer step.",
+    )
     parser.add_argument("--max-iter", type=int, default=10000, help="Optimizer steps, cycling the loader as needed.")
     parser.add_argument(
         "--save-every", type=int, default=1000, help="Model export interval; exports are not training resume state."
@@ -326,8 +392,40 @@ def parse_args(argv=None):
     parser.add_argument("--wandb-mode", choices=("offline", "online", "disabled"), default="offline")
     parser.add_argument("--wandb-run-name")
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--worker-threads",
+        type=int,
+        default=0,
+        help="Intra-op threads per DataLoader worker. PyTorch forces workers to one thread, so OMP_NUM_THREADS "
+        "does not reach them; this restores parallelism for the CPU augmentation inside each worker. 0 keeps 1.",
+    )
     parser.add_argument("--mp-context", default="spawn")
     parser.add_argument("--max-episodes", type=int)
+    parser.add_argument(
+        "--latent-cache",
+        type=Path,
+        help="Directory written by precompute_latents.py. When set, samples carry a cached latent and the VAE is "
+        "not built; this is the offline path, and it is single-use per augmentation draw.",
+    )
+    parser.add_argument(
+        "--action-cache",
+        type=Path,
+        help="Directory written by scripts/build_action_cache.py. Replaces the per-file parquet read with a "
+        "memmapped float32 slice, removing the cold-read stall when the sampler crosses a data-file boundary.",
+    )
+    parser.add_argument(
+        "--vae-content-pad",
+        type=int,
+        help="Encode only content_w + pad columns instead of the full canvas, dropping the padded region whose "
+        "latent is cropped away. None keeps the recipe canvas. Gate it with scripts/bench_vae_canvas.py first.",
+    )
+    parser.add_argument(
+        "--video-uint8",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Keep each sample uint8 from the dataset to the NPU: the canvas pad and x/127.5-1 run on the device "
+        "(same pixels and affine as the host path, 4x less H2D).",
+    )
     parser.add_argument(
         "--keep-ranges",
         type=Path,
@@ -340,6 +438,14 @@ def parse_args(argv=None):
         help="Train the success root only; the reference recipe's factory default. Use --no-success-only for both roots.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--image-augmentation",
+        choices=("torchvision", "none"),
+        default="torchvision",
+        help="torchvision is the recipe's crop/resize/color-jitter; none skips it. Needs a torchvision built "
+        "against this torch/torch_npu build (verified with 0.28.0+cpu on the 910B2 nodes, where it costs no "
+        "measurable step time at 4 workers).",
+    )
     parser.add_argument(
         "--attn-backend", "--backend", dest="attn_backend", choices=("auto", "npu", "cuda", "naive"), default="auto"
     )
@@ -385,6 +491,14 @@ def parse_args(argv=None):
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Hash complete CP packs, sample identities and boundaries before forward.",
+    )
+    parser.add_argument(
+        "--pack-hash",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Print a digest of the packed step (input_ids, position_ids, targets) at step 1 on rank 0. Used to "
+        "prove two data paths produce the same step; a loss comparison cannot separate that from batch or noise "
+        "differences.",
     )
     parser.add_argument("--optimizer", choices=("hybrid-adam", "adamw"), default="hybrid-adam")
     parser.add_argument("--adamw-mode", choices=("auto", "plain", "foreach", "fused"), default="auto")
@@ -433,6 +547,7 @@ def parse_args(argv=None):
         "save_every",
         "log_every",
         "metrics_every",
+        "zero_bucket_size_m",
     ):
         if getattr(args, name) < 1:
             parser.error(f"--{name.replace('_', '-')} must be positive")
@@ -676,6 +791,8 @@ def main():
         hsdp_shard_size=args.hsdp_shard_size,
         cast_inputs=args.cast_inputs,
         cast_buffers=args.cast_buffers,
+        zero_bucket_size_in_m=args.zero_bucket_size_m,
+        overlap_allgather=args.overlap_allgather,
     )
     unique_dp = dist.get_world_size(plugin.dp_group)
     dp_rank = dist.get_rank(plugin.dp_group)
@@ -691,16 +808,25 @@ def main():
         chunk_length=args.chunk_length,
         fps=args.fps,
         resolution=args.resolution,
-        augment=True,
+        # A cached latent freezes whatever augmentation produced it, so the online transforms must be off on this
+        # path; the cache itself already carries the augmented pixels.
+        augment=args.image_augmentation == "torchvision" and args.latent_cache is None,
         max_episodes=args.max_episodes,
         keep_ranges=args.keep_ranges,
         success_only=args.success_only,
+        action_cache=args.action_cache,
+        video_content_pad=args.vae_content_pad,
+        video_uint8=args.video_uint8,
     )
     # Which reader ran, and which cosmos_framework the copy resolved to, are read from the run rather than
     # inferred from the flag: on a host that also has the framework installed the installed one wins, and a
     # run that quietly used the other copy would be comparing something else.
     coord.print_on_master(f"[data] {len(dataset)} window(s) from reader {args.dataset!r}")
     coord.print_on_master(f"[data] pipeline from {report_pipeline_source()}")
+    if args.latent_cache is not None:
+        from examples.worldmodel.cosmos3.latent_cache import LatentCacheDataset
+
+        dataset = LatentCacheDataset(dataset, args.latent_cache)
     # Both strategies use shared memory for tensor storage. file_system only changes how handles are named;
     # it does not increase /dev/shm capacity. Size workers/batches and container shared memory accordingly.
     torch.multiprocessing.set_sharing_strategy(os.environ.get("COSMOS3_SHM_STRATEGY", "file_system"))
@@ -711,6 +837,7 @@ def main():
         drop_last=True,
         collate_fn=collate,
         num_workers=args.num_workers,
+        worker_threads=args.worker_threads,
         seed=args.seed + dp_rank,
         distributed_sampler_cls=partial(torch.utils.data.DistributedSampler, drop_last=True),
         multiprocessing_context=args.mp_context if args.num_workers else None,
@@ -722,6 +849,9 @@ def main():
         )
     model = build_model(args.checkpoint, args.reinit_action_head, args.action_head_from)
     model_config = model.config
+    # Derive the FLOPs scale from the checkpoint geometry once; the record then carries the number every
+    # consumer can read instead of each consumer guessing a per-sample constant.
+    flops_model = Cosmos3FlopsModel.from_config(model_config)
     if args.activation_checkpointing == "full":
         model.enable_gradient_checkpointing()
     optimizer = build_optimizer(model, args.optimizer, args.adamw_mode, accelerator.name)
@@ -735,7 +865,10 @@ def main():
         )
     tokenizer = build_tokenizer(args.checkpoint) if cp_leader else None
     vae = None
-    if cp_leader:
+    # With a latent cache the VAE has nothing to do: its only job in the step was the encode, and that already
+    # happened when the cache was written. Skipping the build also keeps the peak-memory number honest, since the
+    # ~0.5 GiB of VAE weights would otherwise sit on the card during a run that never calls it.
+    if cp_leader and args.latent_cache is None:
         aot_dir = (args.compile_vae_aot_dir or args.out / "aot_vae") if args.vae_compile == "aot" else None
         vae = build_vae(
             args.checkpoint,
@@ -778,11 +911,12 @@ def main():
         {
             "args": vars(args),
             "world_size": coord.world_size,
+            "flops_model": flops_model.as_dict(),
             "env": {
                 "torch": torch.__version__,
                 "device": accelerator.name,
                 **{
-                    name: package_version(name)
+                    name: resolve_version(name)
                     for name in ("diffusers", "transformers", "torchvision", "av", "numpy", "pillow")
                 },
             },
@@ -875,6 +1009,7 @@ def main():
                             generator=noise,
                             stopwatch=watch,
                             vae_encode_batch=args.vae_encode_batch,
+                            latents=batch.get("latent"),
                         )
                         inputs["_sample_ids"] = batch["sample_id"]
                         meta = policy.packed_meta
@@ -887,6 +1022,15 @@ def main():
                                 tokens=inputs["input_ids"], positions=inputs["position_ids"], payload=(inputs, targets)
                             )
                     inputs.pop("_sample_ids")
+                    if args.pack_hash and step_index == 0 and coord.rank == 0:
+                        # Deterministic fingerprint of the packed step, for comparing two data paths that are
+                        # supposed to produce the same inputs (online encode vs a pre-extracted latent cache).
+                        # A loss comparison cannot settle that: the batch composition and the noise draw can
+                        # differ between runs for reasons that have nothing to do with the latents.
+                        print(
+                            f"[pack-hash] inputs {_tensor_digest(inputs)} targets {_tensor_digest(targets)}",
+                            flush=True,
+                        )
                 with watch.section("forward"):
                     out = model(**inputs)
                     raw_loss, components = compute_loss(out, targets, return_components=True)
@@ -918,6 +1062,41 @@ def main():
                 step_ms = (time.perf_counter() - window_start) * 1e3
                 timings = watch.read_ms()
                 get_grad_norm = getattr(optimizer, "get_grad_norm", None)
+                vae_ms = timings.get("vae")
+                selective_stats = (
+                    get_cosmos3_selective_checkpoint_stats(target)
+                    if args.activation_checkpointing == "selective"
+                    else None
+                )
+                step_flops = cosmos3_step_flops(
+                    flops_model,
+                    samples=window.samples,
+                    ar_tokens=window.ar_tokens,
+                    dm_tokens=window.dm_tokens,
+                    checkpointing=args.activation_checkpointing,
+                    include_vae=vae_ms is not None,
+                    selective_stats=selective_stats,
+                )
+                peak_tflops = ASCEND_910B2_CUBE_PEAK_TFLOPS
+                flops_fields = {
+                    "flops": step_flops["flops"],
+                    "flops_forward": step_flops["flops_forward"],
+                    "flops_backward": step_flops["flops_backward"],
+                    "flops_vae": step_flops["flops_vae"],
+                    "recompute_fraction": step_flops["recompute_fraction"],
+                    "checkpointing_mode": args.activation_checkpointing,
+                    "peak_tflops_per_npu": peak_tflops,
+                    "tflops": (step_flops["flops"] / (step_ms / 1e3) / 1e12) if step_ms > 0 else None,
+                    "mfu": step_mfu(step_ms, step_flops["flops"], coord.world_size, peak_tflops),
+                    "mfu_forward": step_mfu(
+                        timings.get("forward"), step_flops["flops_forward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_backward": step_mfu(
+                        timings.get("backward"), step_flops["flops_backward"], coord.world_size, peak_tflops
+                    ),
+                    "mfu_vae": step_mfu(vae_ms, step_flops["flops_vae"], coord.world_size, peak_tflops),
+                    "vae_ms": vae_ms,
+                }
                 metrics.step(
                     step,
                     data={
@@ -937,6 +1116,7 @@ def main():
                         "forward_ms": timings.get("forward"),
                         "backward_ms": timings.get("backward"),
                         "optim_ms": timings.get("optim"),
+                        **flops_fields,
                     },
                     optim={
                         "grad_norm": get_grad_norm() if get_grad_norm else None,
@@ -965,7 +1145,17 @@ def main():
             }
         )
     if os.environ.get("COSMOS3_REPORT_PEAK_HBM"):
-        print(f"[mem rank {coord.rank}] peak allocated {device_memory_gib().get('peak_gib', 0.0):.2f} GiB", flush=True)
+        # Report every counter, not just the allocator's: `peak allocated` alone under-reads the card by the
+        # reserved-but-idle blocks and by the device runtime's context, which is how a run can look comfortable and
+        # then OOM. `device_used_gib` is the figure npu-smi shows.
+        memory = device_memory_gib()
+        print(
+            f"[mem rank {coord.rank}] peak allocated {memory.get('peak_gib', 0.0):.2f} GiB"
+            f" | peak reserved {memory.get('peak_reserved_gib', 0.0):.2f} GiB"
+            f" | device used {memory.get('device_used_gib', 0.0):.2f} GiB"
+            f" / {memory.get('device_total_gib', 0.0):.2f} GiB",
+            flush=True,
+        )
     coord.print_on_master("done")
 
 

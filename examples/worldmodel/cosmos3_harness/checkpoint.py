@@ -8,6 +8,7 @@ import os
 import random
 import uuid
 from pathlib import Path
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
@@ -37,6 +38,34 @@ def _accelerator():
     return get_accelerator()
 
 
+#: The rank RNG file is a closed schema: the reader rejects fields it does not know so a resume can never
+#: silently restore only part of a writer's state.  Both the writer and the validator use these names; adding a
+#: field means adding it here (and to ``_build_rng``), which also makes the next writer's file readable.
+RNG_REQUIRED_FIELDS = ("torch", "python", "numpy", "accelerator")
+RNG_OPTIONAL_FIELDS = ("device",)
+
+
+def _rng_fields(accelerator_name: str) -> Tuple[str, ...]:
+    fields = RNG_REQUIRED_FIELDS
+    if accelerator_name != "cpu":
+        fields = fields + RNG_OPTIONAL_FIELDS
+    return fields
+
+
+def _build_rng(accelerator) -> Dict[str, object]:
+    values = {
+        "torch": torch.get_rng_state(),
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "accelerator": accelerator.name,
+    }
+    if "device" in _rng_fields(accelerator.name):
+        values["device"] = accelerator.get_rng_state_all()
+    # Indexing by the schema makes a newly declared field without a value fail here, at save time, instead of
+    # producing a file the reader will reject on the next resume.
+    return {name: values[name] for name in _rng_fields(accelerator.name)}
+
+
 def save_checkpoint(directory, model, optimizer, state, *, booster=None):
     """All ranks participate; only rank zero publishes a complete generation.
 
@@ -54,14 +83,7 @@ def save_checkpoint(directory, model, optimizer, state, *, booster=None):
     booster.save_model(model, str(staging / "model"), shard=True, use_safetensors=True)
     booster.save_optimizer(optimizer, str(staging / "optimizer"), shard=True)
     accelerator = _accelerator()
-    rng = {
-        "torch": torch.get_rng_state(),
-        "python": random.getstate(),
-        "numpy": np.random.get_state(),
-        "accelerator": accelerator.name,
-    }
-    if accelerator.name != "cpu":
-        rng["device"] = accelerator.get_rng_state_all()
+    rng = _build_rng(accelerator)
     torch.save(rng, staging / f"rng-{rank:05d}.pt")
     if rank == 0:
         torch.save({**state, "world_size": world, "format_version": 1}, staging / "training_state.pt")
@@ -86,9 +108,15 @@ def save_checkpoint(directory, model, optimizer, state, *, booster=None):
 
 def _validate_rng(rng, source):
     """Check saved CPU streams using isolated generators, without changing global RNG."""
-    required = {"torch", "python", "numpy", "accelerator"}
+    required = set(RNG_REQUIRED_FIELDS)
     if not isinstance(rng, dict) or not required.issubset(rng):
         raise ValueError(f"{source}: incomplete rank RNG state")
+    allowed = set(_rng_fields(str(rng.get("accelerator") or "")))
+    unexpected = set(rng) - allowed
+    if unexpected:
+        # The file is the complete rank state this format version wrote; an unknown field means the writer and
+        # this reader disagree, and silently ignoring it would resume from a state that is only partly restored.
+        raise ValueError(f"{source}: unexpected RNG fields {sorted(unexpected)}")
     if rng["accelerator"] not in ("cpu", "cuda", "npu"):
         raise ValueError(f"{source}: unsupported RNG accelerator")
     value = rng["torch"]
