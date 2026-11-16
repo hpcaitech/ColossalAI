@@ -21,6 +21,7 @@ import torchvision.transforms.v2 as T
 import torchvision.transforms.v2.functional as F
 
 _COMPILED_HUE = None
+_COMPILE_UNAVAILABLE = False
 
 
 def _rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
@@ -80,14 +81,26 @@ def _compiled_adjust_hue(image: torch.Tensor, hue_factor: float) -> torch.Tensor
     draws a fresh value every call, which turns the compiled function into a recompile per sample (measured 3.7 s
     per call against 1.2 s eager).
     """
-    global _COMPILED_HUE
+    global _COMPILED_HUE, _COMPILE_UNAVAILABLE
+    factor = torch.tensor(hue_factor)
+    if _COMPILE_UNAVAILABLE:
+        return _hue_math(image, factor)
     if _COMPILED_HUE is None:
         # torch.compile's device probe goes through torch_npu, and a DataLoader worker never calls set_device, so
         # each worker ends up holding a context on card 0 (~110 MB; measured 32 contexts = 3.5 GB on rank 0's card).
         # Hiding the devices with ASCEND_RT_VISIBLE_DEVICES="" here does NOT prevent it -- the context is already
         # created by the time this runs. See F21.
         _COMPILED_HUE = torch.compile(_hue_math, dynamic=False)
-    return _COMPILED_HUE(image, torch.tensor(hue_factor))
+    try:
+        return _COMPILED_HUE(image, factor)
+    except Exception as error:
+        # A host without the Ascend triton fork raises here ("module 'triton.language.extra' has no attribute
+        # 'ascend'"), and this runs inside a DataLoader worker: raising takes the whole input pipeline down for
+        # an optimisation that is only meant to save CPU time. The eager path is the same function, so the
+        # values do not change -- only the speed.
+        _COMPILE_UNAVAILABLE = True
+        print(f"[augment] hue compilation unavailable ({type(error).__name__}: {error}); staying eager", flush=True)
+        return _hue_math(image, factor)
 
 
 class FastColorJitter(T.ColorJitter):
