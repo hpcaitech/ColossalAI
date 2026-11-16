@@ -51,8 +51,10 @@ def main(csv_path: str, metrics_path: str) -> None:
     spikes = sorted(deltas, key=lambda item: -item[3])[:5]
     print("[io] top 5 seconds by disk read sectors (whole run)")
     for when, faults, pgin, sectors, avail in spikes:
-        print(f"  t={when:.0f} read {sectors:>9.0f} sectors  major_faults {faults:>7.0f}  pgin {pgin:>9.0f}  "
-              f"MemAvailable {avail / 2**20:.1f} GiB")
+        print(
+            f"  t={when:.0f} read {sectors:>9.0f} sectors  major_faults {faults:>7.0f}  pgin {pgin:>9.0f}  "
+            f"MemAvailable {avail / 2**20:.1f} GiB"
+        )
 
     print("\n[io] per step, the window that ends at the step record (15 s before it)")
     print(f"{'step':>5}{'wait_ms':>10}{'vae_ms':>10}{'major_faults/s':>16}{'read MiB/s':>12}{'MemAvail GiB':>14}")

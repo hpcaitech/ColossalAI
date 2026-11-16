@@ -87,16 +87,19 @@ def main():
             totals[name] = totals.get(name, 0.0) + seconds
         if index == 0:
             print(f"[item] composite {tuple(comp.shape)} -> canvas {th}x{tw}, video {tuple(video.shape)}")
-        print("  window %d: %s  total %.2f s" % (
-            index,
-            "  ".join(f"{name} {seconds * 1e3:.0f}ms" for name, seconds in marks.items()),
-            sum(marks.values()),
-        ), flush=True)
+        print(
+            "  window %d: %s  total %.2f s"
+            % (
+                index,
+                "  ".join(f"{name} {seconds * 1e3:.0f}ms" for name, seconds in marks.items()),
+                sum(marks.values()),
+            ),
+            flush=True,
+        )
 
     print("\n[item] average per sample")
     for name, seconds in sorted(totals.items(), key=lambda kv: -kv[1]):
-        print(f"  {name:<12}{seconds / args.windows * 1e3:8.0f} ms  "
-              f"({100 * seconds / sum(totals.values()):4.1f}%)")
+        print(f"  {name:<12}{seconds / args.windows * 1e3:8.0f} ms  " f"({100 * seconds / sum(totals.values()):4.1f}%)")
 
 
 if __name__ == "__main__":

@@ -54,11 +54,15 @@ def main():
 
     ms_reference = bench(lambda: reference(x))
     ms_fast = bench(lambda: fast(x))
-    print(f"[jitter] {args.threads} threads: ColorJitter {ms_reference:.0f} ms | FastColorJitter "
-          f"{ms_fast:.0f} ms | {100 * (1 - ms_fast / ms_reference):+.0f}%")
-    print("[jitter] per sample saved: "
-          f"{(ms_reference - ms_fast) / 1000:.2f} s; 32 samples/step / 4 workers -> "
-          f"{32 * (ms_reference - ms_fast) / 1000 / 4:.1f} s per worker per step")
+    print(
+        f"[jitter] {args.threads} threads: ColorJitter {ms_reference:.0f} ms | FastColorJitter "
+        f"{ms_fast:.0f} ms | {100 * (1 - ms_fast / ms_reference):+.0f}%"
+    )
+    print(
+        "[jitter] per sample saved: "
+        f"{(ms_reference - ms_fast) / 1000:.2f} s; 32 samples/step / 4 workers -> "
+        f"{32 * (ms_reference - ms_fast) / 1000 / 4:.1f} s per worker per step"
+    )
 
 
 if __name__ == "__main__":

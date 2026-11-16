@@ -27,7 +27,7 @@ def parse_args():
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     from examples.worldmodel.cosmos3.video_pad_norm import (
@@ -53,8 +53,10 @@ def main():
     print(f"[shape] {shape} -> {tuple(actual.shape)} ({actual.dtype})")
     actual_bf16 = actual_cpu.to(torch.bfloat16)
     reference_bf16 = reference.to(torch.bfloat16)
-    print(f"[correct] fp32_max_abs={float(diff.max()):.3e} relL2={rel:.3e} "
-          f"bf16_equal={torch.equal(actual_bf16, reference_bf16)}")
+    print(
+        f"[correct] fp32_max_abs={float(diff.max()):.3e} relL2={rel:.3e} "
+        f"bf16_equal={torch.equal(actual_bf16, reference_bf16)}"
+    )
 
     def timed(fn, iters):
         fn()
@@ -75,17 +77,21 @@ def main():
     # Today's path: per-sample (4-D) host float32 normalise + pad, then H2D of the padded float tensor and a bf16
     # cast on device. The 5-D CPU pad rejects the 4-element padding, which is why the dataset pads per sample.
     host_float = torch.stack(
-        [torch.nn.functional.pad(sample.float() / 127.5 - 1.0, (0, args.pad, 0, args.pad_h), mode="reflect")
-         for sample in host_uint8]
+        [
+            torch.nn.functional.pad(sample.float() / 127.5 - 1.0, (0, args.pad, 0, args.pad_h), mode="reflect")
+            for sample in host_uint8
+        ]
     )
 
     def old_path():
         return host_float.to(args.device, torch.bfloat16)
 
     old = timed(old_path, args.iters)
-    print(f"[time] normalize_only(kernel-or-fallback) {kernel_only * 1e3:.2f} ms | "
-          f"kernel+pad {new_path * 1e3:.2f} ms | torch_device_ops {torch_path * 1e3:.2f} ms | "
-          f"host_float+H2D {old * 1e3:.2f} ms")
+    print(
+        f"[time] normalize_only(kernel-or-fallback) {kernel_only * 1e3:.2f} ms | "
+        f"kernel+pad {new_path * 1e3:.2f} ms | torch_device_ops {torch_path * 1e3:.2f} ms | "
+        f"host_float+H2D {old * 1e3:.2f} ms"
+    )
     print(f"[torch] bf16_equal_vs_host={torch.equal(torch_out, reference)}")
     print(f"[bytes] H2D uint8 {host_uint8.numel() / 2**20:.1f} MiB vs float32 {host_float.numel() * 4 / 2**20:.1f} MiB")
 

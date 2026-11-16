@@ -53,7 +53,7 @@ def main():
         torch.bfloat16,
         0,
         False,
-        True,          # fast encoder, as bench_online_step.sh passes
+        True,  # fast encoder, as bench_online_step.sh passes
         None,
         norm_kernel=True,
     ).to(device)

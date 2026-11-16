@@ -15,19 +15,15 @@ Realistic multi-step end-to-end training, validation, and infrastructure workloa
 Total: 11 tests
 """
 
-import ast
 import json
-import math
-import os
-import sys
-from pathlib import Path
+
 import pytest
 import torch
 import torch.nn as nn
-from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm, WanCausalConv3d
+from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
 
-from tests.e2e.conftest import ClusterGuard, NVMePathChecker, TileLangASTChecker, MockNpuFusedAdamW
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
+from tests.e2e.conftest import MockNpuFusedAdamW
 
 
 class _OptimStub4:
@@ -48,6 +44,7 @@ class _ActionDatasetStub4:
         self.chunk_length = chunk_length
 
     from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset
+
     _action_table = DroidActionPolicyDataset._action_table
     _read_actions = DroidActionPolicyDataset._read_actions
 
@@ -62,9 +59,9 @@ class TestTier4RealWorldScenarios:
 
         Covers F1, F2, F3, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F16, F17, F18, F21.
         """
-        from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch, make_record, JsonlObserver
-        from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
         from examples.worldmodel.cosmos3.droid_dataset import Window
+        from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+        from examples.worldmodel.cosmos3_harness.training_metrics import JsonlObserver, Stopwatch, make_record
 
         # 1. Environment & node isolation check
         assert cluster_env.validate_hostlist("192.168.0.98") is True
@@ -95,7 +92,7 @@ class TestTier4RealWorldScenarios:
             video={},
         )
 
-        initial_param_norm = torch.norm(param).item()
+        torch.norm(param).item()
 
         # 3. Execute 10-step training loop
         for step in range(1, 11):
@@ -110,7 +107,7 @@ class TestTier4RealWorldScenarios:
 
             with sw.section("fwd"):
                 hidden = torch.matmul(latent.flatten(1)[:, :32], param)
-                loss = (hidden ** 2).mean()
+                loss = (hidden**2).mean()
 
             with sw.section("bwd"):
                 grad = torch.randn_like(param)
@@ -175,9 +172,7 @@ class TestTier4RealWorldScenarios:
         # Confirm node6 alone is untouched and safe
         assert cluster_env.validate_hostlist("node6") is True
 
-    def test_scenario_04_offline_precomputation_to_online_training_pipeline(
-        self, tmp_path, mock_parquet_dataset
-    ):
+    def test_scenario_04_offline_precomputation_to_online_training_pipeline(self, tmp_path, mock_parquet_dataset):
         """Scenario 4: Offline Precomputation to Online Training Pipeline exercising F16, F19, F10, F11, F21."""
         ds = _ActionDatasetStub4()
         # Stage 1: Precomputation creates 48-channel latents
@@ -218,7 +213,9 @@ class TestTier4RealWorldScenarios:
         # 3. Precision check vs FP32 reference
         norm_fp32 = WanRMS_norm(3, images=False)
         fp32_baseline = _fused_forward(norm_fp32, norm_fp16.float())
-        rel_diff = torch.mean(torch.abs(fp32_baseline - normed_feat.float())) / (torch.mean(torch.abs(fp32_baseline)) + 1e-6)
+        rel_diff = torch.mean(torch.abs(fp32_baseline - normed_feat.float())) / (
+            torch.mean(torch.abs(fp32_baseline)) + 1e-6
+        )
         bf16_noise = 2 ** (-7)
         assert (rel_diff.item() / bf16_noise) <= 0.64
 
@@ -261,11 +258,15 @@ class TestTier4RealWorldScenarios:
     def test_scenario_07_data_pipeline_saturation_and_zero_starvation_test(self, mock_parquet_dataset):
         """Scenario 7: Data Pipeline Saturation & Zero Starvation Test exercising F2, F16, F17, F18."""
         import torchvision.transforms.v2 as T
+
         from examples.worldmodel.cosmos3.droid_dataset import Window
+
         ds = _ActionDatasetStub4()
-        transform = T.Compose([
-            T.Resize((32, 32), antialias=True),
-        ])
+        transform = T.Compose(
+            [
+                T.Resize((32, 32), antialias=True),
+            ]
+        )
 
         wait_times = []
         for i in range(20):
@@ -283,7 +284,7 @@ class TestTier4RealWorldScenarios:
             )
             acts, st = ds._read_actions(win)
             img = torch.rand(3, 40, 40)
-            aug_img = transform(img)
+            transform(img)
             # Simulated wait time with 4 workers prefetching
             wait_ms = 35.0 + (i % 5) * 2.0
             wait_times.append(wait_ms)
@@ -294,6 +295,7 @@ class TestTier4RealWorldScenarios:
     def test_scenario_08_multi_stream_latency_hiding_and_overlap_verification(self, mock_torch_npu):
         """Scenario 8: Multi-Stream Latency Hiding & Overlap Verification exercising F9, F18, F3."""
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
 
@@ -356,7 +358,7 @@ def ingress_kernel(x: T.handle, y: T.handle):
 
     def test_scenario_11_full_training_metrics_and_mfu_accounting_audit(self, tmp_path):
         """Scenario 11: Full Training Metrics & MFU Accounting Audit exercising F3, F21."""
-        from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch, make_record, JsonlObserver
+        from examples.worldmodel.cosmos3_harness.training_metrics import JsonlObserver, Stopwatch, make_record
 
         log_path = tmp_path / "full_audit_metrics.jsonl"
         observer = JsonlObserver(log_path)
@@ -373,7 +375,7 @@ def ingress_kernel(x: T.handle, y: T.handle):
             with sw.section("optim"):
                 pass
 
-            timings = sw.read_dispatch_ms()
+            sw.read_dispatch_ms()
             record = make_record(
                 step=step,
                 rank=0,

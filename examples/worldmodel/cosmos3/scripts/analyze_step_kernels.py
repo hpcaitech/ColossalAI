@@ -17,14 +17,25 @@ from pathlib import Path
 
 CATEGORIES = (
     ("fused_kernel", re.compile(r"^main_kernel$", re.I)),
-    ("communication", re.compile(r"hcom|hccl|allgather|reducescatter|reduce_scatter|allreduce|all_reduce|alltoall|broadcast|send|recv", re.I)),
+    (
+        "communication",
+        re.compile(
+            r"hcom|hccl|allgather|reducescatter|reduce_scatter|allreduce|all_reduce|alltoall|broadcast|send|recv", re.I
+        ),
+    ),
     ("matmul", re.compile(r"matmul|gemm|batchmatmul|\bmm\b|addmm", re.I)),
     ("conv", re.compile(r"conv", re.I)),
     ("norm", re.compile(r"norm|rsqrt|rstd", re.I)),
     ("activation", re.compile(r"silu|swish|sigmoid|gelu|relu|tanh|exp\b", re.I)),
     ("softmax", re.compile(r"softmax", re.I)),
     ("reduce", re.compile(r"reduce|sum|mean|max\b|min\b", re.I)),
-    ("elementwise", re.compile(r"mul|add|sub|div|pow|clamp|where|abs|sqrt|neg|cast|transdata|transpose|permute|slice|pad|concat|cat\b|copy|memcpy|move|fill|index|gather|scatter|select", re.I)),
+    (
+        "elementwise",
+        re.compile(
+            r"mul|add|sub|div|pow|clamp|where|abs|sqrt|neg|cast|transdata|transpose|permute|slice|pad|concat|cat\b|copy|memcpy|move|fill|index|gather|scatter|select",
+            re.I,
+        ),
+    ),
 )
 
 
@@ -50,8 +61,10 @@ def main():
     args = parser.parse_args()
 
     csv_path = None
-    for candidate in (args.profile_dir / "ASCEND_PROFILER_OUTPUT" / "kernel_details.csv",
-                      *args.profile_dir.glob("*/ASCEND_PROFILER_OUTPUT/kernel_details.csv")):
+    for candidate in (
+        args.profile_dir / "ASCEND_PROFILER_OUTPUT" / "kernel_details.csv",
+        *args.profile_dir.glob("*/ASCEND_PROFILER_OUTPUT/kernel_details.csv"),
+    ):
         if candidate.exists():
             csv_path = candidate
             break
@@ -92,8 +105,10 @@ def main():
             ends.append(start + duration)
 
     wall = (max(ends) - min(starts)) if starts else total_us
-    print(f"[device] {len(rows)} kernels, busy {total_us / 1e6:.2f} s over wall {wall / 1e6:.2f} s "
-          f"({100 * total_us / wall:.1f}% busy, {100 * (1 - total_us / wall):.1f}% idle)")
+    print(
+        f"[device] {len(rows)} kernels, busy {total_us / 1e6:.2f} s over wall {wall / 1e6:.2f} s "
+        f"({100 * total_us / wall:.1f}% busy, {100 * (1 - total_us / wall):.1f}% idle)"
+    )
     print(f"{'category':16s} {'calls':>7s} {'total_s':>9s} {'pct':>7s}")
     for label, value in sorted(per_category.items(), key=lambda kv: -kv[1]):
         print(f"{label:16s} {per_category_calls[label]:7d} {value / 1e6:9.3f} {100 * value / total_us:7.1f}")

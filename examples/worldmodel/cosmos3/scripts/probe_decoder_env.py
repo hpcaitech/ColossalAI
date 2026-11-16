@@ -26,7 +26,7 @@ if status("lerobot") == "present":
 
     print("\ndecode_video_frames source file:", video_utils.__file__)
     try:
-        import torchcodec.decoders  # noqa: F401
+        import torchcodec.decoders
 
         print("lerobot would decode through torchcodec")
     except Exception as error:  # noqa: BLE001

@@ -88,12 +88,8 @@ def main():
         step_ms = max(number(record, "perf", "step_ms") for record in records)
         samples = int(sum(number(record, "data", "samples") for record in records))
         vae_ms = max(number(record, "data", "vae_ms") for record in records)
-        fwd_ms = max(
-            number(record, "perf", "forward_ms") or number(record, "perf", "fwd_ms") for record in records
-        )
-        bwd_ms = max(
-            number(record, "perf", "backward_ms") or number(record, "perf", "bwd_ms") for record in records
-        )
+        fwd_ms = max(number(record, "perf", "forward_ms") or number(record, "perf", "fwd_ms") for record in records)
+        bwd_ms = max(number(record, "perf", "backward_ms") or number(record, "perf", "bwd_ms") for record in records)
         optim_ms = max(number(record, "perf", "optim_ms") for record in records)
         wait_ms = max(number(record, "data", "wait_ms") for record in records)
         peak_gib = max(number(record, "mem", "peak_gib") for record in records)
@@ -149,14 +145,19 @@ def main():
         return
     print(f"steps {summary['steps']} (steady {summary['steady_steps']})")
     print(f"step       {summary['step_s_median']:.2f} s median ({summary['step_s_min']:.2f} min)")
-    print(f"throughput {summary['samples_per_s']:.2f} samples/s | "
-          f"{summary['samples_per_step']:.0f} samples/step")
-    print(f"phases     vae {summary['vae_s_median']:.2f} s ({100 * summary['vae_share']:.1f}%) | "
-          f"fwd {summary['fwd_s_median']:.2f} | bwd {summary['bwd_s_median']:.2f} | "
-          f"optim {summary['optim_s_median']:.2f} | wait {summary['wait_s_median']:.2f}")
-    print(f"memory     peak allocated {summary['peak_gib_max']:.2f} GiB | device used {summary['device_gib_max']:.2f} GiB")
-    print(f"MFU        {100 * summary['mfu_median']:.1f}%"
-          + (" (includes VAE FLOPs)" if args.include_vae_flops else " (transformer only)"))
+    print(f"throughput {summary['samples_per_s']:.2f} samples/s | " f"{summary['samples_per_step']:.0f} samples/step")
+    print(
+        f"phases     vae {summary['vae_s_median']:.2f} s ({100 * summary['vae_share']:.1f}%) | "
+        f"fwd {summary['fwd_s_median']:.2f} | bwd {summary['bwd_s_median']:.2f} | "
+        f"optim {summary['optim_s_median']:.2f} | wait {summary['wait_s_median']:.2f}"
+    )
+    print(
+        f"memory     peak allocated {summary['peak_gib_max']:.2f} GiB | device used {summary['device_gib_max']:.2f} GiB"
+    )
+    print(
+        f"MFU        {100 * summary['mfu_median']:.1f}%"
+        + (" (includes VAE FLOPs)" if args.include_vae_flops else " (transformer only)")
+    )
     steady_steps = [row["step"] for row in steady]
     print("per-rank steady state:")
     for path, rank_records in zip(files, ranks):
@@ -167,8 +168,10 @@ def main():
         rank_peak = max(number(row, "mem", "peak_gib") for row in rank_rows)
         rank_device = max(number(row, "mem", "device_used_gib") for row in rank_rows)
         rank_vae = statistics.median(number(row, "data", "vae_ms") for row in rank_rows) / 1e3
-        print(f"  {path.stem}: step {rank_step:6.2f} s | vae {rank_vae:6.2f} s | "
-              f"peak {rank_peak:6.2f} GiB | device {rank_device:6.2f} GiB")
+        print(
+            f"  {path.stem}: step {rank_step:6.2f} s | vae {rank_vae:6.2f} s | "
+            f"peak {rank_peak:6.2f} GiB | device {rank_device:6.2f} GiB"
+        )
 
 
 if __name__ == "__main__":

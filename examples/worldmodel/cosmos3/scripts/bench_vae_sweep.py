@@ -34,7 +34,9 @@ def parse_args():
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--batch", type=int, default=8, help="Samples per timed encode unit.")
     parser.add_argument("--encode-batches", default="4,8", help="Comma-separated micro-batch sizes.")
-    parser.add_argument("--chunks", default="0,4,8,12", help="Comma-separated pixel frames per encoder call; 0 = native.")
+    parser.add_argument(
+        "--chunks", default="0,4,8,12", help="Comma-separated pixel frames per encoder call; 0 = native."
+    )
     parser.add_argument("--dtypes", default="bfloat16", help="Comma-separated torch dtypes.")
     parser.add_argument("--iters", type=int, default=5)
     parser.add_argument("--warmup", type=int, default=1)
@@ -82,7 +84,7 @@ def peak_gib():
 
 
 def main():
-    import torch_npu  # noqa: F401  registers torch.npu
+    import torch_npu
 
     args = parse_args()
     torch.npu.set_device(0)
@@ -94,8 +96,10 @@ def main():
     encode_batches = [int(value) for value in args.encode_batches.split(",")]
     chunks = [int(value) for value in args.chunks.split(",")]
 
-    print(f"{'dtype':>9} {'chunk':>5} {'eb':>3} {'wall s':>8} {'s/sample':>9} {'samples/s':>10} "
-          f"{'peak GiB':>9}", flush=True)
+    print(
+        f"{'dtype':>9} {'chunk':>5} {'eb':>3} {'wall s':>8} {'s/sample':>9} {'samples/s':>10} " f"{'peak GiB':>9}",
+        flush=True,
+    )
     records = []
     for dtype in dtypes:
         vae = build_vae(args.checkpoint, dtype)
@@ -143,9 +147,12 @@ def main():
                     "peak_gib": peak_gib(),
                 }
                 records.append(record)
-                print(f"{record['dtype']:>9} {chunk:>5} {encode_batch:>3} {wall:8.3f} "
-                      f"{record['s_per_sample']:9.3f} {record['samples_per_s']:10.2f} "
-                      f"{record['peak_gib']:9.2f}", flush=True)
+                print(
+                    f"{record['dtype']:>9} {chunk:>5} {encode_batch:>3} {wall:8.3f} "
+                    f"{record['s_per_sample']:9.3f} {record['samples_per_s']:10.2f} "
+                    f"{record['peak_gib']:9.2f}",
+                    flush=True,
+                )
 
         del vae, video_d
         torch.npu.empty_cache()

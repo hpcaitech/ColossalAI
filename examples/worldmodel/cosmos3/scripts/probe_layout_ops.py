@@ -56,9 +56,11 @@ def main():
     avgdowns = [m for m in vae.modules() if isinstance(m, AvgDown3D)]
     print("[avgdown] modules")
     for module in avgdowns:
-        print(f"  factor_t={module.factor_t} factor_s={module.factor_s} group_size={module.group_size} "
-              f"in={module.in_channels} out={module.out_channels}")
-    deep = max(avgdowns, key=lambda m: m.in_channels * m.factor_s ** 2)
+        print(
+            f"  factor_t={module.factor_t} factor_s={module.factor_s} group_size={module.group_size} "
+            f"in={module.in_channels} out={module.out_channels}"
+        )
+    deep = max(avgdowns, key=lambda m: m.in_channels * m.factor_s**2)
 
     # --- cat -----------------------------------------------------------------------------------------------
     # Widest cache concat in the encoder: 512 channels, two cached frames + four new ones.
@@ -70,28 +72,41 @@ def main():
     ms_cat = bench(lambda: torch.cat([cache, fresh], dim=2), args.iters)
     ms_into = bench(lambda: buffer[:, :, 2:].copy_(fresh), args.iters)
     ms_copy = bench(lambda: buffer.copy_(buffer), args.iters)
-    print(f"\n[cat]    cat(cache,fresh) {ms_cat:7.3f} ms  {gbps(ms_cat, cache, fresh, factor=2):6.0f} GB/s"
-          f"   copy_into_slice {ms_into:7.3f} ms  {gbps(ms_into, fresh, factor=2):6.0f} GB/s"
-          f"   full clone {ms_copy:7.3f} ms  {gbps(ms_copy, buffer, factor=2):6.0f} GB/s")
+    print(
+        f"\n[cat]    cat(cache,fresh) {ms_cat:7.3f} ms  {gbps(ms_cat, cache, fresh, factor=2):6.0f} GB/s"
+        f"   copy_into_slice {ms_into:7.3f} ms  {gbps(ms_into, fresh, factor=2):6.0f} GB/s"
+        f"   full clone {ms_copy:7.3f} ms  {gbps(ms_copy, buffer, factor=2):6.0f} GB/s"
+    )
 
     # --- pad -----------------------------------------------------------------------------------------------
     small = torch.randn(args.batch, 512, 4, 68, 82, device=device, dtype=torch.bfloat16)
     ms_pad = bench(lambda: F.pad(small, (0, 0, 0, 0, 2, 0)), args.iters)
     ms_pad0 = bench(lambda: F.pad(small, (0, 0, 0, 0, 0, 0)), args.iters)
     ms_pad_into = bench(lambda: buffer[:, :, 2:].copy_(small), args.iters)
-    print(f"[pad]    F.pad t+2 {ms_pad:7.3f} ms  {gbps(ms_pad, small):6.0f} GB/s"
-          f"   F.pad zero-pad {ms_pad0:7.3f} ms   zeros+copy {ms_pad_into:7.3f} ms")
+    print(
+        f"[pad]    F.pad t+2 {ms_pad:7.3f} ms  {gbps(ms_pad, small):6.0f} GB/s"
+        f"   F.pad zero-pad {ms_pad0:7.3f} ms   zeros+copy {ms_pad_into:7.3f} ms"
+    )
 
     # --- avgdown transpose + mean --------------------------------------------------------------------------
     x = torch.randn(args.batch, deep.in_channels, 4, 136, 164, device=device, dtype=torch.bfloat16)
     ft, fs = deep.factor_t, deep.factor_s
-    ms_perm = bench(lambda: x.view(args.batch, deep.in_channels, 4 // ft, ft, 136 // fs, fs, 164 // fs, fs)
-                    .permute(0, 1, 3, 5, 7, 2, 4, 6).contiguous(), args.iters)
+    ms_perm = bench(
+        lambda: x.view(args.batch, deep.in_channels, 4 // ft, ft, 136 // fs, fs, 164 // fs, fs)
+        .permute(0, 1, 3, 5, 7, 2, 4, 6)
+        .contiguous(),
+        args.iters,
+    )
     ms_ref = bench(lambda: deep(x), args.iters)
-    view = x.view(args.batch, deep.in_channels, 4 // ft, ft, 136 // fs, fs, 164 // fs, fs) \
-        .permute(0, 1, 3, 5, 7, 2, 4, 6).contiguous()
-    ms_mean = bench(lambda: view.view(args.batch, deep.out_channels, deep.group_size,
-                                      4 // ft, 136 // fs, 164 // fs).mean(dim=2), args.iters)
+    view = (
+        x.view(args.batch, deep.in_channels, 4 // ft, ft, 136 // fs, fs, 164 // fs, fs)
+        .permute(0, 1, 3, 5, 7, 2, 4, 6)
+        .contiguous()
+    )
+    ms_mean = bench(
+        lambda: view.view(args.batch, deep.out_channels, deep.group_size, 4 // ft, 136 // fs, 164 // fs).mean(dim=2),
+        args.iters,
+    )
 
     # Direct formula, no materialised permutation: group the channel dim into (out, group) and take the group
     # mean, with each group member read at its own spatial phase.

@@ -35,8 +35,10 @@ def relative_l2(left: torch.Tensor, right: torch.Tensor) -> float:
 def main():
     count = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     max_episodes = int(sys.argv[2]) if len(sys.argv) > 2 else 1
-    print(f"torch {torch.__version__}  torchvision {droid_dataset.T.__name__ if droid_dataset.T else 'MISSING'}"
-          f"  import error: {droid_dataset.TORCHVISION_IMPORT_ERROR}")
+    print(
+        f"torch {torch.__version__}  torchvision {droid_dataset.T.__name__ if droid_dataset.T else 'MISSING'}"
+        f"  import error: {droid_dataset.TORCHVISION_IMPORT_ERROR}"
+    )
     print(f"threads {torch.get_num_threads()}")
 
     common = dict(chunk_length=32, fps=15.0, resolution="480", max_episodes=max_episodes)

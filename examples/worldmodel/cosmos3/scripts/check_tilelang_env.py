@@ -18,6 +18,7 @@ import os
 import sys
 import time
 from pathlib import Path
+
 import torch
 
 FORBIDDEN_NFS_PATTERNS = ["/home/", "/nfs/", "/mnt/nfs/", "nfs://", "/shared/"]
@@ -36,7 +37,10 @@ def check_cache_env() -> bool:
         print("[ERROR] TILELANG_CACHE_DIR environment variable is not set.", file=sys.stderr)
         return False
     if is_nfs_path(cache_dir):
-        print(f"[ERROR] TILELANG_CACHE_DIR '{cache_dir}' is located on NFS! Must be on local NVMe ({NVME_PREFIX}).", file=sys.stderr)
+        print(
+            f"[ERROR] TILELANG_CACHE_DIR '{cache_dir}' is located on NFS! Must be on local NVMe ({NVME_PREFIX}).",
+            file=sys.stderr,
+        )
         return False
     print(f"[OK] TILELANG_CACHE_DIR='{cache_dir}' resides on local NVMe storage.")
     return True
@@ -73,7 +77,9 @@ def run_vec_add_real(tilelang, device: str = "npu"):
 
     ref = a + b
     torch.testing.assert_close(c, ref, atol=1e-4, rtol=1e-4)
-    print(f"[OK] vec_add verified: compile={compile_time:.2f}s, run={run_time_ms:.2f}ms, numerical_diff=0 (assert_close OK)")
+    print(
+        f"[OK] vec_add verified: compile={compile_time:.2f}s, run={run_time_ms:.2f}ms, numerical_diff=0 (assert_close OK)"
+    )
     return compile_time, run_time_ms
 
 
@@ -107,7 +113,9 @@ def run_gemm_1024_real(tilelang, device: str = "npu"):
 
     ref = torch.matmul(a, b)
     torch.testing.assert_close(c, ref, atol=1e-2, rtol=1e-2)
-    print(f"[OK] gemm_1024 verified: compile={compile_time:.2f}s, run={run_time_ms:.2f}ms, numerical_diff=0 (assert_close OK)")
+    print(
+        f"[OK] gemm_1024 verified: compile={compile_time:.2f}s, run={run_time_ms:.2f}ms, numerical_diff=0 (assert_close OK)"
+    )
     return compile_time, run_time_ms
 
 
@@ -132,6 +140,7 @@ def run_emulated_checks():
 
     # 3. AST guard validation
     import ast
+
     self_path = Path(__file__).resolve()
     tree = ast.parse(self_path.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
@@ -158,6 +167,7 @@ def main():
     has_tilelang = False
     try:
         import tilelang
+
         has_tilelang = True
         version = getattr(tilelang, "__version__", "unknown")
         print(f"[OK] TileLang installed: version={version}")

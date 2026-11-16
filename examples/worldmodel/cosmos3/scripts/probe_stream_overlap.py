@@ -84,13 +84,19 @@ def main():
 
     ms_concurrent = bench(concurrent, args.iters)
 
-    print(f"[overlap] encode {ms_encode:.2f} ms | matmul({n})x{reps} {ms_matmul:.2f} ms | sequential {ms_sequential:.2f} ms")
-    print(f"[overlap] two streams {ms_concurrent:.2f} ms  "
-          f"(sum would be {ms_encode + ms_matmul:.2f}, max would be {max(ms_encode, ms_matmul):.2f})")
+    print(
+        f"[overlap] encode {ms_encode:.2f} ms | matmul({n})x{reps} {ms_matmul:.2f} ms | sequential {ms_sequential:.2f} ms"
+    )
+    print(
+        f"[overlap] two streams {ms_concurrent:.2f} ms  "
+        f"(sum would be {ms_encode + ms_matmul:.2f}, max would be {max(ms_encode, ms_matmul):.2f})"
+    )
     saved = ms_sequential - ms_concurrent
-    print(f"[overlap] {'OVERLAPS' if ms_concurrent < 0.9 * ms_sequential else 'SERIALISES'}: "
-          f"{saved:.2f} ms saved of {min(ms_encode, ms_matmul):.2f} ms of hideable work "
-          f"({100 * saved / min(ms_encode, ms_matmul):.0f}% of the smaller side)")
+    print(
+        f"[overlap] {'OVERLAPS' if ms_concurrent < 0.9 * ms_sequential else 'SERIALISES'}: "
+        f"{saved:.2f} ms saved of {min(ms_encode, ms_matmul):.2f} ms of hideable work "
+        f"({100 * saved / min(ms_encode, ms_matmul):.0f}% of the smaller side)"
+    )
 
 
 if __name__ == "__main__":

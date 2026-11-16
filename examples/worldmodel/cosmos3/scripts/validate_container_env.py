@@ -15,7 +15,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 FORBIDDEN_NFS_PATTERNS = ["/home/", "/nfs/", "/mnt/nfs/", "nfs://", "/shared/"]
 NVME_PREFIX = "/mnt/disk0"

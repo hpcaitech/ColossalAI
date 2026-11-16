@@ -9,9 +9,9 @@ threads per block, against ``torch.copy_`` and ``torch.mul`` as the aclnn refere
     python scripts/bench_tl_copy.py
 """
 
-import torch
 import tilelang
 import tilelang.language as T
+import torch
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -30,8 +30,8 @@ def copy_grid(N: int, block: int, threads: int):
     def main(src: T.Tensor((N,), "bfloat16"), dst: T.Tensor((N,), "bfloat16")):
         with T.Kernel(total, threads=threads, is_npu=True) as cid:
             s = T.alloc_shared((block,), "bfloat16")
-            T.copy(src[cid * block:(cid + 1) * block], s)
-            T.copy(s, dst[cid * block:(cid + 1) * block])
+            T.copy(src[cid * block : (cid + 1) * block], s)
+            T.copy(s, dst[cid * block : (cid + 1) * block])
 
     return main
 
@@ -46,8 +46,8 @@ def copy_persist(N: int, block: int, cores: int, threads: int):
             s = T.alloc_shared((block,), "bfloat16")
             for it in T.serial(iters):
                 off = (it * cores + cid) * block
-                T.copy(src[off:off + block], s)
-                T.copy(s, dst[off:off + block])
+                T.copy(src[off : off + block], s)
+                T.copy(s, dst[off : off + block])
 
     return main
 
@@ -89,7 +89,10 @@ def main():
                 torch.npu.synchronize()
                 report(f"tl grid block={block} threads={threads}", bench(lambda: k(src)))
             except Exception as exc:  # noqa: BLE001 - a failing variant is data, not an error
-                print(f"tl grid block={block} threads={threads}: FAILED {type(exc).__name__}: {str(exc)[:120]}", flush=True)
+                print(
+                    f"tl grid block={block} threads={threads}: FAILED {type(exc).__name__}: {str(exc)[:120]}",
+                    flush=True,
+                )
 
     for block in (8192, 32768, 131072):
         for threads in (1, 2):
@@ -99,7 +102,10 @@ def main():
                 torch.npu.synchronize()
                 report(f"tl persist block={block} threads={threads}", bench(lambda: k(src)))
             except Exception as exc:  # noqa: BLE001
-                print(f"tl persist block={block} threads={threads}: FAILED {type(exc).__name__}: {str(exc)[:120]}", flush=True)
+                print(
+                    f"tl persist block={block} threads={threads}: FAILED {type(exc).__name__}: {str(exc)[:120]}",
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

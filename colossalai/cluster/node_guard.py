@@ -10,7 +10,6 @@ Idleness of node1 MUST be judged by inspecting the device process memory table
 never by npu-smi AICore% (which is broken on Driver 25.2.1 and reads 89-99% even with zombie processes).
 """
 
-import os
 import re
 import socket
 import subprocess
@@ -70,23 +69,38 @@ SECONDARY_IDENTIFIERS: Set[str] = {
 }
 
 FORBIDDEN_IDENTIFIERS: Set[str] = {
-    "node5", "npu-910b2-6", "192.168.0.6",
-    "node7", "npu-910b2-138", "192.168.0.138",
-    "node8", "npu-910b2-114", "192.168.0.114",
-    "node9", "npu-910b2-88", "192.168.0.88",
+    "node5",
+    "npu-910b2-6",
+    "192.168.0.6",
+    "node7",
+    "npu-910b2-138",
+    "192.168.0.138",
+    "node8",
+    "npu-910b2-114",
+    "192.168.0.114",
+    "node9",
+    "npu-910b2-88",
+    "192.168.0.88",
 }
 
 FORBIDDEN_SUBSTRINGS: Tuple[str, ...] = (
-    "node5", "npu-910b2-6", "192.168.0.6",
-    "node7", "npu-910b2-138", "192.168.0.138",
-    "node8", "npu-910b2-114", "192.168.0.114",
-    "node9", "npu-910b2-88", "192.168.0.88",
+    "node5",
+    "npu-910b2-6",
+    "192.168.0.6",
+    "node7",
+    "npu-910b2-138",
+    "192.168.0.138",
+    "node8",
+    "npu-910b2-114",
+    "192.168.0.114",
+    "node9",
+    "npu-910b2-88",
+    "192.168.0.88",
 )
 
 
 class NodeIsolationViolationError(PermissionError):
     """Raised when an operation targets a forbidden cluster node or violates isolation boundaries."""
-    pass
 
 
 def normalize_node_name(ident: str) -> str:
@@ -185,9 +199,7 @@ def assert_nodes_allowed(node_list: Union[str, List[str]], allow_2node: bool = F
 
         has_primary = any(clean in PRIMARY_IDENTIFIERS for clean in clean_nodes)
         if not has_primary:
-            raise NodeIsolationViolationError(
-                "2-node execution requires node6 as the primary development machine."
-            )
+            raise NodeIsolationViolationError("2-node execution requires node6 as the primary development machine.")
 
     return True
 
@@ -234,6 +246,7 @@ def check_node1_idle(
     Returns:
         (is_idle, reason_or_detail)
     """
+
     def _default_runner(cmd: str) -> Tuple[str, str, int]:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
         return res.stdout, res.stderr, res.returncode
@@ -245,7 +258,11 @@ def check_node1_idle(
         cmd = f"npu-smi info -t proc-mem -i {dev_id}"
         stdout, stderr, code = run_cmd(cmd)
         if code != 0 or not stdout.strip() or ("error" in (stderr or "").lower()):
-            err_detail = stderr.strip() if (stderr and stderr.strip()) else ("empty output" if not stdout.strip() else f"exit code {code}")
+            err_detail = (
+                stderr.strip()
+                if (stderr and stderr.strip())
+                else ("empty output" if not stdout.strip() else f"exit code {code}")
+            )
             return False, f"Failed to query device on node1: exit code {code}, {err_detail}"
         parsed = parse_npu_smi_proc_mem(stdout)
         if not parsed["idle"] or "Process id" in stdout:
@@ -307,7 +324,12 @@ def assert_current_host_allowed(allow_secondary: bool = False) -> None:
     if not allow_secondary:
         for ident in all_identifiers:
             norm = normalize_node_name(ident)
-            if ident in SECONDARY_IDENTIFIERS or norm in SECONDARY_IDENTIFIERS or "node1" in ident or "192.168.0.46" in ident:
+            if (
+                ident in SECONDARY_IDENTIFIERS
+                or norm in SECONDARY_IDENTIFIERS
+                or "node1" in ident
+                or "192.168.0.46" in ident
+            ):
                 raise NodeIsolationViolationError(
                     f"Current execution host '{ident}' is node1, but allow_secondary is False. "
                     f"Primary development must take place exclusively on node6."

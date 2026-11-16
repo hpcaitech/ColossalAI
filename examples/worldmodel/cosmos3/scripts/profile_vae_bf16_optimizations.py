@@ -151,7 +151,7 @@ def measure(vae, video, arm, native_encode, args):
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
 
     args = parse_args()
     torch.npu.set_device(0)
@@ -162,8 +162,7 @@ def main():
     reference_scale = reference.abs().mean().clamp_min(1e-8)
     bf16_cast_error = (reference - reference.bfloat16().float()).abs().mean().clamp_min(1e-8)
     print(
-        f"[fp32 reference] latent scale={reference_scale.item():.6e}, "
-        f"bf16 cast error={bf16_cast_error.item():.6e}",
+        f"[fp32 reference] latent scale={reference_scale.item():.6e}, " f"bf16 cast error={bf16_cast_error.item():.6e}",
         flush=True,
     )
     video = video_cpu.to("npu:0", torch.bfloat16)

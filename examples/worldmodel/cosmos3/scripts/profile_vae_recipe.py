@@ -60,7 +60,7 @@ def real_batch(data, batch, max_episodes):
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
 
     args = parse_args()
     torch.npu.set_device(0)
@@ -70,8 +70,15 @@ def main():
     from vae_fast_encoder import enable_fast_encoder
     from vae_fused_norm import enable_fused_rmsnorm
 
-    video = (real_batch(args.data, args.batch, args.max_episodes) if args.data else
-             torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)).float().to("npu")
+    video = (
+        (
+            real_batch(args.data, args.batch, args.max_episodes)
+            if args.data
+            else torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)
+        )
+        .float()
+        .to("npu")
+    )
     vae = build_vae(args.checkpoint, dtype).to("npu:0")
     enable_fused_rmsnorm(vae)
     enable_fast_encoder(vae)
@@ -86,8 +93,10 @@ def main():
     video_d = video.to(dtype)
 
     baseline_wall = None
-    print(f"{'chunk':>6} {'calls':>6} {'wall s':>8} {'vs 4':>6} {'rel err':>10} {'vs bf16':>8} {'peak GiB':>9}",
-          flush=True)
+    print(
+        f"{'chunk':>6} {'calls':>6} {'wall s':>8} {'vs 4':>6} {'rel err':>10} {'vs bf16':>8} {'peak GiB':>9}",
+        flush=True,
+    )
 
     num_frame = video_d.shape[2]
     for chunk in [int(value) for value in args.chunks.split(",")]:
@@ -112,8 +121,11 @@ def main():
         delta = (reference - latent).abs()
         scale = reference.abs().mean().clamp_min(1e-8)
         cast = (reference - reference.bfloat16().float()).abs().mean()
-        print(f"{chunk:>6} {calls:>6} {wall:>8.3f} {baseline_wall / wall:>5.2f}x {(delta.mean() / scale).item():>10.3e} "
-              f"{(delta.mean() / cast).item():>8.3f} {peak:>9.2f}", flush=True)
+        print(
+            f"{chunk:>6} {calls:>6} {wall:>8.3f} {baseline_wall / wall:>5.2f}x {(delta.mean() / scale).item():>10.3e} "
+            f"{(delta.mean() / cast).item():>8.3f} {peak:>9.2f}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

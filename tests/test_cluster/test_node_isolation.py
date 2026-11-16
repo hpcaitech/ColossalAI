@@ -9,6 +9,7 @@ Verifies:
 """
 
 import socket
+
 import pytest
 
 from colossalai.cluster.node_guard import (
@@ -23,9 +24,18 @@ from colossalai.cluster.node_guard import (
 
 def test_forbidden_node_detection():
     forbidden = [
-        "node5", "node7", "node8", "node9",
-        "192.168.0.6", "192.168.0.138", "192.168.0.114", "192.168.0.88",
-        "npu-910b2-6", "npu-910b2-138", "npu-910b2-114", "npu-910b2-88",
+        "node5",
+        "node7",
+        "node8",
+        "node9",
+        "192.168.0.6",
+        "192.168.0.138",
+        "192.168.0.114",
+        "192.168.0.88",
+        "npu-910b2-6",
+        "npu-910b2-138",
+        "npu-910b2-114",
+        "npu-910b2-88",
     ]
     for node in forbidden:
         assert is_forbidden_node(node) is True
@@ -191,4 +201,3 @@ def test_2node_mode_with_single_node1_rejected():
 
     with pytest.raises(NodeIsolationViolationError, match="requires node6 as the primary"):
         assert_nodes_allowed("node1", allow_2node=True)
-

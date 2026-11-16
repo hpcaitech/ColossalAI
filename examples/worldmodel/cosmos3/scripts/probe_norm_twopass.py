@@ -69,8 +69,11 @@ def main():
         ms_two = bench(two, args.iters)
         gbps_one = 2 * x.numel() * 2 / (ms_one * 1e6)
         gbps_two = 3 * x.numel() * 2 / (ms_two * 1e6)
-        print(f"  {b}x{c}x{s}: one {ms_one:.3f} ms ({gbps_one:.0f} GB/s) | two {ms_two:.3f} ms "
-              f"({gbps_two:.0f} GB/s) | bit_equal={equal} relL2={float(diff):.2e}", flush=True)
+        print(
+            f"  {b}x{c}x{s}: one {ms_one:.3f} ms ({gbps_one:.0f} GB/s) | two {ms_two:.3f} ms "
+            f"({gbps_two:.0f} GB/s) | bit_equal={equal} relL2={float(diff):.2e}",
+            flush=True,
+        )
         del x, y_one, out, norm
         torch.npu.empty_cache()
 

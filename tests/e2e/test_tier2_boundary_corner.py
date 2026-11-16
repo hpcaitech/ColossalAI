@@ -25,24 +25,23 @@ Contains exactly 5 boundary/corner tests per feature across all 21 features:
 Total: 105 tests
 """
 
-import ast
-import json
 import math
 import os
 import sys
 from pathlib import Path
+
 import pytest
 import torch
 import torch.nn as nn
-from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm, WanCausalConv3d
+from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
 
-from tests.e2e.conftest import ClusterGuard, NVMePathChecker, TileLangASTChecker, MockNpuFusedAdamW
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
-
+from tests.e2e.conftest import MockNpuFusedAdamW
 
 # ==============================================================================
 # Feature 1: Node Isolation Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature1NodeIsolationBoundaries:
     """Boundary and negative tests for cluster node isolation guardrails."""
@@ -75,6 +74,7 @@ class TestTier2Feature1NodeIsolationBoundaries:
 # ==============================================================================
 # Feature 2: Local NVMe Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature2LocalNVMeBoundaries:
     """Boundary tests for NVMe path enforcement and NFS detection."""
@@ -113,6 +113,7 @@ class TestTier2Feature2LocalNVMeBoundaries:
 # Feature 3: Metrics Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature3MetricsBoundaries:
     """Boundary tests for training metrics, division by zero, and anomaly detection."""
 
@@ -123,6 +124,7 @@ class TestTier2Feature3MetricsBoundaries:
 
     def test_cpu_fallback_when_accelerator_events_unavailable(self):
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
         with sw.section("optim"):
@@ -133,6 +135,7 @@ class TestTier2Feature3MetricsBoundaries:
 
     def test_missing_timing_sections_in_record_handled(self):
         from examples.worldmodel.cosmos3_harness.training_metrics import make_record
+
         rec = make_record(step=1, rank=0, perf=None, mem=None)
         assert "perf" not in rec
         assert "mem" not in rec
@@ -140,14 +143,17 @@ class TestTier2Feature3MetricsBoundaries:
 
     def test_mem_get_info_failure_caught_gracefully(self, monkeypatch):
         from examples.worldmodel.cosmos3_harness import training_metrics
+
         def _failing_mem_info():
             raise RuntimeError("CANN memory query timeout")
+
         monkeypatch.setattr(training_metrics, "_torch_device_memory", lambda: {"allocated_gib": 0.0}, raising=False)
         res = training_metrics.device_memory_gib()
         assert isinstance(res, dict)
 
     def test_stopwatch_section_reentry_handled_cleanly(self):
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
         with sw.section("accum"):
@@ -162,6 +168,7 @@ class TestTier2Feature3MetricsBoundaries:
 # ==============================================================================
 # Feature 4: TileLang Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature4TileLangBoundaries:
     """Boundary and negative tests for TileLang AST and kernel compilation constraints."""
@@ -196,7 +203,7 @@ def bad_kernel(a: T.handle):
 
     def test_unaligned_tensor_dimensions_rejected_for_c0_lane(self):
         unaligned_channels = 15
-        is_aligned = (unaligned_channels % 16 == 0)
+        is_aligned = unaligned_channels % 16 == 0
         assert is_aligned is False
 
 
@@ -204,17 +211,20 @@ def bad_kernel(a: T.handle):
 # Feature 5: NpuFusedAdamW Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature5NpuFusedAdamWBoundaries:
     """Boundary and error conditions for NpuFusedAdamW optimizer."""
 
     def test_fused_adamw_on_cpu_raises_explicit_value_error(self):
         from examples.worldmodel.cosmos3_harness.optim import build_adamw
+
         p = nn.Parameter(torch.randn(4, 4))
         with pytest.raises(ValueError, match="requires an NPU device"):
             build_adamw([p], learning_rate=1e-3, mode="fused", device_type="cpu")
 
     def test_fused_adamw_without_torch_npu_raises_import_error(self, monkeypatch):
         from examples.worldmodel.cosmos3_harness.optim import build_adamw
+
         p = nn.Parameter(torch.randn(4, 4))
         monkeypatch.setitem(sys.modules, "torch_npu", None)
         with pytest.raises((ValueError, ImportError)):
@@ -246,6 +256,7 @@ class TestTier2Feature5NpuFusedAdamWBoundaries:
 # ==============================================================================
 # Feature 6: Multi-Tensor Grad Norm Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature6MultiTensorGradNormBoundaries:
     """Boundary conditions for vectorized gradient norm computation."""
@@ -282,6 +293,7 @@ class TestTier2Feature6MultiTensorGradNormBoundaries:
 # ==============================================================================
 # Feature 7: Multi-Tensor Unscale/Clip Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature7MultiTensorUnscaleClipBoundaries:
     """Boundary conditions for vectorized gradient unscaling and clipping."""
@@ -326,6 +338,7 @@ class TestTier2Feature7MultiTensorUnscaleClipBoundaries:
 # ==============================================================================
 # Feature 8: Persistent Buffer Boundaries
 # ==============================================================================
+
 
 class _MockOptimStub2:
     _reused_buffer = LowLevelZeroOptimizer._reused_buffer
@@ -387,11 +400,13 @@ class TestTier2Feature8PersistentBufferBoundaries:
 # Feature 9: Backward Comm Overlap Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature9BackwardCommOverlapBoundaries:
     """Boundary conditions for ZeRO-2 bucket communication overlap."""
 
     def test_zero_bucket_size_zero_or_negative_rejected(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         with pytest.raises(SystemExit):
             parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--zero-bucket-size-m", "0"])
 
@@ -403,7 +418,6 @@ class TestTier2Feature9BackwardCommOverlapBoundaries:
 
     def test_bucket_size_equal_to_single_parameter(self):
         param_sizes = [10, 10, 10]
-        bucket_size = 10
         buckets = [p for p in param_sizes]
         assert len(buckets) == 3
 
@@ -428,12 +442,13 @@ class TestTier2Feature9BackwardCommOverlapBoundaries:
 # Feature 10: VAE FP16 Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature10VaeFP16Boundaries:
     """Boundary conditions and numerical stability gates for FP16 VAE execution."""
 
     def test_error_ratio_exceeding_0_64_triggers_gate_assertion(self):
         error_ratio = 4.8  # BF16 error ratio from draft_cosmos3_vae_optimization
-        passed_gate = (error_ratio <= 0.64)
+        passed_gate = error_ratio <= 0.64
         assert passed_gate is False
 
     def test_high_dynamic_range_input_does_not_overflow_fp16(self):
@@ -458,16 +473,19 @@ class TestTier2Feature10VaeFP16Boundaries:
 # Feature 11: VAE Chunked Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature11VaeChunkedBoundaries:
     """Boundary conditions for 8-frame chunked VAE encoding."""
 
     def test_chunk_frames_not_multiple_of_4_raises_value_error(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         with pytest.raises(SystemExit):
             parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--vae-chunk-frames", "7"])
 
     def test_chunk_frames_zero_or_negative_raises_value_error(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         with pytest.raises(SystemExit):
             parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--vae-chunk-frames", "-4"])
 
@@ -496,11 +514,13 @@ class TestTier2Feature11VaeChunkedBoundaries:
 # Feature 12: VAE Fused RMSNorm Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature12VaeFusedRMSNormBoundaries:
     """Boundary conditions for fused RMSNorm numerical stability."""
 
     def test_zero_magnitude_input_normalized_without_div_zero(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False)
         x = torch.zeros(1, 8, 2, 4, 4)
         out = _fused_forward(norm, x)
@@ -508,6 +528,7 @@ class TestTier2Feature12VaeFusedRMSNormBoundaries:
 
     def test_near_zero_input_1e_6_normalized_accurately(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False)
         x = torch.full((1, 8, 2, 4, 4), 1e-6)
         out = _fused_forward(norm, x)
@@ -516,6 +537,7 @@ class TestTier2Feature12VaeFusedRMSNormBoundaries:
 
     def test_large_input_60000_fp16_normalized_without_fp32_overflow(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False)
         x = torch.full((1, 8, 2, 4, 4), 50000.0, dtype=torch.float16)
         out = _fused_forward(norm, x)
@@ -524,6 +546,7 @@ class TestTier2Feature12VaeFusedRMSNormBoundaries:
 
     def test_non_zero_bias_tensor_preserved_and_added(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False, bias=True)
         norm.bias.data.fill_(1.5)
         x = torch.ones(1, 8, 2, 4, 4)
@@ -532,6 +555,7 @@ class TestTier2Feature12VaeFusedRMSNormBoundaries:
 
     def test_nan_input_produces_finite_status_failure(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False)
         x = torch.full((1, 8, 2, 4, 4), float("nan"))
         out = _fused_forward(norm, x)
@@ -541,6 +565,7 @@ class TestTier2Feature12VaeFusedRMSNormBoundaries:
 # ==============================================================================
 # Feature 13: VAE Fast Conv Padding Sink Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature13VaeFastConvPaddingSinkBoundaries:
     """Boundary conditions for VAE fast conv temporal and spatial padding."""
@@ -563,7 +588,7 @@ class TestTier2Feature13VaeFastConvPaddingSinkBoundaries:
 
     def test_asymmetric_spatial_padding_fallback(self):
         pad_h_top, pad_h_bot = 1, 1
-        is_symmetric = (pad_h_top == pad_h_bot)
+        is_symmetric = pad_h_top == pad_h_bot
         assert is_symmetric is True
 
     def test_device_mismatch_between_x_and_cache_x_migrated(self):
@@ -575,6 +600,7 @@ class TestTier2Feature13VaeFastConvPaddingSinkBoundaries:
 # ==============================================================================
 # Feature 14: VAE Weight Pre-Transformation Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature14VaeWeightPreTransformationBoundaries:
     """Boundary conditions for FRACTAL_Z_3D pre-transformation."""
@@ -608,6 +634,7 @@ class TestTier2Feature14VaeWeightPreTransformationBoundaries:
 # ==============================================================================
 # Feature 15: TileLang Data Ingress Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature15TileLangDataIngressBoundaries:
     """Boundary conditions for TileLang SIMT data ingress operations."""
@@ -649,12 +676,14 @@ class TestTier2Feature15TileLangDataIngressBoundaries:
 # Feature 16: Parquet Table Caching Boundaries
 # ==============================================================================
 
+
 class _MockActionDatasetStub2:
     def __init__(self, chunk_length=32):
         self._action_tables = {}
         self.chunk_length = chunk_length
 
     from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset
+
     _action_table = DroidActionPolicyDataset._action_table
     _read_actions = DroidActionPolicyDataset._read_actions
 
@@ -669,6 +698,7 @@ class TestTier2Feature16ParquetTableCachingBoundaries:
 
     def test_row_index_out_of_bounds_raises_index_error(self, mock_parquet_dataset):
         from examples.worldmodel.cosmos3.droid_dataset import Window
+
         ds = _MockActionDatasetStub2()
         win = Window(
             episode_index=0,
@@ -687,6 +717,7 @@ class TestTier2Feature16ParquetTableCachingBoundaries:
     def test_missing_required_columns_raises_key_error(self, tmp_path):
         import pyarrow as pa
         import pyarrow.parquet as pq
+
         tbl = pa.Table.from_arrays([pa.array([1, 2, 3])], names=["unexpected_col"])
         p = tmp_path / "broken.parquet"
         pq.write_table(tbl, p)
@@ -697,6 +728,7 @@ class TestTier2Feature16ParquetTableCachingBoundaries:
     def test_single_row_parquet_file_handled(self, tmp_path):
         import pyarrow as pa
         import pyarrow.parquet as pq
+
         tbl = pa.Table.from_arrays([pa.array([[0.0] * 7])], names=["action.joint_position"])
         p = tmp_path / "single.parquet"
         pq.write_table(tbl, p)
@@ -720,6 +752,7 @@ class TestTier2Feature16ParquetTableCachingBoundaries:
 # Feature 17: CPU Augmentation Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature17CpuAugmentationBoundaries:
     """Boundary conditions for dataloader augmentation and CPU worker processes."""
 
@@ -731,11 +764,12 @@ class TestTier2Feature17CpuAugmentationBoundaries:
         wait_ms = 150.0
         step_ms = 300.0
         ratio = wait_ms / step_ms
-        is_starved = (ratio > 0.3)
+        is_starved = ratio > 0.3
         assert is_starved is True
 
     def test_crop_exceeding_image_dimensions_clamped(self):
         import torchvision.transforms.v2 as T
+
         img = torch.rand(3, 10, 10)
         transform = T.Resize((16, 16))
         out = transform(img)
@@ -747,13 +781,14 @@ class TestTier2Feature17CpuAugmentationBoundaries:
 
     def test_worker_process_termination_detected(self):
         worker_exitcode = 1
-        has_failed = (worker_exitcode != 0)
+        has_failed = worker_exitcode != 0
         assert has_failed is True
 
 
 # ==============================================================================
 # Feature 18: Multi-Stream Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature18MultiStreamBoundaries:
     """Boundary conditions for asynchronous stream execution."""
@@ -792,6 +827,7 @@ class TestTier2Feature18MultiStreamBoundaries:
 # ==============================================================================
 # Feature 19: Offline Latent Boundaries
 # ==============================================================================
+
 
 class TestTier2Feature19OfflineLatentBoundaries:
     """Boundary conditions for precomputed latent cache loading."""
@@ -835,6 +871,7 @@ class TestTier2Feature19OfflineLatentBoundaries:
 # Feature 20: Two-Node Validation Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature20TwoNodeValidationBoundaries:
     """Boundary conditions for 2-node cluster verification."""
 
@@ -867,19 +904,20 @@ class TestTier2Feature20TwoNodeValidationBoundaries:
 # Feature 21: Final Metrics Boundaries
 # ==============================================================================
 
+
 class TestTier2Feature21FinalMetricsBoundaries:
     """Boundary conditions for benchmark evaluation and acceptance criteria."""
 
     def test_step_time_exceeding_threshold_fails_gate(self):
         baseline_s = 35.1
         regressed_s = 42.0
-        passed = (regressed_s <= baseline_s)
+        passed = regressed_s <= baseline_s
         assert passed is False
 
     def test_peak_hbm_exceeding_64gb_fails_gate(self):
         reported_hbm_gib = 65.5
         max_allowed_hbm_gib = 64.0
-        passed = (reported_hbm_gib <= max_allowed_hbm_gib)
+        passed = reported_hbm_gib <= max_allowed_hbm_gib
         assert passed is False
 
     def test_mfu_over_100_percent_or_negative_fails_gate(self):
@@ -892,7 +930,7 @@ class TestTier2Feature21FinalMetricsBoundaries:
         mean_step_ms = 100.0
         straggler_step_ms = 135.0
         skew = straggler_step_ms / mean_step_ms
-        is_skewed = (skew > 1.2)
+        is_skewed = skew > 1.2
         assert is_skewed is True
 
     def test_missing_required_telemetry_keys_fails_gate(self):

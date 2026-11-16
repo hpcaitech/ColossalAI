@@ -56,7 +56,12 @@ def main():
     for path in files:
         baseline = decode(path, None)
         line = [f"  {path.name:<22}"]
-        for label, thread_type, count in (("none", None, 0), ("AUTO", "AUTO", 0), ("AUTO/4", "AUTO", 4), ("FRAME/4", "FRAME", 4)):
+        for label, thread_type, count in (
+            ("none", None, 0),
+            ("AUTO", "AUTO", 0),
+            ("AUTO/4", "AUTO", 4),
+            ("FRAME/4", "FRAME", 4),
+        ):
             ms = bench(lambda t=thread_type, c=count: decode(path, t, c))
             if thread_type is None:
                 equal, diff = True, 0

@@ -57,8 +57,10 @@ def main():
         npu_out = torch_npu.npu_rms_norm(x, module.weight, epsilon=module.eps)[0]
     mismatched = int((npu_out != reference).sum())
     rel = float((npu_out.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12))
-    print(f"[fwd  ] {args.rows}x{args.hidden}: npu_rms_norm mismatched {mismatched}/{reference.numel()} "
-          f"({100 * mismatched / reference.numel():.5f}%) relL2={rel:.2e}")
+    print(
+        f"[fwd  ] {args.rows}x{args.hidden}: npu_rms_norm mismatched {mismatched}/{reference.numel()} "
+        f"({100 * mismatched / reference.numel():.5f}%) relL2={rel:.2e}"
+    )
 
     # Backward: the Function's chain against autograd through the reference forward.
     torch.manual_seed(7)
@@ -73,17 +75,23 @@ def main():
     out = dk._FusedNemotronNorm.apply(xr, module.weight, module.eps)
     out.backward(seed_grad)
     gx, gw = xr.grad, module.weight.grad
-    print(f"[bwd  ] x grad bit_equal={torch.equal(gx, ref_gx)} mismatched {int((gx != ref_gx).sum())}/{gx.numel()} "
-          f"relL2={float((gx.float() - ref_gx.float()).norm() / ref_gx.float().norm().clamp_min(1e-12)):.2e}")
-    print(f"[bwd  ] w grad bit_equal={torch.equal(gw, ref_gw)} mismatched {int((gw != ref_gw).sum())}/{gw.numel()} "
-          f"relL2={float((gw.float() - ref_gw.float()).norm() / ref_gw.float().norm().clamp_min(1e-12)):.2e}")
+    print(
+        f"[bwd  ] x grad bit_equal={torch.equal(gx, ref_gx)} mismatched {int((gx != ref_gx).sum())}/{gx.numel()} "
+        f"relL2={float((gx.float() - ref_gx.float()).norm() / ref_gx.float().norm().clamp_min(1e-12)):.2e}"
+    )
+    print(
+        f"[bwd  ] w grad bit_equal={torch.equal(gw, ref_gw)} mismatched {int((gw != ref_gw).sum())}/{gw.numel()} "
+        f"relL2={float((gw.float() - ref_gw.float()).norm() / ref_gw.float().norm().clamp_min(1e-12)):.2e}"
+    )
 
     with torch.no_grad():
         big = torch.randn(args.timing_rows, args.hidden, device=device, dtype=torch.bfloat16) * 0.5
         ms_ref = bench(lambda: dk._reference_forward(module, big), args.iters)
         ms_npu = bench(lambda: torch_npu.npu_rms_norm(big, module.weight, epsilon=module.eps)[0], args.iters)
-    print(f"[time] {args.timing_rows}x{args.hidden}: reference chain {ms_ref:.3f} ms | npu_rms_norm {ms_npu:.3f} ms "
-          f"| {100 * (1 - ms_npu / ms_ref):+.1f}%")
+    print(
+        f"[time] {args.timing_rows}x{args.hidden}: reference chain {ms_ref:.3f} ms | npu_rms_norm {ms_npu:.3f} ms "
+        f"| {100 * (1 - ms_npu / ms_ref):+.1f}%"
+    )
     print(f"[time] 394 chains per step -> about {(ms_ref - ms_npu) * 394 / 1000:.2f} s/step saved")
 
 

@@ -23,8 +23,7 @@ from examples.worldmodel.cosmos3.droid_dataset import CAMS, DroidActionPolicyDat
 DATA = "/mnt/disk0/jiangzs/datasets/Cosmos3-DROID/success"
 
 count = int(sys.argv[1]) if len(sys.argv) > 1 else 5
-dataset = DroidActionPolicyDataset(DATA, chunk_length=32, fps=15.0, resolution="480", augment=False,
-                                   max_episodes=64)
+dataset = DroidActionPolicyDataset(DATA, chunk_length=32, fps=15.0, resolution="480", augment=False, max_episodes=64)
 print(f"windows={len(dataset)}", flush=True)
 
 decode = geometry = parquet = full = 0.0
@@ -46,9 +45,14 @@ for index in range(count):
     geometry += t2 - t1
     parquet += t3 - t2
     full += t4 - t3
-    print(f"index={index} decode={1e3 * (t1 - t0):6.1f}ms compose_cast={1e3 * (t2 - t1):6.1f}ms "
-          f"parquet={1e3 * (t3 - t2):6.1f}ms | full_getitem={1e3 * (t4 - t3):7.1f}ms "
-          f"(3 cameras x 33 frames, {tuple(quantised.shape)})", flush=True)
+    print(
+        f"index={index} decode={1e3 * (t1 - t0):6.1f}ms compose_cast={1e3 * (t2 - t1):6.1f}ms "
+        f"parquet={1e3 * (t3 - t2):6.1f}ms | full_getitem={1e3 * (t4 - t3):7.1f}ms "
+        f"(3 cameras x 33 frames, {tuple(quantised.shape)})",
+        flush=True,
+    )
 
-print(f"mean decode={1e3 * decode / count:.1f}ms compose={1e3 * geometry / count:.1f}ms "
-      f"parquet={1e3 * parquet / count:.1f}ms full={1e3 * full / count:.1f}ms")
+print(
+    f"mean decode={1e3 * decode / count:.1f}ms compose={1e3 * geometry / count:.1f}ms "
+    f"parquet={1e3 * parquet / count:.1f}ms full={1e3 * full / count:.1f}ms"
+)

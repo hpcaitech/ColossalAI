@@ -66,8 +66,10 @@ def main():
         row = stats[event.get("pid")]
         row[0] += 1
         row[1] += "kernel" in str(event.get("cat", "")).lower()
-    print(f"[trace] {len(events)} complete events over {len(stats)} pid(s): "
-          + ", ".join(f"{pid}: {n} ({k} kernel)" for pid, (n, k) in stats.items()))
+    print(
+        f"[trace] {len(events)} complete events over {len(stats)} pid(s): "
+        + ", ".join(f"{pid}: {n} ({k} kernel)" for pid, (n, k) in stats.items())
+    )
     device_pid = max(stats, key=lambda pid: (stats[pid][1], stats[pid][0]))
     device = [e for e in events if e.get("pid") == device_pid]
     print(f"[trace] device pid {device_pid} with {len(device)} events")
@@ -81,8 +83,10 @@ def main():
     per_stream = defaultdict(float)
     for e in device:
         per_stream[e.get("tid")] += e["dur"]
-    print("[device] per-stream " + ", ".join(f"{tid}: {d / 1e6:.3f}s" for tid, d in
-                                             sorted(per_stream.items(), key=lambda kv: -kv[1])[:6]))
+    print(
+        "[device] per-stream "
+        + ", ".join(f"{tid}: {d / 1e6:.3f}s" for tid, d in sorted(per_stream.items(), key=lambda kv: -kv[1])[:6])
+    )
 
     per_kernel = defaultdict(lambda: [0, 0.0, 0.0])
     for e in device:
@@ -96,8 +100,10 @@ def main():
     print(f"\n[device] top {args.top} kernels by total time")
     print(f"{'kernel':<58}{'calls':>7}{'total_s':>10}{'pct':>7}{'mean_us':>10}{'max_s':>9}")
     for name, (calls, seconds, peak) in rows[: args.top]:
-        print(f"{name[:57]:<58}{calls:>7}{seconds:>10.4f}{100 * seconds / total:>6.1f}%"
-              f"{1e6 * seconds / calls:>10.1f}{peak:>9.4f}")
+        print(
+            f"{name[:57]:<58}{calls:>7}{seconds:>10.4f}{100 * seconds / total:>6.1f}%"
+            f"{1e6 * seconds / calls:>10.1f}{peak:>9.4f}"
+        )
 
     print("\n[device] by category")
     cat_rows = defaultdict(lambda: [0, 0.0])

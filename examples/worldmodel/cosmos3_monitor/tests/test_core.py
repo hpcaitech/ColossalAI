@@ -691,8 +691,9 @@ def test_system_snapshot_keeps_process_tables_and_series_opt_in():
         "training_processes": 1,
         "processes": [{"pid": 7, "command": "train" * 50}],
         "ranked_processes": [{"pid": 7, "command": "train" * 50}],
-        "devices": [{"index": 0, "hbm_used_mib": 100.0, "temperature_c": 40.0, "power_w": 300.0,
-                     "processes": [{"pid": 7}]}],
+        "devices": [
+            {"index": 0, "hbm_used_mib": 100.0, "temperature_c": 40.0, "power_w": 300.0, "processes": [{"pid": 7}]}
+        ],
     }
     now = time.time()
     for index in range(20):
@@ -737,8 +738,8 @@ def test_jsonl_tail_survives_an_atomic_replace_and_a_transient_short_copy(tmp_pa
 
     # A file that stays short is a real rewrite: after the grace period the tail starts over.
     path.write_text('{"step": 40}\n')
-    assert tail.read_new() == []          # first short poll: wait, it may be a copy in progress
-    tail.shrink_grace_s = 0.0             # the deadline passed
+    assert tail.read_new() == []  # first short poll: wait, it may be a copy in progress
+    tail.shrink_grace_s = 0.0  # the deadline passed
     assert [row["step"] for row in tail.read_new()] == [40]
     assert tail.truncated is True
 

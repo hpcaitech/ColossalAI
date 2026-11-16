@@ -30,7 +30,9 @@ for line in open(sys.argv[1]):
     if points:
         finished[tag] += 1
 
-print(f"{'case':10s} {'ranks':>5s} {'s/sample':>9s} {'node/s':>7s} {'6 nodes/s':>9s} {'20.11M days':>12s} {'keep74%':>8s}")
+print(
+    f"{'case':10s} {'ranks':>5s} {'s/sample':>9s} {'node/s':>7s} {'6 nodes/s':>9s} {'20.11M days':>12s} {'keep74%':>8s}"
+)
 for tag in sorted(slopes):
     per_sample = statistics.mean(slopes[tag])
     node_rate = 8 / per_sample

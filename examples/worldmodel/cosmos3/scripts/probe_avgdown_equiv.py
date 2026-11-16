@@ -34,10 +34,10 @@ def main():
     parser.add_argument("--batch", type=int, default=8)
     args = parser.parse_args()
 
+    import types
+
     from diffusers import AutoencoderKLWan
     from diffusers.models.autoencoders.autoencoder_kl_wan import AvgDown3D
-
-    import types
 
     from examples.worldmodel.cosmos3.vae_fast_encoder import enable_fast_encoder
     from examples.worldmodel.cosmos3.vae_norm_kernel import enable_kernel_rmsnorm
@@ -58,8 +58,11 @@ def main():
             reference = types.MethodType(original, module)(probe)
             same = torch.equal(fast, reference)
             rel = float((fast.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12))
-            print(f"[module {index}] ft={module.factor_t} fs={module.factor_s} T={temporal}: "
-                  f"bit_equal={same} relL2={rel:.1e}", flush=True)
+            print(
+                f"[module {index}] ft={module.factor_t} fs={module.factor_s} T={temporal}: "
+                f"bit_equal={same} relL2={rel:.1e}",
+                flush=True,
+            )
 
     x = torch.randn(args.batch, 3, 33, 544, 656, device=device, dtype=torch.bfloat16)
     with torch.no_grad():
@@ -77,8 +80,10 @@ def main():
     diff = (fast.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12)
     maxabs = (fast.float() - reference.float()).abs().max()
     print(f"[avgdown] latent bit_equal={equal} relL2={float(diff):.3e} maxabs={float(maxabs):.3e}")
-    print(f"[avgdown] encode {ms_ref:.1f} ms (permute) -> {ms_fast:.1f} ms (strided), "
-          f"{100 * (1 - ms_fast / ms_ref):.1f}% saved")
+    print(
+        f"[avgdown] encode {ms_ref:.1f} ms (permute) -> {ms_fast:.1f} ms (strided), "
+        f"{100 * (1 - ms_fast / ms_ref):.1f}% saved"
+    )
 
 
 if __name__ == "__main__":

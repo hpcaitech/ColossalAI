@@ -16,6 +16,7 @@ if hasattr(torch.npu, "mem_get_info"):
     info = torch.npu.mem_get_info()
     print("mem_get_info ->", type(info).__name__, len(info), [f"{value / 2**30:.2f} GiB" for value in info])
 
+
 def report(label):
     allocated = torch.npu.memory_allocated() / 2**30
     reserved = torch.npu.memory_reserved() / 2**30 if hasattr(torch.npu, "memory_reserved") else float("nan")
@@ -25,8 +26,10 @@ def report(label):
     )
     free, total = torch.npu.mem_get_info()
     used = (total - free) / 2**30
-    print(f"{label:22s} allocated {allocated:6.2f}  reserved {reserved:6.2f}  peak {peak:6.2f}  "
-          f"peak_reserved {peak_reserved:6.2f}  device_used {used:6.2f} / {total / 2**30:.2f}")
+    print(
+        f"{label:22s} allocated {allocated:6.2f}  reserved {reserved:6.2f}  peak {peak:6.2f}  "
+        f"peak_reserved {peak_reserved:6.2f}  device_used {used:6.2f} / {total / 2**30:.2f}"
+    )
 
 
 report("after init")

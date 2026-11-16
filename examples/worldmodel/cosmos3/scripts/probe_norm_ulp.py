@@ -57,14 +57,18 @@ def main():
             out = (weight * (h * r)).to(x.dtype)
             mismatched = int((out != reference).sum())
             rel = float((out.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12))
-            print(f"[ulp  ] {name:<12} bf16 mismatched {mismatched}/{reference.numel()} "
-                  f"({100 * mismatched / reference.numel():.4f}%) relL2={rel:.2e}")
+            print(
+                f"[ulp  ] {name:<12} bf16 mismatched {mismatched}/{reference.numel()} "
+                f"({100 * mismatched / reference.numel():.4f}%) relL2={rel:.2e}"
+            )
 
         npu = torch_npu.npu_rms_norm(x, module.weight, epsilon=eps)[0]
         mismatched = int((npu != reference).sum())
         rel = float((npu.float() - reference.float()).norm() / reference.float().norm().clamp_min(1e-12))
-        print(f"[ulp  ] npu_rms_norm  bf16 mismatched {mismatched}/{reference.numel()} "
-              f"({100 * mismatched / reference.numel():.4f}%) relL2={rel:.2e}")
+        print(
+            f"[ulp  ] npu_rms_norm  bf16 mismatched {mismatched}/{reference.numel()} "
+            f"({100 * mismatched / reference.numel():.4f}%) relL2={rel:.2e}"
+        )
 
 
 if __name__ == "__main__":

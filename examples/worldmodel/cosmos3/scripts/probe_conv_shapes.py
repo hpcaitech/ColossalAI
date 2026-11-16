@@ -43,10 +43,14 @@ def main():
             groups = module.groups
             key = (tuple(x.shape), tuple(weight.shape), tuple(stride), groups)
             calls[key] += 1
+
         return hook
 
-    handles = [module.register_forward_hook(make_hook(name))
-               for name, module in vae.named_modules() if isinstance(module, nn.Conv3d)]
+    handles = [
+        module.register_forward_hook(make_hook(name))
+        for name, module in vae.named_modules()
+        if isinstance(module, nn.Conv3d)
+    ]
 
     x = torch.randn(args.batch, 3, 33, 544, 656, device=device, dtype=torch.bfloat16)
     with torch.no_grad():
@@ -59,8 +63,10 @@ def main():
         spatial = shape[2] * shape[3] * shape[4]
         flops = 2.0 * shape[0] * spatial * out_c * (in_c_per_group * kt * kh * kw)
         total_flops += flops * count
-        print(f"{str(shape):26s} {str(wshape):22s} {str(stride):10s} {count:5d} "
-              f"{flops / 1e9:11.2f} {flops * count / 1e9:12.1f}")
+        print(
+            f"{str(shape):26s} {str(wshape):22s} {str(stride):10s} {count:5d} "
+            f"{flops / 1e9:11.2f} {flops * count / 1e9:12.1f}"
+        )
     for handle in handles:
         handle.remove()
     print(f"[conv] total {total_flops / 1e12:.2f} TFLOP per encode at batch {args.batch}")
@@ -71,8 +77,13 @@ def main():
             channels = wshape[0]
             sample = torch.randn(*shape, device=device, dtype=torch.bfloat16)
             conv = nn.Conv3d(
-                shape[1], channels, wshape[2:], stride=stride, padding=tuple(k // 2 for k in wshape[2:]),
-                groups=groups, bias=False,
+                shape[1],
+                channels,
+                wshape[2:],
+                stride=stride,
+                padding=tuple(k // 2 for k in wshape[2:]),
+                groups=groups,
+                bias=False,
             ).to(device, torch.bfloat16)
             with torch.no_grad():
                 for _ in range(3):
@@ -85,8 +96,15 @@ def main():
                 end.record()
                 torch.npu.synchronize()
             ms = start.elapsed_time(end)
-            flops = 2.0 * shape[0] * shape[2] * shape[3] * shape[4] * channels * (
-                wshape[1] * wshape[2] * wshape[3] * wshape[4])
+            flops = (
+                2.0
+                * shape[0]
+                * shape[2]
+                * shape[3]
+                * shape[4]
+                * channels
+                * (wshape[1] * wshape[2] * wshape[3] * wshape[4])
+            )
             print(f"  {str(shape):26s} {str(wshape):22s} {ms:8.3f} ms  {flops / ms / 1e9:7.1f} TFLOPS  x{count}")
             del sample, conv
             torch.npu.empty_cache()

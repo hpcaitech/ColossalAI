@@ -11,12 +11,12 @@ into string literals, causing TVM's C++ AST parser to crash with:
 import ast
 from pathlib import Path
 from typing import Optional, Union
+
 import pytest
 
 
 class TileLangASTViolationError(ValueError):
     """Raised when a TileLang kernel file violates AST rules."""
-    pass
 
 
 class TileLangASTScanner(ast.NodeVisitor):
@@ -82,6 +82,7 @@ def check_tilelang_file(file_path: Union[str, Path]) -> None:
 # Unit Tests
 # ==============================================================================
 
+
 def test_valid_tilelang_kernel_source_passes():
     valid_source = """
 import tilelang as T
@@ -142,24 +143,30 @@ def custom_kernel(x: int):
 
 def test_check_file_on_disk(tmp_path):
     good_file = tmp_path / "good_kernel.py"
-    good_file.write_text("""
+    good_file.write_text(
+        """
 import tilelang as T
 
 @T.prim_func
 def gemm_kernel():
     pass
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     check_tilelang_file(good_file)
 
     bad_file = tmp_path / "bad_kernel.py"
-    bad_file.write_text("""
+    bad_file.write_text(
+        """
 from __future__ import annotations
 import tilelang as T
 
 @T.prim_func
 def gemm_kernel():
     pass
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     with pytest.raises(TileLangASTViolationError):
         check_tilelang_file(bad_file)
 

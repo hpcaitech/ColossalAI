@@ -24,8 +24,7 @@ DATA = "/mnt/disk0/jiangzs/datasets/Cosmos3-DROID/success"
 first = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 count = int(sys.argv[2]) if len(sys.argv) > 2 else 120
 
-dataset = DroidActionPolicyDataset(DATA, chunk_length=32, fps=15.0, resolution="480", augment=False,
-                                   max_episodes=64)
+dataset = DroidActionPolicyDataset(DATA, chunk_length=32, fps=15.0, resolution="480", augment=False, max_episodes=64)
 print(f"windows={len(dataset)} scanning [{first}, {first + count})", flush=True)
 
 slow = []
@@ -40,8 +39,10 @@ for index in range(first, min(first + count, len(dataset))):
         print(f"slow index={index} episode={window.episode_index} start={window.start} {elapsed:.1f}s", flush=True)
 
 total = time.perf_counter() - started
-print(f"scanned={min(count, len(dataset) - first)} total={total:.1f}s mean={total / count:.2f}s "
-      f"slow_windows={len(slow)}")
+print(
+    f"scanned={min(count, len(dataset) - first)} total={total:.1f}s mean={total / count:.2f}s "
+    f"slow_windows={len(slow)}"
+)
 if slow:
     worst = max(slow, key=lambda item: item[1])
     print(f"worst index={worst[0]} {worst[1]:.1f}s")

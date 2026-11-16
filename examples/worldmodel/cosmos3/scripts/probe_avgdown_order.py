@@ -32,7 +32,7 @@ def merged_view(x: torch.Tensor, ft: int, fs: int, out_c: int) -> torch.Tensor:
     group = ft * fs * fs
     view = x.view(b, c, t // ft, ft, h // fs, fs, w // fs, fs)
     terms = [view[:, :, :, a, :, hh, :, ww] for a in range(ft) for hh in range(fs) for ww in range(fs)]
-    stacked = torch.stack(terms, dim=2)                       # [b, c, t', h', w', group]
+    stacked = torch.stack(terms, dim=2)  # [b, c, t', h', w', group]
     merged = stacked.permute(0, 1, 5, 2, 3, 4).reshape(b, c * group, t // ft, h // fs, w // fs)
     group_size = c * group // out_c
     return merged.view(b, out_c, group_size, t // ft, h // fs, w // fs)
@@ -89,13 +89,16 @@ def main() -> int:
                     stats[order]["equal"] += 1
                     continue
                 stats[order]["bad"] += int((got != ref).sum().item())
-                stats[order]["worst"] = max(stats[order]["worst"],
-                                            float((got.float() - ref.float()).abs().max().item()))
+                stats[order]["worst"] = max(
+                    stats[order]["worst"], float((got.float() - ref.float()).abs().max().item())
+                )
         print(f"[avgdown] {in_c}->{out_c} ft={ft} fs={fs} group_size={group_size} shape={(b, in_c, t, h, w)}")
         for order in orders:
             item = stats[order]
             verdict = "BIT-IDENTICAL" if item["equal"] == args.iters else f"differs on {item['bad']}/{elements}"
-            print(f"    {order:<8} {item['equal']}/{args.iters} runs equal   {verdict:<28} worst |d| {item['worst']:.3e}")
+            print(
+                f"    {order:<8} {item['equal']}/{args.iters} runs equal   {verdict:<28} worst |d| {item['worst']:.3e}"
+            )
     return 0
 
 

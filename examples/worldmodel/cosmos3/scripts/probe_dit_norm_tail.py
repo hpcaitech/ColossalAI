@@ -49,8 +49,10 @@ def main():
     with torch.no_grad():
         reference = dt._reference_forward(module, x)
         fused = dt._tail_forward(module, x)
-    print(f"[fwd ] bit_equal={torch.equal(fused, reference)} mismatched {int((fused != reference).sum())}/"
-          f"{reference.numel()}")
+    print(
+        f"[fwd ] bit_equal={torch.equal(fused, reference)} mismatched {int((fused != reference).sum())}/"
+        f"{reference.numel()}"
+    )
 
     torch.manual_seed(7)
     seed_grad = torch.randn(args.rows, args.hidden, device=device, dtype=torch.bfloat16) * 0.05
@@ -69,8 +71,10 @@ def main():
     with torch.no_grad():
         ms_ref = bench(lambda: dt._reference_forward(module, x), args.iters)
         ms_fused = bench(lambda: dt._tail_forward(module, x), args.iters)
-    print(f"[time] {args.rows}x{args.hidden}: reference {ms_ref:.3f} ms | tail-fused {ms_fused:.3f} ms "
-          f"({100 * (1 - ms_fused / ms_ref):+.1f}%)  -> about {(ms_ref - ms_fused) * 394 / 1000:.2f} s/step")
+    print(
+        f"[time] {args.rows}x{args.hidden}: reference {ms_ref:.3f} ms | tail-fused {ms_fused:.3f} ms "
+        f"({100 * (1 - ms_fused / ms_ref):+.1f}%)  -> about {(ms_ref - ms_fused) * 394 / 1000:.2f} s/step"
+    )
 
 
 if __name__ == "__main__":

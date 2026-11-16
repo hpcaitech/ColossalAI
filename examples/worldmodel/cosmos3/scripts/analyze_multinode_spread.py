@@ -87,7 +87,9 @@ def main() -> int:
     print("\nper node (rank // 8):")
     for node in sorted(wait_by_node):
         waits = wait_by_node[node]
-        print(f"  node_rank {node}: median data wait {stats.median(waits):5.2f}s   p90 {sorted(waits)[int(len(waits) * 0.9)]:5.2f}s")
+        print(
+            f"  node_rank {node}: median data wait {stats.median(waits):5.2f}s   p90 {sorted(waits)[int(len(waits) * 0.9)]:5.2f}s"
+        )
 
     if steady_spread:
         print(

@@ -9,7 +9,6 @@ Provides opaque-box mock environments for:
 """
 
 import ast
-import json
 import math
 import os
 import re
@@ -17,6 +16,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
 import pytest
 import torch
 
@@ -29,6 +29,7 @@ if str(REPO_ROOT) not in sys.path:
 # ==============================================================================
 # 1. Cluster Guard & Topology Registry
 # ==============================================================================
+
 
 class ClusterGuard:
     """Enforces strict Ascend 910B2 cluster node isolation and validation rules."""
@@ -48,9 +49,12 @@ class ClusterGuard:
 
     FORBIDDEN_IDENTIFIERS = set(FORBIDDEN_NODES.keys()) | set(FORBIDDEN_NODES.values())
     ALLOWED_IDENTIFIERS = {
-        PRIMARY_NODE_NAME, PRIMARY_NODE_IP,
-        VALIDATION_NODE_NAME, VALIDATION_NODE_IP,
-        "localhost", "127.0.0.1"
+        PRIMARY_NODE_NAME,
+        PRIMARY_NODE_IP,
+        VALIDATION_NODE_NAME,
+        VALIDATION_NODE_IP,
+        "localhost",
+        "127.0.0.1",
     }
 
     def __init__(self):
@@ -78,10 +82,7 @@ class ClusterGuard:
         # Ensure node6 is included for any multi-node run
         clean_hosts = [h.strip().lower() for h in hosts]
         if len(clean_hosts) > 1:
-            has_primary = (
-                self.PRIMARY_NODE_NAME in clean_hosts or
-                self.PRIMARY_NODE_IP in clean_hosts
-            )
+            has_primary = self.PRIMARY_NODE_NAME in clean_hosts or self.PRIMARY_NODE_IP in clean_hosts
             if not has_primary:
                 raise ValueError("Multi-node runs must include node6 as primary host.")
 
@@ -130,6 +131,7 @@ class ClusterGuard:
 # 2. NVMe vs NFS Storage Inspector
 # ==============================================================================
 
+
 class NVMePathChecker:
     """Verifies that execution directories and caches strictly reside on local NVMe."""
 
@@ -160,9 +162,7 @@ class NVMePathChecker:
             return True
 
         if not (p_str.startswith(cls.NVME_ROOT_PREFIX) or p_str.startswith("/tmp") or allow_temp):
-            raise RuntimeError(
-                f"Path '{p_str}' is not on local NVMe mount ({cls.NVME_ROOT_PREFIX})."
-            )
+            raise RuntimeError(f"Path '{p_str}' is not on local NVMe mount ({cls.NVME_ROOT_PREFIX}).")
         return True
 
     @classmethod
@@ -171,18 +171,15 @@ class NVMePathChecker:
         tilelang_env = os.environ.get("TILELANG_CACHE_DIR")
 
         if cache_env and cls.is_nfs_path(cache_env):
-            raise RuntimeError(
-                f"COLOSSALAI_EXTENSION_CACHE '{cache_env}' points to NFS storage."
-            )
+            raise RuntimeError(f"COLOSSALAI_EXTENSION_CACHE '{cache_env}' points to NFS storage.")
         if tilelang_env and cls.is_nfs_path(tilelang_env):
-            raise RuntimeError(
-                f"TILELANG_CACHE_DIR '{tilelang_env}' points to NFS storage."
-            )
+            raise RuntimeError(f"TILELANG_CACHE_DIR '{tilelang_env}' points to NFS storage.")
 
 
 # ==============================================================================
 # 3. TileLang AST Checker
 # ==============================================================================
+
 
 class TileLangASTChecker:
     """Enforces no `from __future__ import annotations` in TileLang kernels."""
@@ -213,6 +210,7 @@ class TileLangASTChecker:
 # 4. Mock Torch NPU & NpuFusedAdamW Emulation
 # ==============================================================================
 
+
 class MockNPUEvent:
     """Mock implementation of torch.npu.Event with timing support."""
 
@@ -222,6 +220,7 @@ class MockNPUEvent:
 
     def record(self, stream=None):
         import time
+
         self._record_time = time.perf_counter()
 
     def elapsed_time(self, end_event: "MockNPUEvent") -> float:
@@ -317,8 +316,8 @@ class MockNpuFusedAdamW(torch.optim.Optimizer):
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-                bias_correction1 = 1 - beta1 ** step
-                bias_correction2 = 1 - beta2 ** step
+                bias_correction1 = 1 - beta1**step
+                bias_correction2 = 1 - beta2**step
 
                 step_size = lr / bias_correction1
                 denom = (exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(eps)
@@ -395,6 +394,7 @@ def create_mock_torch_npu():
 # ==============================================================================
 # 5. Pytest Fixtures
 # ==============================================================================
+
 
 @pytest.fixture
 def cluster_env() -> ClusterGuard:

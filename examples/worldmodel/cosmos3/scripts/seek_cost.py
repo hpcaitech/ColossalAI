@@ -18,12 +18,11 @@ import time
 from pathlib import Path
 
 import av
-import torch
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from examples.worldmodel.cosmos3.droid_dataset import CAM_FEATURE, CAMS, DroidActionPolicyDataset
+from examples.worldmodel.cosmos3.droid_dataset import CAM_FEATURE, DroidActionPolicyDataset
 
 DATA = "/mnt/disk0/jiangzs/datasets/Cosmos3-DROID/success"
 FPS = 15.0
@@ -51,8 +50,11 @@ def probe(dataset, index: int, camera: str = "wrist") -> None:
             if kept >= N_OBS:
                 break
     elapsed = time.perf_counter() - started
-    print(f"index={index} episode={window.episode_index} start={window.start} want_ts={want_ts:.2f}s "
-          f"kept={kept} decoded={decoded} ratio={decoded / max(kept, 1):.1f}x time={elapsed:.2f}s", flush=True)
+    print(
+        f"index={index} episode={window.episode_index} start={window.start} want_ts={want_ts:.2f}s "
+        f"kept={kept} decoded={decoded} ratio={decoded / max(kept, 1):.1f}x time={elapsed:.2f}s",
+        flush=True,
+    )
 
 
 dataset = DroidActionPolicyDataset(DATA, chunk_length=32, fps=FPS, resolution="480", augment=False, max_episodes=64)

@@ -50,8 +50,10 @@ def main():
     with torch.no_grad():
         reference = dk._reference_forward(module, x)
         candidate = dk._sum_mean_forward(module, x)
-    print(f"[fwd ] bit_equal={torch.equal(candidate, reference)} "
-          f"mismatched {int((candidate != reference).sum())}/{reference.numel()}")
+    print(
+        f"[fwd ] bit_equal={torch.equal(candidate, reference)} "
+        f"mismatched {int((candidate != reference).sum())}/{reference.numel()}"
+    )
 
     torch.manual_seed(7)
     seed_grad = torch.randn(args.rows, args.hidden, device=device, dtype=torch.bfloat16) * 0.05
@@ -63,20 +65,25 @@ def main():
     xr.grad = None
     module.weight.grad = None
     dk._sum_mean_forward(module, xr).backward(seed_grad)
-    print(f"[bwd ] x grad bit_equal={torch.equal(xr.grad, ref_gx)} mismatched {int((xr.grad != ref_gx).sum())}/"
-          f"{xr.grad.numel()} | w grad bit_equal={torch.equal(module.weight.grad, ref_gw)}")
+    print(
+        f"[bwd ] x grad bit_equal={torch.equal(xr.grad, ref_gx)} mismatched {int((xr.grad != ref_gx).sum())}/"
+        f"{xr.grad.numel()} | w grad bit_equal={torch.equal(module.weight.grad, ref_gw)}"
+    )
 
     def fwd_bwd(forward):
         def run():
             leaf = x.detach().requires_grad_(True)
             module.weight.grad = None
             forward(module, leaf).backward(seed_grad)
+
         return run
 
     ms_ref = bench(fwd_bwd(dk._reference_forward), args.iters)
     ms_sum = bench(fwd_bwd(dk._sum_mean_forward), args.iters)
-    print(f"[time] {args.rows}x{args.hidden} fwd+bwd: mean {ms_ref:.3f} ms | sum/H {ms_sum:.3f} ms "
-          f"({100 * (1 - ms_sum / ms_ref):+.1f}%) -> {(ms_ref - ms_sum) * 394 / 1000:+.2f} s/step at 394 chains")
+    print(
+        f"[time] {args.rows}x{args.hidden} fwd+bwd: mean {ms_ref:.3f} ms | sum/H {ms_sum:.3f} ms "
+        f"({100 * (1 - ms_sum / ms_ref):+.1f}%) -> {(ms_ref - ms_sum) * 394 / 1000:+.2f} s/step at 394 chains"
+    )
 
 
 if __name__ == "__main__":

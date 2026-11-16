@@ -47,15 +47,15 @@ def tree(x):
 def lanes_then(x, lanes, combine):
     """Each lane sums a strided subsequence (what a vector load does), then the lanes are folded."""
     rows = x.reshape(*x.shape[:-1], x.shape[-1] // lanes, lanes)
-    partial = torch.cumsum(rows, dim=-2)[..., -1, :]     # running sum per lane over its own subsequence
+    partial = torch.cumsum(rows, dim=-2)[..., -1, :]  # running sum per lane over its own subsequence
     return combine(partial)
 
 
 def blocks_then(x, blocks, combine_inner, combine_outer):
     """Split the row into contiguous blocks, sum each, then fold the block sums."""
     rows = x.reshape(*x.shape[:-1], blocks, x.shape[-1] // blocks)
-    partial = combine_inner(rows)          # reduce the contiguous in-block axis
-    return combine_outer(partial)          # then fold the block axis
+    partial = combine_inner(rows)  # reduce the contiguous in-block axis
+    return combine_outer(partial)  # then fold the block axis
 
 
 def main():
@@ -73,8 +73,9 @@ def main():
 
     reference = squares.mean(-1)
     total = squares.sum(-1)
-    print(f"[mean] shapes {tuple(x.shape)}; mean == sum/{args.hidden}: "
-          f"{torch.equal(reference, total / args.hidden)}")
+    print(
+        f"[mean] shapes {tuple(x.shape)}; mean == sum/{args.hidden}: " f"{torch.equal(reference, total / args.hidden)}"
+    )
 
     candidates = [("sequential", sequential), ("tree", tree)]
     for lanes in (2, 4, 8, 16, 32, 64):
@@ -85,10 +86,8 @@ def main():
     for blocks in (2, 4, 8, 16, 32):
         if args.hidden % blocks:
             continue
-        candidates.append((f"{blocks}blk+seq+seq",
-                           lambda t, n=blocks: blocks_then(t, n, sequential, sequential)))
-        candidates.append((f"{blocks}blk+tree+tree",
-                           lambda t, n=blocks: blocks_then(t, n, tree, tree)))
+        candidates.append((f"{blocks}blk+seq+seq", lambda t, n=blocks: blocks_then(t, n, sequential, sequential)))
+        candidates.append((f"{blocks}blk+tree+tree", lambda t, n=blocks: blocks_then(t, n, tree, tree)))
 
     exact = []
     for name, candidate in candidates:
@@ -108,8 +107,10 @@ def main():
         variance = squares.mean(-1, keepdim=True) + 1e-5
         rsqrt_torch = torch.rsqrt(variance)
         precise = 1.0 / torch.sqrt(variance)
-        print(f"[rsqrt] torch.rsqrt == 1/sqrt: {torch.equal(rsqrt_torch, precise)} "
-              f"(mismatched {int((rsqrt_torch != precise).sum())}/{variance.numel()})")
+        print(
+            f"[rsqrt] torch.rsqrt == 1/sqrt: {torch.equal(rsqrt_torch, precise)} "
+            f"(mismatched {int((rsqrt_torch != precise).sum())}/{variance.numel()})"
+        )
 
     # Cost of the reference chain versus the traffic a fused kernel would move.
     weight = torch.rand(args.hidden, device=device, dtype=torch.bfloat16)
@@ -130,8 +131,10 @@ def main():
     ms_ref = bench(reference_chain, args.iters)
     ms_floor = bench(fused_floor, args.iters)
     moved_ref = args.rows * args.hidden * (2 + 4 + 8 + 8 + 8 + 8 + 6)
-    print(f"[time] reference chain {ms_ref:.3f} ms for {args.rows}x{args.hidden} "
-          f"({moved_ref / (ms_ref * 1e6):.0f} GB/s of the ~40 bytes/element it touches)")
+    print(
+        f"[time] reference chain {ms_ref:.3f} ms for {args.rows}x{args.hidden} "
+        f"({moved_ref / (ms_ref * 1e6):.0f} GB/s of the ~40 bytes/element it touches)"
+    )
     print(f"[time] torch floor (cast+mean+rsqrt+mul, 4 kernels) {ms_floor:.3f} ms")
     print("[note] 4 norms per layer x 28 layers x (fwd + ~2x bwd) at this row count")
 

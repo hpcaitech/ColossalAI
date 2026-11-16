@@ -46,8 +46,9 @@ def real_batch(data: Path, batch: int, max_episodes: int):
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset, collate
 
-    dataset = DroidActionPolicyDataset(data, chunk_length=32, resolution="480", augment=False,
-                                       max_episodes=max_episodes)
+    dataset = DroidActionPolicyDataset(
+        data, chunk_length=32, resolution="480", augment=False, max_episodes=max_episodes
+    )
     canvas = dataset[0]["canvas_hw"].tolist()
     content = dataset[0]["content_hw"].tolist()
     chosen, index = [dataset[0]], 1
@@ -89,7 +90,7 @@ def rel_l2(a, b):
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
     from diffusers import AutoencoderKLWan
 
     args = parse_args()
@@ -136,8 +137,10 @@ def main():
                 "cropped": cropped,
             }
         )
-        print(f"pad {pad:3d} width {width:4d}  {wall:.3f} s  {wall / args.batch:.3f} s/sample  "
-              f"peak {peak:6.2f} GiB", flush=True)
+        print(
+            f"pad {pad:3d} width {width:4d}  {wall:.3f} s  {wall / args.batch:.3f} s/sample  " f"peak {peak:6.2f} GiB",
+            flush=True,
+        )
 
     for row in results:
         row["rel_l2"] = rel_l2(row.pop("cropped"), reference)
@@ -145,8 +148,10 @@ def main():
     print(f"\nreference: pad {base['pad']} ({base['width']} columns)")
     print(f"{'pad':>4} {'width':>6} {'s/sample':>9} {'speedup':>8} {'relL2':>10}")
     for row in results:
-        print(f"{row['pad']:>4} {row['width']:>6} {row['s_per_sample']:9.3f} "
-              f"{base['wall_s'] / row['wall_s']:8.3f} {row['rel_l2']:10.2e}")
+        print(
+            f"{row['pad']:>4} {row['width']:>6} {row['s_per_sample']:9.3f} "
+            f"{base['wall_s'] / row['wall_s']:8.3f} {row['rel_l2']:10.2e}"
+        )
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

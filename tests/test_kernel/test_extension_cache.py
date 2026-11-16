@@ -1,4 +1,5 @@
 """Verify the original cache path and support for a node-local symlink."""
+
 import os
 from pathlib import Path
 
@@ -35,5 +36,3 @@ def test_extension_cache_empty_or_whitespace_env_fallback(monkeypatch):
         assert cache_path.is_absolute()
         assert cache_path.parent == Path(os.path.expanduser("~")) / ".cache/colossalai/torch_extensions"
         assert cache_path.name.startswith("torch")
-
-

@@ -65,16 +65,16 @@ def check(generation: Path, base: Path) -> bool:
 
     missing = sorted(set(reference) - set(trained))
     extra = sorted(set(trained) - set(reference))
-    shape_mismatch = sorted(
-        key for key in set(reference) & set(trained) if reference[key][1] != trained[key][1]
-    )
-    dtype_mismatch = sorted(
-        key for key in set(reference) & set(trained) if reference[key][0] != trained[key][0]
-    )
+    shape_mismatch = sorted(key for key in set(reference) & set(trained) if reference[key][1] != trained[key][1])
+    dtype_mismatch = sorted(key for key in set(reference) & set(trained) if reference[key][0] != trained[key][0])
     print(f"[warm] base transformer   {len(reference):5d} tensors from {len(set(base_map.values()))} shard(s)")
     print(f"[warm] trained state dict {len(trained):5d} tensors from {len(set(trained_map.values()))} shard(s)")
-    for label, keys in (("missing in trained", missing), ("extra in trained", extra),
-                        ("shape mismatch", shape_mismatch), ("dtype mismatch", dtype_mismatch)):
+    for label, keys in (
+        ("missing in trained", missing),
+        ("extra in trained", extra),
+        ("shape mismatch", shape_mismatch),
+        ("dtype mismatch", dtype_mismatch),
+    ):
         print(f"[warm] {label:<20} {len(keys)}" + (f": {', '.join(keys[:6])}" if keys else ""))
     dtype_counts: dict[str, int] = {}
     for dtype, _shape in trained.values():
@@ -117,8 +117,10 @@ def compare_values(generation: Path, base: Path) -> bool:
             delta = (trained.float() - reference.float()).abs().max().item() if differing_frozen else 0.0
             if differing_frozen and differing_frozen[-1] == key:
                 print(f"[warm] frozen tensor changed: {key}  max|Δ| {delta:.3e}")
-    print(f"[warm] compared {compared} tensors: {len(differing_trainable)} trained tensors changed (expected), "
-          f"{len(differing_frozen)} frozen tensors changed")
+    print(
+        f"[warm] compared {compared} tensors: {len(differing_trainable)} trained tensors changed (expected), "
+        f"{len(differing_frozen)} frozen tensors changed"
+    )
     if differing_trainable[:6]:
         print(f"[warm]   e.g. trained: {', '.join(differing_trainable[:6])}")
     if differing_frozen[:6]:
@@ -165,8 +167,14 @@ def assemble(generation: Path, base: Path, out: Path) -> None:
         renamed[name] = target_name
     weight_map = {key: renamed[name] for key, name in trained_map.items()}
     (transformer / INDEX).write_text(
-        json.dumps({"metadata": {"total_size": sum((trained_dir / n).stat().st_size for n in shards)},
-                    "weight_map": weight_map}, indent=2, sort_keys=True)
+        json.dumps(
+            {
+                "metadata": {"total_size": sum((trained_dir / n).stat().st_size for n in shards)},
+                "weight_map": weight_map,
+            },
+            indent=2,
+            sort_keys=True,
+        )
     )
     print(f"[warm] wrote {out}: {len(shards)} shard(s), {len(weight_map)} tensors")
     print(f"[warm] transformer dir: {sorted(p.name for p in transformer.iterdir())}")
@@ -177,8 +185,11 @@ def main() -> int:
     parser.add_argument("--generation", type=Path, required=True, help="checkpoint-<id> directory")
     parser.add_argument("--base", type=Path, required=True, help="base checkpoint root (holds transformer/, vae/)")
     parser.add_argument("--check", action="store_true", help="compare key sets, shapes and dtypes")
-    parser.add_argument("--compare-values", action="store_true",
-                        help="bitwise audit: every frozen tensor must equal the base cast to bf16")
+    parser.add_argument(
+        "--compare-values",
+        action="store_true",
+        help="bitwise audit: every frozen tensor must equal the base cast to bf16",
+    )
     parser.add_argument("--assemble", type=Path, help="build the warm-start directory here")
     args = parser.parse_args()
     ok = check(args.generation, args.base) if args.check or args.assemble else True

@@ -25,11 +25,11 @@ def parse_args():
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
-    from examples.worldmodel.cosmos3.video_pad_norm import pad_normalize_torch, torch_reference
     from examples.worldmodel.cosmos3.vae_fast_encoder import enable_fast_encoder
+    from examples.worldmodel.cosmos3.video_pad_norm import pad_normalize_torch, torch_reference
 
     args = parse_args()
     torch.npu.set_device(0)
@@ -39,9 +39,9 @@ def main():
     shape = (args.batch, 3, 33, 540, 640)
     host_uint8 = torch.randint(0, 256, shape, dtype=torch.uint8)
 
-    reference_fp32 = torch_reference(host_uint8, args.pad_h, args.pad)     # CPU fp32, path A
+    reference_fp32 = torch_reference(host_uint8, args.pad_h, args.pad)  # CPU fp32, path A
     device_uint8 = host_uint8.to("npu:0")
-    device = pad_normalize_torch(device_uint8, args.pad_h, args.pad)       # NPU bf16, path B
+    device = pad_normalize_torch(device_uint8, args.pad_h, args.pad)  # NPU bf16, path B
     # Path A reaches the VAE through the same device bf16 cast as path B; that isolates the fp32 division.
     reference = reference_fp32.to("npu:0", torch.bfloat16)
     torch.npu.synchronize()
@@ -70,8 +70,10 @@ def main():
     torch.npu.synchronize()
     a, b = latent_dev.float(), latent_ref.float()
     rel = float(((a - b).norm() / b.norm()).item())
-    print(f"[latent] relL2={rel:.3e} max_abs={float((a - b).abs().max()):.3e} "
-          f"ref_rms={float(b.pow(2).mean().sqrt()):.3f}")
+    print(
+        f"[latent] relL2={rel:.3e} max_abs={float((a - b).abs().max()):.3e} "
+        f"ref_rms={float(b.pow(2).mean().sqrt()):.3f}"
+    )
     print("[context] VAE's own bf16 compute noise vs fp32 is ~2e-2 relL2; the bf16 storage cast ~4e-3.")
 
 

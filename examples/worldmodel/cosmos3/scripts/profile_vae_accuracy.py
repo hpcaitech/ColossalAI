@@ -58,12 +58,12 @@ def encode(vae, video):
 
 
 def main():
-    import torch_npu  # noqa: F401  registers torch.npu
+    import torch_npu
 
     args = parse_args()
     rank = int(os.environ.get("RANK", 0))
     local_rank = int(os.environ.get("LOCAL_RANK", rank))
-    world = int(os.environ.get("WORLD_SIZE", 1))
+    int(os.environ.get("WORLD_SIZE", 1))
     torch.npu.set_device(local_rank)
 
     from droid_dataset import DroidActionPolicyDataset, collate
@@ -91,8 +91,11 @@ def main():
         return collate(chosen)["video"].to("npu", torch.float32)
 
     batches = [batch_at((rank * args.batches + index) * args.batch) for index in range(args.batches)]
-    print(f"[rank {rank}] {len(dataset)} window(s), {len(batches)} batch(es) of {args.batch}, "
-          f"canvas {tuple(batches[0].shape)}", flush=True)
+    print(
+        f"[rank {rank}] {len(dataset)} window(s), {len(batches)} batch(es) of {args.batch}, "
+        f"canvas {tuple(batches[0].shape)}",
+        flush=True,
+    )
 
     vae = build_vae(args.checkpoint).to(f"npu:{local_rank}")
     reference = [encode(vae, video) for video in batches]
@@ -119,8 +122,11 @@ def main():
                     )
                 )
                 if args.verbose:
-                    print(f"[rank {rank}] {name} relative {(delta.mean() / scale).item():.4e} "
-                          f"max {delta.max().item():.4e}", flush=True)
+                    print(
+                        f"[rank {rank}] {name} relative {(delta.mean() / scale).item():.4e} "
+                        f"max {delta.max().item():.4e}",
+                        flush=True,
+                    )
         relative = sorted(row[0] for row in rows)
         ratio = [row[0] / row[2] for row in rows]
         print(

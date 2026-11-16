@@ -68,7 +68,7 @@ def encode_latent(vae, video):
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
 
     args = parse_args()
     torch.npu.set_device(0)
@@ -77,8 +77,15 @@ def main():
     from vae_fast_encoder import disable_fast_encoder, enable_fast_conv, enable_fast_encoder
     from vae_fused_norm import enable_fused_rmsnorm
 
-    video = (real_batch(args.data, args.batch, args.max_episodes) if args.data else
-             torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)).float().to("npu")
+    video = (
+        (
+            real_batch(args.data, args.batch, args.max_episodes)
+            if args.data
+            else torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)
+        )
+        .float()
+        .to("npu")
+    )
     vae = build_vae(args.checkpoint).to("npu:0")
     enable_chunked_encode(vae, args.chunk_frames)
 
@@ -99,8 +106,10 @@ def main():
             raise SystemExit(f"unknown arm {arm}")
 
     reference = None
-    print(f"{'dtype':>8} {'arm':>15} {'wall s':>8} {'vs base':>8} {'rel err':>10} {'vs bf16':>8} "
-          f"{'peak GiB':>9}", flush=True)
+    print(
+        f"{'dtype':>8} {'arm':>15} {'wall s':>8} {'vs base':>8} {'rel err':>10} {'vs bf16':>8} " f"{'peak GiB':>9}",
+        flush=True,
+    )
 
     for dtype_name in args.dtypes.split(","):
         dtype = getattr(torch, dtype_name)
@@ -129,9 +138,11 @@ def main():
             cast = (reference - reference.bfloat16().float()).abs().mean()
             if baseline_wall is None:
                 baseline_wall = wall
-            print(f"{dtype_name:>8} {arm:>15} {wall:>8.3f} {baseline_wall / wall:>7.2f}x "
-                  f"{(delta.mean() / scale).item():>10.3e} {(delta.mean() / cast).item():>8.3f} {peak:>9.2f}",
-                  flush=True)
+            print(
+                f"{dtype_name:>8} {arm:>15} {wall:>8.3f} {baseline_wall / wall:>7.2f}x "
+                f"{(delta.mean() / scale).item():>10.3e} {(delta.mean() / cast).item():>8.3f} {peak:>9.2f}",
+                flush=True,
+            )
         configure("native")
 
 

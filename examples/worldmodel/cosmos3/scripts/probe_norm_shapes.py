@@ -33,7 +33,10 @@ def main():
     device = torch.device("npu:0")
     vae = AutoencoderKLWan.from_pretrained(args.checkpoint + "/vae", torch_dtype=torch.bfloat16).eval().to(device)
     enable_fast_encoder(vae)
-    print("[config]", json.dumps({k: v for k, v in dict(vae.config).items() if isinstance(v, (int, float, str))}, default=str)[:600])
+    print(
+        "[config]",
+        json.dumps({k: v for k, v in dict(vae.config).items() if isinstance(v, (int, float, str))}, default=str)[:600],
+    )
 
     calls = Counter()
 
@@ -41,6 +44,7 @@ def main():
         def forward(self, x):
             calls[(tuple(x.shape), str(x.dtype), int(self.gamma.shape[0]))] += 1
             return F.normalize(x, dim=1) * self.gamma * self.scale
+
         return forward
 
     from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
@@ -77,7 +81,9 @@ def main():
         numel = t.numel()
         gbps = 2 * numel * t.element_size() / (ms * 1e6)
         # every call in the encoder runs at this shape; the per-encode cost is what the step pays
-        print(f"  {shape} {dtype}: {ms:.3f} ms  ~{gbps:.0f} GB/s ideal-traffic  x{count}/encode  => {ms * count:.1f} ms/encode")
+        print(
+            f"  {shape} {dtype}: {ms:.3f} ms  ~{gbps:.0f} GB/s ideal-traffic  x{count}/encode  => {ms * count:.1f} ms/encode"
+        )
         total += ms * count
     print(f"[reference] summed over one encode: {total:.1f} ms")
 

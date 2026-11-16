@@ -24,7 +24,10 @@ CATEGORIES = (
     ("norm", re.compile(r"norm|l2norm|rsqrt|rms", re.I)),
     ("activation", re.compile(r"silu|swish|sigmoid|gelu|relu|tanh", re.I)),
     ("reduce", re.compile(r"reduce|sum|mean|amax|max\b", re.I)),
-    ("layout", re.compile(r"transpose|permute|TransposeAiCore|transdata|copy|cat\b|concat|pad|slice|split|stack", re.I)),
+    (
+        "layout",
+        re.compile(r"transpose|permute|TransposeAiCore|transdata|copy|cat\b|concat|pad|slice|split|stack", re.I),
+    ),
     ("cast", re.compile(r"cast|to_bf16|to_fp|convert", re.I)),
     ("elementwise", re.compile(r"mul|add|sub|div|pow|clamp|where|abs|sqrt|exp|neg", re.I)),
     ("comm", re.compile(r"hcom|hccl|allreduce|reducescatter|allgather|broadcast", re.I)),
@@ -136,8 +139,10 @@ def main():
     wall = rows and (max(s + d for _n, s, d, _ in rows) - min(s for _n, s, _d, _ in rows))
     busy = union_busy((s, s + d) for _n, s, d, _ in rows)
     span = wall or 1.0
-    print(f"\n[idle] device busy {busy / 1e6:.3f}s of {span / 1e6:.3f}s span -> {100 * busy / span:.1f}% busy, "
-          f"idle {(span - busy) / 1e6:.3f}s")
+    print(
+        f"\n[idle] device busy {busy / 1e6:.3f}s of {span / 1e6:.3f}s span -> {100 * busy / span:.1f}% busy, "
+        f"idle {(span - busy) / 1e6:.3f}s"
+    )
     print(f"[idle] summed kernel time {total / 1e6:.3f}s (overlap inside {total / busy:.2f}x)")
 
     ordered = sorted(rows, key=lambda row: row[1])
@@ -159,8 +164,10 @@ def main():
 
     small = sum(seconds for _n, (calls, seconds) in per_name.items() for _ in [0] if seconds / calls <= args.small_us)
     small_calls = sum(calls for _n, (calls, seconds) in per_name.items() if seconds / calls <= args.small_us)
-    print(f"\n[launch] {small_calls} kernels <= {args.small_us:.0f}us mean: {small / 1e6:.3f}s "
-          f"({100 * small / total:.1f}% of kernel time, {100 * small_calls / len(rows):.0f}% of calls)")
+    print(
+        f"\n[launch] {small_calls} kernels <= {args.small_us:.0f}us mean: {small / 1e6:.3f}s "
+        f"({100 * small / total:.1f}% of kernel time, {100 * small_calls / len(rows):.0f}% of calls)"
+    )
     print("[launch] smallest-kernel names by call count")
     tiny = sorted(
         ((name, calls, seconds) for name, (calls, seconds) in per_name.items() if seconds / calls <= args.small_us),
@@ -229,15 +236,18 @@ def main():
     print(f"{'run length':<12}{'runs':>8}{'kernels':>9}{'total_ms':>11}")
     for length in sorted(histogram):
         subset = [run for run in elementwise if min(len(run), 8) == length]
-        print(f"{('>=8' if length == 8 else str(length)):<12}{len(subset):>8}"
-              f"{sum(len(run) for run in subset):>9}{sum(d for run in subset for _n, d in run) / 1e3:>11.2f}")
+        print(
+            f"{('>=8' if length == 8 else str(length)):<12}{len(subset):>8}"
+            f"{sum(len(run) for run in subset):>9}{sum(d for run in subset for _n, d in run) / 1e3:>11.2f}"
+        )
     fused_ms = sum(d for run in elementwise for _n, d in run if len(run) >= 2)
-    print(f"[elementwise] {fused_ms / 1e3:.2f} ms in runs of >=2 kernels; a pairwise fusion removes one pass per "
-          f"boundary, so the ceiling is about {fused_ms / 1e3 / 2:.2f} ms")
+    print(
+        f"[elementwise] {fused_ms / 1e3:.2f} ms in runs of >=2 kernels; a pairwise fusion removes one pass per "
+        f"boundary, so the ceiling is about {fused_ms / 1e3 / 2:.2f} ms"
+    )
     patterns = Counter(tuple(name for name, _d in run) for run in elementwise if len(run) >= 2)
     for pattern, count in patterns.most_common(6):
-        seconds = sum(d for run in elementwise for _n, d in run
-                      if tuple(name for name, _d in run) == pattern)
+        seconds = sum(d for run in elementwise for _n, d in run if tuple(name for name, _d in run) == pattern)
         print(f"  {count:>4}x {seconds / 1e3:8.2f} ms  {' -> '.join(name[:22] for name in pattern[:5])}")
 
     operators = read_operators(root / "operator_details.csv")
@@ -256,12 +266,11 @@ def main():
         print(f"[host] summed host self time {host_total / 1e3:.1f} ms over {len(operators)} op records")
         allocs = per_op.get("empty_tensor", [0, 0.0, 0.0])
         print(f"[host] empty_tensor {allocs[0]} calls, host {allocs[2] / 1e3:.1f} ms")
-        layout_host = sum(
-            row[2] for name, row in per_op.items()
-            if category(name) == "layout"
+        layout_host = sum(row[2] for name, row in per_op.items() if category(name) == "layout")
+        print(
+            f"[host] layout-class host time {layout_host / 1e3:.1f} ms "
+            f"({100 * layout_host / host_total if host_total else 0:.1f}% of host)"
         )
-        print(f"[host] layout-class host time {layout_host / 1e3:.1f} ms "
-              f"({100 * layout_host / host_total if host_total else 0:.1f}% of host)")
 
 
 if __name__ == "__main__":

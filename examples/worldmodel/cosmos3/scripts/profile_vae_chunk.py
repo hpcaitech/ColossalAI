@@ -40,9 +40,12 @@ def parse_args():
     parser.add_argument("--dtypes", default="float32,float16")
     parser.add_argument("--max-episodes", type=int, default=2)
     parser.add_argument("--compile", action="store_true", help="torch.compile the encode before timing each setting.")
-    parser.add_argument("--compile-backend", default="inductor",
-                        help="torch.compile backend. inductor needs triton-ascend, which this image lacks; the "
-                             "native Ascend graph path is npugraph_ex (torchair).")
+    parser.add_argument(
+        "--compile-backend",
+        default="inductor",
+        help="torch.compile backend. inductor needs triton-ascend, which this image lacks; the "
+        "native Ascend graph path is npugraph_ex (torchair).",
+    )
     return parser.parse_args()
 
 
@@ -85,15 +88,22 @@ def latent_of(vae, video):
 
 
 def main():
-    import torch_npu  # noqa: F401  registers torch.npu
+    import torch_npu
 
     args = parse_args()
     torch.npu.set_device(0)
 
     from vae_chunked import enable_chunked_encode
 
-    video = (real_batch(args.data, args.batch, args.max_episodes) if args.data else
-             torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)).float().to("npu")
+    video = (
+        (
+            real_batch(args.data, args.batch, args.max_episodes)
+            if args.data
+            else torch.randn(args.batch, 3, RECIPE_CHUNK + 1, 544, 736)
+        )
+        .float()
+        .to("npu")
+    )
     vae = build_vae(args.checkpoint).to("npu:0")
     native_encode = vae._encode  # bound method; restoring it undoes any patched window
 
@@ -106,8 +116,11 @@ def main():
         vae.to(dtype)
         video_d = video.to(dtype)
         print(f"\n[dtype] {dtype_name}", flush=True)
-        print(f"{'window':>8} {'calls':>6} {'wall s':>8} {'vs native':>10} {'rel err':>10} "
-              f"{'vs bf16 cast':>13} {'peak GiB':>9} {'warm s':>8}", flush=True)
+        print(
+            f"{'window':>8} {'calls':>6} {'wall s':>8} {'vs native':>10} {'rel err':>10} "
+            f"{'vs bf16 cast':>13} {'peak GiB':>9} {'warm s':>8}",
+            flush=True,
+        )
 
         reference = None
         native_wall = None
@@ -155,15 +168,21 @@ def main():
                 speedup = f"{native_wall / wall:.2f}x" if native_wall else "-"
                 rel = f"{(delta.mean() / scale).item():.3e}"
                 ratio = f"{(delta.mean() / cast).item():.3f}"
-            print(f"{mode:>8} {calls['n']:>6} {wall:>8.3f} {speedup:>10} {rel:>10} {ratio:>13} "
-                  f"{peak:>9.2f} {warm:>8.1f}", flush=True)
+            print(
+                f"{mode:>8} {calls['n']:>6} {wall:>8.3f} {speedup:>10} {rel:>10} {ratio:>13} "
+                f"{peak:>9.2f} {warm:>8.1f}",
+                flush=True,
+            )
 
         if dtype_name != dtypes[0]:
             delta = (fp32_reference - reference).abs()
             scale = fp32_reference.abs().mean().clamp_min(1e-8)
             cast = (fp32_reference - fp32_reference.bfloat16().float()).abs().mean()
-            print(f"[note] {dtype_name} native vs fp32 native: relative {(delta.mean() / scale).item():.3e}, "
-                  f"{delta.mean().item() / cast.item():.3f}x the bf16 cast", flush=True)
+            print(
+                f"[note] {dtype_name} native vs fp32 native: relative {(delta.mean() / scale).item():.3e}, "
+                f"{delta.mean().item() / cast.item():.3f}x the bf16 cast",
+                flush=True,
+            )
 
     vae._encode = native_encode
 

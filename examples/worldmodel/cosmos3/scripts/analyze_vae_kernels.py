@@ -43,6 +43,7 @@ def category(name: str) -> str:
 
 def columns(header):
     """Map the columns this script needs regardless of the CANN export's exact naming."""
+
     def find(*names):
         for name in names:
             for index, column in enumerate(header):
@@ -134,8 +135,10 @@ def main():
     bursts.append((begin, previous_end, count, busy))
     print(f"[device] {len(bursts)} burst(s) at >50ms of idle:")
     for begin, end, count, busy in bursts:
-        print(f"[device]   {count:>5} kernels  wall {(end - begin) / 1e6:>6.3f}s  busy {busy / 1e6:>6.3f}s"
-              f"  utilisation {100 * busy / (end - begin):>5.1f}%")
+        print(
+            f"[device]   {count:>5} kernels  wall {(end - begin) / 1e6:>6.3f}s  busy {busy / 1e6:>6.3f}s"
+            f"  utilisation {100 * busy / (end - begin):>5.1f}%"
+        )
 
     print(f"\n{'engine':<16}{'kernels':>9}{'total_s':>10}{'pct':>7}")
     for engine, (count, seconds) in sorted(per_engine.items(), key=lambda kv: -kv[1][1]):
@@ -145,8 +148,10 @@ def main():
     print(f"\n[device] top {args.top} kernels")
     print(f"{'kernel':<56}{'calls':>7}{'total_s':>10}{'pct':>7}{'mean_us':>10}")
     for name, (count, seconds) in ranked[: args.top]:
-        print(f"{name[:55]:<56}{count:>7}{seconds / 1e6:>10.4f}"
-              f"{100 * seconds / total if total else 0:>6.1f}%{seconds / count:>10.1f}")
+        print(
+            f"{name[:55]:<56}{count:>7}{seconds / 1e6:>10.4f}"
+            f"{100 * seconds / total if total else 0:>6.1f}%{seconds / count:>10.1f}"
+        )
 
     per_category = defaultdict(lambda: [0, 0.0])
     for name, (count, seconds) in per_name.items():

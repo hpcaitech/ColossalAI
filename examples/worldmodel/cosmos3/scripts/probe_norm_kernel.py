@@ -18,7 +18,7 @@ import types
 import torch
 
 SHAPES = (
-    ((8, 640, 1, 34, 41), 90),   # 81 + 9 calls; the deepest stage, launch-bound in the reference
+    ((8, 640, 1, 34, 41), 90),  # 81 + 9 calls; the deepest stage, launch-bound in the reference
     ((8, 160, 4, 272, 328), 32),
     ((8, 320, 4, 136, 164), 24),
     ((8, 640, 2, 68, 82), 24),
@@ -70,12 +70,17 @@ def per_shape(iters):
         ms_kernel = bench(lambda: kernel(x), iters)
         total_ref += ms_ref * calls
         total_kernel += ms_kernel * calls
-        print(f"  {str(shape):26s} ref {ms_ref:8.3f} ms  kernel {ms_kernel:8.3f} ms  "
-              f"relL2 {diff.item():9.2e}  maxabs {maxabs.item():8.2e}  x{calls}", flush=True)
+        print(
+            f"  {str(shape):26s} ref {ms_ref:8.3f} ms  kernel {ms_kernel:8.3f} ms  "
+            f"relL2 {diff.item():9.2e}  maxabs {maxabs.item():8.2e}  x{calls}",
+            flush=True,
+        )
         del x, y_ref, y_kernel, module
         torch.npu.empty_cache()
-    print(f"  [per-encode estimate] {total_ref:.1f} ms -> {total_kernel:.1f} ms "
-          f"({100.0 * (1 - total_kernel / total_ref):.1f}% saved)")
+    print(
+        f"  [per-encode estimate] {total_ref:.1f} ms -> {total_kernel:.1f} ms "
+        f"({100.0 * (1 - total_kernel / total_ref):.1f}% saved)"
+    )
 
 
 def end_to_end(checkpoint, iters, batch):
@@ -100,8 +105,10 @@ def end_to_end(checkpoint, iters, batch):
         ms_kernel = bench(lambda: vae.encode(x).latent_dist.mode(), iters)
     diff = (latent_kernel.float() - latent_ref.float()).norm() / latent_ref.float().norm()
     maxabs = (latent_kernel.float() - latent_ref.float()).abs().max()
-    print(f"[end-to-end] encode wall {ms_ref:.1f} ms -> {ms_kernel:.1f} ms "
-          f"({100.0 * (1 - ms_kernel / ms_ref):.1f}% saved)")
+    print(
+        f"[end-to-end] encode wall {ms_ref:.1f} ms -> {ms_kernel:.1f} ms "
+        f"({100.0 * (1 - ms_kernel / ms_ref):.1f}% saved)"
+    )
     print(f"[end-to-end] latent relL2 {diff.item():.3e}  maxabs {maxabs.item():.3e}")
 
 

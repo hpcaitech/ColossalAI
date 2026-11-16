@@ -85,11 +85,17 @@ def main():
         float(batch["video"][0, 0, 0, 0, 0])
         done += batch["video"].shape[0]
         if index % 4 == 0 or index == batches - 1:
-            print(f"[rank {args.rank}] batches={index + 1}/{batches} samples={done} "
-                  f"at={time.perf_counter() - started:.1f}s", flush=True)
+            print(
+                f"[rank {args.rank}] batches={index + 1}/{batches} samples={done} "
+                f"at={time.perf_counter() - started:.1f}s",
+                flush=True,
+            )
     elapsed = time.perf_counter() - started
-    print(f"[rank {args.rank}] samples={done} seconds={elapsed:.1f} per_sample={elapsed / max(done, 1):.3f}s "
-          f"samples_per_s={done / elapsed:.3f}", flush=True)
+    print(
+        f"[rank {args.rank}] samples={done} seconds={elapsed:.1f} per_sample={elapsed / max(done, 1):.3f}s "
+        f"samples_per_s={done / elapsed:.3f}",
+        flush=True,
+    )
     sys.stdout.flush()
     # Workers only touched host memory; skip teardown rather than risk a wedge in torch_npu's shutdown path.
     os._exit(0)

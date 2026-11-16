@@ -132,8 +132,10 @@ def main():
             ms = bench(lambda w=weight: run(w), args.iters)
             counts = Counter() if args.skip_profile else kernel_counts(lambda w=weight: run(w), f"{index}_{label}")
             transdata = sum(count for name, count in counts.items() if "TransData" in name)
-            print(f"  cast {label:<11} {ms:7.3f} ms ({100 * (1 - ms / ms_base):+6.1f}%)  bit_equal={equal} "
-                  f"relL2={rel:.1e}  kernels {sum(counts.values())}  transdata {transdata}")
+            print(
+                f"  cast {label:<11} {ms:7.3f} ms ({100 * (1 - ms / ms_base):+6.1f}%)  bit_equal={equal} "
+                f"relL2={rel:.1e}  kernels {sum(counts.values())}  transdata {transdata}"
+            )
 
 
 if __name__ == "__main__":

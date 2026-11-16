@@ -125,7 +125,7 @@ def attach_hooks(modules, sync):
 
 
 def main():
-    import torch_npu  # registers torch.npu and the Ascend profiler; plain torch.profiler records no device events
+    import torch_npu
 
     args = parse_args()
     frames, height, width = RECIPE
@@ -133,9 +133,11 @@ def main():
     dtype = torch.float32 if args.accuracy_pair else getattr(torch, args.dtype)  # the pair always starts from fp32
     vae = build_vae(args.checkpoint, "npu:0", dtype, args.hf32)
     from examples.worldmodel.cosmos3.vae_fast_encoder import enable_fast_encoder
+
     enable_fast_encoder(vae)  # the production path: H/W pad handed to the conv, dead clone dropped
     if args.norm_kernel:
         from examples.worldmodel.cosmos3.vae_norm_kernel import enable_kernel_rmsnorm
+
         enable_kernel_rmsnorm(vae)
     if args.channels_last:
         vae = vae.to(memory_format=torch.channels_last_3d)
@@ -179,10 +181,14 @@ def main():
         cast = (reference - reference.bfloat16().float()).abs()
         scale = reference.abs().mean().item()
         print(f"[pair] fp32 {wall:.3f}s  {args.pair_dtype} {half_wall:.3f}s  speedup {wall / half_wall:.2f}x")
-        print(f"[pair] difference max {delta.max().item():.4e} mean {delta.mean().item():.4e} "
-              f"relative {delta.mean().item() / scale:.4e}")
-        print(f"[pair] bf16 cast  max {cast.max().item():.4e} mean {cast.mean().item():.4e} "
-              f"relative {cast.mean().item() / scale:.4e}")
+        print(
+            f"[pair] difference max {delta.max().item():.4e} mean {delta.mean().item():.4e} "
+            f"relative {delta.mean().item() / scale:.4e}"
+        )
+        print(
+            f"[pair] bf16 cast  max {cast.max().item():.4e} mean {cast.mean().item():.4e} "
+            f"relative {cast.mean().item() / scale:.4e}"
+        )
         print(f"[pair] ratio of means {delta.mean().item() / cast.mean().item():.3f}")
         return
 
@@ -196,19 +202,28 @@ def main():
         handle.remove()
 
     total = sum(record["seconds"] for record in records.values())
-    print(f"[config] batch={args.batch} shape={frames}x{height}x{width} channels_last={args.channels_last} "
-          f"dtype={args.dtype}")
+    print(
+        f"[config] batch={args.batch} shape={frames}x{height}x{width} channels_last={args.channels_last} "
+        f"dtype={args.dtype}"
+    )
     print(f"[stage] encode wall {wall:.3f}s; synced per-stage encode {synced_wall:.3f}s")
     print(f"[stage] encoder stages {total:.3f}s; other {synced_wall - total:.3f}s (patchify, quant_conv, cat)")
     rows = []
     for name, record in records.items():
-        rows.append({"stage": name, "calls": record["calls"], "seconds": round(record["seconds"], 4),
-                     "pct": round(100 * record["seconds"] / total, 1) if total else 0.0})
+        rows.append(
+            {
+                "stage": name,
+                "calls": record["calls"],
+                "seconds": round(record["seconds"], 4),
+                "pct": round(100 * record["seconds"] / total, 1) if total else 0.0,
+            }
+        )
     for row in sorted(rows, key=lambda r: -r["seconds"]):
         print(f"[stage] {row['stage']:<18} calls={row['calls']:<5} {row['seconds']:>8.3f}s {row['pct']:>5.1f}%")
 
-    tag = "-".join([("channels-last" if args.channels_last else "contiguous"), args.dtype,
-                    "hf32" if args.hf32 else "fp32"])
+    tag = "-".join(
+        [("channels-last" if args.channels_last else "contiguous"), args.dtype, "hf32" if args.hf32 else "fp32"]
+    )
     if args.save_latent:
         torch.save(reference, args.save_latent)
     if args.compare:
@@ -218,15 +233,20 @@ def main():
         delta = (reference - other).abs()
         bf16 = (reference - reference.bfloat16().float()).abs()
         scale = reference.abs().mean().clamp_min(1e-8)
-        print(f"[error] vs {args.compare}: max {delta.max().item():.3e} mean {delta.mean().item():.3e} "
-              f"relative {(delta.mean() / scale).item():.3e}")
-        print(f"[error] bf16 cast of this run: max {bf16.max().item():.3e} mean {bf16.mean().item():.3e} "
-              f"relative {(bf16.mean() / scale).item():.3e}")
+        print(
+            f"[error] vs {args.compare}: max {delta.max().item():.3e} mean {delta.mean().item():.3e} "
+            f"relative {(delta.mean() / scale).item():.3e}"
+        )
+        print(
+            f"[error] bf16 cast of this run: max {bf16.max().item():.3e} mean {bf16.mean().item():.3e} "
+            f"relative {(bf16.mean() / scale).item():.3e}"
+        )
 
     if not args.profile:
         args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / f"stages-{tag}.json").write_text(json.dumps(
-            {"wall": round(wall, 4), "synced_wall": round(synced_wall, 4), "rows": rows}, indent=1))
+        (args.out / f"stages-{tag}.json").write_text(
+            json.dumps({"wall": round(wall, 4), "synced_wall": round(synced_wall, 4), "rows": rows}, indent=1)
+        )
         return
 
     torch.npu.reset_peak_memory_stats()
@@ -257,10 +277,12 @@ def main():
     print(f"[op] peak {peak:.2f} GiB; ascend profile in {profile_dir}")
 
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / f"stages-{tag}.json").write_text(json.dumps(
-        {"wall": round(wall, 4), "synced_wall": round(synced_wall, 4), "peak_gib": round(peak, 2), "rows": rows},
-        indent=1,
-    ))
+    (args.out / f"stages-{tag}.json").write_text(
+        json.dumps(
+            {"wall": round(wall, 4), "synced_wall": round(synced_wall, 4), "peak_gib": round(peak, 2), "rows": rows},
+            indent=1,
+        )
+    )
 
 
 if __name__ == "__main__":

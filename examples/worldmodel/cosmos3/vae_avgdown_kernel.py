@@ -35,10 +35,9 @@ halving happens in torch, where the innermost axis has unit stride.
 
 import types
 
-import torch
-
 import tilelang
 import tilelang.language as T
+import torch
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -47,8 +46,7 @@ PASS_CONFIGS = {
 
 
 @tilelang.jit(out_idx=[-1], pass_configs=PASS_CONFIGS)
-def _avgdown_rowsum_bf16(B: int, C: int, To: int, Ho: int, W: int, FT: int, FS: int,
-                         A: int, Bn: int, GS: int):
+def _avgdown_rowsum_bf16(B: int, C: int, To: int, Ho: int, W: int, FT: int, FS: int, A: int, Bn: int, GS: int):
     """[B, C, To*FT, Ho*FS, W] bf16 -> [B, out_c, To, Ho, W] fp32, summing each group's (t, h) members.
 
     The output channel decodes to the group's (c, t, h) start; the group is the ``A x Bn`` block that follows, and the
@@ -58,8 +56,7 @@ def _avgdown_rowsum_bf16(B: int, C: int, To: int, Ho: int, W: int, FT: int, FS: 
     group = FT * FS * FS
 
     @T.prim_func
-    def main(x: T.Tensor((B, C, To * FT, Ho * FS, W), "bfloat16"),
-             y: T.Tensor((B, out_c, To, Ho, W), "float32")):
+    def main(x: T.Tensor((B, C, To * FT, Ho * FS, W), "bfloat16"), y: T.Tensor((B, out_c, To, Ho, W), "float32")):
         with T.Kernel(B * out_c * To, threads=1, is_npu=True) as cid:
             t_out = cid % To
             rest = cid // To

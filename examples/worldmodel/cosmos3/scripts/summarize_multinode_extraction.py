@@ -38,9 +38,13 @@ for node in sorted(per_node):
 
 mean = statistics.mean(all_slopes)
 print()
-print(f"all {total_ranks} ranks: mean {mean:.3f} s/sample -> {total_ranks / mean:.2f} samples/s "
-      f"({total_ranks / mean * 1.09:.1f} MB/s of latents)")
+print(
+    f"all {total_ranks} ranks: mean {mean:.3f} s/sample -> {total_ranks / mean:.2f} samples/s "
+    f"({total_ranks / mean * 1.09:.1f} MB/s of latents)"
+)
 
 TRAIN_SAMPLES_PER_STEP = 1024  # 4 nodes x 8 cards x 32 samples, the split the question asks about
-print(f"time to produce one 4-node training step ({TRAIN_SAMPLES_PER_STEP} samples): "
-      f"{TRAIN_SAMPLES_PER_STEP / (total_ranks / mean):.1f} s")
+print(
+    f"time to produce one 4-node training step ({TRAIN_SAMPLES_PER_STEP} samples): "
+    f"{TRAIN_SAMPLES_PER_STEP / (total_ranks / mean):.1f} s"
+)

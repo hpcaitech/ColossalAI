@@ -49,14 +49,13 @@ def main():
     enable_kernel_rmsnorm(vae)
 
     torch.manual_seed(0)
-    video = torch.randn(args.samples, 3, args.frames, args.height, args.width, device=device,
-                        dtype=torch.bfloat16)
+    video = torch.randn(args.samples, 3, args.frames, args.height, args.width, device=device, dtype=torch.bfloat16)
 
     def encode(batch: int):
         latents = []
         with torch.no_grad():
             for start in range(0, args.samples, batch):
-                chunk = video[start:start + batch]
+                chunk = video[start : start + batch]
                 latents.append(vae.encode(chunk).latent_dist.mode())
         return torch.cat(latents, dim=0)
 

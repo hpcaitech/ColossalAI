@@ -25,24 +25,22 @@ Contains exactly 5 tests per feature across all 21 features from the PROJECT.md 
 Total: 105 tests
 """
 
-import ast
 import json
 import math
 import os
-import sys
-from pathlib import Path
+
 import pytest
 import torch
 import torch.nn as nn
-from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm, WanCausalConv3d
+from diffusers.models.autoencoders.autoencoder_kl_wan import WanCausalConv3d, WanRMS_norm
 
-from tests.e2e.conftest import ClusterGuard, NVMePathChecker, TileLangASTChecker, MockNpuFusedAdamW
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
-
+from tests.e2e.conftest import MockNpuFusedAdamW
 
 # ==============================================================================
 # Feature 1: Node Isolation Enforcement
 # ==============================================================================
+
 
 class TestTier1Feature1NodeIsolation:
     """Verifies node6 primary, node1 validation, and strictly untouched nodes 5, 7, 8, 9."""
@@ -77,6 +75,7 @@ class TestTier1Feature1NodeIsolation:
 # ==============================================================================
 # Feature 2: Local NVMe Container Setup
 # ==============================================================================
+
 
 class TestTier1Feature2LocalNVMeContainer:
     """Verifies execution and caches reside strictly on local NVMe, eliminating NFS deadlocks."""
@@ -115,11 +114,13 @@ class TestTier1Feature2LocalNVMeContainer:
 # Feature 3: Standardized Metrics Infra
 # ==============================================================================
 
+
 class TestTier1Feature3StandardizedMetricsInfra:
     """Verifies synchronized Stopwatch, HBM tracking via mem_get_info, and MFU calculation."""
 
     def test_stopwatch_section_timings_recorded(self):
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
         with sw.section("vae"):
@@ -134,6 +135,7 @@ class TestTier1Feature3StandardizedMetricsInfra:
 
     def test_device_memory_gib_counter_structure(self, mock_torch_npu):
         from examples.worldmodel.cosmos3_harness.training_metrics import device_memory_gib
+
         mem = device_memory_gib()
         assert "allocated_gib" in mem
         assert "reserved_gib" in mem
@@ -143,6 +145,7 @@ class TestTier1Feature3StandardizedMetricsInfra:
 
     def test_make_record_schema_conformance(self):
         from examples.worldmodel.cosmos3_harness.training_metrics import make_record
+
         record = make_record(
             step=10,
             rank=0,
@@ -169,6 +172,7 @@ class TestTier1Feature3StandardizedMetricsInfra:
 
     def test_metrics_jsonl_output_format(self, tmp_path):
         from examples.worldmodel.cosmos3_harness.training_metrics import JsonlObserver
+
         log_path = tmp_path / "metrics.jsonl"
         observer = JsonlObserver(log_path)
         observer.on_step({"type": "record", "step": 1, "perf": {"step_ms": 105.2}})
@@ -183,6 +187,7 @@ class TestTier1Feature3StandardizedMetricsInfra:
 # ==============================================================================
 # Feature 4: TileLang Runtime Verification
 # ==============================================================================
+
 
 class TestTier1Feature4TileLangRuntime:
     """Verifies TileLang 0.1.4 environment, cache directory, and AST rules."""
@@ -224,11 +229,13 @@ def vec_add(a: T.handle, b: T.handle, c: T.handle):
 # Feature 5: NpuFusedAdamW Optimizer
 # ==============================================================================
 
+
 class TestTier1Feature5NpuFusedAdamW:
     """Verifies NpuFusedAdamW optimizer instantiation, parameters, and step numerical accuracy."""
 
     def test_build_adamw_fused_instantiation(self, mock_torch_npu):
         from examples.worldmodel.cosmos3_harness.optim import build_adamw
+
         p = nn.Parameter(torch.randn(10, 10))
         opt = build_adamw([p], learning_rate=1e-3, mode="fused", device_type="npu")
         assert isinstance(opt, mock_torch_npu.optim.NpuFusedAdamW)
@@ -288,6 +295,7 @@ class TestTier1Feature5NpuFusedAdamW:
 # Feature 6: Multi-Tensor Grad Norm
 # ==============================================================================
 
+
 class TestTier1Feature6MultiTensorGradNorm:
     """Verifies vectorization of gradient norm reduction via torch._foreach_norm."""
 
@@ -330,6 +338,7 @@ class TestTier1Feature6MultiTensorGradNorm:
 # ==============================================================================
 # Feature 7: Multi-Tensor Unscale/Clip
 # ==============================================================================
+
 
 class TestTier1Feature7MultiTensorUnscaleClip:
     """Verifies vectorization of gradient unscaling and clipping via torch._foreach_mul_."""
@@ -378,6 +387,7 @@ class TestTier1Feature7MultiTensorUnscaleClip:
 # ==============================================================================
 # Feature 8: Persistent Master Buffer
 # ==============================================================================
+
 
 class _MockOptimStub:
     _reused_buffer = LowLevelZeroOptimizer._reused_buffer
@@ -436,11 +446,13 @@ class TestTier1Feature8PersistentMasterBuffer:
 # Feature 9: Backward Communication Overlap
 # ==============================================================================
 
+
 class TestTier1Feature9BackwardCommOverlap:
     """Verifies bucketed ZeRO-2 reduce-scatter overlapping with backward execution."""
 
     def test_zero_bucket_size_arg_configuration(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         args = parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--zero-bucket-size-m", "12"])
         assert args.zero_bucket_size_m == 12
 
@@ -477,9 +489,11 @@ class TestTier1Feature9BackwardCommOverlap:
     def test_backward_gradient_hook_registration(self):
         p = nn.Parameter(torch.randn(5, requires_grad=True))
         hook_called = []
+
         def _hook(grad):
             hook_called.append(True)
             return grad
+
         p.register_hook(_hook)
         y = (p * 2).sum()
         y.backward()
@@ -490,11 +504,13 @@ class TestTier1Feature9BackwardCommOverlap:
 # Feature 10: VAE FP16 Execution
 # ==============================================================================
 
+
 class TestTier1Feature10VaeFP16Execution:
     """Verifies half-precision VAE encoding meeting numerical gate (error <= 0.64x noise)."""
 
     def test_vae_dtype_fp16_arg_parsing(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         args = parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--vae-dtype", "float16"])
         assert args.vae_dtype == "float16"
 
@@ -530,11 +546,13 @@ class TestTier1Feature10VaeFP16Execution:
 # Feature 11: VAE Chunked Encoding
 # ==============================================================================
 
+
 class TestTier1Feature11VaeChunkedEncoding:
     """Verifies 8-frame temporal chunking with causal feature cache."""
 
     def test_vae_chunk_frames_arg_parsing(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         args = parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--vae-chunk-frames", "8"])
         assert args.vae_chunk_frames == 8
 
@@ -564,15 +582,18 @@ class TestTier1Feature11VaeChunkedEncoding:
 # Feature 12: VAE Fused RMSNorm
 # ==============================================================================
 
+
 class TestTier1Feature12VaeFusedRMSNorm:
     """Verifies WanRMS_norm fused implementation omitting zero bias additions."""
 
     def test_enable_fused_rmsnorm_patches_wan_modules(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import enable_fused_rmsnorm
+
         class MockVAE(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.norm = WanRMS_norm(16, images=False)
+
         vae = MockVAE()
         orig_forward = vae.norm.forward
         ret_vae = enable_fused_rmsnorm(vae)
@@ -581,6 +602,7 @@ class TestTier1Feature12VaeFusedRMSNorm:
 
     def test_fused_rmsnorm_numerical_equivalence(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(16, images=False)
         x = torch.randn(2, 16, 4, 8, 8)
         out_fused = _fused_forward(norm, x)
@@ -588,6 +610,7 @@ class TestTier1Feature12VaeFusedRMSNorm:
 
     def test_literal_zero_bias_omitted(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False, bias=False)
         x = torch.randn(1, 8, 2, 4, 4)
         out = _fused_forward(norm, x)
@@ -595,6 +618,7 @@ class TestTier1Feature12VaeFusedRMSNorm:
 
     def test_channel_first_support(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, channel_first=True, images=False)
         x = torch.randn(1, 8, 2, 4, 4)
         out = _fused_forward(norm, x)
@@ -602,6 +626,7 @@ class TestTier1Feature12VaeFusedRMSNorm:
 
     def test_channel_last_support(self):
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, channel_first=False)
         x = torch.randn(1, 2, 4, 4, 8)
         out = _fused_forward(norm, x)
@@ -612,15 +637,18 @@ class TestTier1Feature12VaeFusedRMSNorm:
 # Feature 13: VAE Fast Conv Padding Sink
 # ==============================================================================
 
+
 class TestTier1Feature13VaeFastConvPaddingSink:
     """Verifies offloading spatial padding to F.conv3d and clone elimination in downblocks."""
 
     def test_fast_conv_forward_pads_via_conv3d(self):
         from examples.worldmodel.cosmos3.vae_fast_encoder import enable_fast_encoder
+
         class MockVAE(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.conv = WanCausalConv3d(4, 4, 3)
+
         vae = MockVAE()
         enable_fast_encoder(vae)
         assert vae.fast_conv_modules >= 1
@@ -652,6 +680,7 @@ class TestTier1Feature13VaeFastConvPaddingSink:
 # ==============================================================================
 # Feature 14: VAE Weight Pre-Transformation
 # ==============================================================================
+
 
 class TestTier1Feature14VaeWeightPreTransformation:
     """Verifies pre-conversion of frozen VAE Conv3D weights to FRACTAL_Z_3D layout."""
@@ -688,6 +717,7 @@ class TestTier1Feature14VaeWeightPreTransformation:
 # Feature 15: TileLang Data Ingress Kernel
 # ==============================================================================
 
+
 class TestTier1Feature15TileLangDataIngressKernel:
     """Verifies fused uint8 read, normalization, patchify, and NDC1HWC0 padding."""
 
@@ -707,7 +737,9 @@ class TestTier1Feature15TileLangDataIngressKernel:
     def test_fused_spatial_patchify(self):
         x = torch.randn(1, 3, 2, 4, 4)
         B, C, T, H, W = x.shape
-        x_patch = x.view(B, C, T, H // 2, 2, W // 2, 2).permute(0, 1, 4, 6, 2, 3, 5).reshape(B, C * 4, T, H // 2, W // 2)
+        x_patch = (
+            x.view(B, C, T, H // 2, 2, W // 2, 2).permute(0, 1, 4, 6, 2, 3, 5).reshape(B, C * 4, T, H // 2, W // 2)
+        )
         assert x_patch.shape == (1, 12, 2, 2, 2)
 
     def test_c0_16_lane_channel_padding(self):
@@ -726,12 +758,14 @@ class TestTier1Feature15TileLangDataIngressKernel:
 # Feature 16: Parquet Table Caching
 # ==============================================================================
 
+
 class _MockActionDatasetStub:
     def __init__(self, chunk_length=32):
         self._action_tables = {}
         self.chunk_length = chunk_length
 
     from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset
+
     _action_table = DroidActionPolicyDataset._action_table
     _read_actions = DroidActionPolicyDataset._read_actions
 
@@ -749,6 +783,7 @@ class TestTier1Feature16ParquetTableCaching:
 
     def test_action_table_lru_capacity_bounded_to_2(self, mock_parquet_dataset, tmp_path):
         import pyarrow.parquet as pq
+
         p1 = mock_parquet_dataset / "data" / "chunk-000" / "file-000.parquet"
         p2 = mock_parquet_dataset / "data" / "chunk-000" / "file-001.parquet"
         p3 = tmp_path / "file-002.parquet"
@@ -777,6 +812,7 @@ class TestTier1Feature16ParquetTableCaching:
 
     def test_read_actions_extracts_correct_window_rows(self, mock_parquet_dataset):
         from examples.worldmodel.cosmos3.droid_dataset import Window
+
         ds = _MockActionDatasetStub()
         win = Window(
             episode_index=0,
@@ -807,15 +843,19 @@ class TestTier1Feature16ParquetTableCaching:
 # Feature 17: CPU Augmentation Pipeline
 # ==============================================================================
 
+
 class TestTier1Feature17CpuAugmentationPipeline:
     """Verifies torchvision v2 transforms execution on CPU workers to prevent starvation."""
 
     def test_torchvision_transforms_executed_on_cpu(self):
         import torchvision.transforms.v2 as T
-        transforms = T.Compose([
-            T.RandomCrop((30, 30)),
-            T.Resize((32, 32), antialias=True),
-        ])
+
+        transforms = T.Compose(
+            [
+                T.RandomCrop((30, 30)),
+                T.Resize((32, 32), antialias=True),
+            ]
+        )
         img = torch.rand(3, 32, 32)
         out = transforms(img)
         assert out.shape == (3, 32, 32)
@@ -823,9 +863,12 @@ class TestTier1Feature17CpuAugmentationPipeline:
 
     def test_crop_resize_color_jitter_pipeline(self):
         import torchvision.transforms.v2 as T
-        transforms = T.Compose([
-            T.ColorJitter(brightness=0.2, contrast=0.2),
-        ])
+
+        transforms = T.Compose(
+            [
+                T.ColorJitter(brightness=0.2, contrast=0.2),
+            ]
+        )
         img = torch.rand(3, 16, 16)
         out = transforms(img)
         assert out.shape == (3, 16, 16)
@@ -841,6 +884,7 @@ class TestTier1Feature17CpuAugmentationPipeline:
 
     def test_worker_prefetch_queue_buffering(self):
         import queue
+
         q = queue.Queue(maxsize=2)
         q.put("batch1")
         q.put("batch2")
@@ -851,6 +895,7 @@ class TestTier1Feature17CpuAugmentationPipeline:
 # ==============================================================================
 # Feature 18: Multi-Stream Scheduling Overlap
 # ==============================================================================
+
 
 class TestTier1Feature18MultiStreamSchedulingOverlap:
     """Verifies multi-stream overlap of next-step VAE encode with optimizer update."""
@@ -889,11 +934,13 @@ class TestTier1Feature18MultiStreamSchedulingOverlap:
 # Feature 19: Offline Latent Precomputation
 # ==============================================================================
 
+
 class TestTier1Feature19OfflineLatentPrecomputation:
     """Verifies offline latent precomputation pipeline and cache loading."""
 
     def test_precompute_latents_arg_parser(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         args = parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--latent-cache", "/tmp/latents"])
         assert str(args.latent_cache) == "/tmp/latents"
 
@@ -920,6 +967,7 @@ class TestTier1Feature19OfflineLatentPrecomputation:
 
     def test_train_sft_latent_cache_arg_disables_online_vae(self):
         from examples.worldmodel.cosmos3.train_sft import parse_args
+
         args = parse_args(["--data", "/tmp/d", "--checkpoint", "/tmp/c", "--latent-cache", "/tmp/l"])
         assert args.latent_cache is not None
 
@@ -927,6 +975,7 @@ class TestTier1Feature19OfflineLatentPrecomputation:
 # ==============================================================================
 # Feature 20: 2-Node Validation on Node1
 # ==============================================================================
+
 
 class TestTier1Feature20TwoNodeValidationOnNode1:
     """Verifies 16-card scaling on node1 after pre-flight idle verification."""
@@ -959,6 +1008,7 @@ class TestTier1Feature20TwoNodeValidationOnNode1:
 # ==============================================================================
 # Feature 21: Final Metrics & Acceptance
 # ==============================================================================
+
 
 class TestTier1Feature21FinalMetricsAcceptance:
     """Verifies comprehensive benchmark accounting against baseline."""

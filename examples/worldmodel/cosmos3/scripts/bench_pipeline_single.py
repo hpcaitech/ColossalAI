@@ -48,8 +48,11 @@ def main():
     args = parse_args()
     if args.threads:
         torch.set_num_threads(args.threads)
-    print(f"host {torch.cuda.is_available()!s} threads {torch.get_num_threads()} augment {args.augment} "
-          f"device {args.device}", flush=True)
+    print(
+        f"host {torch.cuda.is_available()!s} threads {torch.get_num_threads()} augment {args.augment} "
+        f"device {args.device}",
+        flush=True,
+    )
 
     dataset = DroidActionPolicyDataset(
         args.data,
@@ -93,20 +96,30 @@ def main():
         data_times.append(after_data - started)
         vae_times.append(finished - after_data)
         totals.append(finished - started)
-        print(f"sample {index:3d}  data {data_times[-1]:6.3f}s  vae {vae_times[-1]:6.3f}s  "
-              f"total {totals[-1]:6.3f}s", flush=True)
+        print(
+            f"sample {index:3d}  data {data_times[-1]:6.3f}s  vae {vae_times[-1]:6.3f}s  " f"total {totals[-1]:6.3f}s",
+            flush=True,
+        )
 
     mean_total = statistics.mean(totals)
     median_total = statistics.median(totals)
     print()
-    print(f"mean   data {statistics.mean(data_times):.3f}s  vae {statistics.mean(vae_times):.3f}s  "
-          f"total {mean_total:.3f}s")
-    print(f"median data {statistics.median(data_times):.3f}s  vae {statistics.median(vae_times):.3f}s  "
-          f"total {median_total:.3f}s")
-    print(f"throughput {1 / median_total:.3f} samples/s on one card  "
-          f"({LATENT_MIB / median_total:.2f} MiB/s of latents)")
-    print(f"data share {statistics.median(data_times) / median_total * 100:.1f}%  "
-          f"vae share {statistics.median(vae_times) / median_total * 100:.1f}%")
+    print(
+        f"mean   data {statistics.mean(data_times):.3f}s  vae {statistics.mean(vae_times):.3f}s  "
+        f"total {mean_total:.3f}s"
+    )
+    print(
+        f"median data {statistics.median(data_times):.3f}s  vae {statistics.median(vae_times):.3f}s  "
+        f"total {median_total:.3f}s"
+    )
+    print(
+        f"throughput {1 / median_total:.3f} samples/s on one card  "
+        f"({LATENT_MIB / median_total:.2f} MiB/s of latents)"
+    )
+    print(
+        f"data share {statistics.median(data_times) / median_total * 100:.1f}%  "
+        f"vae share {statistics.median(vae_times) / median_total * 100:.1f}%"
+    )
     sys.stdout.flush()
     # Workers are absent here, but torch_npu's teardown can still wedge after device work; exit explicitly.
     import os

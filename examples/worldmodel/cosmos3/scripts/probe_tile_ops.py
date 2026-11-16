@@ -7,9 +7,9 @@ build has a history of the last one producing zeros with ``CAST_NONE``, so each 
     python scripts/probe_tile_ops.py
 """
 
-import torch
 import tilelang
 import tilelang.language as T
+import torch
 
 PASS_CONFIGS = {
     tilelang.PassConfigKey.TL_ASCEND_AUTO_SYNC: True,
@@ -51,6 +51,7 @@ def fp32_to_bf16(mode: str):
 @tilelang.jit(out_idx=[-1], pass_configs=PASS_CONFIGS)
 def vector_math():
     """dst = ((a * b) * 2.5 + 1.0) elementwise on fp32 UB buffers, plus a fill."""
+
     @T.prim_func
     def main(a: T.Tensor((N,), "float32"), b: T.Tensor((N,), "float32"), dst: T.Tensor((N,), "float32")):
         with T.Kernel(1, threads=1, is_npu=True) as _:

@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import argparse
 import statistics
-import sys
 import time
-from pathlib import Path
 
 import torch
 
@@ -53,7 +51,7 @@ def timed(fn, warmup: int, iters: int):
 
 
 def main():
-    import torch_npu  # noqa: F401
+    import torch_npu
     from diffusers.models.transformers.transformer_cosmos3 import Cosmos3NemotronRMSNorm
 
     args = parse_args()
@@ -85,8 +83,7 @@ def main():
 
         variants["npu_add_rms_norm"] = add_variant
 
-    traffic = x.numel() * x.element_size() + weight.numel() * weight.element_size() \
-        + x.numel() * x.element_size()
+    traffic = x.numel() * x.element_size() + weight.numel() * weight.element_size() + x.numel() * x.element_size()
     print(f"tokens={args.tokens} dim={args.dim} dtype={args.dtype} minimal_traffic={traffic / 2**20:.1f} MiB")
     print(f"{'variant':>22} {'median ms':>10} {'GiB/s':>8} {'relL2':>10} {'peak GiB':>9}")
 
@@ -98,8 +95,10 @@ def main():
             candidate = out[0] if isinstance(out, (tuple, list)) else out
             error = rel_l2(candidate, expected)
             wall = timed(fn, args.warmup, args.iters)
-        print(f"{name:>22} {wall * 1e3:10.3f} {traffic / wall / 2**30:8.1f} {error:10.2e} "
-              f"{torch.npu.max_memory_allocated() / 2**30:9.2f}")
+        print(
+            f"{name:>22} {wall * 1e3:10.3f} {traffic / wall / 2**30:8.1f} {error:10.2e} "
+            f"{torch.npu.max_memory_allocated() / 2**30:9.2f}"
+        )
 
     import os
 

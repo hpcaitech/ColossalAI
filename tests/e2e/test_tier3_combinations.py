@@ -25,18 +25,13 @@ Evaluates cross-feature interactions between dependent and coupled subsystems:
 Total: 21 tests
 """
 
-import json
-import math
-import os
-import sys
-from pathlib import Path
 import pytest
 import torch
 import torch.nn as nn
-from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm, WanCausalConv3d
+from diffusers.models.autoencoders.autoencoder_kl_wan import WanRMS_norm
 
-from tests.e2e.conftest import ClusterGuard, NVMePathChecker, TileLangASTChecker, MockNpuFusedAdamW
 from colossalai.zero.low_level.low_level_optim import LowLevelZeroOptimizer
+from tests.e2e.conftest import MockNpuFusedAdamW
 
 
 class _MockOptimStub3:
@@ -57,6 +52,7 @@ class _MockActionDatasetStub3:
         self.chunk_length = chunk_length
 
     from examples.worldmodel.cosmos3.droid_dataset import DroidActionPolicyDataset
+
     _action_table = DroidActionPolicyDataset._action_table
     _read_actions = DroidActionPolicyDataset._read_actions
 
@@ -104,6 +100,7 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
     def test_comb04_metrics_stopwatch_and_final_acceptance(self):
         """F3 + F21: Stopwatch timing telemetry feeds directly into MFU and acceptance accounting."""
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
         with sw.section("vae"):
@@ -169,13 +166,16 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
         # Chunk into 8 frames
         chunk_fp16 = vid_fp16[:, :, :8]
         chunk_fp32 = vid_fp32[:, :, :8]
-        rel_diff = (torch.mean(torch.abs(chunk_fp32 - chunk_fp16.float())) / (torch.mean(torch.abs(chunk_fp32)) + 1e-6)).item()
+        rel_diff = (
+            torch.mean(torch.abs(chunk_fp32 - chunk_fp16.float())) / (torch.mean(torch.abs(chunk_fp32)) + 1e-6)
+        ).item()
         bf16_noise = 2 ** (-7)
         assert (rel_diff / bf16_noise) <= 0.64
 
     def test_comb09_vae_fp16_and_fused_rmsnorm(self, synthetic_vae_tensors):
         """F10 + F12: FP16 VAE activations normalized through WanRMS_norm fused forward without FP32 casts."""
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(16, images=False).to(torch.float16)
         x = torch.randn(1, 16, 4, 8, 8, dtype=torch.float16)
         out = _fused_forward(norm, x)
@@ -192,6 +192,7 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
     def test_comb11_fused_rmsnorm_and_weight_pretransformation(self):
         """F12 + F14: Fused RMSNorm layer combined with pre-transformed Conv3D weights."""
         from examples.worldmodel.cosmos3.vae_fused_norm import _fused_forward
+
         norm = WanRMS_norm(8, images=False)
         conv = nn.Conv3d(8, 8, 3, padding=1)
         # Freeze weights
@@ -211,7 +212,9 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
     def test_comb13_parquet_caching_and_cpu_augmentation(self, mock_parquet_dataset):
         """F16 + F17: Action window extracted from cached Parquet table alongside CPU torchvision transform."""
         import torchvision.transforms.v2 as T
+
         from examples.worldmodel.cosmos3.droid_dataset import Window
+
         ds = _MockActionDatasetStub3()
         win = Window(
             episode_index=0,
@@ -243,8 +246,8 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
 
     def test_comb15_multi_stream_overlap_and_fused_adamw(self, mock_torch_npu):
         """F18 + F5: Overlapping next-step encode with stream A optimizer step."""
-        stream_a = torch.npu.Stream()
-        stream_b = torch.npu.Stream()
+        torch.npu.Stream()
+        torch.npu.Stream()
         p = nn.Parameter(torch.randn(10))
         opt = MockNpuFusedAdamW([p], lr=1e-3)
         p.grad = torch.randn(10)
@@ -293,6 +296,7 @@ def custom_add(a: T.handle, b: T.handle, c: T.handle):
     def test_comb20_metrics_infra_and_multi_stream_overlap(self, mock_torch_npu):
         """F3 + F18: Stopwatch event instrumentation tracking stream A vs stream B elapsed time."""
         from examples.worldmodel.cosmos3_harness.training_metrics import Stopwatch
+
         sw = Stopwatch(use_events=False)
         sw.reset(enabled=True)
         with sw.section("stream_a"):

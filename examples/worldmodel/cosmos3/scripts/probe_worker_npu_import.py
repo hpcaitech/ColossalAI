@@ -12,9 +12,8 @@ whether ``torch_npu`` is in ``sys.modules``, and if it is, where it came from (f
 
 from __future__ import annotations
 
-import os
 import sys
-import traceback
+
 import torch
 import torch.multiprocessing as mp
 
@@ -26,14 +25,13 @@ def child(_rank: int) -> None:
         loaded = "torch_npu" in sys.modules
         report.append(f"{label:<34} torch_npu loaded: {loaded}")
         if loaded and not any("first import" in line for line in report):
-            import torch_npu  # noqa: F401  (record where it was first imported)
+            import torch_npu
 
             report.append(f"{'':<34} first import: {getattr(torch_npu, '__file__', '?')}")
 
     state("at child start")
 
     # What the dataset does on the first sample.
-    import torchvision.transforms.v2 as T
 
     state("after torchvision import")
 

@@ -38,10 +38,10 @@ def main():
         while stack and stack[-1][0] <= event["ts"]:
             stack.pop()
         if args.target in event.get("name", ""):
-            chain = [name for _, name, _ in reversed(stack[-args.depth:])] + [event["name"]]
+            chain = [name for _, name, _ in reversed(stack[-args.depth :])] + [event["name"]]
             chains[" <- ".join(chain)] += 1
             shapes[str(event.get("args", {}).get("Input Dims"))] += 1
-            for _, _, outer in reversed(stack[-args.depth:]):
+            for _, _, outer in reversed(stack[-args.depth :]):
                 dims = outer.get("args", {}).get("Input Dims")
                 if dims:
                     parents[f"{outer['name']} {dims}"] += 1
