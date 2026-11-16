@@ -61,22 +61,28 @@ class _FusedNemotronNorm(torch.autograd.Function):
         h = x.float()
         variance = h.pow(2).mean(-1, keepdim=True)
         r = torch.rsqrt(variance + ctx.eps)
-        u = h * r
         dz = grad_out.float()
-        dw = (dz * u).sum(0)
-        du = dz * weight.float()
-        dh = du * r
-        dr = (du * h).sum(-1, keepdim=True)
-        dv = dr * r.pow(3) * -0.5
-        dh = dh + dv * 2.0 * h / h.shape[-1]
-        return dh.to(x.dtype), dw.to(weight.dtype), None
+        dw = None
+        if ctx.needs_input_grad[1]:
+            u = h * r
+            # Reduce across all leading dimensions in fp32 so 3-D per-head QK-norms match autograd bitwise too.
+            dims = tuple(range(dz.ndim - 1))
+            dw = ((dz * u).sum(dims) if dims else (dz * u)).to(weight.dtype)
+        dh = None
+        if ctx.needs_input_grad[0]:
+            du = dz * weight.float()
+            dh = du * r
+            dr = (du * h).sum(-1, keepdim=True)
+            dv = dr * r.pow(3) * -0.5
+            dh = (dh + dv * 2.0 * h / h.shape[-1]).to(x.dtype)
+        return dh, dw, None
 
 
 _VERIFY = {"on": False, "calls": 0, "elements": 0, "mismatched": 0, "worst_rel": 0.0}
 
 
 def _fused_forward(module, x: torch.Tensor) -> torch.Tensor:
-    if x.device.type != "npu" or x.dtype != torch.bfloat16 or not x.is_contiguous():
+    if x.device.type != "npu" or x.dtype != torch.bfloat16 or module.weight.dtype != x.dtype or not x.is_contiguous():
         return _reference_forward(module, x)
     out = _FusedNemotronNorm.apply(x, module.weight, float(module.eps))
     if _VERIFY["on"]:
@@ -186,5 +192,6 @@ __all__ = [
     "enable_sum_mean_norm",
     "_reference_forward",
     "_FusedNemotronNorm",
+    "_fused_forward",
     "_sum_mean_forward",
 ]

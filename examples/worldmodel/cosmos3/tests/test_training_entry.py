@@ -24,6 +24,7 @@ def test_aligned_defaults_and_legacy_aliases():
     assert baseline.vae_chunk_frames == 0 and baseline.vae_compile == "none"
     assert not baseline.fuse_vae_norm and not baseline.fast_vae_encoder
     assert not baseline.vae_norm_kernel and not baseline.dit_sum_mean_norm
+    assert not baseline.dit_norm_kernel
     assert baseline.prefetch_factor == 0
     assert not baseline.cast_inputs and not baseline.cast_buffers
     assert baseline.reinit_action_head and baseline.activation_checkpointing == "full"
