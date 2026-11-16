@@ -27,6 +27,9 @@ from .system import SystemHistory, read_system_files
 STALE_SECONDS = 15.0
 STALL_SECONDS = 300.0
 CHECKPOINT_PENDING_SECONDS = 900.0
+#: A rank file at or below this size is read from the start on first sight; a larger one only from its tail.
+INITIAL_RANK_BYTES = 8 * 1024 * 1024
+TAIL_RANK_BYTES = 512 * 1024
 
 
 def _num(value: Any) -> Optional[float]:
@@ -314,7 +317,11 @@ class RunState:
                     size = path.stat().st_size
                 except OSError:
                     size = 0
-                tail = self.rank_tails[rank] = JsonlTail(path, offset=max(0, size - 512 * 1024))
+                # Read a small rank file from the start: a restart then keeps the run's whole per-rank history,
+                # which the step drawer and the rank heatmap need (2.4 MB ≈ 2.5k steps).  A long run's file is
+                # only tailed, so a restart does not turn into a many-hundred-megabyte parse.
+                offset = 0 if size <= INITIAL_RANK_BYTES else max(0, size - TAIL_RANK_BYTES)
+                tail = self.rank_tails[rank] = JsonlTail(path, offset=offset)
             for record in tail.read_new():
                 if record.get("type") == "event":
                     if not self._aggregated_seen:

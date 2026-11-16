@@ -51,17 +51,36 @@ def json_safe(value: Any) -> Any:
     return repr(value)
 
 
-def nonfinite_leaves(value: Any, prefix: str = "") -> List[str]:
-    """Names of every non-finite float in a nested mapping, for the ``nonfinite`` warning list."""
+def nonfinite_leaves(value: Any, prefix: str = "", limit: int = 32) -> List[str]:
+    """Names of the non-finite floats in a nested mapping, for the ``nonfinite`` warning list.
+
+    Iterative, and a path is only materialised when a non-finite value is actually found: the old
+    recursive form built an f-string for every element, which cost more than the JSON encoding of the
+    big payloads (the system view alone is hundreds of thousands of leaves).  ``limit`` keeps a
+    pathological payload from turning the warning list into a second copy of itself.
+    """
     found: List[str] = []
-    if isinstance(value, float) and not math.isfinite(value):
-        found.append(prefix or "value")
-    elif isinstance(value, dict):
-        for key, item in value.items():
-            found.extend(nonfinite_leaves(item, f"{prefix}/{key}" if prefix else str(key)))
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            found.extend(nonfinite_leaves(item, f"{prefix}[{index}]"))
+    # A stack entry is (node, link); a link is (parent_link, key) with the raw key (str for a mapping,
+    # int for a sequence).  Path names are only formatted for a value that actually is non-finite, so the
+    # walk does no string work at all on the ~hundred-thousand finite leaves of a metrics payload.
+    stack: List[Any] = [(value, (prefix, None) if prefix else None)]
+    while stack and len(found) < limit:
+        node, link = stack.pop()
+        if isinstance(node, float):
+            if math.isfinite(node):
+                continue
+            parts = []
+            while link is not None:
+                link, name = link
+                parts.append(f"[{name}]" if isinstance(name, int) else str(name))
+            parts.reverse()
+            found.append("/".join(part for part in parts if part) or "value")
+        elif isinstance(node, dict):
+            for key, item in node.items():
+                stack.append((item, (link, key)))
+        elif isinstance(node, (list, tuple)):
+            for index, item in enumerate(node):
+                stack.append((item, (link, index)))
     return found
 
 

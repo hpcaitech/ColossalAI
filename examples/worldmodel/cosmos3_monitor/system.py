@@ -359,7 +359,35 @@ class SystemHistory:
         entry = self.hosts.setdefault(str(host), {"latest": None, "points": [], "devices": {}})
         entry["file_age_s"] = max(0.0, float(age_s))
 
-    def snapshot(self, host: Optional[str] = None) -> Dict[str, Any]:
+    @staticmethod
+    def _compact_latest(record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """The latest sample without the process tables, which are most of its bytes.
+
+        ``processes`` and ``ranked_processes`` repeat the same rows (up to a few hundred characters of
+        command line each) and the per-device lists repeat them again, so a four-node run shipped about a
+        megabyte of process text on every poll just to draw the eight NPU cards.  The counts stay; the rows
+        are only sent when the System tab asks for them (``processes=True``).
+        """
+        if not isinstance(record, dict):
+            return record
+        compact = {key: value for key, value in record.items() if key not in ("processes", "ranked_processes")}
+        compact["process_count"] = len(record.get("processes") or [])
+        devices = record.get("devices")
+        if isinstance(devices, list):
+            trimmed = []
+            for device in devices:
+                if not isinstance(device, dict):
+                    trimmed.append(device)
+                    continue
+                card = {key: value for key, value in device.items() if key != "processes"}
+                card["process_count"] = len(device.get("processes") or [])
+                trimmed.append(card)
+            compact["devices"] = trimmed
+        return compact
+
+    def snapshot(self, host: Optional[str] = None, *, processes: bool = False, points: int = 0) -> Dict[str, Any]:
+        """Per-host view.  ``points`` is how many samples of each device series to include (0 = none)."""
+        points = max(0, int(points))
         hosts = {}
         for name, entry in self.hosts.items():
             if host and name != host:
@@ -369,10 +397,10 @@ class SystemHistory:
                 age = file_age_latest(entry["latest"])
             hosts[name] = {
                 "hostname": name,
-                "latest": entry["latest"],
+                "latest": entry["latest"] if processes else self._compact_latest(entry["latest"]),
                 "age_s": age,
                 "devices": {
-                    index: {key: values[-500:] for key, values in series.items()}
+                    index: {key: (values[-points:] if points else []) for key, values in series.items()}
                     for index, series in entry["devices"].items()
                 },
             }
