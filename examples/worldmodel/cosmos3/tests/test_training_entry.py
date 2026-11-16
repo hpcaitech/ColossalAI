@@ -23,6 +23,8 @@ def test_aligned_defaults_and_legacy_aliases():
     assert baseline.vae_dtype == "bfloat16"
     assert baseline.vae_chunk_frames == 0 and baseline.vae_compile == "none"
     assert not baseline.fuse_vae_norm and not baseline.fast_vae_encoder
+    assert not baseline.vae_norm_kernel and not baseline.dit_sum_mean_norm
+    assert baseline.prefetch_factor == 0
     assert not baseline.cast_inputs and not baseline.cast_buffers
     assert baseline.reinit_action_head and baseline.activation_checkpointing == "full"
     legacy = args("--backend", "naive", "--checkpoint-mode", "selective", "--compile-vae-aot")
@@ -41,6 +43,9 @@ def test_aligned_defaults_and_legacy_aliases():
         ["--adamw-mode", "fused"],
         ["--hsdp-shard-size", "2", "--zero-stage", "0"],
         ["--vae-gate-atol", "nan"],
+        ["--prefetch-factor", "-1"],
+        ["--fuse-vae-norm", "--vae-norm-kernel"],
+        ["--dit-norm-kernel", "--dit-sum-mean-norm"],
         ["--latents", "/old-latents"],
     ],
 )

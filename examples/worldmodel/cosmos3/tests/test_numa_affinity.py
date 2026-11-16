@@ -89,6 +89,21 @@ def test_missing_numa_node_is_an_error(tmp_path):
         numa.build_map(["0000:01:00.0"], tmp_path)
 
 
+def test_derive_map_runs_npu_smi_and_restricts_to_visible_devices(tmp_path, monkeypatch):
+    make_sysfs(tmp_path, [(f"{48 * i}-{48 * i + 47}", i) for i in range(4)])
+    add_device(tmp_path, "0000:C1:00.0", 3)
+    add_device(tmp_path, "0000:C2:00.0", 0)
+    npu_smi = tmp_path / "npu-smi"
+    npu_smi.write_text("#!/bin/sh\ncat <<'X'\n" + NPU_SMI + "X\n")
+    npu_smi.chmod(0o755)
+
+    monkeypatch.delenv("ASCEND_RT_VISIBLE_DEVICES", raising=False)
+    assert numa.derive_map(str(npu_smi), tmp_path) == "144-191;0-47"
+    # A subset of cards must index the map by the visible order, not the physical device index.
+    monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "1")
+    assert numa.derive_map(str(npu_smi), tmp_path) == "0-47"
+
+
 linux_only = pytest.mark.skipif(not hasattr(os, "sched_setaffinity"), reason="affinity syscalls are Linux-only")
 
 
@@ -113,3 +128,31 @@ def test_apply_affinity_pins_the_current_process(monkeypatch):
         assert os.sched_getaffinity(0) == set(target)
     finally:
         os.sched_setaffinity(0, allowed)
+
+
+@linux_only
+def test_apply_affinity_auto_derives_this_nodes_map(monkeypatch):
+    allowed = sorted(os.sched_getaffinity(0))
+    target = allowed[: max(1, len(allowed) // 2)]
+    spec = numa.format_cpulist(target)
+    monkeypatch.setenv("COSMOS3_NUMA_PIN", "auto")
+    monkeypatch.setattr(numa, "derive_map", lambda *a, **k: spec)
+    try:
+        applied, note = numa.apply_affinity()
+        assert applied is True and spec in note
+        assert os.sched_getaffinity(0) == set(target)
+    finally:
+        os.sched_setaffinity(0, allowed)
+
+
+@linux_only
+def test_apply_affinity_auto_failure_is_a_noop(monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("npu-smi missing")
+
+    monkeypatch.setenv("COSMOS3_NUMA_PIN", "auto")
+    monkeypatch.setattr(numa, "derive_map", boom)
+    before = os.sched_getaffinity(0)
+    applied, note = numa.apply_affinity()
+    assert applied is False and "auto" in note and "npu-smi missing" in note
+    assert os.sched_getaffinity(0) == before

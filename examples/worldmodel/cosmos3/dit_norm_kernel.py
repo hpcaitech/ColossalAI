@@ -153,7 +153,11 @@ def enable_from_env(model):
 
 def _sum_mean_forward(module, x: torch.Tensor) -> torch.Tensor:
     h = x.float()
-    variance = h.pow(2).sum(-1, keepdim=True) / h.shape[-1]
+    # ``square`` instead of ``pow(2)``: the two are bitwise equal on this stack (probe_pow_square.py, bf16 and fp32,
+    # including 1e-3 and 1e3 magnitudes, 0 differing elements), but ``square`` lowers to a multiply while ``pow``
+    # runs the transcendental path -- the profile counts 770 ``aclnnPowTensorScalar`` kernels per step, all from the
+    # 198 norms. Same arithmetic, one cheaper kernel family.
+    variance = h.square().sum(-1, keepdim=True) / h.shape[-1]
     h = h * torch.rsqrt(variance + module.eps)
     return (module.weight.float() * h).to(x.dtype)
 

@@ -65,7 +65,12 @@ CP copies do not multiply it. Counts include every microstep and are reported on
 
 `--hsdp-shard-size` partitions the mixed DP group into logical shard and replica groups. Contiguous ranks are on one host only if the launcher places them there; the manifest makes this observable. HSDP needs ZeRO stage 1 or 2. CPU tests cover four-rank AdamW, accumulation, nonzero gradient clipping, state round trips and async all-gather; actual accelerator streams/offload transfers and multi-host NCCL/HCCL remain device validation work.
 
-`--activation-checkpointing full|selective|none` (`--checkpoint-mode` alias) selects one mode. Full and selective cannot be stacked. `--selective-budget-gib` is an estimate of saved activations, re-evaluated when pack geometry/dtype changes, not a hard HBM limit. Statistics expose the chosen mode, estimates, actual attention dispatch hits and saves. `--compile-blocks` compiles only after booster replacements, attention installation, precision wrappers and checkpoint configuration. Compiler `auto` resolves to Inductor on CUDA or npugraph_ex on NPU.
+`--activation-checkpointing full|selective|none` (`--checkpoint-mode` alias) selects one mode. Full and selective cannot be stacked. `--selective-budget-gib` is an estimate of saved activations, re-evaluated when pack geometry/dtype changes, not a hard HBM limit. Statistics expose the chosen mode, estimates, actual attention dispatch hits and saves. `--dit-sum-mean-norm` rewrites `Cosmos3NemotronRMSNorm`'s `pow(2).mean(-1)` to `square().sum(-1)/H` on NPU (bitwise exact). `--compile-blocks` compiles only after booster replacements, attention installation, precision wrappers and checkpoint configuration. Compiler `auto` resolves to Inductor on CUDA or npugraph_ex on NPU.
+
+For host scheduling and CPU data pipeline tuning on multi-socket NPU nodes:
+
+- **Socket NUMA pinning**: export `COSMOS3_NUMA_PIN=$(python -m examples.worldmodel.cosmos3.numa_affinity --print-map)` so `train_sft.py` pins each rank (and its spawned DataLoader workers) to its NPU's physical socket (48 cores) before allocations, eliminating cross-socket stragglers; unset is a no-op. In a heterogeneous job prefer `COSMOS3_NUMA_PIN=auto`, which derives each node's own map in-process (node5/node9 have 4 domains, the rest 8); a failed derivation logs a note and continues unpinned.
+- **Threads**: combine socket pinning with `OMP_NUM_THREADS=6` and `--num-workers 4 --worker-threads 4` (`--worker-threads` restores intra-op threads inside PyTorch workers, which `OMP_NUM_THREADS` cannot reach). `COSMOS3_FAST_JITTER=1` compiles `ColorJitter`'s hue pass via Inductor (set `TORCHINDUCTOR_CACHE_DIR` on local disk). `--prefetch-factor` defaults to `0` (PyTorch's default 2; deeper queues are exposed only for diagnostics).
 
 `--save-every` writes the same immutable, checksummed generations the harness uses, under `<out>/checkpoints/`: model/optimizer shards, one RNG file per rank, the rank-local noise generator, and a public `training_state.pt` with step, epoch and sampler cursor. `latest.json` is replaced only after the SHA256 completion manifest is written, so an incomplete generation is never resumed. `--resume <run dir or checkpoint-*>` continues the same trajectory: the sampler skips the batches that step already consumed instead of re-decoding them, and the resume is rejected unless the topology, batching, data and seed fingerprint matches.
 
@@ -79,7 +84,10 @@ Multi-node runs keep `--out` on each node's local disk, and resume handles that 
 
 BF16, the diffusers encoder and its default window are the baseline. FP16, fused norm, fast convolution, wider chunk windows and compilation are independent opt-ins:
 
-- `--vae-dtype float16`, `--fuse-vae-norm`, `--fast-vae-encoder`.
+- `--vae-dtype float16`, `--fuse-vae-norm`, `--vae-norm-kernel`, `--fast-vae-encoder`.
+- `COSMOS3_VIDEO_NORM_KERNEL=1` enables the TileLang uint8 device normalization kernel (`video_pad_norm.py`) when `--video-uint8` is active; `--vae-norm-kernel` runs the TileLang channel-first RMSNorm kernel on NPU (bitwise exact).
+- `COSMOS3_EMPTY_CACHE_GIB` sets the free-memory floor for an `empty_cache()` cleanup, evaluated once per optimizer step; its default is `8` with `--vae-norm-kernel` and `0` (off) otherwise. The decision is all-reduced, so when one rank is below the floor every rank empties its allocator together.
+- Both TileLang paths take a file lock while they compile, so the first step's identical shapes are not built and dlopened by every rank at once. The lock lives in `COSMOS3_TILELANG_LOCK_DIR`, else `TILELANG_CACHE_DIR`, else `~/.tilelang`; keep it on storage shared by the ranks and nodes that share the TileLang cache.
 - `--vae-chunk-frames N` for a positive multiple of four; zero leaves the diffusers loop intact.
 - `--vae-compile jit|aot`; the legacy `--compile-vae` and `--compile-vae-aot` aliases remain. JIT and AOT are mutually exclusive. AOT requires CUDA and chooses a four-frame chunk when none was specified.
 

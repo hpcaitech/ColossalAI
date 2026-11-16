@@ -11,8 +11,9 @@ which this backend scalarises into a per-element ``SetValue`` with a pipe barrie
 below compile to real vector instructions, and ``CAST_RINT`` is the only fp32->bf16 mode that matches torch
 (``probe_tile_ops.py``).
 
-The reflect pad stays on the bf16 tensor (16 columns and 4 rows out of 656x544); only the normalisation, which
-is the expensive part, is fused.
+The reflect pad runs on the uint8 tensor before the fused normalisation (16 columns and 4 rows out of 656x544), so
+the flip+cat moves one byte per element instead of two; only the normalisation, which is the expensive part, is
+fused.
 """
 
 import tilelang
@@ -20,6 +21,7 @@ import tilelang.language as T
 import torch
 import torch.nn.functional as F
 
+from examples.worldmodel.cosmos3.tilelang_lock import locked_compile
 from examples.worldmodel.cosmos3.video_uint8 import pad_normalize_torch  # noqa: F401  (reference path / fallback)
 from examples.worldmodel.cosmos3.video_uint8 import reflect_pad_last2 as _reflect_pad_last2
 
@@ -67,11 +69,25 @@ def _uint8_norm_bf16(M: int, block: int = BLOCK):
 _KERNELS = {}
 
 
-def _kernel(m: int):
-    kernel = _KERNELS.get(m)
+def _block_for(m: int) -> int:
+    """Largest power-of-two block (up to BLOCK) that divides ``m``.
+
+    A reflect-padded activation is no longer ``8 x 3 x 33 x 540 x 640``, so the fixed 4096 does not always divide
+    the element count; choosing a divisor keeps the kernel path instead of silently falling back to torch ops.
+    """
+    block = BLOCK
+    while block > 1 and m % block:
+        block //= 2
+    return block
+
+
+def _kernel(m: int, block: int = BLOCK):
+    kernel = _KERNELS.get((m, block))
     if kernel is None:
-        kernel = _uint8_norm_bf16(m)
-        _KERNELS[m] = kernel
+        # Every rank compiles the same padded shape at its first step; serialise the disk-cache write
+        # across ranks exactly as the VAE norm kernel does.
+        kernel = locked_compile(f"video_pad_norm:{m}:{block}", lambda: _uint8_norm_bf16(m, block))
+        _KERNELS[(m, block)] = kernel
     return kernel
 
 
@@ -80,22 +96,28 @@ def normalize_uint8(video: torch.Tensor) -> torch.Tensor:
     if video.dtype != torch.uint8:
         raise TypeError(f"expected uint8 video, got {video.dtype}")
     flat = video.contiguous().view(-1)
-    blocks = flat.numel() // BLOCK
-    if flat.numel() % BLOCK:
-        # DROID planes are 540*640 elements, so this only trips on a shape nobody has produced yet.
+    block = _block_for(flat.numel())
+    if block < 64:
         return flat.to(torch.float32).div(127.5).sub(1.0).to(torch.bfloat16).view_as(video)
+    blocks = flat.numel() // block
     outputs = []
     for start in range(0, blocks, CHUNK_BLOCKS):
-        n = min(CHUNK_BLOCKS, blocks - start) * BLOCK
-        offset = start * BLOCK
-        outputs.append(_kernel(n)(flat[offset : offset + n]))
+        n = min(CHUNK_BLOCKS, blocks - start) * block
+        offset = start * block
+        outputs.append(_kernel(n, block)(flat[offset : offset + n]))
     dst = outputs[0] if len(outputs) == 1 else torch.cat(outputs)
     return dst.view_as(video)
 
 
 def pad_normalize(video: torch.Tensor, pad_h: int, pad_w: int) -> torch.Tensor:
-    """[B, C, T, H, W] uint8 -> [B, C, T, H+pad_h, W+pad_w] normalised bf16."""
-    return _reflect_pad_last2(normalize_uint8(video), pad_h, pad_w)
+    """[B, C, T, H, W] uint8 -> [B, C, T, H+pad_h, W+pad_w] normalised bf16.
+
+    The pad runs on the uint8 tensor, before the conversion, so the flip+cat that dominates this path moves one
+    byte per element instead of two. The normalisation then covers the padded tensor, which costs less than the pad
+    saves (~22 ms of pad against ~4 ms of extra normalise per 8-sample call). Padding only copies values, so this is
+    bit-identical to normalising first and padding after.
+    """
+    return normalize_uint8(_reflect_pad_last2(video, pad_h, pad_w))
 
 
 def torch_reference(video: torch.Tensor, pad_h: int, pad_w: int) -> torch.Tensor:

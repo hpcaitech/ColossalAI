@@ -963,11 +963,19 @@ class DroidActionPolicyDataset(Dataset):
         stacked = torch.cat([views[name] for name in names], dim=0)  # [3T, C, H, W]
         if self._augmentor is None:
             h, w = stacked.shape[-2:]
+            jitter = T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
+            if os.environ.get("COSMOS3_FAST_JITTER", "0") == "1":
+                # Same draws, same order, same values: only the hue adjustment (71% of the chain) runs through
+                # inductor. Measured bit-identical, 992 -> 598 ms/sample. Needs TORCHINDUCTOR_CACHE_DIR on local disk,
+                # or every worker recompiles on the network filesystem.
+                from examples.worldmodel.cosmos3.fast_color_jitter import FastColorJitter
+
+                jitter = FastColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
             self._augmentor = T.Compose(
                 [
                     T.RandomCrop((int(h * 0.95), int(w * 0.95))),
                     T.Resize((h, w), antialias=True),
-                    T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08),
+                    jitter,
                 ]
             )
         out = self._augmentor(stacked)
