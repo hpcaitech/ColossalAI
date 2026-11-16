@@ -973,12 +973,13 @@ def compute_loss(out, targets, return_components: bool = False):
     Args:
         out: The transformer output, with ``sample`` and ``action`` lists.
         targets (dict): The targets from :func:`pack_batch`.
-        return_components (bool, optional): Also return detached, unweighted MSEs over supervised elements,
-            averaged per sample. Conditioning elements and padded action channels do not enter their
-            denominators. These display metrics differ from the weighted training objective. Defaults to False.
+        return_components (bool, optional): Also return detached, unweighted modality losses using the same
+            full-element denominator as upstream, plus supervised-element MSEs averaged per sample. Conditioning
+            elements and padded action channels are excluded only from the latter. Defaults to False.
 
     Returns:
-        torch.Tensor or tuple: The scalar loss, or ``(loss, {"vision": term, "action": term})``.
+        torch.Tensor or tuple: The scalar loss, or ``(loss, components)`` where ``vision`` and ``action`` use the
+        upstream denominator and the ``*_supervised_mse`` entries use only supervised elements.
 
     Raises:
         ValueError: If the model returned no vision or action predictions.
@@ -1016,7 +1017,9 @@ def compute_loss(out, targets, return_components: bool = False):
             ).mean()
 
         return total, {
-            "vision": supervised_mse(vision_losses, targets["vision_noisy_mask"]),
-            "action": supervised_mse(action_losses, targets["action_noisy_mask"]),
+            "vision": vision.detach(),
+            "action": action.detach(),
+            "vision_supervised_mse": supervised_mse(vision_losses, targets["vision_noisy_mask"]),
+            "action_supervised_mse": supervised_mse(action_losses, targets["action_noisy_mask"]),
         }
     return total

@@ -1164,6 +1164,8 @@ class RunState:
                 "samples": last_samples,
                 "vision": self.series.latest_value("loss/vision"),
                 "action": self.series.latest_value("loss/action"),
+                "vision_supervised_mse": self.series.latest_value("loss/vision_supervised_mse"),
+                "action_supervised_mse": self.series.latest_value("loss/action_supervised_mse"),
                 "lr": self.series.latest_value("optim/lr"),
                 "grad_norm": self.series.latest_value("optim/grad_norm"),
                 "step_s": step_s,

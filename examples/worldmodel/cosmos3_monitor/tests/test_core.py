@@ -763,12 +763,35 @@ def test_legacy_droid_loss_conversion_is_explicit_idempotent_and_read_only():
     record = {"loss": {"total": 1.82, "vision": 1.7, "action": 0.12}}
     converted = normalise_loss_record(record, manifest)
     assert converted["loss"] == pytest.approx(
-        {"total": 0.19125 + 0.012375, "vision": 0.19125, "action": 0.012375, "objective": 1.82}
+        {
+            "total": 1.82,
+            "vision": 0.17,
+            "action": 0.012,
+            "objective": 1.82,
+            "vision_supervised_mse": 0.19125,
+            "action_supervised_mse": 0.012375,
+        }
     )
     assert record["loss"]["vision"] == 1.7
     assert normalise_loss_record(converted, manifest) is converted
     assert normalise_loss_record(record, {}) is record
     assert normalise_loss_record(record, {"loss_objective": "droid_sample_modality_mean"}) is record
+
+    # v1 normalized only the masked elements. Restore upstream's full denominator and retain both MSE views.
+    manifest["loss_metrics"] = "supervised_mse_v1"
+    v1 = {"loss": {"total": 0.203625, "vision": 0.19125, "action": 0.012375, "objective": 1.82}}
+    converted_v1 = normalise_loss_record(v1, manifest)
+    assert converted_v1["loss"] == pytest.approx(
+        {
+            "total": 1.82,
+            "vision": 0.17,
+            "action": 0.012,
+            "objective": 1.82,
+            "vision_supervised_mse": 0.19125,
+            "action_supervised_mse": 0.012375,
+        }
+    )
+    assert normalise_loss_record(converted_v1, manifest) is converted_v1
 
 
 @pytest.mark.parametrize("legacy", [False, True])
@@ -781,10 +804,15 @@ def test_global_loss_is_corrected_after_delayed_rank_arrival(tmp_path, legacy, p
     write_json(metrics / "run.json", manifest)
 
     def rank_record(rank, samples, vision, action):
-        objective = vision * 10 * 8 / 9 + action * 10 * 32 / 33
-        loss = {"total": vision + action, "vision": vision, "action": action, "objective": objective}
+        objective = 10 * (vision + action)
+        loss = {
+            "total": vision * 9 / 8 + action * 33 / 32,
+            "vision": vision * 9 / 8,
+            "action": action * 33 / 32,
+            "objective": objective,
+        }
         if legacy:
-            loss = {"total": objective, "vision": vision * 10 * 8 / 9, "action": action * 10 * 32 / 33}
+            loss = {"total": objective, "vision": vision * 10, "action": action * 10}
         return {
             "type": "record",
             "step": 1,
@@ -794,6 +822,12 @@ def test_global_loss_is_corrected_after_delayed_rank_arrival(tmp_path, legacy, p
             "perf": {"step_ms": 1000},
             "loss": loss,
         }
+
+    if legacy:
+        manifest.pop("loss_metrics", None)
+    else:
+        manifest["loss_metrics"] = "supervised_mse_v1"
+    write_json(metrics / "run.json", manifest)
 
     first, second = rank_record(0, 1, 1.0, 4.0), rank_record(1, 3, 9.0, 16.0)
     if partial_aggregate:
@@ -806,18 +840,25 @@ def test_global_loss_is_corrected_after_delayed_rank_arrival(tmp_path, legacy, p
     state = RunState(discover([run])[0])
     state.refresh()
     if partial_aggregate:
-        assert state.series.latest_value("loss/total") == pytest.approx(5.0)
+        assert state.series.latest_value("loss/total") == pytest.approx(50.0)
 
     write_lines(metrics / "rank-001.jsonl", [second])
     state.refresh()
-    expected_objective = 7 * 10 * 8 / 9 + 13 * 10 * 32 / 33
-    expected = {"total": 20.0, "vision": 7.0, "action": 13.0, "objective": expected_objective}
+    expected_objective = 10 * (7 + 13)
+    expected = {
+        "total": expected_objective,
+        "vision": 7.0,
+        "action": 13.0,
+        "objective": expected_objective,
+        "vision_supervised_mse": 7 * 9 / 8,
+        "action_supervised_mse": 13 * 33 / 32,
+    }
     record = state.series.last()
     assert record["complete"] is True
     assert record["loss"] == pytest.approx(expected)
     assert record["data"]["samples"] == 4
     assert state.series.latest_value("loss/vision") == pytest.approx(7.0)
     assert state.series.latest_value("loss/objective") == pytest.approx(expected_objective)
-    assert state.snapshot()["last"]["loss"] == pytest.approx(20.0)
+    assert state.snapshot()["last"]["loss"] == pytest.approx(expected_objective)
     assert state.step_detail(1)["loss"] == pytest.approx(expected)
     assert json.loads((metrics / "rank-000.jsonl").read_text())["loss"] == first["loss"]

@@ -176,7 +176,7 @@ def test_display_mse_excludes_conditioning_and_padding_without_changing_backward
     }
     with torch.no_grad():
         for value in vision:
-            value[:, :, :1] = 1000  # conditioning must not dilute or inflate the displayed MSE
+            value[:, :, :1] = 1000  # masked from the numerator; retained only by the upstream full denominator
         for value in action:
             value[:1] = 1000
             value[:, 2:] = 1000  # padded channels carry no supervision
@@ -187,8 +187,10 @@ def test_display_mse_excludes_conditioning_and_padding_without_changing_backward
         + torch.stack([(value[:, :2].square() * mask).mean() for value, mask in zip(action, action_masks)]).mean()
     )
     assert torch.equal(objective, expected)
-    assert metrics["vision"].item() == pytest.approx((4 + 9) / 2)
-    assert metrics["action"].item() == pytest.approx((16 + 25) / 2)
+    assert metrics["vision"].item() == pytest.approx((2 + 6.75) / 2)
+    assert metrics["action"].item() == pytest.approx((64 / 6 + 20) / 2)
+    assert metrics["vision_supervised_mse"].item() == pytest.approx((4 + 9) / 2)
+    assert metrics["action_supervised_mse"].item() == pytest.approx((16 + 25) / 2)
     assert all(not value.requires_grad for value in metrics.values())
     actual_grads = torch.autograd.grad(objective, vision + action, retain_graph=True)
     expected_grads = torch.autograd.grad(expected, vision + action)
@@ -207,7 +209,7 @@ def test_display_mse_is_zero_when_nothing_is_supervised(packed):
     )
     objective, metrics = compute_loss(output, targets, return_components=True)
     assert objective.item() == 0
-    assert metrics["vision"].item() == metrics["action"].item() == 0
+    assert all(value.item() == 0 for value in metrics.values())
 
 
 def test_the_action_domain_id_is_droids(packed):

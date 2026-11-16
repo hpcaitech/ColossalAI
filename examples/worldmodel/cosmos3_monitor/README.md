@@ -75,13 +75,19 @@ record at each log step instead of reading rank files, so a point is never parti
 collective per log step. It is off by default; the dashboard marks `complete=false` points as partial and
 does not compute throughput from a partial sum.
 
-For online DROID SFT, vision/action curves show unweighted MSE over supervised elements, averaged per sample;
-`total` is their sum. The weighted backward scalar is retained as `loss/objective`, visible in Records, step
-details and CSV exports. The monitor converts legacy DROID weighted records to this display convention using
-the recorded chunk length (one conditioning latent frame, one initial action state, temporal compression 4).
-Other harness objectives retain their original convention. Source JSONL files are never rewritten. When rank
-files arrive from the other nodes, loss is recomputed from all reporting independent samples along with batch
-and throughput, rather than retaining rank 0's partial loss.
+For online DROID SFT, `loss/vision` and `loss/action` use the upstream convention: masked squared error divided by
+the full element count, averaged per sample, with each modality's fixed training weight removed. These values
+can be compared directly with upstream references. The separate `loss/vision_supervised_mse` and
+`loss/action_supervised_mse` series divide by the supervised element count, excluding conditioning positions and
+padded action channels. `loss/total` and `loss/objective` show the weighted scalar used for backward, so the
+headline Loss curve is the quantity the optimizer minimizes. Records, step details and CSV exports retain both
+conventions. The monitor converts legacy DROID weighted records and records from the earlier supervised-MSE
+display convention using the manifest's loss metric version and chunk length (one conditioning latent frame, one
+initial action state, temporal compression 4). Other harness objectives retain their original convention. For
+v1 figures recorded outside the monitor, convert to upstream convention with `vision × (frames - 1) / frames`
+and `action × chunk_length / (chunk_length + 1)`, where `frames = chunk_length // 4 + 1`. Source JSONL files are
+never rewritten. When rank files arrive from the other nodes, loss is recomputed from all reporting independent
+samples along with batch and throughput, rather than retaining rank 0's partial loss.
 
 The per-node system collector is a separate process:
 

@@ -37,28 +37,60 @@ def _get(record: Dict[str, Any], *path: str) -> Any:
 
 
 def normalise_loss_record(record: Dict[str, Any], manifest: Dict[str, Any]) -> Dict[str, Any]:
-    """Read old DROID weighted terms as supervised MSEs, without rewriting the source JSONL.
+    """Read DROID loss records in the upstream full-denominator convention.
 
     DROID conditions on one vision latent frame and one initial action state. Its Wan VAE compresses time
-    by four. Only this declared objective has enough information to convert historical records exactly;
-    other harness objectives keep their original meaning. New records carry ``objective`` and pass through.
+    by four. Pre-v1 records contain weighted upstream modality losses; v1 records contain supervised-element
+    MSEs. The run manifest distinguishes those formats, so both can be converted exactly without rewriting the
+    source JSONL. Other harness objectives keep their original meaning.
     """
     loss = record.get("loss")
-    if not isinstance(loss, dict) or "objective" in loss:
+    if not isinstance(loss, dict):
         return record
     if manifest.get("loss_objective") != "droid_sample_modality_mean":
+        return record
+    metric_version = manifest.get("loss_metrics")
+    if metric_version == "upstream_mean_v2":
         return record
     args = manifest.get("args") or {}
     chunk = _number(args.get("chunk_length")) if isinstance(args, dict) else None
     vision, action = _number(loss.get("vision")), _number(loss.get("action"))
     if chunk is None or chunk < 4 or vision is None or action is None:
         return record
-    frames = int(chunk) // 4 + 1
-    vision = vision / 10.0 * frames / (frames - 1)
-    action = action / 10.0 * (chunk + 1) / chunk
+    chunk = int(chunk)
+    frames = chunk // 4 + 1
+    if metric_version == "supervised_mse_v1":
+        # v1 re-normalized the masked full mean to active elements. Undo that factor to match upstream's .mean().
+        if "objective" not in loss or ("vision_supervised_mse" in loss and "action_supervised_mse" in loss):
+            return record
+        vision_supervised, action_supervised = vision, action
+        vision *= (frames - 1) / frames
+        action *= chunk / (chunk + 1)
+        objective = _number(loss.get("objective"))
+    else:
+        # Older DROID records store the fixed-weight terms and the weighted sum used by backward.
+        if "objective" in loss:
+            return record
+        vision /= 10.0
+        action /= 10.0
+        vision_supervised = vision * frames / (frames - 1)
+        action_supervised = action * (chunk + 1) / chunk
+        objective = _number(loss.get("total"))
+        if objective is None:
+            objective = 10.0 * (vision + action)
+    if objective is None:
+        return record
     return {
         **record,
-        "loss": {"total": vision + action, "vision": vision, "action": action, "objective": loss.get("total")},
+        "loss": {
+            **loss,
+            "total": objective,
+            "vision": vision,
+            "action": action,
+            "objective": objective,
+            "vision_supervised_mse": vision_supervised,
+            "action_supervised_mse": action_supervised,
+        },
     }
 
 
@@ -82,10 +114,12 @@ class Series:
 #: key -> (unit, label).  Keeping the catalogue here makes the API predictable and the frontend's key list
 #: explicit instead of every caller inventing names.
 METRICS: Dict[str, Tuple[str, str]] = {
-    "loss/total": ("loss", "Loss"),
-    "loss/vision": ("loss", "Vision loss"),
-    "loss/action": ("loss", "Action loss"),
+    "loss/total": ("loss", "Training objective"),
+    "loss/vision": ("loss", "Vision loss (upstream mean)"),
+    "loss/action": ("loss", "Action loss (upstream mean)"),
     "loss/objective": ("loss", "Weighted training objective"),
+    "loss/vision_supervised_mse": ("loss", "Vision supervised-element MSE"),
+    "loss/action_supervised_mse": ("loss", "Action supervised-element MSE"),
     "optim/lr": ("lr", "Learning rate"),
     "optim/grad_norm": ("norm", "Grad norm"),
     "perf/step_s": ("s", "Step time"),
@@ -149,6 +183,8 @@ class SeriesStore:
             "loss/vision": _number(_get(record, "loss", "vision")),
             "loss/action": _number(_get(record, "loss", "action")),
             "loss/objective": _number(_get(record, "loss", "objective")),
+            "loss/vision_supervised_mse": _number(_get(record, "loss", "vision_supervised_mse")),
+            "loss/action_supervised_mse": _number(_get(record, "loss", "action_supervised_mse")),
             "optim/lr": _number(_get(record, "optim", "lr")),
             "optim/grad_norm": _number(_get(record, "optim", "grad_norm")),
             "perf/step_s": step_ms / 1e3 if step_ms is not None else None,

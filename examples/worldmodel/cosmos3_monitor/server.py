@@ -27,8 +27,11 @@ from .store import RunStore
 
 DEFAULT_KEYS = [
     "loss/total",
+    "loss/objective",
     "loss/vision",
     "loss/action",
+    "loss/vision_supervised_mse",
+    "loss/action_supervised_mse",
     "optim/lr",
     "optim/grad_norm",
     "perf/step_s",

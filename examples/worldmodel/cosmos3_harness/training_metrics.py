@@ -17,8 +17,9 @@ Design contract, in order of importance:
 4. **Aggregation is explicit about reduction.** Counts sum, with callers excluding CP copies; step times take
    the maximum (the straggler). Legacy losses take the rank mean. Callers must normalize to their declared objective:
    ``local_sum * dp / global_count`` yields a global mean over samples for DROID or supervised elements for the
-   generic replay objective. SFT display MSEs carry a separate ``loss/objective`` and are reduced by independent
-   sample count, excluding CP copies.
+   generic replay objective. DROID SFT records use ``loss/total`` and ``loss/objective`` for the backward scalar;
+   unweighted upstream modality losses and supervised-element MSEs are reduced by independent sample count,
+   excluding CP copies.
 
 Typical use::
 
@@ -141,6 +142,8 @@ REDUCTIONS: Dict[str, str] = {
     "loss/vision": "mean",
     "loss/action": "mean",
     "loss/objective": "mean",
+    "loss/vision_supervised_mse": "mean",
+    "loss/action_supervised_mse": "mean",
     "optim/grad_norm": "mean",
     "optim/lr": "first",
     "optim/skipped": "sum",
@@ -517,15 +520,24 @@ def _positive(value: Any) -> Optional[float]:
 
 
 def aggregate_losses(records: Iterable[Mapping[str, Any]]) -> Dict[str, float]:
-    """Merge display MSEs by independent sample count; legacy normalized objectives keep their rank mean.
+    """Merge declared DROID metrics by independent sample count; generic legacy losses keep their rank mean.
 
-    New SFT records identify their display MSEs by keeping the training scalar in ``loss/objective``.
-    A CP follower reports zero independent samples and must not count as another data replica.
+    New SFT records identify their schema with ``loss/objective``. Their total is the backward scalar, modality
+    losses use upstream's full-element denominator, and supervised-element MSEs have explicit names. A CP
+    follower reports zero independent samples and must not count as another data replica.
     """
     present = [record for record in records if isinstance(record.get("loss"), Mapping)]
     sample_mean = bool(present) and all("objective" in record["loss"] for record in present)
     result = {}
-    for key in ("total", "vision", "action", "objective"):
+    keys = (
+        "total",
+        "vision",
+        "action",
+        "objective",
+        "vision_supervised_mse",
+        "action_supervised_mse",
+    )
+    for key in keys:
         values = []
         for record in present:
             value = record["loss"].get(key)
@@ -870,11 +882,14 @@ class ConsoleObserver(MetricsObserver):
 
         loss = record.get("loss", {})
         if "total" in loss:
-            text = f"{'MSE' if 'objective' in loss else 'loss'} {loss['total']:.6f}"
+            text = f"{'objective' if 'objective' in loss else 'loss'} {loss['total']:.6f}"
             if "vision" in loss and "action" in loss:
-                text += f" (v {loss['vision']:.6f} a {loss['action']:.6f})"
-            if "objective" in loss:
-                text += f" objective {loss['objective']:.6f}"
+                text += f" (upstream vision {loss['vision']:.6f} action {loss['action']:.6f})"
+            if "vision_supervised_mse" in loss and "action_supervised_mse" in loss:
+                text += (
+                    f" supervised MSE vision {loss['vision_supervised_mse']:.6f}"
+                    f" action {loss['action_supervised_mse']:.6f}"
+                )
             parts.append(text)
 
         data = record.get("data", {})

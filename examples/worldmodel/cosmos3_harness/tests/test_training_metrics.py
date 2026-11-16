@@ -102,21 +102,47 @@ def test_display_mse_aggregation_weights_samples_and_excludes_cp_followers():
             1,
             rank,
             data={"samples": samples},
-            loss={"total": value, "vision": value / 2, "action": value / 2, "objective": value * 10},
+            loss={
+                "total": value * 10,
+                "vision": value / 2,
+                "action": value / 2,
+                "objective": value * 10,
+                "vision_supervised_mse": value * 1.5,
+                "action_supervised_mse": value * 2,
+            },
         )
         for rank, samples, value in [(0, 1, 2.0), (1, 3, 6.0), (2, 0, 1000.0)]
     ]
     loss = aggregate_records(records)["loss"]
-    assert loss == {"total": 5.0, "vision": 2.5, "action": 2.5, "objective": 50.0}
+    assert loss == {
+        "total": 50.0,
+        "vision": 2.5,
+        "action": 2.5,
+        "objective": 50.0,
+        "vision_supervised_mse": 7.5,
+        "action_supervised_mse": 10.0,
+    }
 
 
-def test_console_names_display_mse_objective_and_partial_rank_coverage(capsys):
-    record = make_record(7, 0, loss={"total": 0.21, "vision": 0.2, "action": 0.01, "objective": 1.9})
+def test_console_names_objective_upstream_losses_and_partial_rank_coverage(capsys):
+    record = make_record(
+        7,
+        0,
+        loss={
+            "total": 1.9,
+            "vision": 0.18,
+            "action": 0.01,
+            "objective": 1.9,
+            "vision_supervised_mse": 0.2,
+            "action_supervised_mse": 0.011,
+        },
+    )
     record.update(ranks=[0, 1], world=2, expected_world=4, complete=False)
     ConsoleObserver().on_step(record)
     text = capsys.readouterr().out
-    assert "MSE 0.210000" in text and "a 0.010000" in text
-    assert "objective 1.900000" in text and "ranks 2/4 (partial)" in text
+    assert "objective 1.900000" in text and "upstream vision 0.180000 action 0.010000" in text
+    assert "supervised MSE vision 0.200000 action 0.011000" in text
+    assert "ranks 2/4 (partial)" in text
 
 
 def test_aggregate_of_one_record_has_no_skew_and_ignores_none_entries():

@@ -111,7 +111,7 @@ def parallel_topology(plugin, extra=None) -> list[dict]:
 
 
 class AccumulationWindow:
-    """Average display MSEs by sample and retain the optimizer's mean objective over microsteps."""
+    """Average modality metrics by sample and retain the optimizer's mean objective over microsteps."""
 
     def __init__(self, count_samples: bool = True):
         self.count_samples = count_samples
@@ -141,7 +141,8 @@ class AccumulationWindow:
             raise ValueError("Cannot report an empty accumulation window")
         values = self.loss_sum.tolist()
         components = dict(zip(self.component_names, (value / self.metric_samples for value in values[1:])))
-        return {"total": sum(components.values()), **components, "objective": values[0] / self.microsteps}
+        objective = values[0] / self.microsteps
+        return {"total": objective, **components, "objective": objective}
 
 
 def shutdown_dataloader(iterator) -> None:
