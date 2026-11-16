@@ -193,10 +193,56 @@ def test_video_pad_norm_block_sizing_and_cpu_fallback(monkeypatch):
         vpn.normalize_uint8(torch.zeros(1, 3, 1, 4, 4, dtype=torch.float32))
 
 
-def test_fast_color_jitter_matches_torchvision_bitwise(monkeypatch):
+def _compiles() -> bool:
+    """Whether this host can build a compiled function at all.
+
+    On an Ascend host torch_npu routes torch.compile to its own inductor backend, which needs the Ascend
+    triton fork; with upstream triton installed the build raises "module 'triton.language.extra' has no
+    attribute 'ascend'". The eager equality below is what the optimisation is judged on, and it runs
+    everywhere; only the compiled comparison needs a working backend.
+    """
+    try:
+        torch.compile(lambda value: value + 1, dynamic=False)(torch.zeros(1))
+        return True
+    except Exception:
+        return False
+
+
+compiled_backend = pytest.mark.skipif(not _compiles(), reason="no working torch.compile backend on this host")
+
+
+def test_hue_math_matches_torchvision_bitwise():
+    """The copied RGB->HSV->RGB chain against torchvision's own, which is what keeps the copy honest."""
     torch.manual_seed(11)
     x = torch.rand(3, 3, 32, 32)
     assert torch.equal(fcj._hue_math(x.clone(), torch.tensor(0.05)), F.adjust_hue(x.clone(), 0.05))
+
+
+def test_the_hue_pass_stays_eager_when_compilation_is_unavailable(monkeypatch):
+    """A worker on a host without the backend must keep producing batches, with the same values.
+
+    Before this, a failed build raised inside the DataLoader worker and took the input pipeline down for an
+    optimisation that only saves CPU time.
+    """
+    monkeypatch.setattr(fcj, "_COMPILED_HUE", None)
+    monkeypatch.setattr(fcj, "_COMPILE_UNAVAILABLE", False)
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("module 'triton.language.extra' has no attribute 'ascend'")
+
+    monkeypatch.setattr(torch, "compile", lambda *a, **kw: refuse)
+    torch.manual_seed(11)
+    x = torch.rand(3, 3, 32, 32)
+    assert torch.equal(fcj._compiled_adjust_hue(x.clone(), 0.05), F.adjust_hue(x.clone(), 0.05))
+    assert fcj._COMPILE_UNAVAILABLE is True
+    # The second call takes the short path and must still agree.
+    assert torch.equal(fcj._compiled_adjust_hue(x.clone(), 0.05), F.adjust_hue(x.clone(), 0.05))
+
+
+@compiled_backend
+def test_fast_color_jitter_matches_torchvision_bitwise(monkeypatch):
+    torch.manual_seed(11)
+    x = torch.rand(3, 3, 32, 32)
 
     ref = T.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
     fast = fcj.FastColorJitter(brightness=0.3, contrast=0.4, saturation=0.5, hue=0.08)
