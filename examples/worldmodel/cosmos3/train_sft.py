@@ -77,6 +77,8 @@ from examples.worldmodel.cosmos3.upstream_dataset import UpstreamDroidDataset
 from examples.worldmodel.cosmos3_harness.checkpoint import (
     apply_checkpoint,
     flush_checkpoint,
+    load_rank_tensors,
+    rank_tensors_payload,
     save_checkpoint,
     validate_checkpoint,
 )
@@ -217,6 +219,55 @@ class PowerEMA:
             )
         self.shadow = [t.detach().float().clone() for t in self.sources]
         self.optimizer = optimizer
+        # One stable name per averaged value, so a resume refuses a changed trainable set rather than
+        # matching shadows to parameters by position. The `name#count` form is the one the master-weight
+        # payload uses, and for the same reason: two parameters can share a name through a shared module.
+        names = {id(param): name for name, param in model.named_parameters()}
+        self.keys, seen = [], {}
+        for index, working in enumerate(self.working):
+            name = names.get(id(working), f"param-{index}")
+            count = seen.get(name, 0)
+            seen[name] = count + 1
+            self.keys.append(f"{name}#{count}")
+
+    def state_payload(self):
+        """This rank's shadow, packaged for its own file in the checkpoint generation.
+
+        The average is what the recipe releases, and nothing else in the generation carries it: the model
+        export is the working weights and the optimizer's own state is its moments. Without this a resumed
+        run continues the weights and starts the average again from the resume point, which no loss curve
+        shows -- the run simply ends up having averaged its tail instead of its length.
+
+        Returns:
+            dict: A ``rank_tensors_payload`` of this rank's shadow.
+        """
+        return rank_tensors_payload(self.keys, self.shadow)
+
+    @torch.no_grad()
+    def load_state(self, keys, tensors):
+        """Put a checkpoint's shadow back into this rank's average.
+
+        Args:
+            keys (Sequence[str]): The names the generation stored.
+            tensors (Sequence[torch.Tensor]): The stored fp32 values.
+
+        Raises:
+            ValueError: The names or the shapes are not this run's, which would make the restored average
+                a different quantity from the one being continued.
+        """
+        if list(keys) != self.keys:
+            raise ValueError(
+                "the EMA shadow in this checkpoint names different values than this run averages; the "
+                "trainable key set or the shard layout changed"
+            )
+        for index, (stored, shadow) in enumerate(zip(tensors, self.shadow)):
+            if tuple(stored.shape) != tuple(shadow.shape):
+                raise ValueError(
+                    f"EMA shadow {self.keys[index]} has shape {tuple(shadow.shape)} and the checkpoint's "
+                    f"is {tuple(stored.shape)}"
+                )
+        for stored, shadow in zip(tensors, self.shadow):
+            shadow.copy_(stored)
 
     def _full(self, working: torch.Tensor, shard: torch.Tensor) -> torch.Tensor:
         """One averaged parameter, whole, from this rank's shard of it.
@@ -993,6 +1044,13 @@ def main():
         start_step = int(resume_state["step"])
         resume_epoch = int(resume_state["epoch"])
         resume_cursor = int(resume_state["sampler_cursor"])
+        if args.ema and "ema" not in (resume_state.get("rank_tensors") or []):
+            # Refused here rather than started over: an average that silently begins again at the resume
+            # point covers the tail of the run instead of its length, and nothing downstream reveals it.
+            raise ValueError(
+                "this run keeps the recipe's EMA but the checkpoint carries no EMA shadow (written by an "
+                "older format version). Resume with --no-ema, or from a generation that has one."
+            )
     # Both the sampler's index stream and the DataLoader drop the last partial batch, so an epoch
     # is a whole number of batches; a cursor saved at an epoch boundary belongs to the next one.
     batches_per_epoch = (len(dataset) // unique_dp) // args.samples_per_rank
@@ -1100,13 +1158,6 @@ def main():
         # was checked in the preflight with the rest of this rank's own files.
         ema.load_state(*load_rank_tensors(Path(resume_root) / f"ema-{coord.rank:05d}.pt"))
         coord.print_on_master("[ema] shadow restored from the checkpoint")
-    if ema is not None:
-        held = sum(t.numel() for t in ema.shadow)
-        coord.print_on_master(
-            f"[ema] power EMA over {held / 1e9:.3f}B fp32 value(s) on this rank, from the {ema.source_kind}"
-        )
-    # Initialize the EMA after the resume: its shadow starts from the fp32 masters the run continues from.
-    ema = PowerEMA(model, optimizer) if args.ema else None
     if ema is not None:
         held = sum(t.numel() for t in ema.shadow)
         coord.print_on_master(
@@ -1280,6 +1331,7 @@ def main():
                 booster=booster,
                 async_=args.async_save,
                 on_rank_state=capture_rank_state,
+                rank_tensors={"ema": ema.state_payload()} if ema is not None else None,
                 chmod=True,
             )
             if ema is not None:

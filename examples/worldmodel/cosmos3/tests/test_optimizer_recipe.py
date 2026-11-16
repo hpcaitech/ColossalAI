@@ -69,6 +69,11 @@ class _Model:
     def parameters(self):
         return iter(self._params)
 
+    def named_parameters(self):
+        # The EMA names every averaged value so a resume can refuse a changed trainable set; a stand-in
+        # for nn.Module has to offer the same pair of accessors the real one does.
+        return iter((f"layer.{index}.weight", param) for index, param in enumerate(self._params))
+
 
 class _Optimizer:
     def __init__(self, mapping):
@@ -152,3 +157,44 @@ def test_the_understanding_towers_key_norm_is_not_trained():
     assert not any(k in "layers.0.self_attn.k_norm_und_for_gen.weight" for k in train_sft.TRAINABLE_KEYS)
     # The generation tower's own key norm stays trainable; only the understanding one is excluded.
     assert any(k in "layers.0.self_attn.k_norm_moe_gen.weight" for k in train_sft.TRAINABLE_KEYS)
+
+
+def test_the_shadow_round_trips_through_a_checkpoint_payload():
+    """Without this the weights continue and the average starts again at the resume point.
+
+    Nothing downstream reveals it: the loss curve is unchanged and the exported average is still a complete,
+    loadable model -- it has simply averaged the run's tail instead of its length.
+    """
+    params = [torch.nn.Parameter(torch.tensor([1.0, 2.0])), torch.nn.Parameter(torch.tensor([3.0]))]
+    masters = {id(param): param.detach().float().clone() for param in params}
+    ema = train_sft.PowerEMA(_Model(params), _Optimizer(masters))
+    for value, master in zip(([5.0, 6.0], [7.0]), masters.values()):
+        master.copy_(torch.tensor(value))
+    ema.update(1)
+    expected = [shadow.clone() for shadow in ema.shadow]
+
+    payload = ema.state_payload()
+    assert payload["keys"] == ema.keys
+
+    resumed = train_sft.PowerEMA(_Model(params), _Optimizer(masters))
+    assert not torch.equal(resumed.shadow[0], expected[0])
+    resumed.load_state(payload["keys"], payload["tensors"])
+    for restored, want in zip(resumed.shadow, expected):
+        torch.testing.assert_close(restored, want, rtol=0, atol=0)
+
+
+def test_a_shadow_that_names_other_values_is_refused():
+    """A changed trainable set makes the stored average a different quantity from the one continued."""
+    params = [torch.nn.Parameter(torch.tensor([1.0, 2.0]))]
+    masters = {id(param): param.detach().float().clone() for param in params}
+    ema = train_sft.PowerEMA(_Model(params), _Optimizer(masters))
+    with pytest.raises(ValueError, match="names different values"):
+        ema.load_state(["something.else#0"], [torch.zeros(2)])
+
+
+def test_a_shadow_of_another_shape_is_refused():
+    params = [torch.nn.Parameter(torch.tensor([1.0, 2.0]))]
+    masters = {id(param): param.detach().float().clone() for param in params}
+    ema = train_sft.PowerEMA(_Model(params), _Optimizer(masters))
+    with pytest.raises(ValueError, match="has shape"):
+        ema.load_state(ema.keys, [torch.zeros(5)])

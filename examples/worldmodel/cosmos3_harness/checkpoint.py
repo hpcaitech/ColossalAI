@@ -34,17 +34,17 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.distributed as dist
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
 # Version 1 wrote the optimizer in the legacy .bin layout and carried no per-rank extra state.
 # Version 2 added the immutable generation layout.  Version 3 adds the fp32 master weights that
 # mixed-precision training actually updates; the bf16 model shards alone round those values away.
-READABLE_FORMAT_VERSIONS = (1, 2, FORMAT_VERSION)
+READABLE_FORMAT_VERSIONS = (1, 2, 3, FORMAT_VERSION)
 
 MASTER_WEIGHTS_FORMAT = 1
 
@@ -188,7 +188,7 @@ def _digest_tree(root: Path):
 #: Files that exactly one rank writes and that only that rank reads back.  They live on the node that
 #: wrote them, so a run whose ``--out`` is each node's local disk legitimately lacks the other nodes'
 #: copies; ``complete.json`` still records every one of them, digest included.
-_RANK_FILE_PREFIXES = ("rng-", "master-")
+_RANK_FILE_PREFIXES = ("rng-", "master-", "ema-")
 
 
 class _DigestingFile:
@@ -207,6 +207,63 @@ class _DigestingFile:
 
     def hexdigest(self) -> str:
         return self._digest.hexdigest()
+
+
+#: Payload tag for :func:`rank_tensors_payload`.  Bumped only if the layout below changes.
+RANK_TENSORS_FORMAT = "cosmos3-rank-tensors-1"
+
+
+def rank_tensors_payload(keys, tensors) -> Dict[str, Any]:
+    """Package one rank's named fp32 tensors for its own file in the generation.
+
+    This is the shape the master weights already use, exposed for state that belongs to the caller
+    rather than to the optimizer -- an EMA's shadow, for instance.  It goes in a file of its own rather
+    than in ``rng-<rank>.pt`` because every rank reads its own RNG file and nothing else reads this: a
+    payload the size of a model copy has no business on a path other ranks walk.
+
+    Args:
+        keys (Sequence[str]): A stable name per tensor, so a restore can refuse a changed layout
+            instead of matching by position.
+        tensors (Sequence[torch.Tensor]): The values, in the same order as ``keys``.
+
+    Returns:
+        dict: The payload to hand to ``save_checkpoint(rank_tensors=...)``.
+
+    Raises:
+        ValueError: ``keys`` and ``tensors`` disagree in length.
+    """
+    keys = [str(key) for key in keys]
+    if len(keys) != len(tensors):
+        raise ValueError("rank tensor keys and tensors differ in length")
+    return {
+        "format": RANK_TENSORS_FORMAT,
+        "keys": keys,
+        "tensors": [tensor.detach().float().cpu().contiguous() for tensor in tensors],
+    }
+
+
+def load_rank_tensors(path):
+    """Read a :func:`rank_tensors_payload` file back, checking the layout before the caller uses it.
+
+    Args:
+        path (str | Path): The ``<label>-<rank>.pt`` file inside a generation.
+
+    Returns:
+        tuple[list[str], list[torch.Tensor]]: The keys and the fp32 tensors.
+
+    Raises:
+        ValueError: The file is not such a payload, or its entries are not fp32 tensors.
+    """
+    payload = torch.load(Path(path), map_location="cpu", weights_only=True)
+    if not isinstance(payload, dict) or payload.get("format") != RANK_TENSORS_FORMAT:
+        raise ValueError(f"{path}: unsupported rank tensor payload")
+    keys, tensors = payload.get("keys"), payload.get("tensors")
+    if not isinstance(keys, list) or not isinstance(tensors, list) or len(keys) != len(tensors):
+        raise ValueError(f"{path}: malformed rank tensor payload")
+    for index, tensor in enumerate(tensors):
+        if not isinstance(tensor, torch.Tensor) or tensor.dtype != torch.float32:
+            raise ValueError(f"{path}: rank tensor {index} is not a float32 tensor")
+    return keys, tensors
 
 
 def _save_with_digest(payload, path) -> Dict[str, Any]:
@@ -589,6 +646,7 @@ def save_checkpoint(
     booster=None,
     async_: bool = False,
     on_rank_state: Optional[Callable[[], dict]] = None,
+    rank_tensors: Optional[Mapping[str, Dict[str, Any]]] = None,
     chmod: bool = False,
 ) -> PendingCheckpoint:
     """All ranks participate; only rank zero publishes a complete generation.
@@ -599,6 +657,10 @@ def save_checkpoint(
     ``on_rank_state`` snapshots rank-private randomness that the global RNG does not cover
     (a separate ``torch.Generator``, for example); it is stored under ``rng-<rank>.pt["extra"]``
     and handed back by :func:`apply_checkpoint`.
+
+    ``rank_tensors`` maps a label to a :func:`rank_tensors_payload`, written as ``<label>-<rank>.pt``
+    beside the master weights.  The public state lists the labels present, so a run that keeps such
+    state can refuse a generation that lacks it instead of silently starting that state over.
 
     With ``async_=True`` the returned generation is not published yet.  The caller must pass it
     to :func:`flush_checkpoint` at a point every rank reaches.
@@ -636,6 +698,11 @@ def save_checkpoint(
     if extra is not None:
         rng["extra"] = extra
     rank_files[f"rng-{rank:05d}.pt"] = _save_with_digest(rng, staging / f"rng-{rank:05d}.pt")
+    for label in sorted(rank_tensors or {}):
+        name = f"{label}-{rank:05d}.pt"
+        if not _is_rank_local(name):
+            raise ValueError(f"rank tensor label {label!r} is not a known rank-local file prefix")
+        rank_files[name] = _save_with_digest(rank_tensors[label], staging / name)
     if dist.is_initialized():
         # One small object exchange: every rank's own files stay on its node, so this is how the manifest
         # rank zero writes can still vouch for them when the run resumes from node-local disks.
@@ -651,6 +718,7 @@ def save_checkpoint(
                 "world_size": world,
                 "format_version": FORMAT_VERSION,
                 "master_weights": master_payload is not None,
+                "rank_tensors": sorted(rank_tensors or {}),
             },
             staging / "training_state.pt",
         )
