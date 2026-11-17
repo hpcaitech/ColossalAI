@@ -25,6 +25,14 @@ def test_blocks_are_the_declared_layers_outermost_first():
     assert transformer_blocks(nn.Linear(2, 2)) == []
 
 
+def test_offload_configs_run_adamw_as_hybrid_adam():
+    from tests.kit.benchmark.config.optimizers import HYBRID_ADAM, for_cpu
+
+    offload = {name for name, config in CONFIGS.items() if config.cpu_optimizer}
+    assert offload == {"zero1_bf16_offload", "zero2_bf16_offload"}
+    assert for_cpu("adamw") == HYBRID_ADAM and for_cpu("muon") == "muon"
+
+
 def test_baseline_config_has_no_plugin():
     config = CONFIGS["pytorch_fsdp2_bf16"]
     assert config.plugin_fn is None and config.wrap_fn is not None and config.dtype == "bf16"

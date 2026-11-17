@@ -42,7 +42,7 @@ from colossalai.testing import spawn
 from tests.kit.numerics.capture.plugins import make_optimizer
 
 from ..config.model import PRETRAINED, BenchmarkSpec, spec_of
-from ..config.optimizers import build_optimizer
+from ..config.optimizers import build_optimizer, for_cpu
 from ..config.plugins import CONFIGS
 from ..config.setup import Setup
 from . import timeline
@@ -133,7 +133,8 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         plugin = config.plugin_fn(**policy)
         booster = Booster(plugin=plugin, mixed_precision=config.mixed_precision)
         trainable = [p for p in model.parameters() if p.requires_grad]
-        optimizer = make_optimizer(plugin, partial(build_optimizer, setup.optimizer, lr=setup.lr), trainable)
+        name = for_cpu(setup.optimizer) if config.cpu_optimizer else setup.optimizer
+        optimizer = make_optimizer(plugin, partial(build_optimizer, name, lr=setup.lr), trainable)
         optimizer_name = type(optimizer).__name__
         model, optimizer, *_ = booster.boost(model, optimizer)
 

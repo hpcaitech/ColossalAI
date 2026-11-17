@@ -35,6 +35,8 @@ class PluginConfig:
     wrap_fn: Optional[Callable] = None
     # the plugin replaces modules by a shardformer policy, and takes the model's own (BenchmarkSpec.shardformer_policy)
     takes_policy: bool = False
+    # the plugin runs the optimizer on the CPU (offload): AdamW becomes HybridAdam (optimizers.for_cpu)
+    cpu_optimizer: bool = False
 
 
 def _fsdp2():
@@ -81,10 +83,10 @@ CONFIGS: Dict[str, PluginConfig] = {
     "zero1_bf16": PluginConfig(partial(LowLevelZeroPlugin, stage=1, precision="bf16"), "bf16"),
     "zero2_bf16": PluginConfig(partial(LowLevelZeroPlugin, stage=2, precision="bf16"), "bf16"),
     "zero1_bf16_offload": PluginConfig(
-        partial(LowLevelZeroPlugin, stage=1, precision="bf16", cpu_offload=True), "bf16"
+        partial(LowLevelZeroPlugin, stage=1, precision="bf16", cpu_offload=True), "bf16", cpu_optimizer=True
     ),
     "zero2_bf16_offload": PluginConfig(
-        partial(LowLevelZeroPlugin, stage=2, precision="bf16", cpu_offload=True), "bf16"
+        partial(LowLevelZeroPlugin, stage=2, precision="bf16", cpu_offload=True), "bf16", cpu_optimizer=True
     ),
     "gemini_bf16": PluginConfig(partial(GeminiPlugin, precision="bf16"), "bf16"),
     "fsdp_fp32": PluginConfig(TorchFSDPPlugin, "fp32"),
