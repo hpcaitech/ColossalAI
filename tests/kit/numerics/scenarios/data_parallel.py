@@ -29,6 +29,7 @@ from colossalai.testing import spawn
 from ..capture.training import default_optimizer, prepare, run_data_parallel
 from ..judge import AlignmentReport, judge_relative_bound, require_gradients
 from ..trace import Trace
+from ._distributed import destroy_worker_process_group
 
 
 def traces(
@@ -116,8 +117,7 @@ def _run(
         dist.barrier()
     finally:
         # Each spawned worker owns its group; release it before interpreter shutdown, even on errors.
-        if dist.is_initialized():
-            dist.destroy_process_group()
+        destroy_worker_process_group()
 
 
 class _keep:

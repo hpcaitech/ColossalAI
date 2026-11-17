@@ -297,3 +297,78 @@ def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch)
         # Keep a failing regression from leaking its group into subsequent tests.
         if dist.is_initialized():
             dist.destroy_process_group()
+
+
+def _gloo_teardown_with_pending_callback(rank, rendezvous):
+    """Finish an asynchronous collective and its Python callback during teardown."""
+    import time
+    from datetime import timedelta
+
+    from tests.kit.numerics.scenarios._distributed import destroy_worker_process_group
+
+    dist.init_process_group(
+        "gloo", init_method="file://" + rendezvous, rank=rank, world_size=2, timeout=timedelta(seconds=20)
+    )
+    tensor = torch.ones(4)
+    if rank == 1:
+        # Keep rank zero's completion callback pending when cleanup begins.
+        time.sleep(1)
+    work = dist.all_reduce(tensor, async_op=True)
+    completed = []
+    if rank == 0:
+        future = work.get_future().then(lambda future: completed.append(True))
+    else:
+        work.wait()
+    del work
+    destroy_worker_process_group()
+    assert not dist.is_initialized()
+    if rank == 0:
+        assert completed == [True], "teardown returned before the Python completion callback finished"
+        assert future.done()
+    torch.testing.assert_close(tensor, torch.full((4,), 2.0))
+
+
+def test_gloo_teardown_releases_gil_for_pending_callback(tmp_path):
+    """A Python completion callback must not deadlock with Gloo's destructor."""
+    import os
+    import subprocess
+    import sys
+
+    command = (
+        "import sys; "
+        "from tests.test_numerics.test_numerics_data_parallel import _gloo_teardown_with_pending_callback; "
+        "_gloo_teardown_with_pending_callback(int(sys.argv[1]), sys.argv[2])"
+    )
+    processes = []
+    streams = []
+    try:
+        for rank in range(2):
+            stream = (tmp_path / f"rank-{rank}.log").open("w")
+            streams.append(stream)
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, "-c", command, str(rank), str(tmp_path / "rendezvous")],
+                    stdout=stream,
+                    stderr=subprocess.STDOUT,
+                    env={
+                        **os.environ,
+                        "CUDA_VISIBLE_DEVICES": "",
+                        "GLOO_SOCKET_IFNAME": "lo",
+                        "OMP_NUM_THREADS": "1",
+                        "MKL_NUM_THREADS": "1",
+                    },
+                )
+            )
+        for rank, process in enumerate(processes):
+            try:
+                code = process.wait(timeout=40)
+            except subprocess.TimeoutExpired:
+                pytest.fail(f"Gloo worker {rank} deadlocked during process-group teardown")
+            assert code == 0, (tmp_path / f"rank-{rank}.log").read_text()
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        for stream in streams:
+            stream.close()

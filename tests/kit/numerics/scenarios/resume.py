@@ -36,6 +36,7 @@ from colossalai.testing import spawn
 from ..capture.training import CHECKPOINT_PARTS, default_optimizer, prepare, run_steps
 from ..judge import AlignmentReport, Entry, judge_equal
 from ..trace import Trace
+from ._distributed import destroy_worker_process_group
 
 
 def traces(
@@ -185,8 +186,7 @@ def _run(
         dist.barrier()
     finally:
         # Each spawned worker owns its group; release it before interpreter shutdown, even on errors.
-        if dist.is_initialized():
-            dist.destroy_process_group()
+        destroy_worker_process_group()
 
 
 def _from_pretrained(entry, checkpoint: str):
