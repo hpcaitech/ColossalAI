@@ -1,5 +1,7 @@
-"""FLOPs per trained token, the numerator of MFU.
+"""Compute: FLOPs per token (the numerator of MFU), the devices' peaks (the denominator), and MFU / HFU.
 
+FLOPs
+-----
 Model FLOPs: the matrix multiplications of one forward and backward pass (PaLM, Chowdhery et al. 2022, appendix B),
 without the forward that gradient checkpointing recomputes (counting that gives hardware FLOPs, HFU). Causal attention
 is halved, as Megatron-LM and FlashAttention count it: a causal mask leaves half of the score matrix, and fused kernels
@@ -19,9 +21,30 @@ Two independent sources:
 An entry with a formula reports both, and their difference is flagged above ``FLOPS_MISMATCH_LIMIT``. The counter
 also sees the few matmuls that are not weights, e.g. a rotary embedding's frequency product (head_dim / 2 FLOPs per
 token); for real models they are below 1e-6 of the total.
+
+A model with several implementations (``BenchmarkSpec.implementations``) is counted in its reference
+implementation: fused kernels and communicating layers cannot run on the meta device, and every implementation
+computes the same FLOPs.
+
+Peaks
+-----
+Peak dense matmul throughput of each device.
+
+Two numbers per device and dtype, reported side by side:
+
+- ``nominal``: the vendor's dense (no sparsity) figure, the industry's denominator, so MFU compares with published
+  numbers. Each entry names its source.
+- ``measured``: the best median of square matmuls (n = 4096, 8192, 16384, device-event timed, TF32 / HF32 off for
+  fp32) on our machines. A device that cannot sustain its nominal figure (the Ascend 910B2 is power-capped at 400 W
+  and clocks down under load) is far from 100% MFU even when its matmuls are as fast as they get; MFU against the
+  measured peak separates that from the framework's own overhead.
+
+Devices are recognized by ``accelerator.get_device_name()``. A device or dtype missing here gives no MFU, which the
+report says, rather than a guessed one.
 """
 
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
 from unittest import mock
 
 import torch
@@ -100,17 +123,15 @@ class AttentionCounter:
 
 
 def counted_flops_per_token(spec, size: str, seq_len: int, micro_batch: int, recompute: bool = False) -> float:
-    """FLOPs per token that ``FlopCounterMode`` counts over one forward and backward of ``spec.models[size]`` on the
-    meta device. ``recompute=True`` enables non-reentrant gradient checkpointing, so that the recomputed forward is
-    counted too (hardware FLOPs).
+    """FLOPs per token that ``FlopCounterMode`` counts over one forward and backward of the model at ``size`` in its
+    reference implementation (``BenchmarkSpec.reference_implementation``), on the meta device. ``recompute=True``
+    enables non-reentrant gradient checkpointing, so that the recomputed forward is counted too (hardware FLOPs).
 
     The meta tensors are also fake tensors (``FakeTensorMode``): code that branches on tensor values only when it is
     not being traced, such as HuggingFace's check for packed sequences, then takes its traced path instead of reading
     a value that a meta tensor does not have."""
     with FakeTensorMode(allow_non_fake_inputs=True), torch.device("meta"):
-        model = spec.models[size]()
-        if spec.prepare_fn is not None:
-            model = spec.prepare_fn(model) or model
+        model = spec.build(size, spec.reference_implementation)
         if recompute:
             if not recompute_countable():
                 raise NotImplementedError(
@@ -138,7 +159,7 @@ def flops_per_token(spec, size: str, seq_len: int, micro_batch: int, gradient_ch
     analytic: Optional[float] = None
     if spec.flops_fn is not None:
         with torch.device("meta"):
-            analytic = spec.flops_fn(spec.models[size](), seq_len)
+            analytic = spec.flops_fn(spec.build(size, spec.reference_implementation), seq_len)
     model = analytic if analytic is not None else counted
     hardware = (
         counted_flops_per_token(spec, size, seq_len, micro_batch, recompute=True) if gradient_checkpointing else None
@@ -149,6 +170,76 @@ def flops_per_token(spec, size: str, seq_len: int, micro_batch: int, gradient_ch
         "analytic": analytic,
         "counted": counted,
         "difference": None if analytic is None else (counted - analytic) / analytic,
+        "counted_implementation": spec.reference_implementation,
         # with gradient checkpointing the recomputed forward is done too; without, hardware and model FLOPs are equal
         "hardware_flops_per_token": hardware if hardware is not None else model,
     }
+
+
+@dataclass(frozen=True)
+class Peak:
+    device: str
+    dtype: str
+    nominal_tflops: Optional[float]
+    nominal_source: str
+    measured_tflops: Optional[float] = None
+    measured_source: str = ""
+
+
+_H20_NOMINAL = (
+    "NVIDIA has no public H20 datasheet; figure consistent across third-party listings and press (dense Tensor Core)"
+)
+_H20_MEASURED = "one H20 (driver 595.71.05, SM clock steady at 1980 MHz, ~488 W of 500 W), torch 2.11, 2026-11-11"
+_910B2_NOMINAL = (
+    "Huawei, Atlas 800T A2 training server user guide (version 20, 2025-11-17), table 3-1, peak dense compute "
+    "provided stably: {figures} depending on the processor; the higher is the 910B2 (24 cube cores against the "
+    "910B3's 20 at the same 1800 MHz, CANN platform config)"
+)
+_910B2_MEASURED = (
+    "two 910B2 servers (CANN 9.1.0, torch_npu 2.13.0rc1), 2026-11-11; power at the 400 W cap, AI core clock down "
+    "from 1800 to 1400-1600 MHz"
+)
+_910B2_FP16 = _910B2_NOMINAL.format(figures="313 or 376 TFLOPS@FP16")
+
+PEAKS: Tuple[Peak, ...] = (
+    Peak("H20", "bf16", 148.0, _H20_NOMINAL, 140.6, _H20_MEASURED),
+    Peak("H20", "fp16", 148.0, _H20_NOMINAL, 140.5, _H20_MEASURED),
+    Peak("H20", "fp32", 44.0, _H20_NOMINAL + "; FP32 without Tensor Cores", 32.5, _H20_MEASURED),
+    Peak("Ascend910B2", "fp16", 376.0, _910B2_FP16, 260.5, _910B2_MEASURED),
+    Peak(
+        "Ascend910B2", "bf16", 376.0, _910B2_FP16 + "; BF16 is not listed, taken equal to FP16", 290.8, _910B2_MEASURED
+    ),
+    Peak("Ascend910B2", "fp32", 99.0, _910B2_NOMINAL.format(figures="82 or 99 TFLOPS@FP32"), 75.3, _910B2_MEASURED),
+)
+
+
+def device_key(device_name: str) -> Optional[str]:
+    """The ``PEAKS`` device that a ``get_device_name()`` string names, or None.
+
+    ``NVIDIA H20`` and its larger-memory variant have the same compute; Ascend names are matched exactly, as the
+    910B variants differ in compute."""
+    if "H20" in device_name.replace("-", " ").split():
+        return "H20"
+    if device_name in {p.device for p in PEAKS}:
+        return device_name
+    return None
+
+
+def lookup(device_name: str, dtype: str) -> Optional[Peak]:
+    key = device_key(device_name)
+    return next((p for p in PEAKS if p.device == key and p.dtype == dtype), None)
+
+
+def utilization(tokens_per_s_per_device: float, flops: Dict[str, Any], peak: Dict[str, Any]) -> Dict[str, Any]:
+    """Model and hardware TFLOPS per device at ``tokens_per_s_per_device``, and MFU / HFU against the nominal and the
+    measured peak. ``flops`` is ``flops_per_token(...)``; ``peak`` a ``Peak`` as a dict, whose TFLOPS are None when the
+    device's peak is not known (no MFU then)."""
+    result = {
+        "model_tflops_per_device": flops["model_flops_per_token"] * tokens_per_s_per_device / 1e12,
+        "hardware_tflops_per_device": flops["hardware_flops_per_token"] * tokens_per_s_per_device / 1e12,
+    }
+    for name, tflops in (("mfu", result["model_tflops_per_device"]), ("hfu", result["hardware_tflops_per_device"])):
+        for kind in ("nominal", "measured"):
+            denominator = peak[f"{kind}_tflops"]
+            result[f"{name}_{kind}"] = tflops / denominator if denominator else None
+    return result

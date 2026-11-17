@@ -1,7 +1,9 @@
-"""Self-tests of the benchmark framework that need no device: statistics, FLOPs, the peak table, the report and its
-template, and one full run of a tiny model on the CPU."""
+"""Self-tests of the benchmark framework that need no device: the config, the metrics from hand-made raw records,
+FLOPs, the peak table, the report, and one full run of a tiny model on the CPU."""
 
 import json
+import math
+from dataclasses import asdict
 
 import pytest
 import torch
@@ -9,12 +11,25 @@ import transformers
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
-from tests.kit.benchmark import report as report_module
-from tests.kit.benchmark.flops import AttentionCounter, counted_flops_per_token, flops_per_token, recompute_countable
-from tests.kit.benchmark.measure import CONFIGS, Setup
-from tests.kit.benchmark.peak import PEAKS, lookup
-from tests.kit.benchmark.report import build_report, percentile, render_markdown, summarize
-from tests.kit.benchmark.run import run_benchmark
+from tests.kit.benchmark.config.model import DEFAULT_IMPLEMENTATION
+from tests.kit.benchmark.config.plugins import CONFIGS
+from tests.kit.benchmark.config.setup import Setup, parse_field
+from tests.kit.benchmark.metrics.compute import (
+    PEAKS,
+    AttentionCounter,
+    counted_flops_per_token,
+    flops_per_token,
+    lookup,
+    recompute_countable,
+    utilization,
+)
+from tests.kit.benchmark.metrics.memory import GiB
+from tests.kit.benchmark.metrics.summary import summarize
+from tests.kit.benchmark.metrics.time import percentile, slowest_rank_steps, time_metrics
+from tests.kit.benchmark.runner.measure import COMPLETED
+from tests.kit.benchmark.scenarios import report as report_module
+from tests.kit.benchmark.scenarios.report import build_report, render_markdown
+from tests.kit.benchmark.scenarios.single import run_single
 
 
 def tiny_llama(attn_implementation="sdpa"):
@@ -31,10 +46,26 @@ def tiny_llama(attn_implementation="sdpa"):
     return transformers.LlamaForCausalLM(config)
 
 
+def unchanged(model):
+    """An implementation that computes exactly what the default one does."""
+
+
+def not_on_meta(model):
+    """An implementation that, like a fused kernel, cannot run on the meta device."""
+    if next(model.parameters()).is_meta:
+        raise NotImplementedError("this kernel has no meta implementation")
+
+
 # module-level functions only: the spec is sent to spawned processes
 TINY = BenchmarkSpec(
-    models={"tiny": tiny_llama}, seq_len=16, micro_batch=2, causal_attention=True, flops_fn=decoder_flops_per_token
+    models={"tiny": tiny_llama},
+    seq_len=16,
+    micro_batch=2,
+    causal_attention=True,
+    flops_fn=decoder_flops_per_token,
+    implementations={"unchanged": unchanged, "fused": not_on_meta},
 )
+SETUP = asdict(Setup(entry="e", size="s", config="ddp_fp32", seq_len=16, micro_batch=2))
 # 1 GFLOP per token against a 100 TFLOPS nominal and 80 TFLOPS measured peak
 FLOPS = {"model_flops_per_token": 1e9, "hardware_flops_per_token": 1.25e9, "difference": 0.0, "source": "formula"}
 PEAK = {"device": "X", "dtype": "bf16", "nominal_tflops": 100.0, "measured_tflops": 80.0}
@@ -44,17 +75,26 @@ NO_PEAK = {"device": "cpu", "dtype": "fp32", "nominal_tflops": None, "measured_t
 ROTARY_SHARE = 1e-4
 
 
-def _run(times, setup=None, finite=True):
+def record(times, forward_backward=None, setup=None, finite=True, memory=None, used=None, ranks=2):
+    """A completed ``runner.measure`` record of ``ranks`` identical ranks, each training 32 tokens (2 samples) per
+    step in ``times`` seconds, of which ``forward_backward`` until the end of the backward (default 80%)."""
+    rank = {
+        "tokens": 32,
+        "samples": 2,
+        "step_s": list(times),
+        "forward_backward_s": list(forward_backward or [t * 0.8 for t in times]),
+        "losses": [1.0, 0.9 if finite else math.nan],
+        "memory": memory or {"host_rss_peak": 1 << 30},
+        "timeline": None,
+        "device_used_at_start": used,
+    }
     return {
-        "setup": setup or {"entry": "e", "size": "s", "config": "ddp_fp32"},
-        "world_size": 2,
+        "status": COMPLETED,
+        "setup": setup or SETUP,
         "parameters": 1000,
         "optimizer": "AdamW",
-        "tokens_per_step": 64,
-        "samples_per_step": 4,
-        "step_time_s": times,
-        "memory_bytes": {"host_rss_peak": 1 << 30},
-        "loss": {"first": 1.0, "last": 0.9, "finite": finite},
+        "environment": {"accelerator": "cpu"},
+        "ranks": [dict(rank) for _ in range(ranks)],
     }
 
 
@@ -70,32 +110,42 @@ def test_percentile_interpolates_like_numpy():
 
 
 def test_throughput_comes_from_the_median_step():
-    summary = summarize(_run([1.0, 1.0, 1.0, 9.0]), FLOPS, PEAK)  # one stalled step does not move the headline
-    assert summary["step_time_s"]["median"] == 1.0
-    assert summary["tokens_per_s"] == 64
-    assert summary["tokens_per_s_per_device"] == 32
-    assert summary["samples_per_s"] == 4
+    time = time_metrics(record([1.0, 1.0, 1.0, 9.0]))  # one stalled step does not move the headline
+    assert time["step_time_s"]["median"] == 1.0
+    assert time["tokens_per_step"] == 64
+    assert time["tokens_per_s"] == 64
+    assert time["tokens_per_s_per_device"] == 32
+    assert time["samples_per_s"] == 4
 
 
-def test_report_flags_unstable_repeats_and_picks_the_slower_middle():
-    stable = build_report([_run([1.0, 1.0]), _run([1.02, 1.02])], {}, {"commit": "abc"}, ["cmd"], FLOPS, PEAK)
+def test_each_step_is_its_slowest_rank_and_splits_there():
+    run = record([1.0, 1.0])
+    run["ranks"][1] = dict(run["ranks"][1], step_s=[2.0, 0.5], forward_backward_s=[1.5, 0.1])
+    steps, forward_backward = slowest_rank_steps(run)
+    assert steps == [2.0, 1.0] and forward_backward == [1.5, 0.8]
+    split = time_metrics(record([1.0, 1.0, 1.0], forward_backward=[0.75, 0.75, 0.75]))
+    assert split["forward_backward_share"] == 0.75 and split["optimizer_share"] == 0.25
+
+
+def test_summary_flags_unstable_repeats_and_picks_the_slower_middle():
+    stable = summarize([record([1.0, 1.0]), record([1.02, 1.02])], FLOPS, PEAK)
     assert stable["flags"] == []
     assert stable["headline_repeat"] == 1  # the slower of two
     assert stable["repeat_spread"] == pytest.approx(0.02)
 
-    unstable = build_report([_run([1.0]), _run([1.2])], {}, {}, [], FLOPS, PEAK)
+    unstable = summarize([record([1.0]), record([1.2])], FLOPS, PEAK)
     assert len(unstable["flags"]) == 1 and "not stable" in unstable["flags"][0]
 
-    diverged = build_report([_run([1.0], finite=False)], {}, {}, [], FLOPS, PEAK)
+    diverged = summarize([record([1.0], finite=False)], FLOPS, PEAK)
     assert any("not finite" in flag for flag in diverged["flags"])
 
 
-def test_report_refuses_runs_of_different_setups():
-    other = {"entry": "e", "size": "s", "config": "zero2_bf16"}
+def test_summary_refuses_runs_of_different_setups():
+    other = dict(SETUP, config="zero2_bf16")
     with pytest.raises(ValueError, match="same setup"):
-        build_report([_run([1.0]), _run([1.0], setup=other)], {}, {}, [], FLOPS, PEAK)
+        summarize([record([1.0]), record([1.0], setup=other)], FLOPS, PEAK)
     with pytest.raises(ValueError):
-        build_report([], {}, {}, [], FLOPS, PEAK)
+        summarize([], FLOPS, PEAK)
 
 
 def test_setup_and_spec_validation():
@@ -103,30 +153,75 @@ def test_setup_and_spec_validation():
         Setup(entry="e", size="s", config="ddp_bf16", seq_len=8, micro_batch=1)
     with pytest.raises(ValueError, match="timed step"):
         Setup(entry="e", size="s", config="ddp_fp32", seq_len=8, micro_batch=1, timed_steps=0)
+    with pytest.raises(ValueError, match="one device"):
+        Setup(entry="e", size="s", config="ddp_fp32", seq_len=8, micro_batch=1, devices=0)
     with pytest.raises(ValueError, match="at least one size"):
         BenchmarkSpec(models={})
+    with pytest.raises(ValueError, match="name the other"):
+        BenchmarkSpec(models={"a": tiny_llama}, implementations={DEFAULT_IMPLEMENTATION: unchanged})
+    with pytest.raises(ValueError, match="reference implementation"):
+        BenchmarkSpec(models={"a": tiny_llama}, reference_implementation="fused")
     assert BenchmarkSpec(models={"a": tiny_llama, "b": tiny_llama}).default_size == "a"
+    assert TINY.implementation_names == (DEFAULT_IMPLEMENTATION, "unchanged", "fused")
+    with pytest.raises(ValueError, match="no implementation"):
+        TINY.build("tiny", "triton")
+    assert parse_field("config", "pytorch_fsdp2_bf16") == "pytorch_fsdp2_bf16"
+    assert parse_field("seq_len", "8192") == 8192 and parse_field("gradient_checkpointing", "True") is True
+    with pytest.raises(ValueError):
+        parse_field("hidden_size", "1")
+
+
+def test_build_applies_the_implementation_then_prepare():
+    calls = []
+
+    def implementation(model):
+        calls.append("implementation")
+        return torch.nn.Linear(1, 1)
+
+    spec = BenchmarkSpec(
+        models={"tiny": tiny_llama},
+        implementations={"other": implementation},
+        prepare_fn=lambda model: calls.append(type(model).__name__),
+    )
+    assert isinstance(spec.build("tiny", "other"), torch.nn.Linear)
+    assert calls == ["implementation", "Linear"]
+    assert isinstance(spec.build("tiny"), transformers.LlamaForCausalLM)
 
 
 @rerun_if_address_is_in_use()
 def test_cpu_run_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     setup = Setup(
-        entry="tiny", size="tiny", config="ddp_fp32", seq_len=16, micro_batch=2, warmup_steps=1, timed_steps=3
+        entry="tiny",
+        size="tiny",
+        config="ddp_fp32",
+        seq_len=16,
+        micro_batch=2,
+        devices=2,
+        implementation="unchanged",
+        warmup_steps=1,
+        timed_steps=3,
     )
-    result = run_benchmark(setup, nproc=2, repeats=2, spec=TINY, command=["python", "-m", "x"])
+    measurement = run_single(setup, repeats=2, spec=TINY)
+    result = build_report(measurement, {"commit": "abc"}, ["python", "-m", "x"])
 
-    assert result["schema_version"] == report_module.SCHEMA_VERSION
-    assert result["world_size"] == 2
-    assert len(result["repeats"]) == 2
-    for run in result["repeats"]:
-        assert len(run["step_time_s"]) == 3 and all(t > 0 for t in run["step_time_s"])
-        assert run["tokens_per_step"] == 2 * 2 * 16
-        assert run["loss"]["finite"]
+    assert result["schema_version"] == report_module.SCHEMA_VERSION and result["scenario"] == report_module.SINGLE
+    summary = measurement["summary"]
+    assert summary["devices"] == 2 and len(measurement["runs"]) == 2
+    for run in measurement["runs"]:
+        assert run["status"] == COMPLETED and len(run["ranks"]) == 2
+        for rank in run["ranks"]:
+            assert len(rank["step_s"]) == 3 and all(
+                0 < f < s for f, s in zip(rank["forward_backward_s"], rank["step_s"])
+            )
+            assert rank["tokens"] == 2 * 16 and len(rank["losses"]) == 4
+    assert summary["time"]["tokens_per_step"] == 2 * 2 * 16
+    assert 0 < summary["time"]["forward_backward_share"] < 1
     # no allocator statistics on the CPU, only the host
-    assert set(result["memory_bytes"]) == {"host_rss_peak"}
+    assert set(summary["memory_bytes"]) == {"host_rss_peak"}
     assert result["environment"]["accelerator"] == "cpu"
-    assert "commit" in result["repository"] or "error" in result["repository"]
+    # counted in the reference implementation, whatever implementation is measured
+    assert measurement["flops"]["counted_implementation"] == DEFAULT_IMPLEMENTATION
 
     path = tmp_path / "r.json"
     path.write_text(json.dumps(result))
@@ -139,31 +234,33 @@ def test_cpu_run_end_to_end(tmp_path, monkeypatch):
         "## Not covered",
     ):
         assert heading in markdown
+    assert "(tiny, unchanged implementation)" in markdown and "| Step split | forward + backward" in markdown
     assert "Peak reserved | n/a" in markdown
     # no peak for a CPU: MFU is missing and the report says why, it is never left out silently
-    assert result["throughput"]["mfu_nominal"] is None
+    assert summary["utilization"]["mfu_nominal"] is None
     assert "MFU: no peak is known for cpu in fp32" in markdown
-    assert abs(result["flops"]["difference"]) < ROTARY_SHARE
+    assert abs(measurement["flops"]["difference"]) < ROTARY_SHARE
 
 
 def test_mfu_divides_model_flops_by_both_peaks():
-    summary = summarize(_run([1.0]), FLOPS, PEAK)  # 32 tokens/s per device × 1 GFLOP = 0.032 TFLOPS
-    assert summary["model_tflops_per_device"] == pytest.approx(0.032)
-    assert summary["mfu_nominal"] == pytest.approx(0.032 / 100)
-    assert summary["mfu_measured"] == pytest.approx(0.032 / 80)
-    assert summary["hfu_nominal"] == pytest.approx(0.04 / 100)
-    assert summarize(_run([1.0]), FLOPS, NO_PEAK)["mfu_nominal"] is None
+    result = utilization(32, FLOPS, PEAK)  # 32 tokens/s per device × 1 GFLOP = 0.032 TFLOPS
+    assert result["model_tflops_per_device"] == pytest.approx(0.032)
+    assert result["mfu_nominal"] == pytest.approx(0.032 / 100)
+    assert result["mfu_measured"] == pytest.approx(0.032 / 80)
+    assert result["hfu_nominal"] == pytest.approx(0.04 / 100)
+    assert utilization(32, FLOPS, NO_PEAK)["mfu_nominal"] is None
+    assert summarize([record([1.0])], FLOPS, PEAK)["utilization"] == result
 
 
-def test_report_flags_mfu_above_the_peak():
-    fast = _run([1e-5])  # 3.2e6 tokens/s per device × 1 GFLOP = 3.2 PFLOPS against 100 TFLOPS
-    assert any("above the device's peak" in flag for flag in build_report([fast], {}, {}, [], FLOPS, PEAK)["flags"])
+def test_summary_flags_mfu_above_the_peak():
+    fast = record([1e-5])  # 3.2e6 tokens/s per device × 1 GFLOP = 3.2 PFLOPS against 100 TFLOPS
+    assert any("above the device's peak" in flag for flag in summarize([fast], FLOPS, PEAK)["flags"])
 
 
-def test_report_flags_a_formula_that_disagrees_with_the_counted_flops():
+def test_summary_flags_a_formula_that_disagrees_with_the_counted_flops():
     off = dict(FLOPS, difference=0.08)
-    assert any("FLOPs formula" in flag for flag in build_report([_run([1.0])], {}, {}, [], off, PEAK)["flags"])
-    assert build_report([_run([1.0])], {}, {}, [], dict(FLOPS, difference=None), PEAK)["flags"] == []
+    assert any("FLOPs formula" in flag for flag in summarize([record([1.0])], off, PEAK)["flags"])
+    assert summarize([record([1.0])], dict(FLOPS, difference=None), PEAK)["flags"] == []
 
 
 def test_formula_matches_the_counted_flops():
@@ -172,6 +269,16 @@ def test_formula_matches_the_counted_flops():
     assert counted == pytest.approx(formula, rel=ROTARY_SHARE)
     info = flops_per_token(TINY, "tiny", 16, 2, gradient_checkpointing=False)
     assert info["source"] == "formula" and info["hardware_flops_per_token"] == formula
+
+
+def test_flops_are_counted_in_the_reference_implementation():
+    # the default reference can be counted although "fused" cannot run on the meta device
+    assert flops_per_token(TINY, "tiny", 16, 2, gradient_checkpointing=False)["counted"] > 0
+    fused_reference = BenchmarkSpec(
+        models={"tiny": tiny_llama}, implementations={"fused": not_on_meta}, reference_implementation="fused"
+    )
+    with pytest.raises(NotImplementedError, match="meta"):
+        counted_flops_per_token(fused_reference, "tiny", seq_len=16, micro_batch=2)
 
 
 @pytest.mark.skipif(not recompute_countable(), reason="this torch cannot recompute on the meta device")
@@ -216,9 +323,8 @@ def test_peak_lookup():
     assert {config.dtype for config in CONFIGS.values()} <= {peak.dtype for peak in PEAKS}
 
 
-def test_report_flags_a_device_that_another_process_uses():
-    run = _run([1.0])
-    run["memory_bytes"] = {"device_total": 100 * report_module.GiB}
-    busy = build_report([run], {"device_used_at_start_gib": 35.8}, {}, [], FLOPS, PEAK)
+def test_summary_flags_a_device_that_another_process_uses():
+    memory = {"device_total": 100 * GiB}
+    busy = summarize([record([1.0], memory=memory, used=int(35.8 * GiB))], FLOPS, PEAK)
     assert any("another process shared it" in flag for flag in busy["flags"])
-    assert build_report([run], {"device_used_at_start_gib": 0.4}, {}, [], FLOPS, PEAK)["flags"] == []
+    assert summarize([record([1.0], memory=memory, used=int(0.4 * GiB))], FLOPS, PEAK)["flags"] == []

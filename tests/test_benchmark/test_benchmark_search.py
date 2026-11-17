@@ -7,9 +7,10 @@ from torch.multiprocessing.spawn import ProcessRaisedException
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec
-from tests.kit.benchmark.measure import Setup
-from tests.kit.benchmark.report import render_markdown
-from tests.kit.benchmark.search import Probe, run_search, search_max
+from tests.kit.benchmark.config.setup import Setup
+from tests.kit.benchmark.runner.measure import DEVICE_OUT_OF_MEMORY, measure
+from tests.kit.benchmark.scenarios.report import build_report, render_markdown
+from tests.kit.benchmark.scenarios.search import probe, run_search, search_max
 from tests.test_benchmark.test_benchmark_core import tiny_llama
 
 # tokens per micro-batch above which the model "runs out of memory"
@@ -49,18 +50,18 @@ class Threshold:
     def __call__(self, setup):
         value = getattr(setup, self.field)
         self.values.append(value)
-        return {"fits": value <= self.limit} if value <= self.limit else {"fits": False, "reason": "too big"}
+        return {"fits": True} if value <= self.limit else {"fits": False, "reason": "too big"}
 
 
 @pytest.mark.parametrize("start, limit", [(256, 5000), (4096, 1000), (1024, 1024), (256, 256), (4096, 300)])
 def test_bisection_finds_the_largest_multiple_that_fits(start, limit):
-    probe = Threshold("seq_len", limit)
-    found = search_max(_setup(seq_len=start), "seq_len", probe, granularity=256)
+    fits = Threshold("seq_len", limit)
+    found = search_max(_setup(seq_len=start), "seq_len", fits, granularity=256)
     assert found["max"] == limit // 256 * 256
-    assert [p["value"] for p in found["probes"]] == probe.values
-    assert all(v % 256 == 0 for v in probe.values)
+    assert [p["value"] for p in found["probes"]] == fits.values
+    assert all(v % 256 == 0 for v in fits.values)
     # logarithmic: doubling or halving to bracket, then bisection
-    assert len(probe.values) <= 2 * 5 + 2
+    assert len(fits.values) <= 2 * 5 + 2
 
 
 def test_bounds_and_nothing_that_fits():
@@ -74,25 +75,25 @@ def test_bounds_and_nothing_that_fits():
 
 
 @rerun_if_address_is_in_use()
-def test_probes_tell_out_of_memory_from_other_errors(monkeypatch):
+def test_runs_record_out_of_memory_and_raise_other_errors(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
-    probe = Probe(spec=LIMITED)
-    assert probe(_setup(seq_len=LIMIT))["fits"]
-    assert probe(_setup(seq_len=LIMIT + 16)) == {"fits": False, "reason": "out of device memory"}
+    assert probe(_setup(seq_len=LIMIT), LIMITED)["fits"]
+    assert probe(_setup(seq_len=LIMIT + 16), LIMITED) == {"fits": False, "reason": "out of device memory"}
+    assert measure(_setup(seq_len=LIMIT + 16), LIMITED)["status"] == DEVICE_OUT_OF_MEMORY
     with pytest.raises(ProcessRaisedException, match="not a memory problem"):
-        probe(_setup(micro_batch=7, seq_len=8))
+        probe(_setup(micro_batch=7, seq_len=8), LIMITED)
 
 
 @rerun_if_address_is_in_use()
 def test_search_then_measure_at_the_maximum(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     setup = _setup(seq_len=32, warmup_steps=1, timed_steps=2)
-    result = run_search(setup, "seq_len", granularity=16, upper=1024, repeats=1, spec=LIMITED)
-    search = result["search"]
-    assert search["max"] == search["measured_at"] == LIMIT
-    assert result["setup"]["seq_len"] == LIMIT and result["setup"]["timed_steps"] == 2
+    found = run_search(setup, "seq_len", granularity=16, upper=1024, repeats=1, spec=LIMITED)
+    search, measurement = found["search"], found["measurement"]
+    assert search["max"] == search["measured_at"] == LIMIT and search["flags"] == []
+    assert measurement["setup"]["seq_len"] == LIMIT and measurement["setup"]["timed_steps"] == 2
     assert search["probe_steps"] == 3  # as many as the measurement: 1 warmup + 2 timed
-    markdown = render_markdown(result)
+    markdown = render_markdown(build_report(measurement, {}, [], search=search))
     assert "## Maximum sequence length on one device" in markdown
     assert f"Maximum sequence length on one device: **{LIMIT}**." in markdown
     assert "- maximum sequence length on one device" not in markdown
